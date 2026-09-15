@@ -1,0 +1,24 @@
+/* Vue KnowledgeBase.vue keeps the filter bar in one row once the folder
+   column still leaves enough inline space. This remains local to the
+   documents list surface and does not change shared UI components. */
+.wk-document-results {
+  container: inline-size / doc-card-area;
+}
+
+@container doc-card-area (min-width: 1240px) {
+  .wk-document-results .doc-filter-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+  }
+
+  .wk-document-results .doc-filter-bar__filters {
+    flex: 1 1 auto;
+    overflow-x: auto;
+  }
+
+  .wk-document-results .doc-search-input {
+    flex: 1 1 220px;
+    min-width: 220px;
+  }
+}

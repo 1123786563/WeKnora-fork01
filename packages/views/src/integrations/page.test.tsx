@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { INTEGRATION_SECTIONS } from './registry.ts';
@@ -58,6 +59,17 @@ test('external tabs reuse the shared landing hero copy', () => {
   assert.equal(chrome.heading, '知识管理助手');
   const claw = integrationSectionCopy('claw', 'zh-CN');
   assert.equal(claw.heading, 'WeKnora Skill');
+});
+
+test('external landing pages keep the Vue landing layout contract', () => {
+  const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /className=\{\'integration-landing grid/);
+  assert.match(source, /landing-hero/);
+  assert.match(source, /min-\[821px\]:grid-cols-\[minmax\(0,1fr\)_minmax\(300px,380px\)\]/);
+  assert.match(source, /integrations\.chrome\.scenarios\.\$\{key\}/);
+  assert.match(source, /integrations\.chrome\.storeMeta/);
+  assert.match(source, /integrations\.claw\.ecosystemNote/);
+  assert.match(source, /aria-label=\{t\(key\)\}/);
 });
 
 test('im and embed section copy resolves for all five locales without leaking raw keys', () => {

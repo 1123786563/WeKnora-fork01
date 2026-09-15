@@ -90,6 +90,40 @@ export interface KnowledgeDocumentSearchParams {
   recent?: boolean;
 }
 
+export interface KnowledgeChunk {
+  id: string;
+  content?: string;
+  is_enabled?: boolean;
+  content_revision?: number;
+  index_status?: string;
+  [key: string]: unknown;
+}
+
+export interface KnowledgeChunkPage {
+  data: KnowledgeChunk[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface KnowledgeChunkRevision {
+  revision: number;
+  content?: string;
+  is_enabled?: boolean;
+  [key: string]: unknown;
+}
+
+export interface KnowledgeChunkUpdateInput {
+  content?: string;
+  is_enabled?: boolean;
+  expected_revision?: number;
+}
+
+export interface KnowledgeDocumentDetailsUpdateInput {
+  description?: string;
+  custom_metadata?: Record<string, unknown>;
+}
+
 export interface KnowledgeTagListParams {
   page?: number;
   page_size?: number;
@@ -118,6 +152,36 @@ function uploadResponseError(response: unknown): ApiError {
   const statusValue = findField(response, ['status']);
   const status = typeof statusValue === 'number' ? statusValue : undefined;
   return new ApiError({ code, message, status, details: response });
+}
+
+function parseChunkPage(value: unknown): KnowledgeChunkPage {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Invalid knowledge chunk page');
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.data)) throw new Error('Invalid knowledge chunk data');
+  const data = row.data.map((item, index) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item) || typeof (item as { id?: unknown }).id !== 'string') {
+      throw new Error(`Invalid knowledge chunk id at data[${index}]`);
+    }
+    return item as KnowledgeChunk;
+  });
+  return {
+    data,
+    total: Number(row.total ?? data.length),
+    page: Number(row.page ?? 1),
+    page_size: Number(row.page_size ?? 25),
+  };
+}
+
+function parseChunkRevisions(value: unknown): KnowledgeChunkRevision[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Invalid knowledge chunk revisions');
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.data)) throw new Error('Invalid knowledge chunk revisions data');
+  return row.data.map((item, index) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item) || typeof (item as { revision?: unknown }).revision !== 'number') {
+      throw new Error(`Invalid knowledge chunk revision at data[${index}]`);
+    }
+    return item as KnowledgeChunkRevision;
+  });
 }
 
 export function createKnowledgeDocumentsApi(
@@ -237,6 +301,47 @@ export function createKnowledgeDocumentsApi(
         method: 'GET',
         path: `${knowledgePath(id)}${suffix ? `?${suffix}` : ''}`,
       }));
+    },
+    async chunks(id: string, page = 1, pageSize = 25): Promise<KnowledgeChunkPage> {
+      return parseChunkPage(await request({
+        method: 'GET',
+        path: `/api/v1/chunks/${encodeURIComponent(id)}?page=${page}&page_size=${pageSize}`,
+      }));
+    },
+    async updateDetails(id: string, input: KnowledgeDocumentDetailsUpdateInput): Promise<KnowledgeDocument> {
+      return parseDocumentMutation(await request({
+        method: 'PUT',
+        path: knowledgePath(id),
+        body: input,
+      }));
+    },
+    async updateChunk(id: string, chunkId: string, input: KnowledgeChunkUpdateInput): Promise<KnowledgeChunk> {
+      const response = await request({
+        method: 'PUT',
+        path: `/api/v1/chunks/${encodeURIComponent(id)}/${encodeURIComponent(chunkId)}`,
+        body: input,
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') throw new Error('Invalid knowledge chunk update');
+      return data as KnowledgeChunk;
+    },
+    async chunkRevisions(id: string, chunkId: string): Promise<KnowledgeChunkRevision[]> {
+      return parseChunkRevisions(await request({
+        method: 'GET',
+        path: `/api/v1/chunks/${encodeURIComponent(id)}/${encodeURIComponent(chunkId)}/revisions`,
+      }));
+    },
+    async revertChunk(id: string, chunkId: string, revision: number, expectedRevision: number): Promise<KnowledgeChunk> {
+      const response = await request({
+        method: 'POST',
+        path: `/api/v1/chunks/${encodeURIComponent(id)}/${encodeURIComponent(chunkId)}/revert`,
+        body: { revision, expected_revision: expectedRevision },
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') throw new Error('Invalid knowledge chunk revert');
+      return data as KnowledgeChunk;
     },
     downloadPath(id: string): string {
       return knowledgePath(id, '/download');

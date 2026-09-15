@@ -40,6 +40,9 @@ export interface AgentEditorModalProps {
   open: boolean;
   mode: 'create' | 'edit';
   agent?: Record<string, unknown> | null;
+  initialSection?: string;
+  initialHighlightField?: string;
+  readOnly?: boolean;
   client: WeKnoraClient;
   t: Translate;
   onClose: () => void;
@@ -151,7 +154,9 @@ function Slider({ value, min, max, step, ariaLabel, onChange }: {
 
 // --- main component --------------------------------------------------------------------
 
-export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSaved }: AgentEditorModalProps) {
+const VALID_INITIAL_HIGHLIGHTS = new Set(['summary_model', 'rerank_model', 'allowed_tools']);
+
+export function AgentEditorModal({ open, mode, agent, initialSection, initialHighlightField, readOnly = false, client, t, onClose, onSaved }: AgentEditorModalProps) {
   const [initializing, setInitializing] = useState(false);
   const [deps, setDeps] = useState<EditorDeps>(EMPTY_DEPS);
   const [form, setForm] = useState<AgentEditorForm>(defaultAgentForm);
@@ -159,6 +164,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   const [mcpMode, setMcpMode] = useState<ScopeSelectionMode>('none');
   const [skillsMode, setSkillsMode] = useState<ScopeSelectionMode>('none');
   const [section, setSection] = useState<AgentSectionKey>('basic');
+  const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [issues, setIssues] = useState<AgentFormIssue[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -191,7 +197,9 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     setInitializing(true);
     setSaveError(null);
     setIssues([]);
-    setSection('basic');
+    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
+    const highlight = initialHighlightField && VALID_INITIAL_HIGHLIGHTS.has(initialHighlightField) ? initialHighlightField : null;
+    setHighlightedField(highlight);
     setPostCreate(false);
     void (async () => {
       const next: EditorDeps = { ...EMPTY_DEPS };
@@ -232,7 +240,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
       setInitializing(false);
     })();
     return () => { active = false; };
-  }, [open, mode, agent, client]);
+  }, [open, mode, agent, client, initialHighlightField, initialSection]);
 
   useEffect(() => {
     if (!open) return;
@@ -582,7 +590,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
 
   function renderModel() {
     return (
-      <section className="wk-ae-section" data-editor-section="model">
+      <section className={`wk-ae-section ${highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="model" data-highlighted-field={highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? highlightedField : undefined}>
         <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.modelConfig')}</h2>
           <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.modelConfigDesc')}</p>
@@ -894,7 +902,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const evaluations = activeTools.map((tool) => ({ tool, ...evaluateTool(tool) }));
     const inactiveToolCount = evaluations.filter((item) => !item.ok).length;
     return (
-      <section className="wk-ae-section" data-editor-section="tools">
+      <section className={`wk-ae-section ${highlightedField === 'allowed_tools' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="tools" data-highlighted-field={highlightedField === 'allowed_tools' ? 'allowed_tools' : undefined}>
         <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.toolsConfig')}</h2>
           <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.toolsConfigDesc')}</p>
@@ -1105,13 +1113,13 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               {saveError ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" role="alert">{saveError}</p> : null}
               <div className="flex justify-end gap-2">
                 <button type="button" className={`${AE_BTN} border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-inherit hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]`} data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
-                <button
+                {!readOnly ? <button
                   type="button"
                   className={`${AE_BTN} border bg-[var(--td-brand-color,#0052d9)] border-[var(--td-brand-color,#0052d9)] text-white hover:bg-[var(--td-brand-color-hover,#266fe8)] disabled:cursor-not-allowed disabled:opacity-60`}
                   data-editor-save
-                  disabled={saving || initializing}
+                  disabled={readOnly || saving || initializing}
                   onClick={() => void handleSave()}
-                >{saving ? t('common.loading') : saveLabel}</button>
+                >{saving ? t('common.loading') : saveLabel}</button> : null}
               </div>
             </footer>
           </div>

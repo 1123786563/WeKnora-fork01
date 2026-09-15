@@ -142,6 +142,13 @@ async function setInputValueAsync(input: HTMLInputElement | HTMLTextAreaElement,
   await act(async () => setInputValue(input, value));
 }
 
+async function selectValue(select: HTMLSelectElement, value: string): Promise<void> {
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+}
+
 async function submitForm(form: HTMLFormElement): Promise<void> {
   await act(async () => form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
 }
@@ -315,6 +322,31 @@ test('card click opens the shared-space settings modal with members and join req
   assert.equal(calls.review.length, 1);
   assert.equal((calls.review[0] as unknown[])[0], 'org-1');
   assert.equal((calls.review[0] as unknown[])[1], 'r1');
+});
+
+test('settings modal exposes an equivalent section selector when the sidebar is hidden on mobile', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const root = await mountPage(client);
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected settings modal');
+  const sectionSelector = dialog.querySelector('[data-testid="organization-settings-section-selector"]') as HTMLSelectElement | null;
+  assert.ok(sectionSelector, 'expected mobile section selector');
+  assert.match(sectionSelector.parentElement?.className ?? '', /max-\[720px\]:block/, 'selector should be available at the mobile breakpoint');
+  assert.deepEqual([...sectionSelector.options].map((option) => [option.value, option.textContent]), [
+    ['basic', '基本信息'],
+    ['members', '共享空间成员'],
+    ['requests', '待审核申请'],
+    ['shares', '共享知识库'],
+    ['invite', '邀请链接'],
+  ]);
+  assert.equal(sectionSelector.value, 'basic');
+
+  await selectValue(sectionSelector, 'members');
+  assert.equal(sectionSelector.value, 'members');
+  assert.match(dialog.textContent ?? '', /Alice/, 'selector change should render the selected section');
 });
 
 test('invite_code prop auto-previews the linked organization', async () => {

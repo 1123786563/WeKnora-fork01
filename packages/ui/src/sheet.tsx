@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useId, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from './lib/utils.ts';
 
 export interface SheetProps {
@@ -16,7 +17,10 @@ export interface SheetProps {
   minWidth?: number;
   maxWidth?: number;
   storageKey?: string;
+  resizeLabel?: string;
   className?: string;
+  /** Keep SSR/static rendering inline; browser usage portals to body by default. */
+  portal?: boolean;
 }
 
 const sideClasses = {
@@ -28,11 +32,13 @@ const sideClasses = {
  * 侧滑抽屉（Radix Dialog 承载）：用于 API 调试、向导等与主内容并行的临时表面。
  * z 取 1200 层级，置于常规弹窗（1100）之上，对齐 integrations 抽屉既定语义。
  */
-export function Sheet({ open, title, children, onClose, closeLabel = 'Close', side = 'right', width = '420px', resizable = false, minWidth = 320, maxWidth = 1400, storageKey, className }: SheetProps) {
+export function Sheet({ open, title, children, onClose, closeLabel = 'Close', side = 'right', width = '420px', resizable = false, minWidth = 320, maxWidth = 1400, storageKey, resizeLabel = 'Resize drawer', className, portal = true }: SheetProps) {
   const initialWidth = /^\d+(?:\.\d+)?px$/.test(width) ? Number.parseFloat(width) : 420;
   const [panelWidth, setPanelWidth] = useState(initialWidth);
   const panelRef = useRef<HTMLElement>(null);
   const titleId = useId();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const restoreRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   useEffect(() => {
@@ -73,7 +79,14 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
     restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     panelRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { onClose(); return; }
+      if (event.key === 'Escape') {
+        const activeElement = document.activeElement;
+        if (activeElement && !panelRef.current?.contains(activeElement)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
       if (event.key !== 'Tab' || !panelRef.current) return;
       const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'));
       if (focusable.length === 0) { event.preventDefault(); panelRef.current.focus(); return; }
@@ -87,7 +100,7 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
   }, [onClose, open]);
   if (!open) return null;
   const content = (
-    <div className="fixed inset-0 z-[1200] bg-[rgb(23_32_51_/_0.45)]" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[var(--wk-overlay-settings-z)] bg-[rgb(23_32_51_/_0.45)]" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
         <aside
           ref={panelRef}
           role="dialog"
@@ -97,13 +110,13 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
           aria-label={String(title)}
           data-side={side}
           className={cn(
-            'fixed z-[1201] flex max-w-full flex-col overflow-y-auto border border-line bg-surface shadow-[0_20px_60px_rgba(23,32,51,0.2)]',
+            'fixed z-[calc(var(--wk-overlay-settings-z)+1)] flex max-w-full flex-col overflow-y-auto border border-line bg-surface shadow-[0_20px_60px_rgba(23,32,51,0.2)]',
             sideClasses[side],
             className,
           )}
           style={{ width: resizable ? `${panelWidth}px` : width, animation: side === 'right' ? 'sheet-in-right .2s ease-out' : 'sheet-in-left .2s ease-out' } as CSSProperties}
         >
-          {resizable ? <div aria-hidden="true" className={`absolute ${side === 'right' ? 'left-[-4px]' : 'right-[-4px]'} top-0 z-[1] h-full w-2 cursor-col-resize`} onMouseDown={beginResize} /> : null}
+          {resizable ? <div role="separator" aria-orientation="vertical" aria-label={resizeLabel} title={resizeLabel} className={`absolute ${side === 'right' ? 'left-[-4px]' : 'right-[-4px]'} top-0 z-[1] h-full w-2 cursor-col-resize`} onMouseDown={beginResize} /> : null}
           <header className="flex items-start justify-between gap-4 px-5 py-4">
               <h2 id={titleId} className="m-0 text-[1.05rem] font-semibold text-ink">{title}</h2>
             <button
@@ -119,5 +132,5 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
         </aside>
     </div>
   );
-  return content;
+  return !portal || !mounted || typeof document === 'undefined' ? content : createPortal(content, document.body);
 }

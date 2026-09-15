@@ -18,7 +18,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount } = await import('./FAQPage.tsx');
+const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount, faqImportBlocked } = await import('./FAQPage.tsx');
 
 const t = createFaqTranslator('zh-CN');
 const kbId = '8b26f48e-7196-405f-9803-ccf93be3cd37';
@@ -137,6 +137,14 @@ test('empty page renders Vue copy, full-width search, tag filter and icon button
   assert.ok(!html.includes('>搜索</label>'), '搜索 field label removed');
 });
 
+test('FAQ view defaults to no write actions when capability is absent', () => {
+  const props = baseViewProps();
+  delete (props as Partial<FAQViewProps>).canContribute;
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, props));
+  assert.ok(!html.includes('aria-label="新建"'), 'create/import actions fail closed');
+  assert.ok(!html.includes('faq-card-check'), 'selection actions fail closed');
+});
+
 test('create and export icon buttons carry their Vue dropdown actions', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps()));
   assert.ok(html.includes('新增 FAQ 条目'), 'create dropdown item');
@@ -166,6 +174,21 @@ test('import dialog carries the Vue mode radio group instead of the header selec
   assert.ok(html.includes('追加导入'), 'append radio label');
   assert.ok(html.includes('替换现有条目'), 'replace radio label');
   assert.ok(html.includes('点击上传文件'), 'upload affordance');
+  assert.ok(html.includes('下载示例'), 'Vue import dialog exposes the example-download menu');
+});
+
+test('active tag filter exposes the Vue clear affordance', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
+    activeTagIds: ['tag-1'],
+    onClearTagFilter: noop,
+  })));
+  assert.ok(html.includes('aria-label="清除"'), 'selected tag filter can be cleared without reopening the menu');
+});
+
+test('import submission requires a parsed file preview like Vue handleImport', () => {
+  assert.equal(faqImportBlocked(null, 0), true);
+  assert.equal(faqImportBlocked('faq.json', 0), true);
+  assert.equal(faqImportBlocked('faq.json', 1), false);
 });
 
 test('editor drawer opens with the Vue create title', () => {

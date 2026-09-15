@@ -90,6 +90,9 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [sessionDangerAction, setSessionDangerAction] = useState<{ type: 'clear' | 'delete'; sessionId: string } | null>(null);
+  const [sessionDangerBusy, setSessionDangerBusy] = useState(false);
+  const [sessionDangerError, setSessionDangerError] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const renameSubmitting = useRef(false);
   const startRename = (session: ChatSession) => {
@@ -169,6 +172,21 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
       setBatchBusy(false);
     }
   };
+  const submitSessionDangerAction = async () => {
+    if (!sessionDangerAction || sessionDangerBusy) return;
+    const callback = sessionDangerAction.type === 'clear' ? onClear : onDelete;
+    if (!callback) return;
+    setSessionDangerBusy(true);
+    setSessionDangerError(null);
+    try {
+      await callback(sessionDangerAction.sessionId);
+      setSessionDangerAction(null);
+    } catch (error) {
+      setSessionDangerError(error instanceof Error ? error.message : t.operationFailed);
+    } finally {
+      setSessionDangerBusy(false);
+    }
+  };
   /*
    * shell.css → utilities. Effective values verified against the built css
    * bundle: for elements whose classes also matched styles.css rules, the
@@ -231,9 +249,15 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               {/* .wk-chat-session-menu-list button (+ .is-danger) → utilities. */}
               {onTogglePin ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
               {onRename ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => startRename(session)}>{t.renameSession}</button> : null}
-              {onClear ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onClear(session.id)}>{t.clearMessages}</button> : null}
+              {onClear ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => { setSessionDangerAction({ type: 'clear', sessionId: session.id }); setSessionDangerError(null); }}>{t.clearMessages}</button> : null}
               {onBatchDelete ? <button type="button" role="menuitem" aria-label={formatChatCopy(t, 'batchManage')} className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={toggleBatchMode}>{formatChatCopy(t, 'batchManage')}</button> : null}
-              {onDelete ? <button type="button" role="menuitem" className="is-danger min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[#e34d59] hover:bg-[#fdecee]" onClick={() => void onDelete(session.id)}>{t.deleteRecord}</button> : null}
+              {onDelete ? <button type="button" role="menuitem" className="is-danger min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[#e34d59] hover:bg-[#fdecee]" onClick={() => { setSessionDangerAction({ type: 'delete', sessionId: session.id }); setSessionDangerError(null); }}>{t.deleteRecord}</button> : null}
+              {sessionDangerAction?.sessionId === session.id ? <div className="wk-chat-session-confirm mt-[2px] border-t border-[#e7e7e7] pt-[6px]" role="dialog" aria-label={sessionDangerAction.type === 'clear' ? t.clearMessages : t.deleteSession}>
+                <strong className="block px-[6px] text-[12px]">{sessionDangerAction.type === 'clear' ? t.clearConfirmTitle : t.deleteConfirmTitle}</strong>
+                <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{sessionDangerAction.type === 'clear' ? t.clearConfirmBody : t.deleteConfirmBody}</p>
+                {sessionDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{sessionDangerError}</p> : null}
+                <div className="flex justify-end gap-[4px] px-[6px]"><button type="button" className="min-h-[28px] border-0 bg-transparent px-[7px] text-[12px]" onClick={() => setSessionDangerAction(null)} disabled={sessionDangerBusy}>{t.renameCancel}</button><button type="button" className="min-h-[28px] rounded-[5px] border-0 bg-[#e34d59] px-[7px] text-[12px] text-white" onClick={() => void submitSessionDangerAction()} disabled={sessionDangerBusy}>{sessionDangerAction.type === 'clear' ? t.clearConfirmAction : t.deleteConfirmAction}</button></div>
+              </div> : null}
             </div>
           </details> : null}
         </li>;

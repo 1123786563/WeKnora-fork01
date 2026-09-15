@@ -191,11 +191,17 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
     const clearItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '清空消息');
     assert.ok(clearItem, 'expected the 清空消息 menu item');
     await act(async () => { (clearItem as HTMLButtonElement).click(); await settle(5); });
+    const clearConfirm = menu3.querySelector('.wk-chat-session-confirm button:last-child');
+    assert.ok(clearConfirm, 'expected the clear confirmation action');
+    await act(async () => { (clearConfirm as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('clear:session-3'));
     // Vue menu.vue row menu uses upload.deleteRecord (删除记录), not chatHeader.deleteSession.
     const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录');
     assert.ok(deleteItem, 'expected the 删除记录 menu item');
     await act(async () => { (deleteItem as HTMLButtonElement).click(); await settle(5); });
+    const deleteConfirm = menu3.querySelector('.wk-chat-session-confirm button:last-child');
+    assert.ok(deleteConfirm, 'expected the delete confirmation action');
+    await act(async () => { (deleteConfirm as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('remove:session-3'));
   } finally {
     window.confirm = originalConfirm;
@@ -232,6 +238,9 @@ test('(e) deleting a non-active session only refreshes the shell list; no in-pag
     const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录') as HTMLButtonElement;
     assert.ok(deleteItem);
     await act(async () => { deleteItem.click(); await settle(5); });
+    const deleteConfirm = menu3.querySelector('.wk-chat-session-confirm button:last-child');
+    assert.ok(deleteConfirm);
+    await act(async () => { (deleteConfirm as HTMLButtonElement).click(); await settle(5); });
     assert.deepEqual(removed, ['session-3']);
     assert.equal(rowTitles().includes('更早的会话'), false, 'deleted session leaves the shell list');
     assert.equal(window.location.pathname, '/platform/chat/session-2', 'active route is untouched');

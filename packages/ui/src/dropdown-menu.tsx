@@ -17,7 +17,7 @@ export function DropdownContent({ className, children, ...props }: { children: R
       <DropdownPrimitive.Content
         sideOffset={4}
         className={cn(
-          'z-[1200] min-w-[148px] max-w-[min(100vw-16px,320px)] rounded-control border border-line bg-surface p-1 shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)] backdrop-blur-xl',
+          'z-[var(--wk-overlay-anchored-z)] min-w-[148px] max-w-[min(100vw-16px,320px)] rounded-control border border-line bg-surface p-1 shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)] backdrop-blur-xl',
           className,
         )}
         {...props}

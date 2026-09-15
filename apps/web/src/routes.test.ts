@@ -29,13 +29,14 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/platform/system/unknown').kind, 'not-found');
   assert.deepEqual(resolveRoute('/register'), { kind: 'login', path: '/register', mode: 'register' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1'), { kind: 'knowledge-base', path: '/knowledgeBase/kb-1', knowledgeBaseId: 'kb-1' });
+  assert.deepEqual(resolveRoute('/knowledgeBase/kb-1?knowledge_id=doc-1'), { kind: 'knowledge-base', path: '/knowledgeBase/kb-1', knowledgeBaseId: 'kb-1', initialDocumentId: 'doc-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/documents/doc-1'), { kind: 'knowledge-document', path: '/knowledgeBase/kb-1/documents/doc-1', knowledgeBaseId: 'kb-1', documentId: 'doc-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/wiki'), { kind: 'knowledge-wiki', path: '/knowledgeBase/kb-1/wiki', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/faq'), { kind: 'knowledge-faq', path: '/knowledgeBase/kb-1/faq', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/settings'), { kind: 'knowledge-settings', path: '/knowledgeBase/kb-1/settings', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1/creatChat'), { kind: 'chat', path: '/platform/knowledge-bases/kb-1/creatChat', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?tab=wiki&slug=docs/start'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', tab: 'wiki', slug: 'docs/start' });
-  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?knowledge_id=doc-1'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1' });
+  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?knowledge_id=doc-1'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', initialDocumentId: 'doc-1' });
   assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
   assert.deepEqual(resolveRoute('/platform/apps'), { kind: 'apps', path: '/platform/apps', mode: 'catalog' });
@@ -174,6 +175,23 @@ test('normalizes Vue legacy integration URLs into settings without losing unrela
   assert.equal(query.has('tab'), false);
   assert.equal(query.get('agentId'), 'agent-1');
   assert.deepEqual(query.getAll('filter'), ['a', 'b']);
+});
+
+test('keeps query-driven settings and modal/preview entry points on their owning routes', () => {
+  for (const path of [
+    '/platform/settings?section=models&subsection=embedding',
+    '/platform/settings?section=integration-embed&agentId=agent-1',
+    '/platform/agents?edit=agent-1&section=tools&highlight=allowed_tools&sourceTenantId=10001',
+  ]) {
+    assert.equal(resolveRoute(path).kind, 'platform');
+  }
+  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?tab=documents&knowledge_id=doc-1'), {
+    kind: 'knowledge-base',
+    path: '/platform/knowledge-bases/kb-1',
+    knowledgeBaseId: 'kb-1',
+    tab: 'documents',
+    initialDocumentId: 'doc-1',
+  });
 });
 
 test('guards legacy integration URLs before forwarding to the Vue settings destination', () => {

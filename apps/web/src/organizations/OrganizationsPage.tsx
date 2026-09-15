@@ -732,6 +732,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const previewName = strOf(joinPreview?.name);
   const previewDescription = strOf(joinPreview?.description);
   const searchRowFull = (row: Record<string, unknown>) => numOf(row.member_limit) > 0 && numOf(row.member_count) >= numOf(row.member_limit);
+  const settingsNavItems: Array<[string, string]> = settingsMode === 'create' ? [
+    ['basic', 'organization.editor.navBasic'],
+    ['permissions', 'organization.editor.navPermissions'],
+  ] : [
+    ['basic', 'organization.editor.navBasic'],
+    ['members', 'organization.members.listTitle'],
+    ['requests', 'organization.joinRequests.listTitle'],
+    ['shares', 'organization.sharedResources.kbListTitle'],
+    ['invite', 'organization.settings.inviteLink'],
+  ];
 
   // .wk-page .wk-org-page → utilities: the org page cancels the shared
   // page gutter (max-width/padding !important) and fills the shell height.
@@ -807,21 +817,23 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
                 <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2 max-[720px]:hidden">
                   <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
-                  {(settingsMode === 'create' ? [
-                    ['basic', 'organization.editor.navBasic'],
-                    ['permissions', 'organization.editor.navPermissions'],
-                  ] : [
-                    ['basic', 'organization.editor.navBasic'],
-                    ['members', 'organization.members.listTitle'],
-                    ['requests', 'organization.joinRequests.listTitle'],
-                    ['shares', 'organization.sharedResources.kbListTitle'],
-                    ['invite', 'organization.settings.inviteLink'],
-                  ] as Array<[string, string]>).map(([key, labelKey]) => (
+                  {settingsNavItems.map(([key, labelKey]) => (
                     <button key={key} type="button" className={'flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] border-0 px-[10px] py-[9px] text-left font-[inherit] text-[13px] ' + (settingsSection === key ? 'bg-accent-wash font-medium text-accent' : 'bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5]')} onClick={() => setSettingsSection(key)}>{t(locale, labelKey)}</button>
                   ))}
                 </nav>
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col">
+                <div className="hidden border-b border-[#e7e7ea] px-4 pb-3 pt-4 max-[720px]:block">
+                  <Select
+                    data-testid="organization-settings-section-selector"
+                    aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}
+                    className="min-h-[34px]"
+                    value={settingsSection}
+                    onChange={(event) => setSettingsSection(event.target.value)}
+                  >
+                    {settingsNavItems.map(([key, labelKey]) => <option key={key} value={key}>{t(locale, labelKey)}</option>)}
+                  </Select>
+                </div>
                 <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px] max-[720px]:px-4 max-[720px]:py-5' : 'px-[24px] py-[20px] max-[720px]:px-4 max-[720px]:py-5')}>
                   {settingsMode === 'create' && settingsSection === 'basic' ? (
                     <form id="organization-create-form" onSubmit={submitCreate}>

@@ -9,17 +9,19 @@ import { uploadKnowledgeFiles } from './upload-queue.ts';
 import { knowledgeListLabel } from './list.ts';
 import { selectKnowledgeDocumentLabel, shouldUseRecursiveFolderScope } from './parity.ts';
 import { referenceRoute } from './reference.ts';
+import { canManageKnowledgeBase, canMutateKnowledge, knowledgeBaseCapabilities } from './access.ts';
 
 function flattenFolders(nodes: KnowledgeFolderNode[]): KnowledgeFolderNode[] {
   return nodes.flatMap((node) => [node, ...flattenFolders(node.children || [])]);
 }
 
 export function KnowledgeDocumentsScreen() {
-  const label = (key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values);
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const kbId = Array.isArray(rawId) ? rawId[0] : rawId;
   const runtime = useMobileRuntime();
   const router = useRouter();
+  const label = (key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values);
+  const [knowledgeBase, setKnowledgeBase] = useState<Record<string, unknown> | null>(null);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [keyword, setKeyword] = useState('');
   const [folderPath, setFolderPath] = useState<string | undefined>();
@@ -41,13 +43,15 @@ export function KnowledgeDocumentsScreen() {
     if (!kbId) return;
     const generation = ++auxiliaryGeneration.current;
     try {
-      const [folderTree, tagList] = await Promise.all([
+      const [folderTree, tagList, knowledgeBase] = await Promise.all([
         runtime.client.knowledge.documents.folders(kbId),
         runtime.client.knowledge.documents.tags(kbId, { page: 1, page_size: 100 }),
+        runtime.client.knowledge.settings?.get?.(kbId) ?? Promise.resolve(null),
       ]);
       if (generation !== auxiliaryGeneration.current) return;
       setFolders(folderTree.folders);
       setTags(tagList);
+      setKnowledgeBase((knowledgeBase as Record<string, unknown> | null) ?? null);
     } catch (cause) {
       if (generation === auxiliaryGeneration.current) setError(cause instanceof Error ? cause.message : label('knowledgeBase.documents.filtersLoadFailed'));
     }
@@ -84,6 +88,11 @@ export function KnowledgeDocumentsScreen() {
   }, [loadAuxiliary, loadPage]);
 
   const folderOptions = useMemo(() => flattenFolders(folders), [folders]);
+  const capabilities = knowledgeBaseCapabilities(knowledgeBase ?? {});
+  const workspaceRole = runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role;
+  const permission = knowledgeBase?.my_permission ?? knowledgeBase?.permission;
+  const viaShare = knowledgeBase?.isMine === false || knowledgeBase?.is_mine === false;
+  const canUpload = canMutateKnowledge({ permission, viaShare, workspaceRole });
   async function upload() {
     if (!kbId || uploading) return;
     const files = await pickNativeFiles();
@@ -122,11 +131,12 @@ export function KnowledgeDocumentsScreen() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.detail.back")}</Text></Pressable>
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>{label("knowledgeBase.documents.title")}</Text>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabWiki")}</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.faq.title")}</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabGraph")}</Text></Pressable>
+      {!capabilities.isFaq && capabilities.wikiEnabled ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabWiki")}</Text></Pressable> : null}
+      {capabilities.isFaq ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.faq.title")}</Text></Pressable> : null}
+      {!capabilities.isFaq && capabilities.wikiEnabled ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabGraph")}</Text></Pressable> : null}
+      {canManageKnowledgeBase({ permission, viaShare, workspaceRole }) ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/settings`)}><Text style={{ color: '#2864dc' }}>{label('knowledgeBase.settings')}</Text></Pressable> : null}
       <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/data-sources`)}><Text style={{ color: '#2864dc' }}>{label("dataSource.title")}</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? label("common.cancel") : label("knowledgeBase.documents.uploadFile")}</Text></Pressable>
+      {canUpload ? <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? label("common.cancel") : label("knowledgeBase.documents.uploadFile")}</Text></Pressable> : null}
     </View>
     <TextInput accessibilityLabel={label("knowledgeBase.documents.searchPlaceholder")} value={keyword} onChangeText={setKeyword} onSubmitEditing={() => void loadPage(1, true)} placeholder={label("knowledgeBase.documents.searchPlaceholder")} returnKeyType="search" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} />
     <FlatList horizontal showsHorizontalScrollIndicator={false} data={[{ path: undefined, name: label("knowledgeBase.documents.root") }, ...folderOptions]} keyExtractor={(item) => item.path || 'all'} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityState={{ selected: folderPath === item.path }} onPress={() => setFolderPath(item.path)} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: folderPath === item.path ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text>{item.name}</Text></Pressable>} style={{ maxHeight: 42, marginBottom: 6 }} />

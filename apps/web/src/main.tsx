@@ -257,7 +257,7 @@ function renderProtected() {
     renderShell(<AppsPage client={client} mode={route.mode} id={route.id} role={scopeRuntime.role()} />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    const initialDocumentId = new URLSearchParams(window.location.search).get('knowledge_id')?.trim() || undefined;
+    const initialDocumentId = route.initialDocumentId;
     if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} initialDocumentId={initialDocumentId} canContribute={scopeRuntime.role() !== 'viewer'} />);
     else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
     else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);

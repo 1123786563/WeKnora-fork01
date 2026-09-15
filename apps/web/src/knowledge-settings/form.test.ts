@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRule, type KnowledgeBaseSettingsForm } from './form.ts';
+import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRule, validateKnowledgeBaseSettingsForm, type KnowledgeBaseSettingsForm } from './form.ts';
 import { formatMessage } from '@weknora/i18n';
 
 test('knowledge-settings mutation fallback copy is localized in supported locales', () => {
@@ -37,4 +37,19 @@ test('updates one parser group without switching to a generic JSON editor', () =
   const next = updateParserRule(form.parserRules, ['pdf', 'docx'], 'anydoc');
   assert.deepEqual(next, [{ file_types: ['pdf', 'docx'], engine: 'anydoc' }]);
   assert.deepEqual(updateParserRule(next, ['pdf'], ''), [{ file_types: ['docx'], engine: 'anydoc' }]);
+});
+
+test('validates the Vue knowledge-base editor limits before mutation', () => {
+  const form = formFromKnowledgeBase({ id: 'kb-1', name: 'Docs', description: '' });
+  assert.deepEqual(validateKnowledgeBaseSettingsForm(form), []);
+  assert.equal(validateKnowledgeBaseSettingsForm({ ...form, name: 'x'.repeat(129) })[0]?.field, 'name');
+  assert.equal(validateKnowledgeBaseSettingsForm({ ...form, chunkSize: 0 })[0]?.field, 'chunkSize');
+  assert.equal(validateKnowledgeBaseSettingsForm({ ...form, chunkSize: 100, chunkOverlap: 100 })[0]?.message, 'Chunk overlap must be smaller than chunk size');
+  assert.equal(validateKnowledgeBaseSettingsForm({ ...form, parentChild: true, childChunkSize: 10 })[0]?.field, 'childChunkSize');
+});
+
+test('replaces parser rules without duplicate case variants', () => {
+  assert.deepEqual(updateParserRule([{ file_types: ['PDF'], engine: 'builtin' }], ['pdf'], 'mineru'), [
+    { file_types: ['pdf'], engine: 'mineru' },
+  ]);
 });

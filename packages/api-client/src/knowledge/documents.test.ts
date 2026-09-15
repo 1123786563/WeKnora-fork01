@@ -194,3 +194,42 @@ test('keeps knowledge-base tag CRUD on the Vue endpoint contract', async () => {
     { method: 'DELETE', path: '/api/v1/knowledge-bases/kb%2Fa/tags/3?force=true', body: undefined },
   ]);
 });
+
+test('keeps document chunk paging and revision mutations on the Vue endpoint contract', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    if (request.path.endsWith('/revisions')) return { success: true, data: [{ revision: 2, content: 'old' }] };
+    if (request.method === 'GET') return { success: true, data: [{ id: 'chunk-1', content: 'current', content_revision: 3 }], total: 1, page: 2, page_size: 25 };
+    return { success: true, data: { id: 'chunk-1', content: 'updated', content_revision: 4 } };
+  });
+
+  const page = await api.chunks('doc/a', 2);
+  const revisions = await api.chunkRevisions('doc/a', 'chunk/1');
+  await api.updateChunk('doc/a', 'chunk/1', { content: 'updated', expected_revision: 3 });
+  await api.revertChunk('doc/a', 'chunk/1', 2, 4);
+
+  assert.equal(page.data[0]?.id, 'chunk-1');
+  assert.equal(revisions[0]?.revision, 2);
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/chunks/doc%2Fa?page=2&page_size=25', body: undefined },
+    { method: 'GET', path: '/api/v1/chunks/doc%2Fa/chunk%2F1/revisions', body: undefined },
+    { method: 'PUT', path: '/api/v1/chunks/doc%2Fa/chunk%2F1', body: { content: 'updated', expected_revision: 3 } },
+    { method: 'POST', path: '/api/v1/chunks/doc%2Fa/chunk%2F1/revert', body: { revision: 2, expected_revision: 4 } },
+  ]);
+});
+
+test('updates document summary and custom metadata through the guarded detail endpoint', async () => {
+  let request: { method: string; path: string; body?: unknown } | undefined;
+  const api = createKnowledgeDocumentsApi(async (input) => {
+    request = { method: input.method, path: input.path, body: input.body };
+    return { success: true, data: { id: 'doc-1', description: 'Updated', custom_metadata: { owner: 'docs' } } };
+  });
+  const result = await api.updateDetails('doc-1', { description: 'Updated', custom_metadata: { owner: 'docs' } });
+  assert.equal(result.description, 'Updated');
+  assert.deepEqual(request, {
+    method: 'PUT',
+    path: '/api/v1/knowledge/doc-1',
+    body: { description: 'Updated', custom_metadata: { owner: 'docs' } },
+  });
+});

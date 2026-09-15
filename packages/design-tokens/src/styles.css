@@ -1,14 +1,25 @@
-/* Generated from packages/design-tokens/src/index.ts. Keep this file as the
-   CSS entrypoint used by the browser; semantic aliases below preserve the
-   existing React/Tailwind contract while the wk-* values remain Vue-derived. */
+/* Generated from packages/design-tokens/src/index.ts. Vue theme-mode is the
+   runtime switch used by the React parity shell. */
 :root {
   --wk-color-brand: #07c05f; --wk-color-brand-hover: #08dd6e; --wk-color-brand-active: #06b04d; --wk-color-brand-light: #e9f8ec;
   --wk-color-text: #000000e6; --wk-color-text-secondary: #00000099; --wk-color-text-placeholder: #00000066; --wk-color-text-disabled: #00000042;
-  --wk-color-surface: #fff; --wk-color-page: #eee; --wk-color-surface-hover: #f3f3f3; --wk-color-surface-active: #e7e7e7; --wk-color-border: #dcdcdc; --wk-color-component: #e7e7e7;
-  --wk-color-error: #e34d59; --wk-color-error-light: #fdecee; --wk-color-success: #00a870; --wk-color-warning: #ed7b2f;
-  --wk-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --wk-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; --wk-font-size-body: 14px; --wk-font-size-small: 12px; --wk-font-size-title: 16px;
-  --wk-line-height-body: 20px; --wk-line-height-small: 20px; --wk-line-height-title: 24px; --wk-radius-small: 2px; --wk-radius-control: 6px; --wk-radius-popup: 10px; --wk-radius-panel: 12px; --wk-radius-round: 999px;
+  --wk-color-surface: #ffffff; --wk-color-panel: #ffffff; --wk-color-settings-panel: #f9f9f9; --wk-color-page: #eeeeee; --wk-color-surface-hover: #f3f3f3; --wk-color-surface-active: #e7e7e7;
+  --wk-color-border: #dcdcdc; --wk-color-component: #e7e7e7; --wk-color-error: #e34d59; --wk-color-error-light: #fdecee; --wk-color-success: #00a870; --wk-color-warning: #ed7b2f;
+  --wk-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --wk-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --wk-font-size-body: 14px; --wk-font-size-small: 12px; --wk-font-size-title: 16px; --wk-line-height-body: 20px; --wk-line-height-small: 20px; --wk-line-height-title: 24px;
+  --wk-radius-small: 2px; --wk-radius-control: 6px; --wk-radius-popup: 10px; --wk-radius-panel: 12px; --wk-radius-round: 999px;
   --wk-shadow-popup: 0 0 0 .5px rgba(0,0,0,.03), 0 2px 4px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); --wk-shadow-panel: 0 6px 30px rgba(0,0,0,.12);
-  --wk-overlay-menu-min-width: 148px; --wk-overlay-dialog-z: 3000; --wk-overlay-anchored-z: 3500; --wk-motion-duration: 180ms; --wk-motion-easing: cubic-bezier(.2,0,0,1);
+  --wk-overlay-menu-min-width: 148px; --wk-overlay-menu-padding: 4px; --wk-overlay-settings-z: 1100; --wk-overlay-dialog-z: 3000; --wk-overlay-anchored-z: 3500; --wk-motion-duration: 180ms; --wk-motion-easing: cubic-bezier(.2,0,0,1);
+  --background: var(--wk-color-page); --foreground: var(--wk-color-text); --card: var(--wk-color-surface); --card-foreground: var(--wk-color-text); --popover: var(--wk-color-surface); --popover-foreground: var(--wk-color-text);
+  --primary: var(--wk-color-brand); --primary-foreground: #ffffff; --secondary: var(--wk-color-surface-hover); --secondary-foreground: var(--wk-color-text); --muted: var(--wk-color-surface-hover); --muted-foreground: var(--wk-color-text-secondary);
+  --accent: var(--wk-color-surface-hover); --accent-foreground: var(--wk-color-text); --destructive: var(--wk-color-error); --destructive-foreground: #ffffff; --border: var(--wk-color-border); --input: var(--wk-color-border); --ring: var(--wk-color-brand);
+}
+:root[theme-mode="dark"] {
+  --wk-color-brand: #06b04d; --wk-color-brand-hover: #049b38; --wk-color-brand-active: #038626; --wk-color-brand-light: #06b04d20;
+  --wk-color-text: rgba(255, 255, 255, 0.9); --wk-color-text-secondary: rgba(255, 255, 255, 0.55); --wk-color-text-placeholder: rgba(255, 255, 255, 0.35); --wk-color-text-disabled: rgba(255, 255, 255, 0.22);
+  --wk-color-surface: #242424; --wk-color-panel: #181818; --wk-color-settings-panel: #181818; --wk-color-page: #181818; --wk-color-surface-hover: #2c2c2c; --wk-color-surface-active: #4b4b4b;
+  --wk-color-border: #5e5e5e; --wk-color-component: #383838; --wk-color-error: #c64751; --wk-color-error-light: #472324; --wk-color-success: #059465; --wk-color-warning: #cf6e2d;
+  --background: var(--wk-color-page); --foreground: var(--wk-color-text); --card: var(--wk-color-surface); --card-foreground: var(--wk-color-text); --popover: var(--wk-color-surface); --popover-foreground: var(--wk-color-text);
+  --primary: var(--wk-color-brand); --secondary: var(--wk-color-surface-hover); --secondary-foreground: var(--wk-color-text); --muted: var(--wk-color-surface-hover); --muted-foreground: var(--wk-color-text-secondary); --accent: var(--wk-color-surface-hover); --accent-foreground: var(--wk-color-text); --destructive: var(--wk-color-error); --border: var(--wk-color-border); --input: var(--wk-color-border); --ring: var(--wk-color-brand);
 }

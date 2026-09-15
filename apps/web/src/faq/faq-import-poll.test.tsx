@@ -51,7 +51,7 @@ function fakeClient(importProgressResults: Array<Record<string, unknown>>) {
   return {
     client: {
       knowledgeBases: {
-        settings: { get: async () => ({ id: 'kb-1', name: 'KB One', type: 'KnowledgeQA' }) },
+        settings: { get: async () => ({ id: 'kb-1', user_id: 'u1', name: 'KB One', type: 'KnowledgeQA' }) },
         list: async () => [],
       },
       knowledge: {
@@ -66,7 +66,7 @@ function fakeClient(importProgressResults: Array<Record<string, unknown>>) {
           },
         },
       },
-      auth: { me: async () => ({ user: { id: 'u1', roles: [], memberships: [] }, membership: { role: 'owner' }, can_access_all_tenants: false }) },
+    auth: { me: async () => ({ user: { id: 'u1', roles: [], memberships: [] }, membership: { role: 'owner' }, can_access_all_tenants: false, knowledge_base: { user_id: 'u1' } }) },
     },
     progressCalls: () => progressCalls,
   };

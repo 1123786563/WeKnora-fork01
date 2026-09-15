@@ -54,6 +54,38 @@ export interface AgentsPageData {
   sharedAgents: SharedAgentSummary[];
 }
 
+export interface AgentEditDeepLink {
+  editId: string;
+  section: string;
+  highlight?: string;
+  sourceTenantId?: string;
+}
+
+const AGENT_EDITOR_SECTIONS = new Set(['basic', 'prompts', 'model', 'conversation', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills']);
+const AGENT_HIGHLIGHT_SECTIONS: Record<string, string> = { summary_model: 'model', rerank_model: 'model', allowed_tools: 'tools' };
+
+export function parseAgentEditDeepLink(search: string): AgentEditDeepLink | null {
+  const params = new URLSearchParams(search);
+  const editId = params.get('edit')?.trim();
+  if (!editId) return null;
+  const requestedSection = params.get('section')?.trim();
+  const highlight = params.get('highlight')?.trim() || undefined;
+  const section = requestedSection || (highlight ? AGENT_HIGHLIGHT_SECTIONS[highlight] : undefined) || 'basic';
+  return {
+    editId,
+    section: section === 'sandbox' ? 'skills' : AGENT_EDITOR_SECTIONS.has(section) ? section : 'basic',
+    highlight,
+    sourceTenantId: params.get('sourceTenantId')?.trim() || undefined,
+  };
+}
+
+export function resolveAgentEditTarget(ownAgents: AgentCardModel[], sharedAgents: AgentCardModel[], editId: string, sourceTenantId?: string): AgentCardModel | null {
+  const own = ownAgents.find((agent) => agent.id === editId);
+  if (own) return own;
+  if (!sourceTenantId) return null;
+  return sharedAgents.find((agent) => agent.id === editId && String(agent.sourceTenantId) === sourceTenantId) ?? null;
+}
+
 /** Parallel fetch behind the Vue chatResources.fetchAgentsForList + orgStore duo. */
 export async function loadAgentsPageData(client: WeKnoraClient): Promise<AgentsPageData> {
   const [agents, organizations, sharedRecords] = await Promise.all([
@@ -423,7 +455,7 @@ export interface AgentsPageViewProps {
   error: string | null;
   notice: string | null;
   drawer: { kind: 'shared'; agent: AgentCardModel } | null;
-  editor: { mode: 'create' | 'edit'; agent: AgentCardModel | null } | null;
+  editor: { mode: 'create' | 'edit'; agent: AgentCardModel | null; initialSection?: string; initialHighlight?: string; readOnly?: boolean } | null;
   deleteTarget: AgentCardModel | null;
   deleting: boolean;
   collapsedSections: ReadonlySet<string>;
@@ -535,7 +567,7 @@ export function AgentsPageView(props: AgentsPageViewProps) {
         {!loading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
       </div>
       {drawer ? <AgentDetailDrawer kind={drawer.kind} agent={drawer.agent} t={t} onClose={props.onCloseDrawer} onUseInChat={props.onUseInChat} /> : null}
-      {editor ? <AgentEditorModal open mode={editor.mode} agent={editor.agent} client={props.client} t={editorT} onClose={props.onCloseEditor} onSaved={props.onEditorSaved} /> : null}
+      {editor ? <AgentEditorModal open mode={editor.mode} agent={editor.agent} initialSection={editor.initialSection} initialHighlightField={editor.initialHighlight} readOnly={editor.readOnly} client={props.client} t={editorT} onClose={props.onCloseEditor} onSaved={props.onEditorSaved} /> : null}
       <AgentDeleteDialog agent={deleteTarget} t={t} busy={deleting} onConfirm={props.onDeleteConfirm} onCancel={props.onDeleteCancel} />
     </main>
   );
@@ -605,6 +637,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   // ported literals for those keys while agent.* resolves normally.
   const editorT = useMemo(() => makeEditorT(locale), [locale]);
   const [viewer, setViewer] = useState<AgentViewer>({ userId: '', isAdmin: false, isContributor: false });
+  const [viewerReady, setViewerReady] = useState(false);
   // Vue useTenantModelReadiness (frontend/src/composables/useTenantModelReadiness.ts):
   // the agent list tours and the create gate read tenant model readiness —
   // a configured chat (KnowledgeQA / type llm) model.
@@ -629,6 +662,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   // Viewer + per-(user, tenant) pins hydrate (App.tsx membershipRole pattern).
   useEffect(() => {
     let active = true;
+    setViewerReady(false);
     void client.auth.me().then((me) => {
       if (!active) return;
       const role = membershipRoleOf(me.memberships, tenantKey);
@@ -638,9 +672,14 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
         isAdmin: role === 'owner' || role === 'admin' || me.user?.is_system_admin === true,
         isContributor: role === 'owner' || role === 'admin' || role === 'contributor' || me.user?.is_system_admin === true,
       });
+      setViewerReady(true);
       setFavorites(new Set(readFavoriteIds(window.localStorage, userId, tenantKey)));
       setRecents(readAgentRecents(window.localStorage, userId, tenantKey));
-    }).catch(() => { /* pins fall back to the unscoped '' user bucket */ });
+    }).catch(() => {
+      // Deep-link consumption waits for an authoritative permission result;
+      // a failed identity lookup must not accidentally grant an edit surface.
+      setViewerReady(true);
+    });
     return () => { active = false; };
   }, [client, tenantKey]);
 
@@ -769,6 +808,34 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     if (!RESERVED_SCOPES.has(effectiveSpace)) return buildSpaceViewRows(spaceItems);
     return buildAllViewRows(data.ownAgents, data.sharedAgents, options);
   }, [data, effectiveSpace, favorites, recents, spaceItems, viewer.userId]);
+
+  useEffect(() => {
+    if (!data || !viewerReady) return;
+    const deepLink = parseAgentEditDeepLink(window.location.search);
+    if (!deepLink) return;
+    const allRows = buildAllViewRows(data.ownAgents, data.sharedAgents, { userId: viewer.userId, disabledOwnIds: data.disabledOwnIds });
+    const target = resolveAgentEditTarget(
+      allRows.filter((agent) => agent.isMine),
+      allRows.filter((agent) => !agent.isMine),
+      deepLink.editId,
+      deepLink.sourceTenantId,
+    );
+    if (!target) return;
+    setDrawer(null);
+    setEditor({
+      mode: 'edit',
+      agent: target,
+      initialSection: deepLink.section,
+      initialHighlight: deepLink.highlight,
+      readOnly: !canManageAgent(target, viewer),
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.delete('edit');
+    url.searchParams.delete('section');
+    url.searchParams.delete('highlight');
+    url.searchParams.delete('sourceTenantId');
+    window.history.replaceState({}, '', url);
+  }, [data, viewer, viewerReady]);
 
   const sectioned = isSectionedView(effectiveSpace);
   const sections = useMemo<AgentSectionView[]>(() => (sectioned ? sectionize(rows, viewer.userId) : []), [rows, sectioned, viewer.userId]);

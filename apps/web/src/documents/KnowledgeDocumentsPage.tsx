@@ -80,6 +80,7 @@ import {
 import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
 import { tagSurfaceT } from "./tags-locale.ts";
 import uploadMaskIllustration from "./upload-mask.svg";
+import "./documents-list.css";
 import {
   loadKnowledgeDocuments,
   type KnowledgeDocumentListState,
@@ -334,6 +335,29 @@ function DocumentCardHoverPopover({ document, position, t }: {
 
 type DocumentViewMode = "grid" | "list";
 
+export function documentSourceLabel(document: KnowledgeDocument, t: (key: string) => string): string {
+  const channelKeys: Record<string, string> = {
+    feishu: "knowledgeBase.channelFeishu", feishu_drive: "knowledgeBase.channelFeishuDrive", lark_drive: "knowledgeBase.channelLarkDrive",
+    notion: "knowledgeBase.channelNotion", yuque: "knowledgeBase.channelYuque", gitlab: "knowledgeBase.channelGitLab",
+    ima: "knowledgeBase.channelIma", wechat: "knowledgeBase.channelWechat", wecom: "knowledgeBase.channelWecom",
+    dingtalk: "knowledgeBase.channelDingtalk", slack: "knowledgeBase.channelSlack", im: "knowledgeBase.channelIm",
+  };
+  const channel = typeof document.channel === "string" ? document.channel : "";
+  if (channelKeys[channel]) return t(channelKeys[channel]);
+  if (document.type === "url") return t("knowledgeBase.channelUrl");
+  if (document.type === "manual" || document.source === "manual") return t("knowledgeBase.channelManual");
+  return t("knowledgeBase.channelUpload");
+}
+
+export function documentFileSizeLabel(value: unknown): string {
+  const bytes = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  if (!Number.isFinite(bytes) || bytes < 0) return "--";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 export function DocumentCardGrid({
   items,
   folders,
@@ -405,11 +429,11 @@ export function DocumentCardGrid({
       const summaryInFlight = document.summary_status === "pending" || document.summary_status === "processing";
       const description = typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root");
       const tags = documentTags(document);
-      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-line-soft"} ${batchMode ? "batch-mode" : ""}`} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
+      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col cursor-pointer overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-line-soft"} ${batchMode ? "batch-mode" : ""}`} onClick={() => onOpen(document)} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
-            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
+            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           {parseInFlight ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-success-text [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-danger [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-current text-[9px] leading-none" aria-hidden="true">×</span><span>{t("knowledgeBase.parsingFailed")}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
@@ -2019,7 +2043,9 @@ export function KnowledgeDocumentsPage({
   const [tagLoadingMore, setTagLoadingMore] = useState(false);
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
-  const [canContribute, setCanContribute] = useState(true);
+  // Vue keeps upload/mutation controls behind the resolved KB capability;
+  // while the KB/auth requests are pending, render the viewer-safe state.
+  const [canContribute, setCanContribute] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [parseStatus, setParseStatus] = useState("");
@@ -2224,7 +2250,7 @@ export function KnowledgeDocumentsPage({
         if (redirect) window.location.replace(redirect);
       })
       .catch(() => {
-        if (active) setKbMeta(null);
+        if (active) { setKbMeta(null); setCanContribute(false); }
       });
     return () => {
       active = false;
@@ -3644,6 +3670,24 @@ export function KnowledgeDocumentsPage({
                 className={`wk-list wk-document-list relative m-0 list-none p-0${marquee.visible ? " is-marquee-active cursor-crosshair" : ""}`}
                 onMouseDown={marquee.onMouseDown}
               >
+                <li className="wk-document-list-header hidden grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px] items-center gap-3 border-b border-line-soft px-2 py-2 text-[12px] font-medium text-muted lg:grid" role="row">
+                  <span role="columnheader" />
+                  <span role="columnheader">{t("knowledgeBase.columnName")}</span>
+                  <span role="columnheader">{t("knowledgeBase.columnTag")}</span>
+                  <span role="columnheader">{t("knowledgeBase.columnSource")}</span>
+                  <span role="columnheader">{t("knowledgeBase.columnSize")}</span>
+                  <span role="columnheader">{t("knowledgeBase.columnStatus")}</span>
+                  <span role="columnheader">{t("knowledgeBase.columnUpdatedAt")}</span>
+                  {canContribute ? <span role="columnheader" /> : null}
+                </li>
+                {folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).map((folder) => (
+                  <li key={`folder-${folder.path}`} className="wk-document-list-folder flex cursor-pointer items-center gap-3 border-b border-line-soft px-2 py-3 text-[13px] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" role="row" title={folder.path} onClick={() => setFolderPath(folder.path)}>
+                    <span aria-hidden="true" />
+                    <span className="flex min-w-0 items-center gap-2 font-medium text-primary-deep"><FolderIcon size={16} /><span className="truncate">{folder.name}</span></span>
+                    <span />
+                    <span className="text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span><span /><span /><span /><span />
+                  </li>
+                ))}
                 {marquee.visible ? (
                   <li
                     className={`wk-document-marquee-box is-${marquee.mode} items-center! pointer-events-none absolute z-[4] rounded-[2px] border ${marquee.mode === "subtract" ? "border-[color-mix(in_srgb,var(--wk-danger,#d92d20)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-danger,#d92d20)_10%,transparent)]" : "border-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_12%,transparent)]"} flex justify-between gap-4 border-b border-line-soft py-[0.9rem]`}
@@ -3655,7 +3699,7 @@ export function KnowledgeDocumentsPage({
                   const status = documentStatus(document, t);
                   const actions = documentRowActions(document.parse_status);
                   return (
-                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" onClick={() => onOpenDocument?.(document)}>
                       {canContribute && batchMode ? <Checkbox
                           type="checkbox"
                           aria-label={t("knowledgeBase.documents.select", {
@@ -3668,44 +3712,21 @@ export function KnowledgeDocumentsPage({
                         <button
                           type="button"
                           className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
-                          onClick={() => onOpenDocument?.(document)}
+                          onClick={(event) => { event.stopPropagation(); onOpenDocument?.(document); }}
                         >
                           {displayName(document)}
                         </button>
-                        <span className="font-mono text-[0.8rem] text-muted">
-                          {document.folder_path ||
-                            t("knowledgeBase.documents.root")}
-                          {document.file_type ? ` · ${document.file_type}` : ""}
-                          {document.source ? ` · ${document.source}` : ""}
-                        </span>
-                        {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
+                        {document.folder_path ? <button type="button" className="flex min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left font-mono text-[0.8rem] text-muted hover:underline" onClick={(event) => { event.stopPropagation(); setFolderPath(document.folder_path); }}><FolderIcon size={12} /><span className="truncate">{document.folder_path}</span></button> : null}
                       </div>
+                      <span className="hidden min-w-0 lg:block">{documentTags(document).length > 0 ? <button type="button" className="border-0 bg-transparent p-0" onClick={(event) => { event.stopPropagation(); if (canContribute) setTagDialog({ mode: "single", document }); }}><DocumentTagChips tags={documentTags(document)} /></button> : canContribute ? <button type="button" className="border-0 bg-transparent p-0 text-[12px] text-muted" onClick={(event) => { event.stopPropagation(); setTagDialog({ mode: "single", document }); }}>+ {tt("knowledgeBase.tagLabel")}</button> : null}</span>
+                      <span className="hidden items-center gap-1 text-[12px] text-muted lg:flex"><LinkIcon size={13} />{documentSourceLabel(document, t)}</span>
+                      <span className="hidden font-mono text-[12px] text-muted lg:block">{documentFileSizeLabel(document.file_size)}</span>
                       <Status tone={status.tone}>{status.label}</Status>
+                      <span className="hidden font-mono text-[12px] text-muted lg:block">{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
                       {canContribute ? (
                         <span className="wk-row-actions font-mono text-[0.8rem] text-muted">
                           {/* Vue row tag cell: click opens TagEditDialog (L333). */}
-                          <Button
-                            type="button"
-                            onClick={() => setTagDialog({ mode: "single", document })}
-                          >
-                            {tt("knowledgeBase.tagLabel")}
-                          </Button>
-                          {actions.canReparse && !actions.canCancelParse ? (
-                            <Button
-                              type="button"
-                              onClick={() => reparseOne(document)}
-                            >
-                              {t("knowledgeBase.documents.reparse")}
-                            </Button>
-                          ) : null}
-                          {actions.canCancelParse ? (
-                            <Button
-                              type="button"
-                              onClick={() => void cancelOneParse(document.id)}
-                            >
-                              {t("knowledgeBase.documents.cancelParse")}
-                            </Button>
-                          ) : null}
+                          <DocumentCardActionMenu document={document} canDownload={canContribute} t={t} actions={actions} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
                         </span>
                       ) : null}
                     </li>

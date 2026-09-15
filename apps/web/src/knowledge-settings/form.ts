@@ -25,6 +25,16 @@ export interface KnowledgeBaseSettingsForm {
   tableMetadataInstructions: string;
 }
 
+export interface KnowledgeBaseSettingsValidationError {
+  field: keyof KnowledgeBaseSettingsForm;
+  message: string;
+}
+
+export interface KnowledgeBaseSettingsValidationError {
+  field: keyof KnowledgeBaseSettingsForm;
+  message: string;
+}
+
 function object(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -92,6 +102,29 @@ export function buildKnowledgeBaseSettingsInput(form: KnowledgeBaseSettingsForm)
       auto_tag_config: { ...form.autoTagConfig, enabled: form.autoTagEnabled },
     },
   };
+}
+
+/**
+ * Keep the standalone settings route's submit contract aligned with the Vue
+ * editor.  HTML min/max attributes are only a UI hint; this validator is the
+ * last client-side gate before a mutation and is therefore also used by
+ * tests and non-browser callers.
+ */
+export function validateKnowledgeBaseSettingsForm(form: KnowledgeBaseSettingsForm): KnowledgeBaseSettingsValidationError[] {
+  const errors: KnowledgeBaseSettingsValidationError[] = [];
+  const name = form.name.trim();
+  if (!name) errors.push({ field: 'name', message: 'Knowledge-base name is required' });
+  else if (name.length > 128) errors.push({ field: 'name', message: 'Knowledge-base name must be at most 128 characters' });
+  if (form.description.length > 512) errors.push({ field: 'description', message: 'Knowledge-base description must be at most 512 characters' });
+  if (!Number.isFinite(form.chunkSize) || form.chunkSize < 1 || form.chunkSize > 4000) errors.push({ field: 'chunkSize', message: 'Chunk size must be between 1 and 4000' });
+  if (!Number.isFinite(form.chunkOverlap) || form.chunkOverlap < 0 || form.chunkOverlap > 500) errors.push({ field: 'chunkOverlap', message: 'Chunk overlap must be between 0 and 500' });
+  if (form.parentChild) {
+    if (!Number.isFinite(form.parentChunkSize) || form.parentChunkSize < 512 || form.parentChunkSize > 8192) errors.push({ field: 'parentChunkSize', message: 'Parent chunk size must be between 512 and 8192' });
+    if (!Number.isFinite(form.childChunkSize) || form.childChunkSize < 64 || form.childChunkSize > 2048) errors.push({ field: 'childChunkSize', message: 'Child chunk size must be between 64 and 2048' });
+  }
+  if (!Number.isFinite(form.tokenLimit) || form.tokenLimit < 0 || form.tokenLimit > 8192) errors.push({ field: 'tokenLimit', message: 'Token limit must be between 0 and 8192' });
+  if (form.chunkOverlap >= form.chunkSize && Number.isFinite(form.chunkSize) && Number.isFinite(form.chunkOverlap)) errors.push({ field: 'chunkOverlap', message: 'Chunk overlap must be smaller than chunk size' });
+  return errors;
 }
 
 export function updateParserRule(rules: ParserRule[], fileTypes: string[], engine: string): ParserRule[] {

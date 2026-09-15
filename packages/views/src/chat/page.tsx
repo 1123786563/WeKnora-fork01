@@ -328,6 +328,9 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   const [renameValue, setRenameValue] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameBusy, setRenameBusy] = useState(false);
+  const [headerDangerAction, setHeaderDangerAction] = useState<'clear' | 'delete' | null>(null);
+  const [headerDangerBusy, setHeaderDangerBusy] = useState(false);
+  const [headerDangerError, setHeaderDangerError] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameEditorRef = useRef<HTMLDivElement | null>(null);
   const renameSubmittingRef = useRef(false);
@@ -374,6 +377,23 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       setRenameBusy(false);
     }
   };
+  const submitHeaderDangerAction = async () => {
+    if (!headerDangerAction || headerDangerBusy) return;
+    const callback = headerDangerAction === 'clear' ? props.onClearSession : props.onDeleteSession;
+    if (!callback) return;
+    setHeaderDangerBusy(true);
+    setHeaderDangerError(null);
+    try {
+      if (headerDangerAction === 'clear') await props.onClearSession!();
+      else await props.onDeleteSession!(session.id);
+      setHeaderDangerAction(null);
+      renameDetailsRef.current?.removeAttribute('open');
+    } catch (error) {
+      setHeaderDangerError(error instanceof Error ? error.message : copy.operationFailed);
+    } finally {
+      setHeaderDangerBusy(false);
+    }
+  };
   /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu). */
   const menuItem = 'min-h-[30px] cursor-pointer whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[10px] py-0 text-left text-[13px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
   return <>
@@ -382,10 +402,17 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
     </summary>
     <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex min-w-[132px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
-      {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
-      {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
-      {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onClearSession!()}>{copy.clearMessages}</button> : null}
-      {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
+      {headerDangerAction ? <div className="wk-chat-header-confirm" role="dialog" aria-label={headerDangerAction === 'clear' ? copy.clearMessages : copy.deleteSession}>
+        <strong className="block px-[6px] text-[12px]">{headerDangerAction === 'clear' ? copy.clearConfirmTitle : copy.deleteConfirmTitle}</strong>
+        <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{headerDangerAction === 'clear' ? copy.clearConfirmBody : copy.deleteConfirmBody}</p>
+        {headerDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{headerDangerError}</p> : null}
+        <div className="flex justify-end gap-[4px] px-[6px]"><button type="button" className="min-h-[28px] border-0 bg-transparent px-[7px] text-[12px]" onClick={() => setHeaderDangerAction(null)} disabled={headerDangerBusy}>{copy.renameCancel}</button><button type="button" className="min-h-[28px] rounded-[5px] border-0 bg-[#e34d59] px-[7px] text-[12px] text-white" onClick={() => void submitHeaderDangerAction()} disabled={headerDangerBusy}>{headerDangerAction === 'clear' ? copy.clearConfirmAction : copy.deleteConfirmAction}</button></div>
+      </div> : <>
+        {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
+        {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
+        {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{copy.clearMessages}</button> : null}
+        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{copy.deleteSession}</button> : null}
+      </>}
     </div>
     </details>
     {renameOpen ? <div ref={renameEditorRef} className="inline-flex min-w-0 items-center gap-[4px]" role="group" aria-label={copy.renameTitle}>

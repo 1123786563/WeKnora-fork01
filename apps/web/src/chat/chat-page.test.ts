@@ -22,6 +22,22 @@ test('header rename uses the localized inline editor contract instead of a brows
   }
 });
 
+test('chat view keeps destructive session actions behind the Vue confirmation state', () => {
+  const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  const sidebarSource = readFileSync(new URL('../../../../packages/views/src/chat/session-sidebar.tsx', import.meta.url), 'utf8');
+  assert.match(viewSource, /headerDangerAction/);
+  assert.match(sidebarSource, /clearConfirmBody/);
+  assert.match(sidebarSource, /deleteConfirmBody/);
+  assert.match(sidebarSource, /sessionDangerAction/);
+  assert.match(sidebarSource, /role="dialog"/);
+});
+
+test('streaming steer composer renders one localized task label', () => {
+  const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  const labels = viewSource.match(/\{copy\.steerCurrent\}/g) ?? [];
+  assert.equal(labels.length, 1);
+});
+
 const baseProps = {
   sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
   selectedSessionId: 'session-1',

@@ -29,10 +29,22 @@ test('overlay and menu primitives render portal-ready accessible contracts', () 
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /aria-modal="true"/);
   assert.match(markup, /data-side="right"/);
+  assert.match(markup, /z-\[var\(--wk-overlay-settings-z\)\]/);
+  assert.match(markup, /z-\[calc\(var\(--wk-overlay-settings-z\)\+1\)\]/);
   // Radix menu content is intentionally portalled and therefore omitted by
   // React's static SSR renderer; its DOM contract is covered by interaction.test.tsx.
   assert.match(markup, /role="combobox"/);
   assert.match(markup, /role="tablist"/);
   assert.match(markup, /role="tab" aria-selected="true"/);
   assert.match(markup, /role="alert"/);
+});
+
+test('shared overlay primitives retain Vue-derived style hooks', () => {
+  const markup = renderToStaticMarkup(<>
+    <Dialog open title="Confirm">Body</Dialog>
+    <Sheet open side="right">Body</Sheet>
+  </>);
+  assert.match(markup, /class="wk-dialog/);
+  assert.match(markup, /data-side="right"/);
+  assert.match(markup, /shadow-\[0_20px_60px_rgba\(23,32,51,0\.2\)\]/);
 });

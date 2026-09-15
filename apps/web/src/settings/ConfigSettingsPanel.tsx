@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Input, NumberInput, Select, Status, Switch } from '@weknora/ui';
@@ -68,6 +68,8 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => { setValues(initialValues(section, initialValue)); }, [section, initialValue]);
 
@@ -76,6 +78,33 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
   const dirty = isDirty(section, savedValues, values);
 
   function setValue(key: string, value: unknown) { setValues((current) => ({ ...current, [key]: value })); }
+
+  async function saveValues(nextValues: ConfigValues) {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const patch = settingsConfigPatch(section, nextValues, allowedModelIds.length > 0 ? { allowedModelIds } : {});
+      const saved = await api.update(patch);
+      setValues((current) => ({ ...current, ...initialValues(section, saved) }));
+      setNotice(t(saveSuccessKey));
+      onSaved?.();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t(saveFailedKey, { message: '' }));
+    } finally { savingRef.current = false; setBusy(false); }
+  }
+
+  // Vue RetrievalSettings and ChatHistorySettings persist changes after a
+  // 500ms debounce; retain the existing submit path for parser settings only.
+  useEffect(() => {
+    if (section !== 'retrieval' && section !== 'chathistory') return;
+    if (!dirty || savingRef.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveValues(values); }, 500);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [section, values, dirty]);
+
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(null); setNotice(null);

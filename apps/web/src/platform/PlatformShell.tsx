@@ -17,6 +17,7 @@ import {
   recentQueriesStorageKey,
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
+import { InvitationInbox } from './InvitationInbox.tsx';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
@@ -783,6 +784,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           the shell is fed by openContextualGuide(tour) trigger calls from the
           pages, so page wiring stays a one-liner. */}
       <ContextualGuideHost locale={locale} actions={guideActions} />
+      <InvitationInbox client={client} />
     </div>
   );
 }

@@ -66,6 +66,7 @@ function fakeClient(): Record<string, unknown> {
 
 async function mountShell(atPath: string): Promise<HTMLElement> {
   window.history.replaceState({}, '', atPath);
+  window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
@@ -128,6 +129,7 @@ function fakeClientWithMe(me: Record<string, unknown>): Record<string, unknown> 
 
 async function mountShellWithMe(atPath: string, me: Record<string, unknown>): Promise<HTMLElement> {
   window.history.replaceState({}, '', atPath);
+  window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);

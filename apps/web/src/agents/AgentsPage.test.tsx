@@ -21,6 +21,8 @@ const {
   AgentsPageView,
   hasAgentChatModel,
   loadAgentsPageData,
+  parseAgentEditDeepLink,
+  resolveAgentEditTarget,
 } = await import('./AgentsPage.tsx');
 const {
   buildAllViewRows,
@@ -38,6 +40,33 @@ test('agent creation readiness follows Vue KnowledgeQA model semantics', () => {
   assert.equal(hasAgentChatModel([{ type: 'KnowledgeQA' }]), true);
   assert.equal(hasAgentChatModel([{ type: 'llm' }]), false);
   assert.equal(hasAgentChatModel([{ type: 'Embedding' }]), false);
+});
+
+test('agent edit deep links parse the Vue query contract and ignore empty values', () => {
+  assert.deepEqual(parseAgentEditDeepLink('?edit=a-1&section=tools&highlight=allowed_tools&sourceTenantId=10001'), {
+    editId: 'a-1',
+    section: 'tools',
+    highlight: 'allowed_tools',
+    sourceTenantId: '10001',
+  });
+  assert.deepEqual(parseAgentEditDeepLink('?edit=a-1&section=&highlight=&sourceTenantId='), {
+    editId: 'a-1',
+    section: 'basic',
+    highlight: undefined,
+    sourceTenantId: undefined,
+  });
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&highlight=allowed_tools')?.section, 'tools');
+  assert.equal(parseAgentEditDeepLink('?edit=a-1&highlight=unknown')?.section, 'basic');
+  assert.equal(parseAgentEditDeepLink('?section=tools'), null);
+});
+
+test('agent edit deep links resolve own agents first and shared agents by source tenant', () => {
+  const own = fixtureRows().find((row) => row.id === 'a-own')!;
+  const shared = fixtureRows().find((row) => row.id === 'a-shared')!;
+  assert.equal(resolveAgentEditTarget([own], [shared], 'a-own')?.id, 'a-own');
+  assert.equal(resolveAgentEditTarget([], [shared], 'a-shared', '10001')?.id, 'a-shared');
+  assert.equal(resolveAgentEditTarget([], [shared], 'a-shared', 'other'), null);
+  assert.equal(resolveAgentEditTarget([], [shared], 'a-shared'), null);
 });
 
 const builtinAgents = [

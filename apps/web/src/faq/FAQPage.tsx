@@ -2,11 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
+import * as XLSX from 'xlsx';
 import { Button, Checkbox, Dialog, Input, Radio, Range, Select, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
-import { normalizeFAQPayload, parseExcelFile, parseFAQImportText } from './import-export.ts';
+import { normalizeFAQPayload, parseExcelFile, parseFAQImportText, serializeFAQEntries } from './import-export.ts';
 import './faq.css';
 
 // FAQ knowledge-base page, rebuilt against the Vue baseline
@@ -62,6 +63,11 @@ export function importFormatFromName(name: string): 'json' | 'csv' | 'excel' {
   if (lower.endsWith('.json')) return 'json';
   if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return 'excel';
   return 'csv';
+}
+
+/** Vue handleImport refuses an absent file or an empty parsed preview. */
+export function faqImportBlocked(fileName: string | null | undefined, previewLength: number): boolean {
+  return !fileName || previewLength <= 0;
 }
 
 export interface FAQImportTaskView { status: string; text: string; progress: number; processed: number; total: number }
@@ -394,11 +400,11 @@ export function formatImportTime(timeStr?: string): string {
 // labels the drawer close button) — formatMessage wins once a key lands upstream,
 // mirroring packages/views/src/integrations/messages.ts.
 const FAQ_FALLBACK_MESSAGES: Partial<Record<Locale, Record<string, string>>> = {
-  'zh-CN': { 'common.operationFailed': '操作失败', 'common.close': '关闭' },
-  'en-US': { 'common.operationFailed': 'Operation failed', 'common.close': 'Close' },
-  'ja-JP': { 'common.operationFailed': '操作に失敗しました', 'common.close': '閉じる' },
-  'ko-KR': { 'common.operationFailed': '작업 실패', 'common.close': '닫기' },
-  'ru-RU': { 'common.operationFailed': 'Операция не выполнена', 'common.close': 'Закрыть' },
+  'zh-CN': { 'common.operationFailed': '操作失败', 'common.close': '关闭', 'common.clear': '清除' },
+  'en-US': { 'common.operationFailed': 'Operation failed', 'common.close': 'Close', 'common.clear': 'Clear' },
+  'ja-JP': { 'common.operationFailed': '操作に失敗しました', 'common.close': '閉じる', 'common.clear': 'クリア' },
+  'ko-KR': { 'common.operationFailed': '작업 실패', 'common.close': '닫기', 'common.clear': '지우기' },
+  'ru-RU': { 'common.operationFailed': 'Операция не выполнена', 'common.close': 'Закрыть', 'common.clear': 'Очистить' },
 };
 
 /** Translator with the byte-exact Vue fallbacks layered under the shared catalog. */
@@ -603,12 +609,14 @@ export interface FAQPageViewProps {
   onSearchSubmit?: () => void;
   onSearchClear?: () => void;
   onToggleTag?: (tagId: string) => void;
+  onClearTagFilter?: () => void;
   onOpenTagManage?: () => void;
   onOpenCreate?: () => void;
   onOpenImport?: () => void;
   onCloseImport?: () => void;
   onImportModeChange?: (mode: 'append' | 'replace') => void;
   onImportFile?: (file: File) => void;
+  onDownloadExample?: (format: 'json' | 'csv' | 'excel') => void;
   onImportConfirm?: () => void;
   onExport?: (format: 'csv' | 'json') => void;
   onToggleSelect?: (id: number, checked: boolean) => void;
@@ -654,7 +662,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     hasMore = null,
     loadingMore = false,
     loading = false,
-    canContribute = true,
+    canContribute = false,
     selected = new Set<number>(),
     keywordDraft = '',
     importOpen = false,
@@ -680,12 +688,14 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     onSearchSubmit = () => {},
     onSearchClear = () => {},
     onToggleTag = () => {},
+    onClearTagFilter = () => {},
     onOpenTagManage = () => {},
     onOpenCreate = () => {},
     onOpenImport = () => {},
     onCloseImport = () => {},
     onImportModeChange = () => {},
     onImportFile = () => {},
+    onDownloadExample = () => {},
     onImportConfirm = () => {},
     onExport = () => {},
     onToggleSelect = () => {},
@@ -719,11 +729,24 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   const [masonryRevision, setMasonryRevision] = useState(0);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exampleMenuOpen, setExampleMenuOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<FAQSectionCollapseState>({});
   // Vue entry.showMore — one open card more-menu at a time (FAQEntryManager.vue:265-283).
   const [moreMenuId, setMoreMenuId] = useState<number | null>(null);
   // B4: Vue stores expanded on each hit with default false (:2669) — a per-id set.
   const [expandedResults, setExpandedResults] = useState<ReadonlySet<number>>(new Set());
+  useEffect(() => {
+    if (!importOpen && !editorOpen && !searchOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (importOpen) onCloseImport();
+      else if (editorOpen) onCloseEditor();
+      else onCloseSearchTest();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [editorOpen, importOpen, onCloseEditor, onCloseImport, onCloseSearchTest, searchOpen]);
   // A new search replaces the hit list, so stale expansions drop first (Vue :2664-2673).
   const runSearchTest = () => {
     setExpandedResults(new Set());
@@ -890,7 +913,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 <button type="button" className="faq-tag-filter-trigger inline-flex h-8 w-full cursor-pointer items-center box-border rounded-lg border border-transparent bg-surface-alt px-2 py-0 text-sm leading-none text-ink font-[inherit] [transition:background_0.2s_ease,border-color_0.2s_ease] hover:bg-[#e8ecf3]" aria-label={t('knowledgeBase.tagFilterTitle')} title={t('knowledgeBase.tagFilterTitle')} aria-haspopup="menu" aria-expanded={tagPanelOpen} onClick={() => setTagPanelOpen((open) => !open)}>
                   <span className="doc-tag-filter-trigger__prefix mr-2 inline-flex shrink-0 items-center text-faint"><TagIcon size={16} /></span>
                   <span className="doc-tag-filter-trigger__label min-w-0 flex-1 truncate text-left">{activeTagLabel}</span>
-                  <span className="doc-tag-filter-trigger__suffix ml-2 inline-flex shrink-0 items-center"><Icon size={16} className="faq-tag-filter-trigger__caret shrink-0 text-faint"><path d={Chevrons.down} /></Icon></span>
+                  <span className="doc-tag-filter-trigger__suffix ml-2 inline-flex shrink-0 items-center">
+                    {activeTagIds.length > 0 ? <span role="button" tabIndex={0} className="faq-tag-filter-clear inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-faint hover:text-ink" aria-label={t('common.clear')} onClick={(event) => { event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); } }}><CloseIcon size={13} /></span> : <Icon size={16} className="faq-tag-filter-trigger__caret shrink-0 text-faint"><path d={Chevrons.down} /></Icon>}
+                  </span>
                 </button>
                 <span className="faq-menu faq-tag-filter-panel absolute top-[calc(100%+6px)] left-0 right-auto z-[210] flex w-[260px] min-w-[260px] flex-col gap-2 rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!tagPanelOpen}>
                   <span className="tag-filter-panel__header flex items-center gap-1 px-1.5 py-1 text-[13px] font-semibold leading-[1.5] text-ink">
@@ -914,7 +939,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </span>
               </span>
             </div>
-            <div className="faq-filter-bar__trailing ml-auto flex flex-none items-center gap-1">
+          <div className="faq-filter-bar__trailing ml-auto flex flex-none items-center gap-1">
               {canContribute ? (
                 <span className="faq-icon-menu-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setCreateMenuOpen(false))}>
                   <button type="button" className="content-bar-icon-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faq.createGroup')} title={t('knowledgeEditor.faq.createGroup')} aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen((open) => !open)}>
@@ -1078,7 +1103,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
       </div>
 
       {importOpen ? (
-        <section className="faq-import-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-5 [backdrop-filter:blur(4px)]" aria-label={t('knowledgeEditor.faqImport.title')}>
+        <section className="faq-import-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-5 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faqImport.title')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseImport(); }}>
           <div className="faq-import-modal relative flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_6px_28px_rgba(15,23,42,0.08)]">
             <button type="button" className="faq-modal-close absolute right-[18px] top-[18px] z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseImport}><CloseIcon size={16} /></button>
             <div className="faq-import-header shrink-0 border-b border-[#e3e8f0] px-6 pb-4 pt-6"><h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.title')}</h2></div>
@@ -1095,7 +1120,17 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
               </div>
               <div className="import-form-item flex flex-col gap-2.5">
-                <label className="import-form-label text-sm font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.fileLabel')}</label>
+                <div className="file-label-row flex items-center justify-between gap-2">
+                  <label className="import-form-label text-sm font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.fileLabel')}</label>
+                  <span className="faq-example-menu-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setExampleMenuOpen(false))}>
+                    <button type="button" className="download-example-btn inline-flex cursor-pointer items-center gap-1 rounded-md border border-line-control bg-surface px-2 py-1 text-xs leading-[1.5] text-muted hover:border-accent-deep hover:text-accent-deep" aria-haspopup="menu" aria-expanded={exampleMenuOpen} onClick={() => setExampleMenuOpen((open) => !open)}><DownloadIcon size={14} />{t('knowledgeEditor.faqImport.downloadExample')}</button>
+                    <span className="faq-menu absolute top-[calc(100%+6px)] right-0 z-[210] flex min-w-[180px] flex-col rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!exampleMenuOpen}>
+                      <button type="button" role="menuitem" className="faq-menu-item w-full cursor-pointer rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt" onClick={() => { setExampleMenuOpen(false); onDownloadExample('json'); }}>{t('knowledgeEditor.faqImport.downloadExampleJSON')}</button>
+                      <button type="button" role="menuitem" className="faq-menu-item w-full cursor-pointer rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt" onClick={() => { setExampleMenuOpen(false); onDownloadExample('csv'); }}>{t('knowledgeEditor.faqImport.downloadExampleCSV')}</button>
+                      <button type="button" role="menuitem" className="faq-menu-item w-full cursor-pointer rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt" onClick={() => { setExampleMenuOpen(false); onDownloadExample('excel'); }}>{t('knowledgeEditor.faqImport.downloadExampleExcel')}</button>
+                    </span>
+                  </span>
+                </div>
                 <div
                   className="file-upload-area relative flex cursor-pointer flex-col items-center gap-2 rounded-[10px] border border-dashed border-[#cdd6e2] bg-[#fafbfd] px-4 py-7 text-center hover:border-accent-deep"
                   onDragOver={(event) => event.preventDefault()}
@@ -1108,6 +1143,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
                 <p className="import-form-tip m-0 text-xs leading-[1.6] text-faint">{t('knowledgeEditor.faqImport.fileTip')}</p>
               </div>
+              {message?.tone === 'error' || message?.tone === 'warning' ? <div className="faq-import-feedback mb-1" role="alert"><Status tone={message.tone}>{message.text}</Status></div> : null}
               {importPreview.length > 0 ? (
                 <div className="import-preview mt-4 rounded-lg border border-line-soft bg-canvas p-4">
                   <div className="preview-header mb-3 flex items-center gap-2 border-b border-line-soft pb-3">
@@ -1128,7 +1164,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             </div>
             <div className="faq-import-footer flex flex-none justify-end gap-2.5 border-t border-[#e3e8f0] px-6 py-4">
               <Button type="button" onClick={onCloseImport}>{t('common.cancel')}</Button>
-              <Button type="button" loading={importBusy} disabled={!importFileName || importBusy} onClick={onImportConfirm}>{t('knowledgeEditor.faqImport.importButton')}</Button>
+              <Button type="button" loading={importBusy} disabled={importBusy} onClick={onImportConfirm}>{t('knowledgeEditor.faqImport.importButton')}</Button>
             </div>
           </div>
         </section>
@@ -1138,7 +1174,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           drawer, one settings-row per field with the shared desc keys, list
           editors with add/remove, and a pinned cancel/save footer. */}
       {editorOpen ? (
-        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" aria-label={editorTitle}>
+        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={editorTitle} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseEditor(); }}>
           <aside className="faq-editor-drawer flex h-full w-[520px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw]">
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{editorTitle}</h2>
@@ -1275,7 +1311,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           drawer, query input + two sliders with the shared desc keys, a primary
           search button, and a ranked result list with 3-decimal score tags. */}
       {searchOpen ? (
-        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" aria-label={t('knowledgeEditor.faq.searchTestTitle')}>
+        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
           <aside className="faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw]">
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
@@ -1509,6 +1545,37 @@ function downloadText(text: string, format: 'csv' | 'json') {
   link.click();
   URL.revokeObjectURL(link.href);
 }
+const FAQ_EXAMPLE_ENTRIES: FAQEntryPayload[] = [
+  { standard_question: '什么是 WeKnora？', answers: ['WeKnora 是一个智能知识库管理系统'], similar_questions: ['WeKnora 是什么？'], negative_questions: [], tag_name: '产品介绍' },
+  { standard_question: '如何创建知识库？', answers: ['点击新建知识库并填写相关信息'], similar_questions: ['怎么创建知识库？'], negative_questions: [], tag_name: '使用指南' },
+];
+function downloadExampleFile(format: 'json' | 'csv' | 'excel'): void {
+  const entries = FAQ_EXAMPLE_ENTRIES.map(({ tag_name: _tagName, ...entry }) => entry);
+  let bytes: BlobPart;
+  let extension: string;
+  let mime: string;
+  if (format === 'excel') {
+    const worksheet = XLSX.utils.json_to_sheet(entries);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'FAQ');
+    bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+    extension = 'xlsx';
+    mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  } else {
+    const text = format === 'json' ? JSON.stringify(entries, null, 2) : serializeFAQEntries(entries as FAQEntry[], 'csv');
+    bytes = text;
+    extension = format;
+    mime = format === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8';
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `faq_example.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 function metaFromKB(kb: KnowledgeBase | null): FAQKBMeta | undefined {
   if (!kb) return undefined;
   return {
@@ -1627,7 +1694,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setKbList(list.map((item) => ({ id: String(item.id), name: item.name, type: typeof item.type === 'string' ? item.type : undefined })));
       setTags(tagRows);
       setCanContribute(computeKBPermissions(kbRow as KBSurfaceKB, me as KBSurfaceMe | null).canContribute);
-    }).catch(() => {});
+    }).catch(() => { if (active) setCanContribute(false); });
     return () => { active = false; };
   }, [client, knowledgeBaseId]);
 
@@ -1738,12 +1805,17 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     });
   }
   async function confirmImport() {
-    if (!importFile) return;
+    if (faqImportBlocked(importFile?.name, importPreview.length)) {
+      setMessage({ tone: 'warning', text: t('knowledgeEditor.faqImport.selectFile') });
+      return;
+    }
+    const file = importFile;
+    if (!file) return;
     setImportBusy(true); setMessage(null);
     try {
-      const format = importFormatFromName(importFile.name);
+      const format = importFormatFromName(file.name);
       // Vue parseExcelFile (FAQEntryManager.vue:1999) — binary parse for .xlsx/.xls.
-      const imported = format === 'excel' ? await parseExcelFile(importFile) : parseFAQImportText(await importFile.text(), format);
+      const imported = format === 'excel' ? await parseExcelFile(file) : parseFAQImportText(await file.text(), format);
       const result = await faq.upsert(knowledgeBaseId, { entries: imported, mode: importMode });
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       // Vue FAQEntryManager.vue:2091-2165 — the strip replaces the message
@@ -1827,12 +1899,14 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onSearchSubmit={() => setKeyword(keywordDraft.trim())}
       onSearchClear={() => { setKeywordDraft(''); setKeyword(''); }}
       onToggleTag={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
+      onClearTagFilter={() => setActiveTagIds([])}
       onOpenTagManage={() => setTagManageOpen(true)}
       onOpenCreate={() => openEditor()}
       onOpenImport={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
       onCloseImport={() => setImportOpen(false)}
       onImportModeChange={setImportMode}
       onImportFile={handleImportFile}
+      onDownloadExample={downloadExampleFile}
       onImportConfirm={() => void confirmImport()}
       onExport={(format) => void exportEntries(format)}
       onToggleSelect={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}

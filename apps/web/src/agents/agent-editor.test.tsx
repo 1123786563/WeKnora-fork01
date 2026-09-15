@@ -109,19 +109,37 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
-async function mountModal(props: { client: WeKnoraClient; mode?: 'create' | 'edit'; agent?: Record<string, unknown> | null; onClose?: () => void }) {
+async function mountModal(props: { client: WeKnoraClient; mode?: 'create' | 'edit'; agent?: Record<string, unknown> | null; initialSection?: string; initialHighlightField?: string; readOnly?: boolean; onClose?: () => void }) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
-  const { client, mode = 'create', agent = null, onClose = () => {} } = props;
+  const { client, mode = 'create', agent = null, onClose = () => {}, ...initial } = props;
   await act(async () => {
-    mountedRoot?.render(React.createElement(AgentEditorModal, { open: true, mode, client, t, onClose, ...(agent ? { agent } : {}) }));
+    mountedRoot?.render(React.createElement(AgentEditorModal, { open: true, mode, client, t, onClose, ...initial, ...(agent ? { agent } : {}) }));
   });
   // let the async dependency load + form hydration settle
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await Promise.resolve(); });
   return container;
 }
+
+test('edit deep-link inputs select the requested section and highlight', async () => {
+  const { client } = makeClient();
+  const agentMode = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' } };
+  const root = await mountModal({ client, mode: 'edit', agent: agentMode, initialSection: 'sandbox', initialHighlightField: 'allowed_tools' });
+  assert.ok($('[data-section-key="skills"]', root), 'sandbox alias should select skills');
+  assert.equal($('[data-section-key="skills"]', root)?.className.includes('text-[var(--td-brand-color'), true);
+  // The tools highlight is only rendered when its section is active, so verify
+  // the valid field is retained when the deep-link selects that section.
+  const toolsRoot = await mountModal({ client, mode: 'edit', agent: agentMode, initialSection: 'tools', initialHighlightField: 'allowed_tools' });
+  assert.equal($('[data-editor-section="tools"]', toolsRoot)?.getAttribute('data-highlighted-field'), 'allowed_tools');
+});
+
+test('read-only edit hides the save mutation control', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT, readOnly: true });
+  assert.equal($('[data-editor-save]', root), null);
+});
 
 const asNode = (a: ParentNode | string, b: ParentNode | string): ParentNode => (typeof a === 'string' ? (b as ParentNode) : (a as ParentNode));
 const asSelector = (a: ParentNode | string, b: ParentNode | string): string => (typeof a === 'string' ? a : (b as string));

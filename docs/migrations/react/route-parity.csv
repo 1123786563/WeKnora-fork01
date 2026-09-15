@@ -4,13 +4,13 @@ route_or_entry,kind,identity,capability,interaction,target_task,migration_dispos
 /register,page,public,none,invite registration reuses login,T03,migrate,frontend/src/views/auth/Login.vue,client-used
 /onboarding/workspace,page,authenticated,no tenant,workspace onboarding,T03/T04,migrate,frontend/src/views/auth/WorkspaceOnboarding.vue,client-used
 /join,redirect,authenticated,initialization,organization invite code redirect,T04/T16,migrate,frontend/src/router/index.ts,client-used
-/knowledgeBase,page,authenticated,initialization,legacy knowledge-base URL,T06,migrate,frontend/src/views/knowledge/KnowledgeBase.vue,client-used
+/knowledgeBase,page,authenticated,initialization,legacy knowledge-base URL; ?knowledge_id opens document preview,T06,migrate,frontend/src/views/knowledge/KnowledgeBase.vue,client-used
 /platform,layout+redirect,authenticated,initialization,platform shell,T04/T05,migrate,frontend/src/views/platform/index.vue,client-used
-/platform/settings,page,authenticated,initialization,settings section selected by query,T05/T17,migrate,frontend/src/views/settings/Settings.vue,client-used
+/platform/settings,page,authenticated,initialization,settings section/subsection selected by query; agent integration deep links open modal-owned section,T05/T17,migrate,frontend/src/views/settings/Settings.vue,client-used
 /platform/knowledge-bases,page,authenticated,initialization,knowledge-base list/search/create,T06,migrate,frontend/src/views/knowledge/KnowledgeBaseList.vue,client-used
-/platform/knowledge-bases/:kbId,page,authenticated,initialization,knowledge-base detail,T06-T09,migrate,frontend/src/views/knowledge/KnowledgeBase.vue,client-used
+/platform/knowledge-bases/:kbId,page,authenticated,initialization,knowledge-base detail; tab and knowledge_id preview deep links,T06-T09,migrate,frontend/src/views/knowledge/KnowledgeBase.vue,client-used
 /platform/knowledge-search,redirect,authenticated,initialization,legacy command-panel URL,T04/T06,migrate,frontend/src/router/index.ts,client-used
-/platform/agents,page,authenticated,agents,agent list,T15,migrate,frontend/src/views/agent/AgentList.vue,client-used
+/platform/agents,page,authenticated,agents,agent list; edit/section/highlight/sourceTenantId modal deep links,T15,migrate,frontend/src/views/agent/AgentList.vue,client-used
 /platform/integrations,redirect,authenticated,initialization,legacy settings integration URL,T05/T18,migrate,frontend/src/router/index.ts,client-used
 /platform/creatChat,page,authenticated,initialization,legacy spelling must remain,T10/T11,migrate,frontend/src/views/creatChat/creatChat.vue,client-used
 /platform/knowledge-bases/:kbId/creatChat,page,authenticated,initialization,knowledge-base chat entry,T10/T11,migrate,frontend/src/views/creatChat/creatChat.vue,client-used

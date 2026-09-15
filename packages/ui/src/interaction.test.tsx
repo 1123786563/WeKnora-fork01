@@ -1,15 +1,38 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { JSDOM } from 'jsdom';
-import React from 'react';
+import React, { act } from 'react';
 import { renderToStaticMarkup } from '../../../apps/web/node_modules/react-dom/server.js';
 import { Alert } from './alert.tsx';
 import { Button } from './button.tsx';
-import { Dialog, getDialogFocusableElements } from './dialog.tsx';
 import { Input } from './input.tsx';
 import { Select } from './select.tsx';
 import { Tabs, TabsList, TabsTrigger } from './tabs.tsx';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './dropdown-menu.tsx';
+
+const dom = new JSDOM('<!doctype html><html><body></body></html>');
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  Node: dom.window.Node,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+const { createRoot } = await import('react-dom/client');
+const { flushSync } = await import('react-dom');
+const { Dialog, getDialogFocusableElements } = await import('./dialog.tsx');
+const { Sheet } = await import('./sheet.tsx');
+
+let mountedRoot: ReturnType<typeof createRoot> | undefined;
+afterEach(() => {
+  mountedRoot?.unmount();
+  mountedRoot = undefined;
+  document.body.replaceChildren();
+});
 
 test('exports a dialog primitive with an explicit focus and escape contract', () => {
   assert.equal(typeof Dialog, 'function');
@@ -93,4 +116,26 @@ test('shared menu styles retain Vue sizing, hover and active interaction hooks',
   ));
   assert.match(markup, /data-state/);
   assert.match(markup, /Open/);
+});
+
+test('dialog and sheet expose the overlay contract in a DOM root', () => {
+  const host = document.createElement('main');
+  document.body.append(host);
+  mountedRoot = createRoot(host);
+  flushSync(() => mountedRoot?.render(<><Dialog open title="Dialog" portal={false} onClose={() => undefined}>Body</Dialog><Sheet open title="Sheet" portal={false} onClose={() => undefined}>Body</Sheet></>));
+
+  assert.equal(host.querySelectorAll('[role="dialog"]').length, 2);
+  assert.equal(document.body.querySelectorAll('[role="dialog"]').length, 2);
+});
+
+test('dialog and sheet support explicit inline rendering for SSR/static checks', () => {
+  const markup = renderToStaticMarkup(React.createElement(Dialog, { open: true, portal: false, title: 'Dialog', onClose: () => undefined }, 'Body'));
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /Body/);
+});
+
+test('sheet keeps a fixed drawer from exceeding the viewport on narrow desktop windows', () => {
+  const markup = renderToStaticMarkup(React.createElement(Sheet, { open: true, title: 'Sheet', onClose: () => undefined, width: '640px', portal: false }, 'Body'));
+  assert.match(markup, /max-w-full/);
+  assert.match(markup, /style="width:640px/);
 });

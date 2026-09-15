@@ -9,6 +9,7 @@ const {
   getKnowledgeSettingsSections,
   getKnowledgeBaseActivityPath,
   summarizeKnowledgeSettings,
+  knowledgeSettingsCanEdit,
 } = await import('./KnowledgeSettingsPage.tsx');
 type KnowledgeSettingsInput = import('./KnowledgeSettingsPage.tsx').KnowledgeSettingsInput;
 
@@ -69,4 +70,11 @@ test('surfaces unavailable vector bindings and uses the existing activity endpoi
     label: 'Search vectors',
     detail: 'Check the global vector-store settings',
   });
+});
+
+test('knowledge settings editing follows Vue owner/admin capability', () => {
+  assert.equal(knowledgeSettingsCanEdit('owner'), true);
+  assert.equal(knowledgeSettingsCanEdit('admin'), true);
+  assert.equal(knowledgeSettingsCanEdit('viewer'), false);
+  assert.equal(knowledgeSettingsCanEdit(undefined), false);
 });

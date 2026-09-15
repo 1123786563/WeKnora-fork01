@@ -13,12 +13,21 @@ test('creator, system admin and contributor roles keep editing', () => {
   const kb = { id: 'kb-1', user_id: 'u-1' };
   assert.equal(computeKBPermissions(kb, { user: { id: 'u-1' } }).canContribute, true);
   assert.equal(computeKBPermissions(kb, { user: { id: 'u-9', role: 'system_admin' } }).canContribute, true);
-  assert.equal(computeKBPermissions(kb, { user: { id: 'u-9' }, memberships: [{ role: 'contributor' }] }).canContribute, true);
+  assert.equal(computeKBPermissions(kb, { user: { id: 'u-9', role: 'admin' } }).canContribute, true);
 });
 
-test('no membership evidence stays editable (backwards compatible)', () => {
-  assert.equal(computeKBPermissions({ id: 'kb-1' }, null).viewerOnly, false);
-  assert.equal(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' } }).viewerOnly, false);
+test('tenant contributor role alone does not edit another users KB', () => {
+  assert.deepEqual(computeKBPermissions(
+    { id: 'kb-1', user_id: 'owner-1' },
+    { user: { id: 'u-9' }, memberships: [{ role: 'contributor' }] },
+  ), { canContribute: false, viewerOnly: true });
+});
+
+test('missing or incomplete capability evidence fails closed', () => {
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, null), { canContribute: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' } }), { canContribute: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [] }), { canContribute: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [{ role: 'unknown' }] }), { canContribute: false, viewerOnly: true });
 });
 
 test('faq-type KBs redirect to the FAQ route', () => {

@@ -18,8 +18,11 @@ async function mount(locale: 'zh-CN' | 'en-US', scenario: Scenario) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
   const runtime: any = {
     locale,
+    tenantId: 'tenant-1',
+    workspaces: [{ id: 'tenant-1', role: 'owner' }],
     client: {
       knowledge: {
+        settings: { get: async () => ({ id: 'kb-1', type: 'document', isMine: true, indexing_strategy: { wiki_enabled: true } }) },
         documents: {
           list: async () => {
             if (scenario === 'documents') throw {};

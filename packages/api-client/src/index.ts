@@ -11,7 +11,7 @@ export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, Refr
 export { createAuthApi } from './auth/endpoints.ts';
 export { parseLogin } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, ParsedLogin, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
-export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams, KnowledgeChunk, KnowledgeChunkPage, KnowledgeChunkRevision, KnowledgeChunkUpdateInput, KnowledgeDocumentDetailsUpdateInput } from './knowledge/documents.ts';
 export { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivityEntry, KnowledgeBaseActivityQuery, KnowledgeBaseActivityResult, KnowledgeBaseConfigInput, KnowledgeBaseUpdateInput, ParserEngineInfo, ParserEnginesResult, StorageBackendView, VectorStoreView } from './knowledge/settings.ts';
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';

@@ -1472,12 +1472,24 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
   const chromeSteps = ['connect', 'install', 'port', 'api'] as const;
   const clawCapabilities = ['browse', 'search', 'manual', 'url', 'upload'] as const;
   const clawSteps = ['verify', 'install', 'env', 'api'] as const;
-  // Former .wk-int-landing / .wk-int-landing-cta (apps/web styles.css).
-  return <div className="grid gap-[1rem] max-w-[760px]">
-    <div className="flex items-center flex-wrap gap-[.75rem]">
-      {externalUrl ? <a className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" href={externalUrl} target="_blank" rel="noreferrer noopener">{cta.label}</a> : null}
-      <span className="wk-muted text-muted">{cta.hint}</span>
-    </div>
+  const openExternal = () => { if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer'); };
+  // Vue IntegrationLandingLayout: hero, external CTA, constrained two-column
+  // content and footer metadata are part of the page contract, not decoration.
+  return <div className={'integration-landing grid max-w-[760px] gap-[14px]' + (tab === 'claw' ? ' integration-landing--claw' : '')}>
+    <header className="landing-hero flex items-start gap-4 rounded-[10px] border border-line bg-surface-wash px-[18px] py-4">
+      <div className="min-w-0 flex-1">
+        <h2 className="m-0 mb-1 text-[16px] font-semibold leading-[1.35] text-ink">{t(`integrations.${tab}.title`)}</h2>
+        <p className="m-0 text-[13px] leading-[1.55] text-muted">{t(`integrations.${tab}.subtitle`)}</p>
+        {tab === 'chrome' ? <div className="mt-2 flex flex-wrap gap-1.5">{['research', 'learning', 'tech', 'work'].map((key) => <span key={key} className="rounded-[4px] border border-line bg-surface px-2 py-0.5 text-[11px] leading-[1.45] text-muted">{t(`integrations.chrome.scenarios.${key}`)}</span>)}</div> : null}
+        <button type="button" className="ext-cta mt-[14px] flex min-h-[52px] w-full items-center gap-3 rounded-[8px] border border-dashed border-line-control bg-surface px-3 py-[10px] text-left text-ink" onClick={openExternal}>
+          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] bg-surface-wash text-primary">{tab === 'cli' ? '⌘' : tab === 'chrome' ? '▣' : '🦞'}</span>
+          <span className="flex min-w-0 flex-1 flex-col"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-muted">{cta.hint}</span></span>
+          <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] bg-surface-wash text-muted">↗</span>
+        </button>
+      </div>
+    </header>
+    <div className="grid items-stretch gap-[14px] min-[821px]:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
+      <div className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-line bg-surface px-4 pb-[14px] pt-0">
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.quickstart')}</h4>
       <ol className="m-0 list-none grid gap-[0.9rem] p-0">
@@ -1491,12 +1503,12 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </li>)}
       </ol>
     </section> : null}
-    {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+    {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
       <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
     </section> : null}
-    {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+    {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
       <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
@@ -1510,7 +1522,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </div>)}
       </div>
     </section> : null}
-    {tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+    {false && tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4>
       <ol className="m-0 list-none grid gap-[0.9rem] p-0">
         {chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
@@ -1531,7 +1543,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </div>)}
       </div>
     </section> : null}
-    {tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+    {false && tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4>
       <ol className="m-0 list-none grid gap-[0.9rem] p-0">
         {clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
@@ -1543,5 +1555,18 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </li>)}
       </ol>
     </section> : null}
+      </div></div>
+      <aside className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-line bg-surface px-4 pb-[14px] pt-0">
+        {tab === 'cli' ? <>
+          <section className="border-b border-line px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.commandsDesc')}</p><div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre>{copyButtonForExternal(t, 'integrations.cli.copy', copy, 'weknora doc upload')}</div></section>
+          <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.mcpDesc')}</p><div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre>{copyButtonForExternal(t, 'integrations.cli.copy', copy, 'mcp')}</div></section>
+        </> : tab === 'chrome' ? <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[11px] font-semibold text-primary">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p></div></li>)}</ol></section> : <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'install' ? <pre className="mt-2 overflow-x-auto rounded-[8px] bg-ink px-3 py-2 text-[11px] text-[#edf2ff]">openclaw skills install @lyingbug/weknora</pre> : null}</div></li>)}</ol></section>}
+      </div></aside>
+    </div>
+    {tab === 'chrome' ? <footer className="text-[11px] text-muted">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border border-line bg-surface-wash px-3 py-[10px] text-[12px] text-muted"><p className="m-0 mb-1">{t('integrations.claw.ecosystemNote')}</p><span className="text-[11px]">{t('integrations.claw.hubMeta')}</span></footer> : null}
   </div>;
+}
+
+function copyButtonForExternal(t: Translator, key: string, copy: (value: string) => void, value: string) {
+  return <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t(key)} aria-label={t(key)} onClick={() => copy(value)}>⧉</button>;
 }

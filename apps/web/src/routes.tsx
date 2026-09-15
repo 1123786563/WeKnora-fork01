@@ -4,7 +4,7 @@ import { isCapabilitySupported } from '@weknora/domain';
 export type RouteMatch =
   | { kind: 'login'; path: '/login' | '/register'; mode?: 'login' | 'register' }
   | { kind: 'platform'; path: string }
-  | { kind: 'knowledge-base'; path: string; knowledgeBaseId?: string; tab?: 'documents' | 'wiki' | 'graph'; slug?: string }
+  | { kind: 'knowledge-base'; path: string; knowledgeBaseId?: string; tab?: 'documents' | 'wiki' | 'graph'; slug?: string; initialDocumentId?: string }
   | { kind: 'chat'; path: string; knowledgeBaseId?: string }
   | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
   | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
@@ -25,6 +25,10 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
     const tab = requestedTab === 'wiki' || requestedTab === 'graph' || requestedTab === 'documents' ? requestedTab : undefined;
     const slug = query.get('slug')?.trim() || undefined;
     return { ...(tab ? { tab } : {}), ...(slug ? { slug } : {}) };
+  };
+  const knowledgeBaseDocumentEntry = (): { initialDocumentId?: string } => {
+    const initialDocumentId = query.get('knowledge_id')?.trim() || undefined;
+    return initialDocumentId ? { initialDocumentId } : {};
   };
   const decodeSegment = (value: string): string | undefined => {
     try { return decodeURIComponent(value); } catch { return undefined; }
@@ -55,12 +59,12 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
   const settingsMatch = path.match(/^\/knowledgeBase\/([^/]+)\/settings$/);
   if (settingsMatch) { const knowledgeBaseId = decodeSegment(settingsMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-settings', path, knowledgeBaseId }; }
   const knowledgeBaseMatch = path.match(/^\/knowledgeBase\/([^/]+)$/);
-  if (knowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(knowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView() }; }
+  if (knowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(knowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView(), ...knowledgeBaseDocumentEntry() }; }
   if (path === '/knowledgeBase') return { kind: 'knowledge-base', path };
   const platformKnowledgeChatMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)\/creatChat$/);
   if (platformKnowledgeChatMatch) { const knowledgeBaseId = decodeSegment(platformKnowledgeChatMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'chat', path, knowledgeBaseId }; }
   const platformKnowledgeBaseMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)$/);
-  if (platformKnowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(platformKnowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView() }; }
+  if (platformKnowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(platformKnowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView(), ...knowledgeBaseDocumentEntry() }; }
   if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || (development && path === '/platform/dev/markdown') || path.startsWith('/platform/chat/')) return { kind: 'platform', path };
   // Preserve the historical flat chat entry point while converging on the
   // Vue-compatible creatChat route used by the current shell.

@@ -130,6 +130,27 @@ test('toolbar search-test button opens the drawer and its close button closes it
   assert.equal(outcomes.drawerCloses, true, 'close button should close the drawer');
 });
 
+test('search drawer closes on Escape and backdrop click like the Vue drawer', async () => {
+  const fake = fakeClient([]);
+  const container = await mountPage(fake.client);
+  const outcomes: Record<string, unknown> = {};
+  outcomes.opened = await openDrawer(container);
+  if (outcomes.opened) {
+    await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5); });
+    outcomes.escapeClosed = !document.querySelector('.faq-search-drawer');
+  }
+  outcomes.reopened = await openDrawer(container);
+  if (outcomes.reopened) {
+    const overlay = document.querySelector('.faq-search-drawer')?.parentElement as HTMLElement | null;
+    if (overlay) await act(async () => { overlay.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true })); await settle(5); });
+    outcomes.backdropClosed = !document.querySelector('.faq-search-drawer');
+  }
+  assert.equal(outcomes.opened, true, 'drawer opened');
+  assert.equal(outcomes.escapeClosed, true, 'Escape closes the drawer');
+  assert.equal(outcomes.reopened, true, 'drawer reopens');
+  assert.equal(outcomes.backdropClosed, true, 'backdrop click closes the drawer');
+});
+
 test('blank query warns without posting a search request', async () => {
   const fake = fakeClient([]);
   const container = await mountPage(fake.client);

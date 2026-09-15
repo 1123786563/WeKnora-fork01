@@ -49,7 +49,7 @@
 .wk-status-error { color: var(--color-danger, #b42318); }
 .wk-status-success { color: var(--color-success-text, #137333); }
 .wk-status-warning { color: var(--color-warning-text, #9a6700); }
-.wk-dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 1rem; background: var(--wk-overlay); z-index: 10; }
+.wk-dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 1rem; background: var(--wk-overlay); z-index: var(--wk-overlay-dialog-z, 3000); }
 .wk-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: min(720px, calc(100vh - 2rem)); overflow: auto; border: 1px solid var(--color-line, #dce3ed); border-radius: var(--radius-dialog, 10px); background: var(--color-surface, #fff); box-shadow: var(--wk-shadow-panel); padding: 1.25rem; }
 .wk-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .wk-dialog-header h2 { margin: 0; font-size: 1.15rem; }

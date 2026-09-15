@@ -27,8 +27,6 @@ export interface KBPermissions {
   viewerOnly: boolean;
 }
 
-const CONTRIBUTOR_ROLES = new Set(['owner', 'admin', 'contributor', 'editor', 'developer']);
-
 function isSystemAdmin(me: KBSurfaceMe): boolean {
   if (me.user?.role === 'system_admin' || me.user?.role === 'admin') return true;
   if (me.user?.is_superuser === true) return true;
@@ -42,16 +40,12 @@ function isCreator(kb: KBSurfaceKB, me: KBSurfaceMe): boolean {
     || kb.created_by !== undefined && String(kb.created_by) === String(userId);
 }
 
-function membershipAllowsWrite(me: KBSurfaceMe): boolean {
-  if (!Array.isArray(me.memberships) || me.memberships.length === 0) return true;
-  return me.memberships.some((membership) => typeof membership?.role !== 'string' || CONTRIBUTOR_ROLES.has(membership.role));
-}
-
-/** Viewer-only unless the user is a system admin, the KB creator, or holds a
- *  contributor+ role. No membership evidence at all keeps editing enabled so
- *  the default stays backwards-compatible. */
+/** Viewer-only unless the user is a system admin or the KB creator. */
 export function computeKBPermissions(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): KBPermissions {
-  const canContribute = !me || isSystemAdmin(me) || isCreator(kb, me) || membershipAllowsWrite(me);
+  // A tenant role is not KB-specific capability evidence. Vue delegates this
+  // branch to orgStore.canEditKB(kbId), so do not grant access from a bare
+  // contributor membership when the KB record/share grant is unavailable.
+  const canContribute = !!me && (isSystemAdmin(me) || isCreator(kb, me));
   return { canContribute, viewerOnly: !canContribute };
 }
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
@@ -23,7 +24,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -169,12 +170,12 @@ test('documents page filter bar matches the Vue anatomy', () => {
   assert.ok(!html.includes('rounded-card border border-line bg-surface p-4'), 'Vue document area has no extra shadcn Card chrome');
 });
 
-test('upload entry moves to the Vue add-source dropdown; legacy form is gone', () => {
+test('upload entry stays hidden until the Vue capability resolves; legacy form is gone', () => {
   const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentsPage, {
     client: {} as never,
     knowledgeBaseId: kbId,
   }));
-  assert.ok(html.includes('添加文档'), 'add-document trigger (aria-label/title) present');
+  assert.ok(!html.includes('添加文档'), 'unknown capability does not expose upload');
   assert.ok(!html.includes('wk-upload-panel'), 'legacy 来源/文件/上传文件 form removed');
 });
 
@@ -210,11 +211,28 @@ test('document grid cards keep the Vue 240px/136px anatomy, footer metadata, and
   assert.ok(html.includes('Release notes'), 'footer preserves the Vue tag metadata chips');
   assert.match(html, /knowledge-card[^\"]*is-selected/, 'Vue selected cards retain their selected visual state');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
+  assert.match(html, /knowledge-card[^\"]*cursor-pointer/, 'Vue cards open from the whole card surface');
+});
+
+test('document list keeps the Vue column order with actions after updated time', () => {
+  const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
+  const updated = source.indexOf('formatDocumentTime(document.updated_at ?? document.created_at)');
+  const actions = source.indexOf('className="wk-row-actions', updated);
+  assert.ok(updated >= 0 && actions > updated, 'updated time must render before the trailing action column');
 });
 
 test('document statuses preserve Vue cancelled warning and pending summary copy', () => {
   assert.equal(documentStatus({ id: 'cancelled', parse_status: 'cancelled' } as never, t).tone, 'warning');
   assert.equal(documentStatus({ id: 'summary', parse_status: 'completed', summary_status: 'pending' } as never, t).label, t('knowledgeBase.generatingSummary'));
+});
+
+test('document list metadata uses Vue source labels and human file sizes', () => {
+  assert.equal(documentSourceLabel({ channel: 'feishu' } as never, t), t('knowledgeBase.channelFeishu'));
+  assert.equal(documentSourceLabel({ type: 'manual' } as never, t), t('knowledgeBase.channelManual'));
+  assert.equal(documentSourceLabel({ source: 'file' } as never, t), t('knowledgeBase.channelUpload'));
+  assert.equal(documentFileSizeLabel(1024), '1 KB');
+  assert.equal(documentFileSizeLabel(1024 * 1024), '1 MB');
+  assert.equal(documentFileSizeLabel(undefined), '--');
 });
 
 test('document in-flight cards use Vue parsing/finalizing copy instead of filter labels', () => {

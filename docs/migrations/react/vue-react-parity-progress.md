@@ -3079,3 +3079,162 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - The independent Embed entry remains separately classified; main-SPA
   `/embed/*` is intentionally an error boundary and is not treated as the
   visitor application itself.
+
+## 2026-09-15 Round R366 — Data-source editor permission and form boundary
+
+- Removed the invalid nested HTML form in the knowledge-base settings
+  datasource section. The editor now uses an action button with explicit
+  required-field validation, preserving the Vue save and loading feedback
+  while remaining safe inside the outer knowledge-base form.
+- Create, edit, delete, sync, pause, resume, and validate entry points now
+  respect the resolved `canManage` role boundary; read-only logs/resources
+  remain available for inspection.
+- Verified with `pnpm typecheck:web`, the full Web suite (1038/1038),
+  `pnpm build:web`, and `git diff --check`.
+- The Vue independent 640px datasource drawer, credential replacement/delete
+  flow, and authenticated viewer/admin browser proof remain open pending
+  paired runtime/backend evidence.
+
+## 2026-09-15 Round R367 — Document detail drawer parity
+
+- React `/knowledgeBase/:kbId/documents/:documentId` now uses the shared right-side
+  `Sheet` with Vue `DocContent`-aligned 654px default width, 480px minimum,
+  1600px maximum, persisted resize state, Escape/explicit close, and a labeled
+  vertical resize separator. The shared Sheet handle now exposes the same
+  accessibility role/label instead of being `aria-hidden`.
+- Added real API-client contracts for `GET /api/v1/chunks/:knowledgeId`, chunk
+  update, revision list, revert, and `PUT /api/v1/knowledge/:id` detail updates.
+  The detail surface now loads chunk pages, exposes editor-only chunk edit and
+  revision/revert controls, and editor-only summary/custom-metadata editing;
+  viewers retain preview access but no mutation or original-file download.
+- Evidence: focused detail tests 6/6, API-client document tests 12/12,
+  `pnpm exec tsc -p apps/web/tsconfig.json --noEmit`, and focused shared API
+  typecheck passed. Real authenticated backend mutations, paired browser
+  screenshots/computed styles, Wails, and native-client evidence remain open;
+  no mock data was added to production code.
+- Open evidence/gap items: the Vue `DocContent` tabbed merged/preview/chunk
+  presentation and chunk enabled/disabled retry controls are not claimed as
+  byte-for-byte parity; React metadata editing is a safe JSON-object editor,
+  not yet the Vue row/type editor. These require a separate visual/runtime
+  pass before closing the detail parity item.
+
+## 2026-09-15 Round R368 — Parallel parity closeout pass
+
+- Organization settings now preserve an equivalent section selector below
+  the 720px breakpoint while keeping the desktop Vue navigation rail.
+- Agent editing now consumes and clears Vue-compatible `edit`, `section`,
+  `highlight`, and `sourceTenantId` deep-link parameters with ownership and
+  shared-agent permission checks. Highlight targets map to the corresponding
+  editor sections.
+- PlatformShell now exposes the pending-invitation bell and inbox with
+  polling, loading/empty/error states, accept/decline actions, and keyboard/
+  overlay dismissal. The poller uses an ambient timer and `unref` when
+  available so test hosts are not held open.
+- Data-source editing now uses a body-level independent 640px Sheet Drawer;
+  the editor keeps a real form boundary outside the knowledge-base form and
+  retains permission, credential, loading, and mutation behavior.
+- Vue dark-theme values, font fallbacks, semantic shadcn variables, panel
+  shadows, and Dialog/Sheet/Dropdown portal z-index tokens are now emitted
+  and covered by shared/static assertions.
+- Final command evidence for this pass: `pnpm test:shared` 488/488,
+  `pnpm --filter @weknora/web test` 1053/1053,
+  `pnpm typecheck:web`, `pnpm build:web`, and `git diff --check` all pass.
+- Remaining acceptance gaps are explicitly not closed: authenticated
+  backend/browser paired evidence, exact Vue document merged/preview/chunk
+  tabs and chunk retry controls, structured metadata-row editing, Wails and
+  native-client runtime evidence, and any flow requiring unavailable backend
+  services.
+
+## 2026-09-15 Round R369 — Route and hidden-entry contract closeout
+
+- `resolveRoute()` now owns the Vue-compatible `knowledge_id` document-preview
+  entry for both canonical `/platform/knowledge-bases/:kbId` and legacy
+  `/knowledgeBase/:kbId` URLs; `main.tsx` consumes that parsed value instead of
+  reparsing the browser URL in the page dispatcher.
+- Route tests explicitly cover settings `section/subsection`, integration
+  `agentId`, Agent `edit/section/highlight/sourceTenantId`, and document preview
+  deep links. `route-parity.csv` records these hidden-entry contracts alongside
+  the owning routes. No business page implementation was changed.
+- Focused evidence: `pnpm --filter @weknora/web exec tsx --test
+  src/routes.test.ts` — 12/12; remaining browser/backend/Wails/native parity
+  evidence stays open.
+
+## 2026-09-15 Round R370 — Detail-state, permission, and shared-overlay verification
+
+- Document detail now exposes Vue-compatible preview/full-text/chunks tabs,
+  ordered merged content, chunk enable/disable and failed-index retry; custom
+  metadata uses typed rows with key/duplicate/number validation and preserves
+  drafts after failed saves. API client contracts and focused behavior tests
+  cover the new mutations.
+- Knowledge, FAQ, settings, organization, Agent, invitation, and route changes
+  retain fail-closed capability gates and the hidden/deep-link contracts. The
+  shared Dialog/Sheet wrappers keep Tailwind/shadcn project styling, body-level
+  browser Portals, tokenized overlay layers, Escape/focus handling, and an
+  explicit inline SSR/static path.
+- Final local evidence: `pnpm typecheck:web` passed; `pnpm test:shared` passed
+  491/491; `pnpm --filter @weknora/web test` passed 1062/1062;
+  `pnpm build:web` passed; `git diff --check` passed (with the pre-existing
+  route CSV CRLF normalization warning). Browser evidence is recorded in
+  `artifacts/vue-react-public-browser-evidence.md` and run-3 screenshots.
+- Acceptance remains open for authenticated real-backend mutations and paired
+  same-condition Vue/React screenshots across all states, plus Wails,
+  iOS, and Android runtime evidence. Public login/redirect browser checks pass;
+  unavailable auth/backend configuration is recorded as `blocked-env`, not as
+  parity acceptance.
+
+## 2026-09-15 Independent acceptance audit — evidence gate remains open
+
+- Fresh route inventory confirms `route-parity.csv` has 59 rows: 18 pages,
+  26 settings sections, 5 redirects, 1 layout redirect, 1 dev fixture, 1
+  independent entry, 5 file routes, 1 WebSocket route, and 1 embed file route.
+  React route focused tests pass 12/12; this is route/unit evidence only.
+- Fresh public browser run 4 proves Vue and React `/login` HTTP 200 and
+  unauthenticated `/platform/apps` redirect to login at `1355x776`/`zh-CN`.
+  It does not prove authenticated app catalog, authorization/action states,
+  backend mutations, permissions, Wails, or native parity; auth configuration
+  requests remain 403 on Vue and 404 on React in this run.
+- Fresh Web checks: `typecheck:web`, Vue `type-check`, and `build:web` exit 0;
+  the full Web suite is not green in this audit (run 2: 1067 total, 1063
+  pass, 4 failed: document-detail download/metadata and failed-save draft,
+  FAQ example-download menu, and FAQ tag-clear affordance). Focused
+  `AppsPages` rerun was 2/2 after a separate run-1 failure, so no flake is
+  silently promoted to acceptance.
+- CSV rows 21–24 reference four missing Vue `frontend/src/views/apps/*.vue`
+  files while React `apps/web/src/apps/` exists; this is recorded as a
+  `source-mismatch` in `artifacts/independent-acceptance-20260915.md` and
+  is not silently corrected in the shared CSV.
+- Full uncovered-entry/state inventory and evidence-layer definitions are in
+  `artifacts/independent-acceptance-20260915.md`. No production page code was
+  modified by this audit; existing dirty changes and the observed later
+  deletion of `apps/web/src/apps/AppsPages.tsx` were preserved.
+
+## 2026-09-15 Round R371 — Final regression reconciliation
+
+- Apps catalog/connections/authorization/action models and UI tests are now
+  present under `apps/web/src/apps/`; the independent audit records the absent
+  Vue `frontend/src/views/apps/*.vue` sources as `source-mismatch`, not as
+  silently accepted parity.
+- FAQ import example downloads, tag-filter clearing, modal Escape/outside-close,
+  and typed import-file validation are covered. A missing CSV serializer import
+  and nullable `File` narrowing were fixed before the final gate.
+- Final evidence: `pnpm typecheck:web`, `pnpm build:web`,
+  `pnpm test:shared` (491/491), `pnpm --filter @weknora/web test`
+  (1072/1072), Chat focused tests (91/91), and `git diff --check` pass.
+- Authenticated same-condition visual/backend mutation coverage and Wails,
+  iOS, Android per-feature interaction evidence remain open or `blocked-env`.
+
+## 2026-09-15 Round R372 — Wails renderer platform parity slice
+
+- `apps/desktop/src/main.tsx` now installs the Wails runtime before dynamically
+  loading the shared React entry. This makes desktop bootstrap ordering
+  explicit for API/deep-link decisions without forking Web route logic.
+- Added local desktop contracts for the Vue-compatible legacy route aliases,
+  query/hash-preserving deep links, HTTP(S)-only external navigation, the
+  1440x900 default viewport with 1024x680 minimum, and optional secure
+  credential-bridge fallback to local storage.
+- Focused desktop evidence: `pnpm test:desktop` — 5/5; `pnpm
+  typecheck:desktop` — passed; `pnpm build:desktop-renderer` — passed.
+- The renderer build emitted the pre-existing shared CSS warning about an
+  `@import` appearing after other statements. No Web/shared files were changed
+  in this slice. Wails native launch/interaction evidence remains open until a
+  real app window is launched and exercised; renderer build is not acceptance.

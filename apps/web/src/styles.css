@@ -4,13 +4,20 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "../../../packages/design-tokens/src/styles.css" layer(theme);
+
+/* Vue datasource permissions: viewers retain inspection actions only. */
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-create,
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-actions > button:nth-child(-n + 4),
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-actions > button:last-child {
+  display: none;
+}
 /* 语义令牌与跨包扫描：packages/ui 令牌事实来源 + ui/views 源码类名扫描
    （修复包内 utilities 从未生成的问题，见迁移计划"基线-既有问题"）。 */
 @import "../../../packages/ui/src/theme.css" layer(theme);
 @source "../../../packages/ui/src";
 @source "../../../packages/views/src";
 
-body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); }
+body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee); }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
@@ -111,7 +118,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
 .wks-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1100;
+  z-index: var(--wk-overlay-settings-z, 1100);
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
@@ -126,9 +133,9 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
   max-width: 1080px;
   height: 780px;
   max-height: calc(100vh - 40px);
-  background: #fff;
+  background: var(--wk-color-surface, #fff);
   border-radius: 12px;
-  box-shadow: 0 6px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--wk-shadow-panel, 0 6px 30px rgba(0, 0, 0, 0.12));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -142,7 +149,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
   height: 32px;
   border: none;
   background: transparent;
-  color: #66758b;
+  color: var(--wk-color-text-secondary, #66758b);
   cursor: pointer;
   border-radius: 6px;
   display: flex;
@@ -152,7 +159,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
   z-index: 10;
 }
 
-.wks-close:hover { background: #f0f2f7; color: #172033; }
+.wks-close:hover { background: var(--wk-color-surface-hover, #f0f2f7); color: var(--wk-color-text, #172033); }
 
 .wks-container {
   display: flex;
@@ -166,8 +173,8 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
   width: 208px;
   /* Settings.vue .settings-sidebar: --td-bg-color-settings-modal #f9f9f9,
      border --td-component-stroke #e7e7e7 (theme.css light tokens). */
-  background-color: #f9f9f9;
-  border-right: 1px solid #e7e7e7;
+  background-color: var(--wk-color-settings-panel, #f9f9f9);
+  border-right: 1px solid var(--wk-color-component, #e7e7e7);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -176,14 +183,14 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
 
 .wks-sidebar-header {
   padding: 16px 14px 12px;
-  border-bottom: 1px solid #e7e7e7;
+  border-bottom: 1px solid var(--wk-color-component, #e7e7e7);
   flex-shrink: 0;
 }
 
 .wks-sidebar-title {
   font-size: 16px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
   margin: 0;
 }
 
@@ -196,7 +203,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
 
 .wks-nav-group-title {
   padding: 9px 14px 4px;
-  color: rgba(0, 0, 0, 0.4);
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -212,7 +219,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
   border-radius: 6px;
   cursor: pointer;
   background: transparent;
-  color: rgba(0, 0, 0, 0.9);
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
   font: inherit;
   font-size: 14px;
   text-align: left;
@@ -223,11 +230,11 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
 /* Settings.vue .nav-item:hover / &.active: hover = --td-bg-color-container-hover
    (gray-1 #f3f3f3) + --td-text-color-primary rgba(0,0,0,.9); active =
    --td-bg-color-secondarycontainer (#f3f3f3) + --td-brand-color #07c05f. */
-.wks-nav-item:hover { background-color: #f3f3f3; color: rgba(0, 0, 0, 0.9); }
+.wks-nav-item:hover { background-color: var(--wk-color-surface-hover, #f3f3f3); color: var(--wk-color-text, rgba(0, 0, 0, 0.9)); }
 
 .wks-nav-item.is-active {
-  background-color: #f3f3f3;
-  color: #07c05f;
+  background-color: var(--wk-color-surface-hover, #f3f3f3);
+  color: var(--wk-color-brand, #07c05f);
   font-weight: 500;
 }
 
@@ -244,7 +251,7 @@ body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); 
 .wks-nav-label { flex: 1; }
 
 /* Right content column */
-.wks-content { flex: 1; overflow-y: auto; background-color: #fff; }
+.wks-content { flex: 1; overflow-y: auto; background-color: var(--wk-color-surface, #fff); }
 
 .wks-content-wrapper { max-width: 760px; padding: 40px 48px; }
 .wks-content-wrapper--wide,
