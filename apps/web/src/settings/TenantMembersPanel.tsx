@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Dialog, Status } from '@weknora/ui';
+import { Button, Card, Dialog, Input, Select, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
@@ -253,9 +253,9 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
 
   return <div className="data-table-shell__pager flex flex-wrap items-center justify-end gap-[0.4rem] border-t border-[var(--wk-border,#dce3ed)] box-border py-[0.4rem] px-[0.6rem] text-xs text-[var(--wk-muted,#66758b)] max-[720px]:justify-start">
     <span className="mr-auto">{tr('tenantMembersPanel.pager.total', { total })}</span>
-    <select className="w-auto!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
+    <Select className="w-auto!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
       {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{tr('tenantMembersPanel.pager.sizePerPage', { size })}</option>)}
-    </select>
+    </Select>
     <button type="button" className={PAGER_BTN + ' disabled:text-[rgb(0_0_0/26%)] disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:text-accent'} aria-label={tr('common.previous')} disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</button>
     {pageWindow(page, maxPage).map((entry, index) => entry === 'ellipsis'
       ? <span key={'e' + index} className="wk-pager__ellipsis">…</span>
@@ -263,7 +263,7 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
     <button type="button" className={PAGER_BTN + ' disabled:text-[rgb(0_0_0/26%)] disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:text-accent'} aria-label={tr('common.next')} disabled={page >= maxPage} onClick={() => onPage(page + 1)}>›</button>
     <span className="inline-flex items-center gap-[0.3rem]">
       {tr('tenantMembersPanel.pager.jumper')}
-      <input className="h-6 w-[2.6rem]! rounded-md border border-[var(--wk-border,#dce3ed)]! text-center text-[var(--wk-text,#172033)]!" type="text" inputMode="numeric" value={jump}
+      <Input className="h-6 w-[2.6rem]! rounded-md! px-0! text-center!" type="text" inputMode="numeric" value={jump}
         onChange={(event) => setJump(event.target.value)}
         onBlur={commitJump}
         onKeyDown={(event) => { if (event.key === 'Enter') commitJump(); }} />
@@ -587,7 +587,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           <div className="m-0 inline-flex min-w-0 flex-[0_1_auto] items-center gap-2 max-[720px]:flex-wrap max-[720px]:w-full max-[720px]:justify-start">
             <form className="relative min-w-40 w-56 flex-[0_1_14rem] max-[720px]:min-w-0 max-[720px]:w-full max-[720px]:flex-[1_1_100%]" role="search" onSubmit={search}>
               <span className="pointer-events-none absolute left-[0.45rem] top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-[var(--wk-muted,#66758b)]"><Icon name="search" /></span>
-              <input type="search" className="w-full rounded-md border border-[var(--wk-border,#dce3ed)]! bg-[var(--wk-surface,#fff)]! px-[1.9rem]! py-[0.4rem]! text-[var(--wk-text,#172033)]! focus-visible:[outline:var(--wk-focus-ring,3px_solid_rgb(46_109_230/35%))] focus-visible:outline-offset-2" aria-label={tr('tenantMember.searchPlaceholder')} placeholder={tr('tenantMember.searchPlaceholder')} value={query} onChange={(event) => setQuery(event.target.value)} />
+              <Input type="search" className="w-full rounded-md! px-[1.9rem]! py-[0.4rem]! text-[var(--wk-text,#172033)]! focus-visible:[outline:var(--wk-focus-ring,3px_solid_rgb(46_109_230/35%))] focus-visible:outline-offset-2" aria-label={tr('tenantMember.searchPlaceholder')} placeholder={tr('tenantMember.searchPlaceholder')} value={query} onChange={(event) => setQuery(event.target.value)} />
               {query ? <button type="button" className="absolute right-[0.35rem] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[var(--wk-muted,#66758b)] hover:text-[var(--wk-text,#172033)]" aria-label="Clear search" onClick={clearSearch}><Icon name="close" size={12} /></button> : null}
             </form>
             {canManage ? <>
@@ -627,10 +627,10 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         </td>
                         <td className={TD}>
                           <div className="role-cell inline-flex items-center">
-                            {canManage && !isSelf ? <select className="disabled:opacity-60 w-full [font:inherit]" aria-label={'Role for ' + member.username} value={member.role} disabled={busy}
+                            {canManage && !isSelf ? <Select className="disabled:opacity-60 w-full [font:inherit]" aria-label={'Role for ' + member.username} value={member.role} disabled={busy}
                               onChange={(event) => void update(member, event.target.value as TenantRole)}>
                               {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-                            </select>
+                            </Select>
                             : <span className={roleTagClass(member.role)}>{tr('tenantMember.role.' + member.role)}</span>}
                           </div>
                         </td>
@@ -701,14 +701,14 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       <form className="flex flex-col gap-3" onSubmit={submitInvite}>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.emailLabel')}</span>
-          <input required type="email" className="w-full rounded-md border border-[var(--wk-border,#dce3ed)]! bg-[var(--wk-surface,#fff)]! px-[0.55rem]! py-[0.45rem]! text-[var(--wk-text,#172033)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder').replace("{'@'}", '@')}
+          <Input required type="email" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[var(--wk-text,#172033)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder').replace("{'@'}", '@')}
             onChange={(event) => setInviteEmail(event.target.value)} />
         </label>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.roleLabel')}</span>
-          <select className="w-full [font:inherit]" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
+          <Select className="w-full [font:inherit]" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
             {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </select>
+          </Select>
         </label>
         <div className="mt-1 flex justify-end gap-2">
           <Button type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</Button>
@@ -721,7 +721,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       {shareLink ? <div className="flex flex-col gap-3">
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.shareLink.resultBody')}</p>
         <div className="flex items-center gap-2">
-          <input className="min-w-0 flex-[1_1_auto] rounded-md border border-[var(--wk-border,#dce3ed)]! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
+          <Input className="min-w-0 flex-[1_1_auto] rounded-md! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
             onFocus={(event) => event.currentTarget.select()} />
           <Button type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
             <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
@@ -734,9 +734,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.roleLabel')}</span>
-          <select className="w-full [font:inherit]" value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
+          <Select className="w-full [font:inherit]" value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
             {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </select>
+          </Select>
         </label>
         <div className="mt-1 flex justify-end gap-2">
           <Button type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</Button>
