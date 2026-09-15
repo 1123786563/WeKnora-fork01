@@ -358,3 +358,5 @@ Verification update (2026-09-15): after the desktop alias fix, Web regression pa
 N033 Wails update (2026-09-15): after the shared view alias fix, `PATH="/Users/wuyongjun/go/bin:$PATH" wails build -clean -tags sqlite_fts5 -o 'WeKnora Lite'` completed successfully in 28.2s. The packaged app launched and its process remained alive after 8s once Lite resources/config/.env were provisioned; per-feature Wails interaction evidence remains open.
 
 Verification update (2026-09-15): shared package regression passes 467/467 after desktop alias and Wails packaging changes.
+
+N021 fixture update (2026-09-15): typed tool-result renderer suite now passes 39/39, including unknown display-type plain-text fallback, nested secret redaction, secret-shaped search content suppression, and expanded renderer coverage. Browser fixture/live backend evidence remains open.
