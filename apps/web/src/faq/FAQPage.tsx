@@ -1562,7 +1562,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setTotal(result.total ?? 0);
       setHasMore(faqHasMore(loaded, result.total ?? 0));
       if (!append) setSelected(new Set());
-    } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to load FAQ entries' }); }
+    } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
     finally {
       loadingMoreRef.current = false;
       setLoading(false);
@@ -1611,24 +1611,24 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setEditing(undefined);
       await load(false);
     }
-    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to save FAQ entry' }); }
+    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
     finally { setSaving(false); }
   }
   async function updateSelection(input: FAQEntryFieldsUpdate) {
     if (!selected.size) return;
     try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries updated.' }); }
-    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to update selected entries' }); }
+    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   async function updateSelectedTag() {
     if (!selected.size) return;
     const tagId = batchTag.trim() ? Number(batchTag) : null;
     if (tagId !== null && (!Number.isSafeInteger(tagId) || tagId < 0)) { setMessage({ tone: 'error', text: 'Tag ID must be a non-negative integer.' }); return; }
     try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(false); setBatchTag(''); setMessage({ tone: 'success', text: 'Selected FAQ tags updated.' }); }
-    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to update selected tags' }); }
+    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   async function removeMany(ids: number[]) {
     try { await faq.removeMany(knowledgeBaseId, ids); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries deleted.' }); }
-    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete FAQ entries' }); }
+    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   // Vue processFile (FAQEntryManager.vue:1900): parse immediately, surface the
   // row count as an in-dialog preview; Excel goes through parseExcelFile
@@ -1661,13 +1661,13 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       // and polls the backend task until completion.
       setImportTask({ task_id: result.task_id, kb_id: knowledgeBaseId, status: 'processing', progress: 0, processed: 0, total: imported.length });
       await load(false);
-    } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to import FAQ entries' }); }
+    } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
     finally { setImportBusy(false); }
   }
   async function exportEntries(format: 'csv' | 'json') {
     setExportLoading(true);
     try { downloadText(await faq.exportEntries(knowledgeBaseId, format), format); }
-    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to export FAQ entries' }); }
+    catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
     finally { setExportLoading(false); }
   }
   // Vue handleSearch (FAQEntryManager.vue:2650-2680): blank query warns without a
