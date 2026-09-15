@@ -64,6 +64,10 @@ function payloadBlob(payload: ArtifactPreviewPayload): Blob {
   return new Blob([payload.body], { type: payload.contentType || 'application/octet-stream' });
 }
 
+export async function readArtifactPreviewText(payload: ArtifactPreviewPayload): Promise<string> {
+  return payloadBlob(payload).text();
+}
+
 function PreviewBody({ model, fileName, payload, url, text }: { model: ArtifactPreviewModel; fileName: string; payload: ArtifactPreviewPayload; url: string; text: string }) {
   if (model.kind === 'image') return <img className="wk-chat-artifact-preview-image" src={url} alt={fileName} />;
   if (model.kind === 'pdf') return <iframe className="wk-chat-artifact-preview-pdf" src={url} title={`${fileName} PDF preview`} sandbox="" />;
@@ -86,6 +90,7 @@ export function ArtifactPreview({ artifact, payload, loading = false, error, onC
   const model = artifactPreviewModel(artifact, copy);
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
+  const [payloadError, setPayloadError] = useState('');
 
   useEffect(() => {
     if (!payload || (model.kind !== 'image' && model.kind !== 'pdf')) {
@@ -101,15 +106,23 @@ export function ArtifactPreview({ artifact, payload, loading = false, error, onC
   useEffect(() => {
     if (!payload || (model.kind !== 'text' && model.kind !== 'markdown')) {
       setText('');
+      setPayloadError('');
       return;
     }
     let active = true;
-    void payloadBlob(payload).text().then((value) => { if (active) setText(value); });
+    setText('');
+    setPayloadError('');
+    void readArtifactPreviewText(payload)
+      .then((value) => { if (active) setText(value); })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setPayloadError(cause instanceof Error && cause.message ? cause.message : 'Preview failed');
+      });
     return () => { active = false; };
   }, [model.kind, payload]);
 
   return <section className={`wk-chat-artifact-preview${showHeader ? '' : ' wk-chat-artifact-preview--embedded'}`} role={showHeader ? 'dialog' : 'document'} aria-label={`${artifact.fileName} preview`}>
     {showHeader ? <header><h3>{artifact.fileName}</h3><button type="button" onClick={onClose}>{copy?.artifactPreviewBack ?? 'Back'}</button>{onDownload ? <button type="button" onClick={onDownload}>{copy?.artifactPreviewDownload ?? 'Download'}</button> : null}</header> : null}
-    {loading ? <p role="status">{copy?.artifactPreviewLoading ?? 'Loading preview…'}</p> : error ? <p role="alert">{error}</p> : model.kind === 'download-only' ? <p>{model.label}</p> : payload ? <PreviewBody model={model} fileName={artifact.fileName} payload={payload} url={url} text={text} /> : <p>{model.label}</p>}
+    {loading ? <p role="status">{copy?.artifactPreviewLoading ?? 'Loading preview…'}</p> : error || payloadError ? <p role="alert">{error || payloadError}</p> : model.kind === 'download-only' ? <p>{model.label}</p> : payload ? <PreviewBody model={model} fileName={artifact.fileName} payload={payload} url={url} text={text} /> : <p>{model.label}</p>}
   </section>;
 }

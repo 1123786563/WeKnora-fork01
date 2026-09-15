@@ -6,6 +6,7 @@ import {
   clampArtifactPreviewWidth,
   formatArtifactDateTime,
   formatArtifactSize,
+  readArtifactPreviewText,
 } from './artifact-preview.tsx';
 import { resolveChatCopy } from './chat-copy.ts';
 
@@ -64,4 +65,12 @@ test('artifact drawer formats list metadata like the Vue drawer', () => {
   assert.equal(formatArtifactDateTime(''), '—');
   assert.equal(formatArtifactDateTime('not-a-date'), 'not-a-date');
   assert.match(formatArtifactDateTime('2026-09-08T04:05:00Z'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+});
+
+test('preview text failures remain observable to the preview error state', async () => {
+  const failure = new Error('preview download failed');
+  const body = new Blob(['unreadable']);
+  Object.defineProperty(body, 'text', { value: async () => { throw failure; } });
+
+  await assert.rejects(() => readArtifactPreviewText({ body }), (error: unknown) => error === failure);
 });
