@@ -195,6 +195,7 @@ function DownloadIcon() { return <Icon size={16}><path d="M12 3v12M7 10l5 5 5-5M
 function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.66M20 4v7h-7" /></Icon>; }
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
+function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
 
 function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
@@ -627,28 +628,24 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
   return (
     <ul className="wk-upload-confirm-files m-0 mb-3 max-h-56 list-none overflow-auto p-0">
       {props.urls.map((url, index) => (
-        <li key={`url-${url}-${index}`} className="mb-[2px] flex items-center gap-3 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] hover:bg-[rgba(16,24,40,0.04)]">
-          <LinkIcon size={16} className="shrink-0" />
-          <span title={url}>{url}</span>
-          <span className="wk-muted text-muted">{labels.urlItemLabel}</span>
-          <Button
-            type="button"
-            disabled={props.uploading}
-            aria-label={labels.remove}
-            onClick={() => props.onRemoveUrl(index)}
-          >
-            {labels.remove}
-          </Button>
+        <li key={`url-${url}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--wk-muted,#667085)]"><LinkIcon size={16} /></span>
+          <div className="min-w-0 flex-1">
+            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={url}>{url}</span>
+            <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">{labels.urlItemLabel}</span>
+          </div>
+          <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveUrl(index)}>×</button>
         </li>
       ))}
       {props.entries.map((entry, index) => {
         const state = props.uploadStates[index];
         const relativeDir = uploadEntryRelativeDir(entry);
         return (
-          <li key={`${entry.name}-${index}`} className="mb-[2px] flex items-center gap-3 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] hover:bg-[rgba(16,24,40,0.04)]">
-            <span aria-hidden className="[overflow-wrap:anywhere]" style={{ flex: "0 0 auto" }}>{fileTypeBadge(entry.name)}</span>
-            <span title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
-            <span className="wk-muted text-muted">
+        <li key={`${entry.name}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] text-[var(--wk-muted,#667085)]" aria-hidden>{fileTypeBadge(entry.name)}</span>
+            <div className="min-w-0 flex-1">
+              <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
+              <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">
               {relativeDir ? (
                 <>
                   <span title={relativeDir}>{relativeDir}</span>
@@ -656,18 +653,12 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
                 </>
               ) : null}
               {formatBytes(entry.size)}
-            </span>
+              </span>
+            </div>
             <Status tone={entryStatusTone(state?.status)}>
               {state?.status === "error" ? (state.message ?? labels.statusLabel("error")) : labels.statusLabel(state?.status ?? "pending")}
             </Status>
-            <Button
-              type="button"
-              disabled={props.uploading}
-              aria-label={labels.remove}
-              onClick={() => props.onRemoveEntry(index)}
-            >
-              {labels.remove}
-            </Button>
+            <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveEntry(index)}>×</button>
           </li>
         );
       })}
@@ -832,7 +823,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         onClick={props.onToggle}
         style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer", fontSize: "14px" }}
       >
-        <span aria-hidden>＋</span>
+        <AddFileIcon />
       </button>
       {props.open ? (
         <span
