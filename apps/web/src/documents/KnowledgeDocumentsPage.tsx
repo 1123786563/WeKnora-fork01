@@ -147,26 +147,35 @@ type DocumentViewMode = "grid" | "list";
 
 export function DocumentCardGrid({
   items,
+  folders,
   selected,
   canContribute,
   t,
   onOpen,
+  onOpenFolder,
   onToggle,
   onTagEdit,
   onReparse,
   onCancelParse,
 }: {
   items: KnowledgeDocument[];
+  folders: Array<{ path: string; name: string; total_count: number }>;
   selected: Set<string>;
   canContribute: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   onOpen: (document: KnowledgeDocument) => void;
+  onOpenFolder: (path: string) => void;
   onToggle: (id: string, checked: boolean) => void;
   onTagEdit: (document: KnowledgeDocument) => void;
   onReparse: (document: KnowledgeDocument) => void;
   onCancelParse: (document: KnowledgeDocument) => void;
 }) {
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" data-document-view="grid">
+    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-0 rounded-control border border-line-soft bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-wash" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
+      <span className="mb-3 block text-2xl" aria-hidden="true">📁</span>
+      <strong className="block truncate text-primary-deep">{folder.name}</strong>
+      <span className="mt-1 block text-[0.8rem] text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span>
+    </button>)}
     {items.map((document) => {
       const status = documentStatus(document, t);
       const actions = documentRowActions(document.parse_status);
@@ -3207,10 +3216,12 @@ export function KnowledgeDocumentsPage({
             {state.status === "success" && items.length > 0 && viewMode === "grid" ? (
               <DocumentCardGrid
                 items={items}
+                folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
                 selected={selected}
                 canContribute={canContribute}
                 t={t}
                 onOpen={(document) => onOpenDocument?.(document)}
+                onOpenFolder={(path) => setFolderPath(path || undefined)}
                 onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
                 onTagEdit={(document) => setTagDialog({ mode: "single", document })}
                 onReparse={(document) => reparseOne(document)}
