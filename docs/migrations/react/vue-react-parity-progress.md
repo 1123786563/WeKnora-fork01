@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+99 — N016 MCP segmented transport/auth 控件
+
+- 对照 Vue `source-options`，将 React MCP transport 与 auth 两处原生 select 替换为可访问 radio button 组，补齐 28px 控件、active 边框/背景、图标及 hover/focus 状态，保留原 draft/payload 逻辑。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-segmented-controls.md`。
+- N016 仍需认证浏览器交互/computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+98 — N016 MCP 自定义请求头操作控件
 
 - 将自定义请求头新增/删除操作对齐 Vue：新增使用绿色文字型小按钮和 add SVG，删除使用 24px 方形 icon-only 控件并保留无障碍名称，避免默认实心按钮造成视觉拥挤。

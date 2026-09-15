@@ -245,9 +245,9 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.match(text, /关闭后该服务不会被调用/);
     const unitText = Array.from(dialog?.querySelectorAll('span.pointer-events-none') ?? []).map((node) => node.textContent).join('');
     assert.equal(unitText, '秒次秒', 'advanced inputs show Vue unit suffixes');
-    const transportSelect = dialog?.querySelector('select') as HTMLSelectElement | null;
-    assert.ok(transportSelect, 'transport select renders');
-    assert.deepEqual(Array.from(transportSelect?.options ?? []).map((option) => option.value), ['sse', 'http-streamable']);
+    const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');
+    assert.ok(transportGroup, 'Vue segmented transport group renders');
+    assert.deepEqual(Array.from(transportGroup?.querySelectorAll('[role="radio"]') ?? []).map((button) => button.textContent?.trim()), ['SSE', 'HTTP Streamable']);
     const footerButtons = Array.from(dialog?.querySelectorAll('.wk-mcp-footer button') ?? []).map((button) => button.textContent ?? '');
     assert.ok(footerButtons.some((label) => label.includes('取消')) && footerButtons.some((label) => label.includes('保存并下一步')), 'footer cancel + confirm render');
     assert.ok(footerButtons.findIndex((label) => label.includes('取消')) < footerButtons.findIndex((label) => label.includes('保存并下一步')), 'Vue footer order: cancel before confirm');
@@ -267,8 +267,8 @@ test('editing a stdio service coerces to SSE exactly like Vue McpServiceDialog.v
   try {
     await act(async () => { findButton('编辑')?.click(); });
     const dialog = document.querySelector('.wks-mcp-drawer');
-    const transportSelect = dialog?.querySelector('select') as HTMLSelectElement | null;
-    assert.equal(transportSelect?.value, 'sse');
+    const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');
+    assert.equal(transportGroup?.querySelector('[role="radio"][aria-checked="true"]')?.textContent?.trim(), 'SSE');
     assert.equal(dialog?.textContent?.includes('Stdio') ?? false, false);
   } finally {
     await unmountEditor(root);
