@@ -905,7 +905,6 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.connection")}</span>
                     <span className={`mx-1 h-px min-w-4 flex-1 bg-[#dcdcdc] ${step > 0 ? "bg-[rgba(7,192,95,.35)]" : ""}`} aria-hidden="true" />
                   </button>
-                  <span aria-hidden="true"> → </span>
                   <button
                     type="button"
                     className={`${mcpStepButton} text-[13px] font-medium ${step === 1 ? "text-[#07c05f]!" : ""}`}
