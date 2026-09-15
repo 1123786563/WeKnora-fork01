@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+84 — N007 上传目的地面包屑
+
+- 将上传确认弹窗目的地选择器改为 Vue 风格的无边框文本面包屑：弱化标签、突出当前目录、保留展开标记，并增加窄屏省略与键盘焦点反馈。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-destination-crumb.md`。
+- N007 仍需认证浏览器 responsive/computed-style、真实目录/上传后端和 Wails/native 证据。
+
+## 2026-09-15 Round N+84 — N007 目的地面包屑
+
+- 对照 Vue `UploadConfirmDialog.vue`，目的地触发器从带边框 pill 修正为无边框 inline 控件，使用 4px gap、12px/18px 字体、路径单行省略、muted label/caret 和 brand hover/focus 状态；目的地弹层与新建文件夹行为保持不变。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-destination-crumb.md`。
+- N007 继续保持 `implementing`：认证浏览器 post-change computed-style/截图、真实后端与 Wails/native 证据仍未闭环。
+
 ## 2026-09-15 Round N+83 — N007 分节导航 hover/focus 状态
 
 - 为纵向上传配置导航项补齐 Vue 对应的 hover 背景、focus-visible 项目绿色 focus ring 与无障碍键盘反馈，避免依赖浏览器默认按钮焦点。

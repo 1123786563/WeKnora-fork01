@@ -3746,7 +3746,6 @@ export function KnowledgeDocumentsPage({
               <legend>{ct("uploadConfirm.destinationLabel")}</legend>
               <button
                 type="button"
-                className="wk-destination-crumb"
                 title={uploadTargetFolder || rootRowLabel}
                 aria-label={ct("uploadConfirm.destinationChange")}
                 aria-expanded={destinationPickerOpen}
@@ -3756,11 +3755,11 @@ export function KnowledgeDocumentsPage({
                   setNewFolderName("");
                   setDestinationPickerDuplicate(false);
                 }}
-                style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "2px 10px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer" }}
+                className="wk-destination-crumb inline-flex max-w-full min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left text-[12px] leading-[18px] text-[var(--wk-muted,#667085)] transition-colors hover:text-[var(--wk-accent,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
               >
-                <span className="wk-muted text-muted">{ct("uploadConfirm.destinationLabel")}</span>
-                <span>{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
-                <span aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
+                <span className="shrink-0">{ct("uploadConfirm.destinationLabel")}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[var(--wk-text,#101828)]">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
+                <span className="shrink-0 text-[var(--wk-muted,#98a2b3)]" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
               </button>
               {destinationPickerOpen ? (
                 <div
