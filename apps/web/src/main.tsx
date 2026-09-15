@@ -1,13 +1,14 @@
 import { createRoot } from 'react-dom/client';
 import { createJsonTransport, createWeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
-import { KnowledgeBasesPage } from './App.tsx';
+import { KnowledgeBasesPage, AppsPage } from './App.tsx';
 import { CraftRoutes } from './features/craft/routes.tsx';
 import { IntegrationsPage } from './integrations/IntegrationsPage.tsx';
 import { parseIntegrationRoute } from './integrations/route.ts';
 import { authorizationHeader, readLegacyPlatformSession } from './platform/legacy-session.ts';
 import './styles.css';
 import { AuthRoutes } from './auth/AuthPages.tsx';
+import { guardRoute, nextPathAfterAuth, resolveRoute } from './routes.tsx';
 
 const session = readLegacyPlatformSession();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -32,16 +33,42 @@ const client = createWeKnoraClient({
 // This entry only proves the React list slice; it does not claim Vue migration completion.
 // W05 craft mounts at /craft and /craft/:sessionId through the same assembly
 // (legacy session + shared scope + shared client) — no second router.
+const route = resolveRoute(`${window.location.pathname}${window.location.search}`);
+const decision = guardRoute(`${window.location.pathname}${window.location.search}`, {
+  authenticated: session.credential.kind === 'bearer',
+  tenantId: session.tenantId,
+});
+
+if (decision.kind === 'redirect') {
+  window.history.replaceState({}, document.title, decision.to);
+}
+
+function replaceAuthTarget(path: string): void {
+  window.location.assign(path === '/platform/knowledge-bases' ? nextPathAfterAuth(window.location.search) : path);
+}
+
+function renderNotFound(path: string) {
+  return <main className="wk-page"><h1>404</h1><p>Page not found: {path}</p></main>;
+}
+
 createRoot(document.getElementById('root')!).render(
-  window.location.pathname === '/craft' || window.location.pathname.startsWith('/craft/') ? (
+  decision.kind === 'redirect' && decision.reason === 'authentication-required' ? (
+    <AuthRoutes client={client} navigation={{ replace: replaceAuthTarget }} />
+  ) : decision.kind === 'redirect' && decision.to === '/onboarding/workspace' ? (
+    <AuthRoutes client={client} navigation={{ replace: (path) => window.location.assign(path) }} />
+  ) : decision.kind === 'not-found' ? (
+    renderNotFound(route.path)
+  ) : route.kind === 'craft' ? (
     <CraftRoutes client={client} scopeController={scopeController} session={session} apiBaseUrl={apiBaseUrl} />
-  ) : parseIntegrationRoute(window.location.href) !== null ? (
+  ) : route.kind === 'integration' && parseIntegrationRoute(window.location.href) !== null ? (
     <IntegrationsPage
       route={parseIntegrationRoute(window.location.href)!}
       onNavigate={(path) => { window.history.pushState(null, '', path); window.location.assign(path); }}
     />
   ) : (
-    ['/login', '/register', '/onboarding/workspace'].includes(window.location.pathname) ? <AuthRoutes client={client} /> :
-    <KnowledgeBasesPage client={client} scopeController={scopeController} />
+    route.kind === 'login' || route.kind === 'onboarding' ? <AuthRoutes client={client} navigation={{ replace: replaceAuthTarget }} /> :
+    route.kind === 'apps' ? <AppsPage client={client} scopeController={scopeController} /> :
+    route.kind === 'platform' ? <KnowledgeBasesPage client={client} scopeController={scopeController} /> :
+    renderNotFound(route.path)
   ),
 );
