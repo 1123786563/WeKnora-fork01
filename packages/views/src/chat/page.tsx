@@ -456,7 +456,7 @@ export function ChatPage(props: ChatPageProps) {
   /* main.wk-chat-page utilities carry the chat.css parity values; the
      retained guard block in chat.css keeps beating the legacy styles.css
      .wk-chat-page rule until the Orchestrator deletes that block. */
-  return <main className="wk-chat-page grid h-[calc(100vh-64px)] items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
+  return <main className="wk-chat-page grid h-screen items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
     <SessionSidebar
       copy={copy}
       sessions={props.sessions}
@@ -479,7 +479,7 @@ export function ChatPage(props: ChatPageProps) {
       pageCount={props.sessionPageCount}
       onPageChange={props.onSessionPageChange}
     />
-    <section className="wk-chat-main" aria-label={copy.streamStatus}>
+    <section className="wk-chat-main flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
       {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent px-[12px] pt-[10px] pb-0">
         <div className="wk-chat-header-titles pointer-events-auto inline-flex items-center gap-[2px] max-w-[min(320px,100%)] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] pl-[8px] backdrop-blur-[8px]">
           <h1 title={headerTitle} className="m-0 min-w-0 cursor-default overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{headerTitle}</h1>
@@ -509,7 +509,7 @@ export function ChatPage(props: ChatPageProps) {
             view centers the welcome+composer cluster (.dialogue-wrap) and must
             not render the flex:1 message scroll that pins the composer down. */}
         {!props.selectedSessionId ? (
-          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[24px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
+          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[56px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
                 whose padding override (0 0 24px) replaces the base 48px padding. */}
             <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
