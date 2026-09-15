@@ -3,7 +3,7 @@ import type { KnowledgeBase } from '@weknora/contracts';
 
 export type KnowledgeBaseListState =
   | { status: 'success'; items: KnowledgeBase[] }
-  | { status: 'error'; message: string };
+  | { status: 'error'; code?: string; message: string };
 
 export async function loadKnowledgeBases(
   client: Pick<WeKnoraClient, 'knowledgeBases'>,
@@ -14,7 +14,9 @@ export async function loadKnowledgeBases(
     return { status: 'success', items: await client.knowledgeBases.list(params) };
   } catch (error) {
     if (signal?.aborted) throw error;
-    return { status: 'error', message: error instanceof Error ? error.message : 'Unable to load knowledge bases' };
+    const value = error as { code?: unknown; response?: { data?: { error?: { code?: unknown } } } };
+    const code = typeof value?.code === 'string' ? value.code : value?.response?.data?.error?.code;
+    return { status: 'error', ...(typeof code === 'string' ? { code } : {}), message: error instanceof Error ? error.message : 'Unable to load knowledge bases' };
   }
 }
 

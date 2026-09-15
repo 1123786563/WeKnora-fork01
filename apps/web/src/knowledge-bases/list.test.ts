@@ -115,3 +115,11 @@ test('matches Vue editor submit validation before calling the mutation', async (
   await assert.rejects(saveKnowledgeBase(client, null, { name: 'Docs', type: 'faq', summary_model_id: 'llm-1', description: 'x'.repeat(201) }), /200 characters/);
   assert.equal(calls, 0, 'invalid Vue submissions must not call the API');
 });
+
+test('preserves forbidden error codes for the no-permission branch', async () => {
+  const state = await loadKnowledgeBases({
+    knowledgeBases: { list: async () => { throw Object.assign(new Error('No access'), { code: 'TENANT_FORBIDDEN' }); } },
+  } as never);
+
+  assert.deepEqual(state, { status: 'error', code: 'TENANT_FORBIDDEN', message: 'No access' });
+});
