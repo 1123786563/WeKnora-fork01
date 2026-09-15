@@ -18,7 +18,7 @@ test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor a
   assert.match(html, /class="wk-wiki-layout[^"]*"/);
   assert.match(html, /class="wk-wiki-sidebar[^"]*"/);
   assert.match(html, /class="wk-wiki-search[^"]*"/);
-  assert.match(html, /aria-label="Wiki pages"/);
+  assert.match(html, /aria-label="页面操作"/);
   assert.match(html, /树形视图/);
   assert.match(html, /列表视图/);
   assert.match(html, /class="wk-wiki-editor[^"]*"/);

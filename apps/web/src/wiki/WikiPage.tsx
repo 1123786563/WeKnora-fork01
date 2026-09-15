@@ -419,7 +419,7 @@ export function WikiPage({
                 />
               </label>
             </div>
-            <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label="Wiki pages">
+            <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
               {directory}
               {!indexView ? pages.map((page) => (
                 <button
@@ -585,7 +585,7 @@ export function WikiPage({
             <Status>{t("wikiBrowser.revisionEmpty")}</Status>
           ) : null}
           <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5 max-[720px]:grid-cols-1">
-            <nav aria-label="Wiki revisions">
+            <nav aria-label={t('wikiBrowser.historyBtn')}>
               <ul className="wk-list m-0 list-none p-0">
                 {revisions.map((item) => (
                   <li key={item.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
