@@ -308,6 +308,8 @@ batchRetry: '重试',
 batchDeleteBusy: '删除中…',
 batchSelectSession: '选择会话 {title}',
 sourceSelectLabel: '会话来源',
+messagesLabel: '消息',
+conversationPagesLabel: '会话分页',
 };
 
 export type ChatCopyKey = keyof typeof CHAT_COPY_ZH;
@@ -509,6 +511,8 @@ renameTitleFailed: 'Unable to rename conversation',
   batchDeleteBusy: 'Deleting…',
   batchSelectSession: 'Select chat {title}',
   sourceSelectLabel: 'Chat source',
+  messagesLabel: 'Messages',
+  conversationPagesLabel: 'Conversation pages',
   },
   'ja-JP': {
   suggestedQuestions: 'こんな質問ができます',
@@ -702,6 +706,8 @@ renameTitleFailed: 'タイトルを変更できません',
   batchDeleteBusy: '削除中…',
   batchSelectSession: '会話 {title} を選択',
   sourceSelectLabel: '会話のソース',
+  messagesLabel: 'メッセージ',
+  conversationPagesLabel: '会話ページ',
   },
   'ko-KR': {
   suggestedQuestions: '이렇게 물어보세요',
@@ -895,6 +901,8 @@ renameTitleFailed: '대화 제목을 수정할 수 없습니다',
   batchDeleteBusy: '삭제 중…',
   batchSelectSession: '대화 {title} 선택',
   sourceSelectLabel: '대화 출처',
+  messagesLabel: '메시지',
+  conversationPagesLabel: '대화 페이지',
   },
   'ru-RU': {
   suggestedQuestions: 'Вы можете спросить меня',
@@ -1088,6 +1096,8 @@ renameTitleFailed: 'Не удалось переименовать диалог'
   batchDeleteBusy: 'Удаление…',
   batchSelectSession: 'Выбрать чат {title}',
   sourceSelectLabel: 'Источник чатов',
+  messagesLabel: 'Сообщения',
+  conversationPagesLabel: 'Страницы диалогов',
   },
 };
 

@@ -246,7 +246,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
   return <div ref={containerRef} className="wk-chat-message-scroll relative mx-auto min-h-0 w-full max-w-[960px] max-h-[62vh] max-[720px]:max-h-[55vh] flex-1 overflow-auto scroll-smooth p-[0.25rem] [scrollbar-width:auto]" onScroll={onScroll}>
     {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom sticky bottom-[12px] z-[10] mx-auto mt-[-48px] mb-[12px] block h-[36px] w-[36px] cursor-pointer rounded-full border border-[#e7e7e7] bg-white text-[rgba(0,0,0,0.6)] shadow-[0_2px_8px_rgba(0,0,0,0.1)]" aria-label={t.chatScrollBottom} onClick={scrollToBottom}>↓</button> : null}
     {hasMore ? <button type="button" className="wk-chat-load-older mx-auto mb-[12px] block cursor-pointer rounded-[8px] border border-[#dcdcdc] bg-transparent px-[14px] py-[4px] text-[12px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-60" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? t.loadingHistory : t.loadOlder}</button> : null}
-    <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label="Messages">
+    <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label={t.messagesLabel}>
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
       const showSeparator = shouldShowConversationTimestamp(messages, index);
