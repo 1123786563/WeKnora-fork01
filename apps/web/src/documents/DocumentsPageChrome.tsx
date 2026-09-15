@@ -48,6 +48,8 @@ function InfoIcon(props: { size?: number; className?: string }) { return <Icon {
 export function SearchIcon(props: { size?: number; className?: string }) { return <Icon {...props}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></Icon>; }
 export function FolderIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M3 6.5A2.5 2.5 0 015.5 4h4l2 2h7A2.5 2.5 0 0121 8.5v8A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5z" /></Icon>; }
 export function FileIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Icon>; }
+export function LinkIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M10 13a5 5 0 007.07.07l2-2a5 5 0 00-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 00-7.07-.07l-2 2A5 5 0 0012 20l1.15-1.15" /></Icon>; }
+export function EditIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>; }
 export function GridIcon(props: { size?: number; className?: string }) { return <Icon {...props}><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></Icon>; }
 export function ListIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></Icon>; }
 function GearIcon(props: { size?: number; className?: string }) {

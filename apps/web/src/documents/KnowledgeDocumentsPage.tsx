@@ -90,6 +90,8 @@ import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
+  EditIcon,
+  LinkIcon,
   ParserHint,
   SearchIcon,
   DOCUMENT_FILE_TYPE_OPTIONS,
@@ -226,17 +228,17 @@ function documentStatus(
   return { label: processingStatusLabel(status), tone: "warning" };
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, t?: (key: string) => string): string {
   const candidate = error as {
     code?: unknown;
     message?: unknown;
     status?: unknown;
   };
   if (candidate?.status === 413 || candidate?.code === "PAYLOAD_TOO_LARGE")
-    return "Upload is too large (413). Choose a smaller file and retry.";
+    return t?.("common.error") ?? "Upload is too large (413). Choose a smaller file and retry.";
   return candidate?.message && typeof candidate.message === "string"
     ? candidate.message
-    : "The document operation failed.";
+    : t?.("common.error") ?? "The document operation failed.";
 }
 
 function emitKnowledgeUploadEvent(name: string, detail: Record<string, unknown>): void {
@@ -313,7 +315,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               }}
               onClick={() => props.onChoose(row.path)}
             >
-              <span aria-hidden style={{ flex: "0 0 auto" }}>{row.isRoot ? "📂" : "📁"}</span>
+              <FolderIcon size={16} className="shrink-0" />
               <span
                 style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
@@ -349,7 +351,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              <span aria-hidden>📁</span>
+              <FolderIcon size={16} />
               <Input
                 className="wk-folder-picker__input"
                 value={props.newFolderName}
@@ -459,7 +461,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
     <ul className="wk-upload-confirm-files m-0 mb-3 max-h-56 list-none overflow-auto p-0">
       {props.urls.map((url, index) => (
         <li key={`url-${url}-${index}`} className="mb-[2px] flex items-center gap-3 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] hover:bg-[rgba(16,24,40,0.04)]">
-          <span aria-hidden className="[overflow-wrap:anywhere]" style={{ flex: "0 0 auto" }}>🔗</span>
+          <LinkIcon size={16} className="shrink-0" />
           <span title={url}>{url}</span>
           <span className="wk-muted text-muted">{labels.urlItemLabel}</span>
           <Button
@@ -682,7 +684,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
               onClick={() => handleAction(item.key)}
               style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", border: "none", borderRadius: "6px", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "0.9rem" }}
             >
-              {item.key === "file" ? <FileIcon size={16} /> : item.key === "folder" ? <FolderIcon size={16} /> : <span aria-hidden className="text-[13px]">{item.key === "url" ? "↗" : "✎"}</span>}
+              {item.key === "file" ? <FileIcon size={16} /> : item.key === "folder" ? <FolderIcon size={16} /> : item.key === "url" ? <LinkIcon size={16} /> : <EditIcon size={16} />}
               {item.label}
             </button>
           ))}
@@ -2052,7 +2054,7 @@ export function KnowledgeDocumentsPage({
     setFolderState({ status: "loading" });
     void client.knowledgeBases.documents.folders(knowledgeBaseId)
       .then((tree) => { if (active) setFolderState({ status: "success", tree }); })
-      .catch((error: unknown) => { if (active) setFolderState({ status: "error", message: errorMessage(error) }); });
+      .catch((error: unknown) => { if (active) setFolderState({ status: "error", message: errorMessage(error, t) }); });
     return () => { active = false; };
   }, [client, knowledgeBaseId, reloadToken]);
 
@@ -2386,7 +2388,7 @@ export function KnowledgeDocumentsPage({
         setReloadToken((value) => value + 1);
         emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
       } catch (error) {
-        setUploadError(errorMessage(error));
+        setUploadError(errorMessage(error, t));
       } finally { setUploading(false); }
       return;
     }
@@ -2417,7 +2419,7 @@ export function KnowledgeDocumentsPage({
           emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
         } catch (error) {
           remaining.push(stagedUrl);
-          if (!failed) setUploadError(errorMessage(error));
+          if (!failed) setUploadError(errorMessage(error, t));
           failed = true;
         }
       }
@@ -2511,7 +2513,7 @@ export function KnowledgeDocumentsPage({
       resetDestinationPicker();
       setChunkingMoreOpen(false);
     } catch (error) {
-      setUploadError(errorMessage(error));
+      setUploadError(errorMessage(error, t));
     } finally {
       if (uploadPipelineController.current === controller)
         uploadPipelineController.current = null;
@@ -2545,7 +2547,7 @@ export function KnowledgeDocumentsPage({
       setSelected(new Set());
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2571,7 +2573,7 @@ export function KnowledgeDocumentsPage({
       setSelected(new Set());
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2587,7 +2589,7 @@ export function KnowledgeDocumentsPage({
       );
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2625,7 +2627,7 @@ export function KnowledgeDocumentsPage({
       seedConfirmFromKb();
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2635,7 +2637,7 @@ export function KnowledgeDocumentsPage({
       await client.knowledgeBases.documents.cancelParse(id);
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2654,7 +2656,7 @@ export function KnowledgeDocumentsPage({
       setMoveTarget("");
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     }
   }
 
@@ -2680,7 +2682,7 @@ export function KnowledgeDocumentsPage({
       // reloadToken drives both the document list and the tag list effects.
       setReloadToken((value) => value + 1);
     } catch (error) {
-      setMutationError(errorMessage(error));
+      setMutationError(errorMessage(error, t));
     } finally {
       setTagDialogSaving(false);
     }
@@ -2882,7 +2884,7 @@ export function KnowledgeDocumentsPage({
         >
           {dragActive && canContribute ? (
             <p className="wk-dropzone-hint m-0 mb-2 text-[.85rem] text-[var(--wk-muted,#667085)]" role="status">
-              Drop files to stage them for upload
+              {t("knowledgeBase.emptyKnowledgeDragDrop")}
             </p>
           ) : null}
           {uploading && canContribute ? (
