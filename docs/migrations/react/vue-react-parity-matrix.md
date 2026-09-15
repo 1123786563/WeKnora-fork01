@@ -1,5 +1,7 @@
 # Vue → React canonical page/state inventory
 
+Latest addendum (2026-09-15 R319): the expanded platform navigation item geometry now matches Vue's 38px row, 14px left inset, 4px radius, and 600-weight labels; computed-style audit plus focused Shell 30/30, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r319-shell-nav-geometry.md`. This remains review evidence pending an authenticated post-edit screenshot and responsive/locale/theme/native coverage.
+
 Baseline Vue: `frontend/` on branch `codex/react-multiclient`; migration inventory source commit `5cf093706ebecdfe8bc4eca80886e80c01805289`; current task base `9b79558b6229d79d0ceebe22e1de4a439982c615`.
 React targets: `apps/web`, `apps/desktop`, `apps/mobile`, `apps/embed`, shared `packages/*`.
 Status values: `pending` / `implementing` / `review` / `accepted` / `blocked`. Existing accepted rows are preserved; this pass does not bulk-mark rows accepted.
