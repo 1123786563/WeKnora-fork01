@@ -277,8 +277,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       </div>
                     </div>
                   ) : null}
-                  {selectedKey === 'tenant' && role === 'owner' ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
                   {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</></Suspense>)}
+                  {selectedKey === 'tenant' && role === 'owner' && !deniedPanel && !error && !loading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
                 </div>}
               </div>
             </section>

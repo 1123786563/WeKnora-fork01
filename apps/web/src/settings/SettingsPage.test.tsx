@@ -137,6 +137,10 @@ test('tenant section shows the Vue info rows instead of the English form', async
   assert.ok(text.includes('10000'), 'the tenant id renders');
   assert.equal(text.includes('Save tenant information'), false, 'no English form copy');
   assert.equal(text.includes('Name'), false, 'no English field labels');
+  const tenantInfo = container.querySelector('[data-testid="tenant-info-section"]');
+  const deleteZone = container.querySelector('[data-testid="tenant-delete-zone"]');
+  assert.ok(tenantInfo && deleteZone, 'tenant info and owner danger zone render');
+  assert.equal(Boolean(tenantInfo.compareDocumentPosition(deleteZone) & 4), true, 'danger zone follows tenant information like Vue');
 });
 
 test('userprofile section shows the Vue rows and localized change-password copy', async () => {
