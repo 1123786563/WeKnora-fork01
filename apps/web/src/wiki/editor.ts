@@ -4,6 +4,10 @@ type WikiWriteApi = { update: (knowledgeBaseId: string, slug: string, input: Wik
 export type WikiSaveCopy = { titleRequired: string; contentRequired: string; conflict: string; saveFailed: string };
 export type WikiSaveState = { status: 'saved'; page: WikiPage } | { status: 'conflict' | 'error'; message: string };
 
+export function applyWikiSearch(draft: string): { draft: string; keyword: string } {
+  return { draft, keyword: draft.trim() };
+}
+
 const defaultCopy: WikiSaveCopy = {
   titleRequired: 'Wiki title is required',
   contentRequired: 'Wiki content is required',

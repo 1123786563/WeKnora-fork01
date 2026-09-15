@@ -94,6 +94,8 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     poweroff: <><path d="M12 3v8" /><path d="M6.3 6.5a8 8 0 1 0 11.4 0" /></>,
     delete: <><path d="M4 7h16" /><path d="M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2" /><path d="M6.5 7 7.5 20h9L17.5 7" /></>,
     close: <path d="M6 6l12 12M18 6 6 18" />,
+    'chevron-right': <path d="m9 6 6 6-6 6" />,
+    'chevron-down': <path d="m6 9 6 6 6-6" />,
     'lock-on': <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
     browse: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></>,
     'edit-1': <path d="M14.5 5.5 18.5 9.5 9 19H5v-4l9.5-9.5Z" />,
@@ -223,7 +225,9 @@ function AgentSectionHeader({ section, t, viewer, collapsed, onToggle }: {
       {subIcon ? <span className="-ml-1 inline-flex opacity-75"><Icon name={subIcon} size={12} /></span> : null}
       <span>{t(agentSectionLabelKey(section.key, viewer))}</span>
       <span className="wk-agent-section-count">{section.count}</span>
-      <span className="ml-1 opacity-70" aria-hidden="true">{collapsed ? '›' : '⌄'}</span>
+      <span className="ml-1 inline-flex opacity-70" data-agent-section-toggle={section.key} aria-hidden="true">
+        <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} />
+      </span>
     </button>
   );
 }

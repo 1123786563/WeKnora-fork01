@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
 import { Select } from '@weknora/ui';
@@ -89,6 +89,13 @@ export function GeneralPreferencesPanel() {
   const [monoFont, setMonoFont] = useState<string>(() => window.localStorage.getItem('font_mono') ?? 'system');
   const platform = useMemo(detectPlatform, []);
   const t = (key: string) => formatMessage(locale, key);
+
+  // Vue useFont() applies persisted font preferences during initialization;
+  // mirror that behavior when this panel is mounted so a reload does not
+  // silently revert the application chrome until the user changes a control.
+  useEffect(() => {
+    applyFontCssVariables(sansFont, monoFont, fontSize);
+  }, []);
 
   function handleLanguageChange(next: string) {
     if (!isLocale(next)) return;
@@ -188,7 +195,7 @@ export function GeneralPreferencesPanel() {
             {/* Vue GeneralSettings.vue font preview box (lines 351-375): bg
                 --td-bg-color-container #fff, border --td-component-stroke
                 #e7e7e7, radius --td-radius-medium 6px. */}
-            <div className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-[#e7e7e7] bg-white px-[12px] py-[8px] text-[14px] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
+            <div data-testid="font-preview-sans" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
               {t('font.sansPreview')}
             </div>
           </div>
@@ -209,7 +216,7 @@ export function GeneralPreferencesPanel() {
                 <option key={key} value={key}>{fontLabel(locale, 'mono', key)}</option>
               ))}
             </Select>
-            <div className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-[#e7e7e7] bg-white px-[12px] py-[8px] text-[14px] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
+            <div data-testid="font-preview-mono" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
               {t('font.monoPreview')}
             </div>
           </div>

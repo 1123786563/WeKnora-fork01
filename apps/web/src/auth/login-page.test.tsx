@@ -129,3 +129,35 @@ test('register heading and return action keep the Vue visual contract', async ()
   assert.match(back?.className ?? '', /font-medium/);
   assert.match(back?.className ?? '', /hover:underline/);
 });
+
+test('carousel keeps all Vue slides mounted for a fade transition', async () => {
+  await mountLogin(fakeClient());
+  const slides = [...document.querySelectorAll('img[alt]')].filter((node) =>
+    node.closest('.rounded-2xl') && node.closest('.rounded-2xl')?.querySelector('button[aria-label]'),
+  );
+  assert.equal(slides.length, 4, 'expected all carousel slides to remain mounted');
+  const slide = slides[0]?.parentElement;
+  assert.match(slide?.className ?? '', /col-start-1/);
+  assert.match(slide?.className ?? '', /row-start-1/);
+  assert.match(slide?.className ?? '', /transition-opacity/);
+  assert.match(slide?.className ?? '', /duration-\[800ms\]/);
+
+  const next = document.querySelector('button[aria-label="混合检索策略"]') as HTMLButtonElement | null;
+  assert.ok(next, 'expected a carousel pagination control');
+  await act(async () => { next?.click(); });
+  assert.match(slides[1]?.parentElement?.className ?? '', /opacity-100/);
+  assert.match(slides[0]?.parentElement?.className ?? '', /opacity-0/);
+});
+
+test('language menu options are keyboard-operable and close after selection', async () => {
+  await mountLogin(fakeClient());
+  const trigger = document.querySelector('button[title="简体中文"]') as HTMLButtonElement | null;
+  assert.ok(trigger, 'expected the language menu trigger');
+  await act(async () => { trigger?.click(); });
+  const english = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('English')) as HTMLButtonElement | undefined;
+  assert.ok(english, 'expected semantic language menu options');
+  assert.equal(english?.tagName, 'BUTTON');
+  await act(async () => { english?.click(); });
+  assert.equal(document.querySelector('[role="menuitem"]'), null, 'menu should close after selection');
+  assert.equal(document.querySelector('.language-switch > button')?.textContent?.includes('EN'), true);
+});

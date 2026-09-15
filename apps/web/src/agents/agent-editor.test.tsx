@@ -201,6 +201,13 @@ test('create mode renders the grouped section rail and the create footer button'
   assert.match($('[data-editor-section="basic"]', root)!.textContent!, /快速问答/); // agent.type.normal (Vue:108)
 });
 
+test('editor close control uses the Vue close accessible name', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const closeButton = $('button[aria-label="关闭"]', root);
+  assert.ok(closeButton, 'the top-right close control should announce close, not cancel');
+});
+
 // --- create mode: validation blocks submit with per-field errors ----------------------
 
 test('empty submit shows per-field required errors, jumps sections and fires no request', async () => {

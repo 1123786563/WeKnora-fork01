@@ -183,6 +183,16 @@ test('all view renders grouped sections with counts and one card per agent', () 
   assert.match(html, /共享助手/);
 });
 
+test('section collapse control uses the Vue chevron icon shape', () => {
+  const sections = sectionize(fixtureRows(), 'user-1');
+  const html = renderToStaticMarkup(React.createElement(AgentsPageView, {
+    ...baseViewProps,
+    sections,
+  }));
+  assert.match(html, /data-agent-section-toggle="builtin"[^>]*>.*<svg/s);
+  assert.doesNotMatch(html, /data-agent-section-toggle="builtin"[^>]*>›</);
+});
+
 test('builtin cards stay inside the builtin section with mode gradients', () => {
   const rows = fixtureRows();
   const sections = sectionize(rows, 'user-1');

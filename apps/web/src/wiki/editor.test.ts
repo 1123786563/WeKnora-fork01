@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { saveWikiPage, wikiSaveState } from './editor.ts';
+import { applyWikiSearch, saveWikiPage, wikiSaveState } from './editor.ts';
+
+test('only applies the Wiki search query on submit and trims empty clears', () => {
+  assert.deepEqual(applyWikiSearch('  architecture  '), { draft: '  architecture  ', keyword: 'architecture' });
+  assert.deepEqual(applyWikiSearch('   '), { draft: '   ', keyword: '' });
+});
 
 test('preserves the server version on Wiki saves and reports conflicts separately', async () => {
   let captured: unknown;

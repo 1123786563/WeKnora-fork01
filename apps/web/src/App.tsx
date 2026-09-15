@@ -291,8 +291,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const sections = useMemo(() => {
     if (pageState.status !== 'success' || isOrgScope(space)) return [];
     // Vue tenantSectionLabelKey: contributor/viewer read「本空间 · 仅查看」.
-    return groupKnowledgeBaseSections(scopedCards, viewer.userId || undefined, { tenantReadonly: !viewer.isAdmin });
-  }, [pageState, scopedCards, space, viewer.userId, viewer.isAdmin]);
+    return groupKnowledgeBaseSections(filtered.items, viewer.userId || undefined, { tenantReadonly: !viewer.isAdmin });
+  }, [filtered.items, pageState, space, viewer.userId, viewer.isAdmin]);
 
   const rows = useMemo<KbListRow[]>(() => {
     if (sections.length === 0) return filtered.items.map((card) => ({ kind: 'card' as const, card }));
@@ -867,7 +867,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       {menuFor === card.id ? (
                         <div className="kb-list-more-menu absolute right-1.5 top-8 z-30 flex min-w-[132px] flex-col rounded-lg border border-[#e3e7ee] bg-white p-1.5 shadow-[0_8px_24px_rgba(23,35,61,0.12)]" role="menu" onClick={(event) => event.stopPropagation()}>
                           <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void togglePin(kb); }}>
-                            <KbIcon name="pin" size={14} />{card.is_pinned ? t('knowledgeList.pin.unpin') : t('knowledgeList.pin.pin')}
+                            <KbIcon name={card.is_pinned ? 'pin-filled' : 'pin'} size={14} />{card.is_pinned ? t('knowledgeList.pin.unpin') : t('knowledgeList.pin.pin')}
                           </button>
                           {duplicable ? (
                             <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void duplicate(kb); }}>

@@ -1,5 +1,23 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+105 — 并行页面 parity 批次
+
+- 代理分工完成 Login、Knowledge Base list、Agents、Organizations、Wiki、FAQ、General settings 的最小差异修复；Integrations/Embed 完成专项审计但无代码差异。
+- 受影响专项测试与最终 Web 全量测试均通过；最终 `925/925`、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n018-parallel-pages.md`。
+- 本批次仍仅具 Vue 源码/静态对照和 React 单测/DOM 证据；认证浏览器截图/computed style、真实后端、Wails/native、移动端及生产验收未完成，不能将这些页面标记为最终通过。
+
+## 2026-09-15 Round N+104 — N016 MCP 数字输入 chrome
+
+- 对照 Vue number-input，React MCP 表单在作用域内移除 Firefox/WebKit 数字微调器，并将单位后缀设为 Vue 派生的弱化色；未新增全局 input 选择器。
+- MCP 专项 15/15、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-number-spinner.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
+## 2026-09-15 Round N+103 — N016 MCP 高级数字输入行为
+
+- 对照 Vue `onAdvancedNumberBlur`，React timeout/retry 字段允许暂态空值，blur 时按默认值与 min/max 归一化，payload 再保留最终数值保护；单位后缀和 API 映射不变。
+- MCP 专项 15/15、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-advanced-number-behavior.md`。
+- N016 仍需认证浏览器键盘/blur capture、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+102 — N016 MCP 表单控件 chrome
 
 - 对照 Vue TDesign input/select 基线，将 React MCP 表单控件限定为 32px 高、4px 圆角、9px/7px 内边距及匹配边框背景，避免 shadcn 默认几何漂移。

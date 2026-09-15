@@ -287,13 +287,13 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           <span className="link-text">{currentLang.shortLabel}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
         </button>
-        {showLanguageMenu ? <div className="absolute right-0 top-[calc(100%+8px)] z-[1000] min-w-[160px] overflow-hidden rounded-lg border border-[#e7e7e7] bg-[rgba(255,255,255,0.97)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+        {showLanguageMenu ? <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-[1000] min-w-[160px] overflow-hidden rounded-lg border border-[#e7e7e7] bg-[rgba(255,255,255,0.97)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
           {LANGUAGE_OPTIONS.map((option) => (
-            <div key={option.value} className={`flex cursor-pointer items-center gap-2.5 px-[14px] py-2.5 text-[13px] text-[#1a1a1a] hover:bg-[#f3f3f3] ${option.value === locale ? 'bg-[#e3f9e9] text-[#04a04c]' : ''}`} onClick={() => selectLanguage(option.value)}>
+            <button key={option.value} type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-[14px] py-2.5 text-left text-[13px] text-[#1a1a1a] hover:bg-[#f3f3f3] ${option.value === locale ? 'bg-[#e3f9e9] text-[#04a04c]' : ''}`} onClick={() => selectLanguage(option.value)}>
               <span className="shrink-0 text-base">{option.flag}</span>
               <span className="flex-1">{option.label}</span>
               {option.value === locale ? <span className="shrink-0 text-sm font-bold text-[#07C05F]">✓</span> : null}
-            </div>
+            </button>
           ))}
         </div> : null}
       </div>
@@ -310,9 +310,9 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           <span className="inline-block rounded-[20px] bg-[rgba(255,255,255,0.2)] px-5 py-2 text-sm font-medium text-(--auth-text-anti)">{t('platform.hybridSearch')}</span>
         </div>
         <div className="mt-12 w-full">
-          <div className="relative w-full overflow-hidden rounded-2xl pb-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+          <div className="relative grid w-full overflow-hidden rounded-2xl pb-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
             {SLIDES.map((slide, index) => (
-              <div key={slide.titleKey} className={`items-center justify-center bg-white ${index === slideIndex ? 'flex opacity-100' : 'hidden'}`}>
+              <div key={slide.titleKey} className={`col-start-1 row-start-1 flex items-center justify-center bg-white opacity-0 transition-opacity duration-[800ms] ease-in-out ${index === slideIndex ? 'opacity-100' : ''}`}>
                 <img src={slide.image} alt={t(slide.titleKey)} className="block h-full w-full object-contain" />
               </div>
             ))}

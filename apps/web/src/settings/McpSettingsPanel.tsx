@@ -166,9 +166,9 @@ type Draft = {
   apiKey: string;
   oauthScopes: string;
   headers: Array<{ key: string; value: string }>;
-  timeout: number;
-  retryCount: number;
-  retryDelay: number;
+  timeout: number | "";
+  retryCount: number | "";
+  retryDelay: number | "";
   codeImport: string;
   codeImportError: string;
   authConfig: Record<string, unknown>;
@@ -628,14 +628,18 @@ export function buildMcpConnectionPayload(
     enabled: draft.enabled,
     transport_type: draft.transportType,
     advanced_config: {
-      timeout: draft.timeout,
-      retry_count: draft.retryCount,
-      retry_delay: draft.retryDelay,
+      timeout: normalizeMcpAdvancedNumber(draft.timeout, 30, 1, 300),
+      retry_count: normalizeMcpAdvancedNumber(draft.retryCount, 3, 0, 10),
+      retry_delay: normalizeMcpAdvancedNumber(draft.retryDelay, 1, 0, 60),
     },
     url: draft.url.trim() || undefined,
     headers,
     auth_config: auth,
   };
+}
+
+export function normalizeMcpAdvancedNumber(value: number | "", fallback: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, typeof value === "number" && Number.isFinite(value) ? value : fallback));
 }
 
 export function McpSettingsPanel({ client, role, initialServices }: Props) {
@@ -1205,17 +1209,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           min={1}
                           max={300}
                           value={draft.timeout}
-                          onChange={(event) =>
-                            setField(
-                              "timeout",
-                              Math.min(
-                                300,
-                                Math.max(1, Number(event.target.value) || 30),
-                              ),
-                            )
-                          }
+                          onChange={(event) => setField("timeout", event.target.value === "" ? "" : Number(event.target.value))}
+                          onBlur={() => setField("timeout", normalizeMcpAdvancedNumber(draft.timeout, 30, 1, 300))}
                         />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitSecond")}</span>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
                       </div>
                     </label>
                     <label>
@@ -1227,17 +1224,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           min={0}
                           max={10}
                           value={draft.retryCount}
-                          onChange={(event) =>
-                            setField(
-                              "retryCount",
-                              Math.min(
-                                10,
-                                Math.max(0, Number(event.target.value) || 0),
-                              ),
-                            )
-                          }
+                          onChange={(event) => setField("retryCount", event.target.value === "" ? "" : Number(event.target.value))}
+                          onBlur={() => setField("retryCount", normalizeMcpAdvancedNumber(draft.retryCount, 3, 0, 10))}
                         />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitTimes")}</span>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitTimes")}</span>
                       </div>
                     </label>
                     <label>
@@ -1249,17 +1239,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           min={0}
                           max={60}
                           value={draft.retryDelay}
-                          onChange={(event) =>
-                            setField(
-                              "retryDelay",
-                              Math.min(
-                                60,
-                                Math.max(0, Number(event.target.value) || 0),
-                              ),
-                            )
-                          }
+                          onChange={(event) => setField("retryDelay", event.target.value === "" ? "" : Number(event.target.value))}
+                          onBlur={() => setField("retryDelay", normalizeMcpAdvancedNumber(draft.retryDelay, 1, 0, 60))}
                         />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitSecond")}</span>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
                       </div>
                     </label>
                   </fieldset>

@@ -18,7 +18,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId } = await import('./FAQPage.tsx');
+const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount } = await import('./FAQPage.tsx');
 
 const t = createFaqTranslator('zh-CN');
 const kbId = '8b26f48e-7196-405f-9803-ccf93be3cd37';
@@ -139,6 +139,15 @@ test('create and export icon buttons carry their Vue dropdown actions', () => {
 test('contributor tag filter exposes the Vue tag-management entry point', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ onOpenTagManage: noop })));
   assert.ok(html.includes('管理标签'), 'tag management link');
+});
+
+test('tag filter searches labels like the Vue tag-search input', () => {
+  const tags = [
+    { id: '1', seq_id: 1, name: '产品手册', chunk_count: 2 },
+    { id: '2', seq_id: 2, name: '客服', chunk_count: 1 },
+  ] as never;
+  assert.deepEqual(filterFaqTags(tags, ' 手册 '), [tags[0]], 'trimmed query filters by label');
+  assert.deepEqual(filterFaqTags(tags, ''), tags, 'blank query keeps all tags');
 });
 
 test('import dialog carries the Vue mode radio group instead of the header select', () => {
@@ -382,6 +391,14 @@ test('entries render as Vue faq-cards with a question header and more menu', () 
   assert.ok(html.includes('aria-label=\"操作\"'), 'more trigger labelled from the shared catalog');
   assert.ok(html.includes('编辑'), 'more menu carries the edit item');
   assert.ok(html.includes('删除'), 'more menu carries the delete item');
+});
+
+test('FAQ cards use the Vue responsive masonry breakpoints', () => {
+  assert.equal(faqMasonryColumnCount(639), 1);
+  assert.equal(faqMasonryColumnCount(640), 3);
+  assert.equal(faqMasonryColumnCount(1024), 5);
+  assert.equal(faqMasonryColumnCount(1920), 10);
+  assert.equal(faqMasonryColumnCount(2560), 12);
 });
 
 test('cards expose checkbox multi-select wired to the selection set', () => {

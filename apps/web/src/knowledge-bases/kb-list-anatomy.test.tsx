@@ -53,6 +53,7 @@ interface OwnedRow {
   creator_id?: string;
   summary_model_id?: string;
   embedding_model_id?: string;
+  is_pinned?: boolean;
 }
 
 function makeClient(options: {
@@ -147,6 +148,16 @@ test('(a) section headers carry label/count and collapse on click', async () => 
   assert.ok(after < before, 'clicking the section header collapses its cards');
 });
 
+test('(a) q deep-link filters the Vue section rows as well as the cards', async () => {
+  const container = await mountPage(makeClient(), '?q=faq');
+  const cards = Array.from(container.querySelectorAll('.kb-list-card'));
+  assert.equal(cards.length, 1, 'query should only render matching cards');
+  assert.equal(cards[0]?.getAttribute('data-kb-id'), 'kb-faq');
+  const mine = container.querySelector('.kb-list-section-header');
+  assert.ok(mine, 'filtered results keep the section header');
+  assert.equal(mine?.querySelector('.kb-list-section-count')?.textContent, '1', 'section count follows filtered results');
+});
+
 test('(c) uninitialized KBs render the amber warning banner with icon + text', async () => {
   const container = await mountPage(makeClient());
   const banner = container.querySelector('.kb-list-warning');
@@ -191,6 +202,19 @@ test('(a) the more menu exposes exactly the Vue card actions', async () => {
   }
   assert.equal(text.includes('编辑'), false, 'Vue does not expose a separate edit menu item');
   assert.equal(text.includes('分享'), false, 'Vue share dialog is not a card-menu action');
+});
+
+test('(a) pinned cards use the filled pin icon in the more menu', async () => {
+  const container = await mountPage(makeClient({
+    owned: [{ id: 'kb-pinned', name: 'Pinned KB', type: 'document', is_pinned: true, creator_id: 'u-1' }],
+  }));
+  const more = container.querySelector('[data-kb-id="kb-pinned"] .kb-list-card-more');
+  assert.ok(more);
+  await act(async () => {
+    more.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  });
+  await act(async () => {});
+  assert.ok(container.querySelector('.kb-list-more-menu svg[data-kb-icon="pin-filled"]'), 'pinned action uses pin-filled');
 });
 
 test('favorites star still persists to localStorage (existing behavior kept)', async () => {

@@ -80,3 +80,26 @@ test('general preferences keeps four labeled native selects (language/theme/mono
     assert.ok(select.getAttribute('aria-label'), 'select must keep an accessible name');
   }
 });
+
+test('applies persisted font preferences when the panel mounts', async () => {
+  dom.window.localStorage.setItem('font_sans', 'georgia');
+  dom.window.localStorage.setItem('font_mono', 'monaco');
+  dom.window.localStorage.setItem('weknora-font-size', 'large');
+
+  await mountPanel();
+
+  assert.match(document.documentElement.style.getPropertyValue('--wk-font-sans'), /Georgia/);
+  assert.match(document.documentElement.style.getPropertyValue('--wk-font-mono'), /Monaco/);
+  assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), '1.125');
+});
+
+test('font previews use semantic surface and neutral border tokens', async () => {
+  const container = await mountPanel();
+  const previews = Array.from(container.querySelectorAll('[data-testid^="font-preview-"]'));
+
+  assert.equal(previews.length, 2);
+  for (const preview of previews) {
+    assert.ok(preview.classList.contains('bg-surface'));
+    assert.ok(preview.classList.contains('border-line-neutral'));
+  }
+});

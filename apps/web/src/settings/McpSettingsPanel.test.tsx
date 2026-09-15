@@ -18,7 +18,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload, clampMcpDrawerWidth } = await import('./McpSettingsPanel.tsx');
+const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload, clampMcpDrawerWidth, normalizeMcpAdvancedNumber } = await import('./McpSettingsPanel.tsx');
 const { formatMessage } = await import('@weknora/i18n');
 
 const client = {} as never;
@@ -28,6 +28,13 @@ test('MCP drawer width follows Vue min/max and viewport clamp rules', () => {
   assert.equal(clampMcpDrawerWidth(400, 1200), 560);
   assert.equal(clampMcpDrawerWidth(1000, 1200), 920);
   assert.equal(clampMcpDrawerWidth(680, 500), 500);
+});
+
+test('MCP advanced number fields keep transient empty input and normalize on blur/save', () => {
+  assert.equal(normalizeMcpAdvancedNumber('', 30, 1, 300), 30);
+  assert.equal(normalizeMcpAdvancedNumber(-4, 30, 1, 300), 1);
+  assert.equal(normalizeMcpAdvancedNumber(999, 3, 0, 10), 10);
+  assert.equal(normalizeMcpAdvancedNumber(0, 1, 0, 60), 0);
 });
 
 test('MCP settings keeps the Vue empty state for a viewer', () => {

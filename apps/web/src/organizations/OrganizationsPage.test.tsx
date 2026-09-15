@@ -231,6 +231,22 @@ test('create header button opens a modal and the create API is called on submit'
   assert.equal((calls.create[0] as { name: string }).name, '新空间');
 });
 
+test('create modal matches the Vue editor dimensions and keeps the primary action in its footer', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const root = await mountPage(client);
+  await click(buttonWithLabel(root, '创建共享空间'));
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected create modal');
+  assert.match(dialog.className, /h-\[80vh\]/, 'Vue editor uses an 80vh modal');
+  assert.match(dialog.className, /max-w-\[900px\]/, 'Vue editor caps the modal at 900px');
+  assert.match(dialog.className, /max-h-\[650px\]/, 'Vue editor caps the modal height at 650px');
+
+  const createButtons = textButtons(dialog, '创建共享空间');
+  assert.equal(createButtons.length, 1, 'expected one primary create action');
+  assert.match(createButtons[0]?.parentElement?.className ?? '', /border-t/, 'primary action belongs to the footer');
+});
+
 test('join modal previews an invite code and submits an approval-gated request', async () => {
   const { client, calls } = clientWith([ownerOrg]);
   const root = await mountPage(client);

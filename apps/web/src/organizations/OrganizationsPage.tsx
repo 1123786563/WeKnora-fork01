@@ -501,8 +501,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     void loadOrganizationDetail(org.id);
   }
 
-  async function submitCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitCreate(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!formName.trim()) return;
     setSaving(true);
     try {
@@ -801,7 +801,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       {/* Create / edit settings modal. */}
       {settingsOpen ? (
         <div className={ORG_MODAL_OVERLAY + ' z-[2100]'} onClick={closeSettings}>
-          <div className="relative box-border flex h-[85vh] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
+          <div className="relative box-border flex h-[80vh] max-h-[650px] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
             <div className="flex min-h-0 flex-1">
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
@@ -824,7 +824,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               <div className="flex min-w-0 flex-1 flex-col">
                 <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px]' : 'px-[24px] py-[20px]')}>
                   {settingsMode === 'create' && settingsSection === 'basic' ? (
-                    <form onSubmit={submitCreate}>
+                    <form id="organization-create-form" onSubmit={submitCreate}>
                       <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.basicTitle')}</h2>
                       <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
@@ -835,7 +835,6 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
                         <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
                       </div>
-                      <button type="submit" className={ORG_BTN_PRIMARY + ' mt-4'} disabled={saving}>{t(locale, 'organization.createOrg')}</button>
                     </form>
                   ) : settingsMode === 'create' ? (
                     <section>
@@ -949,6 +948,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </div>
                 <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[16px]">
                   <button type="button" className={ORG_BTN_NEUTRAL} onClick={closeSettings}>{t(locale, 'common.cancel')}</button>
+                  {settingsMode === 'create' ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitCreate()}>{t(locale, 'organization.createOrg')}</button> : null}
                 </div>
               </div>
             </div>

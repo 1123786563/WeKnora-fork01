@@ -19,6 +19,7 @@ export type KbIconName =
   | 'chevron-down'
   | 'chevron-right'
   | 'pin'
+  | 'pin-filled'
   | 'user'
   | 'usergroup'
   | 'edit'
@@ -88,6 +89,12 @@ const ICONS: Record<KbIconName, ReactNode> = {
   pin: (
     <>
       <path d="M9 3.5h6l-.8 6.2 3.3 2.8v1.5H6.5V12.5l3.3-2.8L9 3.5z" />
+      <path d="M12 14v6.5" />
+    </>
+  ),
+  "pin-filled": (
+    <>
+      <path d="M9 3.5h6l-.8 6.2 3.3 2.8v1.5H6.5V12.5l3.3-2.8L9 3.5z" fill="currentColor" />
       <path d="M12 14v6.5" />
     </>
   ),
@@ -170,7 +177,7 @@ const ICONS: Record<KbIconName, ReactNode> = {
 
 export function KbIcon({ name, size = 16 }: { name: KbIconName; size?: number }): ReactNode {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
+    <svg data-kb-icon={name} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
       strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {ICONS[name]}
     </svg>

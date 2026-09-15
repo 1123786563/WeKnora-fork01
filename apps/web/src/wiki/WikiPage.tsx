@@ -8,7 +8,7 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
-import { saveWikiPage, type WikiSaveState } from "./editor.ts";
+import { applyWikiSearch, saveWikiPage, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
@@ -29,6 +29,7 @@ export function WikiPage({
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
   const [keyword, setKeyword] = useState("");
   const [pages, setPages] = useState<WikiPageModel[]>([]);
   const [pageTotal, setPageTotal] = useState(0);
@@ -173,6 +174,13 @@ export function WikiPage({
     setFolderId("");
     setFolderPath("");
     setFolderTrail([]);
+    setPage(1);
+  }
+
+  function submitSearch() {
+    const next = applyWikiSearch(searchDraft);
+    setSearchDraft(next.draft);
+    setKeyword(next.keyword);
     setPage(1);
   }
 
@@ -413,17 +421,17 @@ export function WikiPage({
         <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5 max-[720px]:grid-cols-1">
           <aside className="wk-wiki-sidebar flex min-w-0 flex-col border-r border-[#e7e7e7]">
             <div className="wk-wiki-sidebar-header pr-2.5 pb-2">
-              <label className="wk-wiki-search flex items-center gap-[0.45rem] rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search">
+              <form className="wk-wiki-search flex items-center gap-[0.45rem] rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
                 <span className="wk-sr-only absolute h-px w-px m-[-1px] overflow-hidden [clip:rect(0_0_0_0)]">
                   {t("wikiBrowser.page.search")}
                 </span>
                 <span aria-hidden="true">⌕</span>
                 <Input
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
                   placeholder={t("wikiBrowser.page.searchPlaceholder")}
                 />
-              </label>
+              </form>
             </div>
             <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
               {directory}
@@ -454,8 +462,8 @@ export function WikiPage({
                   <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">
                     ▧
                   </span>
-                  <strong>{t("wikiBrowser.emptyTitle")}</strong>
-                  <span>{t("wikiBrowser.emptyDesc")}</span>
+                  <strong>{keyword ? t("wikiBrowser.searchNoResults") : t("wikiBrowser.emptyTitle")}</strong>
+                  {!keyword ? <span>{t("wikiBrowser.emptyDesc")}</span> : null}
                 </div>
               ) : null}
             </nav>

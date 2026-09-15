@@ -1067,7 +1067,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] backdrop-blur-[4px]" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="relative flex h-[85vh] max-h-[780px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-xl bg-[var(--td-bg-color-container,#fff)] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))] shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal">
-        <button type="button" className="absolute top-3 right-3 z-10 h-8 w-8 cursor-pointer rounded-md border-none bg-transparent text-[18px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" aria-label={t('common.cancel')} onClick={onClose}>×</button>
+        <button type="button" className="absolute top-3 right-3 z-10 h-8 w-8 cursor-pointer rounded-md border-none bg-transparent text-[18px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" aria-label={t('common.close')} onClick={onClose}>×</button>
         {initializing ? <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--td-bg-color-container,#fff)]" role="status">{t('common.loading')}</div> : null}
         <div className="flex h-full w-full overflow-hidden">
           <aside className="flex w-[208px] shrink-0 flex-col overflow-hidden border-r border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-settings-modal,#fafafa)]">

@@ -27,6 +27,24 @@ export function faqHasMore(loaded: number, total: number): boolean {
   return Number.isFinite(total) && total > 0 && loaded < Math.floor(total);
 }
 
+/** Vue tagSearchQuery filters the loaded sidebar tags by name. */
+export function filterFaqTags<T extends { name: string }>(tags: readonly T[], query: string): T[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  return normalized ? tags.filter((tag) => tag.name.toLocaleLowerCase().includes(normalized)) : [...tags];
+}
+
+/** Vue arrangeCards breakpoints (FAQEntryManager.vue:2721-2729). */
+export function faqMasonryColumnCount(containerWidth: number): number {
+  if (containerWidth >= 2560) return 12;
+  if (containerWidth >= 1920) return 10;
+  if (containerWidth >= 1536) return 8;
+  if (containerWidth >= 1280) return 6;
+  if (containerWidth >= 1024) return 5;
+  if (containerWidth >= 768) return 4;
+  if (containerWidth >= 640) return 3;
+  return 1;
+}
+
 /** Optimistic per-entry status flip — pure, so a failed update can roll back. */
 export function setEntryStatus<T extends { id: number; is_enabled: boolean }>(entries: readonly T[], id: number, value: boolean): T[] {
   let changed = false;
@@ -682,6 +700,8 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   } = props;
   const t = tr ?? createTranslator('zh-CN');
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [masonryRevision, setMasonryRevision] = useState(0);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<FAQSectionCollapseState>({});
@@ -696,6 +716,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   };
   const toggleSearchResult = (id: number) => setExpandedResults((current) => toggleSearchResultId(current, id));
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const cardListRef = useRef<HTMLDivElement | null>(null);
   // Vue handleScroll (FAQEntryManager.vue:1624): within 200px of the bottom,
   // ask the container for the next page of entries. The inner container only
   // scrolls once the shell bounds its height, so mirror the handler onto the
@@ -718,6 +739,54 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     window.addEventListener('scroll', handleWindowScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleWindowScroll);
   });
+
+  // Vue arrangeCards: masonry columns with the same responsive breakpoints,
+  // gap, and shortest-column placement as FAQEntryManager.vue.
+  useLayoutEffect(() => {
+    const list = cardListRef.current;
+    if (!list || entries.length === 0) return;
+    const cards = Array.from(list.querySelectorAll<HTMLElement>('.faq-card'));
+    const gap = 12;
+    const columnCount = faqMasonryColumnCount(list.offsetWidth);
+    const columnWidth = (list.offsetWidth - gap * (columnCount - 1)) / columnCount;
+    const requestFrame = (callback: FrameRequestCallback) => typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame(callback)
+      : window.setTimeout(() => callback(Date.now()), 0);
+    const cancelFrame = (id: number) => typeof window.cancelAnimationFrame === 'function'
+      ? window.cancelAnimationFrame(id)
+      : window.clearTimeout(id);
+    const frame = requestFrame(() => {
+      const heights = new Array<number>(columnCount).fill(0);
+      cards.forEach((card) => {
+        card.style.position = 'absolute';
+        card.style.width = `${columnWidth}px`;
+      });
+      const measureFrame = requestFrame(() => {
+        cards.forEach((card) => {
+          const column = heights.indexOf(Math.min(...heights));
+          card.style.top = `${heights[column]}px`;
+          card.style.left = `${column * (columnWidth + gap)}px`;
+          heights[column] += (card.offsetHeight || card.getBoundingClientRect().height) + gap;
+        });
+        list.style.position = 'relative';
+        list.style.height = `${Math.max(...heights)}px`;
+      });
+      return () => cancelFrame(measureFrame);
+    });
+    return () => cancelFrame(frame);
+  }, [entries.length, collapsedSections, masonryRevision]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const list = cardListRef.current;
+      if (!list || entries.length === 0) return;
+      list.style.height = '';
+      setMasonryRevision((revision) => revision + 1);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [entries.length]);
+
   // Vue fills a short page that cannot scroll yet (FAQEntryManager.vue:1640-1651).
   useEffect(() => {
     if (!hasMore || loadingMore) return;
@@ -733,6 +802,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     : activeTagIds.length === 1
       ? (tags.find((tag) => tag.id === activeTagIds[0])?.name ?? t('knowledgeBase.allTags'))
       : t('knowledgeBase.tagFilterMulti', { count: activeTagIds.length });
+  const visibleTags = filterFaqTags(tags, tagSearchQuery);
   // Vue addSimilar/addNegative/addAnswer (FAQEntryManager.vue:1714-1753) — the
   // view composes list mutations on top of the shared form patch channel.
   const addSimilar = () => {
@@ -812,14 +882,18 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     <span>{t('knowledgeBase.tagFilterTitle')}</span>
                     <span className="tag-filter-panel__count font-normal text-faint">({tags.length})</span>
                   </span>
+                  <label className="tag-search-bar relative block px-1.5">
+                    <SearchIcon size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                    <Input className="h-8 w-full pl-8 text-xs" value={tagSearchQuery} placeholder={t('knowledgeBase.tagSearchPlaceholder')} aria-label={t('knowledgeBase.tagSearchPlaceholder')} onChange={(event) => setTagSearchQuery(event.target.value)} />
+                  </label>
                   <span className="faq-tag-filter-chips flex max-h-[260px] flex-wrap gap-1.5 overflow-auto px-1 pt-0.5 pb-1.5">
-                    {tags.map((tag) => (
+                    {visibleTags.map((tag) => (
                       <button key={tag.id} type="button" className={'faq-tag-filter-chip inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-[3px] text-xs leading-[1.5] font-[inherit] hover:border-accent-deep ' + (activeTagIds.includes(tag.id) ? 'active border-accent-deep bg-[rgba(0,168,112,0.08)] text-accent-deep' : 'border-[#e3e8f0] bg-surface text-ink')} title={tag.name + ' (' + (tag.chunk_count || 0) + ')'} onClick={() => onToggleTag(tag.id)}>
                         <span className="tag-filter-chip__label">{tag.name}</span>
                         <span className="faq-tag-filter-chip__count text-faint">{tag.chunk_count || 0}</span>
                       </button>
                     ))}
-                    {tags.length === 0 ? <span className="tag-empty-state p-1.5 text-[13px] leading-[1.5] text-faint">{t('knowledgeBase.tagEmptyResult')}</span> : null}
+                    {visibleTags.length === 0 ? <span className="tag-empty-state p-1.5 text-[13px] leading-[1.5] text-faint">{t('knowledgeBase.tagEmptyResult')}</span> : null}
                   </span>
                   {canContribute ? <button type="button" className="tag-filter-panel__manage self-start cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-xs leading-[1.5] text-accent-deep font-[inherit] hover:underline" onClick={onOpenTagManage}>{t('knowledgeBase.tagManageLink')}</button> : null}
                 </span>
@@ -860,7 +934,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 {Array.from({ length: 6 }, (_, index) => <div key={index} className="faq-card-skeleton h-[120px] animate-[faq-shimmer_1.4s_ease_infinite] rounded-[10px] bg-[linear-gradient(100deg,#eef1f6_40%,#f7f9fc_50%,#eef1f6_60%)] bg-[length:200%_100%]" />)}
               </div>
             ) : entries.length > 0 ? (
-              <div className="faq-card-list flex min-w-0 flex-col gap-3">
+              <div ref={cardListRef} className="faq-card-list relative min-w-0">
                 {/* Vue faq-card-list (FAQEntryManager.vue:254-410): header question +
                     more menu, three collapsible sections, footer tag chip + switch. */}
                 {entries.map((entry) => {
