@@ -79,7 +79,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       const page = await client.identity.tenants.invitations.listMine();
       setInvitations(page.items.filter((item) => item.status === 'pending'));
     } catch (error) {
-      setInvitationError(error instanceof Error ? error.message : 'Unable to load invitations.');
+      setInvitationError(error instanceof Error ? error.message : msg(locale, 'auth.workspaceOnboarding.invitationsLoadFailed'));
     }
   }
 
@@ -95,7 +95,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         if (!scopeRuntime.requiresWorkspace()) window.location.assign('/platform/knowledge-bases');
       }
     } catch (error) {
-      setInvitationError(error instanceof Error ? error.message : 'Invitation action failed.');
+      setInvitationError(error instanceof Error ? error.message : msg(locale, 'auth.workspaceOnboarding.invitationsActionFailed'));
     }
   }
 
