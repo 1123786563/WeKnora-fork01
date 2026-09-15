@@ -554,3 +554,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R255 Web 回归（2026-09-15）：设置危险区与文档空状态工具栏两批改动叠加后，`pnpm test:web` 902/902 通过，0 失败、0 取消、0 跳过。证据：`evidence/vue-react-parity/2026-09-15-r255-web-regression.md`。
 - R256 Web 生产构建（2026-09-15）：空间危险区 Dialog 与文档空状态工具栏改动后，`pnpm build:web` 成功完成 TypeScript 与 Vite 打包；仅有既有大 chunk advisory。证据：`evidence/vue-react-parity/2026-09-15-r256-web-build.md`。
 - R257 设置标题容器宽度（2026-09-15）：将通用 settings section heading 内部容器设为全宽，React 标题宽度从文本宽度 176px 对齐到 Vue 内容列 760px；设置聚焦 16/16、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r257-settings-heading-width.md`。
+- R258 共享空间操作按钮几何对齐（2026-09-15）：按 Vue 实测将 React 组织页按钮常量统一为 3px 圆角、15px 横向内边距、0px 图标间隙，并移除主按钮透明边框；空状态创建按钮由 140px 对齐至 130px。浏览器几何一致，组织聚焦 14/14、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r258-organization-button-geometry.md`。
