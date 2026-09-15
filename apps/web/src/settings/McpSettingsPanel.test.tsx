@@ -232,6 +232,8 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.ok(sections.every((index) => index >= 0), 'all Vue sections render');
     assert.ok(sections[0] < sections[1] && sections[1] < sections[2] && sections[2] < sections[3], 'Vue section order preserved');
     assert.match(text, /关闭后该服务不会被调用/);
+    const unitText = Array.from(dialog?.querySelectorAll('span.pointer-events-none') ?? []).map((node) => node.textContent).join('');
+    assert.equal(unitText, '秒次秒', 'advanced inputs show Vue unit suffixes');
     const transportSelect = dialog?.querySelector('select') as HTMLSelectElement | null;
     assert.ok(transportSelect, 'transport select renders');
     assert.deepEqual(Array.from(transportSelect?.options ?? []).map((option) => option.value), ['sse', 'http-streamable']);

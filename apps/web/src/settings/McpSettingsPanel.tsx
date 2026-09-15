@@ -1111,57 +1111,69 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.timeoutSec")}
-                      <Input
-                        type="number"
-                        min={1}
-                        max={300}
-                        value={draft.timeout}
-                        onChange={(event) =>
-                          setField(
-                            "timeout",
-                            Math.min(
-                              300,
-                              Math.max(1, Number(event.target.value) || 30),
-                            ),
-                          )
-                        }
-                      />
+                      <div className="relative">
+                        <Input
+                          className="pr-9"
+                          type="number"
+                          min={1}
+                          max={300}
+                          value={draft.timeout}
+                          onChange={(event) =>
+                            setField(
+                              "timeout",
+                              Math.min(
+                                300,
+                                Math.max(1, Number(event.target.value) || 30),
+                              ),
+                            )
+                          }
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitSecond")}</span>
+                      </div>
                     </label>
                     <label>
                       {t("mcpServiceDialog.retryCount")}
-                          <Input
-                        type="number"
-                        min={0}
-                        max={10}
-                        value={draft.retryCount}
-                        onChange={(event) =>
-                          setField(
-                            "retryCount",
-                            Math.min(
-                              10,
-                              Math.max(0, Number(event.target.value) || 0),
-                            ),
-                          )
-                        }
-                          />
+                      <div className="relative">
+                        <Input
+                          className="pr-9"
+                          type="number"
+                          min={0}
+                          max={10}
+                          value={draft.retryCount}
+                          onChange={(event) =>
+                            setField(
+                              "retryCount",
+                              Math.min(
+                                10,
+                                Math.max(0, Number(event.target.value) || 0),
+                              ),
+                            )
+                          }
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitTimes")}</span>
+                      </div>
                     </label>
                     <label>
                       {t("mcpServiceDialog.retryDelaySec")}
-                          <Input
-                        type="number"
-                        min={0}
-                        max={60}
-                        value={draft.retryDelay}
-                        onChange={(event) =>
-                          setField(
-                            "retryDelay",
-                            Math.min(
-                              60,
-                              Math.max(0, Number(event.target.value) || 0),
-                            ),
-                          )
-                        }
-                          />
+                      <div className="relative">
+                        <Input
+                          className="pr-9"
+                          type="number"
+                          min={0}
+                          max={60}
+                          value={draft.retryDelay}
+                          onChange={(event) =>
+                            setField(
+                              "retryDelay",
+                              Math.min(
+                                60,
+                                Math.max(0, Number(event.target.value) || 0),
+                              ),
+                            )
+                          }
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#8a96a8]">{t("mcpServiceDialog.unitSecond")}</span>
+                      </div>
                     </label>
                   </fieldset>
                 </>
