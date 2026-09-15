@@ -999,7 +999,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             </div>
             <form
               ref={formRef}
-              className="wk-mcp-form wk-settings-editor my-4 grid gap-[.8rem] max-w-none! [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]"
+              className="wk-mcp-form wk-settings-editor my-4 grid gap-[.8rem] max-w-none! [&_input]:h-8 [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-[4px] [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[9px] [&_input]:py-[7px] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-[4px] [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[9px] [&_textarea]:py-[7px] [&_select]:h-8 [&_select]:w-full [&_select]:rounded-[4px] [&_select]:[font:inherit]"
               onSubmit={(event) => void save(event)}
             >
               {step === 0 ? (

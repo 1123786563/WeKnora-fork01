@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+102 — N016 MCP 表单控件 chrome
+
+- 对照 Vue TDesign input/select 基线，将 React MCP 表单控件限定为 32px 高、4px 圆角、9px/7px 内边距及匹配边框背景，避免 shadcn 默认几何漂移。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-input-chrome.md`。
+- N016 仍需认证浏览器 computed-style/截图、键盘/focus capture、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+101 — N016 MCP 必填字段标记
 
 - 对照 Vue `.required::before`，为 React MCP name、transport、service URL 和 usage instructions 补齐红色 `*` 与 4px 间距，保留原生 required 校验。
