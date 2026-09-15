@@ -13,6 +13,7 @@
 - React Web 与 Vue 同认证账号 `parity-test@local.dev`、zh-CN、知识库 `Parity KB Demo`、1355×720 Chrome 实时对照：普通卡片视图的 React 批量工具栏已隐藏，与 Vue 一致。
 - React AX 交互：打开文档操作菜单 → `批量管理` 后出现 `全选`、`本页已选 0 项`、批量动作和卡片复选框；点击 `取消选择` 后工具栏重新隐藏。
 - 文档 chrome 与标签界面专项测试：23/23 通过。
+- 最新 Web 全量回归：911/911 通过，失败/取消/跳过均为 0。
 - Web typecheck：通过。
 - `git diff --check`：通过。
 
