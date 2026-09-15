@@ -195,6 +195,25 @@ test('login inputs keep the Vue inner-control geometry and transparent treatment
   assert.match(email.className, /\bleading-6\b/);
   assert.equal(email.closest('.auth-input-shell')?.className.includes('h-10'), true);
   assert.equal(email.closest('.auth-input-shell')?.className.includes('px-3'), true);
+  assert.match(email.className, /\bauth-input\b/);
+});
+
+test('login computed-style contract resets the native input padding and border', async () => {
+  await mountLogin(fakeClient());
+  const email = document.querySelector('input[autocomplete="email"]') as HTMLInputElement;
+  assert.match(email.className, /\bp-0\b/);
+  assert.ok(email.className.includes('text-[rgba(0,0,0,0.9)]'));
+  assert.match(email.className, /\bauth-input\b/);
+});
+
+test('login heading and language control keep Vue computed typography', async () => {
+  await mountLogin(fakeClient());
+  const heading = document.querySelector('form[aria-label="Login form"]')?.parentElement?.querySelector('h2');
+  assert.match(heading?.className ?? '', /leading-\[normal\]/);
+  const language = document.querySelector('.language-switch > button');
+  assert.match(language?.className ?? '', /\[font-family:var\(--auth-font\)\]/);
+  assert.match(language?.className ?? '', /\bauth-language-control\b/);
+  assert.equal(language?.querySelector('svg')?.className.baseVal ?? language?.querySelector('svg')?.getAttribute('class'), 'ml-0.5 shrink-0');
 });
 
 test('login page loads registration and OIDC config once without owning auto-setup', async () => {

@@ -6,3 +6,13 @@
 
 /* Vue's t-input exposes a 24px inner input inside a 40px bordered shell. */
 .auth-input-shell { box-sizing: border-box; }
+
+/* Keep the project Input wrapper's native control identical to Vue's t-input__inner. */
+.auth-input-shell > input.auth-input {
+  box-sizing: border-box;
+  padding: 0;
+  border: 0 none;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.auth-language-control .link-text { line-height: 1; }
