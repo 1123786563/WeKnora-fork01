@@ -24,6 +24,18 @@ export function inviteNavigationAfterAuth(search: string, invited: boolean): str
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
 }
 
+export function shouldShowRegistration(registrationMode: string | undefined, hasValidInvite: boolean, explicitlyRequested = false): boolean {
+  if (!explicitlyRequested && !hasValidInvite) return false;
+  return registrationMode === undefined ? false : registrationMode !== 'invite_only' || hasValidInvite;
+}
+
+export function oidcErrorMessage(hash: string): string | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const reason = params.get('oidc_error');
+  if (!reason) return null;
+  return params.get('oidc_error_description') || reason;
+}
+
 export function decodeOIDCResult(encoded: string): Record<string, unknown> {
   const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
