@@ -2844,7 +2844,7 @@ export function KnowledgeDocumentsPage({
               <div className="doc-search-input relative flex min-w-0 w-full items-center [grid-area:search]">
                 <SearchIcon size={16} className="doc-search-icon pointer-events-none absolute left-[10px] text-[var(--wk-muted,#98a2b8)]" />
                 <Input
-                  className="doc-search-field w-full rounded-full border border-transparent bg-[rgba(0,0,0,0.04)] py-2 pl-8 pr-3 text-[13px] text-[var(--wk-text,#101828)] outline-none [transition:border-color_.15s_ease,background-color_.15s_ease] focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                  className="doc-search-field h-8 w-full rounded-full border border-transparent bg-[rgba(0,0,0,0.04)] py-2 pl-8 pr-3 text-[13px] text-[var(--wk-text,#101828)] outline-none [transition:border-color_.15s_ease,background-color_.15s_ease] focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={(event) => {

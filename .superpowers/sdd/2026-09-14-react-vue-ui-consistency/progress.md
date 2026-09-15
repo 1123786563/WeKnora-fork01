@@ -528,3 +528,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R232 文档表面层 Web 回归（2026-09-15）：移除 Card chrome 后 Web 898/898、文档 chrome 9/9、Web typecheck 通过。证据：`evidence/vue-react-parity/2026-09-15-r232-documents-regression.md`。
 - R233 文档标题行高度对齐（2026-09-15）：包屑标题行固定 Vue 对齐的 32px 最小行高，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r233-documents-title-row.md`。
 - R234 文档页头节奏对齐（2026-09-15）：包屑文字行高与页头底部间距对齐 Vue（32px/20px），文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r234-documents-header-rhythm.md`。
+- R235 文档搜索框高度对齐（2026-09-15）：筛选栏搜索输入固定 Vue 对齐的 32px 高度，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r235-documents-search-height.md`。
