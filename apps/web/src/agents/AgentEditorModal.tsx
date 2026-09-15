@@ -918,8 +918,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
                     const checked = form.config.allowed_tools.includes(tool.value);
                     return (
                       <label key={tool.value} className={`flex cursor-pointer flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-[13px] ${evaluation.ok ? '' : 'cursor-not-allowed opacity-55'} ${tool.danger ? 'border-[var(--td-warning-color,#e37318)]' : 'border-[var(--td-component-stroke,#e7e7e7)]'}`}>
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           data-tool={tool.value}
                           checked={checked}
                           disabled={!evaluation.ok}
@@ -1022,8 +1021,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     return (
       <div key={row.id} className={`flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]${selectable ? '' : ' opacity-70'}`} data-skill-row={row.id}>
         {skillsMode === 'selected' ? (
-          <input
-            type="checkbox"
+          <Checkbox
             data-skill-id={row.id}
             checked={checked}
             disabled={!selectable}
