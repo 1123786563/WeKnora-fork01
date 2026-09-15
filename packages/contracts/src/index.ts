@@ -175,3 +175,107 @@ export function parseKnowledgeDocumentListResponse(value: unknown): KnowledgeDoc
     page_size: validatePageNumber(envelope.page_size, 'page_size'),
   };
 }
+<<<<<<< HEAD
+=======
+
+export function parseKnowledgeDocumentResponse(value: unknown): KnowledgeDocument {
+  const envelope = actionEnvelope(value);
+  const row = envelope.data;
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    throw new ContractError('data', 'expected an object');
+  }
+  const record = row as Record<string, unknown>;
+  return { ...record, id: requireNonEmptyString(record.id, 'data.id') } as KnowledgeDocument;
+}
+
+function parseFolderNode(value: unknown, path: string): KnowledgeFolderNode {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError(path, 'expected an object');
+  }
+  const row = value as Record<string, unknown>;
+  const children = row.children === undefined
+    ? undefined
+    : (() => {
+      if (!Array.isArray(row.children)) throw new ContractError(`${path}.children`, 'expected an array');
+      return row.children.map((child, index) => parseFolderNode(child, `${path}.children[${index}]`));
+    })();
+  return {
+    ...row,
+    path: requiredString(row.path, `${path}.path`),
+    name: requiredString(row.name, `${path}.name`),
+    document_count: validatePageNumber(row.document_count, `${path}.document_count`),
+    total_count: validatePageNumber(row.total_count, `${path}.total_count`),
+    ...(children === undefined ? {} : { children }),
+  } as KnowledgeFolderNode;
+}
+
+export function parseKnowledgeFolderTreeResponse(value: unknown): KnowledgeFolderTree {
+  const envelope = actionEnvelope(value);
+  if (typeof envelope.data !== 'object' || envelope.data === null || Array.isArray(envelope.data)) {
+    throw new ContractError('data', 'expected an object');
+  }
+  const data = envelope.data as Record<string, unknown>;
+  if (!Array.isArray(data.folders)) throw new ContractError('data.folders', 'expected an array');
+  return {
+    root_document_count: validatePageNumber(data.root_document_count, 'data.root_document_count'),
+    total_document_count: validatePageNumber(data.total_document_count, 'data.total_document_count'),
+    folders: data.folders.map((folder, index) => parseFolderNode(folder, `data.folders[${index}]`)),
+  };
+}
+
+export type {
+  Capability,
+  CapabilityState,
+  ExecutionDriver,
+  ExecutionDTO,
+  ExecutionEvent,
+  ExecutionSnapshot,
+  RunStatus,
+} from './mobile/execution.ts';
+export { parseExecution, parseExecutionEvent, parseExecutionSnapshot } from './mobile/execution.ts';
+
+export function parseKnowledgeTagListResponse(value: unknown): KnowledgeTagListResponse {
+  const envelope = actionEnvelope(value);
+  const payload = envelope.data;
+  let rows: unknown[];
+  let pagination: { total?: number; page?: number; page_size?: number } = {};
+  if (Array.isArray(payload)) {
+    rows = payload;
+  } else if (typeof payload === 'object' && payload !== null) {
+    const paged = payload as Record<string, unknown>;
+    if (!Array.isArray(paged.data)) throw new ContractError('data.data', 'expected an array');
+    rows = paged.data;
+    for (const key of ['total', 'page', 'page_size'] as const) {
+      if (paged[key] !== undefined) pagination[key] = validatePageNumber(paged[key], `data.${key}`);
+    }
+  } else {
+    throw new ContractError('data', 'expected an array or paginated object');
+  }
+  const data = rows.map((item, index) => {
+    const path = `data[${index}]`;
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new ContractError(path, 'expected an object');
+    const row = item as Record<string, unknown>;
+    if (row.seq_id !== undefined && typeof row.seq_id !== 'number') throw new ContractError(`${path}.seq_id`, 'expected a number');
+    if (row.sort_order !== undefined && typeof row.sort_order !== 'number') throw new ContractError(`${path}.sort_order`, 'expected a number');
+    return {
+      ...row,
+      id: requireNonEmptyString(row.id, `${path}.id`),
+      name: requireNonEmptyString(row.name, `${path}.name`),
+    } as KnowledgeTag;
+  });
+  return { success: true, data, ...pagination };
+}
+
+export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchResponse {
+  const envelope = actionEnvelope(value);
+  if (!Array.isArray(envelope.data)) throw new ContractError('data', 'expected an array');
+  const data = envelope.data.map((item, index) => {
+    const path = `data[${index}]`;
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new ContractError(path, 'expected an object');
+    const row = item as Record<string, unknown>;
+    return { ...row, id: requireNonEmptyString(row.id, `${path}.id`) } as KnowledgeDocument;
+  });
+  if (typeof envelope.has_more !== 'boolean') throw new ContractError('has_more', 'expected a boolean');
+  return { success: true, data, has_more: envelope.has_more, total: validatePageNumber(envelope.total, 'total') };
+}
+>>>>>>> 7e34e3b03 (feat(workbench): define versioned execution contracts)
