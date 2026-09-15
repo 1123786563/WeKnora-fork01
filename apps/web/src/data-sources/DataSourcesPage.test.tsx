@@ -14,6 +14,15 @@ test('keeps datasource editing in a body-level 640px Sheet with a real isolated 
   assert.doesNotMatch(page, /<Card className="mt-4">.*dataSource\.createTitle/s, 'editor must not regress to an outer content card');
 });
 
+test('matches Vue datasource permissions and running-sync controls', () => {
+  assert.match(page, /sources\.length === 0 && !canManage/);
+  assert.match(page, /canManage \? <><Button type="button" onClick=\{\(\) => openEdit\(source\)\}/);
+  assert.match(page, /onClick=\{\(\) => void run\(source, 'sync'\)\}/);
+  assert.match(page, /disabled=\{action !== null \|\| isSyncRunning\(source\)\}/);
+  assert.match(page, /source\.status === 'active'/);
+  assert.doesNotMatch(page, /onClick=\{\(\) => showResources\(source\)\}/);
+});
+
 test('keeps permission gates on both opening and saving paths', () => {
   assert.match(page, /function openCreate\(\) \{ if \(accessDenied \|\| !canManage\) return;/);
   assert.match(page, /function openEdit\(source: DataSource\) \{ if \(!canManage\) return;/);
