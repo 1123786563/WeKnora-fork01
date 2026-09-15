@@ -7,6 +7,7 @@ import { AgentOperations, ModelDebugPanel, SkillOperations } from './Configurati
 import { modelInUseDetails, type ModelUsageDetails } from './model-usage.ts';
 import { ModelUsageNotice } from './ModelUsageNotice.tsx';
 import { filterAgentsByQuery, groupAgents, type AgentGroupKey } from './agent-groups.ts';
+import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
 type EditableSection = Exclude<ConfigurationSectionKey, 'skills'>;
@@ -18,6 +19,7 @@ function values(record: Record<string, unknown>): string {
 }
 
 export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
+  const t = createTranslator(useAppLocale());
   const [records, setRecords] = useState<Records>({ agents: [], models: [], mcp: [], skills: [] });
   const [available, setAvailable] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Partial<Record<ConfigurationSectionKey, string>>>({});
@@ -60,12 +62,12 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     const nextErrors: Partial<Record<ConfigurationSectionKey, string>> = {};
     const agent = results[0];
     if (agent.status === 'fulfilled') next.agents = agent.value.items.map((item) => ({ ...item, disabled_by_server: agent.value.disabledOwnAgentIds.includes(item.id) }));
-    else nextErrors.agents = message(agent.reason, 'Unable to load agents');
-    const model = results[1]; if (model.status === 'fulfilled') next.models = model.value; else nextErrors.models = message(model.reason, 'Unable to load models');
-    const mcp = results[2]; if (mcp.status === 'fulfilled') next.mcp = mcp.value; else nextErrors.mcp = message(mcp.reason, 'Unable to load MCP services');
+    else nextErrors.agents = message(agent.reason, t('common.error'));
+    const model = results[1]; if (model.status === 'fulfilled') next.models = model.value; else nextErrors.models = message(model.reason, t('common.error'));
+    const mcp = results[2]; if (mcp.status === 'fulfilled') next.mcp = mcp.value; else nextErrors.mcp = message(mcp.reason, t('common.error'));
     const skills = results[3];
     if (skills.status === 'fulfilled') { next.skills = skills.value.items; setAvailable(skills.value.skillsAvailable); }
-    else nextErrors.skills = message(skills.reason, 'Unable to load skills');
+    else nextErrors.skills = message(skills.reason, t('common.error'));
     setRecords(next); setErrors(nextErrors); setLoading(false);
   }
 
@@ -88,7 +90,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
         setUsageConflict({ modelName: model?.name ?? itemId, details });
         return;
       }
-      setErrors({ [section]: message(cause, `Unable to remove ${section}`) });
+      setErrors({ [section]: message(cause, t('common.error')) });
     }
   }
 
