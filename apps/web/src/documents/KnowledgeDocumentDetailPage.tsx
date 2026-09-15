@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button, Card, Sheet, Status } from '@weknora/ui';
 import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readPreviewText, type InlinePreviewKind } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { isKnowledgeProcessingActive } from '@weknora/domain/knowledge/processing';
+import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
 import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
 import type { KnowledgeTimelineStep } from '@weknora/domain/knowledge/processing';
 
@@ -28,6 +28,10 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   const copy = DETAIL_COPY[locale];
   const [state, setState] = useState<{ status: 'loading' } | { status: 'success'; document: KnowledgeDocument } | { status: 'error'; message: string }>({ status: 'loading' });
   const [timelineSteps, setTimelineSteps] = useState<KnowledgeTimelineStep[]>([]);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceState, setTraceState] = useState<{ status: 'idle' | 'loading' | 'success' | 'error'; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; message?: string }>({ status: 'idle', steps: [], nodes: [] });
+  const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
+  const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
   useEffect(() => {
     let active = true;
     setState({ status: 'loading' });
@@ -55,11 +59,44 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     return () => subscription?.stop();
   }, [client, documentId, parseStatus]);
 
-  return <main className="wk-page wk-document-detail-page max-w-[820px]! mx-auto box-border px-[1.25rem] py-12"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('knowledgeBase.detail.eyebrow')}</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><Button type="button" onClick={onBack}>{t('knowledgeBase.detail.back')}</Button></header>
+  useEffect(() => {
+    if (!traceOpen || state.status !== 'success') return;
+    let active = true;
+    setTraceState({ status: 'loading', steps: [], nodes: [] });
+    void client.knowledgeBases.documents.spans(documentId).then((spans) => {
+      if (!active) return;
+      const nodes = flattenKnowledgeSpans(spans.trace);
+      setTraceState({ status: 'success', steps: buildKnowledgeTimeline(spans), nodes });
+      setExpandedTraceNodes(new Set(nodes.map((row) => row.key)));
+    }).catch((error: unknown) => {
+      if (active) setTraceState({ status: 'error', steps: [], nodes: [], message: error instanceof Error ? error.message : copy.load });
+    });
+    return () => { active = false; };
+  }, [client, documentId, traceOpen]);
+
+  return <main className="wk-page wk-document-detail-page max-w-[820px]! mx-auto box-border px-[1.25rem] py-12"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('knowledgeBase.detail.eyebrow')}</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><div className="flex items-center gap-2"><Button type="button" onClick={onBack}>{t('knowledgeBase.detail.back')}</Button>{state.status === 'success' ? <Button type="button" onClick={() => setTraceOpen(true)}>{t('knowledgeBase.timeline.title')}</Button> : null}</div></header>
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
     {state.status === 'error' ? <Status tone="error">{state.message}</Status> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
   {state.status === 'success' ? <DocumentDetail client={client} document={state.document} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
+  {traceOpen ? <Sheet open title={t('knowledgeBase.timeline.title')} onClose={() => setTraceOpen(false)} side="right" width="820px" resizable minWidth={560} maxWidth={1400} storageKey="weknora-trace-drawer-width" className="min-w-0 border-l border-line-soft">
+    <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === 'loading'}>
+      {traceState.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
+      {traceState.status === 'error' ? <Status tone="error">{traceState.message}</Status> : null}
+      {traceState.status === 'success' ? <div className="flex flex-col gap-4">
+        <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t('knowledgeBase.timeline.title')}>
+          {traceState.steps.map((step) => <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]"><span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span><span>{t(`knowledgeBase.timeline.${step.state}`)}</span></li>)}
+        </ol>
+        {traceState.nodes.length > 0 ? <div className="overflow-x-auto rounded-[8px] border border-line-soft"><ol className="m-0 list-none divide-y divide-line-soft p-0" aria-label={t('knowledgeBase.timeline.title')}>
+          {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf('.')))).map((row) => <li key={row.key} className="flex min-w-[480px] items-center gap-2 px-3 py-2 text-[13px] hover:bg-surface-wash" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
+            {row.hasChildren ? <button type="button" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border-0 bg-transparent text-muted hover:bg-hover-wash" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t('knowledgeBase.timeline.title')} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? '⌄' : '›'}</button> : <span className="inline-block h-6 w-6 shrink-0" aria-hidden="true" />}
+            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{row.node.name || row.node.stage || row.key}</button><span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{typeof row.node.duration_ms === 'number' ? `${row.node.duration_ms}ms` : '—'}</span>
+          </li>)}
+        </ol></div> : null}
+        {selectedTraceNode ? <section className="rounded-[8px] border border-line-soft bg-surface-wash p-3"><div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px]">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t('knowledgeBase.documents.cancel')}</Button></div><pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre></section> : null}
+      </div> : null}
+    </section>
+  </Sheet> : null}
   </main>;
 }
 
