@@ -118,6 +118,7 @@ const enUS: Record<string, string> = {
   'knowledgeBase.graph.familiar': 'familiar',
   'knowledgeBase.graph.ariaLinks': 'Knowledge graph links',
   'knowledgeBase.graph.loadFailed': 'Unable to load the knowledge graph',
+  'knowledgeBase.graph.disabled': 'The knowledge graph is not enabled for this knowledge base',
   'knowledgeBase.settings.title': 'Knowledge base settings',
 };
 
@@ -235,6 +236,7 @@ const zhCN: Record<string, string> = {
   'knowledgeBase.graph.familiar': '常用资料',
   'knowledgeBase.graph.ariaLinks': '知识图谱连接',
   'knowledgeBase.graph.loadFailed': '无法加载知识图谱',
+  'knowledgeBase.graph.disabled': '此知识库未启用知识图谱功能',
   'knowledgeBase.settings.title': '知识库设置',
 };
 
@@ -248,6 +250,7 @@ const jaJPGraph: Record<string, string> = {
   'knowledgeBase.graph.familiar': 'よく使う資料',
   'knowledgeBase.graph.ariaLinks': 'ナレッジグラフのリンク',
   'knowledgeBase.graph.loadFailed': 'ナレッジグラフを読み込めません',
+  'knowledgeBase.graph.disabled': 'このナレッジベースではナレッジグラフが有効になっていません',
 };
 
 const koKRGraph: Record<string, string> = {
@@ -260,6 +263,7 @@ const koKRGraph: Record<string, string> = {
   'knowledgeBase.graph.familiar': '자주 쓰는 자료',
   'knowledgeBase.graph.ariaLinks': '지식 그래프 링크',
   'knowledgeBase.graph.loadFailed': '지식 그래프를 불러올 수 없습니다',
+  'knowledgeBase.graph.disabled': '이 지식 베이스에서는 지식 그래프가 활성화되지 않았습니다',
 };
 
 const ruRUGraph: Record<string, string> = {
@@ -272,6 +276,7 @@ const ruRUGraph: Record<string, string> = {
   'knowledgeBase.graph.familiar': 'часто используемые',
   'knowledgeBase.graph.ariaLinks': 'Связи графа знаний',
   'knowledgeBase.graph.loadFailed': 'Не удалось загрузить граф знаний',
+  'knowledgeBase.graph.disabled': 'Граф знаний не включён для этой базы знаний',
 };
 
 export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string, string>> = {

@@ -43,7 +43,8 @@ export function KnowledgeGraphScreen() {
       setGraph(result); setMode(nextMode); setCenter(nextCenter);
     } catch (cause) {
       if (requestId !== requestIdRef.current) return;
-      setError(cause instanceof Error ? cause.message : label("knowledgeBase.graph.loadFailed"));
+      const message = cause instanceof Error ? cause.message : '';
+      setError(/feature is not enabled/i.test(message) ? label("knowledgeBase.graph.disabled") : message || label("knowledgeBase.graph.loadFailed"));
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
