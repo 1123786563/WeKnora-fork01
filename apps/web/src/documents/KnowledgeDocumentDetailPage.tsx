@@ -29,7 +29,9 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   const [state, setState] = useState<{ status: 'loading' } | { status: 'success'; document: KnowledgeDocument } | { status: 'error'; message: string }>({ status: 'loading' });
   const [timelineSteps, setTimelineSteps] = useState<KnowledgeTimelineStep[]>([]);
   const [traceOpen, setTraceOpen] = useState(false);
-  const [traceState, setTraceState] = useState<{ status: 'idle' | 'loading' | 'success' | 'error'; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; message?: string }>({ status: 'idle', steps: [], nodes: [] });
+  const [traceState, setTraceState] = useState<{ status: 'idle' | 'loading' | 'success' | 'error'; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; lastError?: { error_code?: string; error_message?: string } | null; message?: string }>({ status: 'idle', steps: [], nodes: [] });
+  const [traceRefresh, setTraceRefresh] = useState(0);
+  const [traceAction, setTraceAction] = useState<'idle' | 'loading' | 'error'>('idle');
   const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
   const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
   useEffect(() => {
@@ -62,17 +64,50 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   useEffect(() => {
     if (!traceOpen || state.status !== 'success') return;
     let active = true;
+    let polling: number | undefined;
+    let inFlight = false;
+    const load = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const spans = await client.knowledgeBases.documents.spans(documentId);
+        if (!active) return;
+        const parseStatus = typeof spans.parse_status === 'string' ? spans.parse_status : state.document.parse_status;
+        const nodes = flattenKnowledgeSpans(spans.trace);
+        setTraceState({ status: 'success', steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: spans.last_error });
+        setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
+        if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
+          window.clearInterval(polling);
+          polling = undefined;
+        }
+      } catch (error: unknown) {
+        if (active) setTraceState({ status: 'error', steps: [], nodes: [], message: error instanceof Error ? error.message : copy.load });
+      } finally {
+        inFlight = false;
+      }
+    };
     setTraceState({ status: 'loading', steps: [], nodes: [] });
-    void client.knowledgeBases.documents.spans(documentId).then((spans) => {
-      if (!active) return;
-      const nodes = flattenKnowledgeSpans(spans.trace);
-      setTraceState({ status: 'success', steps: buildKnowledgeTimeline(spans), nodes });
-      setExpandedTraceNodes(new Set(nodes.map((row) => row.key)));
-    }).catch((error: unknown) => {
-      if (active) setTraceState({ status: 'error', steps: [], nodes: [], message: error instanceof Error ? error.message : copy.load });
+    void load().then(() => {
+      if (active && isKnowledgeProcessingActive(state.document.parse_status)) polling = window.setInterval(() => void load(), 2000);
     });
-    return () => { active = false; };
-  }, [client, documentId, traceOpen]);
+    return () => { active = false; if (polling !== undefined) window.clearInterval(polling); };
+  }, [client, documentId, traceOpen, traceRefresh]);
+
+  async function runTraceAction(action: 'reparse' | 'cancel') {
+    if (state.status !== 'success' || traceAction === 'loading') return;
+    setTraceAction('loading');
+    try {
+      if (action === 'reparse') await client.knowledgeBases.documents.reparse(documentId);
+      else await client.knowledgeBases.documents.cancelParse(documentId);
+      const document = await client.knowledgeBases.documents.get(documentId);
+      setState({ status: 'success', document });
+      setTraceRefresh((value) => value + 1);
+      setTraceAction('idle');
+    } catch (error: unknown) {
+      setTraceAction('error');
+      setTraceState((current) => ({ ...current, status: 'error', message: error instanceof Error ? error.message : copy.load }));
+    }
+  }
 
   return <main className="wk-page wk-document-detail-page max-w-[820px]! mx-auto box-border px-[1.25rem] py-12"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('knowledgeBase.detail.eyebrow')}</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><div className="flex items-center gap-2"><Button type="button" onClick={onBack}>{t('knowledgeBase.detail.back')}</Button>{state.status === 'success' ? <Button type="button" onClick={() => setTraceOpen(true)}>{t('knowledgeBase.timeline.title')}</Button> : null}</div></header>
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
@@ -84,6 +119,12 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       {traceState.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
       {traceState.status === 'error' ? <Status tone="error">{traceState.message}</Status> : null}
       {traceState.status === 'success' ? <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</Button>
+          {traceState.parseStatus === 'failed' ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</Button> : null}
+          {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</Button> : null}
+        </div>
+        {traceState.parseStatus === 'failed' ? <Status tone="error">{traceState.lastError?.error_message || t('knowledgeBase.timeline.failed')}</Status> : null}
         <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t('knowledgeBase.timeline.title')}>
           {traceState.steps.map((step) => <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]"><span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span><span>{t(`knowledgeBase.timeline.${step.state}`)}</span></li>)}
         </ol>
