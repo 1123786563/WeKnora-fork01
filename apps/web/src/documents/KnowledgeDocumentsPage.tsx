@@ -6,7 +6,7 @@ import {
   normalizeKnowledgeProcessingStatus,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Card, Dialog, Status } from "@weknora/ui";
+import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import {
@@ -286,7 +286,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               onClick={(event) => event.stopPropagation()}
             >
               <span aria-hidden>📁</span>
-              <input
+              <Input
                 className="wk-folder-picker__input"
                 value={props.newFolderName}
                 placeholder={props.labels.newFolderPlaceholder}
@@ -727,7 +727,7 @@ export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
 
 export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }: { value: string; placeholder: string; ariaLabel: string; onChange: (value: string) => void }) {
   return <div className="wk-upload-clearable-input relative flex w-[280px] items-center">
-    <input className="box-border w-full pr-[28px]" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
+    <Input className="box-border w-full pr-[28px]" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
     {value ? <button type="button" className="absolute right-[2px] cursor-pointer border-0 bg-transparent p-[2px_6px] text-[var(--wk-muted,#667085)] text-[16px] leading-none" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
   </div>;
 }
@@ -1128,7 +1128,7 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
           <button type="button" className="cursor-pointer border-0 bg-transparent p-0 leading-none text-[var(--wk-muted,#667085)]" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
         </span>
       ))}
-      <input
+      <Input
         type="text"
         className="h-6 w-full min-w-[120px] flex-1 border-0 bg-transparent p-0 outline-none box-border"
         role="combobox"
@@ -1174,7 +1174,7 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
   const choose = (next: string) => { onChange(next); setFilter(""); setActiveIndex(0); setOpen(false); };
   return (
     <div ref={rootRef} className="wk-graph-relation-select relative min-w-[150px] flex-1">
-      <input
+      <Input
         type="text"
         className="box-border w-full"
         role="combobox"
@@ -1357,7 +1357,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                 <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.customInstructionsDescription")}</p>
               </div>
               <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                <textarea
+                <Textarea
                   ref={instructionsRef}
                   id="wk-graph-instructions"
                   rows={3}
@@ -1447,7 +1447,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {t("graphSettings.generateRandomText")}
                     </button>
                   ) : null}
-                  <textarea
+                  <Textarea
                     ref={sampleTextRef}
                     id="wk-graph-text"
                     rows={6}
@@ -1476,7 +1476,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       <div key={nodeIndex} className="wk-graph-node-item rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-3" data-graph-node={node.name || undefined}>
                         <div className="wk-graph-node-header mb-2 flex items-center gap-2">
                           <span aria-hidden>👤</span>
-                          <input
+                          <Input
                             type="text"
                             className="wk-graph-node-name w-full flex-1 box-border"
                             placeholder={t("graphSettings.nodeNamePlaceholder")}
@@ -1495,7 +1495,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                         <div className="wk-graph-node-attributes flex flex-col gap-[0.4rem] pl-[1.75rem]">
                           {node.attributes.map((attribute, attrIndex) => (
                             <div key={attrIndex} className="wk-graph-attribute-item flex items-center gap-2">
-                              <input
+                              <Input
                                 type="text"
                                 className="w-full flex-1 box-border"
                                 placeholder={t("graphSettings.attributePlaceholder")}
