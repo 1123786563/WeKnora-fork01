@@ -2021,6 +2021,9 @@ export function KnowledgeDocumentsPage({
     () => (folderState.tree ? flattenFolders(folderState.tree) : []),
     [folderState.tree],
   );
+  // Vue only allocates the folder column when the tree has a real folder;
+  // the synthetic Root row alone must leave the document surface full width.
+  const showFolderTree = folders.some((folder) => folder.path.trim() !== "");
   const vllmModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? "").toLowerCase() === 'vllm'), [tenantModels]);
   const asrModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'asr'), [tenantModels]);
   // Vue supportedFileTypes / unsupportedFileTypes computeds: the KB's
@@ -2778,11 +2781,15 @@ export function KnowledgeDocumentsPage({
       <div className="wk-documents-surface">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
         <div
-          className={
-            dragActive && canContribute
-              ? "wk-documents-layout wk-dropzone is-active relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
-              : "wk-documents-layout wk-dropzone relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1"
-          }
+            className={
+              dragActive && canContribute
+                ? showFolderTree
+                  ? "wk-documents-layout wk-dropzone is-active relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
+                  : "wk-documents-layout wk-dropzone is-active relative grid grid-cols-1 gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
+                : showFolderTree
+                  ? "wk-documents-layout wk-dropzone relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1"
+                  : "wk-documents-layout wk-dropzone relative grid grid-cols-1 gap-[1.25rem] max-[720px]:grid-cols-1"
+            }
           onDragOver={
             canContribute
               ? (event) => {
@@ -2810,7 +2817,7 @@ export function KnowledgeDocumentsPage({
           {uploading && canContribute ? (
             <UploadProgressMask percent={batchUploadProgress(uploadStates)} />
           ) : null}
-          <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
+          {showFolderTree ? <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
             <strong>{t("knowledgeBase.documents.folders")}</strong>
             {folderState.status === "loading" ? (
               <Status>{t("knowledgeBase.documents.loadingFolders")}</Status>
@@ -2838,7 +2845,7 @@ export function KnowledgeDocumentsPage({
                 </li>
               ))}
             </ul>
-          </aside>
+          </aside> : null}
           <section className="wk-document-results">
             <div className="doc-filter-bar grid shrink-0 items-center gap-x-3 gap-y-2 pb-3 [grid-template-areas:'search_trailing'_'filters_filters'] [grid-template-columns:1fr_auto] max-[960px]:[grid-template-areas:'search'_'trailing'_'filters'] max-[960px]:[grid-template-columns:1fr]">
               <div className="doc-search-input relative flex min-w-0 w-full items-center [grid-area:search]">
