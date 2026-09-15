@@ -15,6 +15,8 @@ const mcpMetadata = "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5";
 const mcpToolsLink = "inline-flex min-w-0 max-w-full items-center gap-1 rounded-[6px] border-0 bg-[#f3f5f8] px-1.5 py-0.5 text-left [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
 const mcpType = "shrink-0 text-[11px] leading-[18px] text-[#66758b]";
 const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] disabled:cursor-wait";
+const mcpSourceOptions = "inline-flex items-center gap-1 rounded-[8px] border border-[#dce3ed] bg-[#f2f4f8] p-[3px]";
+const mcpSourceOption = "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] border border-transparent bg-transparent px-3 py-[5px] text-[13px] leading-none text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#07c05f]";
 const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
 const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
 const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
@@ -1070,19 +1072,12 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend className="wk-mcp-group-title">{t("mcpServiceDialog.connectionSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.transportType")}
-                      <Select
-                        className="w-full box-border"
-                        value={draft.transportType === "http-streamable" ? "http-streamable" : "sse"}
-                        onChange={(event) =>
-                          setField(
-                            "transportType",
-                            event.target.value as Draft["transportType"],
-                          )
-                        }
-                      >
-                        <option value="sse">SSE</option>
-                        <option value="http-streamable">HTTP Streamable</option>
-                      </Select>
+                      <div className={mcpSourceOptions} role="radiogroup" aria-label={t("mcpServiceDialog.transportType")}>
+                        {(["sse", "http-streamable"] as const).map((transport) => {
+                          const active = draft.transportType === transport;
+                          return <button key={transport} type="button" role="radio" aria-checked={active} className={`${mcpSourceOption} ${active ? "border-[#07c05f] bg-white font-medium text-[#07c05f] shadow-[0_1px_2px_rgba(15,23,42,.04)]" : ""}`} onClick={() => setField("transportType", transport)}><McpTransportIcon transport={transport} /><span>{transport === "http-streamable" ? "HTTP Streamable" : "SSE"}</span></button>;
+                        })}
+                      </div>
                     </label>
                     <label>
                       {t("mcpServiceDialog.serviceUrl")}
@@ -1099,7 +1094,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         <span>{t("mcpServiceDialog.customHeaders.label")}</span>
                         <Button
                           type="button"
-                          className="shrink-0"
+                          className="inline-flex shrink-0 items-center gap-1 border-0 bg-transparent px-1.5 py-0.5 text-[12px] font-medium leading-[18px] text-[#07c05f] [font:inherit] hover:bg-[rgba(7,192,95,.08)] hover:outline-none focus-visible:bg-[rgba(7,192,95,.08)] focus-visible:outline-none"
                           onClick={() =>
                             setField("headers", [
                               ...draft.headers,
@@ -1107,7 +1102,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                             ])
                           }
                         >
-                          {t("mcpServiceDialog.customHeaders.add")}
+                          <McpCardIcon name="add" size={14} /> {t("mcpServiceDialog.customHeaders.add")}
                         </Button>
                       </legend>
                       <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
@@ -1143,6 +1138,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           />
                           <Button
                             type="button"
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none"
                             onClick={() =>
                               setField(
                                 "headers",
@@ -1152,7 +1148,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                               )
                             }
                           >
-                            {t("common.delete")}
+                            <McpCardIcon name="delete" size={14} /><span className="wk-sr-only">{t("common.delete")}</span>
                           </Button>
                         </div>
                       ))}
@@ -1162,17 +1158,13 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend className="wk-mcp-group-title">{t("mcpServiceDialog.authConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.authType")}
-                      <Select
-                        className="w-full box-border"
-                        value={draft.authType}
-                        onChange={(event) =>
-                          setField("authType", event.target.value as Draft["authType"])
-                        }
-                      >
-                        <option value="">{t("mcpServiceDialog.authTypeNone")}</option>
-                        <option value="api_key">{t("mcpServiceDialog.authTypeApiKey")}</option>
-                        <option value="oauth">{t("mcpServiceDialog.authTypeOAuth")}</option>
-                      </Select>
+                      <div className={`${mcpSourceOptions} max-w-full flex-wrap`} role="radiogroup" aria-label={t("mcpServiceDialog.authType")}>
+                        {(["", "api_key", "oauth"] as const).map((authType) => {
+                          const active = draft.authType === authType;
+                          const label = authType === "" ? t("mcpServiceDialog.authTypeNone") : authType === "api_key" ? t("mcpServiceDialog.authTypeApiKey") : t("mcpServiceDialog.authTypeOAuth");
+                          return <button key={authType || "none"} type="button" role="radio" aria-checked={active} className={`${mcpSourceOption} ${active ? "border-[#07c05f] bg-white font-medium text-[#07c05f] shadow-[0_1px_2px_rgba(15,23,42,.04)]" : ""}`} onClick={() => setField("authType", authType)}>{label}</button>;
+                        })}
+                      </div>
                     </label>
                     {draft.authType === "oauth" ? (
                       <>
