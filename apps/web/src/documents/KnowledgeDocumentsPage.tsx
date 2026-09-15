@@ -6,7 +6,7 @@ import {
   normalizeKnowledgeProcessingStatus,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
+import { Button, Card, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import {
@@ -2841,7 +2841,7 @@ export function KnowledgeDocumentsPage({
             <div className="doc-filter-bar grid shrink-0 items-center gap-x-3 gap-y-2 pb-3 [grid-template-areas:'search_trailing'_'filters_filters'] [grid-template-columns:1fr_auto] max-[960px]:[grid-template-areas:'search'_'trailing'_'filters'] max-[960px]:[grid-template-columns:1fr]">
               <div className="doc-search-input relative flex min-w-0 w-full items-center [grid-area:search]">
                 <SearchIcon size={16} className="doc-search-icon pointer-events-none absolute left-[10px] text-[var(--wk-muted,#98a2b8)]" />
-                <input
+                <Input
                   className="doc-search-field w-full rounded-full border border-transparent bg-[rgba(0,0,0,0.04)] py-2 pl-8 pr-3 text-[13px] text-[var(--wk-text,#101828)] outline-none [transition:border-color_.15s_ease,background-color_.15s_ease] focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -2887,7 +2887,7 @@ export function KnowledgeDocumentsPage({
                 </div>
                 <label className="doc-filter-field w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.fileTypeFilter")}</span>
-                  <select
+                  <Select
                     className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                     value={fileType}
                     onChange={(event) => setFileType(event.target.value)}
@@ -2898,11 +2898,11 @@ export function KnowledgeDocumentsPage({
                         {option.labelKey ? t(option.labelKey) : option.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label className="doc-filter-field w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.parseStatusFilter")}</span>
-                  <select
+                  <Select
                     className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                     value={parseStatus}
                     onChange={(event) => setParseStatus(event.target.value)}
@@ -2913,11 +2913,11 @@ export function KnowledgeDocumentsPage({
                         {t(option.labelKey ?? option.value)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label className="doc-filter-field w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.sourceFilter")}</span>
-                  <select
+                  <Select
                     className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                     value={source}
                     onChange={(event) => setSource(event.target.value)}
@@ -2928,10 +2928,10 @@ export function KnowledgeDocumentsPage({
                         {t(option.labelKey ?? option.value)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <div className="doc-filter-field doc-filter-field--wide doc-date-range flex w-[280px] flex-none items-center gap-[6px]">
-                  <input
+                  <Input
                     type="date"
                     className="doc-date-input h-8 w-auto min-w-0 flex-[1_1_0] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                     value={updatedFrom}
@@ -2941,7 +2941,7 @@ export function KnowledgeDocumentsPage({
                     onChange={(event) => setUpdatedFrom(event.target.value)}
                   />
                   <span className="doc-date-range-sep shrink-0 text-[var(--wk-muted,#98a2b8)]" aria-hidden>—</span>
-                  <input
+                  <Input
                     type="date"
                     className="doc-date-input h-8 w-auto min-w-0 flex-[1_1_0] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
                     value={updatedTo}
