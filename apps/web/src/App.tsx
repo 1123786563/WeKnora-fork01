@@ -649,7 +649,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const emptyVisible = pageState.status === 'error' || (pageState.status === 'success' && filtered.total === 0);
 
   return (
-    <main className="wk-page kb-list-page box-border flex h-full w-full min-w-0 flex-1 flex-col overflow-y-auto px-7 pt-5 pb-0 mx-auto max-w-[960px] px-[1.25rem]! py-12!">
+    <main className="wk-page kb-list-page box-border flex h-full w-full min-w-0 flex-1 flex-col overflow-y-auto">
       <div className="kb-list-container relative flex min-h-0 flex-1">
         {/* Vue ListSpaceSidebar dual state: collapsed icon strip ↔ expanded
             nav panel, toggled by dragging the right-edge resize handle
@@ -721,7 +721,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             <div className={`kb-list-rail-handle-line h-10 w-0.5 rounded-[1px] transition-[opacity,background] duration-200 ease-[ease] ${railDragging ? 'bg-[#07c05f] opacity-100' : 'bg-[#c9d0da] opacity-[0.45] group-hover/handle:bg-[#07c05f] group-hover/handle:opacity-100'}`} />
           </div>
         </aside>
-        <div className="kb-list-content flex min-w-0 flex-1 flex-col">
+        <div className="kb-list-content flex min-w-0 flex-1 flex-col pt-5 pl-7">
           {/* Vue header: title + 28x28 create icon button + subtitle */}
           <header className="kb-list-header mb-4">
             <div className="flex items-center gap-2">
