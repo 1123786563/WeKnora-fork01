@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+75 — N005 上传遮罩插画与文案
+
+- 对照 Vue `upload-mask.vue`，React 上传遮罩接入原始 `upload-mask.svg`，补齐 164×162 插画、24px/26px 标题和两条 12px 格式说明；文案改用共享 i18n，保留现有百分比进度和无障碍 progressbar 语义。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n005-upload-mask.md`。
+- N005 继续保持 `implementing`：同条件浏览器截图、真实后端上传、Wails/native 证据仍未闭环。
+
 ## 2026-09-15 Round N+74 — N016 MCP 服务卡片排版
 
 - 对照 Vue `McpSettings.vue` 服务卡片，React 补齐卡片纵向撑满、正文 12px/18px、描述两行截断和 footer 底部对齐；通过项目设置样式文件集中承载，不改变 MCP API 或权限行为。

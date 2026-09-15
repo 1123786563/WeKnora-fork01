@@ -79,6 +79,7 @@ import {
 } from "./tags.ts";
 import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
 import { tagSurfaceT } from "./tags-locale.ts";
+import uploadMaskIllustration from "./upload-mask.svg";
 import {
   loadKnowledgeDocuments,
   type KnowledgeDocumentListState,
@@ -352,16 +353,9 @@ export function DocumentCardGrid({
           </div>
           <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px]">
-          <button type="button" className="min-w-0 max-w-[60%] truncate border-0 bg-transparent p-0 text-left text-[12px] text-muted hover:text-primary" title={document.folder_path || t("knowledgeBase.documents.root")} onClick={(event) => { event.stopPropagation(); if (document.folder_path) onOpenFolder(document.folder_path); }}>{document.folder_path || t("knowledgeBase.documents.root")}</button>
-          <div className="flex min-w-0 items-center justify-end gap-1 overflow-hidden" onClick={(event) => event.stopPropagation()}>
-            {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
-            {canContribute ? <div className="flex shrink-0 items-center gap-1">
-              <Button type="button" onClick={() => onTagEdit(document)}>{t("knowledgeBase.tagLabel")}</Button>
-              {actions.canReparse && !actions.canCancelParse ? <Button type="button" onClick={() => onReparse(document)}>{t("knowledgeBase.documents.reparse")}</Button> : null}
-              {actions.canCancelParse ? <Button type="button" onClick={() => onCancelParse(document)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
-            </div> : null}
-          </div>
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px] text-[12px] text-muted">
+          <span>{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
+          <span>{documentTypeLabel(document)}</span>
         </div>
       </article>;
     })}
@@ -1885,12 +1879,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
  * panel (KnowledgeBaseList.vue:67-68) renders the percent as a fill-width bar;
  * the port puts that percent directly on the mask.
  */
-export function UploadProgressMask({ percent }: { percent: number }) {
+export function UploadProgressMask({ percent, title = "Uploading", formats = ["pdf、doc", "text、markdown"] }: { percent: number; title?: string; formats?: readonly [string, string] }) {
   const clamped = clampUploadPercent(percent);
   return (
     <div className="wk-upload-mask absolute inset-0 z-[5] flex items-center justify-center rounded-[8px] bg-[rgba(255,255,255,0.92)]" role="status" aria-live="polite">
-      <div className="wk-upload-mask__card flex flex-col items-center gap-2 rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] px-6 py-4 shadow-[0_4px_12px_rgba(16,24,40,0.08)]">
-        <span className="wk-upload-mask__label text-[0.9rem] font-semibold text-[var(--wk-accent,#4a7dff)]">{`Uploading ${clamped}%`}</span>
+      <div className="wk-upload-mask__card flex flex-col items-center">
+        <img className="wk-upload-mask__illustration h-[162px] w-[164px]" src={uploadMaskIllustration} alt="" />
+        <span className="wk-upload-mask__label mt-3 mb-4 text-[24px] font-semibold leading-[26px] text-[var(--wk-accent,#4a7dff)]">{`${title} ${clamped}%`}</span>
+        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[0]}</span>
+        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[1]}</span>
         <div
           className="wk-upload-mask__bar h-[6px] w-64 max-w-[70vw] overflow-hidden rounded-[3px] bg-[var(--wk-border,#e4e7ec)]"
           role="progressbar"
@@ -3190,7 +3187,11 @@ export function KnowledgeDocumentsPage({
             </p>
           ) : null}
           {uploading && canContribute ? (
-            <UploadProgressMask percent={batchUploadProgress(uploadStates)} />
+            <UploadProgressMask
+              percent={batchUploadProgress(uploadStates)}
+              title={t("file.upload")}
+              formats={[t("knowledgeBase.pdfDocFormat"), t("knowledgeBase.textMarkdownFormat")]}
+            />
           ) : null}
           {showFolderTree ? <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
             <strong>{t("knowledgeBase.documents.folders")}</strong>
@@ -3802,13 +3803,13 @@ export function KnowledgeDocumentsPage({
           ) : null}
             </aside>
             <aside className="wk-upload-confirm-settings-column">
-              <nav className="wk-upload-confirm-section-nav">
+              <div className="wk-upload-confirm-section-nav">
           <UploadSectionNav
             items={sectionNavItems.map((item) => ({ ...item, active: activeSection === item.key }))}
             navLabel={ct("uploadConfirm.configNav")}
             onSelect={goToSection}
           />
-              </nav>
+              </div>
               <main className="wk-upload-confirm-config-panel">
           {dialogMode !== "reparse" ? (
             <fieldset className="wk-upload-confirm-tags mb-3 block" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>

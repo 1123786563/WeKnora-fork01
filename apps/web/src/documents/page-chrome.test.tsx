@@ -173,7 +173,7 @@ test('upload entry moves to the Vue add-source dropdown; legacy form is gone', (
 
 test('document grid cards keep the Vue 240px/136px anatomy and footer metadata row', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
-    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide' }],
+    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide', updated_at: '2026-09-15T13:36:00Z' }],
     folders: [{ path: 'Specs', name: 'Specs', total_count: 2 }],
     selected: new Set<string>(),
     batchMode: false,
@@ -198,7 +198,8 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
   assert.ok(html.includes('已完成'), 'document status badge uses the active locale catalog');
-  assert.ok(html.includes('Guides'), 'folder metadata remains in the footer');
+  assert.ok(html.includes('26-09-15 21:36'), 'updated time remains in the footer');
+  assert.ok(html.includes('PDF'), 'file type remains in the footer');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
 });
 
