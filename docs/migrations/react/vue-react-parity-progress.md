@@ -3506,3 +3506,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Authenticated protected-page interaction, real tenant permissions/mutations,
   Wails runtime behavior, and unresolved Vue source/runtime trigger conflicts
   remain open; no completion claim is made.
+
+## 2026-09-15 Round R385 — Graph extraction capability guard
+
+- Reviewed the Vue-authoritative protected graph-extraction boundary and
+  integrated `5e30f578` (`fbd938fc`): React GraphSettings defaults to hiding
+  tag/text/relation extraction actions unless `canRunGraphExtract === true`.
+  Explicitly authorized callers retain the actions and their existing model,
+  input, loading, and validation behavior.
+- Focused GraphSettings validation/state tests from the scoped agent passed
+  (6/6 before integration); no mobile files were changed.
+- Full Web regression now passes 1137/1137; desktop remains 6/6 with its
+  typecheck passing. Authenticated permission/backend evidence and Wails
+  runtime evidence remain open, so the parity matrix remains incomplete.
