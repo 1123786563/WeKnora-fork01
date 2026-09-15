@@ -904,7 +904,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
 
   return (
     <section className="grid gap-4" data-testid="model-settings">
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 max-[720px]:flex-col">
         <div>
           <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
           <p className="wk-muted text-muted m-0">{t("modelSettings.description")}</p>
@@ -918,7 +918,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           </button>
         ) : null}
       </div>
-      <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px]" role="note">
+      <div className="rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px]" role="note">
         <p className="m-0 mb-1 text-xs font-medium tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
         <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
           {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
