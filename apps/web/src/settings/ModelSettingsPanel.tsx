@@ -4,7 +4,7 @@ import type {
   ModelConfiguration,
   WeKnoraClient,
 } from "@weknora/api-client";
-import { Button, Card, NumberInput, Status, Switch } from "@weknora/ui";
+import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
 import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
@@ -1140,7 +1140,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {t("model.modelName")}
                   </label>
                   <div className="wk-ollama-combobox-wrap relative grid w-full gap-1">
-                      <input
+                      <Input
                         role="combobox"
                         aria-expanded={ollamaOpen}
                         aria-controls="wk-ollama-listbox"
@@ -1225,7 +1225,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 ) : null}
                 <label>
                   {t("model.modelName")}
-                  <input
+                  <Input
                     required
                     maxLength={100}
                     placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
@@ -1238,7 +1238,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 </label>
                 <label>
                   {t("model.editor.displayNameLabel")}
-                  <input
+                      <Input
                     maxLength={100}
                     placeholder={t("model.editor.displayNamePlaceholder")}
                     value={draft.displayName}
@@ -1250,7 +1250,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <>
                     <label>
                       {t("model.editor.baseUrlLabel")}
-                      <input
+                      <Input
                         type="url"
                         required
                         placeholder={t(baseUrlPlaceholderKey(draft.type))}
@@ -1264,7 +1264,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       <div className="form-item">
                         <label>
                           {apiKeyLabel}
-                          <input
+                          <Input
                             type="password"
                             autoComplete="new-password"
                             placeholder={apiKeyPlaceholder}
@@ -1291,7 +1291,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           <>
                             <label>
                               {secretKeyLabel}
-                              <input
+                              <Input
                                 type="password"
                                 autoComplete="new-password"
                                 placeholder={secretKeyPlaceholder}
@@ -1322,7 +1322,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       <>
                         <label>
                           {apiKeyLabel}
-                          <input
+                  <Input
                             type="password"
                             autoComplete="new-password"
                             spellCheck={false}
@@ -1335,7 +1335,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           <>
                             <label>
                               {secretKeyLabel}
-                              <input
+                      <Input
                                 type="password"
                                 autoComplete="new-password"
                                 spellCheck={false}
@@ -1352,7 +1352,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {signed === "lkeap" ? (
                       <label>
                         {t("model.editor.lkeap.regionLabel")}
-                        <input
+                        <Input
                           placeholder={t("model.editor.lkeap.regionPlaceholder")}
                           value={draft.lkeapRegion}
                           onChange={(event) => updateDraft("lkeapRegion", event.target.value)}
@@ -1365,13 +1365,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       <p className="wk-muted text-muted">{t("model.editor.customHeadersDesc")}</p>
                       {draft.customHeaders.map((item, index) => (
                         <div className="wk-model-header-row" key={index}>
-                          <input
+                                <Input
                             value={item.key}
                             placeholder={t("model.editor.customHeadersKeyPlaceholder")}
                             aria-label={t("model.editor.customHeadersKeyPlaceholder")}
                             onChange={(event) => updateCustomHeader(index, "key", event.target.value)}
                           />
-                          <input
+                          <Input
                             value={item.value}
                             placeholder={t("model.editor.customHeadersValuePlaceholder")}
                             aria-label={t("model.editor.customHeadersValuePlaceholder")}
