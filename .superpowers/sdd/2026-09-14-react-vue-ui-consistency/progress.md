@@ -380,3 +380,5 @@ N029 Embed build update (2026-09-15): added explicit Vite aliases for `@weknora/
 Release bundle update (2026-09-15): `pnpm build:react-bundle` completed the Web and Embed production builds and copied the React Web bundle to `dist/react-web/web`; shared typecheck, Embed 7/7 tests/typecheck, and desktop 2/2 tests/typecheck remain green.
 
 T10 mobile onboarding localization update (2026-09-15): OnboardingScreen now resolves workspace policy, create form, invitation list, accept/decline, empty/loading/error and logout copy through the shared auth/tenant catalog; invitation tenant fallback uses localized interpolation. Mobile typecheck passes and regression command exits successfully.
+
+T10 workspace route localization update (2026-09-15): authenticated workspace switcher now uses shared localized titles, loading/empty/error states, current/switching markers and action labels. Added a zh-CN fallback locale for isolated test hosts that do not provide runtime.locale. Mobile regression passes 190/190 and typecheck passes.
