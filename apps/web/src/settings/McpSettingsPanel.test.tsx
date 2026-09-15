@@ -44,6 +44,8 @@ test('MCP settings renders service metadata and admin actions', () => {
   assert.match(html, /编辑/);
   assert.match(html, /删除/);
   assert.match(html, /添加服务/);
+  assert.match(html, /wk-mcp-page-header/);
+  assert.match(html, /text-\[20px\]/);
 });
 
 test('MCP settings uses shared Vue-derived Chinese copy for the default locale', () => {

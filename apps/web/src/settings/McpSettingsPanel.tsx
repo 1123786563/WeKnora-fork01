@@ -811,10 +811,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     );
   return (
     <section className="grid gap-4" data-testid="mcp-settings">
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
+      <div className="wk-mcp-page-header flex items-start justify-between gap-4 mb-7 max-[720px]:flex-col">
         <div>
-          <h2>{t("mcpSettings.title")}</h2>
-          <p className="wk-muted text-muted m-0">
+          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[1.2] text-[var(--color-ink,#172033)]">{t("mcpSettings.title")}</h2>
+          <p className="wk-muted text-muted m-0 text-[14px] leading-[1.6]">
             {t("mcpSettings.description")}
           </p>
         </div>
