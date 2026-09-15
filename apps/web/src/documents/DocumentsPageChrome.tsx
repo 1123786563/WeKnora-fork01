@@ -76,7 +76,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
   const [infoOpen, setInfoOpen] = useState(false);
   const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
   return (
-    <div className="document-title-row flex flex-wrap items-center gap-2">
+    <div className="document-title-row flex min-h-8 flex-wrap items-center gap-2">
       <h2 className="document-breadcrumb m-0 flex items-center gap-[6px] text-[20px] font-semibold text-[var(--wk-text,#101828)]">
         <button type="button" className="breadcrumb-link inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[var(--wk-muted,#66758b)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
         <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
@@ -240,4 +240,3 @@ export const DOCUMENT_SOURCE_OPTIONS: DocumentFilterOption[] = [
   { value: 'slack', labelKey: 'knowledgeBase.channelSlack' },
   { value: 'im', labelKey: 'knowledgeBase.channelIm' },
 ];
-
