@@ -7,5 +7,8 @@ export default function AppLayout() {
   if (runtime.hydrating) return <ActivityIndicator />;
   if (runtime.credential.kind !== 'bearer') return <Redirect href="/(auth)/login" />;
   if (!runtime.tenantId) return <Redirect href="../onboarding" />;
-  return <Stack screenOptions={{ headerShown: true }} />;
+  // Every app screen owns its Vue-shaped header. Leaving Expo Router's
+  // generated pathname header visible duplicates the title and leaks route
+  // placeholders such as `knowledge/[id]` into the business UI.
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

@@ -80,6 +80,12 @@ test('document filter fallback error is localized', async () => {
   finally { await page.close(); }
 });
 
+test('document count interpolates the loaded total', async () => {
+  const page = await mount('zh-CN', 'filters');
+  try { assert.match(page.host.textContent ?? '', /0 项/); }
+  finally { await page.close(); }
+});
+
 test('upload failure summary uses the existing five-locale message catalog', async () => {
   for (const [locale, expected] of [['zh-CN', '所有文件上传失败'], ['en-US', 'All files failed to upload']] as const) {
     const page = await mount(locale, 'upload');
