@@ -36,6 +36,7 @@ const ORG_FORM_DESC = 'm-0 mb-[10px] text-[13px] leading-[1.5] text-[rgba(23,26,
 const ORG_SECTION_TITLE = 'm-0 mb-[4px] text-[15px] font-semibold text-[rgba(23,26,29,0.92)]';
 const ORG_SECTION_DESC = 'm-0 mb-[16px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]';
 const ORG_EMPTY_INLINE = 'py-[18px] text-[13px] text-[rgba(23,26,29,0.4)]';
+const ORG_AVATAR_EMOJIS = ['🚀', '📁', '👥', '🏢', '💡', '📚', '🌟', '🔧', '📌', '🎯', '📂', '🔒', '🌐', '⚡', '🎨', '📊', '🤝', '💼', '📧', '🏠', '🔑', '📈', '✨', '📋', '🌍', '💬', '🔔', '📦', '🎉', '🌈'];
 const ORG_MODAL_OVERLAY = 'fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-[20px] backdrop-blur-[4px]';
 const ORG_CLOSE_BTN = 'absolute right-[16px] top-[16px] z-[10] flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-[rgba(23,26,29,0.92)]';
 const FEATURE_BADGE_BASE = 'box-border inline-flex h-[20px] cursor-default items-center justify-center gap-[3px] rounded-[5px] px-[5px] text-[11px] font-medium [transition:background_.2s_ease]';
@@ -253,6 +254,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [settingsSection, setSettingsSection] = useState('basic');
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formAvatar, setFormAvatar] = useState('');
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [requests, setRequests] = useState<OrganizationJoinRequest[]>([]);
@@ -389,6 +392,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   function openCreateModal() {
     setSettingsMode('create'); setSettingsOrg(null); setSettingsSection('basic');
     setFormName(''); setFormDescription('');
+    setFormAvatar(''); setAvatarPickerOpen(false);
     setSettingsOpen(true);
   }
 
@@ -474,8 +478,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     if (!formName.trim()) return;
     setSaving(true);
     try {
-      await organizationsApi.create({ name: formName.trim(), description: formDescription });
+      await organizationsApi.create({ name: formName.trim(), description: formDescription, ...(formAvatar ? { avatar: formAvatar } : {}) });
       setSettingsOpen(false); setFormName(''); setFormDescription('');
+      setFormAvatar(''); setAvatarPickerOpen(false);
       await load();
       showToast('success', t(locale, 'organization.createSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.createFailed'))); }
@@ -796,7 +801,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p></div>
-                        <div className="flex min-w-0 items-center gap-3"><SpaceAvatar name={formName || '?'} size="medium" /><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
+                        <div className="flex min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
                       </div>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
