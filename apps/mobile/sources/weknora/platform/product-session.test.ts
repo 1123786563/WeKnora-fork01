@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createProductScope } from './product-session.ts';
+import { closeProductClient, createProductScope } from './product-session.ts';
 
 test('switching tenant aborts previous request and rejects late response', () => {
   const scope = createProductScope({ origin: 'https://a.test', userId: 'u', tenantId: 'a' });
@@ -34,4 +34,17 @@ test('scope transitions close client subscriptions without cancelling server wor
   scope.switchTo({ origin: 'https://a.test', userId: 'u', tenantId: 'b' });
   await Promise.resolve();
   assert.equal(closed, 1);
+});
+
+test('client teardown ports close voice and remote subscriptions without server cancel', async () => {
+  let voiceStopped = 0;
+  let remoteDisconnected = 0;
+  let serverCancelled = 0;
+  await closeProductClient({
+    stopVoice: () => { voiceStopped += 1; },
+    disconnectRemote: () => { remoteDisconnected += 1; },
+  });
+  assert.equal(voiceStopped, 1);
+  assert.equal(remoteDisconnected, 1);
+  assert.equal(serverCancelled, 0);
 });

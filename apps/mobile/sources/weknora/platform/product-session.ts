@@ -6,6 +6,15 @@ export interface ProductIdentity {
   tenantId: string | null;
 }
 
+export interface ProductClientTeardown {
+  stopVoice(): void | Promise<void>;
+  disconnectRemote(): void | Promise<void>;
+}
+
+export async function closeProductClient(teardown: ProductClientTeardown): Promise<void> {
+  await Promise.allSettled([teardown.stopVoice(), teardown.disconnectRemote()]);
+}
+
 export interface ProductScope {
   switchTo(next: ProductIdentity): void;
   capture(): { generation: number; signal: AbortSignal };

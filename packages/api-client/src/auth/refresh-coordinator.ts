@@ -58,9 +58,17 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   }
 
   async function clearBearerIfCurrent(startGeneration: number): Promise<void> {
-    if (generation !== startGeneration) return;
-    const current = await options.credentials.read();
-    if (generation === startGeneration && isBearer(current)) await options.credentials.clear();
+    await enqueueWrite(async () => {
+      if (generation !== startGeneration) return;
+      const current = await options.credentials.read();
+      if (generation !== startGeneration) return;
+      if (isBearer(current)) await options.credentials.clear();
+      // A generation change during clear is safe because the next credential
+      // mutation is serialized behind this operation.
+      if (generation !== startGeneration) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during clear');
+      }
+    });
   }
 
   async function performRefresh(startGeneration: number): Promise<BearerCredential> {

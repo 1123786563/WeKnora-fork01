@@ -181,3 +181,24 @@ test('serialized credential writes leave the replacement account as the final va
     { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' },
   ]);
 });
+
+test('a delayed refresh clear cannot remove a replacement account credential', async () => {
+  let releaseClear!: () => void;
+  const clearGate = new Promise<void>((resolve) => { releaseClear = resolve; });
+  let clearStarted = false;
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  const clear = credentials.clear;
+  credentials.clear = async () => { clearStarted = true; await clearGate; await clear(); };
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => { throw new Error('refresh denied'); },
+  });
+  const failedRefresh = coordinator.refresh();
+  await Promise.resolve();
+  while (!clearStarted) await Promise.resolve();
+  const replacing = coordinator.replace({ kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  releaseClear();
+  await assert.rejects(failedRefresh, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  await replacing;
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+});

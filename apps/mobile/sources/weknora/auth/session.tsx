@@ -2,7 +2,7 @@ import { createJsonTransport, createProductAuthSession, type BearerCredential } 
 import * as SecureStore from 'expo-secure-store';
 import * as React from 'react';
 import { useMobileHost } from '@/weknora/platform/host';
-import { createProductScope, type ProductScope } from '@/weknora/platform/product-session';
+import { closeProductClient, createProductScope, type ProductClientTeardown, type ProductScope } from '@/weknora/platform/product-session';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { apiSocket } from '@/sync/apiSocket';
 import { createCredentials, productCredentialKey } from './credentials';
@@ -22,7 +22,12 @@ type ProductAuthContextValue = {
 };
 const ProductAuthContext = React.createContext<ProductAuthContextValue | null>(null);
 
-export function ProductAuthProvider({ children }: React.PropsWithChildren) {
+const defaultTeardown: ProductClientTeardown = {
+  stopVoice: stopRealtimeSession,
+  disconnectRemote: () => apiSocket.disconnect(),
+};
+
+export function ProductAuthProvider({ children, teardown = defaultTeardown }: React.PropsWithChildren<{ teardown?: ProductClientTeardown }>) {
   const host = useMobileHost();
   const [credential, setCredential] = React.useState<BearerCredential | null>(null);
   const [loading, setLoading] = React.useState(Boolean(host));
@@ -47,8 +52,7 @@ export function ProductAuthProvider({ children }: React.PropsWithChildren) {
       redrawForScope();
     });
     const unregisterLifecycle = scope.registerLifecycle(() => {
-      void stopRealtimeSession();
-      apiSocket.disconnect();
+      void closeProductClient(teardown);
     });
     return () => {
       unsubscribe();
@@ -56,7 +60,7 @@ export function ProductAuthProvider({ children }: React.PropsWithChildren) {
       // A host change retires the old credential store as well as its refresh.
       void authSession.refreshCoordinator.invalidate();
     };
-  }, [authSession, redrawForScope, scope]);
+  }, [authSession, redrawForScope, scope, teardown]);
 
   React.useEffect(() => {
     let active = true;
