@@ -3610,3 +3610,24 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   --check` passed. These are static/unit/build evidence; authenticated paired
   Vue/React screenshots, real backend permission/mutation flows, and native Wails
   feature interaction remain open acceptance gates.
+
+## 2026-09-16 Round R393 — Route, tokens, data sources, settings, chat, and Wails
+
+- Parallel route inventory (`4d124557`) records all 59 known entries: pages,
+  redirects, 26 settings sections, hidden/history URLs, embed/file routes, and
+  the sandbox WebSocket. It also records two P1 follow-ups in
+  `docs/migrations/react/route-inventory-20260915.md`; inventory is evidence,
+  not automatic acceptance.
+- Shared Vue/TDesign aliases and token tests were added in `40ace7ce`; data
+  source viewer permissions, empty state, sync-in-flight state, and active/
+  paused actions were aligned in `4157b975`.
+- Settings drawer focus containment and restoration were aligned in
+  `0f015561`. Chat sidebar clear propagation and stopped/reconnect terminal
+  states were aligned in `4ef6ffef`.
+- Desktop Wails async API-base bootstrap was aligned in `c6efcc99`; native
+  Wails launch and OS integration remain `blocked-env`.
+- Final regression for this round: Web tests 1163/1163, Web typecheck, Web
+  build, desktop tests 8/8, desktop typecheck, and `git diff --check` pass.
+  These are static/unit/build evidence. Authenticated same-condition browser
+  screenshots, real backend permission/mutation flows, and full Wails runtime
+  interaction remain open, so the overall parity goal is not yet complete.
