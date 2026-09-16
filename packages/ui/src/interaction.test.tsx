@@ -88,6 +88,13 @@ test('form primitives provide explicit invalid aliases and Vue control geometry'
   assert.match(markup, /focus-visible:outline-accent/);
 });
 
+test('Button uses the Vue/TDesign fixed control heights instead of padding-driven growth', () => {
+  const markup = renderToStaticMarkup(React.createElement(Button, { children: 'Save' }));
+  assert.match(markup, /h-8/);
+  assert.match(markup, /py-0/);
+  assert.doesNotMatch(markup, /py-\[0\.55rem\]/);
+});
+
 test('tabs expose Vue-sized trigger and active-state tokens', () => {
   const markup = renderToStaticMarkup(React.createElement(Tabs, { defaultValue: 'one' },
     React.createElement(TabsList, null,

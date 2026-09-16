@@ -14,18 +14,18 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'border border-line-control bg-surface px-[0.8rem] py-[0.55rem] text-ink hover:border-accent',
+          'border border-line-control bg-surface px-[0.8rem] py-0 text-ink hover:border-accent',
         primary:
-          'border border-accent bg-accent px-[0.8rem] py-[0.55rem] text-surface hover:bg-accent-strong',
+          'border border-accent bg-accent px-[0.8rem] py-0 text-surface hover:bg-accent-strong',
         text:
-          'border border-transparent bg-transparent px-[0.5rem] py-[0.3rem] text-muted-strong hover:bg-hover-wash focus-visible:bg-hover-wash',
+          'border border-transparent bg-transparent px-[0.5rem] py-0 text-muted-strong hover:bg-hover-wash focus-visible:bg-hover-wash',
         danger:
-          'border border-transparent bg-transparent px-[0.5rem] py-[0.3rem] text-danger hover:bg-hover-wash focus-visible:bg-hover-wash',
+          'border border-transparent bg-transparent px-[0.5rem] py-0 text-danger hover:bg-hover-wash focus-visible:bg-hover-wash',
       },
       size: {
-        small: 'wk-button-size-small min-h-7 text-xs',
-        medium: 'wk-button-size-medium',
-        large: 'wk-button-size-large min-h-10 px-4 text-base',
+        small: 'wk-button-size-small h-7 min-h-7 text-xs',
+        medium: 'wk-button-size-medium h-8',
+        large: 'wk-button-size-large h-10 min-h-10 px-4 text-base',
       },
     },
     defaultVariants: { variant: 'default', size: 'medium' },
