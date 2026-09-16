@@ -9,6 +9,7 @@ import { useColorScheme } from 'react-native';
 import { createMobileHost, MobileHostProvider, useMobileHost, useSetMobileHost } from '@/weknora/platform/host';
 import { ProductAuthProvider, useProductAuth } from '@/weknora/auth/session';
 import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
+import { NotificationRouter } from '@/weknora/notifications/NotificationRouter';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -53,7 +54,7 @@ function ProductHostBootstrap() {
     }).finally(() => setRestoring(false));
   }, [current, setHost]);
   if (restoring) return null;
-  return <ProductAuthProvider><ProductHostGate /></ProductAuthProvider>;
+  return <ProductAuthProvider><NotificationRouter><ProductHostGate /></NotificationRouter></ProductAuthProvider>;
 }
 
 /** Native shell boundary. Product identity and network clients are connected explicitly. */
