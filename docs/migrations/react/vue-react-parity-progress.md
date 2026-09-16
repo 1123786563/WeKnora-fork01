@@ -3927,3 +3927,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   screenshots, computed-style comparison, real backend permission/mutation
   flows, real Embed streaming, and native Wails interaction remain open or
   `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R412 — Browser connection restored, paired state still blocked
+
+- Browser Use local CDP successfully rendered both applications and captured
+  `artifacts/evidence/vue-react-parity/2026-09-16-r412/`.
+- The Vue tab had an existing authenticated session and redirected `/login` to
+  the knowledge-base page, while React rendered the anonymous login page. The
+  tabs also reported different content viewport dimensions. This confirms the
+  browser tooling path but is not same-condition Vue/React visual acceptance;
+  credentials/session transfer and authenticated mutation evidence remain
+  unavailable. No mobile code was modified.
