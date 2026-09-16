@@ -12,6 +12,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/database"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,19 @@ type workerRemoteProvider struct {
 	started chan agentruntime.RunKey
 }
 
+type recoveryReceiptStore struct{ receipt repository.DispatchRecord }
+
+func (s recoveryReceiptStore) LatestReceipt(context.Context, agentruntime.RunKey) (repository.DispatchRecord, error) {
+	return s.receipt, nil
+}
+
+type recoveryStopper struct{ calls []string }
+
+func (s *recoveryStopper) StopRemoteExecution(_ context.Context, externalID string, epoch int64, _ time.Duration) (agentruntime.RemoteStopResult, error) {
+	s.calls = append(s.calls, externalID)
+	return agentruntime.RemoteStopResult{State: "confirmed", ProcessState: "exited", Epoch: epoch}, nil
+}
+
 type workerDispatchStub struct {
 	store *repository.ExecutionDispatchStore
 }
@@ -194,4 +208,52 @@ func TestAgentRunWorkerRemoteDispatchUsesDurableIntent(t *testing.T) {
 	require.Equal(t, "completed", state)
 	require.Equal(t, "paseo-external-1", externalID)
 	require.Equal(t, "remote-payload-1", hash)
+}
+
+// TestAgentRunWorkerCancelAfterRestartReleasesAdmittedWorkspace proves that
+// recovery uses the durable admission workspace_ref, rather than target_id.
+// The two references are deliberately distinct and the second lease is a
+// sentinel: a target/workspace mix-up must leave it untouched.
+func TestAgentRunWorkerCancelAfterRestartReleasesAdmittedWorkspace(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:w22-recovery-lease?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Exec(`CREATE TABLE execution_workspace_leases (
+		tenant_id INTEGER NOT NULL, workspace_ref TEXT NOT NULL, run_id TEXT NOT NULL,
+		owner TEXT NOT NULL, epoch INTEGER NOT NULL, expires_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL, PRIMARY KEY (tenant_id, workspace_ref)
+	)`).Error)
+
+	key := agentruntime.RunKey{TenantID: 7, RunID: "restart-run"}
+	store := &workerStore{runs: map[string]agentruntime.Run{
+		key.RunID: {
+			Key: key, UserID: "owner-1", TargetID: "target-a", Status: "running",
+			Epoch: 1, Snapshot: json.RawMessage(`{"target_id":"target-a","workspace_ref":"workspace-real"}`),
+		},
+	}}
+	leases := workbenchservice.NewGormWorkspaceLeaseStore(db)
+	_, err = leases.AcquireWorkspaceLease(context.Background(), key.TenantID, "workspace-real", key.RunID, "owner-1", time.Minute)
+	require.NoError(t, err)
+	_, err = leases.AcquireWorkspaceLease(context.Background(), key.TenantID, "target-a", "other-run", "other-owner", time.Minute)
+	require.NoError(t, err)
+	controller := &recoveryStopper{}
+	worker, err := NewAgentRunWorkerWithRemoteDispatch(store, func(context.Context, agentruntime.Fence) error { return nil }, RemoteDispatchConfig{
+		Dispatcher: workerDispatchStub{}, Provider: &workerRemoteProvider{started: make(chan agentruntime.RunKey, 1)},
+		Controller: controller, LeaseStore: leases,
+		ReceiptStore: recoveryReceiptStore{receipt: repository.DispatchRecord{TenantID: key.TenantID, RunID: key.RunID, ExternalID: "external-restart", Epoch: 1}},
+		CommandID:    func(agentruntime.Fence) (string, string) { return "unused", "unused" },
+	}, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
+	require.NoError(t, err)
+	require.NoError(t, worker.Cancel(key))
+	require.Equal(t, []string{"external-restart"}, controller.calls)
+
+	var realRun, realOwner, targetRun, targetOwner string
+	require.NoError(t, db.Raw("SELECT run_id, owner FROM execution_workspace_leases WHERE tenant_id = ? AND workspace_ref = ?", key.TenantID, "workspace-real").Row().Scan(&realRun, &realOwner))
+	require.NoError(t, db.Raw("SELECT run_id, owner FROM execution_workspace_leases WHERE tenant_id = ? AND workspace_ref = ?", key.TenantID, "target-a").Row().Scan(&targetRun, &targetOwner))
+	require.Equal(t, "", realRun)
+	require.Equal(t, "", realOwner)
+	require.Equal(t, "other-run", targetRun)
+	require.Equal(t, "other-owner", targetOwner)
 }

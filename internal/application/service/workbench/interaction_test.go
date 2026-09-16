@@ -51,10 +51,24 @@ func (s *retryInteractionStore) Decide(_ context.Context, _ uint64, _ string, _ 
 
 type retryRemoteInteraction struct {
 	calls int
+	args  []retryRemoteInteractionArgs
 }
 
-func (r *retryRemoteInteraction) SubmitInteraction(context.Context, uint64, string, string, string, string, string, string, int64, int64) error {
+type retryRemoteInteractionArgs struct {
+	tenantID                                uint64
+	ownerID, runID                          string
+	decisionID, externalPendingID, argsHash string
+	action                                  string
+	credentialVersion, expectedRevision     int64
+}
+
+func (r *retryRemoteInteraction) SubmitInteraction(_ context.Context, tenantID uint64, ownerID, runID, decisionID, externalPendingID, argsHash, action string, credentialVersion, expectedRevision int64) error {
 	r.calls++
+	r.args = append(r.args, retryRemoteInteractionArgs{
+		tenantID: tenantID, ownerID: ownerID, runID: runID,
+		decisionID: decisionID, externalPendingID: externalPendingID, argsHash: argsHash,
+		action: action, credentialVersion: credentialVersion, expectedRevision: expectedRevision,
+	})
 	if r.calls == 1 {
 		return errors.New("provider unavailable")
 	}
@@ -75,6 +89,13 @@ func TestInteractionServiceRetriesDurableRemoteApproval(t *testing.T) {
 	_, err = svc.Decide(ctx, store.current.ID, input)
 	require.NoError(t, err)
 	require.Equal(t, 2, remote.calls, "retry must resubmit the same durable decision")
+	require.Len(t, remote.args, 2)
+	require.Equal(t, remote.args[0], remote.args[1], "retry must forward the same durable provider identity and fence")
+	require.Equal(t, retryRemoteInteractionArgs{
+		tenantID: 7, ownerID: "web_user:u1", runID: "run-1", decisionID: "decision-1",
+		externalPendingID: "pending-1", argsHash: "a", action: "approve",
+		credentialVersion: 2, expectedRevision: 1,
+	}, remote.args[0])
 }
 
 type runProjection struct {

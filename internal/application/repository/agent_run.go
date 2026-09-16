@@ -293,10 +293,11 @@ func (s *AgentRunStore) ClaimDriver(
 			return e
 		}
 		var snapshot struct {
-			Prompt       string `json:"prompt"`
-			Text         string `json:"text"`
-			WorkspaceRef string `json:"workspaceRef"`
-			Provider     string `json:"provider"`
+			Prompt             string `json:"prompt"`
+			Text               string `json:"text"`
+			WorkspaceRef       string `json:"workspace_ref"`
+			LegacyWorkspaceRef string `json:"workspaceRef"`
+			Provider           string `json:"provider"`
 		}
 		_ = json.Unmarshal([]byte(row.Snapshot), &snapshot)
 		prompt := snapshot.Prompt
@@ -304,6 +305,9 @@ func (s *AgentRunStore) ClaimDriver(
 			prompt = snapshot.Text
 		}
 		workspace := snapshot.WorkspaceRef
+		if workspace == "" {
+			workspace = snapshot.LegacyWorkspaceRef
+		}
 		if workspace == "" {
 			workspace = row.TargetID
 		}

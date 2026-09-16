@@ -471,12 +471,13 @@ func (w *AgentRunWorker) releaseRecoveredWorkspaceLease(ctx context.Context, key
 		return agentruntime.ErrLeaseLost
 	}
 	var snapshot struct {
-		WorkspaceRef string `json:"workspaceRef"`
+		WorkspaceRef       string `json:"workspace_ref"`
+		LegacyWorkspaceRef string `json:"workspaceRef"`
 	}
 	_ = json.Unmarshal(run.Snapshot, &snapshot)
 	workspaceRef := snapshot.WorkspaceRef
 	if workspaceRef == "" {
-		workspaceRef = run.TargetID
+		workspaceRef = snapshot.LegacyWorkspaceRef
 	}
 	if workspaceRef == "" {
 		return agentruntime.ErrLeaseLost
