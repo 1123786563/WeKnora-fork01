@@ -40,9 +40,15 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
   if (path === '/platform/apps') return { kind: 'apps', path, mode: 'catalog' };
   if (path === '/platform/apps/connections') return { kind: 'apps', path, mode: 'connections' };
   const appAuthorization = path.match(/^\/platform\/apps\/authorization\/([^/]+)$/);
-  if (appAuthorization) return { kind: 'apps', path, mode: 'authorization', id: decodeSegment(appAuthorization[1]!) };
+  if (appAuthorization) {
+    const id = decodeSegment(appAuthorization[1]!);
+    return id === undefined ? { kind: 'not-found', path } : { kind: 'apps', path, mode: 'authorization', id };
+  }
   const appAction = path.match(/^\/platform\/apps\/actions\/([^/]+)$/);
-  if (appAction) return { kind: 'apps', path, mode: 'action', id: decodeSegment(appAction[1]!) };
+  if (appAction) {
+    const id = decodeSegment(appAction[1]!);
+    return id === undefined ? { kind: 'not-found', path } : { kind: 'apps', path, mode: 'action', id };
+  }
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
   if (documentMatch) {

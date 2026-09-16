@@ -43,6 +43,8 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/platform/apps/connections'), { kind: 'apps', path: '/platform/apps/connections', mode: 'connections' });
   assert.deepEqual(resolveRoute('/platform/apps/authorization/attempt-1'), { kind: 'apps', path: '/platform/apps/authorization/attempt-1', mode: 'authorization', id: 'attempt-1' });
   assert.deepEqual(resolveRoute('/platform/apps/actions/action-1'), { kind: 'apps', path: '/platform/apps/actions/action-1', mode: 'action', id: 'action-1' });
+  assert.equal(resolveRoute('/platform/apps/authorization/%E0%A4%A').kind, 'not-found');
+  assert.equal(resolveRoute('/platform/apps/actions/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(guardRoute('/platform/apps', { ...authenticated, authenticated: false, tenantId: null }), { kind: 'redirect', to: '/login?next=%2Fplatform%2Fapps', reason: 'authentication-required' });
   assert.equal(routeRedirect('/'), '/platform/knowledge-bases');
   assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?cmdk=');
