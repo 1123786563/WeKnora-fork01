@@ -36,8 +36,8 @@ test('retrieval changes auto-save after the Vue 500ms debounce', async () => {
   assert.ok(input, 'retrieval control should render');
   await act(async () => {
     (container.querySelector('button[aria-label="Increase"]') as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 550));
   });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.embedding_top_k, 51);
 });
