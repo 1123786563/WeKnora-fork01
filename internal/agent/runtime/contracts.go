@@ -58,6 +58,9 @@ type Run struct {
 	UserID             string
 	RequestID          string
 	AssistantMessageID string
+	Driver             string
+	TargetID           string
+	BudgetRef          string
 	Status             string
 	WaitReason         string
 	Owner              string
@@ -78,11 +81,16 @@ type Admission struct {
 	// instead of creating a second one; empty generates a fresh id.
 	UserMessageID      string
 	AssistantMessageID string
-	RequestHash        string
-	Snapshot           json.RawMessage
-	UserMessage        json.RawMessage
-	AssistantMessage   json.RawMessage
-	Deadline           time.Time
+	// Driver is empty for legacy platform requests. The repository normalizes
+	// that form to platform before it persists or compares an admission.
+	Driver           string
+	TargetID         string
+	BudgetRef        string
+	RequestHash      string
+	Snapshot         json.RawMessage
+	UserMessage      json.RawMessage
+	AssistantMessage json.RawMessage
+	Deadline         time.Time
 }
 
 // Decision is a durable user resolution for a run waiting on an external

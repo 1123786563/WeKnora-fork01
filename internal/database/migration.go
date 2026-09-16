@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -22,6 +23,8 @@ var (
 	migrationVersionSet     bool
 	currentMigrationError   string
 )
+
+const sqliteWorkbenchRunsMigrationVersion = 16
 
 // CachedMigrationVersion returns the migration version captured at startup.
 // Returns (version, dirty, ok). ok is false if the version was never captured.
@@ -104,36 +107,27 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 	logger.Infof(ctx, "Starting database migration...")
 
 	migrationsPath := "file://migrations/versioned"
-	if strings.HasPrefix(dsn, "sqlite3://") {
+	workbenchSQLiteMigrationPresent := false
+	isSQLite := strings.HasPrefix(dsn, "sqlite3://")
+	if isSQLite {
 		migrationsPath = "file://migrations/sqlite"
+		_, err := os.Stat("migrations/sqlite/000055_workbench_runs.up.sql")
+		workbenchSQLiteMigrationPresent = err == nil
 	}
 
-	var m *migrate.Migrate
-	if opts.SQLiteDBPath != "" {
-		sqlDB, err := sql.Open("sqlite3", opts.SQLiteDBPath)
+	var (
+		m   *migrate.Migrate
+		err error
+	)
+	if isSQLite {
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
 		if err != nil {
-			logger.Errorf(ctx, "Failed to open sqlite db for migration: %v", err)
-			wrapped := fmt.Errorf("failed to open sqlite db for migration: %w", err)
-			setMigrationState(0, false, wrapped.Error(), false)
-			return wrapped
-		}
-		driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
-		if err != nil {
-			sqlDB.Close()
-			logger.Errorf(ctx, "Failed to create sqlite3 migrate driver: %v", err)
-			wrapped := fmt.Errorf("failed to create sqlite3 migrate driver: %w", err)
-			setMigrationState(0, false, wrapped.Error(), false)
-			return wrapped
-		}
-		m, err = migrate.NewWithDatabaseInstance(migrationsPath, "sqlite3", driver)
-		if err != nil {
-			logger.Errorf(ctx, "Failed to create migrate instance: %v", err)
-			wrapped := fmt.Errorf("failed to create migrate instance: %w", err)
+			logger.Errorf(ctx, "Failed to create sqlite migrate instance: %v", err)
+			wrapped := fmt.Errorf("failed to create sqlite migrate instance: %w", err)
 			setMigrationState(0, false, wrapped.Error(), false)
 			return wrapped
 		}
 	} else {
-		var err error
 		m, err = migrate.New(migrationsPath, dsn)
 		if err != nil {
 			logger.Errorf(ctx, "Failed to create migrate instance: %v", err)
@@ -142,7 +136,11 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 			return wrapped
 		}
 	}
-	defer m.Close()
+	defer func() {
+		if m != nil {
+			_, _ = m.Close()
+		}
+	}()
 
 	// Check current version and dirty state before migration
 	oldVersion, oldDirty, versionErr := m.Version()
@@ -187,6 +185,35 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 				forceVersion,
 				forceVersion,
 			))
+		}
+	}
+
+	// Migration 000016 rebuilds agent_runs. SQLite only changes foreign_keys
+	// outside a transaction, while the stock driver wraps every file in one.
+	// Bring every supported SQLite entry point to v15 using the normal driver,
+	// execute only v16 with NoTxWrap, then restore normal per-file wrapping for
+	// v17 and later migrations.
+	if isSQLite && workbenchSQLiteMigrationPresent &&
+		(versionErr == migrate.ErrNilVersion || oldVersion < sqliteWorkbenchRunsMigrationVersion) {
+		if err := m.Migrate(sqliteWorkbenchRunsMigrationVersion - 1); err != nil && err != migrate.ErrNoChange {
+			return captureMigrationFailure(m, fmt.Errorf("failed to prepare SQLite workbench migration: %w", err))
+		}
+		if _, err := m.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite migration driver before workbench rebuild: %w", err)
+		}
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), true)
+		if err != nil {
+			return captureMigrationFailure(m, fmt.Errorf("failed to create SQLite workbench migrator: %w", err))
+		}
+		if err := m.Steps(1); err != nil && err != migrate.ErrNoChange {
+			return captureMigrationFailure(m, fmt.Errorf("failed to run SQLite workbench migration: %w", err))
+		}
+		if _, err := m.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite workbench migration driver: %w", err)
+		}
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
+		if err != nil {
+			return captureMigrationFailure(m, fmt.Errorf("failed to restore SQLite migration driver: %w", err))
 		}
 	}
 
@@ -255,6 +282,69 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 	}
 
 	return nil
+}
+
+func sqliteMigrationDSN(dsn string, opts MigrationOptions) string {
+	if opts.SQLiteDBPath != "" {
+		return opts.SQLiteDBPath
+	}
+	// Keep the filesystem path byte-for-byte intact (including spaces), while
+	// removing migrate's x-* options that are consumed by the adapter rather
+	// than by mattn/go-sqlite3.
+	raw := strings.TrimPrefix(dsn, "sqlite3://")
+	queryStart := strings.IndexByte(raw, '?')
+	if queryStart < 0 {
+		return raw
+	}
+	path := raw[:queryStart]
+	query := raw[queryStart+1:]
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return path
+	}
+	for key := range values {
+		if strings.HasPrefix(key, "x-") {
+			values.Del(key)
+		}
+	}
+	if encoded := values.Encode(); encoded != "" {
+		return path + "?" + encoded
+	}
+	return path
+}
+
+func sqliteMigrationTable(dsn string) string {
+	raw := strings.TrimPrefix(dsn, "sqlite3://")
+	queryStart := strings.IndexByte(raw, '?')
+	if queryStart < 0 {
+		return ""
+	}
+	values, err := url.ParseQuery(raw[queryStart+1:])
+	if err != nil {
+		return ""
+	}
+	return values.Get("x-migrations-table")
+}
+
+func newSQLiteMigrator(migrationsPath, sqliteDSN, migrationsTable string, noTxWrap bool) (*migrate.Migrate, error) {
+	sqlDB, err := sql.Open("sqlite3", sqliteDSN)
+	if err != nil {
+		return nil, err
+	}
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{
+		MigrationsTable: migrationsTable,
+		NoTxWrap:        noTxWrap,
+	})
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	m, err := migrate.NewWithDatabaseInstance(migrationsPath, "sqlite3", driver)
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	return m, nil
 }
 
 // recoverFromDirtyState attempts to recover from a dirty migration state

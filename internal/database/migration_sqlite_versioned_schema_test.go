@@ -46,9 +46,10 @@ var versionedSQLiteColumns = map[string][]string{
 // attempts, decisions, inputs, events, checkpoints).
 // The durable agent-run tables were introduced by 000014-000016; the
 // versioned SQLite migration stream continues through 000040 (open-connector
-// 000041-000044) and the Craft tables through 000052, plus native OIDC
-// exchange through 000053.
-const expectedSQLiteMigrationVersion = 53
+// 000041-000044) and the Craft tables through 000052, native OIDC exchange
+// through 000053, tenant skills at 000054 and the workbench run rebuild at
+// 000055.
+const expectedSQLiteMigrationVersion = 55
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
