@@ -3756,3 +3756,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   migration to the shared Tailwind/shadcn token wrappers. This remains an
   explicit visual-implementation follow-up and prevents claiming complete
   pixel-level parity.
+
+## 2026-09-16 Round R399 — Current route denominator and authority audit
+
+- `8122e7b0` records the current route inventory audit. The CSV has 59 data
+  rows, no explicit stable row ID, and four Apps rows whose referenced Vue
+  `frontend/src/views/apps/*.vue` authority files are not present in this
+  checkout. It also identifies combined `embed.html` path fields and
+  wildcard/missing artifact references that cannot serve as direct evidence
+  links.
+- Historical 53/56-row counts are now explicitly marked as historical; the
+  current matrix, baseline, acceptance inventory, and route inventory point to
+  `artifacts/route-inventory-parity-ledger-audit-20260916.md`. Apps authority
+  resolution and stable route-to-row mapping remain review/open, so no blanket
+  page acceptance is inferred from route reachability.
+- This is static-document evidence only. It does not replace Vue runtime
+  screenshots, computed-style comparison, authenticated permissions/mutations,
+  real Embed streaming, or native Wails interaction. No mobile code was
+  modified.
