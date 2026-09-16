@@ -90,3 +90,21 @@ test('product VM approvals call typed decision and update the card state', async
   assert.deepEqual(decisions, [['interaction-1', 'approve', 3]]);
   assert.equal(model.pendingInteractions[0]?.status, 'approved');
 });
+
+test('cancel and steer fence late responses after a scope switch', async () => {
+  let generation = 1;
+  let resolve!: () => void;
+  const calls: AbortSignal[] = [];
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'r1', status: 'pending' }),
+    lookup: async () => ({ state: 'pending' as const }),
+    command: async (_run: string, _input: unknown, signal?: AbortSignal) => { calls.push(signal!); await new Promise<void>((done) => { resolve = done; }); },
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation, signal: new AbortController().signal }), accept: (value: number) => value === generation } as any;
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions });
+  const pending = model.commands.cancel('run-1', 1);
+  generation = 2;
+  resolve();
+  await assert.rejects(pending, /SCOPE_CHANGED/);
+  assert.equal(calls.length, 1);
+});

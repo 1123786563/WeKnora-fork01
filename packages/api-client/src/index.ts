@@ -16,7 +16,7 @@ export type { FetchLike, FetchResponseLike } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export { createProductAuth, createProductAuthSession } from './auth/login.ts';
-export type { ProductAuthOptions, ProductIdentitySnapshot } from './auth/login.ts';
+export type { ProductAuthOptions, ProductIdentitySnapshot, ProductAuthSession } from './auth/login.ts';
 export { createOIDCApi } from './auth/oidc.ts';
 export type { OIDCAuthURLResponse, OIDCConfigResponse, OIDCExchangeResponse, AuthRequest } from './auth/oidc.ts';
 export { createInvitationsApi } from './auth/invitations.ts';

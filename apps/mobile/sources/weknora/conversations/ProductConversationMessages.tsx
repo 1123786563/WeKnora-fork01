@@ -9,7 +9,11 @@ export function ProductConversationMessages({ viewModel }: { viewModel: Conversa
       {viewModel.messages.map((message) => (
         <View key={message.id} accessibilityLabel={`message-${message.id}`}>
           <Text accessibilityLabel={`message-role-${message.id}`}>{message.role}</Text>
-          <Text>{message.text}</Text>
+          {(message.blocks?.length ? message.blocks : [{ kind: 'text' as const, text: message.text }]).map((block, index) => (
+            <View key={block.id ?? `${message.id}-${block.kind}-${index}`} accessibilityLabel={`message-${message.id}-${block.kind}`}>
+              <Text accessibilityLabel={`message-${message.id}-${block.kind}-content`}>{block.text}</Text>
+            </View>
+          ))}
         </View>
       ))}
       {viewModel.execution ? (

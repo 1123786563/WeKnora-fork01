@@ -37,10 +37,10 @@ export function ConversationControlPanel({ viewModel }: { viewModel: Conversatio
           {item.reason ? <Text>{item.reason}</Text> : null}
           {item.error ? <Text accessibilityRole="alert">{item.error}</Text> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`批准 ${item.label}`} onPress={() => void viewModel.commands.approve?.(item.id, item.revision ?? 0)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`批准 ${item.label}`} onPress={() => void Promise.resolve(viewModel.commands.approve?.(item.id, item.revision ?? 0)).catch(() => undefined)}>
               <Text>批准</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`拒绝 ${item.label}`} onPress={() => void viewModel.commands.reject?.(item.id, item.revision ?? 0)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`拒绝 ${item.label}`} onPress={() => void Promise.resolve(viewModel.commands.reject?.(item.id, item.revision ?? 0)).catch(() => undefined)}>
               <Text>拒绝</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={`刷新 ${item.label}`} onPress={() => void viewModel.commands.refreshPending?.(item.id)}>

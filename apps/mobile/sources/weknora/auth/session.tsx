@@ -1,4 +1,4 @@
-import { createJsonTransport, createProductAuthSession, type BearerCredential } from '@weknora/api-client';
+import { createJsonTransport, createProductAuthSession, type BearerCredential, type ProductAuthSession } from '@weknora/api-client';
 import * as SecureStore from 'expo-secure-store';
 import * as React from 'react';
 import { useMobileHost } from '@/weknora/platform/host';
@@ -15,6 +15,7 @@ const store = {
 
 type ProductAuthContextValue = {
   credential: BearerCredential | null;
+  authSession: ProductAuthSession | null;
   loading: boolean;
   scope: ProductScope;
   login: (email: string, password: string) => Promise<void>;
@@ -99,7 +100,7 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     setCredential(next);
   }, [authSession, host]);
 
-  return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout, replaceCredential }}>{children}</ProductAuthContext.Provider>;
+  return <ProductAuthContext.Provider value={{ credential, authSession, loading, scope, login, logout, replaceCredential }}>{children}</ProductAuthContext.Provider>;
 }
 
 export function useProductAuth(): ProductAuthContextValue {

@@ -1,4 +1,4 @@
-import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput } from '@weknora/api-client';
+import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput, type ProductAuthSession } from '@weknora/api-client';
 import type { ExecutionDTO } from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
 
@@ -17,11 +17,13 @@ export interface ConversationScope {
 }
 
 export type ConversationMessageRole = 'user' | 'assistant' | 'tool' | 'system';
+export type ConversationContentBlock = { id?: string; kind: 'text' | 'tool' | 'thinking'; text: string };
 
 export interface ConversationMessage {
   id: string;
   role: ConversationMessageRole;
   text: string;
+  blocks?: ConversationContentBlock[];
   agentID?: string;
   createdAt?: string;
 }
@@ -169,8 +171,16 @@ export function createProductConversationViewModel(input: {
     pendingInteractions: input.pendingInteractions,
     capabilities: { canCancel: true, canSteer: true },
     commands: {
-      cancel: async (runID, expectedRevision = 0) => { await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }); },
-      steer: async (runID, text, expectedRevision = 0) => { await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }); },
+      cancel: async (runID, expectedRevision = 0) => {
+        const captured = input.scope.capture();
+        await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }, captured.signal);
+        if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
+      },
+      steer: async (runID, text, expectedRevision = 0) => {
+        const captured = input.scope.capture();
+        await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }, captured.signal);
+        if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
+      },
       refreshPending: async (interactionID) => { await refreshRequest(latestRequestID ?? interactionID); },
       approve: async (interactionID, expectedRevision = 0) => {
         if (!input.executions.decide) throw new Error('APPROVAL_UNSUPPORTED');
@@ -231,11 +241,12 @@ export function createProductExecutionApi(input: {
   origin: string;
   credential: BearerCredential;
   scope: ProductScope;
+  authSession?: ProductAuthSession | null;
 }): ExecutionApi {
   const transport = createJsonTransport(fetch);
   const client = createWeKnoraClient({
     baseURL: input.origin,
-    transport: {
+    transport: input.authSession?.transport ?? {
       send: (request) => transport.send({
         ...request,
         headers: { ...request.headers, authorization: `Bearer ${input.credential.accessToken}` },

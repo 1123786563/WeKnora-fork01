@@ -8,8 +8,19 @@ import { trackSessionSwitched } from '@/track';
 import { perfMark } from '@/utils/perfLog';
 import { isRunningOnMac } from '@/utils/platform';
 
-function sessionHref(sessionId: string): `/session/${string}` {
-    return `/session/${encodeURIComponent(sessionId)}`;
+export interface ProductSessionNavigation { spaceId: string; agentId: string; targetId: string; workspaceRef: string; resourceUserId: string; resourceTenantId: string; }
+
+function sessionHref(sessionId: string, selection?: ProductSessionNavigation): `/session/${string}` {
+    const path = `/session/${encodeURIComponent(sessionId)}` as `/session/${string}`;
+    if (!selection) return path;
+    const query = new URLSearchParams(Object.entries(selection)).toString();
+    return `${path}?${query}` as `/session/${string}`;
+}
+
+function productSelection(session: any): ProductSessionNavigation | undefined {
+    const candidate = session?.metadata?.productSession as Partial<ProductSessionNavigation> | undefined;
+    if (!candidate || Object.values(candidate).some((value) => typeof value !== 'string' || value.trim() === '')) return undefined;
+    return candidate as ProductSessionNavigation;
 }
 
 export function prefetchSession(router: Router, sessionId: string) {
@@ -22,7 +33,7 @@ export function prefetchSession(router: Router, sessionId: string) {
     perfMark(`session-preload:${sessionId}`);
     sync.preloadSession(sessionId);
     try {
-        router.prefetch(sessionHref(sessionId));
+        router.prefetch(sessionHref(sessionId, productSelection(storage.getState().sessions[sessionId])));
     } catch (error) {
         // Preparation is optional; a failed hint must not break the press.
         console.warn('Unable to prefetch session screen', error);
@@ -36,7 +47,8 @@ export function navigateToSession(router: Router, sessionId: string) {
         trackSessionSwitched(session);
     }
 
-    router.push(sessionHref(sessionId));
+    const selection = productSelection(session);
+    router.push(sessionHref(sessionId, selection));
 }
 
 export function useNavigateToSession() {

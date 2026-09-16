@@ -1,4 +1,4 @@
-import type { BearerCredential, HttpTransport } from '../ports.ts';
+import type { BearerCredential, HttpRequest, HttpResult, HttpTransport } from '../ports.ts';
 import type { CredentialAdapter } from '../ports.ts';
 import { createRefreshCoordinator } from './refresh-coordinator.ts';
 
@@ -111,5 +111,28 @@ export function createProductAuthSession(options: ProductAuthOptions & { credent
       return auth.me(refreshed.accessToken);
     }
   }
-  return { ...auth, request, me, refreshCoordinator };
+  /**
+   * Product authenticated transport for API modules that need arbitrary HTTP
+   * methods. It is deliberately owned by the auth session so every request
+   * shares the refresh coordinator and never captures a stale bearer token.
+   */
+  const transport: HttpTransport = {
+    async send(input: HttpRequest): Promise<HttpResult> {
+      const current = await options.credentials.read();
+      const withCredential = (credential: BearerCredential | undefined): Promise<HttpResult> =>
+        options.transport.send({
+          ...input,
+          headers: { ...input.headers, ...(credential ? { authorization: `Bearer ${credential.accessToken}` } : {}) },
+        });
+      const first = current.kind === 'bearer' ? await withCredential(current) : await withCredential(undefined);
+      if (first.status !== 401 || current.kind !== 'bearer' || !current.refreshToken) return first;
+      const refreshed = await refreshCoordinator.refresh();
+      return withCredential(refreshed);
+    },
+    ...(options.transport.sendBinary ? { sendBinary: options.transport.sendBinary.bind(options.transport) } : {}),
+    ...(options.transport.sendStream ? { sendStream: options.transport.sendStream.bind(options.transport) } : {}),
+  };
+  return { ...auth, request, me, refreshCoordinator, transport, baseURL: options.baseURL.replace(/\/+$/, '') };
 }
+
+export type ProductAuthSession = ReturnType<typeof createProductAuthSession>;
