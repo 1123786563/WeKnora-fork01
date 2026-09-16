@@ -169,15 +169,20 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			ConfirmedSeq      int64
 			ConfirmedSnapshot []byte
 		}
-		var observationRow struct {
-			HistoryIncomplete bool
-			ProductSeq        int64
-			ConfirmedSnapshot []byte
-		}
-		if tx.Table("execution_observations").Select("history_incomplete, product_seq, confirmed_snapshot").Where("tenant_id = ? AND run_id = ? AND history_incomplete = ?", key.TenantID, key.RunID, true).Order("product_seq DESC").Take(&observationRow).Error == nil {
-			observation.Incomplete = 1
-			observation.ConfirmedSeq = observationRow.ProductSeq - 1
-			observation.ConfirmedSnapshot = observationRow.ConfirmedSnapshot
+		var sourceRows []executionObservationRow
+		_ = tx.Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Find(&sourceRows).Error
+		for _, sourceRow := range sourceRows {
+			if sourceRow.SourceSeq <= 0 {
+				continue
+			}
+			var cursor executionSourceCursorRow
+			if tx.Where("tenant_id = ? AND binding_id = ? AND generation = ?", key.TenantID, sourceRow.BindingID, sourceRow.Generation).Take(&cursor).Error == nil && sourceRow.SourceSeq > cursor.LastConfirmedSeq {
+				observation.Incomplete = 1
+				if cursor.LastConfirmedSeq > observation.ConfirmedSeq {
+					observation.ConfirmedSeq = cursor.LastConfirmedSeq
+					observation.ConfirmedSnapshot = cursor.ConfirmedSnapshot
+				}
+			}
 		}
 		events := make([]workbench.ExecutionEvent, 0, len(rows))
 		var watermark int64

@@ -8,3 +8,8 @@ CREATE TABLE execution_observations (
     FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs (tenant_id, run_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_execution_observations_run ON execution_observations (tenant_id, run_id, product_seq);
+CREATE TABLE execution_source_cursors (
+    tenant_id INTEGER NOT NULL, binding_id VARCHAR(255) NOT NULL, generation VARCHAR(255) NOT NULL,
+    last_confirmed_seq INTEGER NOT NULL DEFAULT 0, confirmed_snapshot JSON NOT NULL DEFAULT '[]',
+    PRIMARY KEY (tenant_id, binding_id, generation)
+);

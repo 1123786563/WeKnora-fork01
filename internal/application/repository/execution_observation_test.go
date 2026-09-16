@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -66,4 +67,31 @@ func TestSourceCursorGapPersistsConfirmedSnapshotAndReadFallsBack(t *testing.T) 
 	require.Equal(t, int64(1), snapshot.ConfirmedWatermark)
 	require.Len(t, snapshot.Events, 1)
 	require.Equal(t, int64(1), snapshot.Events[0].Seq)
+}
+
+func TestSourceCursorContinuousGapsRecoverWithoutCrossGenerationMixing(t *testing.T) {
+	db := openRunTestDB(t)
+	_, err := NewAgentRunStore(db).Admit(context.Background(), testAdmission())
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`INSERT INTO execution_dispatches (tenant_id, command_id, run_id, attempt_id, payload_hash, state, worker, epoch) VALUES (1, 'binding-1', 'r1', 'a1', '', 'completed', 'w', 1)`).Error)
+	store := NewExecutionObservationStore(db)
+	for _, seq := range []int64{1, 3, 5} {
+		source := SourceObservation{BindingID: "binding-1", Generation: "g1", EventID: fmt.Sprintf("e%d", seq), Type: "text.delta", SourceSeq: seq, Payload: json.RawMessage(fmt.Sprintf(`{"seq":%d}`, seq))}
+		_, err = store.IngestSourceEvent(context.Background(), source.BindingID, source)
+		require.NoError(t, err)
+	}
+	var confirmed int64
+	require.NoError(t, db.Table("execution_source_cursors").Where("tenant_id = 1 AND binding_id = 'binding-1' AND generation = 'g1'").Pluck("last_confirmed_seq", &confirmed).Error)
+	require.Equal(t, int64(1), confirmed)
+	for _, seq := range []int64{2, 4} {
+		source := SourceObservation{BindingID: "binding-1", Generation: "g1", EventID: fmt.Sprintf("e%d", seq), Type: "text.delta", SourceSeq: seq, Payload: json.RawMessage(fmt.Sprintf(`{"seq":%d}`, seq))}
+		_, err = store.IngestSourceEvent(context.Background(), source.BindingID, source)
+		require.NoError(t, err)
+	}
+	require.NoError(t, db.Table("execution_source_cursors").Where("tenant_id = 1 AND binding_id = 'binding-1' AND generation = 'g1'").Pluck("last_confirmed_seq", &confirmed).Error)
+	require.Equal(t, int64(5), confirmed)
+	var other int64
+	require.NoError(t, db.Table("execution_source_cursors").Create(map[string]any{"tenant_id": 1, "binding_id": "binding-1", "generation": "g2", "last_confirmed_seq": 1, "confirmed_snapshot": []byte(`[]`)}).Error)
+	require.NoError(t, db.Table("execution_source_cursors").Where("tenant_id = 1 AND binding_id = 'binding-1' AND generation = 'g2'").Pluck("last_confirmed_seq", &other).Error)
+	require.Equal(t, int64(1), other)
 }

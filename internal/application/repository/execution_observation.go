@@ -40,6 +40,16 @@ type executionObservationRow struct {
 
 func (executionObservationRow) TableName() string { return "execution_observations" }
 
+type executionSourceCursorRow struct {
+	TenantID          uint64 `gorm:"primaryKey;column:tenant_id"`
+	BindingID         string `gorm:"primaryKey;column:binding_id"`
+	Generation        string `gorm:"primaryKey;column:generation"`
+	LastConfirmedSeq  int64  `gorm:"column:last_confirmed_seq"`
+	ConfirmedSnapshot []byte `gorm:"column:confirmed_snapshot"`
+}
+
+func (executionSourceCursorRow) TableName() string { return "execution_source_cursors" }
+
 type executionBindingRow struct {
 	TenantID  uint64
 	RunID     string
@@ -132,21 +142,57 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 			payload, _ = json.Marshal(map[string]any{"source_type": source.Type, "payload": json.RawMessage(source.Payload)})
 		}
 		now := time.Now().UTC()
-		var sourceCursor struct{ Seq int64 }
-		_ = tx.WithContext(ctx).Table("execution_observations").Select("COALESCE(MAX(source_seq), 0) AS seq").Where("tenant_id = ? AND binding_id = ? AND generation = ?", key.TenantID, bindingID, source.Generation).Scan(&sourceCursor).Error
-		incomplete := source.SourceSeq > 0 && sourceCursor.Seq > 0 && source.SourceSeq > sourceCursor.Seq+1
-		confirmedSnapshot := []byte(`[]`)
-		if incomplete {
-			var prior []executionObservationRow
-			_ = tx.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND product_seq < ?", key.TenantID, key.RunID, seq).Order("product_seq ASC").Find(&prior).Error
-			confirmed := make([]workbench.ExecutionEvent, 0, len(prior))
-			for _, item := range prior {
-				confirmed = append(confirmed, toExecutionEvent(item))
-			}
-			confirmedSnapshot, _ = json.Marshal(confirmed)
+		var sourceCursor executionSourceCursorRow
+		cursorErr := tx.WithContext(ctx).Where("tenant_id = ? AND binding_id = ? AND generation = ?", key.TenantID, bindingID, source.Generation).Take(&sourceCursor).Error
+		cursorExists := cursorErr == nil
+		if errors.Is(cursorErr, gorm.ErrRecordNotFound) {
+			sourceCursor = executionSourceCursorRow{TenantID: key.TenantID, BindingID: bindingID, Generation: source.Generation, ConfirmedSnapshot: []byte(`[]`)}
+		} else if cursorErr != nil {
+			return cursorErr
 		}
+		incomplete := source.SourceSeq > 0 && source.SourceSeq > sourceCursor.LastConfirmedSeq+1
+		confirmedSnapshot := append([]byte(`[]`), sourceCursor.ConfirmedSnapshot...)
 		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
 		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
+			return err
+		}
+		if source.SourceSeq > 0 {
+			var contiguous []executionObservationRow
+			_ = tx.WithContext(ctx).Where("tenant_id = ? AND binding_id = ? AND generation = ? AND source_seq > ?", key.TenantID, bindingID, source.Generation, sourceCursor.LastConfirmedSeq).Order("source_seq ASC").Find(&contiguous).Error
+			var confirmed []workbench.ExecutionEvent
+			_ = json.Unmarshal(confirmedSnapshot, &confirmed)
+			next := sourceCursor.LastConfirmedSeq
+			for _, item := range contiguous {
+				if item.SourceSeq != next+1 {
+					break
+				}
+				confirmed = append(confirmed, toExecutionEvent(item))
+				next = item.SourceSeq
+			}
+			if next > sourceCursor.LastConfirmedSeq {
+				encoded, _ := json.Marshal(confirmed)
+				previous := sourceCursor.LastConfirmedSeq
+				sourceCursor.LastConfirmedSeq, sourceCursor.ConfirmedSnapshot = next, encoded
+				var saveErr error
+				if cursorExists {
+					saveErr = tx.WithContext(ctx).Save(&sourceCursor).Error
+				} else {
+					saveErr = tx.WithContext(ctx).Create(&sourceCursor).Error
+					cursorExists = saveErr == nil
+				}
+				if saveErr != nil {
+					return err
+				}
+				confirmedSnapshot = sourceCursor.ConfirmedSnapshot
+				if err := tx.WithContext(ctx).Model(&executionObservationRow{}).Where("tenant_id = ? AND binding_id = ? AND generation = ? AND source_seq > ? AND source_seq <= ?", key.TenantID, bindingID, source.Generation, previous, next).Updates(map[string]any{"history_incomplete": false, "confirmed_snapshot": confirmedSnapshot}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		if source.SourceSeq > 0 && source.SourceSeq > sourceCursor.LastConfirmedSeq {
+			row.HistoryIncomplete, row.ConfirmedSnapshot = true, confirmedSnapshot
+		}
+		if err := tx.WithContext(ctx).Model(&executionObservationRow{}).Where("tenant_id = ? AND binding_id = ? AND generation = ? AND event_id = ?", key.TenantID, bindingID, source.Generation, source.EventID).Updates(map[string]any{"history_incomplete": row.HistoryIncomplete, "confirmed_snapshot": row.ConfirmedSnapshot}).Error; err != nil {
 			return err
 		}
 		event := executionEventFor(key.RunID, source.AttemptID, seq, typ, payload, now)
