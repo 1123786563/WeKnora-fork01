@@ -129,9 +129,34 @@ export function createProductAuthSession(options: ProductAuthOptions & { credent
       const refreshed = await refreshCoordinator.refresh();
       return withCredential(refreshed);
     },
-    ...(options.transport.sendBinary ? { sendBinary: options.transport.sendBinary.bind(options.transport) } : {}),
-    ...(options.transport.sendStream ? { sendStream: options.transport.sendStream.bind(options.transport) } : {}),
   };
+  async function authenticatedTransport(input: HttpRequest, send: (request: HttpRequest) => Promise<HttpResult>): Promise<HttpResult> {
+    const current = await options.credentials.read();
+    const withCredential = (credential: BearerCredential | undefined) => send({
+      ...input,
+      headers: { ...input.headers, ...(credential ? { authorization: `Bearer ${credential.accessToken}` } : {}) },
+    });
+    const first = await withCredential(current.kind === 'bearer' ? current : undefined);
+    if (first.status !== 401 || current.kind !== 'bearer' || !current.refreshToken) return first;
+    return withCredential(await refreshCoordinator.refresh());
+  }
+  if (options.transport.sendBinary) {
+    transport.sendBinary = (input) => authenticatedTransport(input, options.transport.sendBinary!.bind(options.transport));
+  }
+  if (options.transport.sendStream) {
+    transport.sendStream = async (input) => {
+      // Streams cannot be replayed after bytes are consumed; authenticate and
+      // refresh before opening, and retry only a clean 401 response.
+      const current = await options.credentials.read();
+      const open = (credential: BearerCredential | undefined) => options.transport.sendStream!({
+        ...input,
+        headers: { ...input.headers, ...(credential ? { authorization: `Bearer ${credential.accessToken}` } : {}) },
+      });
+      let result = await open(current.kind === 'bearer' ? current : undefined);
+      if (result.status === 401 && current.kind === 'bearer' && current.refreshToken) result = await open(await refreshCoordinator.refresh());
+      return result;
+    };
+  }
   return { ...auth, request, me, refreshCoordinator, transport, baseURL: options.baseURL.replace(/\/+$/, '') };
 }
 

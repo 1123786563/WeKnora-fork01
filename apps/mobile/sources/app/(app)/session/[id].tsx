@@ -9,6 +9,7 @@ import { resolveProductSessionResources, type ProductSessionResourceSelection, t
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage } from '@/weknora/platform/execution-storage';
+import { projectExecutionSnapshot } from '@/weknora/conversations/execution-projection';
 
 type Params = ProductSessionResourceSelection & { id?: string; resourceUserId?: string; resourceTenantId?: string };
 
@@ -56,6 +57,9 @@ function ProductSessionRoute() {
       budgetUpper: 0,
       executions: executionApi,
       requestStorage,
+      projection: executionApi.snapshot ? {
+        load: async (runID, signal) => projectExecutionSnapshot(await executionApi.snapshot!(runID, signal)),
+      } : undefined,
     });
   }, [auth.scope, executionApi, requestStorage, resources, sessionId]);
   // Sessions without explicit product resource metadata remain the retained Happy route.

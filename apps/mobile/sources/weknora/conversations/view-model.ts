@@ -1,11 +1,13 @@
 import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput, type ProductAuthSession } from '@weknora/api-client';
-import type { ExecutionDTO } from '@weknora/contracts';
+import type { ExecutionDTO, ExecutionSnapshot } from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
+import type { ProductConversationProjection } from './execution-projection';
 
 export interface ExecutionApi {
   start(input: StartExecutionInput, signal?: AbortSignal): Promise<{ run_id: string; request_id: string; status: string }>;
   lookup(requestID: string, signal?: AbortSignal): Promise<{ state: 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown'; run_id?: string; reason?: string }>;
   command(runID: string, input: ExecutionCommandInput, signal?: AbortSignal): Promise<unknown>;
+  snapshot?(runID: string, signal?: AbortSignal): Promise<ExecutionSnapshot>;
   decide?(interactionID: string, input: { action: 'approve' | 'reject'; expected_revision: number }, signal?: AbortSignal): Promise<void>;
 }
 
@@ -75,6 +77,10 @@ export interface ConversationRequestStorage {
   set(record: ConversationRequestRecord): Promise<void>;
 }
 
+export interface ConversationProjectionSource {
+  load(runID: string, signal?: AbortSignal): Promise<ProductConversationProjection>;
+}
+
 export interface ConversationViewModel {
   scope: ConversationScope;
   messages: ConversationMessage[];
@@ -113,6 +119,7 @@ export function createProductConversationViewModel(input: {
   messages?: ConversationMessage[];
   pendingInteractions?: PendingInteraction[];
   requestStorage?: ConversationRequestStorage;
+  projection?: ConversationProjectionSource;
 }): ConversationViewModel {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
@@ -126,6 +133,18 @@ export function createProductConversationViewModel(input: {
   const persistExecution = async (execution: ConversationExecution) => {
     if (!input.requestStorage) return;
     await input.requestStorage.set({ requestID: execution.requestID, runID: execution.runID || undefined, status: execution.status, ...(execution.reason ? { reason: execution.reason } : {}) });
+  };
+  const loadProjection = async (runID: string, signal?: AbortSignal) => {
+    if (!input.projection) return;
+    const captured = input.scope.capture();
+    const projection = await input.projection.load(runID, signal ?? captured.signal);
+    if (!input.scope.accept(captured.generation)) return;
+    model.messages = projection.messages;
+    model.pendingInteractions = projection.pendingInteractions;
+    if (projection.execution) {
+      model.execution = { ...projection.execution, requestID: model.execution?.requestID ?? projection.execution.requestID };
+    }
+    notify();
   };
   const send = createSendController(async (text, requestID) => {
     latestRequestID = requestID;
@@ -143,6 +162,7 @@ export function createProductConversationViewModel(input: {
     const execution = { runID: ack.run_id, requestID: ack.request_id, status: ack.status };
     updateExecution(execution);
     await persistExecution(execution);
+    if (execution.runID) await loadProjection(execution.runID, captured.signal).catch(() => undefined);
     // A start acknowledgement is admission only. Re-read the durable request
     // so an unknown/pending response survives a remount and scope transition.
     if (ack.status === 'unknown' || ack.status === 'pending' || ack.status === 'dispatching') {
@@ -164,6 +184,7 @@ export function createProductConversationViewModel(input: {
     }
     updateExecution(execution);
     await persistExecution(execution);
+    if (execution.runID) await loadProjection(execution.runID, captured.signal).catch(() => undefined);
   };
   model = createConversationViewModel({
     scope: { ...identity, spaceId: input.spaceId },
@@ -225,6 +246,7 @@ export function createProductConversationViewModel(input: {
       if (record.status === 'unknown' || record.status === 'pending' || record.status === 'dispatching') {
         void refreshRequest(record.requestID).catch(() => undefined);
       }
+      if (record.runID) void loadProjection(record.runID).catch(() => undefined);
     }).catch(() => undefined);
   }
   return model;
@@ -267,6 +289,7 @@ export function createProductExecutionApi(input: {
     start: (request, signal) => scoped((activeSignal) => executions.start(request, activeSignal), signal),
     lookup: (requestID, signal) => scoped((activeSignal) => executions.lookup(requestID, activeSignal), signal),
     command: (runID, command, signal) => scoped((activeSignal) => executions.command(runID, command, activeSignal), signal),
+    snapshot: (runID, signal) => scoped((activeSignal) => executions.snapshot(runID, activeSignal), signal),
     decide: async (interactionID, decision, signal) => {
       await scoped((activeSignal) => client.chat.approvals.resolveTool(interactionID, { decision: decision.action, expected_revision: decision.expected_revision }, activeSignal), signal);
     },
