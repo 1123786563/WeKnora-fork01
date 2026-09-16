@@ -21,7 +21,7 @@ vi.mock('@/sync/sync', () => ({ sync: { preloadSession: mocks.preloadSession } }
 vi.mock('@/track', () => ({ trackSessionSwitched: mocks.trackSessionSwitched }));
 vi.mock('@/utils/perfLog', () => ({ perfMark: mocks.perfMark }));
 
-import { createProductSessionNavigation, navigateToSession, useSessionPressHandlers } from './useNavigateToSession';
+import { createProductSessionNavigation, createProductSessionNavigationFromSession, navigateToSession, useSessionPressHandlers } from './useNavigateToSession';
 
 let renderer: ReturnType<typeof create>;
 let handlers: ReturnType<typeof useSessionPressHandlers>;
@@ -50,6 +50,10 @@ describe('session row press contract', () => {
     });
     it('rejects an empty run identity', () => {
         expect(() => createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: '  ' })).toThrow('PRODUCT_SESSION_RUN_ID_REQUIRED');
+    });
+    it('fails closed when a product entry has no persisted metadata', () => {
+        expect(createProductSessionNavigationFromSession({ id: 's1', metadata: {} })).toBeUndefined();
+        expect(createProductSessionNavigationFromSession({ id: 's1', metadata: { productSession: { runId: 'run-1' } } })).toBeUndefined();
     });
     it.each(['list', 'new', 'notification'])('carries full product metadata from the %s entry', () => {
         const metadata = createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: 'run-1' });

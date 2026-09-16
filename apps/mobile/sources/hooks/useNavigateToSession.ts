@@ -24,7 +24,11 @@ function sessionHref(sessionId: string, selection?: ProductSessionNavigation): `
 export function createProductSessionNavigationFromSession(session: any): ProductSessionNavigation | undefined {
     const candidate = session?.metadata?.productSession as Partial<ProductSessionNavigation> | undefined;
     if (!candidate || Object.values(candidate).some((value) => typeof value !== 'string' || value.trim() === '')) return undefined;
-    return createProductSessionNavigation({ sessionId: session.id, spaceId: candidate.spaceId!, agentId: candidate.agentId!, targetId: candidate.targetId!, workspaceRef: candidate.workspaceRef!, userId: candidate.resourceUserId!, tenantId: candidate.resourceTenantId!, runId: candidate.runId! });
+    try {
+        return createProductSessionNavigation({ sessionId: session.id, spaceId: candidate.spaceId!, agentId: candidate.agentId!, targetId: candidate.targetId!, workspaceRef: candidate.workspaceRef!, userId: candidate.resourceUserId!, tenantId: candidate.resourceTenantId!, runId: candidate.runId! });
+    } catch {
+        return undefined;
+    }
 }
 
 export function prefetchSession(router: Router, sessionId: string) {
