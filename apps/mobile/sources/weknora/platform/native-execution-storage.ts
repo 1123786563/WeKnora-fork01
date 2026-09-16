@@ -13,4 +13,8 @@ export function registerNativeExecutionStorage(): () => void {
   return registerExecutionStorageFactory(factory);
 }
 
+export function hasNativeExecutionStorageProvider(): boolean {
+  return Platform.OS === 'web' || typeof (globalThis as typeof globalThis & { __WEKNORA_EXECUTION_STORAGE__?: unknown }).__WEKNORA_EXECUTION_STORAGE__ === 'function';
+}
+
 export { getExecutionStorage };

@@ -11,7 +11,7 @@ import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
 import { projectExecutionSnapshot } from '@/weknora/conversations/execution-projection';
 
-type Params = ProductSessionResourceSelection & { id?: string; resourceUserId?: string; resourceTenantId?: string };
+type Params = ProductSessionResourceSelection & { id?: string; resourceUserId?: string; resourceTenantId?: string; runId?: string };
 
 function ProductSessionRoute() {
   const route = useRoute();
@@ -28,7 +28,8 @@ function ProductSessionRoute() {
   // can make this a product route; no URL can select another tenant/user.
   const productRoute = selection !== null
     && params?.resourceUserId === identity.userId
-    && params?.resourceTenantId === identity.tenantId;
+    && params?.resourceTenantId === identity.tenantId
+    && typeof params?.runId === 'string' && params.runId.trim() !== '';
   const [resources, setResources] = React.useState<VerifiedProductSessionResources | null>(null);
   const [resourceError, setResourceError] = React.useState<string | null>(null);
   React.useEffect(() => {

@@ -8,7 +8,7 @@ import { trackSessionSwitched } from '@/track';
 import { perfMark } from '@/utils/perfLog';
 import { isRunningOnMac } from '@/utils/platform';
 
-export interface ProductSessionNavigation { spaceId: string; agentId: string; targetId: string; workspaceRef: string; resourceUserId: string; resourceTenantId: string; resourceSessionId?: string; runId?: string; }
+export interface ProductSessionNavigation { spaceId: string; agentId: string; targetId: string; workspaceRef: string; resourceUserId: string; resourceTenantId: string; resourceSessionId: string; runId: string; }
 
 /** Trusted producer used by product workbench/list/notification adapters. */
 export function createProductSessionNavigation(input: {
@@ -19,12 +19,12 @@ export function createProductSessionNavigation(input: {
     workspaceRef: string;
     userId: string;
     tenantId: string;
-    runId?: string;
+    runId: string;
 }): ProductSessionNavigation {
     for (const [name, value] of Object.entries(input)) {
         if (name !== 'runId' && (typeof value !== 'string' || value.trim() === '')) throw new Error(`PRODUCT_SESSION_${name.toUpperCase()}_REQUIRED`);
     }
-    return { spaceId: input.spaceId, agentId: input.agentId, targetId: input.targetId, workspaceRef: input.workspaceRef, resourceUserId: input.userId, resourceTenantId: input.tenantId, resourceSessionId: input.sessionId, ...(input.runId ? { runId: input.runId } : {}) };
+    return { spaceId: input.spaceId, agentId: input.agentId, targetId: input.targetId, workspaceRef: input.workspaceRef, resourceUserId: input.userId, resourceTenantId: input.tenantId, resourceSessionId: input.sessionId, runId: input.runId };
 }
 
 function sessionHref(sessionId: string, selection?: ProductSessionNavigation): `/session/${string}` {
@@ -37,7 +37,7 @@ function sessionHref(sessionId: string, selection?: ProductSessionNavigation): `
 function productSelection(session: any): ProductSessionNavigation | undefined {
     const candidate = session?.metadata?.productSession as Partial<ProductSessionNavigation> | undefined;
     if (!candidate || Object.values(candidate).some((value) => typeof value !== 'string' || value.trim() === '')) return undefined;
-    return candidate as ProductSessionNavigation;
+    return createProductSessionNavigation({ sessionId: session.id, spaceId: candidate.spaceId!, agentId: candidate.agentId!, targetId: candidate.targetId!, workspaceRef: candidate.workspaceRef!, userId: candidate.resourceUserId!, tenantId: candidate.resourceTenantId!, runId: candidate.runId! });
 }
 
 export function prefetchSession(router: Router, sessionId: string) {
