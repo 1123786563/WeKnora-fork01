@@ -26,7 +26,7 @@ export function normalizeFAQPayload(value: Partial<FAQEntryPayload>): FAQEntryPa
   };
 }
 
-function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string, delimiter = ','): string[] {
   const result: string[] = [];
   let field = '';
   let quoted = false;
@@ -34,7 +34,7 @@ function parseCsvLine(line: string): string[] {
     const char = line[i];
     if (char === '"' && quoted && line[i + 1] === '"') { field += '"'; i += 1; continue; }
     if (char === '"') { quoted = !quoted; continue; }
-    if (char === ',' && !quoted) { result.push(field.trim()); field = ''; continue; }
+    if (char === delimiter && !quoted) { result.push(field.trim()); field = ''; continue; }
     field += char;
   }
   if (quoted) throw new Error('CSV contains an unterminated quoted field');
@@ -52,17 +52,33 @@ export function parseFAQImportText(text: string, format: FAQImportFormat): FAQEn
     return value.map((item) => normalizeFAQPayload(item as Partial<FAQEntryPayload>));
   }
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
-  const header = parseCsvLine(lines.shift() ?? '').map((value) => value.toLowerCase());
-  const column = (name: string, fallback: number) => { const index = header.indexOf(name); return index >= 0 ? index : fallback; };
-  const readList = (value: string): string[] => value ? value.split(/\s*\|\s*/).map((item) => item.trim()).filter(Boolean) : [];
+  const rawHeader = lines.shift() ?? '';
+  const delimiter = rawHeader.includes('\t') && !rawHeader.includes(',') ? '\t' : ',';
+  const normalizeHeader = (value: string) => {
+    const cleaned = value.trim().replace(/\([^)]*\)/g, '').trim();
+    return /[\u4e00-\u9fa5]/.test(cleaned) ? cleaned : cleaned.toLowerCase();
+  };
+  const header = parseCsvLine(rawHeader, delimiter).map(normalizeHeader);
+  const column = (names: string[], fallback: number) => {
+    const index = names.map((name) => header.indexOf(name)).find((value) => value >= 0);
+    return index === undefined ? fallback : index;
+  };
+  const readList = (value: string): string[] => splitByDelimiter(value);
+  const tagColumn = column(['tag_name', '标签', '分类'], -1);
   return lines.map((line) => {
-    const fields = parseCsvLine(line);
-    return normalizeFAQPayload({
-      standard_question: fields[column('standard_question', 0)],
-      similar_questions: readList(fields[column('similar_questions', 1)] ?? ''),
-      negative_questions: readList(fields[column('negative_questions', 2)] ?? ''),
-      answers: readList(fields[column('answers', 3)] ?? ''),
+    const fields = parseCsvLine(line, delimiter);
+    const disabled = parseBooleanField(fields[header.indexOf('是否停用')], false);
+    const payload = normalizeExcelPayload({
+      standard_question: fields[column(['standard_question', '问题'], 0)] ?? '',
+      similar_questions: readList(fields[column(['similar_questions', '相似问题'], 1)] ?? ''),
+      negative_questions: readList(fields[column(['negative_questions', '反例问题'], 2)] ?? ''),
+      answers: readList(fields[column(['answers', '机器人回答'], 3)] ?? ''),
+      ...(tagColumn >= 0 ? { tag_name: fields[tagColumn] ?? '' } : {}),
+      is_enabled: disabled === undefined ? undefined : !disabled,
     });
+    if (tagColumn >= 0) return payload;
+    const { tag_name: _tagName, ...withoutTag } = payload;
+    return withoutTag;
   });
 }
 
