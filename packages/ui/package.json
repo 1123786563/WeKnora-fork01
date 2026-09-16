@@ -19,7 +19,8 @@
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "jsdom": "^30.0.1"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
