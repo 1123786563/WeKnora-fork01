@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
-import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import { formatMessage, type Locale } from '@weknora/i18n';
+import { usePreferredLocale } from '../locale.ts';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
@@ -32,13 +33,6 @@ export interface PlatformShellProps {
   onLogout: () => void | Promise<void>;
   onTenantSwitch?: (tenantId: string) => Promise<void>;
   children: ReactNode;
-}
-
-// Locale resolution mirrors App.tsx / SettingsPage: navigator.language with a
-// package-supported fallback.
-function resolveLocale(): Locale {
-  const language = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? (language.split('-')[0] as Locale) : 'en-US';
 }
 
 // Nav labels migrated to packages/i18n menu.* (auto-ported from Vue locales).
@@ -121,7 +115,7 @@ const SHELL_SESSION_PAGE_SIZE = 30;
 type TenantMembership = { tenantId: string; tenantName: string; role: string };
 
 export function PlatformShell({ client, onLogout, onTenantSwitch, children }: PlatformShellProps): ReactNode {
-  const locale = useMemo(resolveLocale, []);
+  const locale = usePreferredLocale();
   const t = useCallback((key: string) => formatMessage(locale, key), [locale]);
   const labels = {
     newChat: formatMessage(locale, 'menu.newChat'),

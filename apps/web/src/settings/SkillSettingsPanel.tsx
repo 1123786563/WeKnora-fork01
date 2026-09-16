@@ -202,6 +202,63 @@ const INSTALLER_AGENT_ID = 'builtin-skill-installer';
 const LAST_CHAT_MODEL_KEY = 'weknora_last_chat_model_id';
 const SKILL_POLL_INTERVAL_MS = 2500;
 
+/* ---- Vue baseline glyphs (TDesign currentColor icons, SkillSettings.vue:44-59,196-198) ---- */
+function GlyphIcon({ children, size = 14 }: { children: React.ReactNode; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>{children}</svg>;
+}
+/** t-icon "system-code" (SKILL_ICON, frontend/src/types/mention.ts:4). */
+function SkillGlyph({ size }: { size?: number }) {
+  return <GlyphIcon size={size}><path d="m8.5 8-4.5 4 4.5 4" /><path d="m15.5 8 4.5 4-4.5 4" /><path d="M13.5 5 10.5 19" /></GlyphIcon>;
+}
+function FolderGlyph({ size }: { size?: number }) {
+  return <GlyphIcon size={size}><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.2l1.8 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" /></GlyphIcon>;
+}
+function DeleteGlyph({ size }: { size?: number }) {
+  return <GlyphIcon size={size}><path d="M4 7h16M9.5 7V4.5h5V7m-8.5 0 .8 12.5h11.4L19 7" /><path d="M10 11v5.5M14 11v5.5" /></GlyphIcon>;
+}
+function CloudUploadGlyph({ size }: { size?: number }) {
+  return <GlyphIcon size={size}><path d="M7.5 17.5a4.2 4.2 0 0 1-.9-8.3 5.6 5.6 0 0 1 11-.1 4 4 0 0 1-.3 8.2" /><path d="M12 12.5V20" /><path d="m8.8 15.2 3.2-3.2 3.2 3.2" /></GlyphIcon>;
+}
+function CloudGlyph() {
+  return <GlyphIcon><path d="M7 17.5a4 4 0 0 1-.9-7.9 5.4 5.4 0 0 1 10.6-.1 3.9 3.9 0 0 1-.2 7.9" /></GlyphIcon>;
+}
+function ServerGlyph() {
+  return <GlyphIcon><rect x="4" y="5" width="16" height="6" rx="1.2" /><rect x="4" y="13" width="16" height="6" rx="1.2" /><path d="M7.5 8h.01M7.5 16h.01" /></GlyphIcon>;
+}
+function MinusCircleGlyph() {
+  return <GlyphIcon><circle cx="12" cy="12" r="8.5" /><path d="M8.5 12h7" /></GlyphIcon>;
+}
+
+/** Vue SandboxBackendBadge.vue — square icon badge, exact tones/sizes. */
+const SANDBOX_BADGE_TONES: Record<string, string> = {
+  e2b: 'bg-[rgb(98_53_187/10%)] text-[#6235bb]',
+  docker: 'bg-[rgb(29_99_237/10%)] text-[#1d63ed]',
+};
+function SandboxBadge({ type, size }: { type?: string; size: 'xs' | 'sm' }) {
+  if (!type) return null;
+  const dims = size === 'xs'
+    ? 'h-4 w-4 rounded-[4px] [&_svg]:h-2.5 [&_svg]:w-2.5'
+    : 'h-[26px] w-[26px] rounded-[7px] [&_svg]:h-3.5 [&_svg]:w-3.5';
+  return <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center ${dims} ${SANDBOX_BADGE_TONES[type] ?? 'bg-[rgb(0_82_217/10%)] text-[#0052d9]'}`}>
+    {type === 'cube' ? <ServerGlyph /> : type === 'disabled' ? <MinusCircleGlyph /> : <CloudGlyph />}
+  </span>;
+}
+
+/**
+ * Vue SettingDrawer header block (SettingDrawer.vue:291-356): leading icon
+ * badge (32px, radius 9, brand 10% tint) + 15px/600 title + 12px subtitle,
+ * rendered inside the shared Dialog h2.
+ */
+function DrawerTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
+  return <span className="flex min-w-0 items-center gap-2.5">
+    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgb(7_192_95/10%)] text-[#07c05f]" aria-hidden="true">{icon}</span>
+    <span className="flex min-w-0 flex-1 flex-col gap-px text-left">
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[1.4] text-[rgba(0_0_0_/.9)]">{title}</span>
+      {subtitle ? <span className="text-[12px] leading-[1.45] text-[rgba(0_0_0_/.6)]">{subtitle}</span> : null}
+    </span>
+  </span>;
+}
+
 function readLastChatModelId(): string {
   try {
     return typeof window === 'undefined' ? '' : (window.localStorage.getItem(LAST_CHAT_MODEL_KEY) || '');
@@ -426,13 +483,13 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
     {toast ? <Status tone={toast.tone}>{toast.message}</Status> : null}
     {loadError ? <Status tone="error">{loadError}</Status> : null}
     {loading ? <Status>{t('common.loading')}</Status> : empty ? (
-      <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
+      <div className="flex flex-col items-center justify-center px-4 py-[80px] text-center">
         <Status>{t('settings.skills.emptyDesc')}</Status>
-        {skillConfigs.length === 0 ? <p className="wk-muted text-muted m-0">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
-        <div className="wk-list-actions gap-[10px]! mb-[0.75rem] flex items-center justify-end">
-          <Button type="button" className="bg-[var(--wks-primary,#00a870)]! border-[var(--wks-primary,#00a870)]! text-white! hover:bg-[var(--wks-primary-hover,#009664)]!" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
+        {skillConfigs.length === 0 ? <p className="m-0 mb-4 text-[13px] text-[rgba(0_0_0_/.4)]">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
+        <div className="flex items-center justify-center gap-2">
+          <Button type="button" variant="primary" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
-            ? <Button type="button" className="wk-button-outline" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
+            ? <Button type="button" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
             : null}
         </div>
       </div>
@@ -448,66 +505,69 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
             ...view.available.map((config) => `${config.name} · ${t('settings.skills.installPanelAvailable')}`),
           ];
           const chipTooltip = tooltipLines.length === 0 ? t('settings.skills.installToSandbox') : tooltipLines.join('\n');
-          const cardTone = focusedCatalogId === item.id ? 'border-primary shadow-[0_0_0_2px_rgb(46_109_230/18%)]' : 'border-line';
-          const chipColorCls = chipTone === 'off' ? 'text-muted' : live ? 'text-muted-strong' : 'text-primary';
-          const chipBgCls = chipTone === 'stale' ? 'bg-[rgb(180_83_9/10%)]' : chipTone === 'failed' ? 'bg-[rgb(180_35_24/10%)]' : live ? 'bg-[#f4f6fa]' : 'bg-[rgb(46_109_230/10%)]';
-          const chipHoverCls = live ? 'enabled:hover:text-ink enabled:hover:bg-[#e9edf5]' : 'enabled:hover:text-primary enabled:hover:bg-[rgb(46_109_230/16%)]';
-          const chipCls = `inline-flex items-center gap-1 min-w-0 max-w-full m-0 px-1.5 py-0.5 border-0 rounded-control [font:inherit] text-xs leading-[18px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-60 ${chipColorCls} ${chipBgCls} ${chipHoverCls}`;
+          // Vue: border/box-shadow brand + --td-brand-color-focus 20% mix (SkillSettings.vue:1334-1337).
+          const cardTone = focusedCatalogId === item.id ? 'border-[#07c05f] shadow-[0_0_0_2px_rgb(7_192_95/20%)]' : 'border-[#e7e7e7]';
+          const chipColorCls = chipTone === 'off' ? 'text-[rgba(0_0_0_/.4)]' : live ? 'text-[rgba(0_0_0_/.6)]' : 'text-[#07c05f]';
+          const chipBgCls = chipTone === 'stale' ? 'bg-[rgb(237_123_47/10%)]' : chipTone === 'failed' ? 'bg-[rgb(227_77_89/10%)]' : live ? 'bg-[#f3f3f3]' : 'bg-[rgb(7_192_95/10%)]';
+          const chipHoverCls = live ? 'enabled:hover:text-[rgba(0_0_0_/.9)] enabled:hover:bg-[#f3f3f3]' : 'enabled:hover:text-[#07c05f] enabled:hover:bg-[rgb(7_192_95/16%)]';
+          const chipCls = `group/chip inline-flex items-center gap-1 min-w-0 max-w-full m-0 px-1.5 py-0.5 border-0 rounded-control [font:inherit] text-xs leading-[18px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-60 ${chipColorCls} ${chipBgCls} ${chipHoverCls}`;
+          const chipGoCls = live ? 'shrink-0 text-[rgba(0_0_0_/.4)] group-hover/chip:text-current' : 'shrink-0 text-[#07c05f]';
+          const entryStatusCls = chipTone === 'ready' ? 'text-[#00a870]' : chipTone === 'stale' ? 'text-[#ed7b2f]' : chipTone === 'failed' ? 'text-[#e34d59]' : '';
           return <article key={item.id} className={`relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border ${cardTone}${focusedCatalogId === item.id ? ' skill-card--focused' : ''}${live ? ' skill-card--installed' : ' skill-card--idle'}`}>
             <div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
               <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
-                <span className={`shrink-0 w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-sm ${live ? 'bg-[rgb(46_109_230/12%)] text-primary' : 'bg-[#f4f6fa] text-muted-strong'}`} aria-hidden="true">⚡</span>
+                <span className={`shrink-0 w-[26px] h-[26px] rounded-[7px] flex items-center justify-center ${live ? 'bg-[rgb(7_192_95/12%)] text-[#07c05f]' : 'bg-[#f3f3f3] text-[rgba(0_0_0_/.6)]'}`} aria-hidden="true"><SkillGlyph size={14} /></span>
                 <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
-                  <h3 className="flex-[0_1_auto] min-w-0 m-0 text-sm font-semibold leading-5 text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={item.name}>{item.name}</h3>
-                  {item.version ? <span className="shrink-0 text-[11px] font-medium leading-[18px] text-muted">{item.version}</span> : null}
+                  <h3 className="flex-[0_1_auto] min-w-0 m-0 text-sm font-semibold leading-5 text-[rgba(0_0_0_/.9)] overflow-hidden text-ellipsis whitespace-nowrap" title={item.name}>{item.name}</h3>
+                  {item.version ? <span className="shrink-0 text-[11px] font-medium leading-[18px] text-[rgba(0_0_0_/.4)]">{item.version}</span> : null}
                 </div>
                 <div className="shrink-0 flex items-center gap-0.5">
-                  <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-muted cursor-pointer text-[13px] focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:text-ink enabled:hover:bg-[#f1f4f9] disabled:cursor-not-allowed disabled:opacity-40" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}>📂</button>
+                  <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-[rgba(0_0_0_/.4)] cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:text-[rgba(0_0_0_/.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}><FolderGlyph size={14} /></button>
                   {canDeleteCatalog(item)
-                    ? <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-muted cursor-pointer text-[13px] focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:text-danger enabled:hover:bg-[rgb(180_35_24/8%)] disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}>🗑</button>
+                    ? <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-[rgba(0_0_0_/.4)] cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:text-[#e34d59] enabled:hover:bg-[rgb(227_77_89/8%)] disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}><DeleteGlyph size={14} /></button>
                     : null}
                 </div>
               </div>
-              {item.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-muted-strong [overflow-wrap:anywhere]" title={item.description}>{compactSkillText(item.description)}</p> : null}
+              {item.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-[rgba(0_0_0_/.6)] [overflow-wrap:anywhere]" title={item.description}>{compactSkillText(item.description)}</p> : null}
               <div className="flex items-center min-w-0 mt-auto">
-                {view.installs.length === 0 && !view.canAdd ? <span className="text-xs leading-[18px] text-muted">{t('settings.skills.noInstalls')}</span>
+                {view.installs.length === 0 && !view.canAdd ? <span className="text-xs leading-[18px] text-[rgba(0_0_0_/.4)]">{t('settings.skills.noInstalls')}</span>
                   : !view.needsPanel ? (
                     <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} disabled={Boolean(view.installs[0] && !recordFor(view.installs[0].sandboxConfigId))} title={chipTooltip} aria-label={summary}
                       onClick={() => { if (view.installs[0]) openManage(item, view.installs[0]); else if (view.canAdd) openInstall(item); }}>
-                      {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#b45309]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
+                      {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#ed7b2f]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
                       <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
-                      <span aria-hidden="true">›</span>
+                      <span className={chipGoCls} aria-hidden="true"><GlyphIcon size={14}><path d="m9 6 6 6-6 6" /></GlyphIcon></span>
                     </button>
                   ) : (
                     <div className="relative inline-flex min-w-0">
                       <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} title={chipTooltip} aria-label={summary} aria-expanded={openPanelId === item.id}
                         onClick={() => setOpenPanelId((current) => (current === item.id ? '' : item.id))}>
-                        {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#b45309]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
+                        {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#ed7b2f]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
                         <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
-                        <span aria-hidden="true">{openPanelId === item.id ? '▾' : '‹'}</span>
+                        <span className={chipGoCls} aria-hidden="true"><GlyphIcon size={14}><path d="m6 9 6 6 6-6" /></GlyphIcon></span>
                       </button>
                       {openPanelId === item.id ? (
-                        <div className="absolute top-[calc(100%_+_6px)] left-0 z-[30] flex flex-col w-60 max-w-[calc(100vw_-_32px)] max-h-[min(360px,70vh)] overflow-y-auto py-1 bg-white border border-[#e6ebf3] rounded-[10px] shadow-[0_10px_28px_rgb(23_32_51/14%)]" data-testid={`skill-install-panel-${item.id}`}>
+                        <div className="absolute top-[calc(100%_+_6px)] left-0 z-[3050] flex flex-col w-60 max-w-[calc(100vw_-_32px)] max-h-[min(360px,70vh)] overflow-y-auto py-1 bg-white border border-[#e7e7e7] rounded-[6px] shadow-[0px_3px_14px_2px_rgba(0,0,0,.05),0px_8px_10px_1px_rgba(0,0,0,.06),0px_5px_5px_-3px_rgba(0,0,0,.1)]" data-testid={`skill-install-panel-${item.id}`}>
                           {view.installs.length > 0 ? <>
-                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs text-muted">{t('settings.skills.installPanelGroup')}</p>
+                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs leading-5 text-[rgba(0_0_0_/.4)]">{t('settings.skills.installPanelGroup')}</p>
                             {view.installs.map((installation) => (
-                              <button key={installation.sandboxConfigId} type="button" className={`skill-card__entry--${installEntryTone(item, installation)} flex items-center gap-2 m-0 px-3 py-[7px] border-0 bg-none [font:inherit] text-[13px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:bg-[#f4f6fa] disabled:cursor-not-allowed disabled:opacity-55 text-[#27364d]`} disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
+                              <button key={installation.sandboxConfigId} type="button" className={`skill-card__entry--${installEntryTone(item, installation)} flex items-center gap-2 m-0 h-8 w-full shrink-0 px-3 py-0 border-0 bg-none [font:inherit] text-[13px] leading-[22px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:bg-[#f3f3f3] disabled:cursor-default disabled:opacity-50 text-[rgba(0_0_0_/.9)]`} disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
                                 onClick={() => openManage(item, installation)}>
-                                {installation.sandboxType ? <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(installation.sandboxType)}</span> : null}
+                                <SandboxBadge type={installation.sandboxType} size="xs" />
                                 <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{installName(installation)}</span>
-                                {isInstallBusy(installation) ? <span className="skill-card__entry-dot w-1.5 h-1.5 rounded-full bg-current animate-[skill-chip-dot_1.2s_ease-in-out_infinite]" aria-hidden="true" /> : <span className={`shrink-0 ${installEntryTone(item, installation) === 'ready' ? 'text-[#067647]' : installEntryTone(item, installation) === 'stale' ? 'text-[#b45309]' : installEntryTone(item, installation) === 'failed' ? 'text-danger' : ''}`} aria-hidden="true">{installation.status === 'failed' ? '✕' : installation.status === 'ready' ? '✓' : '!'}</span>}
+                                {isInstallBusy(installation) ? <span className="skill-card__entry-dot w-1.5 h-1.5 rounded-full bg-[#ed7b2f] animate-[skill-chip-dot_1.2s_ease-in-out_infinite]" aria-hidden="true" /> : <span className={`shrink-0 ${installEntryTone(item, installation) === 'ready' ? 'text-[#00a870]' : installEntryTone(item, installation) === 'stale' ? 'text-[#ed7b2f]' : installEntryTone(item, installation) === 'failed' ? 'text-[#e34d59]' : ''}`} aria-hidden="true">{installation.status === 'failed' ? '✕' : installation.status === 'ready' ? '✓' : '!'}</span>}
                               </button>
                             ))}
                           </> : null}
                           {view.available.length > 0 ? <>
-                            {view.installs.length > 0 ? <div className="h-px mx-3 my-1 bg-line-soft" role="separator" /> : null}
-                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs text-muted">{t('settings.skills.installPanelAvailable')}</p>
+                            {view.installs.length > 0 ? <div className="h-px mx-0 my-1 bg-[#e7e7e7]" role="separator" /> : null}
+                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs leading-5 text-[rgba(0_0_0_/.4)]">{t('settings.skills.installPanelAvailable')}</p>
                             {view.available.map((config) => (
-                              <button key={config.id} type="button" className="flex items-center gap-2 m-0 px-3 py-[7px] border-0 bg-none text-primary [font:inherit] text-[13px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:bg-[#f4f6fa] disabled:cursor-not-allowed disabled:opacity-55" title={sandboxMetaLine(config)}
+                              <button key={config.id} type="button" className="group/avail flex items-center gap-2 m-0 h-8 w-full shrink-0 px-3 py-0 border-0 bg-none text-[rgba(0_0_0_/.6)] [font:inherit] text-[13px] leading-[22px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:bg-[#f3f3f3] disabled:cursor-default disabled:opacity-50" title={sandboxMetaLine(config)}
                                 onClick={() => openInstall(item, config.id)}>
-                                <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(config.sandbox_type)}</span>
+                                <SandboxBadge type={config.sandbox_type} size="xs" />
                                 <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{config.name}</span>
-                                <span aria-hidden="true">＋</span>
+                                <span className="shrink-0 text-[rgba(0_0_0_/.4)] group-hover/avail:text-[#07c05f]" aria-hidden="true"><GlyphIcon size={14}><path d="M12 5v14M5 12h14" /></GlyphIcon></span>
                               </button>
                             ))}
                           </> : null}
@@ -519,8 +579,8 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
             </div></div>
           </article>;
         })}
-        <button type="button" className="skill-card--add group relative flex flex-col items-center justify-center gap-1.5 p-3 overflow-hidden h-full min-h-[88px] min-w-0 border border-dashed border-line rounded-[10px] bg-transparent text-muted cursor-pointer [font:inherit] text-center transition-[border-color,box-shadow] duration-[180ms] hover:text-primary hover:border-primary hover:bg-[rgb(46_109_230/6%)] hover:shadow-none focus-visible:text-primary focus-visible:border-primary focus-visible:bg-[rgb(46_109_230/6%)] focus-visible:shadow-none focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2" onClick={() => setWizardOpen(true)}>
-          <span className="flex items-center justify-center w-8 h-8 rounded-card bg-[#f4f6fa] text-muted-strong text-lg group-hover:bg-[rgb(46_109_230/10%)] group-focus-visible:bg-[rgb(46_109_230/10%)]" aria-hidden="true">＋</span>
+        <button type="button" className="skill-card--add group relative flex flex-col items-center justify-center gap-1.5 p-3 overflow-hidden h-full min-h-[88px] min-w-0 border border-dashed border-[#e7e7e7] rounded-[10px] bg-transparent text-[rgba(0_0_0_/.4)] cursor-pointer [font:inherit] text-center transition-[border-color,box-shadow] duration-[180ms] hover:text-[#07c05f] hover:border-[#07c05f] hover:bg-[rgb(7_192_95/6%)] hover:shadow-none focus-visible:text-[#07c05f] focus-visible:border-[#07c05f] focus-visible:bg-[rgb(7_192_95/6%)] focus-visible:shadow-none focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2" onClick={() => setWizardOpen(true)}>
+          <span className="flex items-center justify-center w-8 h-8 rounded-card bg-[#f3f3f3] text-[rgba(0_0_0_/.6)] group-hover:bg-[rgb(7_192_95/10%)] group-hover:text-[#07c05f] group-focus-visible:bg-[rgb(7_192_95/10%)] group-focus-visible:text-[#07c05f]" aria-hidden="true"><GlyphIcon size={18}><path d="M12 5v14M5 12h14" /></GlyphIcon></span>
           <span className="text-[13px] font-medium leading-[1.4]">{t('settings.skills.addSkill')}</span>
         </button>
       </div>
@@ -584,7 +644,7 @@ function InstallerModelSelect({ installer, t }: { installer: InstallerModel; t: 
   </label>;
 }
 
-function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, onToggle, onManage, t, backendLabel, metaLine }: {
+function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, onToggle, onManage, t, metaLine }: {
   client: WeKnoraClient;
   item: SkillCatalog | null;
   configs: readonly SandboxConfigRecord[];
@@ -594,7 +654,6 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
   onToggle: (configId: string, checked: boolean) => void;
   onManage: (record: SandboxConfigRecord, installation: SkillCatalogInstallation) => void;
   t: (key: string, values?: Record<string, string | number>) => string;
-  backendLabel: (type: string) => string;
   metaLine: (record: SandboxConfigRecord) => string;
 }) {
   const rows = useMemo(() => sandboxPickRows(item, configs, mode, sessionIds), [configs, item, mode, sessionIds]);
@@ -623,28 +682,32 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
     };
   }, [client, rows]);
   if (rows.length === 0) return <p className="wk-muted text-muted">{t('settings.skills.noSandboxToInstall')}</p>;
-  return <div className="grid gap-2">
+  // Vue .sandbox-pick-list rows (SkillSettings.vue:1841-1953): 1px #e7e7e7
+  // border, radius 10, 10px/12px padding; hover/checked tints are 40%/4-5%
+  // brand mixes; busy rows take a 35% warning border.
+  const pickRowBase = 'min-w-0 max-w-full box-border flex items-center gap-2.5 px-3 py-[10px] border border-[#e7e7e7] rounded-[10px] bg-white';
+  return <div className="grid gap-2 w-full">
     {rows.map((row) => row.selectable ? (
-      <label key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
+      <label key={row.config.id} className={`cursor-pointer ${pickRowBase} hover:border-[rgb(7_192_95/40%)] hover:bg-[rgb(7_192_95/4%)] has-[:checked]:border-[rgb(7_192_95/40%)] has-[:checked]:bg-[rgb(7_192_95/5%)]`}>
         <Checkbox checked={targetIds.includes(row.config.id)} onChange={(event) => onToggle(row.config.id, event.target.checked)} />
-        <span className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(row.config.sandbox_type)}</span>
-          <span className="flex flex-col min-w-0"><span className="text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span><span className="text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap">{metaLine(row.config)}</span></span>
+        <span className="flex items-center gap-2.5 flex-1 min-w-0">
+          <SandboxBadge type={row.config.sandbox_type} size="sm" />
+          <span className="flex flex-col gap-px min-w-0"><span className="text-[13px] font-medium text-[rgba(0_0_0_/.9)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span><span className="text-xs text-[rgba(0_0_0_/.6)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{metaLine(row.config)}</span></span>
         </span>
       </label>
     ) : (
-      <div key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
-        <span className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(row.config.sandbox_type)}</span>
-          <span className="flex flex-col min-w-0">
-            <span className="text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span>
-            <span className="text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
+      <div key={row.config.id} className={`${pickRowBase}${row.busy ? ' border-[rgb(237_123_47/35%)]' : ''}`}>
+        <span className="flex items-center gap-2.5 flex-1 min-w-0">
+          <SandboxBadge type={row.config.sandbox_type} size="sm" />
+          <span className="flex flex-col gap-px min-w-0">
+            <span className="text-[13px] font-medium text-[rgba(0_0_0_/.9)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span>
+            <span className="text-xs text-[rgba(0_0_0_/.6)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
           </span>
         </span>
-        {row.busy && row.install ? <div className="flex items-center justify-end gap-1.5 shrink-0 text-muted text-xs [&_.skill-manage__progress]:w-[18px] [&_.skill-manage__progress]:h-[18px] [&_.skill-manage__progress]:m-0">
+        {row.busy && row.install ? <div className="flex items-center justify-end gap-1.5 shrink-0 text-xs font-medium leading-none text-[#07c05f] [&_.skill-manage__progress]:w-[18px] [&_.skill-manage__progress]:h-[18px] [&_.skill-manage__progress]:m-0">
           <ProgressRing percent={installProgressPercent(progressByConfig[row.config.id], row.install.status)} />
           {progressByConfig[row.config.id] ? <span>{installProgressPercent(progressByConfig[row.config.id], row.install.status)}%</span> : null}
-          <Button type="button" onClick={() => onManage(row.config, row.install!)}>{t('settings.skills.viewInstallProgress')}</Button>
+          <Button type="button" variant="text" size="small" className="text-[#07c05f]!" onClick={() => onManage(row.config, row.install!)}>{t('settings.skills.viewInstallProgress')}</Button>
         </div> : null}
       </div>
     ))}
@@ -839,7 +902,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.add}>
-  <Dialog open={open} title={t('settings.skills.addSkill')} onClose={() => onClose(registeredId || undefined)}>
+  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} onClose={() => onClose(registeredId || undefined)}>
     <nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
       {steps.map((title, index) => {
         const clickable = canJump(index);
@@ -851,7 +914,6 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         </button>;
       })}
     </nav>
-    <p className="wk-muted text-muted">{stepDescription}</p>
     {error ? <Status tone="error">{error}</Status> : null}
     {step > 0 && parsedCard ? <article className="parsed-skill relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border border-line"><div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
       <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
@@ -888,7 +950,6 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         <h4>{t('settings.skills.pickSandboxes')}</h4>
         <p className="wk-muted text-muted">{t('settings.skills.pickSandboxesHint')}</p>
         <SandboxPickList client={client} item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
-          backendLabel={(type) => t(backendLabelKey(type))}
           metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
           onManage={(record, installation) => { if (installation.skillId) onManage(record, installation.skillId, parsedCard?.name ?? ''); }} />
       </section> : <p className="wk-muted text-muted">{t('settings.skills.emptyNoSandboxHint')}</p>}
@@ -969,12 +1030,10 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
-  <Dialog open={open} title={t('settings.skills.installToSandbox')} onClose={onClose}>
-    <p className="wk-muted text-muted">{description}</p>
+  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={t('settings.skills.installToSandbox')} subtitle={description} />} onClose={onClose}>
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
-      backendLabel={(type) => t(backendLabelKey(type))}
       metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
       onManage={(record, installation) => { if (installation.skillId && item) onManage(record, installation.skillId, item.name); }} />
     {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
@@ -1428,8 +1487,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
 
   const errorLines = installErrorLines(skill?.error);
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
-  <Dialog open={open} title={target?.catalogName ?? ''} onClose={onClose}>
-    <p className="wk-muted text-muted">{target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : ''}</p>
+  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} onClose={onClose}>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="flex flex-col items-start gap-2.5 pt-2 pb-1 text-[#067647] [&_p]:m-0 [&_p]:text-[13px]">

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -90,4 +90,120 @@ test('zooms around the pointer anchor and clamps the Vue viewport scale', () => 
   assert.deepEqual(zoomed, { x: -100, y: -80, scale: 2 });
   assert.equal(zoomGraphViewport(zoomed, 10, { x: 0, y: 0 }).scale, 2.5);
   assert.equal(zoomGraphViewport(zoomed, 0.01, { x: 0, y: 0 }).scale, 0.6);
+});
+
+test('grows the frontier with a concurrency-capped fan-out that merges every ego response', async () => {
+  const base = {
+    nodes: [
+      { slug: 'center', title: 'Center', page_type: 'summary', link_count: 3 },
+      { slug: 'a', title: 'A', page_type: 'entity', link_count: 2 },
+      { slug: 'b', title: 'B', page_type: 'concept', link_count: 2 },
+    ],
+    edges: [
+      { source: 'center', target: 'a' },
+      { source: 'center', target: 'b' },
+    ],
+    meta: { mode: 'ego' as const, total: 3, returned: 3, truncated: false, center: 'center' },
+  };
+  let inFlight = 0;
+  let peak = 0;
+  const fetched: string[] = [];
+  const fetchEgo = async (slug: string) => {
+    inFlight += 1;
+    peak = Math.max(peak, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    fetched.push(slug);
+    inFlight -= 1;
+    return {
+      nodes: [
+        { slug, title: slug.toUpperCase(), page_type: 'entity', link_count: 2 },
+        { slug: `${slug}-n`, title: 'New', page_type: 'concept', link_count: 0 },
+      ],
+      edges: [{ source: slug, target: `${slug}-n` }],
+      meta: { mode: 'ego' as const, total: 5, returned: 2, truncated: false, center: slug },
+    };
+  };
+  const merged = await growGraphFrontier(base, 'center', fetchEgo);
+  assert.deepEqual([...fetched].sort(), ['a', 'b']);
+  assert.ok(peak <= 6, 'Vue caps the whole-frontier fan-out at 6 parallel requests');
+  assert.deepEqual(merged?.nodes.map((node) => node.slug).sort(), ['a', 'a-n', 'b', 'b-n', 'center']);
+  assert.equal(merged?.edges.length, 4);
+  assert.equal(merged?.meta.returned, 5);
+});
+
+test('growing an exhausted frontier reports nothing to merge', async () => {
+  const base = {
+    nodes: [{ slug: 'solo', title: 'Solo', page_type: 'summary', link_count: 0 }],
+    edges: [],
+    meta: { mode: 'ego' as const, total: 1, returned: 1, truncated: false, center: 'solo' },
+  };
+  const merged = await growGraphFrontier(base, 'solo', async () => {
+    throw new Error('must not fetch');
+  });
+  assert.equal(merged, null);
+});
+
+test('growing the frontier ignores individual ego fetch failures like Vue', async () => {
+  const base = {
+    nodes: [
+      { slug: 'center', title: 'Center', page_type: 'summary', link_count: 2 },
+      { slug: 'bad', title: 'Bad', page_type: 'entity', link_count: 2 },
+      { slug: 'good', title: 'Good', page_type: 'entity', link_count: 2 },
+    ],
+    edges: [
+      { source: 'center', target: 'bad' },
+      { source: 'center', target: 'good' },
+    ],
+    meta: { mode: 'ego' as const, total: 3, returned: 3, truncated: false, center: 'center' },
+  };
+  const merged = await growGraphFrontier(base, 'center', async (slug) => {
+    if (slug === 'bad') throw new Error('boom');
+    return {
+      nodes: [{ slug: 'good-kid', title: 'Kid', page_type: 'concept', link_count: 0 }],
+      edges: [],
+      meta: { mode: 'ego' as const, total: 4, returned: 1, truncated: false, center: slug },
+    };
+  });
+  assert.deepEqual(merged?.nodes.map((node) => node.slug).sort(), ['bad', 'center', 'good', 'good-kid']);
+  assert.equal(merged?.meta.returned, 4);
+});
+
+test('drawer neighbor status classifies the ego center as fully explored', () => {
+  const ego = {
+    nodes: [
+      { slug: 'center', title: 'Center', page_type: 'summary', link_count: 5 },
+      { slug: 'near', title: 'Near', page_type: 'entity', link_count: 1 },
+    ],
+    edges: [{ source: 'center', target: 'near' }],
+    meta: { mode: 'ego' as const, total: 2, returned: 2, truncated: false, center: 'center' },
+  };
+  const centerStatus = graphNeighborStatus(ego, 'center');
+  assert.equal(centerStatus?.visible, 1);
+  assert.equal(centerStatus?.total, 5);
+  assert.equal(centerStatus?.hidden, 4);
+  assert.equal(centerStatus?.isEgoCenter, true);
+  assert.equal(centerStatus?.fullyExplored, true, 'dead refs are unreachable, not loadable');
+  assert.equal(centerStatus?.canBloom, false);
+
+  const leaf = graphNeighborStatus(ego, 'near');
+  assert.equal(leaf?.canBloom, false, 'no hidden neighbors means nothing to bloom');
+
+  const overview = {
+    nodes: [
+      { slug: 'hub', title: 'Hub', page_type: 'summary', link_count: 9 },
+      { slug: 'near', title: 'Near', page_type: 'entity', link_count: 1 },
+    ],
+    edges: [{ source: 'hub', target: 'near' }],
+    meta: { mode: 'overview' as const, total: 2, returned: 2, truncated: true },
+  };
+  const hub = graphNeighborStatus(overview, 'hub');
+  assert.equal(hub?.isOverview, true);
+  assert.equal(hub?.fullyExplored, false);
+  assert.equal(hub?.canBloom, true, 'formula matches Vue; the bloom button itself is ego-only and stays hidden');
+});
+
+test('node radii follow the Vue logarithmic clamp for rings and labels', () => {
+  assert.equal(graphNodeRadius(0), 8);
+  assert.equal(Math.round(graphNodeRadius(2) * 100) / 100, 12.39);
+  assert.equal(graphNodeRadius(100000), 24);
 });

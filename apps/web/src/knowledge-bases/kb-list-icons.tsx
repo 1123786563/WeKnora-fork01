@@ -31,7 +31,12 @@ export type KbIconName =
   | 'close'
   | 'image'
   | 'relation'
-  | 'help-circle';
+  | 'help-circle'
+  | 'upload'
+  | 'check-circle-filled'
+  | 'usergroup-add'
+  | 'wiki'
+  | 'chevron-left';
 
 const ICONS: Record<KbIconName, ReactNode> = {
   layers: (
@@ -173,6 +178,42 @@ const ICONS: Record<KbIconName, ReactNode> = {
       <path d="M12 17.5h.01" />
     </>
   ),
+  upload: (
+    <>
+      <path d="M12 15V4" />
+      <path d="m7 8 5-5 5 5" />
+      <path d="M4 20h16" />
+    </>
+  ),
+  "check-circle-filled": (
+    <>
+      <path
+        d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path d="m7.5 12.3 3.1 3.1 6-6.2" />
+    </>
+  ),
+  "usergroup-add": (
+    <>
+      <path d="M14 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="7.5" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M18 10V4M15 7h6" />
+    </>
+  ),
+  wiki: (
+    <>
+      <path d="M12 7v14" />
+      <path d="M16 12h2" />
+      <path d="M16 8h2" />
+      <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+      <path d="M6 12h2" />
+      <path d="M6 8h2" />
+    </>
+  ),
+  "chevron-left": <path d="m15 6-6 6 6 6" />,
 };
 
 export function KbIcon({ name, size = 16 }: { name: KbIconName; size?: number }): ReactNode {

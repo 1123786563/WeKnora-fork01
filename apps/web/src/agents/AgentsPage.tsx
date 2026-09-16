@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
-import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import { formatMessage, type Locale } from '@weknora/i18n';
+import { usePreferredLocale } from '../locale.ts';
 import {
   contextualGuideMessage,
   markContextualGuideDone,
@@ -589,11 +590,6 @@ function writeSpaceToUrl(space: string): void {
   window.history.replaceState({}, '', url);
 }
 
-function resolveLocale(): Locale {
-  const language = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? (language.split('-')[0] as Locale) : 'en-US';
-}
-
 function isSectionedView(space: string): boolean {
   return space === 'all' || space === 'mine' || (space !== '' && space !== 'favorites' && space !== 'recents');
 }
@@ -631,7 +627,7 @@ export function hasAgentChatModel(models: ReadonlyArray<{ type?: unknown }>): bo
 }
 
 export function AgentsPage({ client, tenantId }: AgentsPageProps) {
-  const locale = useMemo(resolveLocale, []);
+  const locale = usePreferredLocale();
   const t = useCallback<Translate>((key, values) => formatMessage(locale, key, values), [locale]);
   // agentEditor.* copy is not in packages/i18n yet; the editor falls back to
   // ported literals for those keys while agent.* resolves normally.

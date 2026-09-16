@@ -71,14 +71,17 @@ export function mergeGraphData(base: WikiGraphData, incoming: WikiGraphData): Wi
   }
   const edges = new Map(base.edges.map((edge) => [`${edge.source}\u2192${edge.target}`, edge]));
   for (const edge of incoming.edges) edges.set(`${edge.source}\u2192${edge.target}`, edge);
+  const merged = [...nodes.values()];
+  const familiarCount = merged.filter((node) => node.familiar).length;
   return {
-    nodes: [...nodes.values()],
+    nodes: merged,
     edges: [...edges.values()],
     meta: {
       ...base.meta,
       returned: nodes.size,
       total: Math.max(base.meta.total, incoming.meta.total),
       truncated: Boolean(base.meta.truncated || incoming.meta.truncated),
+      ...(familiarCount > 0 ? { familiar_count: familiarCount } : {}),
     },
   };
 }
@@ -90,7 +93,94 @@ export function graphFrontierNodes(graph: WikiGraphData | null, center: string):
     degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
     degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
-  return graph.nodes.filter((node) => node.slug !== center && node.page_type !== 'index' && node.page_type !== 'log' && node.link_count > (degree.get(node.slug) ?? 0));
+  return graph.nodes.filter((node) => isGraphFrontierCandidate(node, center, degree.get(node.slug) ?? 0));
+}
+
+/** Vue WikiBrowser keeps index/log super-nodes out of the batch expansion. */
+function isGraphFrontierCandidate(node: WikiGraphNode, center: string, visibleDegree: number): boolean {
+  if (node.slug === center) return false;
+  if (node.page_type === 'index' || node.page_type === 'log') return false;
+  return node.link_count > visibleDegree;
+}
+
+/**
+ * Vue caps the whole-frontier operation at 6 parallel ego fetches so a huge
+ * frontier cannot hammer the backend; individual failures are ignored so one
+ * broken node does not sink the batch. Returns null when nothing was fetched.
+ */
+export const GRAPH_GROW_FRONTIER_CONCURRENCY = 6;
+
+export async function growGraphFrontier(
+  graph: WikiGraphData,
+  center: string,
+  fetchEgo: (slug: string) => Promise<WikiGraphData>,
+): Promise<WikiGraphData | null> {
+  const frontier = graphFrontierNodes(graph, center);
+  if (frontier.length === 0) return null;
+  let cursor = 0;
+  let merged: WikiGraphData | null = null;
+  async function worker(): Promise<void> {
+    while (cursor < frontier.length) {
+      const slug = frontier[cursor++]!.slug;
+      try {
+        const incoming = await fetchEgo(slug);
+        merged = mergeGraphData(merged ?? graph, incoming);
+      } catch {
+        // One slow/broken node must not sink the whole batch (Vue behavior).
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(GRAPH_GROW_FRONTIER_CONCURRENCY, frontier.length) }, () => worker()),
+  );
+  return merged;
+}
+
+/**
+ * Vue drawer neighbor accounting: compares the undirected degree inside the
+ * current subgraph with the KB-wide link_count and classifies the gap so the
+ * drawer can disable bloom/expand correctly.
+ */
+export interface GraphNeighborStatus {
+  visible: number;
+  total: number;
+  hidden: number;
+  isEgoCenter: boolean;
+  isOverview: boolean;
+  fullyExplored: boolean;
+  canBloom: boolean;
+}
+
+export function graphNeighborStatus(graph: WikiGraphData, slug: string): GraphNeighborStatus | null {
+  const node = graph.nodes.find((item) => item.slug === slug);
+  if (!node) return null;
+  const neighbors = new Set<string>();
+  for (const edge of graph.edges) {
+    if (edge.source === slug) neighbors.add(edge.target);
+    else if (edge.target === slug) neighbors.add(edge.source);
+  }
+  const visible = neighbors.size;
+  const total = node.link_count || 0;
+  const hidden = Math.max(0, total - visible);
+  const isEgoCenter = graph.meta.mode === 'ego' && graph.meta.center === slug;
+  const isOverview = graph.meta.mode === 'overview';
+  const fullyExplored = total === 0 || visible >= total || isEgoCenter;
+  return {
+    visible,
+    total,
+    hidden,
+    isEgoCenter,
+    isOverview,
+    fullyExplored,
+    // Bloom is additive and ego-only: the center already has everything
+    // reachable, and with no hidden neighbors there is nothing to add.
+    canBloom: !isEgoCenter && hidden > 0,
+  };
+}
+
+/** Vue node radius: logarithmic in link_count, clamped to [8, 24]. */
+export function graphNodeRadius(linkCount: number): number {
+  return Math.max(8, Math.min(24, 8 + Math.log(linkCount + 1) * 4));
 }
 
 export interface GraphViewport {

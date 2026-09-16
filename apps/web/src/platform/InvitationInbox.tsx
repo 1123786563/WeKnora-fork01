@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
-import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import { formatMessage, type Locale } from '@weknora/i18n';
 import { Button, Dialog, Status } from '@weknora/ui';
+import { usePreferredLocale } from '../locale.ts';
 
 type Client = WeKnoraClient;
-
-function resolveLocale(): Locale {
-  const language = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? language.split('-')[0] as Locale : 'en-US';
-}
 
 function message(locale: Locale, key: string, values?: Record<string, string | number>): string {
   return formatMessage(locale, key, values);
@@ -27,7 +23,7 @@ export interface InvitationInboxProps {
 }
 
 export function InvitationInbox({ client }: InvitationInboxProps) {
-  const locale = useMemo(resolveLocale, []);
+  const locale = usePreferredLocale();
   const [pendingCount, setPendingCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [invitations, setInvitations] = useState<TenantInvitation[] | null>(null);
