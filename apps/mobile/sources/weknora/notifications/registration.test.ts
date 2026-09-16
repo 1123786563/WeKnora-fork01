@@ -3,6 +3,7 @@ import {
   flushPendingRevocations,
   registerAfterPermission,
   registerDevice,
+  revokeDevice,
   revokeOnLogout,
   type PendingRevocation,
 } from './registration';
@@ -45,11 +46,25 @@ describe('mobile device registration', () => {
     let rows: PendingRevocation[] = [];
     const pending = { read: async () => rows, write: async (next: PendingRevocation[]) => { rows = next; } };
     const offline = vi.fn(async () => response(503));
-    await revokeOnLogout({ origin: 'https://api.example.test', deviceId: 'd', revision: 3, credential, pending, fetchImpl: offline });
+    await revokeOnLogout({ origin: 'https://api.example.test', deviceId: 'd', revision: 3, tenantId: 'tenant-a', ownerId: 'user-a', credential, pending, fetchImpl: offline });
     expect(rows).toHaveLength(1);
     expect(rows[0]).not.toHaveProperty('credential');
     const online = vi.fn(async () => response(204, null));
-    await expect(flushPendingRevocations(pending, credential, online)).resolves.toBe(1);
+    await expect(flushPendingRevocations(pending, credential, { tenantId: 'tenant-a', ownerId: 'user-a' }, online)).resolves.toBe(1);
     expect(rows).toEqual([]);
+  });
+
+  it('keeps another tenant and owner pending revoke for that identity', async () => {
+    let rows: PendingRevocation[] = [{ origin: 'https://api.example.test', deviceId: 'd', tenantId: 'tenant-a', ownerId: 'user-a', revision: 3 }];
+    const pending = { read: async () => rows, write: async (next: PendingRevocation[]) => { rows = next; } };
+    const fetcher = vi.fn(async () => response(204, null));
+    await expect(flushPendingRevocations(pending, credential, { tenantId: 'tenant-b', ownerId: 'user-b' }, fetcher)).resolves.toBe(0);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(1);
+  });
+
+  it('returns the server scope epoch from a successful revoke response', async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204, headers: { 'X-Mobile-Scope-Generation': '9' } }));
+    await expect(revokeDevice({ origin: 'https://api.example.test', deviceId: 'd', revision: 3, credential, fetchImpl: fetcher })).resolves.toEqual({ scopeGeneration: 9 });
   });
 });

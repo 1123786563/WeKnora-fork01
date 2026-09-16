@@ -176,6 +176,16 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			if in.ScopeGeneration < existing.ScopeGeneration {
 				return ErrMobileDeviceRevision
 			}
+			// A revoked row is a consumed epoch.  An intent issued before the
+			// revoke carries the same epoch that the revoke just persisted; it
+			// must not be allowed to reopen the row.  A fresh login receives a
+			// strictly greater server epoch and is the only path that may bind
+			// again.  This check is inside the same transaction/row lock as the
+			// revoke CAS, so the read-then-bind handler path cannot resurrect a
+			// device after a concurrent logout.
+			if existing.RevokedAt != nil && in.ScopeGeneration <= existing.ScopeGeneration {
+				return ErrMobileDeviceRevision
+			}
 			// Repeating the same registration is a true idempotent no-op.
 			if existing.RevokedAt == nil && existing.TokenHash == in.TokenHash &&
 				existing.Platform == in.Platform && existing.ScopeGeneration == in.ScopeGeneration {
