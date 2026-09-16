@@ -51,6 +51,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/database"
@@ -160,6 +161,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// durable worker. Keep it in the same database scope as AgentRunStore so
 	// provider starts can never bypass the W20 fence.
 	must(container.Provide(repository.NewExecutionDispatchStore))
+	must(container.Provide(newPaseoRemoteProvider))
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
 	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
@@ -172,8 +174,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		cfg *config.Config,
 		store *repository.AgentRunStore,
 		dispatch *repository.ExecutionDispatchStore,
+		provider workbenchservice.RemoteProvider,
 	) (*AgentRuntime, error) {
-		return NewAgentRuntimeWithRemoteProvider(cfg, store, dispatch, nil)
+		return NewAgentRuntimeWithRemoteProvider(cfg, store, dispatch, provider)
 	}))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
