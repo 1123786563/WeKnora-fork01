@@ -26,6 +26,7 @@ var versionedSQLiteTables = []string{
 	"execution_targets",
 	"execution_target_identities",
 	"execution_workspaces",
+	"mobile_devices",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -56,7 +57,7 @@ var versionedSQLiteColumns = map[string][]string{
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
 // queue at 000056 and the execution target schema at 000057.
-const expectedSQLiteMigrationVersion = 57
+const expectedSQLiteMigrationVersion = 58
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
@@ -72,6 +73,9 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
+	}
+	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {
 		for _, column := range columns {
@@ -128,6 +132,9 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "upgraded SQLite DB must have table %s", table)
+	}
+	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+		require.Truef(t, sqliteIndexExists(t, db, index), "upgraded SQLite DB must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {
 		for _, column := range columns {
@@ -190,6 +197,13 @@ func sqliteTableExists(t *testing.T, db *sql.DB, table string) bool {
 		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
 		table,
 	).Scan(&n))
+	return n == 1
+}
+
+func sqliteIndexExists(t *testing.T, db *sql.DB, index string) bool {
+	t.Helper()
+	var n int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", index).Scan(&n))
 	return n == 1
 }
 

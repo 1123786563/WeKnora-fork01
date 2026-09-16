@@ -121,7 +121,7 @@ func (s *MobileDeviceStore) Bind(ctx context.Context, in DeviceRegistration) err
 		return err
 	}
 	var err error
-	for attempt := 0; attempt < 4; attempt++ {
+	for attempt := 0; attempt < 8; attempt++ {
 		err = s.bindOnce(ctx, in)
 		if err == nil || (!strings.Contains(strings.ToLower(err.Error()), "locked") && !strings.Contains(strings.ToLower(err.Error()), "busy")) {
 			return err
@@ -129,7 +129,7 @@ func (s *MobileDeviceStore) Bind(ctx context.Context, in DeviceRegistration) err
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Duration(attempt+1) * 10 * time.Millisecond):
+		case <-time.After(time.Duration(attempt+1) * 20 * time.Millisecond):
 		}
 	}
 	return err
@@ -144,10 +144,17 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			return err
 		}
 		if err == nil {
-			if existing.RevokedAt != nil && in.Revision <= existing.Revision {
+			// A non-zero revision is an expected-version CAS token. Future
+			// versions are just as stale as older versions: accepting them and
+			// manufacturing a new revision would let an out-of-order refresh
+			// overwrite the current registration.
+			if in.Revision > 0 && in.Revision != existing.Revision {
 				return ErrMobileDeviceRevision
 			}
-			if existing.RevokedAt == nil && in.Revision > 0 && in.Revision < existing.Revision {
+			// Scope generation is an account/workspace epoch. Once an epoch has
+			// been observed it is never legal for a delayed request from an
+			// older epoch to update or reopen this row.
+			if in.ScopeGeneration < existing.ScopeGeneration {
 				return ErrMobileDeviceRevision
 			}
 			// Repeating the same registration is a true idempotent no-op.
@@ -190,6 +197,12 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 				}).Error
 		}
 
+		// A zero revision means a new login/rebind. The server owns the next
+		// value so a caller cannot guess a future revision. An explicit value
+		// was checked above and is only an expected current version.
+		if existing.RevokedAt != nil && in.Revision > 0 {
+			return ErrMobileDeviceRevision
+		}
 		revision := in.Revision
 		if revision == 0 {
 			revision = 1
@@ -302,20 +315,96 @@ func (s *MobileDeviceStore) RevokeBeforeScopeGeneration(ctx context.Context, ten
 		return ErrMobileDeviceInvalid
 	}
 	now := time.Now().UTC()
-	return s.db.WithContext(ctx).Model(&mobileDeviceRow{}).
-		Where("tenant_id = ? AND owner_id = ? AND environment = ? AND revoked_at IS NULL AND scope_generation < ?", tenant, owner, s.environment, generation).
-		Updates(map[string]any{"revoked_at": now, "updated_at": now}).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Persist the high-water epoch on revoked rows too. This is what fences
+		// a late refresh after the active row has disappeared from ListActive.
+		var rows []mobileDeviceRow
+		if err := tx.Where("tenant_id = ? AND owner_id = ? AND environment = ? AND scope_generation < ?", tenant, owner, s.environment, generation).
+			Clauses(clause.Locking{Strength: "UPDATE"}).Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, row := range rows {
+			updates := map[string]any{"scope_generation": generation, "updated_at": now}
+			if row.RevokedAt == nil {
+				updates["revoked_at"] = now
+				updates["revision"] = row.Revision + 1
+			}
+			if err := tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revision = ?", row.TenantID, row.OwnerID, row.DeviceID, row.Environment, row.Revision).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *MobileDeviceStore) MarkPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) error {
 	if tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return ErrMobileDeviceInvalid
 	}
-	q := s.scoped(s.db.WithContext(ctx).Model(&mobileDeviceRow{}), tenant, owner, device).Where("revoked_at IS NULL")
+	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device)
 	if revision > 0 {
-		q = q.Where("revision = ?", revision)
+		var current mobileDeviceRow
+		if err := q.Take(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrMobileDeviceNotFound
+			}
+			return err
+		}
+		if current.Revision != revision {
+			return ErrMobileDeviceRevision
+		}
 	}
-	result := q.Update("last_seen_at", time.Now().UTC())
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = ?, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", now, now, tenant, s.environment, owner, device)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrMobileDeviceNotFound
+	}
+	return nil
+}
+
+// Presence is deliberately a projection of a device row. It never returns
+// ciphertext or token hashes and remains scoped by tenant, owner, environment
+// and (when supplied) expected revision.
+func (s *MobileDeviceStore) GetPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) (DeviceRegistration, error) {
+	row, err := s.GetActiveForTenant(ctx, tenant, owner, device)
+	if err != nil {
+		return DeviceRegistration{}, err
+	}
+	if revision > 0 && row.Revision != revision {
+		return DeviceRegistration{}, ErrMobileDeviceRevision
+	}
+	return row, nil
+}
+
+func (s *MobileDeviceStore) SetPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) (DeviceRegistration, error) {
+	if err := s.MarkPresence(ctx, tenant, owner, device, revision); err != nil {
+		return DeviceRegistration{}, err
+	}
+	return s.GetPresence(ctx, tenant, owner, device, revision)
+}
+
+func (s *MobileDeviceStore) DeletePresence(ctx context.Context, tenant uint64, owner, device string, revision int64) error {
+	if tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
+		return ErrMobileDeviceInvalid
+	}
+	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device)
+	if revision > 0 {
+		var current mobileDeviceRow
+		if err := q.Take(&current).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrMobileDeviceNotFound
+			}
+			return err
+		}
+		if current.Revision != revision {
+			return ErrMobileDeviceRevision
+		}
+	}
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = NULL, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", now, tenant, s.environment, owner, device)
 	if result.Error != nil {
 		return result.Error
 	}

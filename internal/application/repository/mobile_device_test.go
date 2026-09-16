@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,10 +18,9 @@ func openMobileDeviceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&mobileDeviceRow{}))
-	// The production migration uses a partial unique index. SQLite supports
-	// the same predicate and this makes the test exercise token takeover.
-	require.NoError(t, db.Exec("CREATE UNIQUE INDEX uq_mobile_device_token ON mobile_devices(environment, token_hash) WHERE revoked_at IS NULL").Error)
+	up, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "sqlite", "000058_mobile_devices.up.sql"))
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(up)).Error)
 	return db
 }
 
@@ -79,7 +80,7 @@ func TestMobileDeviceStaleRevocationCannotResurrect(t *testing.T) {
 	in.TokenCiphertext = "enc:token-b"
 	in.Revision = 1
 	require.ErrorIs(t, s.Bind(ctx, in), ErrMobileDeviceRevision)
-	require.NoError(t, s.Bind(ctx, DeviceRegistration{TenantID: 1, OwnerID: "u1", DeviceID: "d", Environment: "dev", Platform: "ios", TokenCiphertext: "enc:token-b", TokenHash: DeviceTokenHash("token-b"), Revision: 3, ScopeGeneration: 2}))
+	require.NoError(t, s.Bind(ctx, DeviceRegistration{TenantID: 1, OwnerID: "u1", DeviceID: "d", Environment: "dev", Platform: "ios", TokenCiphertext: "enc:token-b", TokenHash: DeviceTokenHash("token-b"), ScopeGeneration: 2}))
 }
 
 func TestMobileDeviceScopeGenerationRevokesOlderBindings(t *testing.T) {
@@ -88,10 +89,67 @@ func TestMobileDeviceScopeGenerationRevokesOlderBindings(t *testing.T) {
 	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d1", "token-a")))
 	require.NoError(t, s.Bind(ctx, DeviceRegistration{TenantID: 1, OwnerID: "u1", DeviceID: "d2", Environment: "dev", Platform: "android", TokenCiphertext: "enc:token-b", TokenHash: DeviceTokenHash("token-b"), ScopeGeneration: 3}))
 	require.NoError(t, s.RevokeBeforeScopeGeneration(ctx, 1, "u1", 3))
+	// A delayed refresh from the retired epoch cannot resurrect the row, even
+	// when it guesses a future revision.
+	late := mobileRegistration(1, "u1", "d1", "token-c")
+	late.Revision, late.ScopeGeneration = 99, 1
+	require.ErrorIs(t, s.Bind(ctx, late), ErrMobileDeviceRevision)
 	rows, err := s.ListActiveForTenant(ctx, 1, "u1", "dev")
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	require.Equal(t, "d2", rows[0].DeviceID)
+}
+
+func TestMobileDeviceRebindAfterLogoutAllocatesServerRevision(t *testing.T) {
+	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
+	ctx := context.Background()
+	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-a")))
+	require.NoError(t, s.RevokeForTenant(ctx, 1, "u1", "d", 1))
+	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-b")))
+	row, err := s.GetActiveForTenant(ctx, 1, "u1", "d")
+	require.NoError(t, err)
+	require.EqualValues(t, 3, row.Revision)
+}
+
+func TestMobileDeviceRejectsFutureRevisionAndLowerEpoch(t *testing.T) {
+	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
+	ctx := context.Background()
+	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-a")))
+	future := mobileRegistration(1, "u1", "d", "token-b")
+	future.Revision, future.ScopeGeneration = 99, 1
+	require.ErrorIs(t, s.Bind(ctx, future), ErrMobileDeviceRevision)
+	lower := mobileRegistration(1, "u1", "d", "token-c")
+	lower.Revision, lower.ScopeGeneration = 0, 0
+	require.ErrorIs(t, s.Bind(ctx, lower), ErrMobileDeviceRevision)
+}
+
+func TestMobileDeviceMigrationRoundTrip(t *testing.T) {
+	db := openMobileDeviceTestDB(t)
+	down, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "sqlite", "000058_mobile_devices.down.sql"))
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(down)).Error)
+	up, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "sqlite", "000058_mobile_devices.up.sql"))
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(up)).Error)
+	var count int64
+	require.NoError(t, db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='mobile_devices'").Scan(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
+func TestMobileDevicePresenceIsTenantOwnerRevisionScoped(t *testing.T) {
+	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
+	ctx := context.Background()
+	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-a")))
+	row, err := s.SetPresence(ctx, 1, "u1", "d", 1)
+	require.NoError(t, err)
+	require.NotNil(t, row.LastSeenAt)
+	_, err = s.GetPresence(ctx, 2, "u1", "d", 1)
+	require.ErrorIs(t, err, ErrMobileDeviceNotFound)
+	require.ErrorIs(t, s.DeletePresence(ctx, 1, "u1", "d", 99), ErrMobileDeviceRevision)
+	require.NoError(t, s.DeletePresence(ctx, 1, "u1", "d", 1))
+	row, err = s.GetPresence(ctx, 1, "u1", "d", 1)
+	require.NoError(t, err)
+	require.Nil(t, row.LastSeenAt)
 }
 
 func TestMobileDeviceConcurrentTokenTakeoverLeavesOneActiveBinding(t *testing.T) {

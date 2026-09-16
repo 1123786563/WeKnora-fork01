@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -17,13 +18,27 @@ import (
 // repository only accepts ciphertext and a one-way lookup hash.
 type MobileTokenSealer func(token string) (string, error)
 
+// MobileDeviceStore is the DI seam for HTTP. The concrete GORM repository is
+// used in production; tests and alternative persistence backends can provide
+// the same tenant/owner-scoped contract without bypassing handler checks.
+type MobileDeviceStore interface {
+	Bind(context.Context, repository.DeviceRegistration) error
+	RevokeForTenant(context.Context, uint64, string, string, int64) error
+	GetActiveForTenant(context.Context, uint64, string, string) (repository.DeviceRegistration, error)
+	ListActiveForTenant(context.Context, uint64, string, string) ([]repository.DeviceRegistration, error)
+	MarkPresence(context.Context, uint64, string, string, int64) error
+	GetPresence(context.Context, uint64, string, string, int64) (repository.DeviceRegistration, error)
+	SetPresence(context.Context, uint64, string, string, int64) (repository.DeviceRegistration, error)
+	DeletePresence(context.Context, uint64, string, string, int64) error
+}
+
 type MobileDeviceHandler struct {
-	store       *repository.MobileDeviceStore
+	store       MobileDeviceStore
 	environment string
 	seal        MobileTokenSealer
 }
 
-func NewMobileDeviceHandler(store *repository.MobileDeviceStore, environment string) *MobileDeviceHandler {
+func NewMobileDeviceHandler(store MobileDeviceStore, environment string) *MobileDeviceHandler {
 	return NewMobileDeviceHandlerWithSealer(store, environment, func(token string) (string, error) {
 		key := utils.GetAESKey()
 		if len(key) != 32 {
@@ -33,7 +48,7 @@ func NewMobileDeviceHandler(store *repository.MobileDeviceStore, environment str
 	})
 }
 
-func NewMobileDeviceHandlerWithSealer(store *repository.MobileDeviceStore, environment string, seal MobileTokenSealer) *MobileDeviceHandler {
+func NewMobileDeviceHandlerWithSealer(store MobileDeviceStore, environment string, seal MobileTokenSealer) *MobileDeviceHandler {
 	return &MobileDeviceHandler{store: store, environment: strings.TrimSpace(environment), seal: seal}
 }
 
@@ -171,6 +186,90 @@ func (h *MobileDeviceHandler) Presence(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+func parsePresenceRevision(c *gin.Context) (int64, bool) {
+	raw := strings.TrimSpace(c.Query("revision"))
+	if raw == "" {
+		raw = strings.TrimSpace(strings.Trim(c.GetHeader("If-Match"), "\""))
+	}
+	if raw == "" {
+		return 0, true
+	}
+	revision, err := strconv.ParseInt(raw, 10, 64)
+	return revision, err == nil && revision > 0
+}
+
+func presenceJSON(c *gin.Context, row repository.DeviceRegistration) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"device_id": row.DeviceID, "environment": row.Environment, "platform": row.Platform,
+		"scope_generation": row.ScopeGeneration, "revision": row.Revision, "last_seen_at": row.LastSeenAt,
+	}})
+}
+
+// GetPresence, PutPresence and DeletePresence form the complete presence
+// resource. POST remains as a backwards-compatible heartbeat alias.
+func (h *MobileDeviceHandler) GetPresence(c *gin.Context) {
+	tenant, owner, ok := mobileCaller(c)
+	if !ok {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	revision, valid := parsePresenceRevision(c)
+	if !valid {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	row, err := h.store.GetPresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision)
+	if err != nil {
+		h.writeStoreError(c, err)
+		return
+	}
+	presenceJSON(c, row)
+}
+
+func (h *MobileDeviceHandler) PutPresence(c *gin.Context) {
+	tenant, owner, ok := mobileCaller(c)
+	if !ok {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	revision, valid := parsePresenceRevision(c)
+	if !valid {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	row, err := h.store.SetPresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision)
+	if err != nil {
+		h.writeStoreError(c, err)
+		return
+	}
+	presenceJSON(c, row)
+}
+
+func (h *MobileDeviceHandler) DeletePresence(c *gin.Context) {
+	tenant, owner, ok := mobileCaller(c)
+	if !ok {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	revision, valid := parsePresenceRevision(c)
+	if !valid {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if err := h.store.DeletePresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision); err != nil {
+		h.writeStoreError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// Explicit aliases make the HTTP contract easy to inject into routers which
+// name handlers after verbs while retaining the short historical Presence
+// heartbeat method.
+func (h *MobileDeviceHandler) PresenceGet(c *gin.Context)    { h.GetPresence(c) }
+func (h *MobileDeviceHandler) PresencePut(c *gin.Context)    { h.PutPresence(c) }
+func (h *MobileDeviceHandler) PresenceDelete(c *gin.Context) { h.DeletePresence(c) }
 
 func (h *MobileDeviceHandler) List(c *gin.Context) {
 	tenant, owner, ok := mobileCaller(c)
