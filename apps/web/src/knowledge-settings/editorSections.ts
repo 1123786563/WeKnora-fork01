@@ -71,6 +71,14 @@ export function isChunkOverlapTooHigh(chunkSize: number, chunkOverlap: number): 
   return chunkOverlap > 0 && chunkOverlap >= chunkSize / 2;
 }
 
+// Vue t-select tag label for a separator value (KBChunkingSettings.vue
+// separatorOptions): preset values carry the localized label, values the user
+// created through the creatable input display the raw characters.
+export function formatKnowledgeSettingsSeparatorLabel(value: string, translate: (key: string) => string): string {
+  const key = CHUNKING_SEPARATOR_LABEL_KEYS[value];
+  return key ? translate(key) : value;
+}
+
 // Vue advancedDisabled computed: legacy chunking cannot use the adaptive
 // token-budget/language-hint controls.
 export function isChunkingAdvancedDisabled(strategy: string): boolean {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ElementType, ReactNode } from 'react';
 import type { KnowledgeBase } from '@weknora/contracts';
-import type { WeKnoraClient } from '@weknora/api-client';
+import type { ChunkingPreviewResult, WeKnoraClient } from '@weknora/api-client';
 import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
 import { KnowledgeBaseShareDialog } from '../knowledge-bases/KnowledgeBaseShareDialog.tsx';
@@ -10,7 +10,6 @@ import {
   CHILD_CHUNK_SIZE_RANGE,
   CHUNKING_LANGUAGE_LABEL_KEYS,
   CHUNKING_LANGUAGE_VALUES,
-  CHUNKING_SEPARATOR_LABEL_KEYS,
   CHUNKING_SEPARATOR_VALUES,
   CHUNKING_STRATEGY_VALUES,
   CHUNK_OVERLAP_RANGE,
@@ -20,10 +19,12 @@ import {
   TOKEN_LIMIT_RANGE,
   clampQuestionCount,
   filterKnowledgeSettingsModels,
+  formatKnowledgeSettingsSeparatorLabel,
   isChunkOverlapTooHigh,
   isChunkingAdvancedDisabled,
   type KnowledgeSettingsModelOption,
 } from './editorSections.ts';
+import { CHUNKING_SAMPLES, DEFAULT_SAMPLE_ID } from './chunkingSamples.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import './KnowledgeSettingsPage.css';
 
@@ -757,13 +758,27 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       return;
     }
     const isFaq = currentKnowledgeBase.type?.toLowerCase() === 'faq';
+    const indexing = resolveKnowledgeSettingsIndexing(currentKnowledgeBase, editorDraft);
     if (!isFaq) {
-      const indexing = resolveKnowledgeSettingsIndexing(currentKnowledgeBase, editorDraft);
       if (!indexing.vectorEnabled && !indexing.keywordEnabled && !indexing.wikiEnabled && !indexing.graphEnabled) {
         setSaveState({ status: 'error', message: t('knowledgeEditor.indexing.atLeastOne') });
         setActiveSection('basic');
         return;
       }
+    }
+    // Vue validateForm model checks, in Vue order: the Embedding model is only
+    // required while RAG search (vector|keyword indexing) is enabled, the
+    // summary LLM is always required. Both jump to the models section.
+    const needsEmbedding = indexing.vectorEnabled || indexing.keywordEnabled;
+    if (needsEmbedding && !payload.embeddingModelId) {
+      setSaveState({ status: 'error', message: t('knowledgeEditor.indexing.embeddingRequired') });
+      setActiveSection('models');
+      return;
+    }
+    if (!payload.llmModelId) {
+      setSaveState({ status: 'error', message: t('knowledgeEditor.messages.summaryRequired') });
+      setActiveSection('models');
+      return;
     }
     if (payload.vlm_config.enabled && !payload.vlm_config.model_id) {
       setSaveState({ status: 'error', message: t('knowledgeEditor.messages.multimodalInvalid') });
@@ -921,7 +936,7 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <ModelsSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'chunking' ? (
-        <ChunkingSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+        <ChunkingSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} client={client} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'advanced' ? (
         <AdvancedSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
@@ -1222,9 +1237,10 @@ function ModelsSettingsSection({ editorPayload, editorDraft, models, t, onDraftC
   );
 }
 
-// Vue KBChunkingSettings: strategy select, size/overlap sliders with the
-// overlap warning, parent-child sliders, and a collapsed token/language panel.
-function ChunkingSettingsSection({ editorPayload, editorDraft, t, onDraftChange }: EditorSectionProps) {
+// Vue KBChunkingSettings: strategy select with the debug-drawer trigger beside
+// it, size/overlap sliders with the overlap warning, the separator chips field,
+// parent-child sliders, and a collapsed token/language panel.
+function ChunkingSettingsSection({ editorPayload, editorDraft, client, t, onDraftChange }: EditorSectionProps & { client?: WeKnoraClient }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const splitting = editorPayload.documentSplitting;
   const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['documentSplitting']>) => {
@@ -1265,14 +1281,19 @@ function ChunkingSettingsSection({ editorPayload, editorDraft, t, onDraftChange 
       <EditorSettingRow
         label={t('knowledgeEditor.chunking.strategyLabel')}
         control={(
-          <select
-            aria-label={t('knowledgeEditor.chunking.strategyLabel')}
-            value={strategy}
-            onChange={(event) => set({ strategy: event.target.value })}
-          >
-            <option value=""></option>
-            {CHUNKING_STRATEGY_VALUES.map((value) => <option key={value} value={value}>{t(`knowledgeEditor.chunking.strategies.${value}.label`)}</option>)}
-          </select>
+          <div style={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }}>
+            <select
+              aria-label={t('knowledgeEditor.chunking.strategyLabel')}
+              value={strategy}
+              onChange={(event) => set({ strategy: event.target.value })}
+            >
+              <option value=""></option>
+              {CHUNKING_STRATEGY_VALUES.map((value) => <option key={value} value={value}>{t(`knowledgeEditor.chunking.strategies.${value}.label`)}</option>)}
+            </select>
+            {/* Vue sits the test trigger next to the strategy picker so users
+                discover it exactly when choosing a strategy. */}
+            <ChunkingDebugDrawer splitting={splitting} client={client} t={t} />
+          </div>
         )}
       />
       {strategyInfo ? (
@@ -1293,11 +1314,12 @@ function ChunkingSettingsSection({ editorPayload, editorDraft, t, onDraftChange 
       ) : null}
       <EditorSettingRow
         label={t('knowledgeEditor.chunking.separatorsLabel')}
-        control={multiSelect(
-          'knowledgeEditor.chunking.separatorsLabel',
-          splitting.separators,
-          CHUNKING_SEPARATOR_VALUES.map((value) => ({ value, label: t(CHUNKING_SEPARATOR_LABEL_KEYS[value]!) })),
-          (next) => set({ separators: next }),
+        control={(
+          <SeparatorChipsInput
+            values={splitting.separators}
+            t={t}
+            onChange={(next) => set({ separators: next })}
+          />
         )}
       />
       <EditorSettingRow
@@ -1353,6 +1375,295 @@ function ChunkingSettingsSection({ editorPayload, editorDraft, t, onDraftChange 
               isChunkingAdvancedDisabled(strategy),
             )}
           />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Vue separator control (KBChunkingSettings.vue): a multiple + creatable +
+// filterable t-select. Selected values render as removable tag chips, the
+// input adds custom separators (Enter commits), the dropdown offers the preset
+// values filtered by the draft, Backspace on an empty input pops the last chip
+// and Esc clears the pending draft without committing it.
+function SeparatorChipsInput({ values, onChange, t }: { values: string[]; onChange: (next: string[]) => void; t: (key: string) => string }) {
+  const [draft, setDraft] = useState('');
+  const [open, setOpen] = useState(false);
+  const label = (value: string) => formatKnowledgeSettingsSeparatorLabel(value, t);
+  const addValue = (value: string) => {
+    if (value === '' || values.includes(value)) return;
+    onChange([...values, value]);
+  };
+  const removeValue = (value: string) => onChange(values.filter((item) => item !== value));
+  const commitDraft = () => {
+    addValue(draft.trim());
+    setDraft('');
+  };
+  const pending = CHUNKING_SEPARATOR_VALUES.filter((value) =>
+    !values.includes(value)
+    && (draft === '' || value.includes(draft) || label(value).toLowerCase().includes(draft.toLowerCase())));
+  return (
+    <div className="kb-separator-field">
+      <div className="kb-separator-box">
+        {values.map((value) => (
+          <span key={value} className="kb-separator-chip" data-separator-chip="">
+            {label(value)}
+            <button
+              type="button"
+              className="kb-separator-chip-remove"
+              aria-label={`${t('common.remove')}: ${label(value)}`}
+              onClick={() => removeValue(value)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          aria-label={t('knowledgeEditor.chunking.separatorsLabel')}
+          placeholder={t('knowledgeEditor.chunking.separatorsPlaceholder')}
+          value={draft}
+          onChange={(event) => { setDraft(event.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitDraft();
+            } else if (event.key === 'Backspace' && draft === '' && values.length > 0) {
+              removeValue(values[values.length - 1]!);
+            } else if (event.key === 'Escape') {
+              setDraft('');
+              setOpen(false);
+            }
+          }}
+        />
+      </div>
+      {open && pending.length > 0 ? (
+        <div className="kb-separator-options" role="listbox" aria-label={t('knowledgeEditor.chunking.separatorsLabel')}>
+          {pending.map((value) => (
+            <button
+              type="button"
+              key={value}
+              role="option"
+              aria-selected="false"
+              data-separator-option=""
+              onMouseDown={(event) => { event.preventDefault(); addValue(value); }}
+            >
+              {label(value)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Vue KBChunkingDebug: an inline text trigger beside the strategy picker opens
+// a right drawer that runs the current (draft-inclusive) chunking config over
+// a sample text through POST /api/v1/chunker/preview and renders the selected
+// tier, rejected tiers, doc profile, size stats and the chunk cards.
+function ChunkingDebugDrawer({ splitting, client, t }: { splitting: KnowledgeSettingsSavePayload['documentSplitting']; client?: WeKnoraClient; t: (key: string, values?: Record<string, string | number>) => string }) {
+  const [open, setOpen] = useState(false);
+  const [sample, setSample] = useState('');
+  const [autoLoaded, setAutoLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<ChunkingPreviewResult | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+  // Mirrors handler.previewMaxChars on the backend. Keep in sync.
+  const MAX_CHARS = 64 * 1024;
+  const loadSample = (id: string) => {
+    const preset = CHUNKING_SAMPLES.find((candidate) => candidate.id === id);
+    if (!preset) return;
+    setSample(preset.text);
+    setResult(null);
+    setError('');
+    setExpanded(new Set<number>());
+  };
+  // Vue: opening the drawer with an empty textarea auto-loads the default
+  // preset; user input on subsequent opens is never overwritten.
+  useEffect(() => {
+    if (open && !autoLoaded && sample.trim() === '') {
+      setAutoLoaded(true);
+      loadSample(DEFAULT_SAMPLE_ID);
+    }
+  }, [open, autoLoaded, sample]);
+  if (!client) return null;
+  const runPreview = () => {
+    if (sample.length === 0 || loading) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setExpanded(new Set<number>());
+    // Send all fields explicitly (empty/0 included) so the preview reflects
+    // exactly what a save would persist — the Vue buildSubmitData convention.
+    void client.knowledgeBases.settings.previewChunking({
+      text: sample,
+      chunking_config: {
+        chunk_size: splitting.chunkSize,
+        chunk_overlap: splitting.chunkOverlap,
+        separators: splitting.separators,
+        enable_parent_child: splitting.enableParentChild,
+        parent_chunk_size: splitting.parentChunkSize,
+        child_chunk_size: splitting.childChunkSize,
+        strategy: splitting.strategy,
+        token_limit: splitting.tokenLimit,
+        languages: splitting.languages,
+      },
+    }).then((data) => setResult(data)).catch((cause: unknown) => {
+      setError(cause instanceof Error && cause.message ? cause.message : 'unknown error');
+    }).finally(() => setLoading(false));
+  };
+  const toggleChunk = (seq: number) => {
+    const next = new Set(expanded);
+    if (next.has(seq)) next.delete(seq);
+    else next.add(seq);
+    setExpanded(next);
+  };
+  // `recursive` and `legacy` share the same splitter path; both surface under
+  // the user-facing legacy label (Vue normalizeTier).
+  const normalizeTier = (tier: string) => (tier === 'recursive' ? 'legacy' : tier);
+  const tierLabel = (tier: string) => {
+    const normalized = normalizeTier(tier);
+    return CHUNKING_STRATEGY_VALUES.includes(normalized as (typeof CHUNKING_STRATEGY_VALUES)[number])
+      ? t(`knowledgeEditor.chunking.strategies.${normalized}.label`)
+      : normalized;
+  };
+  const fallbackWarning = result !== null && result.selected_tier === 'legacy' && result.rejected.length > 0;
+  const profileCell = (labelKey: string, value: string) => (
+    <div className="kb-chunking-profile-cell">
+      <div className="kb-chunking-profile-value">{value}</div>
+      <div className="kb-chunking-profile-label">{t(labelKey)}</div>
+    </div>
+  );
+  const profile = result?.profile ?? null;
+  const number_ = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  const chapterCount = profile
+    ? number_(profile.german_chapter_count) + number_(profile.english_chapter_count) + number_(profile.chinese_chapter_count)
+    : 0;
+  const detectedLangs = profile && Array.isArray(profile.detected_langs) ? profile.detected_langs.filter((item): item is string => typeof item === 'string').join(', ') : '';
+  return (
+    <div className="kb-chunking-debug">
+      <button type="button" className="kb-chunking-debug-trigger" onClick={() => setOpen(true)}>
+        ▶ {t('knowledgeEditor.chunking.debug.toggle')}
+      </button>
+      {open ? (
+        <div className="kb-chunking-debug-layer">
+          <div className="kb-chunking-debug-overlay" onClick={() => setOpen(false)} />
+          <aside className="kb-chunking-drawer" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.chunking.debug.toggle')}>
+            <header className="kb-chunking-drawer-header">
+              <strong>{t('knowledgeEditor.chunking.debug.toggle')}</strong>
+              <button type="button" aria-label={t('common.cancel')} onClick={() => setOpen(false)}>×</button>
+            </header>
+            <div className="kb-chunking-drawer-body">
+              <section className="kb-chunking-drawer-section">
+                <div className="kb-chunking-sample-row">
+                  <span className="kb-chunking-sample-title">{t('knowledgeEditor.chunking.debug.sampleLabel')}</span>
+                  <span className="kb-chunking-presets">
+                    <span>{t('knowledgeEditor.chunking.debug.presetLabel')}</span>
+                    {CHUNKING_SAMPLES.map((preset) => (
+                      <button type="button" key={preset.id} onClick={() => loadSample(preset.id)}>
+                        {t(`knowledgeEditor.chunking.debug.${preset.labelKey}`)}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <textarea
+                  aria-label={t('knowledgeEditor.chunking.debug.sampleLabel')}
+                  placeholder={t('knowledgeEditor.chunking.debug.samplePlaceholder')}
+                  maxLength={MAX_CHARS}
+                  rows={6}
+                  value={sample}
+                  onChange={(event) => setSample(event.target.value)}
+                />
+                <div className="kb-chunking-run-row">
+                  <button
+                    type="button"
+                    className="kb-chunking-run"
+                    disabled={loading || sample.length === 0}
+                    onClick={runPreview}
+                  >
+                    {t('knowledgeEditor.chunking.debug.runButton')}
+                  </button>
+                </div>
+              </section>
+              {loading ? (
+                <p className="kb-chunking-loading" role="status">{t('knowledgeEditor.chunking.debug.loading')}</p>
+              ) : error ? (
+                <p className="kb-chunking-error" role="alert">
+                  <strong>{t('knowledgeEditor.chunking.debug.errorPrefix')}</strong> {error}
+                </p>
+              ) : result ? (
+                <section className="kb-chunking-result">
+                  <div className="kb-chunking-tier-row">
+                    <span>{t('knowledgeEditor.chunking.debug.selectedTier')}:</span>
+                    <span className="kb-chunking-tier-tag" data-tier={normalizeTier(result.selected_tier)}>{tierLabel(result.selected_tier)}</span>
+                    {fallbackWarning ? <span className="kb-chunking-fallback">{t('knowledgeEditor.chunking.debug.fallbackWarning')}</span> : null}
+                  </div>
+                  {result.rejected.length > 0 ? (
+                    <div className="kb-chunking-tier-row">
+                      <span>{t('knowledgeEditor.chunking.debug.rejected')}:</span>
+                      {result.rejected.map((rejection, index) => {
+                        const tier = typeof (rejection as { tier?: unknown })?.tier === 'string' ? (rejection as { tier: string }).tier : '';
+                        const reason = typeof (rejection as { reason?: unknown })?.reason === 'string' ? (rejection as { reason: string }).reason : '';
+                        return <span key={`${tier}-${index}`} className="kb-chunking-rejected-tag">{tierLabel(tier)}: {reason}</span>;
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="kb-chunking-profile-grid">
+                    {profileCell('knowledgeEditor.chunking.debug.profile.lines', String(number_(profile?.total_lines)))}
+                    {profileCell('knowledgeEditor.chunking.debug.profile.chars', String(number_(profile?.total_chars)))}
+                    {profileCell('knowledgeEditor.chunking.debug.profile.headings', String(number_(profile?.md_heading_total)))}
+                    {profileCell('knowledgeEditor.chunking.debug.profile.pageBreaks', String(number_(profile?.form_feed_count)))}
+                    {profileCell('knowledgeEditor.chunking.debug.profile.chapterMarkers', String(chapterCount))}
+                    {profileCell('knowledgeEditor.chunking.debug.profile.languages', detectedLangs || '—')}
+                  </div>
+                  <div className="kb-chunking-stats">
+                    <strong>{result.stats.count}</strong> {t('knowledgeEditor.chunking.debug.stats.chunks')}
+                    <span>·</span>
+                    <span>Ø {result.stats.avg_chars}</span>
+                    <span>·</span>
+                    <span>σ {result.stats.stddev_chars}</span>
+                    <span>·</span>
+                    <span>min {result.stats.min_chars}</span>
+                    <span>·</span>
+                    <span>max {result.stats.max_chars}</span>
+                    {typeof result.stats.truncated_to === 'number' ? (
+                      <span className="kb-chunking-truncated">{t('knowledgeEditor.chunking.debug.stats.truncated', { total: result.stats.truncated_to })}</span>
+                    ) : null}
+                  </div>
+                  <ol className="kb-chunking-chunks">
+                    {result.chunks.map((chunk) => {
+                      const seq = typeof chunk.seq === 'number' ? chunk.seq : 0;
+                      const isOpen = expanded.has(seq);
+                      return (
+                        <li key={seq} className={isOpen ? 'kb-chunking-chunk expanded' : 'kb-chunking-chunk'}>
+                          <button
+                            type="button"
+                            className="kb-chunking-chunk-meta"
+                            aria-expanded={isOpen}
+                            onClick={() => toggleChunk(seq)}
+                          >
+                            <span className="kb-chunking-chunk-seq">#{seq}</span>
+                            <span>{number_(chunk.size_chars)} {t('knowledgeEditor.chunking.characters')}</span>
+                            <span>· ~{number_(chunk.size_tokens_approx)} tok</span>
+                            <span>{number_(chunk.start)}–{number_(chunk.end)}</span>
+                            {typeof chunk.context_header === 'string' && chunk.context_header ? (
+                              <span className="kb-chunking-context-pill" title={chunk.context_header}>{chunk.context_header}</span>
+                            ) : null}
+                            <span className="kb-chunking-chevron">{isOpen ? '▾' : '▸'}</span>
+                          </button>
+                          <pre className={isOpen ? 'kb-chunking-chunk-text' : 'kb-chunking-chunk-text collapsed'}>
+                            {typeof chunk.content === 'string' ? chunk.content : ''}
+                          </pre>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </section>
+              ) : null}
+            </div>
+          </aside>
         </div>
       ) : null}
     </div>

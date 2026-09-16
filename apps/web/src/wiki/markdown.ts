@@ -148,19 +148,130 @@ export function renderWikiMarkdown(content: string, options: WikiMarkdownOptions
 
 /**
  * Vue WikiBrowser.vue `handleContentClick()`: delegated clicks inside the
- * reader body — `.wiki-content-link` navigates to `data-slug`, everything
- * else is left alone. Uses `closest` so inline children of the anchor
- * (marked may wrap link labels in em/code) still navigate.
+ * reader body — `.wiki-content-link` navigates to `data-slug`, an `img`
+ * target opens the picture preview, everything else is left alone. Uses
+ * `closest` so inline children of the anchor (marked may wrap link labels
+ * in em/code) still navigate. The second argument accepts a bare navigate
+ * function (legacy callers, no image viewer) or a handlers object.
  */
 export function handleWikiBodyClick(
   event: { target: unknown; preventDefault: () => void },
-  navigate: (slug: string) => void,
+  actions:
+    | ((slug: string) => void)
+    | { navigate: (slug: string) => void; openImage?: (src: string) => void },
 ): void {
+  const handlers = typeof actions === 'function' ? { navigate: actions } : actions;
   const target = event.target as Element | null;
   if (!target || typeof target.closest !== 'function') return;
   const link = target.closest('a.wiki-content-link');
-  if (!link) return;
-  event.preventDefault();
-  const slug = link.getAttribute('data-slug');
-  if (slug) navigate(slug);
+  if (link) {
+    event.preventDefault();
+    const slug = link.getAttribute('data-slug');
+    if (slug) handlers.navigate(slug);
+    return;
+  }
+  // Vue handleContentClick: `else if (target.tagName.toLowerCase() === 'img')`
+  // → preventDefault, then only open the viewer when a src exists.
+  if ((target.tagName || '').toLowerCase() === 'img') {
+    event.preventDefault();
+    const src = target.getAttribute('src') || '';
+    if (src) handlers.openImage?.(src);
+  }
+}
+
+// ─── Index overview markdown (Vue index view) ───
+//
+// The Vue index view is not a structured list: intro + directory sections
+// are assembled into one markdown string and pushed through the same
+// renderMarkdown chain as regular page bodies (WikiBrowser.vue
+// `renderedIndexMarkdown` / `loadMoreIndexSection` / `appendIndexDirectoryLines`).
+
+/** Vue `stripLegacyIndexDirectory`: clip a legacy inline `## …` directory. */
+export function stripLegacyIndexDirectory(intro: string): string {
+  if (!intro) return '';
+  const idx = intro.indexOf('\n## ');
+  if (idx < 0) return intro.trim();
+  return intro.slice(0, idx).trim();
+}
+
+export type WikiIndexDirectoryEntry = {
+  slug: string;
+  title: string;
+  summary?: string;
+  category_path?: string[];
+};
+
+/**
+ * Vue `appendIndexDirectoryLines`: `**path**` breadcrumbs followed by
+ * `[[slug|title]] — summary` entries. Plain lines (not list items) so the
+ * reader carries no list bullets next to each link.
+ */
+export function appendWikiIndexDirectoryLines(items: WikiIndexDirectoryEntry[]): string {
+  let out = '';
+  const emittedDirs = new Set<string>();
+  for (const entry of items) {
+    const path = (Array.isArray(entry.category_path) ? entry.category_path : [])
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    for (let i = 0; i < path.length; i++) {
+      const key = path.slice(0, i + 1).join('/');
+      if (emittedDirs.has(key)) continue;
+      emittedDirs.add(key);
+      out += `${'  '.repeat(i)}**${path[i]}**\n`;
+    }
+    const display = entry.title || entry.slug;
+    const indent = '  '.repeat(path.length);
+    out += entry.summary
+      ? `${indent}[[${entry.slug}|${display}]] — ${entry.summary}\n`
+      : `${indent}[[${entry.slug}|${display}]]\n`;
+  }
+  return out;
+}
+
+/** Vue INDEX_SECTION_ORDER: Summary first, then the LLM-derived types. */
+export const WIKI_INDEX_SECTION_ORDER = ['summary', 'entity', 'concept', 'synthesis', 'comparison'] as const;
+
+/**
+ * Assemble the full index-view markdown the way the Vue loader accumulates
+ * it: legacy-clipped intro, then one `## Label (total)` heading per
+ * non-empty section in INDEX_SECTION_ORDER followed by its directory lines.
+ */
+export function assembleWikiIndexMarkdown({
+  intro,
+  groups,
+  labelFor,
+}: {
+  intro: string;
+  groups: Array<{ type: string; total: number; items: WikiIndexDirectoryEntry[] }>;
+  labelFor: (type: string) => string;
+}): string {
+  let markdown = stripLegacyIndexDirectory(intro) ? `${stripLegacyIndexDirectory(intro)}\n` : '';
+  for (const type of WIKI_INDEX_SECTION_ORDER) {
+    const group = groups.find((candidate) => candidate.type === type);
+    if (!group || !group.items.length) continue;
+    markdown += `\n## ${labelFor(type)} (${group.total})\n\n`;
+    markdown += appendWikiIndexDirectoryLines(group.items);
+  }
+  return markdown;
+}
+
+// ─── Reader footer sources (Vue parsedSourceRefs) ───
+
+/**
+ * Vue `parseSourceRefEntry`: pipeline ingest stores `id|title` pairs or bare
+ * knowledge ids; bare ids fall back to a truncated id for display.
+ */
+export function parseWikiSourceRefs(
+  refs: unknown,
+): Array<{ id: string; title: string }> {
+  if (!Array.isArray(refs)) return [];
+  return refs
+    .filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
+    .map((ref) => {
+      const pipeIdx = ref.indexOf('|');
+      if (pipeIdx > 0) {
+        return { id: ref.substring(0, pipeIdx), title: ref.substring(pipeIdx + 1) };
+      }
+      return { id: ref, title: ref.length > 20 ? `${ref.substring(0, 8)}...` : ref };
+    });
 }

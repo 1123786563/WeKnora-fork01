@@ -118,7 +118,11 @@ export function shouldShowTenantSwitcher(options: {
   return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
 }
 
-const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
+// Vue stores/ui.ts:23,123-126 persists the collapsed rail under the Vue-era
+// key `sidebar_collapsed` and re-reads it on boot; keep the same key so the
+// preference survives reloads and stays interchangeable with the Vue artifact
+// (the key is also listed in legacy-session.ts LEGACY_PREFERENCE_KEYS).
+const COLLAPSE_STORAGE_KEY = 'sidebar_collapsed';
 
 const SHELL_SESSION_PAGE_SIZE = 30;
 
@@ -585,6 +589,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     });
   };
 
+  // Vue menu.vue:7 renders a literal "Lite" edition mark next to the logo
+  // when the edition flag is set; stores/auth.ts:538 sources it from the
+  // durable localStorage key (same one main.tsx seeds the shell with).
+  const isLiteEdition = window.localStorage.getItem('weknora_lite_mode') === 'true';
+
   const initial = (user.name || '?').charAt(0).toUpperCase();
   const showTenantIdentityLine = !collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants);
   const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
@@ -603,6 +612,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   navigate('/platform/knowledge-bases');
                 }}>
             {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
+            {/* Vue menu.vue:7 `<sup class="lite-badge">Lite</sup>` — edition
+                mark, untranslated; styles port menu.vue:1289-1297. */}
+            {!collapsed && isLiteEdition && (
+              <sup className="ml-[2px] mt-[2px] shrink-0 self-start select-none whitespace-nowrap text-[9px] font-semibold leading-none text-[var(--wk-color-text-placeholder,rgba(0,0,0,0.4))]">Lite</sup>
+            )}
           </a>
           {!collapsed && (
             <div className="flex shrink-0 items-center gap-1">

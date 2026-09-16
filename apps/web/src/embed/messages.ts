@@ -13,7 +13,12 @@ export type EmbedTextKey =
   | 'defaultChatTitle'
   | 'newChat'
   | 'inputPlaceholder'
-  | 'send';
+  | 'send'
+  | 'suggestedQuestions'
+  | 'referencesTitle'
+  | 'referencesDocCount'
+  | 'referencesWebCount'
+  | 'referencesDocAndWebCount';
 
 export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
   'zh-CN': {
@@ -28,6 +33,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     newChat: '新建对话',
     inputPlaceholder: '请输入您的消息...',
     send: '发送',
+    suggestedQuestions: '你可以这样问我',
+    referencesTitle: '参考了{count}个相关内容',
+    referencesDocCount: '引用了{count}篇文档',
+    referencesWebCount: '参考了{count}条网页',
+    referencesDocAndWebCount: '引用了{docCount}篇文档和{webCount}条网页',
   },
   'en-US': {
     loadError: 'Failed to load',
@@ -41,6 +51,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     newChat: 'New chat',
     inputPlaceholder: 'Type your message...',
     send: 'Send',
+    suggestedQuestions: 'You can ask me',
+    referencesTitle: 'Referenced {count} related item(s)',
+    referencesDocCount: 'Referenced {count} document(s)',
+    referencesWebCount: 'Referenced {count} web result(s)',
+    referencesDocAndWebCount: 'Referenced {docCount} document(s) and {webCount} web result(s)',
   },
   'ja-JP': {
     loadError: '読み込みに失敗しました',
@@ -54,6 +69,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     newChat: '新しいチャット',
     inputPlaceholder: 'メッセージを入力...',
     send: '送信',
+    suggestedQuestions: 'こんな質問ができます',
+    referencesTitle: '関連する内容を{count}件参照',
+    referencesDocCount: '{count}件のドキュメントを参照',
+    referencesWebCount: '{count}件のWebページを参照',
+    referencesDocAndWebCount: '{docCount}件のドキュメントと{webCount}件のWebページを参照',
   },
   'ko-KR': {
     loadError: '로드 실패',
@@ -67,6 +87,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     newChat: '새 대화',
     inputPlaceholder: '메시지를 입력하세요...',
     send: '보내기',
+    suggestedQuestions: '이렇게 물어보세요',
+    referencesTitle: '{count}개의 관련 내용 참조',
+    referencesDocCount: '{count}개 문서 참조',
+    referencesWebCount: '{count}개 웹 결과 참조',
+    referencesDocAndWebCount: '{docCount}개 문서와 {webCount}개 웹 결과 참조',
   },
   'ru-RU': {
     loadError: 'Не удалось загрузить',
@@ -80,9 +105,18 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     newChat: 'Новый чат',
     inputPlaceholder: 'Введите сообщение...',
     send: 'Отправить',
+    suggestedQuestions: 'Вы можете спросить меня',
+    referencesTitle: 'Использовано {count} связанного материала',
+    referencesDocCount: 'Использовано {count} документ(ов)',
+    referencesWebCount: 'Использовано {count} веб-результат(ов)',
+    referencesDocAndWebCount: 'Использовано {docCount} документ(ов) и {webCount} веб-результат(ов)',
   },
 };
 
-export function embedText(locale: Locale, key: EmbedTextKey): string {
-  return embedTexts[locale][key];
+export function embedText(locale: Locale, key: EmbedTextKey, params?: Record<string, string | number>): string {
+  const template = embedTexts[locale][key];
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match,
+  );
 }

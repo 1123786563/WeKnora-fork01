@@ -9,7 +9,14 @@ import type {
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
-import { handleWikiBodyClick, renderWikiMarkdown, stripDuplicateLeadingTitle, wikiSlugDisplayName } from "./markdown.ts";
+import {
+  assembleWikiIndexMarkdown,
+  handleWikiBodyClick,
+  parseWikiSourceRefs,
+  renderWikiMarkdown,
+  stripDuplicateLeadingTitle,
+  wikiSlugDisplayName,
+} from "./markdown.ts";
 import "./wiki-reader.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
@@ -24,16 +31,240 @@ export function wikiRevertConfirmation(
   return wikiRevertCopy(translate, "confirm", version);
 }
 
+// ─── Vue picture-preview.vue (t-image-viewer) ───
+//
+// The Vue viewer opens with closeOnOverlay + closeOnEscKeydown and the
+// TDesign default toolbar (zoom in/out, scale readout). Structure: dark
+// mask, centered scalable image, top-right close.
+const WIKI_PREVIEW_MIN_SCALE = 0.2;
+const WIKI_PREVIEW_MAX_SCALE = 5;
+
+export function wikiPreviewStep(scale: number, delta: number): number {
+  return Math.min(WIKI_PREVIEW_MAX_SCALE, Math.max(WIKI_PREVIEW_MIN_SCALE, Math.round((scale + delta) * 100) / 100));
+}
+
+export function WikiImagePreview({ src, onClose }: { src: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    // t-image-viewer closeOnEscKeydown
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, [onClose]);
+  return (
+    <div
+      className="wk-wiki-img-preview fixed inset-0 z-[1100] flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={(event) => {
+        // t-image-viewer closeOnOverlay: only a mask click closes, not
+        // clicks on the image or the toolbar.
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="wk-wiki-img-preview-mask absolute inset-0 bg-black/85" aria-hidden="true" />
+      <img
+        className="wk-wiki-img-preview-image relative max-h-[90vh] max-w-[90vw] select-none object-contain"
+        src={src}
+        alt=""
+        style={{ transform: `scale(${scale})` }}
+        draggable={false}
+      />
+      <div className="wk-wiki-img-preview-toolbar absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md bg-black/60 px-3 py-2 text-white">
+        <button
+          type="button"
+          className="wk-wiki-img-preview-zoom-out cursor-pointer border-0 bg-transparent px-2 py-1 text-lg leading-none text-white"
+          onClick={() => setScale((value) => wikiPreviewStep(value, -0.25))}
+        >
+          −
+        </button>
+        <span className="wk-wiki-img-preview-scale min-w-[3.5rem] text-center text-xs tabular-nums">
+          {Math.round(scale * 100)}%
+        </span>
+        <button
+          type="button"
+          className="wk-wiki-img-preview-zoom-in cursor-pointer border-0 bg-transparent px-2 py-1 text-lg leading-none text-white"
+          onClick={() => setScale((value) => wikiPreviewStep(value, 0.25))}
+        >
+          +
+        </button>
+      </div>
+      <button
+        type="button"
+        className="wk-wiki-img-preview-close absolute right-6 top-6 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-black/60 text-xl leading-none text-white"
+        aria-label="×"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// ─── Vue reader footer: backlinks + sources ───
+//
+// WikiBrowser.vue lines 591-612: a `Linked from` row built from the page's
+// `in_links` and a `Source documents` row built from `parsedSourceRefs`.
+// `in_links` / `source_refs` ride through the api-client page response's
+// index signature (backend WikiPage JSON includes both).
+
+export function WikiReaderFooter({
+  page,
+  resolveSlugName,
+  translate,
+  onNavigate,
+  onOpenSourceDoc,
+}: {
+  page: { [key: string]: unknown; in_links?: unknown; source_refs?: unknown };
+  resolveSlugName: (slug: string) => string;
+  translate?: (key: string) => string;
+  onNavigate: (slug: string) => void;
+  onOpenSourceDoc?: (documentId: string) => void;
+}) {
+  const t = translate ?? ((key: string) => key);
+  const inLinks = Array.isArray(page.in_links)
+    ? page.in_links.filter((slug): slug is string => typeof slug === "string" && slug.length > 0)
+    : [];
+  const sources = parseWikiSourceRefs(page.source_refs);
+  if (inLinks.length === 0 && sources.length === 0) return null;
+  return (
+    <footer className="wiki-reader-footer">
+      {inLinks.length > 0 ? (
+        <div className="wiki-reader-footer-row">
+          <span className="wiki-reader-footer-label">{t("wikiBrowser.linkedFrom")}</span>
+          <span className="wiki-reader-footer-value">
+            {inLinks.map((link) => (
+              <a
+                key={`in-${link}`}
+                href="#"
+                className="wiki-content-link"
+                data-slug={link}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigate(link);
+                }}
+              >
+                {resolveSlugName(link)}
+              </a>
+            ))}
+          </span>
+        </div>
+      ) : null}
+      {sources.length > 0 ? (
+        <div className="wiki-reader-footer-row">
+          <span className="wiki-reader-footer-label">{t("wikiBrowser.sources")}</span>
+          <span className="wiki-reader-footer-value">
+            {sources.map((ref) => (
+              <a
+                key={ref.id}
+                href="#"
+                className="wiki-content-link"
+                data-source-id={ref.id}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenSourceDoc?.(ref.id);
+                }}
+              >
+                {ref.title}
+              </a>
+            ))}
+          </span>
+        </div>
+      ) : null}
+    </footer>
+  );
+}
+
+// ─── Vue index system view ───
+//
+// The index overview renders as markdown through the same pipeline as a
+// regular page body (intro + `## Label (total)` directory sections), so
+// [[wiki-link]] and image clicks behave identically (WikiBrowser.vue
+// `renderedIndexMarkdown`).
+
+const WIKI_INDEX_TYPE_LABEL_KEYS: Record<string, string> = {
+  knowledge: "wikiBrowser.filterKnowledge",
+  summary: "wikiBrowser.filterSummary",
+  entity: "wikiBrowser.filterEntity",
+  concept: "wikiBrowser.filterConcept",
+  synthesis: "wikiBrowser.filterSynthesis",
+  comparison: "wikiBrowser.filterComparison",
+};
+
+export function WikiIndexView({
+  indexView,
+  loading,
+  error,
+  hasMore,
+  labelFor,
+  onLoadMore,
+  onNavigate,
+  onOpenImage,
+  locale,
+}: {
+  indexView: WikiIndexResponse;
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  labelFor: (type: string) => string;
+  onLoadMore: () => void;
+  onNavigate: (slug: string) => void;
+  onOpenImage: (src: string) => void;
+  locale?: ReturnType<typeof useAppLocale>;
+}) {
+  const fallbackLocale = useAppLocale();
+  const t = createTranslator(locale ?? fallbackLocale);
+  const markdown = assembleWikiIndexMarkdown({
+    intro: indexView.intro,
+    groups: indexView.groups,
+    labelFor,
+  });
+  if (error) return <Status tone="error">{error}</Status>;
+  if (loading && !markdown) {
+    return <Status>{t("wikiBrowser.loading")}</Status>;
+  }
+  if (!markdown) {
+    return (
+      <div className="wiki-reader-empty">
+        <p className="wiki-empty-title">{t("wikiBrowser.indexEmpty")}</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div
+        className="wiki-reader-body wiki-index-body m-0 box-border min-h-[22rem]"
+        onClick={(event) => handleWikiBodyClick(event, { navigate: onNavigate, openImage: onOpenImage })}
+        dangerouslySetInnerHTML={{
+          __html: renderWikiMarkdown(markdown, { resolveSlugName: (slug) => slug }),
+        }}
+      />
+      {hasMore ? (
+        <div className="wiki-index-sentinel flex items-center justify-center px-0 pb-6 pt-4">
+          <Button type="button" disabled={loading} onClick={onLoadMore}>
+            {loading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function WikiPage({
   client,
   knowledgeBaseId,
   initialSlug,
   canContribute: canContributeProp = false,
+  onOpenSourceDoc,
 }: {
   client: WeKnoraClient;
   knowledgeBaseId: string;
   initialSlug?: string;
   canContribute?: boolean;
+  /** Vue `open-source-doc` emit: open a wiki source document in the knowledge surface. */
+  onOpenSourceDoc?: (documentId: string) => void;
 }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
@@ -72,6 +303,8 @@ export function WikiPage({
   const [reverting, setReverting] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [canContribute, setCanContribute] = useState(canContributeProp);
+  // Vue picture-preview state: the previewed image src, null closes the viewer.
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -470,13 +703,7 @@ export function WikiPage({
         : [],
     [revision, selected],
   );
-  const directory = indexView ? (
-    <section className="wk-wiki-index grid gap-3 pb-2" aria-label={t("wikiBrowser.indexTitle")}>
-      {indexError ? <Status tone="error">{indexError}</Status> : null}
-      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list m-0 list-none p-0">{group.items.map((item) => <li key={item.slug} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><button className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
-      {indexNextCursor ? <Button type="button" disabled={indexLoading} onClick={() => void loadMoreIndex()}>{indexLoading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}</Button> : null}
-    </section>
-  ) : (
+  const directory = (
     <>
       <div className="wk-wiki-directory-toolbar flex flex-wrap items-center gap-[0.35rem] pb-2" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
         <Button type="button" onClick={() => switchViewMode("tree")} aria-pressed={viewMode === "tree"}>{t("wikiBrowser.viewTree")}</Button>
@@ -519,7 +746,7 @@ export function WikiPage({
             </div>
             <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
               {directory}
-              {!indexView ? pages.map((page) => (
+              {pages.map((page) => (
                 <button
                   className={`wk-wiki-page-item group/wiki-item grid min-h-[98px] cursor-pointer gap-0.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
@@ -534,14 +761,14 @@ export function WikiPage({
                     v{page.version}
                   </span>
                 </button>
-              )) : null}
-              {!indexView && state.status === "loading" ? (
+              ))}
+              {state.status === "loading" ? (
                 <Status>{t("wikiBrowser.loading")}</Status>
               ) : null}
-              {!indexView && state.status === "error" ? (
+              {state.status === "error" ? (
                 <Status tone="error">{state.message}</Status>
               ) : null}
-              {!indexView && state.status === "success" && pages.length === 0 ? (
+              {state.status === "success" && pages.length === 0 ? (
                 <div className="wk-wiki-empty flex flex-1 flex-col items-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
                   <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">
                     ▧
@@ -552,7 +779,7 @@ export function WikiPage({
               ) : null}
             </nav>
           </aside>
-          {!selected && !editing ? (() => {
+          {!selected && !editing && !indexView ? (() => {
             const emptyState = wikiReaderEmptyState(t, pages.length > 0);
             return <div className="wk-wiki-reader-empty flex min-h-[22rem] min-w-0 flex-col items-center justify-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
               <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">▧</span>
@@ -560,6 +787,29 @@ export function WikiPage({
               {emptyState.description ? <span>{emptyState.description}</span> : null}
             </div>;
           })() : null}
+          {indexView ? (
+            <article className="wk-wiki-reader min-w-0" aria-label={t("wikiBrowser.indexTitle")}>
+              <div className="wk-header mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h2>{t("wikiBrowser.indexTitle")}</h2>
+                  <p className="wk-muted text-muted">{t("wikiBrowser.indexOverviewTag")}</p>
+                </div>
+              </div>
+              <WikiIndexView
+                indexView={indexView}
+                loading={indexLoading}
+                error={indexError}
+                hasMore={indexNextCursor !== null}
+                labelFor={(type) => {
+                  const key = WIKI_INDEX_TYPE_LABEL_KEYS[type];
+                  return key ? t(key) : type;
+                }}
+                onLoadMore={() => void loadMoreIndex()}
+                onNavigate={navigateToSlug}
+                onOpenImage={(src) => setPreviewSrc(src)}
+              />
+            </article>
+          ) : null}
           {selected && !editing ? (
             <article className="wk-wiki-reader min-w-0" aria-label={selected.title}>
               <div className="wk-header mb-6 flex items-start justify-between gap-4">
@@ -594,11 +844,18 @@ export function WikiPage({
                 return (
                   <div
                     className="wk-wiki-reader-content wiki-reader-body m-0 box-border min-h-[22rem]"
-                    onClick={(event) => handleWikiBodyClick(event, navigateToSlug)}
+                    onClick={(event) => handleWikiBodyClick(event, { navigate: navigateToSlug, openImage: setPreviewSrc })}
                     dangerouslySetInnerHTML={{ __html: rendered }}
                   />
                 );
               })()}
+              <WikiReaderFooter
+                page={selected}
+                resolveSlugName={(nextSlug) => wikiSlugDisplayName(nextSlug, pages)}
+                translate={t}
+                onNavigate={navigateToSlug}
+                onOpenSourceDoc={onOpenSourceDoc}
+              />
             </article>
           ) : null}
           {canContribute ? <form
@@ -702,6 +959,7 @@ export function WikiPage({
           </nav>
         ) : null}
       </Card>
+      {previewSrc ? <WikiImagePreview src={previewSrc} onClose={() => setPreviewSrc(null)} /> : null}
       {historyOpen && selected ? (
         <Card className="wk-wiki-history mt-4">
           <div className="wk-header mb-6 flex items-start justify-between gap-4">

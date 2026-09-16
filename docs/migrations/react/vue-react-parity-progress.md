@@ -4535,3 +4535,34 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1473/1473, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r441-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R442 — Chunking UI finish, wiki reader closeout, embed chat parity, platform shell sweep
+
+- Five parallel agents (A1 knowledge-settings finish, A2 wiki reader closeout, A3 embed chat parity, A4 platform
+  shell sweep, A5 verifier), file-domain mutually exclusive, TDD. A5 verdicts: A1/A2/A4 PASS; A3's CONCERNS
+  (referenceHeadline chunk-vs-group counting) fixed by the orchestrator in-round. Final: all PASS, zero
+  regressions vs baseline 1473.
+- A1: separator control rebuilt as Vue tag chips (Enter add / Backspace pop / Esc clears draft); 「测试分块效果」
+  preview entry ported (720px drawer, four samples verbatim from Vue chunkingSamples.ts, existing
+  previewChunking API, tier normalization, six-tile profile); models validation joins validateForm (embedding
+  required when vector||keyword, LLM always). Ledger corrections: the "200K badge" does not exist in the Vue
+  repo and the Embedding-locked warning binds to ragEnabled&&hasFiles, not keyword-only — blocked items
+  corrected. isIndexingLocked honestly blocked (KB payload lacks a files signal; Vue derives it from a separate
+  knowledge-list GET — plan recorded, needs its own round). Directory 72/72; zero new i18n keys.
+- A2: wiki image preview dialog, index view through the markdown pipeline in the reader pane, and the reader
+  footer 「Linked from」/「Source documents」 all ported (Vue footer L591-612; backend fields confirmed).
+  Partial block: source-title hydration needs an api-client endpoint + host onOpenSourceDoc (optional prop
+  exposed). Scoped 38/38.
+- A3: embed entry gains history restore (latest 20 via getmsgList semantics), SSE references with the
+  three-level fallback rendered as docInfo-style collapsible groups, and channel suggested questions
+  (GET /embed/:channelId/suggested-questions, hidden after the visitor speaks). Orchestrator closure: 
+  referenceHeadline now counts document GROUPS (key knowledge_id||knowledge_title||id, docInfo
+  groupedKnowledgeRefs) instead of raw chunks — 5-chunks/3-docs behavioral test pinned. Scoped embed suites
+  21/21. Deferred: history scroll pagination, per-message follow-ups, citation pills.
+- A4: platform shell audited across sidebar collapse, tenant switcher, user menu, command palette, and state
+  coverage — two gaps fixed (collapse persistence key → Vue's `sidebar_collapsed`; literal `Lite` sup under
+  weknora_lite_mode). Platform 170/170. Deferred: org pending badge, memberships throttle, last-active
+  persistence (domain-out), collapsed drag handle.
+- Gates: `pnpm test:web` 1499/1499, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r442-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

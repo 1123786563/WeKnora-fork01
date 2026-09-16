@@ -59,6 +59,9 @@ const faqKb: KnowledgeSettingsInput = {
   description: 'Answers',
   type: 'faq',
   summary_model_id: 'llm-1',
+  // Vue validateForm requires the Embedding model while RAG search (vector or
+  // keyword indexing) is enabled — FAQ bases default to both on.
+  embedding_model_id: 'embed-1',
   faq_config: { index_mode: 'question_only', question_index_mode: 'separate' },
 };
 

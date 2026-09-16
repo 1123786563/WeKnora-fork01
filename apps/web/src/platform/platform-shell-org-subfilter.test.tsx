@@ -105,7 +105,7 @@ test('other routes keep the shell clean: KB page has no duplicate scope block', 
 });
 
 test('collapsed sidebar hides the org sub-filter like the other shell blocks', async () => {
-  window.localStorage.setItem('weknora_sidebar_collapsed', 'true');
+  window.localStorage.setItem('sidebar_collapsed', 'true');
   const root = await mountShell('/platform/organizations');
   assert.equal(orgFilters(root), null, 'collapsed sidebar hides the org sub-filter');
 });

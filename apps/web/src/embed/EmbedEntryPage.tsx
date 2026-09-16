@@ -18,6 +18,18 @@ import {
 } from './host-protocol.ts';
 import { buildQueryWithHostContext } from './host-context.ts';
 import { embedText, type EmbedTextKey } from './messages.ts';
+import {
+  extractStreamReferences,
+  isWebSearchReference,
+  mapHistoryMessages,
+  normalizeSuggestedQuestions,
+  referenceContent,
+  referenceHeadline,
+  referenceTitle,
+  referenceUrl,
+  type EmbedChatMessage,
+  type EmbedReference,
+} from './chat-data.ts';
 
 // Vue parity for the isolated embed entry:
 // - entry: frontend/embed.html + frontend/src/embed-main.ts (separate document,
@@ -107,8 +119,6 @@ function writeStoredSession(channelId: string, session: StoredSession | null): v
   } catch { /* private mode: persistence is best-effort */ }
 }
 
-interface ChatEntry { role: 'user' | 'assistant'; content: string }
-
 type EmbedConfig = {
   channel_id?: string;
   display_title?: string;
@@ -119,6 +129,7 @@ type EmbedConfig = {
   welcome_message?: string;
   primary_color?: string;
   default_locale?: string;
+  show_suggested_questions?: boolean;
 } & Record<string, unknown>;
 
 export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
@@ -143,7 +154,9 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [apiToken, setApiToken] = useState('');
   const [hostContext, setHostContext] = useState<Record<string, unknown>>({});
-  const [messages, setMessages] = useState<ChatEntry[]>([]);
+  const [messages, setMessages] = useState<EmbedChatMessage[]>([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [suggestedLoading, setSuggestedLoading] = useState(false);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
 
@@ -183,22 +196,40 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
       }
 
       // Resume the persisted session when still valid; otherwise create one
-      // (useEmbedBridge L151-172).
+      // (useEmbedBridge L151-172). On resume the stored rows are backfilled
+      // into the face exactly like the Vue resetAndLoad -> getmsgList pass
+      // (useEmbedChatSession.ts, limit 20).
       const stored = readStoredSession(channelId);
+      const visitorId = getOrCreateVisitorId(channelId);
       let resolved: StoredSession | null = null;
       if (stored) {
         try {
-          await client.embed.public.messages(channelId, apiToken, stored.id, { limit: 1, signature: stored.sig, visitorId: getOrCreateVisitorId(channelId) });
+          const history = await client.embed.public.messages(channelId, apiToken, stored.id, { limit: 20, signature: stored.sig, visitorId });
           resolved = stored;
+          setMessages(mapHistoryMessages(history));
         } catch { /* stale/expired: create a fresh signed session */ }
       }
       if (!resolved) {
         const created = await client.embed.public.createSession(channelId, apiToken);
         resolved = { id: created.id, sig: created.signature };
+        // Vue also calls getmsgList for a brand-new session and gets an empty
+        // batch (no render change), so skipping the fetch here is equivalent.
       }
       writeStoredSession(channelId, resolved);
       setSession(resolved);
       setApiToken(apiToken);
+
+      // Channel-level suggested questions (EmbedChatCore.vue
+      // fetchSuggestedQuestions): only when the channel enables them.
+      if (cfg.show_suggested_questions === true) {
+        setSuggestedLoading(true);
+        try {
+          setSuggestedQuestions(normalizeSuggestedQuestions(await client.embed.public.suggestedQuestions(channelId, apiToken)));
+        } catch { setSuggestedQuestions([]); } finally { setSuggestedLoading(false); }
+      } else {
+        setSuggestedQuestions([]);
+      }
+
       setPhase('ready');
       postToHost(embedReadyPayload(channelId));
     } catch (error) {
@@ -288,6 +319,18 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
             return next;
           });
         }
+        // References ride the same SSE events (useChatStreamHandler
+        // extractKnowledgeReferences) and are attached to the live answer row.
+        const refs = extractStreamReferences(event);
+        if (refs.length) {
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next.length > 0 ? next[next.length - 1] : undefined;
+            if (!last || last.role !== 'assistant') return prev;
+            next[next.length - 1] = { ...last, references: refs };
+            return next;
+          });
+        }
       });
       if (answer) postToHost(embedMessageReceivedPayload(channelId, session.id, answer), { sensitive: true });
     } catch {
@@ -335,14 +378,14 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
           onClick={startNewChat}
         >+</button>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {typeof config?.welcome_message === 'string' && config.welcome_message ? <div className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">{config.welcome_message}</div> : null}
-        {messages.map((entry, index) => entry.role === 'user' ? (
-          <div key={index} className="self-end max-w-[85%] rounded-[12px] px-3 py-2 text-[14px] text-white" style={{ background: 'var(--embed-primary, #2563eb)' }}>{entry.content}</div>
-        ) : (
-          <div key={index} className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">{entry.content}</div>
-        ))}
-      </div>
+      <EmbedChatSurface
+        messages={messages}
+        suggestedQuestions={suggestedQuestions}
+        suggestedLoading={suggestedLoading}
+        welcomeMessage={typeof config?.welcome_message === 'string' ? config.welcome_message : ''}
+        locale={locale}
+        onSuggest={(question) => void submit({ query: question })}
+      />
       <div className="shrink-0 px-3 pb-3">
         <EmbedComposer
           draft={draft}
@@ -354,6 +397,82 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         />
       </div>
     </div>
+  );
+}
+
+// The message list half of EmbedChatCore.vue: welcome bubble (hidden once the
+// visitor speaks), channel suggested-question cards (click sends the question),
+// history/live messages, and the docInfo.vue-style references block under each
+// answer.
+export function EmbedChatSurface(props: {
+  messages: EmbedChatMessage[];
+  suggestedQuestions: string[];
+  suggestedLoading: boolean;
+  welcomeMessage: string;
+  locale: Locale;
+  onSuggest: (question: string) => void;
+}) {
+  const hasUserMessage = props.messages.some((entry) => entry.role === 'user');
+  const welcome = props.welcomeMessage.trim();
+  const showSuggested = !hasUserMessage && (props.suggestedLoading || props.suggestedQuestions.length > 0);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      {welcome && !hasUserMessage ? <div className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">{welcome}</div> : null}
+      {showSuggested ? (
+        <div className="embed-suggested flex flex-col gap-2" aria-busy={props.suggestedLoading}>
+          {props.suggestedQuestions.length > 0 ? <p className="m-0 text-[13px] font-medium text-[#6b7280]">{embedText(props.locale, 'suggestedQuestions')}</p> : null}
+          {props.suggestedLoading && props.suggestedQuestions.length === 0
+            ? [0, 1, 2, 3].map((n) => <div key={n} className="h-10 animate-pulse rounded-[10px] bg-[#f0f0f0]" />)
+            : props.suggestedQuestions.map((question) => (
+              <button
+                key={question}
+                type="button"
+                className="block w-full cursor-pointer rounded-[10px] border border-[#eef1f5] bg-white px-3 py-2.5 text-left text-[13px] leading-snug text-[#1f2329] hover:border-[#d8dde5]"
+                onClick={() => props.onSuggest(question)}
+              >{question}</button>
+            ))}
+        </div>
+      ) : null}
+      {props.messages.map((entry, index) => entry.role === 'user' ? (
+        <div key={index} className="self-end max-w-[85%] rounded-[12px] px-3 py-2 text-[14px] text-white" style={{ background: 'var(--embed-primary, #2563eb)' }}>{entry.content}</div>
+      ) : (
+        <div key={index} className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">
+          {entry.content}
+          {entry.references && entry.references.length > 0 ? <EmbedReferences references={entry.references} locale={props.locale} /> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function truncateReferenceContent(content: string, limit = 80): string {
+  return content.length > limit ? `${content.slice(0, limit)}...` : content;
+}
+
+// Minimal docInfo.vue parity: collapsible block with the Vue headline copy,
+// web_search rows as external links, chunk rows expanding to the stored chunk
+// content on click (Vue uses a popup fed by the same reference data).
+function EmbedReferences(props: { references: EmbedReference[]; locale: Locale }) {
+  return (
+    <details className="embed-refs mt-2 border-t border-[#e7eaef] pt-2 text-[12px]">
+      <summary className="cursor-pointer text-[#6b7280]">{referenceHeadline(props.references, props.locale)}</summary>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {props.references.map((ref, index) => isWebSearchReference(ref) ? (
+          <a
+            key={index}
+            className="break-all text-[color:var(--embed-primary,#2563eb)] underline-offset-2 hover:underline"
+            href={referenceUrl(ref)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >{referenceTitle(ref)}</a>
+        ) : (
+          <details key={index} className="embed-ref-chunk">
+            <summary className="cursor-pointer break-all text-[#1f2329]">{index + 1}. {truncateReferenceContent(referenceContent(ref))}</summary>
+            <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[#4b5563]">{referenceContent(ref)}</div>
+          </details>
+        ))}
+      </div>
+    </details>
   );
 }
 
