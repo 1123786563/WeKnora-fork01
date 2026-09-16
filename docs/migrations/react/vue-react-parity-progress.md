@@ -4128,3 +4128,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   wiki/file permission and mutation flows, and per-feature Wails interaction
   remain open or `blocked-env`. DOCX/PPTX previews remain download-only because
   the renderer dependencies are not present; no mobile code was modified.
+
+## 2026-09-16 Round R426 — Parallel settings, FAQ, and administration parity
+
+- Four independent Vue-baseline fixes landed: stored environment variables
+  are no longer rendered in plaintext and new values use password controls
+  (`b2ed4d8a`); Chat History hides the embedding-model row when disabled, as
+  Vue does (`ad8e12f8`); FAQ CSV import now supports Vue Chinese/description
+  headers, `##` multi-values, tags, and disabled-state inversion (`c388ee7b`);
+  and system-admin routes mount the four Vue-aligned administration panels
+  (`320dbc2d`).
+- Scoped regression suites passed: EnvVar, Chat History, and administration
+  focused tests; FAQ full suite 88/88. Integrated Web regression passed
+  `1228/1228`; Web typecheck, `git diff --check`, Web build, Embed build,
+  Desktop 9/9 tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real backend settings/FAQ/
+  administration mutation and permission flows, and per-feature Wails
+  interaction remain open or `blocked-env`. No mobile code was modified.
