@@ -3,6 +3,9 @@ package execution
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,14 +34,15 @@ type StartCommand struct {
 }
 
 type BridgeConfig struct {
-	BaseURL        string
-	ServiceToken   string
-	HTTPClient     *http.Client
-	Timeout        time.Duration
-	VerifyIdentity func(context.Context) error
-	VerifyCommand  func(context.Context, StartCommand, AdmissionContext) error
-	Authorize      func(context.Context, StartCommand, AdmissionContext) error
-	Admission      AdmissionContext
+	BaseURL           string
+	ServiceToken      string
+	HTTPClient        *http.Client
+	Timeout           time.Duration
+	VerifyIdentity    func(context.Context) error
+	VerifyCommand     func(context.Context, StartCommand, AdmissionContext) error
+	Authorize         func(context.Context, StartCommand, AdmissionContext) error
+	Admission         AdmissionContext
+	AdmissionVerifier AdmissionVerifier
 }
 
 type AdmissionContext struct {
@@ -50,6 +54,12 @@ type AdmissionContext struct {
 	WorkspaceRef         string
 	WorkspaceTargetID    string
 	Epoch                int64
+}
+
+type AdmissionVerifier struct {
+	ServiceIdentity      string
+	SigningSecret        string
+	AuthorizationVersion int
 }
 
 type BridgeClient struct{ config BridgeConfig }
@@ -81,7 +91,42 @@ func decodeBridgeEnvelope(data []byte) (bridgeEnvelope, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return bridgeEnvelope{}, ErrBridgeProtocol
 	}
+	if envelope.Operation != "start" && envelope.Operation != "observe" && envelope.Operation != "cancel" {
+		return bridgeEnvelope{}, ErrBridgeProtocol
+	}
 	return envelope, nil
+}
+
+func encodeBridgeEnvelope(operation string, payload any) ([]byte, error) {
+	if operation != "start" && operation != "observe" && operation != "cancel" {
+		return nil, ErrBridgeProtocol
+	}
+	return json.Marshal(bridgeEnvelope{Version: 1, Operation: operation, Payload: mustJSON(payload)})
+}
+
+func mustJSON(value any) json.RawMessage { data, _ := json.Marshal(value); return data }
+
+func canonicalCommand(c StartCommand) []byte {
+	b, _ := json.Marshal(c)
+	return b
+}
+
+func commandHash(c StartCommand) string {
+	sum := sha256.Sum256(canonicalCommand(c))
+	return hex.EncodeToString(sum[:])
+}
+
+func commandSignature(c StartCommand, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(commandHash(c)))
+	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func (v AdmissionVerifier) Verify(c StartCommand, a AdmissionContext) error {
+	if v.ServiceIdentity == "" || v.SigningSecret == "" || a.ServiceIdentity != v.ServiceIdentity || a.AuthorizationVersion != v.AuthorizationVersion || a.CommandHash != commandHash(c) || a.Signature != commandSignature(c, v.SigningSecret) || a.TargetID != c.TargetID || a.WorkspaceRef != c.WorkspaceRef || a.WorkspaceTargetID != c.TargetID || a.Epoch != c.Epoch {
+		return ErrBridgeUnauthorized
+	}
+	return nil
 }
 
 func NewBridgeClient(config BridgeConfig) *BridgeClient {
@@ -179,7 +224,7 @@ func (c *BridgeClient) Start(ctx context.Context, command StartCommand) (BridgeR
 		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
 	admission := c.config.Admission
-	if admission.ServiceIdentity == "" || admission.Signature == "" || admission.AuthorizationVersion != 1 || admission.CommandHash == "" || admission.TargetID != command.TargetID || admission.WorkspaceRef != command.WorkspaceRef || admission.WorkspaceTargetID != command.TargetID || admission.Epoch != command.Epoch {
+	if err := c.config.AdmissionVerifier.Verify(command, admission); err != nil {
 		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
 	if err := c.config.VerifyCommand(ctx, command, admission); err != nil {

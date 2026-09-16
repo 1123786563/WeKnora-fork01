@@ -1,5 +1,5 @@
 import type { PaseoPort, StartCommand, BridgeOptions } from './protocol.ts';
-import { BridgeError, validateStartCommand } from './protocol.ts';
+import { BridgeError, validateStartCommand, verifyAdmission } from './protocol.ts';
 
 function abortError(signal?: AbortSignal): BridgeError | undefined {
   if (!signal?.aborted) return undefined;
@@ -39,14 +39,13 @@ export async function startViaBridge(
 ): Promise<{ id: string }> {
   validateStartCommand(command);
   if (command.expiresAt <= now) throw new BridgeError('COMMAND_EXPIRED');
-  if (!options.admission) throw new BridgeError('ADMISSION_REQUIRED');
+  if (!options.admission || !options.admissionVerifier) throw new BridgeError('ADMISSION_REQUIRED');
   const admission = options.admission;
-  if (!admission.serviceIdentity || !admission.signature || admission.authorizationVersion !== 1 || admission.targetID !== command.targetID || admission.workspaceRef !== command.workspaceRef || admission.workspaceTargetID !== command.targetID || admission.epoch !== command.epoch || !admission.commandHash) {
-    throw new BridgeError('ADMISSION_FORBIDDEN');
-  }
+  verifyAdmission(command, admission, options.admissionVerifier);
   const startedAt = Date.now();
   await admission.verify(command, admission).catch(() => { throw new BridgeError('ADMISSION_FORBIDDEN'); });
   if (options.signal?.aborted) throw new BridgeError('BRIDGE_CANCELLED');
+  if (options.signal && port.supportsCancellation === false) throw new BridgeError('PASEO_CANCEL_UNAVAILABLE');
   const timeoutMs = options.timeoutMs ?? 30_000;
   if (timeoutMs <= 0 || Date.now() - startedAt >= timeoutMs) throw new BridgeError('BRIDGE_TIMEOUT');
   let cwd: string;

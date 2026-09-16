@@ -45,7 +45,8 @@ func TestBridgeFixedProtocolAndAuthorization(t *testing.T) {
 	}))
 	defer server.Close()
 	cmd := validStartCommand()
-	got, err := NewBridgeClient(BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: AdmissionContext{ServiceIdentity: "weknora-execution", Signature: "sig", AuthorizationVersion: 1, CommandHash: "hash", TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}).Start(context.Background(), cmd)
+	admission := AdmissionContext{ServiceIdentity: "weknora-execution", Signature: commandSignature(cmd, "secret"), AuthorizationVersion: 1, CommandHash: commandHash(cmd), TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}
+	got, err := NewBridgeClient(BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: admission, AdmissionVerifier: AdmissionVerifier{ServiceIdentity: "weknora-execution", SigningSecret: "secret", AuthorizationVersion: 1}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}).Start(context.Background(), cmd)
 	if err != nil || got.ID != "paseo-1" {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
@@ -65,7 +66,7 @@ func TestBridgeRejectsTamperedAdmissionBeforeNetwork(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	defer server.Close()
 	cmd := validStartCommand()
-	base := BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: AdmissionContext{ServiceIdentity: "weknora-execution", Signature: "sig", AuthorizationVersion: 1, CommandHash: "hash", TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}
+	base := BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: AdmissionContext{ServiceIdentity: "weknora-execution", Signature: commandSignature(cmd, "secret"), AuthorizationVersion: 1, CommandHash: commandHash(cmd), TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}, AdmissionVerifier: AdmissionVerifier{ServiceIdentity: "weknora-execution", SigningSecret: "secret", AuthorizationVersion: 1}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}
 	for name, mutate := range map[string]func(*AdmissionContext){"identity": func(a *AdmissionContext) { a.ServiceIdentity = "" }, "signature": func(a *AdmissionContext) { a.Signature = "" }, "authz": func(a *AdmissionContext) { a.AuthorizationVersion = 2 }, "target": func(a *AdmissionContext) { a.TargetID = "other" }, "workspace": func(a *AdmissionContext) { a.WorkspaceTargetID = "other" }} {
 		t.Run(name, func(t *testing.T) {
 			cfg := base
@@ -98,6 +99,13 @@ func TestCanonicalFixtureUsesCamelCasePayload(t *testing.T) {
 	}
 	if cmd.CommandID != "cmd-1" || cmd.WorkspaceRef != "workspace-1" || cmd.ExpiresAt != 4102444800000 {
 		t.Fatalf("command=%+v", cmd)
+	}
+	encoded, err := encodeBridgeEnvelope("start", cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeBridgeEnvelope(encoded); err != nil {
+		t.Fatalf("encoded round-trip: %v", err)
 	}
 }
 
