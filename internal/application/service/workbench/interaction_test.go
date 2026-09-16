@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -33,8 +34,17 @@ type runProjection struct {
 func (runProjection) TableName() string { return "agent_runs" }
 
 func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:w05_interactions?mode=memory&cache=shared"), &gorm.Config{})
+	// A unique on-disk database prevents -count=N runs from sharing the same
+	// named in-memory SQLite database. The busy timeout lets the loser wait for
+	// the winner's short transaction and then observe the revision CAS conflict.
+	dsn := "file:" + filepath.Join(t.TempDir(), "interaction-cas.db") + "?_foreign_keys=on&_busy_timeout=10000"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(2)
+	sqlDB.SetMaxIdleConns(2)
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.AutoMigrate(&interactionRow{}))
 	require.NoError(t, db.Create(&interactionRow{TenantID: 7, ID: "i1", RunID: "r1", OwnerID: "u1", Kind: "tool_approval", ArgsHash: "h"}).Error)
 	store := NewGormInteractionStore(db)

@@ -18,6 +18,9 @@ const (
 	TenantInfoContextKey ContextKey = "TenantInfo"
 	// RequestIDContextKey is the context key for request ID
 	RequestIDContextKey ContextKey = "RequestID"
+	// RunIDContextKey carries the trusted durable execution identity through
+	// the worker/agent boundary. It must never be inferred from RequestID.
+	RunIDContextKey ContextKey = "RunID"
 	// LoggerContextKey is the context key for logger
 	LoggerContextKey ContextKey = "Logger"
 	// UserContextKey is the context key for user information

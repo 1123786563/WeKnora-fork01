@@ -193,6 +193,26 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 	require.Zero(t, defaultTableCount, "x-migrations-table must select the configured table")
 }
 
+func TestWorkbenchSQLiteInteractionActionCheck(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "interaction-action-check.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	db := openSQLiteDB(t, dbPath)
+	defer db.Close()
+
+	for i, invalid := range []struct{ kind, action string }{
+		{kind: "tool_approval", action: "extend"},
+		{kind: "budget", action: "approve"},
+		{kind: "recovery", action: "reject"},
+	} {
+		_, err := db.Exec(`INSERT INTO workbench_interactions
+			(tenant_id, id, run_id, owner_id, kind, args_hash, action)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, fmt.Sprintf("invalid-%d", i), "run-1", "u1", invalid.kind, "hash", invalid.action)
+		require.Error(t, err, "SQLite must reject invalid %s/%s action pair", invalid.kind, invalid.action)
+	}
+}
+
 // TestWorkbenchSQLiteDownRefusesPaseo catches a rollback that would silently
 // drop remote-driver state for a binary that can only execute platform runs.
 func TestWorkbenchSQLiteDownRefusesPaseo(t *testing.T) {

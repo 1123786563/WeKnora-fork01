@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
 )
 
 type WorkerConfig struct {
@@ -166,7 +167,13 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			}
 		}
 	}()
-	err := w.execute(renewCtx, fence)
+	// The durable run identity is trusted only after Claim has returned a
+	// fence. Carry it through the worker boundary so AgentEngine.runToolCall
+	// can populate ToolExecContext.RunID for approval projection. RequestID is
+	// deliberately not used as a substitute: it is an idempotency key, not the
+	// execution identity.
+	executeCtx := context.WithValue(renewCtx, types.RunIDContextKey, fence.RunID)
+	err := w.execute(executeCtx, fence)
 	if renewCtx.Err() != nil {
 		return
 	}

@@ -119,48 +119,70 @@ func (s *GormInteractionStore) Decide(ctx context.Context, tenantID uint64, owne
 	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
 	}
-	var result workbench.InteractionDecision
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var row interactionRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND owner_id = ? AND id = ?", tenantID, ownerID, id).Take(&row).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrInteractionNotFound
+	for attempt := 0; attempt < 8; attempt++ {
+		var result workbench.InteractionDecision
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var row interactionRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND owner_id = ? AND id = ?", tenantID, ownerID, id).Take(&row).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrInteractionNotFound
+				}
+				return err
 			}
-			return err
-		}
-		if err := validateInteractionRow(row); err != nil {
-			return err
-		}
-		if input.ArgsHash != row.ArgsHash {
-			return workbench.ErrInteractionActionMismatch
-		}
-		if input.DecisionID != "" && row.DecisionID == input.DecisionID {
-			if row.Action != input.Action {
+			if err := validateInteractionRow(row); err != nil {
+				return err
+			}
+			if input.ArgsHash != row.ArgsHash {
+				return workbench.ErrInteractionActionMismatch
+			}
+			if input.DecisionID != "" && row.DecisionID == input.DecisionID {
+				if row.Action != input.Action {
+					return agentruntime.ErrConflict
+				}
+				result = row.decision()
+				return nil
+			}
+			if input.ExpectedRevision != row.ExpectedRevision || row.DecisionID != "" {
 				return agentruntime.ErrConflict
 			}
-			result = row.decision()
+			updated := tx.Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND expected_revision = ? AND decision_id = ''", tenantID, ownerID, id, row.ExpectedRevision).Updates(map[string]any{
+				"decision_id": input.DecisionID, "action": input.Action, "status": "resolved", "expected_revision": gorm.Expr("expected_revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			})
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected != 1 {
+				return agentruntime.ErrConflict
+			}
+			result = input
+			result.ID = row.ID
+			result.Kind = row.Kind
+			result.ArgsHash = row.ArgsHash
+			result.ExpectedRevision = row.ExpectedRevision + 1
 			return nil
-		}
-		if input.ExpectedRevision != row.ExpectedRevision || row.DecisionID != "" {
-			return agentruntime.ErrConflict
-		}
-		updated := tx.Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND expected_revision = ? AND decision_id = ''", tenantID, ownerID, id, row.ExpectedRevision).Updates(map[string]any{
-			"decision_id": input.DecisionID, "action": input.Action, "status": "resolved", "expected_revision": gorm.Expr("expected_revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
 		})
-		if updated.Error != nil {
-			return updated.Error
+		if err == nil || !isSQLiteLockError(err) || s.db.Dialector.Name() != "sqlite" {
+			return result, err
 		}
-		if updated.RowsAffected != 1 {
-			return agentruntime.ErrConflict
+		// SQLite serializes writers at the database level. A concurrent CAS
+		// loser can receive SQLITE_BUSY before the winner commits; retrying the
+		// short transaction lets it observe the revision and return ErrConflict
+		// instead of leaking a nondeterministic lock error to the API.
+		select {
+		case <-ctx.Done():
+			return workbench.InteractionDecision{}, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * time.Millisecond):
 		}
-		result = input
-		result.ID = row.ID
-		result.Kind = row.Kind
-		result.ArgsHash = row.ArgsHash
-		result.ExpectedRevision = row.ExpectedRevision + 1
-		return nil
-	})
-	return result, err
+	}
+	return workbench.InteractionDecision{}, agentruntime.ErrConflict
+}
+
+func isSQLiteLockError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") || strings.Contains(message, "database table is locked")
 }
 
 func (s *GormInteractionStore) RollbackDecision(ctx context.Context, tenantID uint64, ownerID, id, decisionID string, revision int64) error {

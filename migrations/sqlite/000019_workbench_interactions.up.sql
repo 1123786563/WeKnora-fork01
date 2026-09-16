@@ -16,6 +16,7 @@ CREATE TABLE workbench_interactions (
     PRIMARY KEY (tenant_id, id),
     CHECK (kind IN ('tool_approval','budget','recovery')),
     CHECK (length(trim(args_hash)) > 0),
+    CHECK (action = '' OR (kind = 'tool_approval' AND action IN ('approve','reject')) OR (kind = 'budget' AND action = 'extend') OR (kind = 'recovery' AND action IN ('retry','provide_result','terminate'))),
     CHECK (length(trim(run_id)) > 0)
 );
 CREATE INDEX idx_workbench_interactions_owner ON workbench_interactions (tenant_id, owner_id, run_id, created_at);
