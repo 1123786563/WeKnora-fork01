@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -113,4 +114,19 @@ func TestNotificationCheckpointIsMonotonic(t *testing.T) {
 	got, err := s.LoadCheckpoint(context.Background(), "c", key)
 	require.NoError(t, err)
 	require.EqualValues(t, 4, got)
+}
+
+func TestEventRunKeysPageContinuesPastFirstPage(t *testing.T) {
+	db := openRunTestDB(t)
+	for i := 1; i <= 257; i++ {
+		require.NoError(t, db.Exec(`INSERT INTO agent_run_events (tenant_id, run_id, seq, attempt_id, event_type, payload) VALUES (?, ?, 1, 'a', 'run_completed', '{}')`, 1, fmt.Sprintf("run-%03d", i)).Error)
+	}
+	s := NewNotificationStore(db)
+	first, err := s.EventRunKeysPage(context.Background(), 256, agentruntime.RunKey{})
+	require.NoError(t, err)
+	require.Len(t, first, 256)
+	second, err := s.EventRunKeysPage(context.Background(), 256, first[len(first)-1])
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.Equal(t, "run-257", second[0].RunID)
 }

@@ -27,6 +27,8 @@ var versionedSQLiteTables = []string{
 	"execution_target_identities",
 	"execution_workspaces",
 	"mobile_devices",
+	"mobile_notification_intents",
+	"mobile_notification_checkpoints",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -57,7 +59,7 @@ var versionedSQLiteColumns = map[string][]string{
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
 // queue at 000056 and the execution target schema at 000057.
-const expectedSQLiteMigrationVersion = 58
+const expectedSQLiteMigrationVersion = 59
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

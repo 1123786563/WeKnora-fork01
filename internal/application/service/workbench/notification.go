@@ -47,3 +47,31 @@ func (p *NotificationProjector) Project(ctx context.Context, key agentruntime.Ru
 	}
 	return last, nil
 }
+
+// ProjectAndCheckpoint makes the durable fan-out and cursor advancement one
+// repository transaction, so a restart can only replay an uncommitted page.
+func (p *NotificationProjector) ProjectAndCheckpoint(ctx context.Context, key agentruntime.RunKey, after int64, limit int) (int64, error) {
+	if p == nil || p.runs == nil || p.notifications == nil {
+		return after, agentruntime.ErrConflict
+	}
+	run, err := p.runs.Get(ctx, key)
+	if err != nil {
+		return after, err
+	}
+	events, err := p.runs.ReadEvents(ctx, key, after, limit)
+	if err != nil {
+		return after, err
+	}
+	last := after
+	refs := make([]repository.RunNotificationEvent, 0, len(events))
+	for _, evt := range events {
+		refs = append(refs, repository.RunNotificationEvent{TenantID: key.TenantID, OwnerID: run.UserID, RunID: key.RunID, Seq: evt.Seq, Type: evt.Type})
+		if evt.Seq > last {
+			last = evt.Seq
+		}
+	}
+	if err := p.notifications.ProjectEventsAndCheckpoint(ctx, notificationConsumerName, key, refs, last); err != nil {
+		return after, err
+	}
+	return last, nil
+}

@@ -30,26 +30,31 @@ func (w *NotificationWorker) RunOnce(ctx context.Context) error {
 	if w == nil || w.projector == nil || w.store == nil {
 		return agentruntime.ErrConflict
 	}
-	keys, err := w.store.EventRunKeys(ctx, 256)
-	if err != nil {
-		return err
-	}
-	for _, key := range keys {
-		cursor, err := w.store.LoadCheckpoint(ctx, notificationConsumerName, key)
+	var after agentruntime.RunKey
+	for {
+		keys, err := w.store.EventRunKeysPage(ctx, 256, after)
 		if err != nil {
 			return err
 		}
-		next, err := w.projector.Project(ctx, key, cursor, 256)
-		if err != nil {
-			return err
+		if len(keys) == 0 {
+			return nil
 		}
-		if next > cursor {
-			if err := w.store.SaveCheckpoint(ctx, notificationConsumerName, key, next); err != nil {
+		for _, key := range keys {
+			cursor, err := w.store.LoadCheckpoint(ctx, notificationConsumerName, key)
+			if err != nil {
 				return err
 			}
+			next, err := w.projector.ProjectAndCheckpoint(ctx, key, cursor, 256)
+			if err != nil {
+				return err
+			}
+			_ = next // ProjectAndCheckpoint persists the cursor atomically with intents.
+			after = key
+		}
+		if len(keys) < 256 {
+			return nil
 		}
 	}
-	return nil
 }
 
 // Start is idempotent and is called with the server application context.

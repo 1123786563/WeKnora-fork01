@@ -72,6 +72,13 @@ func (notificationCheckpointRow) TableName() string { return "mobile_notificatio
 // deliberately derived from agent_run_events so a restarted projector can
 // discover work without an in-memory registration callback.
 func (s *NotificationStore) EventRunKeys(ctx context.Context, limit int) ([]agentruntime.RunKey, error) {
+	return s.EventRunKeysPage(ctx, limit, agentruntime.RunKey{})
+}
+
+// EventRunKeysPage returns one stable lexicographic page. The caller must pass
+// the last returned key as after on the next request; this prevents the
+// bounded discovery query from starving runs after the first page forever.
+func (s *NotificationStore) EventRunKeysPage(ctx context.Context, limit int, after agentruntime.RunKey) ([]agentruntime.RunKey, error) {
 	if s == nil || s.db == nil || limit <= 0 {
 		return nil, errors.New("invalid_notification_event_keys")
 	}
@@ -79,8 +86,12 @@ func (s *NotificationStore) EventRunKeys(ctx context.Context, limit int) ([]agen
 		TenantID uint64
 		RunID    string
 	}
-	err := s.db.WithContext(ctx).Table("agent_run_events").
-		Select("DISTINCT tenant_id, run_id").Order("tenant_id ASC, run_id ASC").Limit(limit).Find(&rows).Error
+	q := s.db.WithContext(ctx).Table("agent_run_events").
+		Select("DISTINCT tenant_id, run_id")
+	if after.TenantID != 0 || after.RunID != "" {
+		q = q.Where("(tenant_id > ?) OR (tenant_id = ? AND run_id > ?)", after.TenantID, after.TenantID, after.RunID)
+	}
+	err := q.Order("tenant_id ASC, run_id ASC").Limit(limit).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -292,54 +303,86 @@ func (s *NotificationStore) ProjectEvent(ctx context.Context, evt RunNotificatio
 	if s == nil || s.db == nil || evt.TenantID == 0 || evt.OwnerID == "" || evt.RunID == "" || evt.Seq <= 0 {
 		return errors.New("invalid_notification_event")
 	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.projectEventTx(tx, evt) })
+}
+
+// ProjectEventsAndCheckpoint commits projected intents and cursor advancement together.
+func (s *NotificationStore) ProjectEventsAndCheckpoint(ctx context.Context, consumer string, key agentruntime.RunKey, events []RunNotificationEvent, cursor int64) error {
+	if s == nil || s.db == nil || consumer == "" || key.TenantID == 0 || key.RunID == "" || cursor < 0 {
+		return errors.New("invalid_notification_checkpoint")
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Never trust producer supplied owner/type. Resolve both from the
-		// durable rows in this transaction; this closes cross-owner and fake
-		// sequence/type notification injection.
-		var run struct {
-			OwnerID string `gorm:"column:owner_id"`
-		}
-		if err := tx.Table("agent_runs").Select("owner_id").Where("tenant_id = ? AND run_id = ?", evt.TenantID, evt.RunID).Take(&run).Error; err != nil {
-			return err
-		}
-		if run.OwnerID != evt.OwnerID {
-			return gorm.ErrRecordNotFound
-		}
-		var event struct {
-			EventType string `gorm:"column:event_type"`
-		}
-		if err := tx.Table("agent_run_events").Select("event_type").Where("tenant_id = ? AND run_id = ? AND seq = ?", evt.TenantID, evt.RunID, evt.Seq).Take(&event).Error; err != nil {
-			return err
-		}
-		if evt.Type != "" && evt.Type != event.EventType {
-			return errors.New("notification_event_type_mismatch")
-		}
-		kind, ok := NotificationEventKind(event.EventType)
-		if !ok {
-			return nil
-		}
-		var devices []struct {
-			DeviceID    string
-			Environment string
-		}
-		if err := tx.Table("mobile_devices").Select("device_id, environment").
-			Where("tenant_id = ? AND owner_id = ? AND revoked_at IS NULL", evt.TenantID, run.OwnerID).Find(&devices).Error; err != nil {
-			return err
-		}
-		for _, device := range devices {
-			in := NotificationIntent{
-				TenantID: evt.TenantID, EventID: eventIdentity(evt.TenantID, evt.RunID, evt.Seq),
-				OwnerID: run.OwnerID, DeviceID: device.DeviceID, Environment: device.Environment,
-				Kind: kind, RunID: evt.RunID, ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
-			}
-			if err := enqueueNotificationTx(tx, in); err != nil {
+		for _, evt := range events {
+			if err := s.projectEventTx(tx, evt); err != nil {
 				return err
 			}
 		}
-		return nil
+		if cursor == 0 {
+			return nil
+		}
+		row := notificationCheckpointRow{Consumer: consumer, TenantID: key.TenantID, RunID: key.RunID, Cursor: cursor, UpdatedAt: time.Now().UTC()}
+		var current notificationCheckpointRow
+		err := tx.Where("consumer = ? AND tenant_id = ? AND run_id = ?", consumer, key.TenantID, key.RunID).Take(&current).Error
+		if err == nil {
+			if cursor <= current.Cursor {
+				return nil
+			}
+			return tx.Model(&notificationCheckpointRow{}).Where("consumer = ? AND tenant_id = ? AND run_id = ? AND cursor < ?", consumer, key.TenantID, key.RunID, cursor).Updates(map[string]any{"cursor": cursor, "updated_at": row.UpdatedAt}).Error
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 	})
 }
 
+func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent) error {
+
+	// Never trust producer supplied owner/type. Resolve both from the
+	// durable rows in this transaction; this closes cross-owner and fake
+	// sequence/type notification injection.
+	var run struct {
+		OwnerID string `gorm:"column:owner_id"`
+	}
+	if err := tx.Table("agent_runs").Select("owner_id").Where("tenant_id = ? AND run_id = ?", evt.TenantID, evt.RunID).Take(&run).Error; err != nil {
+		return err
+	}
+	if run.OwnerID != evt.OwnerID {
+		return gorm.ErrRecordNotFound
+	}
+	var event struct {
+		EventType string `gorm:"column:event_type"`
+	}
+	if err := tx.Table("agent_run_events").Select("event_type").Where("tenant_id = ? AND run_id = ? AND seq = ?", evt.TenantID, evt.RunID, evt.Seq).Take(&event).Error; err != nil {
+		return err
+	}
+	if evt.Type != "" && evt.Type != event.EventType {
+		return errors.New("notification_event_type_mismatch")
+	}
+	kind, ok := NotificationEventKind(event.EventType)
+	if !ok {
+		return nil
+	}
+	var devices []struct {
+		DeviceID    string
+		Environment string
+	}
+	if err := tx.Table("mobile_devices").Select("device_id, environment").
+		Where("tenant_id = ? AND owner_id = ? AND revoked_at IS NULL", evt.TenantID, run.OwnerID).Find(&devices).Error; err != nil {
+		return err
+	}
+	for _, device := range devices {
+		in := NotificationIntent{
+			TenantID: evt.TenantID, EventID: eventIdentity(evt.TenantID, evt.RunID, evt.Seq),
+			OwnerID: run.OwnerID, DeviceID: device.DeviceID, Environment: device.Environment,
+			Kind: kind, RunID: evt.RunID, ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		}
+		if err := enqueueNotificationTx(tx, in); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func enqueueNotificationTx(tx *gorm.DB, in NotificationIntent) error {
 	if err := validateNotificationIntent(in); err != nil {
 		return err
