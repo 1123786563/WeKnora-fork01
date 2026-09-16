@@ -3732,6 +3732,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   anonymous browser/backend evidence, not full authenticated or native Wails
   acceptance. No mobile code was modified.
 
+## 2026-09-16 Round R399 — Route inventory and parity ledger documentation audit
+
+- 仅审计并补充 `docs/migrations/react` 与 `artifacts`，没有修改业务代码、Vue、Desktop、Embed 实现或移动端。
+- 当前静态快照重新计算 `route-parity.csv` 为 59 条数据行：page 18、settings-section 26、redirect 5、layout+redirect 1、dev-only 1、independent-entry 1、special-file-route 5、special-websocket 1、special-embed-route 1；没有重复 `route_or_entry`。
+- 发现并记录三个文档口径/追溯问题：canonical matrix 与历史 baseline 仍出现 53/56 行旧分母；CSV 没有显式稳定 `row_id` 列却被历史 evidence 描述为 R 编号清单；四个 Apps 行引用的 Vue `frontend/src/views/apps/*.vue` 当前不存在，`embed.html` 行把两个路径合在一个字段中。详见 `artifacts/route-inventory-parity-ledger-audit-20260916.md`。
+- `route-inventory-20260915.md`、canonical matrix、历史 baseline、inventory artifact 与 independent acceptance artifact 已补充 current-snapshot/历史快照边界；历史记录未被改写成当前事实。
+- 证据边界保持不变：路由/source 盘点为 static，测试/类型/构建为 unit/static，匿名登录与 401 为 browser/backend 边界；认证后逐页截图、真实权限/mutation、Embed 宿主、Wails 原生逐功能仍为 `blocked-env` 或 open，不能标记整体 parity accepted。
+
 ## 2026-09-16 Round R398 — Embed timestamp grouping and browser-policy recheck
 
 - `033f29d8` completes the Embed timestamp grouping rule against
