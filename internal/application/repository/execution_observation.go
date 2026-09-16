@@ -23,6 +23,7 @@ var (
 type SourceObservation struct {
 	BindingID, Generation, EventID, AttemptID, Type, PayloadHash string
 	Payload                                                      json.RawMessage
+	SourceSeq                                                    int64
 }
 
 type executionObservationRow struct {
@@ -31,6 +32,9 @@ type executionObservationRow struct {
 	AttemptID, EventType, PayloadHash     string
 	Payload                               []byte
 	ProductSeq                            int64
+	SourceSeq                             int64
+	HistoryIncomplete                     bool
+	ConfirmedSnapshot                     []byte
 	CreatedAt                             time.Time
 }
 
@@ -128,7 +132,8 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 			payload, _ = json.Marshal(map[string]any{"source_type": source.Type, "payload": json.RawMessage(source.Payload)})
 		}
 		now := time.Now().UTC()
-		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, CreatedAt: now}
+		incomplete := source.SourceSeq > 0 && source.SourceSeq > seq
+		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: append([]byte(nil), payload...), CreatedAt: now}
 		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}

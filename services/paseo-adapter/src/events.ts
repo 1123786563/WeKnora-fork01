@@ -7,6 +7,7 @@ export interface SourceEvent {
   attemptID: string;
   type: string;
   payload: Record<string, unknown>;
+  sourceSeq?: number;
 }
 
 export interface ProductEvent extends SourceEvent {
@@ -20,6 +21,7 @@ export interface ProductSnapshot {
   executionStatus: 'queued' | 'running' | 'waiting_user' | 'reconciling' | 'succeeded' | 'failed' | 'canceled';
   settlementStatus: 'pending' | 'settled';
   incomplete: boolean;
+  confirmedWatermark: number;
 }
 
 export function sourceKey(event: SourceEvent): string {
@@ -64,5 +66,6 @@ export function projectSnapshot(events: readonly ProductEvent[]): ProductSnapsho
     executionStatus: canceled ? 'canceled' : failed ? 'failed' : terminal ? 'succeeded' : sorted.length ? 'running' : 'queued',
     settlementStatus: terminal || failed || canceled ? 'settled' : 'pending',
     incomplete: sorted.length > 0 && sorted[0].seq > 1,
+    confirmedWatermark: sorted.length > 0 && sorted[0].seq > 1 ? sorted[0].seq - 1 : sorted.reduce((max, event) => Math.max(max, event.seq), 0),
   };
 }

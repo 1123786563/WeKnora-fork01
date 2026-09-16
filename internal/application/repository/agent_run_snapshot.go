@@ -106,15 +106,27 @@ func projectExecutionEvents(execution workbench.ExecutionDTO, events []workbench
 	// projection before the worker updates agent_runs; expose that progress in
 	// the same DTO consumed by the mobile client.
 	if execution.RunStatus == "queued" || execution.RunStatus == "running" || execution.RunStatus == "reconciling" {
+		succeeded, failed, canceled := false, false, false
 		for _, event := range events {
 			switch event.Type {
 			case "run.completed", "execution.succeeded", "status.succeeded":
-				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "succeeded", "succeeded", "settled"
+				succeeded = true
 			case "run.failed", "execution.failed", "status.failed":
-				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "failed", "failed", "settled"
+				failed = true
 			case "run.canceled", "execution.canceled", "status.canceled":
-				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "canceled", "canceled", "settled"
+				canceled = true
 			}
+		}
+		switch {
+		case canceled:
+			execution.RunStatus, execution.ExecutionStatus = "canceled", "canceled"
+		case failed:
+			execution.RunStatus, execution.ExecutionStatus = "failed", "failed"
+		case succeeded:
+			execution.RunStatus, execution.ExecutionStatus = "succeeded", "succeeded"
+		}
+		if canceled || failed || succeeded {
+			execution.SettlementStatus = "settled"
 		}
 	}
 	return execution
@@ -151,6 +163,11 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			Order("seq ASC").Find(&rows).Error; err != nil {
 			return err
 		}
+		var observation struct {
+			Incomplete   int
+			ConfirmedSeq int64
+		}
+		_ = tx.Table("execution_observations").Select("COALESCE(MAX(CASE WHEN history_incomplete THEN 1 ELSE 0 END), 0) AS incomplete, COALESCE(MAX(CASE WHEN history_incomplete THEN product_seq ELSE 0 END), 0) - 1 AS confirmed_seq").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Scan(&observation).Error
 		events := make([]workbench.ExecutionEvent, 0, len(rows))
 		var watermark int64
 		for _, row := range rows {
@@ -172,8 +189,15 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			resolver = environmentCapabilityResolver{}
 		}
 		execution := projectExecutionEvents(executionFromRun(ctx, resolver, run, watermark), events)
-		incomplete := len(events) > 0 && events[0].Seq > 1
-		result = workbench.ExecutionSnapshot{Execution: execution, Watermark: watermark, Incomplete: incomplete, Events: events}
+		incomplete := observation.Incomplete > 0 || (len(events) > 0 && events[0].Seq > 1)
+		confirmed := observation.ConfirmedSeq
+		if confirmed < 0 {
+			confirmed = 0
+		}
+		if confirmed == 0 && !incomplete {
+			confirmed = watermark
+		}
+		result = workbench.ExecutionSnapshot{Execution: execution, Watermark: watermark, Incomplete: incomplete, ConfirmedWatermark: confirmed, Events: events}
 		return result.Validate()
 	}, txOptions)
 	return result, err

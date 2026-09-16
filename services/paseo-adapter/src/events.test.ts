@@ -19,3 +19,13 @@ test('unknown and out of order events remain visible and snapshot is terminally 
  assert.equal(snapshot.events.length, 2);
  assert.equal(snapshot.events[0].seq, 1);
 });
+test('terminal status precedence is deterministic regardless of source order',()=>{
+ const out = deduplicateSourceEvents([
+   event({eventID:'s', type:'execution.succeeded'}),
+   event({eventID:'f', type:'execution.failed'}),
+   event({eventID:'c', type:'execution.canceled'}),
+ ]);
+ const snapshot = projectSnapshot(out);
+ assert.equal(snapshot.executionStatus, 'canceled');
+ assert.equal(snapshot.settlementStatus, 'settled');
+});
