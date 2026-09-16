@@ -29,7 +29,7 @@
 
 ## 2. Vue 路由与入口逐项盘点
 
-权威源：`frontend/src/router/index.ts`；现有 53 行入口明细见 `docs/migrations/react/route-parity.csv`。下表为按语义重新归组的完整入口集合；`direct` 是 Vue router 直接注册，`compat` 是兼容重定向，`special` 是非 SPA 路由。
+权威源：`frontend/src/router/index.ts`；当前 59 行入口明细见 `docs/migrations/react/route-parity.csv` 与稳定映射 `docs/migrations/react/route-row-map.csv`。下表为按语义重新归组的完整入口集合；`direct` 是 Vue router 直接注册，`compat` 是兼容重定向，`special` 是非 SPA 路由。
 
 | Vue 入口/模式 | 类型 | 行为与关键状态 | React 对应 | 证据/当前结论 |
 |---|---|---|---|---|

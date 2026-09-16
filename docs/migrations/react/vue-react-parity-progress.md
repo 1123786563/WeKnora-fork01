@@ -3394,7 +3394,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Web build; desktop 6/6 and typecheck; mobile 203/203 and typecheck; Embed
   12/12 and direct TypeScript check; `git diff --check` all passed.
 - Browser runtime evidence is explicitly bounded in
-  `artifacts/browser-runtime-evidence-20260915.md`: React `:5181` and Vue
+  `artifacts/browser-evidence-20260916.md`: React `:5181` and Vue
   `:5180` respond, legacy Vue `:5173` does not, backend `:8080` returns 401
   anonymously, and browser automation is blocked by missing `oci` / browser
   request-header policy. No authenticated paired visual or real-backend
