@@ -70,6 +70,7 @@ func main() {
 		systemSettingSvc interfaces.SystemSettingService,
 		agentRuntime *container.AgentRuntime,
 		notificationWorker *workbenchservice.NotificationWorker,
+		notificationDeliveryWorker *workbenchservice.NotificationDeliveryWorker,
 	) error {
 		if err := container.ValidateAgentRuntimeConfig(cfg); err != nil {
 			return err
@@ -88,6 +89,7 @@ func main() {
 
 		ctx, done := context.WithCancel(context.Background())
 		notificationWorker.Start(ctx)
+		notificationDeliveryWorker.Start(ctx)
 
 		// Start the durable tRPC run worker. An enabled runtime without a
 		// registered graph executor is a boot failure: every service has been

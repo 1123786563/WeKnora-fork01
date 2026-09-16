@@ -130,3 +130,113 @@ func TestEventRunKeysPageContinuesPastFirstPage(t *testing.T) {
 	require.Len(t, second, 1)
 	require.Equal(t, "run-257", second[0].RunID)
 }
+
+// TestNotificationProjectionUsesMigratedSchemaAndDoesNotStarveRuns proves the
+// complete durable page protocol. It uses the same migration helper as the
+// agent-run repository, seeds real agent_runs/mobile_devices rows, projects
+// every page, and checks both the 257th intent and its durable cursor.
+func TestNotificationProjectionUsesMigratedSchemaAndDoesNotStarveRuns(t *testing.T) {
+	db := openRunTestDB(t)
+	ctx := context.Background()
+	store := NewNotificationStore(db)
+	for i := 1; i <= 257; i++ {
+		runID := fmt.Sprintf("page-run-%03d", i)
+		require.NoError(t, db.Exec(`INSERT INTO agent_runs
+			(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, deadline)
+			VALUES (?, ?, 's1', 'u1', ?, ?, 'hash', '{}', ?)`,
+			1, runID, "request-"+runID, "assistant-"+runID, time.Now().Add(time.Hour)).Error)
+		require.NoError(t, db.Exec(`INSERT INTO agent_run_events
+			(tenant_id, run_id, seq, event_type, payload) VALUES (?, ?, 1, 'run_completed', '{}')`, 1, runID).Error)
+	}
+	require.NoError(t, db.Exec(`INSERT INTO mobile_devices
+		(tenant_id, owner_id, device_id, environment, platform, token_ciphertext, token_hash)
+		VALUES (1, 'u1', 'page-device', 'dev', 'ios', 'cipher', 'hash-page-device')`).Error)
+
+	var after agentruntime.RunKey
+	for {
+		keys, err := store.EventRunKeysPage(ctx, 256, after)
+		require.NoError(t, err)
+		if len(keys) == 0 {
+			break
+		}
+		for _, key := range keys {
+			events, err := NewAgentRunStore(db).ReadEvents(ctx, key, 0, 256)
+			require.NoError(t, err)
+			refs := make([]RunNotificationEvent, 0, len(events))
+			for _, evt := range events {
+				refs = append(refs, RunNotificationEvent{TenantID: key.TenantID, OwnerID: "u1", RunID: key.RunID, Seq: evt.Seq, Type: evt.Type})
+			}
+			require.NoError(t, store.ProjectEventsAndCheckpoint(ctx, "mobile-notification-projector", key, refs, int64(len(events))))
+			after = key
+		}
+		if len(keys) < 256 {
+			break
+		}
+	}
+	var intents int64
+	require.NoError(t, db.Table("mobile_notification_intents").Count(&intents).Error)
+	require.EqualValues(t, 257, intents)
+	last := agentruntime.RunKey{TenantID: 1, RunID: "page-run-257"}
+	cursor, err := store.LoadCheckpoint(ctx, "mobile-notification-projector", last)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cursor)
+}
+
+func TestNotificationProjectionRollbackAndRestartReplayUsesMigratedSchema(t *testing.T) {
+	db := openRunTestDB(t)
+	ctx := context.Background()
+	runs := NewAgentRunStore(db)
+	store := NewNotificationStore(db)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs
+		(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, deadline)
+		VALUES (1, 'rollback-run', 's1', 'u1', 'rollback-request', 'rollback-assistant', 'hash', '{}', ?)`, time.Now().Add(time.Hour)).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_run_events
+		(tenant_id, run_id, seq, event_type, payload) VALUES (1, 'rollback-run', 1, 'run_completed', '{}')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO mobile_devices
+		(tenant_id, owner_id, device_id, environment, platform, token_ciphertext, token_hash)
+		VALUES (1, 'u1', 'rollback-device', 'dev', 'ios', 'cipher', 'hash-rollback-device')`).Error)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "rollback-run"}
+	failed := []RunNotificationEvent{
+		{TenantID: 1, OwnerID: "u1", RunID: "rollback-run", Seq: 1, Type: "run_completed"},
+		{TenantID: 1, OwnerID: "wrong-owner", RunID: "rollback-run", Seq: 1, Type: "run_completed"},
+	}
+	require.Error(t, store.ProjectEventsAndCheckpoint(ctx, "mobile-notification-projector", key, failed, 1))
+	var intents int64
+	require.NoError(t, db.Table("mobile_notification_intents").Count(&intents).Error)
+	require.Zero(t, intents, "projection and checkpoint must roll back together")
+	cursor, err := store.LoadCheckpoint(ctx, "mobile-notification-projector", key)
+	require.NoError(t, err)
+	require.Zero(t, cursor)
+
+	events, err := runs.ReadEvents(ctx, key, 0, 256)
+	require.NoError(t, err)
+	require.NoError(t, store.ProjectEventsAndCheckpoint(ctx, "mobile-notification-projector", key,
+		[]RunNotificationEvent{{TenantID: 1, OwnerID: "u1", RunID: key.RunID, Seq: events[0].Seq, Type: events[0].Type}}, 1))
+	require.NoError(t, store.ProjectEventsAndCheckpoint(ctx, "mobile-notification-projector", key,
+		[]RunNotificationEvent{{TenantID: 1, OwnerID: "u1", RunID: key.RunID, Seq: events[0].Seq, Type: events[0].Type}}, 1))
+	require.NoError(t, db.Table("mobile_notification_intents").Count(&intents).Error)
+	require.EqualValues(t, 1, intents)
+	cursor, err = store.LoadCheckpoint(ctx, "mobile-notification-projector", key)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, cursor)
+}
+
+func TestBudgetExhaustionEventProjectsDurableIntent(t *testing.T) {
+	db := openRunTestDB(t)
+	ctx := context.Background()
+	store := NewNotificationStore(db)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs
+		(tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, deadline)
+		VALUES (1, 'budget-run', 's1', 'u1', 'budget-request', 'budget-assistant', 'hash-budget', '{}', ?)`, time.Now().Add(time.Hour)).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_run_events
+		(tenant_id, run_id, seq, event_type, payload) VALUES (1, 'budget-run', 1, 'budget_exhausted', '{"reason":"budget_exhausted"}')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO mobile_devices
+		(tenant_id, owner_id, device_id, environment, platform, token_ciphertext, token_hash)
+		VALUES (1, 'u1', 'budget-device', 'dev', 'android', 'cipher', 'hash-budget-device')`).Error)
+	require.NoError(t, store.ProjectEventsAndCheckpoint(ctx, "mobile-notification-projector",
+		agentruntime.RunKey{TenantID: 1, RunID: "budget-run"},
+		[]RunNotificationEvent{{TenantID: 1, OwnerID: "u1", RunID: "budget-run", Seq: 1, Type: "budget_exhausted"}}, 1))
+	var kind string
+	require.NoError(t, db.Table("mobile_notification_intents").Select("kind").Where("run_id = ?", "budget-run").Scan(&kind).Error)
+	require.Equal(t, "budget_exhausted", kind)
+}

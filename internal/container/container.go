@@ -168,6 +168,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewNotificationStore))
 	must(container.Provide(workbenchservice.NewNotificationProjector))
 	must(container.Provide(workbenchservice.NewNotificationWorker))
+	must(container.Provide(newMobileNotificationProvider))
+	must(container.Provide(workbenchservice.NewNotificationDeliveryWorker))
 	must(container.Provide(repository.NewMobileExchangeStore))
 	// The dispatch intent/receipt log is a first-class dependency of the
 	// durable worker. Keep it in the same database scope as AgentRunStore so
@@ -701,6 +703,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+// newMobileNotificationProvider keeps push delivery behind a single
+// deployment-configured HTTP gateway. An empty endpoint is valid during local
+// development: the worker remains durable and fail-closed until the gateway
+// is configured.
+func newMobileNotificationProvider() workbenchservice.NotificationProvider {
+	return workbenchservice.NewHTTPNotificationProvider(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")))
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver
