@@ -33,7 +33,7 @@ function ProductHostGate() {
   const isServerEntry = segments.some((segment) => segment === 'server');
 
   const isLoginEntry = segments.some((segment) => segment === 'login');
-  const isAuthEntry = isLoginEntry || segments.some((segment) => segment === 'auth-return' || segment === 'invitation');
+  const isAuthEntry = isLoginEntry || segments.some((segment) => segment === 'auth-return' || segment === 'oidc' || segment === 'invitation');
   if (!host && !isServerEntry) {
     return <Redirect href="/(app)/server" />;
   }

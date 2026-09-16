@@ -46,15 +46,18 @@ export function createOIDCApi(request: AuthRequest) {
       const query = new URLSearchParams({ redirect_uri: redirectURI }).toString();
       return await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }) as OIDCAuthURLResponse;
     },
-    async startNative(redirectURI: string, codeChallenge: string): Promise<OIDCAuthURLResponse> {
-      const query = new URLSearchParams({ redirect_uri: redirectURI, code_challenge: requireNonEmpty(codeChallenge, 'code_challenge') }).toString();
+    async startNative(redirectURI: string, codeChallenge: string, frontendRedirectURI = 'weknora://oidc'): Promise<OIDCAuthURLResponse> {
+      const query = new URLSearchParams({
+        redirect_uri: redirectURI,
+        frontend_redirect_uri: requireNonEmpty(frontendRedirectURI, 'frontend_redirect_uri'),
+        // This challenge binds the server-issued one-time application code.
+        // The provider callback remains server-owned and therefore does not
+        // receive the native scheme as its redirect_uri.
+        code_challenge: requireNonEmpty(codeChallenge, 'code_challenge'),
+      }).toString();
       return await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }) as OIDCAuthURLResponse;
     },
-    /**
-     * The current Go server completes exchange only in its browser callback,
-     * which redirects with a bearer token fragment. Keep that unsafe contract
-     * out of native code until a one-time-code JSON endpoint is available.
-     */
+    /** Browser OIDC remains deliberately unavailable to native callers. */
     async exchange(_code: string, _state: string, _redirectURI: string): Promise<OIDCExchangeResponse> {
       throw new Error('OIDC_EXCHANGE_UNAVAILABLE');
     },

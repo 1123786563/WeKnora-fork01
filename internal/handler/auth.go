@@ -381,7 +381,15 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 
 	var resp *types.OIDCAuthURLResponse
 	var err error
-	if challenge := strings.TrimSpace(c.Query("code_challenge")); challenge != "" {
+	challenge := strings.TrimSpace(c.Query("code_challenge"))
+	// For a native handoff the provider callback is server-owned. The
+	// challenge is for the server-issued, one-time application code and must
+	// not be forwarded to the provider, because the verifier stays on-device.
+	// Browser/native PKCE exchange remains available through /auth/oidc/exchange
+	// when no frontend marker is supplied.
+	if frontendRedirectURI == mobileOIDCRedirectURI {
+		resp, err = h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
+	} else if challenge != "" {
 		if pkce, ok := h.userService.(interface {
 			GetOIDCAuthorizationURLWithPKCE(context.Context, string, string) (*types.OIDCAuthURLResponse, error)
 		}); ok {
@@ -399,7 +407,7 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 		return
 	}
 	if frontendRedirectURI != "" {
-		if err := decorateOIDCMobileAuthorization(resp, frontendRedirectURI); err != nil {
+		if err := decorateOIDCMobileAuthorization(resp, frontendRedirectURI, challenge); err != nil {
 			logger.Errorf(ctx, "Failed to bind mobile OIDC redirect: %v", err)
 			c.Error(errors.NewInternalServerError("OIDC authorization unavailable").WithDetails(err.Error()))
 			return
@@ -535,11 +543,6 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("missing_code"))
 		return
 	}
-	if frontendRedirectURI == mobileOIDCRedirectURI {
-		c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_code": code, "state": state}))
-		return
-	}
-
 	resp, err := h.userService.LoginWithOIDC(ctx, code, strings.TrimSpace(decodedState.RedirectURI), h.resolveDefaultTenantMode(ctx))
 	if err != nil {
 		logger.Errorf(ctx, "Failed to complete OIDC login via redirect callback: %v", err)
@@ -548,6 +551,28 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 	}
 	if !resp.Success {
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("login_failed")+"&oidc_error_description="+urlQueryEscape(resp.Message))
+		return
+	}
+	if frontendRedirectURI == mobileOIDCRedirectURI {
+		if h.mobileExchange == nil || resp.User == nil || strings.TrimSpace(decodedState.CodeChallenge) == "" {
+			c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_error": "exchange_unavailable", "state": state}))
+			return
+		}
+		// The provider code has been consumed by the server above. Only this
+		// random application code crosses the custom scheme; the native client
+		// then exchanges it exactly once over HTTPS.
+		rawCode := make([]byte, 32)
+		if _, randErr := rand.Read(rawCode); randErr != nil {
+			c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_error": "exchange_unavailable", "state": state}))
+			return
+		}
+		mobileCode := base64.RawURLEncoding.EncodeToString(rawCode)
+		if putErr := h.mobileExchange.Put(ctx, repository.MobileExchange{CodeHash: repository.HashMobileExchangeValue(mobileCode), StateHash: repository.HashMobileExchangeValue(state), RedirectURI: strings.TrimSpace(frontendRedirectURI), Challenge: strings.TrimSpace(decodedState.CodeChallenge), Subject: resp.User.ID, ExpiresAt: time.Now().UTC().Add(time.Minute)}); putErr != nil {
+			logger.Errorf(ctx, "Failed to persist native OIDC exchange: %v", putErr)
+			c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_error": "exchange_unavailable", "state": state}))
+			return
+		}
+		c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"code": mobileCode, "state": state}))
 		return
 	}
 	if strings.TrimSpace(decodedState.CodeChallenge) != "" && h.mobileExchange != nil && resp.User != nil {
@@ -635,7 +660,7 @@ func encodeOIDCCallbackPayload(resp *types.OIDCCallbackResponse) (string, error)
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
-func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRedirectURI string) error {
+func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRedirectURI, codeChallenge string) error {
 	if resp == nil || resp.State == "" || resp.AuthorizationURL == "" {
 		return stderrors.New("OIDC authorization response is incomplete")
 	}
@@ -645,7 +670,7 @@ func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRe
 	}
 	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
 		Nonce: payload.Nonce, RedirectURI: payload.RedirectURI,
-		FrontendRedirectURI: frontendRedirectURI, CodeChallenge: payload.CodeChallenge, IssuedAt: payload.IssuedAt,
+		FrontendRedirectURI: frontendRedirectURI, CodeChallenge: firstNonEmpty(strings.TrimSpace(codeChallenge), payload.CodeChallenge), IssuedAt: payload.IssuedAt,
 	})
 	if err != nil {
 		return err
@@ -660,6 +685,15 @@ func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRe
 	resp.State = state
 	resp.AuthorizationURL = authorizationURL.String()
 	return nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func mobileOIDCRedirect(target string, params map[string]string) string {

@@ -11,7 +11,7 @@ import { generatePKCE } from '@/utils/oauth';
 
 const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
 const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
-const AUTH_RETURN_REDIRECT = 'weknora://auth-return';
+const AUTH_RETURN_REDIRECT = 'weknora://oidc';
 
 export default function LoginScreen() {
   const host = useMobileHost();
@@ -57,7 +57,12 @@ export default function LoginScreen() {
         if (!response.ok) throw new Error(`oidc_start_${response.status}`);
         return await response.json();
       });
-      const result = await api.startNative(AUTH_RETURN_REDIRECT, challenge);
+      // The identity provider must call the server. The server validates the
+      // provider response, creates a short-lived application code, then
+      // redirects to this native marker. Passing the custom scheme as the
+      // provider redirect would bypass that callback and cannot be exchanged.
+      const providerRedirect = `${host.origin.replace(/\/+$/, '')}/api/v1/auth/oidc/callback`;
+      const result = await api.startNative(providerRedirect, challenge, AUTH_RETURN_REDIRECT);
       if (!result.authorization_url) throw new Error('OIDC_AUTHORIZATION_URL_MISSING');
       await SecureStore.setItemAsync(NATIVE_PKCE_VERIFIER_KEY, verifier);
       if (!result.state) throw new Error('OIDC_STATE_MISSING');
