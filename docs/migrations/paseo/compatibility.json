@@ -6,6 +6,9 @@
     "commit": "c4e97d5cfbef62934e0915d58a72ddeae5c4caea",
     "sdk_package": "@getpaseo/client",
     "sdk_version": "0.7.2",
+    "license": "MIT",
+    "notice": "Paseo source and SDK are used under the upstream MIT license; preserve upstream attribution in distribution notices.",
+    "source_notice": "https://github.com/getpaseo/paseo/blob/v0.7.2/LICENSE",
     "node_version": "v26.7.0",
     "checked_at": "2026-09-15"
   },
