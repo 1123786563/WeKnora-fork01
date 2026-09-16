@@ -128,14 +128,18 @@ func (s *RemoteUsageService) FinishRemoteObservation(ctx context.Context, handle
 		if observation.PriceVersion != "" && observation.PriceVersion != req.PriceVersion {
 			return ErrRemoteUsageInvalidRequest
 		}
-		if observation.Revision > 0 {
-			req.Revision = observation.Revision
+		// Revision and billable dimensions are part of the server-owned fence.
+		// A provider may repeat them for correlation, but cannot replace them
+		// with a cheaper or differently priced fact. Quantity corrections must
+		// arrive through a new server-admitted revision.
+		if observation.Revision > 0 && observation.Revision != req.Revision {
+			return ErrRemoteUsageInvalidRequest
+		}
+		if observation.Dimensions != nil && !sameDimensions(observation.Dimensions, req.Dimensions) {
+			return ErrRemoteUsageInvalidRequest
 		}
 		if !observation.OccurredAt.IsZero() {
 			req.OccurredAt = observation.OccurredAt
-		}
-		if observation.Dimensions != nil {
-			req.Dimensions = cloneDimensions(observation.Dimensions)
 		}
 		if observation.Status != "" {
 			req.Status = observation.Status
@@ -291,6 +295,18 @@ func validateRemoteIdentity(req RemoteUsageRequest) error {
 
 func stableUsageKey(req RemoteUsageRequest) string {
 	return fmt.Sprintf("%s:%s:%d", req.CallID, req.AttemptID, req.Revision)
+}
+
+func sameDimensions(a, b map[string]int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
 func cloneDimensions(in map[string]int64) map[string]int64 {

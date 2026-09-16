@@ -51,3 +51,23 @@ unrelated migration transaction failure in the inherited W20/SQLite setup.
 PostgreSQL migration execution, a live OpenMeter settlement, real Paseo, and
 WeChat/Alipay channels were unavailable; these remain `blocked-env` and are
 not claimed as runtime acceptance.
+
+## Targeted fix evidence (2026-09-17)
+
+- `go test ./internal/application/service/workbench -run 'TestRemoteUsage|TestRemoteDispatcher' -count=1` — PASS.
+- `go test ./internal/application/service/workbench -count=1` — PASS.
+- `go test ./internal/application/repository -run TestPersistUsageBindingOverridesUntrustedSnapshotFields -count=1` — PASS.
+- `go test ./internal/application/service/workbench ./internal/application/repository ./internal/agent/runtime -run 'TestRemoteUsage|TestRemoteDispatcher|TestPersistUsageBinding|TestAgentRun' -count=1` — PASS.
+
+The fix persists the server-owned usage binding into the immutable admission
+snapshot and restores it into the worker `Fence`. Provider observations may
+repeat the fenced revision and dimensions, but mismatched values are rejected;
+they cannot replace the settlement identity. Constructor tests fail closed for
+a missing gate or budget database. The real `ExecutionGateService` plus SQLite
+budget/usage stores now covers one remote dispatch, child budget binding, and
+same-receipt replay with one usage fact.
+
+Unknown, partial, and display-only observations remain non-billable; a later
+final observation can settle the retained reservation and an identical final
+replay is idempotent at the service seam. PostgreSQL migrations, live
+OpenMeter/Paseo execution, and provider runtime evidence remain `blocked-env`.

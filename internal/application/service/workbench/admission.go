@@ -215,10 +215,24 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		}
 	}
 	assistantID := uuid.NewString()
-	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
+	// The usage binding is selected by the trusted admission service and is
+	// persisted with the run snapshot. StartInput never supplies these fields.
+	usageUpper := in.BudgetUpper
+	if usageUpper <= 0 {
+		usageUpper = 1
+	}
+	snapshot, _ := json.Marshal(map[string]any{
+		"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID,
+		"workspace_ref": in.WorkspaceRef, "request_id": in.RequestID, "text": in.Text,
+		"budget_upper": in.BudgetUpper, "usage_source": "platform_gateway",
+		"usage_funding": "platform", "usage_service": "connector",
+		"price_version": "remote-v1", "usage_upper": usageUpper,
+		"usage_revision": 1, "usage_status": "final",
+		"usage_dimensions": map[string]int64{"connector": 1},
+	})
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline})
+	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, UsageSource: "platform_gateway", UsageFunding: "platform", UsageService: "connector", UsagePriceVersion: "remote-v1", UsageUpper: usageUpper, UsageRevision: 1, UsageStatus: "final", UsageDimensions: map[string]int64{"connector": 1}})
 	if err != nil {
 		_ = a.requests.UpdatePending(ctx, req, "rejected", reservation, "", err.Error())
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)

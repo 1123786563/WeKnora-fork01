@@ -113,6 +113,13 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		return agentruntime.Run{}, err
 	}
 	in.Driver = driver
+	// Merge the server-owned usage binding into the immutable snapshot at the
+	// repository boundary. Provider or client payloads can still be stored as
+	// ordinary remote observations, but they cannot replace these fields.
+	in.Snapshot, err = persistUsageBinding(in.Snapshot, in)
+	if err != nil {
+		return agentruntime.Run{}, err
+	}
 	user, err := admissionMessage(in.UserMessage, "user", in)
 	if err != nil {
 		return agentruntime.Run{}, err
@@ -211,6 +218,54 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		return nil
 	})
 	return result, err
+}
+
+func persistUsageBinding(raw json.RawMessage, in agentruntime.Admission) (json.RawMessage, error) {
+	var snapshot map[string]any
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, fmt.Errorf("%w: invalid snapshot", agentruntime.ErrConflict)
+	}
+	if snapshot == nil {
+		snapshot = make(map[string]any)
+	}
+	// Remove any client-supplied copies first, then write only the values
+	// carried by this trusted admission object. Empty values are intentionally
+	// absent so Fence construction applies its fail-closed defaults.
+	for _, key := range []string{"parent_run_id", "usage_source", "usage_funding", "usage_service", "price_version", "usage_upper", "usage_revision", "usage_status", "usage_dimensions"} {
+		delete(snapshot, key)
+	}
+	if in.ParentRunID != "" {
+		snapshot["parent_run_id"] = in.ParentRunID
+	}
+	if in.UsageSource != "" {
+		snapshot["usage_source"] = in.UsageSource
+	}
+	if in.UsageFunding != "" {
+		snapshot["usage_funding"] = in.UsageFunding
+	}
+	if in.UsageService != "" {
+		snapshot["usage_service"] = in.UsageService
+	}
+	if in.UsagePriceVersion != "" {
+		snapshot["price_version"] = in.UsagePriceVersion
+	}
+	if in.UsageUpper > 0 {
+		snapshot["usage_upper"] = in.UsageUpper
+	}
+	if in.UsageRevision > 0 {
+		snapshot["usage_revision"] = in.UsageRevision
+	}
+	if in.UsageStatus != "" {
+		snapshot["usage_status"] = in.UsageStatus
+	}
+	if in.UsageDimensions != nil {
+		snapshot["usage_dimensions"] = in.UsageDimensions
+	}
+	out, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: usage binding", agentruntime.ErrConflict)
+	}
+	return out, nil
 }
 
 func admissionMessage(raw json.RawMessage, role string, in agentruntime.Admission) (types.Message, error) {

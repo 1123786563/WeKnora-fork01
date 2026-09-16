@@ -7,6 +7,8 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -54,13 +56,25 @@ func (p *integrationRemoteProvider) StartCommandWithUsage(_ context.Context, req
 	if service == "" {
 		service = commercial.ServiceConnector
 	}
-	dimension := commercial.DimensionConnector
-	if service == commercial.ServiceModel {
-		dimension = commercial.DimensionModel
+	dimensions := request.Fence.UsageDimensions
+	if dimensions == nil {
+		dimension := commercial.DimensionConnector
+		if service == commercial.ServiceModel {
+			dimension = commercial.DimensionModel
+		}
+		dimensions = map[string]int64{dimension: 1}
+	}
+	revision := request.Fence.UsageRevision
+	if revision <= 0 {
+		revision = 1
+	}
+	price := request.Fence.UsagePriceVersion
+	if price == "" {
+		price = "remote-v1"
 	}
 	return agentruntime.RemoteStartResult{ExternalID: "external-" + request.CommandID, Usage: &agentruntime.RemoteUsageObservation{
-		Service: service, Status: commercial.UsageStatusFinal, PriceVersion: "remote-v1", Revision: 1,
-		OccurredAt: time.Now().UTC(), Dimensions: map[string]int64{dimension: 1},
+		Service: service, Status: commercial.UsageStatusFinal, PriceVersion: price, Revision: revision,
+		OccurredAt: time.Now().UTC(), Dimensions: dimensions,
 	}}, nil
 }
 
@@ -154,5 +168,80 @@ func TestRemoteDispatcherReconcilesMissingUsageAfterProviderStart(t *testing.T) 
 	}
 	if state != "reconciled" || observed != "usage_missing" || provider.starts != 1 {
 		t.Fatalf("state=%q observed=%q", state, observed)
+	}
+}
+
+type remoteUsageGateway struct{}
+
+func (remoteUsageGateway) ApplyBenefit(context.Context, commercial.BenefitRequest) (commercial.BenefitReceipt, error) {
+	return commercial.BenefitReceipt{ExternalID: "benefit"}, nil
+}
+func (remoteUsageGateway) FindBenefit(context.Context, string) (commercial.BenefitReceipt, error) {
+	return commercial.BenefitReceipt{ExternalID: "benefit"}, nil
+}
+func (remoteUsageGateway) RevokeBenefit(context.Context, string, commercial.Credits) error {
+	return nil
+}
+func (remoteUsageGateway) Settle(context.Context, commercial.Settlement) (commercial.SettlementReceipt, error) {
+	return commercial.SettlementReceipt{ExternalID: "settlement"}, nil
+}
+func (remoteUsageGateway) ConfirmSettlement(context.Context, string) (commercial.SettlementReceipt, error) {
+	return commercial.SettlementReceipt{ExternalID: "settlement", Watermark: "w2"}, nil
+}
+
+func newRealUsageDispatch(t *testing.T) (*gorm.DB, *commercialsvc.ExecutionGateService) {
+	t.Helper()
+	db := newDispatchIntegrationDB(t)
+	if err := db.AutoMigrate(&repocommercial.BudgetAccountRow{}, &repocommercial.TaskBudgetRow{}, &repocommercial.ReservationRow{}, &repocommercial.BudgetLotRow{}, &repocommercial.BudgetLotAllocationRow{}, &repocommercial.UsageRow{}, &repocommercial.UsageCurrentRow{}, &repocommercial.OutboxEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	end := time.Now().UTC().Add(time.Hour)
+	if err := db.Create(&repocommercial.BudgetAccountRow{TenantID: 1, VerifiedMicro: 100000, Watermark: "w1", Version: 1, VerifiedUntil: end}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.TaskBudgetRow{TenantID: 1, RunID: "root-1", LimitMicro: 100000, Deadline: end, Version: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	expiry := end
+	if err := db.Create(&repocommercial.BudgetLotRow{TenantID: 1, LotID: "lot-1", RemainingMicro: 100000, ExpiresAt: &expiry, IssuedAt: time.Now().UTC()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gate, err := commercialsvc.NewExecutionGateService(db, remoteUsageGateway{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err = gate.WithRates(func(version string) (commercial.PriceVersionRates, error) {
+		return commercial.PriceVersionRates{Version: version, Rates: map[string]commercial.DimensionRate{commercial.DimensionConnector: {RateMicro: 100, Units: 1}, commercial.DimensionModel: {RateMicro: 100, Units: 1}}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db, gate
+}
+
+func TestRemoteDispatcherUsesRealExecutionGateAndLateFinalReplayIsIdempotent(t *testing.T) {
+	db, gate := newRealUsageDispatch(t)
+	dispatch := repository.NewExecutionDispatchStore(db)
+	usage, err := NewRemoteUsageServiceWithDB(gate, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewRemoteDispatcherWithUsage(dispatch, usage)
+	provider := &integrationRemoteProvider{}
+	fence := integrationFence(commercial.FundingPlatform, commercial.ServiceConnector)
+	fence.UsageUpper = 1000
+	if _, err := d.DispatchFence(context.Background(), fence, "cmd-real", "hash-real", time.Minute, provider); err != nil {
+		t.Fatal(err)
+	}
+	// The same dispatch receipt is an idempotent replay and never starts or settles twice.
+	if _, err := d.DispatchFence(context.Background(), fence, "cmd-real", "hash-real", time.Minute, provider); err != nil {
+		t.Fatal(err)
+	}
+	var usages int64
+	if err := db.Model(&repocommercial.UsageRow{}).Where("call_id = ?", "cmd-real").Count(&usages).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usages != 1 || provider.starts != 1 {
+		t.Fatalf("usage rows=%d provider starts=%d", usages, provider.starts)
 	}
 }

@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"testing"
 	"time"
@@ -25,9 +26,9 @@ func (b *remoteBudgetStub) AttachChildRun(_ context.Context, tenant uint64, chil
 	return nil
 }
 
-func (g *remoteUsageGateStub) Begin(context.Context, commercial.BudgetRequest) (commercial.Reservation, error) {
+func (g *remoteUsageGateStub) Begin(_ context.Context, req commercial.BudgetRequest) (commercial.Reservation, error) {
 	g.begins++
-	return commercial.Reservation{ID: "r1"}, nil
+	return commercial.Reservation{ID: req.Key}, nil
 }
 func (g *remoteUsageGateStub) Finish(_ context.Context, _ string, f commercial.UsageFact) error {
 	g.finishes++
@@ -131,5 +132,69 @@ func TestRemoteUsageBYOKFinishWithoutReservationIsNoop(t *testing.T) {
 	}
 	if g.finishes != 0 {
 		t.Fatal("BYOK model finish reached platform gate")
+	}
+}
+
+func TestRemoteUsageConstructorsFailClosed(t *testing.T) {
+	if _, err := NewRemoteUsageService(nil); err == nil {
+		t.Fatal("nil gate must fail closed")
+	}
+	g := &remoteUsageGateStub{}
+	if _, err := NewRemoteUsageServiceWithDB(g, nil); err == nil {
+		t.Fatal("nil budget database must fail closed")
+	}
+}
+
+func TestRemoteUsageProviderCannotOverrideFenceRevisionOrDimensions(t *testing.T) {
+	g := &remoteUsageGateStub{}
+	s, err := NewRemoteUsageService(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fence := agentruntime.Fence{
+		RunKey:      agentruntime.RunKey{TenantID: 1, RunID: "run"},
+		UsageSource: "platform_gateway", UsageFunding: commercial.FundingPlatform,
+		UsageService: commercial.ServiceConnector, UsagePriceVersion: "pv-1",
+		UsageUpper: 1000, UsageRevision: 2, UsageStatus: commercial.UsageStatusFinal,
+		UsageDimensions: map[string]int64{commercial.DimensionConnector: 4},
+	}
+	h, err := s.BeginRemote(context.Background(), fence, "call-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "pv-1", Revision: 3, Status: commercial.UsageStatusFinal, Dimensions: map[string]int64{commercial.DimensionConnector: 1}, OccurredAt: time.Now().UTC()}
+	if err := s.FinishRemoteObservation(context.Background(), h, bad); err == nil {
+		t.Fatal("provider override accepted")
+	}
+	if g.finishes != 0 {
+		t.Fatal("invalid provider observation reached gate")
+	}
+}
+
+func TestRemoteUsageUnknownPartialDisplayOnlyThenLateFinal(t *testing.T) {
+	g := &remoteUsageGateStub{}
+	s, err := NewRemoteUsageService(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fence := agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 1, RunID: "run"}, UsageSource: "platform_gateway", UsageFunding: commercial.FundingPlatform, UsageService: commercial.ServiceConnector, UsagePriceVersion: "pv-1", UsageUpper: 1000, UsageRevision: 1, UsageDimensions: map[string]int64{commercial.DimensionConnector: 1}, UsageStatus: commercial.UsageStatusFinal}
+	h, err := s.BeginRemote(context.Background(), fence, "late-call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{commercial.UsageStatusUnknown, commercial.UsageStatusPartial, commercial.UsageStatusDisplayOnly} {
+		if err := s.FinishRemoteObservation(context.Background(), h, &agentruntime.RemoteUsageObservation{Status: status}); err == nil {
+			t.Fatalf("status %q settled", status)
+		}
+	}
+	final := &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "pv-1", Revision: 1, Status: commercial.UsageStatusFinal, Dimensions: map[string]int64{commercial.DimensionConnector: 1}, OccurredAt: time.Now().UTC()}
+	if err := s.FinishRemoteObservation(context.Background(), h, final); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishRemoteObservation(context.Background(), h, final); err != nil {
+		t.Fatal(err)
+	}
+	if g.finishes != 2 {
+		t.Fatalf("late final finish calls=%d", g.finishes)
 	}
 }
