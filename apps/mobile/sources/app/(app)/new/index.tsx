@@ -735,7 +735,7 @@ const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInpu
     },
 ));
 
-function NewSessionScreen() {
+export function NewSessionScreen() {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
