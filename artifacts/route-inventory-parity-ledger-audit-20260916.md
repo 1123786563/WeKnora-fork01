@@ -14,7 +14,19 @@
 
 ```text
 wc -l docs/migrations/react/route-parity.csv
-python3 <route-count-and-source-existence-check>
+python3 - <<'PY'
+import csv, pathlib, collections
+root = pathlib.Path('.')
+rows = list(csv.DictReader((root/'docs/migrations/react/route-parity.csv').open()))
+print('rows=', len(rows))
+print('kinds=', dict(collections.Counter(r['kind'] for r in rows)))
+print('duplicate_routes=', [k for k,v in collections.Counter(r['route_or_entry'] for r in rows).items() if v > 1])
+print('explicit_row_id=', 'row_id' in rows[0])
+for r in rows:
+    p = r['current_source']
+    if p and ';' not in p and not (root/p).exists():
+        print('missing_source=', r['route_or_entry'], p)
+PY
 ```
 
 结果：
@@ -91,4 +103,3 @@ embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 3. 解析四个 Apps Vue authority 路径；在解析前不要把 React Apps route 标成 Vue parity accepted。
 4. 清理通配符/目录型 artifact 引用，并将缺失证据明确标注为 `missing`/`blocked-env`。
 5. 保持 R397 的证据分层和未完成结论，待认证凭据、浏览器策略、Embed token 与 Wails 环境恢复后再做最终 acceptance。
-
