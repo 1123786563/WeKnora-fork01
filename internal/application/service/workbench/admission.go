@@ -40,7 +40,14 @@ type RequestState struct {
 }
 
 type TaskBudgetPort interface {
+	// Ensure must use the tuple (tenant, owner, requestID) as a durable
+	// idempotency key. A retry after an unknown response or a process crash
+	// before reservation_ref is persisted must return the original reservation
+	// reference and must not create or charge a second task reservation. A
+	// changed upper bound for the same key must be rejected by the ledger.
 	Ensure(context.Context, uint64, string, string, int64, time.Time) (string, error)
+	// ReleaseUnstarted is only called when the run was proven not to have been
+	// admitted or dispatched. Unknown dispatch state must remain reserved.
 	ReleaseUnstarted(context.Context, string) error
 }
 

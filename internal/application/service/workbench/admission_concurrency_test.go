@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -28,6 +29,42 @@ func (b *countingBudget) Ensure(_ context.Context, _ uint64, _ string, requestID
 	return "reservation/" + requestID, nil
 }
 func (*countingBudget) ReleaseUnstarted(context.Context, string) error { return nil }
+
+type retrySafeBudget struct {
+	mu           sync.Mutex
+	reservations map[string]string
+	creates      int
+}
+
+func (b *retrySafeBudget) Ensure(_ context.Context, tenant uint64, owner, requestID string, _ int64, _ time.Time) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.reservations == nil {
+		b.reservations = map[string]string{}
+	}
+	key := fmt.Sprintf("%d/%s/%s", tenant, owner, requestID)
+	if existing, ok := b.reservations[key]; ok {
+		return existing, nil
+	}
+	b.creates++
+	ref := "reservation/" + key
+	b.reservations[key] = ref
+	return ref, nil
+}
+func (*retrySafeBudget) ReleaseUnstarted(context.Context, string) error { return nil }
+
+func TestBudgetEnsureRetryAfterUnknownResponseKeepsOneReservation(t *testing.T) {
+	budget := &retrySafeBudget{}
+	deadline := time.Now().Add(time.Minute)
+	first, err := budget.Ensure(context.Background(), 1, "u1", "crash-window", 100, deadline)
+	require.NoError(t, err)
+	// Model a process crash after the provider committed but before the
+	// request row stored reservation_ref: the retry must use the same key.
+	second, err := budget.Ensure(context.Background(), 1, "u1", "crash-window", 100, deadline)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	require.Equal(t, 1, budget.creates)
+}
 
 func TestAdmissionTwentyConcurrentIdenticalRequestsCreateOneRun(t *testing.T) {
 	db := openAdmissionConcurrencyDB(t)
