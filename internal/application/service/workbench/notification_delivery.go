@@ -70,6 +70,10 @@ type NotificationDeliveryWorker struct {
 	provider NotificationProvider
 	worker   string
 	lease    time.Duration
+	// afterClaim is an optional in-process seam used by deterministic
+	// concurrency tests. Production workers leave it nil; when set it runs
+	// after a durable lease is acquired and before final authorization.
+	afterClaim func(context.Context, repository.NotificationDelivery)
 }
 
 func NewNotificationDeliveryWorker(store *repository.NotificationStore, provider NotificationProvider, worker string) *NotificationDeliveryWorker {
@@ -85,6 +89,9 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 		return err
 	}
 	for _, delivery := range deliveries {
+		if w.afterClaim != nil {
+			w.afterClaim(ctx, delivery)
+		}
 		if !w.store.RevalidateDelivery(ctx, delivery, w.worker) {
 			w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence)
 			continue

@@ -81,43 +81,69 @@ func TestNotificationDeliveryRejectsRevocationAndMemberRemovalAfterClaim(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, db := seedDeliveryFixture(t, "race-device")
-			claimed, err := store.Claim(context.Background(), "race-worker", 1, time.Minute)
-			require.NoError(t, err)
-			require.Len(t, claimed, 1)
-			tc.mutate(db)
 			spy := &notificationProviderSpy{}
-			// The production worker's final revalidation is represented by the
-			// same leased delivery here, so the provider boundary is never called
-			// after either authorization mutation.
-			require.False(t, store.RevalidateDelivery(context.Background(), claimed[0], "race-worker"))
-			require.True(t, store.Retry(context.Background(), claimed[0].ID, "race-worker", claimed[0].Fence))
+			worker := NewNotificationDeliveryWorker(store, spy, "race-worker")
+			claimed := make(chan repository.NotificationDelivery, 1)
+			continueRun := make(chan struct{})
+			worker.afterClaim = func(_ context.Context, d repository.NotificationDelivery) {
+				claimed <- d
+				<-continueRun
+			}
+			done := make(chan error, 1)
+			go func() { done <- worker.RunOnce(context.Background(), 1) }()
+			delivery := <-claimed
+			// The mutation occurs after the real worker claims the lease but before
+			// its final RevalidateDelivery call.
+			tc.mutate(db)
+			close(continueRun)
+			require.NoError(t, <-done)
 			require.Zero(t, spy.count())
+			var state struct {
+				State      string
+				Fence      int64
+				LeaseOwner string
+			}
+			require.NoError(t, db.Table("mobile_notification_intents").Select("state, fence, lease_owner").Where("id = ?", delivery.ID).Take(&state).Error)
+			require.Equal(t, "pending", state.State)
+			require.Equal(t, int64(1), state.Fence)
+			require.Empty(t, state.LeaseOwner)
 		})
 	}
 }
 
 func TestNotificationDeliveryConcurrentWorkersSendExactlyOnce(t *testing.T) {
-	store, _ := seedDeliveryFixture(t, "concurrent-device")
+	store, db := seedDeliveryFixture(t, "concurrent-device")
 	spy := &notificationProviderSpy{}
-	workers := []*NotificationDeliveryWorker{
-		NewNotificationDeliveryWorker(store, spy, "worker-a"),
-		NewNotificationDeliveryWorker(store, spy, "worker-b"),
+	workerA := NewNotificationDeliveryWorker(store, spy, "worker-a")
+	workerB := NewNotificationDeliveryWorker(store, spy, "worker-b")
+	workerA.lease = 25 * time.Millisecond
+	claimed := make(chan repository.NotificationDelivery, 1)
+	releaseA := make(chan struct{})
+	workerA.afterClaim = func(_ context.Context, d repository.NotificationDelivery) {
+		claimed <- d
+		<-releaseA
 	}
-	var wg sync.WaitGroup
-	errs := make(chan error, len(workers))
-	for _, worker := range workers {
-		wg.Add(1)
-		go func(w *NotificationDeliveryWorker) {
-			defer wg.Done()
-			errs <- w.RunOnce(context.Background(), 1)
-		}(worker)
+	aDone := make(chan error, 1)
+	go func() { aDone <- workerA.RunOnce(context.Background(), 1) }()
+	deliveryA := <-claimed
+	// Expire A's lease while A is paused before final authorization. B then
+	// acquires a new fence and is the only worker allowed to send/ack.
+	require.NoError(t, db.Exec("UPDATE mobile_notification_intents SET lease_until = ? WHERE id = ?", time.Now().Add(-time.Second), deliveryA.ID).Error)
+	require.NoError(t, workerB.RunOnce(context.Background(), 1))
+	close(releaseA)
+	require.NoError(t, <-aDone)
+	require.Equal(t, 1, spy.count(), "only the winning fence may reach the provider")
+	var state struct {
+		State      string
+		Fence      int64
+		LeaseOwner string
 	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		require.NoError(t, err)
-	}
-	require.Equal(t, 1, spy.count(), "claim fence must prevent duplicate provider sends")
+	require.NoError(t, db.Table("mobile_notification_intents").Select("state, fence, lease_owner").Where("id = ?", deliveryA.ID).Take(&state).Error)
+	require.Equal(t, "sent", state.State)
+	require.Equal(t, int64(2), state.Fence)
+	require.Equal(t, "", state.LeaseOwner)
+	require.False(t, store.Ack(context.Background(), deliveryA.ID, "worker-a", deliveryA.Fence), "stale worker cannot ack winner")
+	require.False(t, store.Retry(context.Background(), deliveryA.ID, "worker-a", deliveryA.Fence), "stale worker cannot retry winner")
 }
 
 func TestHTTPNotificationProviderSendsScopedIdentityAndFailsClosed(t *testing.T) {
