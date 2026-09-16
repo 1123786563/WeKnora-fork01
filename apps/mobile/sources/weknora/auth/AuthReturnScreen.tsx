@@ -49,8 +49,8 @@ export default function AuthReturnScreen() {
       void (async () => {
         const verifier = await SecureStore.getItemAsync(NATIVE_PKCE_VERIFIER_KEY);
         const input = buildNativeExchangeInput(params, AUTH_RETURN_REDIRECT, verifier ?? '');
-        if (!input) { setOutcome({ status: 'rejected' }); return; }
         try {
+          if (!input) { setOutcome({ status: 'rejected' }); return; }
           const api = createOIDCApi(async (request) => {
             const response = await fetch(`${host.origin}${request.path}`, { method: request.method, headers: { 'content-type': 'application/json' }, body: request.body ? JSON.stringify(request.body) : undefined });
             if (!response.ok) throw new Error(`exchange_${response.status}`);
@@ -59,9 +59,9 @@ export default function AuthReturnScreen() {
           const payload = await api.exchangeNative(input);
           if (!payload.token) throw new Error('exchange_missing_token');
           await auth.replaceCredential({ kind: 'bearer', accessToken: payload.token, ...(payload.refresh_token ? { refreshToken: payload.refresh_token } : {}) });
-          await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY);
           router.replace('/(app)');
         } catch { setOutcome({ status: 'rejected' }); }
+        finally { await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY); }
       })();
     }
   }, [auth, host, params, router]);
