@@ -67,6 +67,59 @@ func TestNotificationDeliveryRevalidatesBeforeProviderSend(t *testing.T) {
 	require.Equal(t, 0, spy.count(), "revoked device must be rejected before provider invocation")
 }
 
+func TestNotificationDeliveryRejectsRevocationAndMemberRemovalAfterClaim(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*gorm.DB)
+	}{
+		{name: "device-revoked", mutate: func(db *gorm.DB) {
+			require.NoError(t, db.Exec("UPDATE mobile_devices SET revoked_at = CURRENT_TIMESTAMP WHERE device_id = 'race-device'").Error)
+		}},
+		{name: "member-removed", mutate: func(db *gorm.DB) {
+			require.NoError(t, db.Exec("UPDATE agent_runs SET owner_id = 'removed-owner' WHERE run_id = 'delivery-run'").Error)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, db := seedDeliveryFixture(t, "race-device")
+			claimed, err := store.Claim(context.Background(), "race-worker", 1, time.Minute)
+			require.NoError(t, err)
+			require.Len(t, claimed, 1)
+			tc.mutate(db)
+			spy := &notificationProviderSpy{}
+			// The production worker's final revalidation is represented by the
+			// same leased delivery here, so the provider boundary is never called
+			// after either authorization mutation.
+			require.False(t, store.RevalidateDelivery(context.Background(), claimed[0], "race-worker"))
+			require.True(t, store.Retry(context.Background(), claimed[0].ID, "race-worker", claimed[0].Fence))
+			require.Zero(t, spy.count())
+		})
+	}
+}
+
+func TestNotificationDeliveryConcurrentWorkersSendExactlyOnce(t *testing.T) {
+	store, _ := seedDeliveryFixture(t, "concurrent-device")
+	spy := &notificationProviderSpy{}
+	workers := []*NotificationDeliveryWorker{
+		NewNotificationDeliveryWorker(store, spy, "worker-a"),
+		NewNotificationDeliveryWorker(store, spy, "worker-b"),
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, len(workers))
+	for _, worker := range workers {
+		wg.Add(1)
+		go func(w *NotificationDeliveryWorker) {
+			defer wg.Done()
+			errs <- w.RunOnce(context.Background(), 1)
+		}(worker)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, spy.count(), "claim fence must prevent duplicate provider sends")
+}
+
 func TestHTTPNotificationProviderSendsScopedIdentityAndFailsClosed(t *testing.T) {
 	seen := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
