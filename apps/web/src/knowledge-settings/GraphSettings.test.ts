@@ -75,3 +75,8 @@ test('renders Vue-aligned graph fields, state feedback, and embedded layout hook
     assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 });
+
+test('hides empty entity and relation collections like Vue', () => {
+  assert.match(source, /local\.nodes\.length > 0/);
+  assert.match(source, /local\.relations\.length > 0/);
+});
