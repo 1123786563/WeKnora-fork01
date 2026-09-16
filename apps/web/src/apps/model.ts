@@ -1,5 +1,13 @@
 export type AppRow = Record<string, unknown>;
 
+export function actionControls(state: unknown, canDrive: boolean): { approve: boolean; execute: boolean } {
+  return { approve: canDrive && state === 'awaiting_approval', execute: canDrive && state === 'authorized' };
+}
+
+export function authorizationStatus(state: unknown): { poll: boolean } {
+  return { poll: state === 'pending' || state === 'authorizing' || state === 'verifying' };
+}
+
 function object(value: unknown): AppRow {
   return value && typeof value === 'object' ? value as AppRow : {};
 }
