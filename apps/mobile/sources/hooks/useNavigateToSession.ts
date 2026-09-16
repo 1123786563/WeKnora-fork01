@@ -8,7 +8,24 @@ import { trackSessionSwitched } from '@/track';
 import { perfMark } from '@/utils/perfLog';
 import { isRunningOnMac } from '@/utils/platform';
 
-export interface ProductSessionNavigation { spaceId: string; agentId: string; targetId: string; workspaceRef: string; resourceUserId: string; resourceTenantId: string; }
+export interface ProductSessionNavigation { spaceId: string; agentId: string; targetId: string; workspaceRef: string; resourceUserId: string; resourceTenantId: string; resourceSessionId?: string; runId?: string; }
+
+/** Trusted producer used by product workbench/list/notification adapters. */
+export function createProductSessionNavigation(input: {
+    sessionId: string;
+    spaceId: string;
+    agentId: string;
+    targetId: string;
+    workspaceRef: string;
+    userId: string;
+    tenantId: string;
+    runId?: string;
+}): ProductSessionNavigation {
+    for (const [name, value] of Object.entries(input)) {
+        if (name !== 'runId' && (typeof value !== 'string' || value.trim() === '')) throw new Error(`PRODUCT_SESSION_${name.toUpperCase()}_REQUIRED`);
+    }
+    return { spaceId: input.spaceId, agentId: input.agentId, targetId: input.targetId, workspaceRef: input.workspaceRef, resourceUserId: input.userId, resourceTenantId: input.tenantId, resourceSessionId: input.sessionId, ...(input.runId ? { runId: input.runId } : {}) };
+}
 
 function sessionHref(sessionId: string, selection?: ProductSessionNavigation): `/session/${string}` {
     const path = `/session/${encodeURIComponent(sessionId)}` as `/session/${string}`;
@@ -40,21 +57,21 @@ export function prefetchSession(router: Router, sessionId: string) {
     }
 }
 
-export function navigateToSession(router: Router, sessionId: string) {
+export function navigateToSession(router: Router, sessionId: string, product?: ProductSessionNavigation) {
     perfMark(`session-open:${sessionId}`);
     const session = storage.getState().sessions[sessionId];
     if (session) {
         trackSessionSwitched(session);
     }
 
-    const selection = productSelection(session);
+    const selection = product ?? productSelection(session);
     router.push(sessionHref(sessionId, selection));
 }
 
 export function useNavigateToSession() {
     const router = useRouter();
-    return useCallback((sessionId: string) => {
-        navigateToSession(router, sessionId);
+    return useCallback((sessionId: string, product?: ProductSessionNavigation) => {
+        navigateToSession(router, sessionId, product);
     }, [router]);
 }
 

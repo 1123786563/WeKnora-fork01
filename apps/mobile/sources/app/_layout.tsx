@@ -9,6 +9,7 @@ import { useColorScheme } from 'react-native';
 import { createMobileHost, MobileHostProvider, useMobileHost, useSetMobileHost } from '@/weknora/platform/host';
 import { ProductAuthProvider, useProductAuth } from '@/weknora/auth/session';
 import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
+import { registerNativeExecutionStorage } from '@/weknora/platform/native-execution-storage';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -45,6 +46,7 @@ function ProductHostBootstrap() {
   const current = useMobileHost();
   const setHost = useSetMobileHost();
   const [restoring, setRestoring] = React.useState(!current);
+  React.useEffect(() => registerNativeExecutionStorage(), []);
   React.useEffect(() => {
     if (current) { setRestoring(false); return; }
     nativeOriginStorage.read().then((origin) => {
