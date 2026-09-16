@@ -117,6 +117,26 @@ test('product VM consumes W09 online events from the projection watermark', asyn
   assert.equal(model.messages[0]?.text, 'hi there');
 });
 
+test('commits online events before projecting them when durable storage is provided', async () => {
+  const committed: number[] = [];
+  let emit!: (event: ExecutionEvent) => void;
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'r1', status: 'running' }),
+    lookup: async () => ({ state: 'admitted' as const, run_id: 'run-1' }),
+    command: async () => ({}),
+    snapshot: async () => ({ execution: { schema_version: 1 as const, run_id: 'run-1', session_id: 's1', revision: 1, driver: 'platform' as const, run_status: 'running' as const, execution_status: 'running', settlement_status: 'reserved', seq: 0, capabilities: {} }, watermark: 0, events: [] }),
+    stream: async (_runID: string, _cursor: string | undefined, onEvent: (event: ExecutionEvent) => void) => { emit = onEvent; },
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any;
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions, projection: { load: async () => ({ messages: [], pendingInteractions: [], execution: { runID: 'run-1', requestID: 'r1', status: 'running' }, watermark: 0 }) }, eventStorage: { read: async () => [], commit: async (event) => { committed.push(event.seq); } } });
+  await model.send!.submit('hello', 'r1');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  emit({ schema_version: 1, run_id: 'run-1', attempt_id: 'a1', seq: 1, type: 'execution.succeeded', occurred_at: '2026-09-16T00:00:01Z', payload: { status: 'succeeded' } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(committed, [1]);
+  assert.equal(model.execution?.status, 'succeeded');
+});
+
 test('cancel and steer fence late responses after a scope switch', async () => {
   let generation = 1;
   let resolve!: () => void;

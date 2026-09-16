@@ -15,8 +15,8 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function blocks(value: unknown, fallback?: string) {
-  if (!Array.isArray(value)) return fallback === undefined ? undefined : [{ kind: 'text' as const, text: fallback }];
+function blocks(value: unknown, fallback?: string, fallbackID?: string) {
+  if (!Array.isArray(value)) return fallback === undefined ? undefined : [{ id: fallbackID, kind: 'text' as const, text: fallback }];
   const result = value.flatMap((item, index): Array<{ id: string; kind: 'text' | 'tool' | 'thinking'; text: string }> => {
     if (!item || typeof item !== 'object') return [];
     const row = item as Record<string, unknown>;
@@ -29,6 +29,7 @@ function blocks(value: unknown, fallback?: string) {
 
 interface ProjectedMessage extends ConversationMessage {
   delta?: boolean;
+  fallbackBlock?: boolean;
 }
 
 function eventMessage(event: ExecutionEvent): ProjectedMessage | undefined {
@@ -45,7 +46,8 @@ function eventMessage(event: ExecutionEvent): ProjectedMessage | undefined {
     ?? (!kind.includes('delta') ? `${event.run_id}:message:${event.seq}` : undefined);
   if (!messageID) return undefined;
   const content = text(row.text) ?? text(row.content) ?? text(payload.delta) ?? text(payload.output);
-  const messageBlocks = blocks(row.blocks ?? payload.blocks, content);
+  const hasExplicitBlocks = Array.isArray(row.blocks ?? payload.blocks);
+  const messageBlocks = blocks(row.blocks ?? payload.blocks, content, messageID);
   if (messageBlocks === undefined || (content === undefined && messageBlocks.length === 0)) return undefined;
   return {
     id: messageID,
@@ -55,6 +57,7 @@ function eventMessage(event: ExecutionEvent): ProjectedMessage | undefined {
     ...(text(row.agent_id) ? { agentID: row.agent_id as string } : {}),
     createdAt: event.occurred_at,
     delta: kind.includes('delta'),
+    fallbackBlock: !hasExplicitBlocks,
   };
 }
 
@@ -65,9 +68,23 @@ function mergeMessage(previous: ConversationMessage | undefined, incoming: Proje
   }
   const incomingBlocks = incoming.blocks ?? [];
   const previousBlocks = previous.blocks ?? [];
+  if (incoming.delta && incoming.fallbackBlock && incomingBlocks.length === 1) {
+    const lastText = [...previousBlocks].reverse().find((block) => block.kind === 'text');
+    const fallback = incomingBlocks[0];
+    if (lastText && fallback) {
+      return {
+        ...previous,
+        text: previous.text + incoming.text,
+        blocks: previousBlocks.map((block) => block === lastText ? { ...block, text: block.text + fallback.text } : block),
+      };
+    }
+  }
   const blockMap = new Map(previousBlocks.map((block) => [block.id ?? `${block.kind}:0`, block]));
   for (const [index, block] of incomingBlocks.entries()) {
     const key = block.id ?? `${block.kind}:${index}`;
+    // A common SSE text.delta omits blocks. Its fallback block is keyed by the
+    // stable message identity, so append to the existing text entity instead
+    // of creating one block per delta.
     const old = blockMap.get(key);
     if (!old) blockMap.set(key, block);
     else if (incoming.delta) blockMap.set(key, { ...old, text: old.text + block.text });
@@ -102,8 +119,24 @@ function eventPending(event: ExecutionEvent): PendingInteraction | undefined {
   const row = value as Record<string, unknown>;
   const id = text(row.id) ?? text(row.interaction_id);
   if (!id) return undefined;
-  const status = row.status === 'approved' || row.status === 'rejected' || row.status === 'expired' ? row.status : 'pending';
+  const eventStatus = event.type.toLowerCase();
+  const status = row.status === 'approved' || row.status === 'rejected' || row.status === 'expired'
+    ? row.status
+    : eventStatus.includes('reject') ? 'rejected'
+      : eventStatus.includes('expire') ? 'expired'
+        : eventStatus.includes('resolve') || eventStatus.includes('approve') ? 'approved' : 'pending';
   return { id, kind: row.kind === 'question' || row.kind === 'permission' ? row.kind : 'approval', status, label: text(row.label) ?? text(row.name) ?? id, ...(text(row.reason) ? { reason: row.reason as string } : {}), ...(typeof row.revision === 'number' ? { revision: row.revision } : {}) };
+}
+
+function eventExecutionStatus(event: ExecutionEvent): string | undefined {
+  const kind = event.type.toLowerCase();
+  const payloadStatus = typeof event.payload.status === 'string' ? event.payload.status : undefined;
+  if (payloadStatus) return payloadStatus;
+  if (kind.includes('succeed') || kind.includes('complete')) return 'succeeded';
+  if (kind.includes('fail') || kind.includes('error')) return 'failed';
+  if (kind.includes('cancel')) return 'canceled';
+  if (kind.includes('start') || kind.includes('running')) return 'running';
+  return undefined;
 }
 
 export function projectExecutionSnapshot(snapshot: ExecutionSnapshot, storedEvents: readonly ExecutionEvent[] = []): ProductConversationProjection {
@@ -121,10 +154,12 @@ export function projectExecutionEvent(projection: ProductConversationProjection,
   const pending = eventPending(event);
   const pendingByID = new Map(projection.pendingInteractions.map((item) => [item.id, item]));
   if (pending) pendingByID.set(pending.id, pending);
+  const status = eventExecutionStatus(event);
   return {
     ...projection,
     messages: mergeEventMessages(projection.messages, [event]),
     pendingInteractions: [...pendingByID.values()],
+    execution: status && projection.execution ? { ...projection.execution, status } : projection.execution,
     watermark: Math.max(projection.watermark, event.seq),
     eventSeqs: [...(projection.eventSeqs ?? []), event.seq],
   };

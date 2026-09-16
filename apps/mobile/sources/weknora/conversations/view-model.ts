@@ -84,6 +84,11 @@ export interface ConversationProjectionSource {
   load(runID: string, signal?: AbortSignal): Promise<ProductConversationProjection>;
 }
 
+export interface ConversationEventStorage {
+  read(runID: string, fromSeq?: number): Promise<ExecutionEvent[]>;
+  commit(event: ExecutionEvent): Promise<void>;
+}
+
 export interface ConversationViewModel {
   scope: ConversationScope;
   messages: ConversationMessage[];
@@ -123,6 +128,7 @@ export function createProductConversationViewModel(input: {
   pendingInteractions?: PendingInteraction[];
   requestStorage?: ConversationRequestStorage;
   projection?: ConversationProjectionSource;
+  eventStorage?: ConversationEventStorage;
 }): ConversationViewModel {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
@@ -135,6 +141,9 @@ export function createProductConversationViewModel(input: {
     model.execution = execution;
     notify();
   };
+  const projectExecutionSnapshotFromStored = (base: ProductConversationProjection, events: readonly ExecutionEvent[]) => (
+    [...events].sort((a, b) => a.seq - b.seq).reduce((current, event) => projectExecutionEvent(current, event), base)
+  );
   const persistExecution = async (execution: ConversationExecution) => {
     if (!input.requestStorage) return;
     await input.requestStorage.set({ requestID: execution.requestID, runID: execution.runID || undefined, status: execution.status, ...(execution.reason ? { reason: execution.reason } : {}) });
@@ -142,9 +151,10 @@ export function createProductConversationViewModel(input: {
   const loadProjection = async (runID: string, signal?: AbortSignal) => {
     if (!input.projection) return;
     const captured = input.scope.capture();
+    const storedEvents = input.eventStorage ? await input.eventStorage.read(runID) : [];
     const projection = await input.projection.load(runID, signal ?? captured.signal);
     if (!input.scope.accept(captured.generation)) return;
-    projectionState = projection;
+    projectionState = storedEvents.length > 0 ? projectExecutionSnapshotFromStored(projection, storedEvents) : projection;
     model.messages = projection.messages;
     model.pendingInteractions = projection.pendingInteractions;
     if (projection.execution) {
@@ -153,8 +163,21 @@ export function createProductConversationViewModel(input: {
     notify();
     if (input.executions.stream && !streamingRuns.has(runID)) {
       streamingRuns.add(runID);
-      void input.executions.stream(runID, String(projection.watermark), (event) => {
+      void input.executions.stream(runID, String(projectionState?.watermark ?? projection.watermark), (event) => {
         if (!input.scope.accept(captured.generation)) return;
+        if (input.eventStorage) {
+          void input.eventStorage.commit(event).then(() => {
+            if (!input.scope.accept(captured.generation)) return;
+            projectionState = projectExecutionEvent(projectionState ?? projection, event);
+            model.messages = projectionState.messages;
+            model.pendingInteractions = projectionState.pendingInteractions;
+            model.execution = projectionState.execution
+              ? { ...projectionState.execution, requestID: model.execution?.requestID ?? '' }
+              : model.execution;
+            notify();
+          }).catch(() => undefined);
+          return;
+        }
         projectionState = projectExecutionEvent(projectionState ?? projection, event);
         model.messages = projectionState.messages;
         model.pendingInteractions = projectionState.pendingInteractions;

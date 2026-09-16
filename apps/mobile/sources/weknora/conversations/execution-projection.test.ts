@@ -43,3 +43,22 @@ test('merges local W09 events with server snapshot exactly once by sequence', ()
   const result = projectExecutionSnapshot({ execution: base, watermark: 1, events: [duplicate] }, [duplicate]);
   assert.equal(result.messages.length, 1);
 });
+
+test('keeps one stable text block when a delta omits blocks', () => {
+  const snapshot = projectExecutionSnapshot({ execution: base, watermark: 1, events: [
+    event(1, 'message.created', { message: { id: 'm1', blocks: [{ id: 'b1', kind: 'text', text: 'hi' }] } }),
+  ] });
+  const next = projectExecutionEvent(snapshot, event(2, 'text.delta', { message_id: 'm1', delta: ' there' }));
+  assert.equal(next.messages[0]?.blocks?.length, 1);
+  assert.equal(next.messages[0]?.blocks?.[0]?.text, 'hi there');
+});
+
+test('projects terminal execution and resolved approval states from events', () => {
+  const snapshot = projectExecutionSnapshot({ execution: base, watermark: 1, events: [
+    event(1, 'approval.pending', { pending_interaction: { id: 'p1', label: 'Approve', revision: 1 } }),
+  ] });
+  const resolved = projectExecutionEvent(snapshot, event(2, 'approval.resolved', { interaction_id: 'p1', status: 'approved' }));
+  const terminal = projectExecutionEvent(resolved, event(3, 'execution.succeeded', { status: 'succeeded' }));
+  assert.equal(terminal.pendingInteractions[0]?.status, 'approved');
+  assert.equal(terminal.execution?.status, 'succeeded');
+});
