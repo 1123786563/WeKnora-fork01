@@ -28,13 +28,13 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 	seedWorkbenchMigrationRows(t, db)
 	snapshotBefore := snapshotWorkbenchRows(t, db)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 15, version)
+	require.Equal(t, 54, version)
 	require.False(t, dirty)
 
 	chdirAndRestore(t, repoRoot)
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 16, version)
+	require.Equal(t, 56, version)
 	require.False(t, dirty)
 
 	assertWorkbenchChildSummary(t, db)
@@ -55,17 +55,17 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 }
 
 // TestWorkbenchSQLiteURLAndLaterMigrationTransaction covers both public SQLite
-// entry forms and makes a synthetic v17 fail after a write. v16 must use its
-// explicit transaction, while v17 must regain the standard file transaction.
+// entry forms and makes a synthetic v57 fail after a write. v55 must use its
+// explicit transaction, while v56 and later migrations regain the standard file transaction.
 func TestWorkbenchSQLiteURLAndLaterMigrationTransaction(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	legacyRoot := copySQLiteMigrationsBeforeWorkbench(t, repoRoot)
-	migrationRoot := copySQLiteMigrationsWithV17(t, repoRoot, `
-CREATE TABLE workbench_v17_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
-INSERT INTO workbench_v17_marker (id, value) VALUES (1, 'must-roll-back');
+	migrationRoot := copySQLiteMigrationsWithV57(t, repoRoot, `
+CREATE TABLE workbench_v57_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO workbench_v57_marker (id, value) VALUES (1, 'must-roll-back');
 THIS IS NOT VALID SQL;
 `)
-	dbPath := filepath.Join(t.TempDir(), "transactional-v17.db")
+	dbPath := filepath.Join(t.TempDir(), "transactional-v57.db")
 
 	chdirAndRestore(t, legacyRoot)
 	require.NoError(t, RunMigrations("sqlite3://"+dbPath))
@@ -77,24 +77,24 @@ THIS IS NOT VALID SQL;
 	require.Error(t, err)
 	assertWorkbenchChildSummary(t, db)
 	var markerCount int
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_v17_marker'").Scan(&markerCount))
-	require.Zero(t, markerCount, "v17 must regain the default transaction wrapper after v16")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_v57_marker'").Scan(&markerCount))
+	require.Zero(t, markerCount, "v57 must regain the default transaction wrapper after v55")
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 17, version)
+	require.Equal(t, 57, version)
 	require.True(t, dirty)
 
-	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", "000017_workbench_v17.up.sql"), []byte(`
-CREATE TABLE workbench_v17_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
-INSERT INTO workbench_v17_marker (id, value) VALUES (1, 'recovered');
+	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", "000057_workbench_v57.up.sql"), []byte(`
+CREATE TABLE workbench_v57_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO workbench_v57_marker (id, value) VALUES (1, 'recovered');
 `), 0o600))
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://"+dbPath, MigrationOptions{
 		AutoRecoverDirty: true,
 		SQLiteDBPath:     dbPath,
 	}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 17, version)
+	require.Equal(t, 57, version)
 	require.False(t, dirty)
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v17_marker WHERE value = 'recovered'").Scan(&markerCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v57_marker WHERE value = 'recovered'").Scan(&markerCount))
 	require.Equal(t, 1, markerCount)
 }
 
@@ -118,15 +118,15 @@ func TestWorkbenchSQLiteV16FailureRollsBackAndRecovers(t *testing.T) {
 	chdirAndRestore(t, brokenRoot)
 	require.Error(t, RunMigrations("sqlite3://"+dbPath))
 	assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
-	require.False(t, sqliteTableExists(t, db, "agent_runs_rebuilt"), "failed v16 must not leave the rebuild table behind")
+	require.False(t, sqliteTableExists(t, db, "agent_runs_rebuilt"), "failed v55 must not leave the rebuild table behind")
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 16, version)
+	require.Equal(t, 55, version)
 	require.True(t, dirty)
 
 	require.NoError(t, os.WriteFile(brokenUpPath, validUp, 0o600))
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://"+dbPath, MigrationOptions{AutoRecoverDirty: true}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 16, version)
+	require.Equal(t, 55, version)
 	require.False(t, dirty)
 	assertWorkbenchChildSummary(t, db)
 }
@@ -139,7 +139,7 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		require.NoError(t, RunMigrations("sqlite3://"+dbPath))
 		db := openSQLiteDB(t, dbPath)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 16, version)
+		require.Equal(t, 56, version)
 		require.False(t, dirty)
 	})
 
@@ -158,19 +158,19 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 16, version)
+		require.Equal(t, 56, version)
 		require.False(t, dirty)
 
 		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -1))
 		version, dirty = sqliteMigrationState(t, db)
-		require.Equal(t, 15, version)
+		require.Equal(t, 55, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
-		require.False(t, sqliteColumnExists(t, db, "agent_runs", "driver"))
+		require.True(t, sqliteColumnExists(t, db, "agent_runs", "driver"), "W04 down must leave the accepted W02/W03 run schema intact")
 
 		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 1))
 		version, dirty = sqliteMigrationState(t, db)
-		require.Equal(t, 16, version)
+		require.Equal(t, 56, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
@@ -186,7 +186,7 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 	db := openSQLiteDB(t, dbPath)
 	var version, dirty int
 	require.NoError(t, db.QueryRow("SELECT version, dirty FROM custom_schema_migrations").Scan(&version, &dirty))
-	require.Equal(t, 16, version)
+	require.Equal(t, 56, version)
 	require.Zero(t, dirty)
 	var defaultTableCount int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").Scan(&defaultTableCount))
@@ -224,7 +224,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000055_") {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
@@ -234,7 +234,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	return dest
 }
 
-func copySQLiteMigrationsWithV17(t *testing.T, repoRoot, v17up string) string {
+func copySQLiteMigrationsWithV57(t *testing.T, repoRoot, v57up string) string {
 	t.Helper()
 	dest := t.TempDir()
 	srcDir := filepath.Join(repoRoot, "migrations", "sqlite")
@@ -250,8 +250,8 @@ func copySQLiteMigrationsWithV17(t *testing.T, repoRoot, v17up string) string {
 		require.NoError(t, readErr)
 		require.NoError(t, os.WriteFile(filepath.Join(destDir, entry.Name()), contents, 0o600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000017_workbench_v17.up.sql"), []byte(v17up), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000017_workbench_v17.down.sql"), []byte("DROP TABLE workbench_v17_marker;\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000057_workbench_v57.up.sql"), []byte(v57up), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000057_workbench_v57.down.sql"), []byte("DROP TABLE workbench_v57_marker;\n"), 0o600))
 	return dest
 }
 
