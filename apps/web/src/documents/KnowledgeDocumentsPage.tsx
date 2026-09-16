@@ -58,8 +58,10 @@ import {
   type UploadNodeExtractState,
 } from "./upload-pipeline.ts";
 import {
+  classifyKnowledgeBaseMetadataError,
   kbTypeRedirectPath,
   resolveKBSurfaceTabs,
+  type KnowledgeBaseMetadataError,
   type KBSurfaceKB,
   type KBSurfaceMe,
 } from "../knowledge/permissions.ts";
@@ -2060,6 +2062,8 @@ export function KnowledgeDocumentsPage({
   const [tagHasMore, setTagHasMore] = useState(false);
   const [tagLoadingMore, setTagLoadingMore] = useState(false);
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
+  const [kbMetaError, setKbMetaError] = useState<KnowledgeBaseMetadataError | null>(null);
+  const [kbMetaAttempt, setKbMetaAttempt] = useState(0);
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   // Vue keeps upload/mutation controls behind the resolved KB capability;
   // while the KB/auth requests are pending, render the viewer-safe state.
@@ -2251,6 +2255,7 @@ export function KnowledgeDocumentsPage({
       .then(([kb, me, list]) => {
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
+        setKbMetaError(null);
         setMe(me as KBSurfaceMe | null);
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
@@ -2264,13 +2269,17 @@ export function KnowledgeDocumentsPage({
         const redirect = kbTypeRedirectPath(kb as KBSurfaceKB);
         if (redirect) window.location.replace(redirect);
       })
-      .catch(() => {
-        if (active) { setKbMeta(null); setCanContribute(false); }
+      .catch((error: unknown) => {
+        if (active) {
+          setKbMeta(null);
+          setCanContribute(false);
+          setKbMetaError(classifyKnowledgeBaseMetadataError(error, t("knowledgeBase.getInfoFailed")));
+        }
       });
     return () => {
       active = false;
     };
-  }, [client, knowledgeBaseId]);
+  }, [client, knowledgeBaseId, kbMetaAttempt, t]);
 
   useEffect(() => {
     let active = true;
@@ -3242,6 +3251,14 @@ export function KnowledgeDocumentsPage({
             canManage={canContribute}
           />
           <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
+          {kbMetaError ? (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <Status tone="error">{kbMetaError.kind === "forbidden" ? `${kbMetaError.message} (403)` : kbMetaError.message}</Status>
+              <Button type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
+                {t("common.retry")}
+              </Button>
+            </div>
+          ) : null}
           <ParserHint
             t={t}
             types={unsupportedFileTypes}

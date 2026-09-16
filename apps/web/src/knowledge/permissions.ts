@@ -27,6 +27,23 @@ export interface KBPermissions {
   viewerOnly: boolean;
 }
 
+export interface KnowledgeBaseMetadataError {
+  kind: 'forbidden' | 'error';
+  message: string;
+}
+
+/** Preserve a failed metadata request as an error state, not as viewer access. */
+export function classifyKnowledgeBaseMetadataError(error: unknown, fallback = 'Unable to load knowledge base'): KnowledgeBaseMetadataError {
+  const candidate = error as { status?: unknown; code?: unknown; message?: unknown };
+  const status = candidate?.status;
+  const code = typeof candidate?.code === 'string' ? candidate.code.toLowerCase() : '';
+  const forbidden = status === 403 || code === '403' || code === 'http_403' || code.includes('forbidden');
+  return {
+    kind: forbidden ? 'forbidden' : 'error',
+    message: typeof candidate?.message === 'string' && candidate.message.trim() ? candidate.message : fallback,
+  };
+}
+
 function isSystemAdmin(me: KBSurfaceMe): boolean {
   if (me.user?.role === 'system_admin' || me.user?.role === 'admin') return true;
   if (me.user?.is_superuser === true) return true;
@@ -40,12 +57,33 @@ function isCreator(kb: KBSurfaceKB, me: KBSurfaceMe): boolean {
     || kb.created_by !== undefined && String(kb.created_by) === String(userId);
 }
 
+function explicitKBPermission(kb: KBSurfaceKB): 'owner' | 'admin' | 'editor' | 'viewer' | undefined {
+  const value = kb.my_permission ?? kb.permission;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return ['owner', 'admin', 'editor', 'viewer'].includes(normalized)
+    ? normalized as 'owner' | 'admin' | 'editor' | 'viewer'
+    : undefined;
+}
+
+function membershipAllowsWrite(me: KBSurfaceMe): boolean {
+  return Array.isArray(me.memberships) && me.memberships.some((membership) => {
+    const role = typeof membership?.role === 'string' ? membership.role.toLowerCase() : '';
+    return role === 'admin' || role === 'contributor' || role === 'editor';
+  });
+}
+
 /** Viewer-only unless the user is a system admin or the KB creator. */
 export function computeKBPermissions(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): KBPermissions {
-  // A tenant role is not KB-specific capability evidence. Vue delegates this
-  // branch to orgStore.canEditKB(kbId), so do not grant access from a bare
-  // contributor membership when the KB record/share grant is unavailable.
-  const canContribute = !!me && (isSystemAdmin(me) || isCreator(kb, me));
+  const sharePermission = explicitKBPermission(kb);
+  const canContribute = !!me && (
+    isSystemAdmin(me)
+    || isCreator(kb, me)
+    || (sharePermission !== 'viewer' && (
+      sharePermission === 'owner' || sharePermission === 'admin' || sharePermission === 'editor'
+      || (!sharePermission && membershipAllowsWrite(me))
+    ))
+  );
   return { canContribute, viewerOnly: !canContribute };
 }
 

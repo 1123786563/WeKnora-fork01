@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs } from './permissions.ts';
+import { classifyKnowledgeBaseMetadataError, computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs } from './permissions.ts';
 
 test('viewer role hides editing controls for a shared KB', () => {
   const kb = { id: 'kb-1', user_id: 'someone-else' };
@@ -16,11 +16,26 @@ test('creator, system admin and contributor roles keep editing', () => {
   assert.equal(computeKBPermissions(kb, { user: { id: 'u-9', role: 'admin' } }).canContribute, true);
 });
 
-test('tenant contributor role alone does not edit another users KB', () => {
+test('tenant admin and contributor memberships can use an independently opened home-tenant KB', () => {
   assert.deepEqual(computeKBPermissions(
     { id: 'kb-1', user_id: 'owner-1' },
     { user: { id: 'u-9' }, memberships: [{ role: 'contributor' }] },
-  ), { canContribute: false, viewerOnly: true });
+  ), { canContribute: true, viewerOnly: false });
+  assert.deepEqual(computeKBPermissions(
+    { id: 'kb-1', user_id: 'owner-1' },
+    { user: { id: 'u-9' }, memberships: [{ role: 'admin' }] },
+  ), { canContribute: true, viewerOnly: false });
+});
+
+test('classifies KB metadata 403 separately from other metadata failures', () => {
+  assert.deepEqual(classifyKnowledgeBaseMetadataError({ status: 403, message: 'forbidden' }), {
+    kind: 'forbidden',
+    message: 'forbidden',
+  });
+  assert.deepEqual(classifyKnowledgeBaseMetadataError(new Error('network unavailable')), {
+    kind: 'error',
+    message: 'network unavailable',
+  });
 });
 
 test('missing or incomplete capability evidence fails closed', () => {

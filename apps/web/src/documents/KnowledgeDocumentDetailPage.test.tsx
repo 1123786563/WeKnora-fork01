@@ -218,6 +218,22 @@ test('viewer detail keeps Vue download affordances hidden until permission grant
   assert.equal(Array.from(container.querySelectorAll('button')).some((button) => button.textContent?.includes('下载')), false, 'viewer cannot see the original-file download action');
 });
 
+test('independent document detail grants tenant admin and contributor mutation affordances', async () => {
+  for (const role of ['admin', 'contributor']) {
+    const container = await mountDetail(detailClient(async () => ({
+      id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Tenant Guide.pdf', source: 'file', file_type: 'pdf', parse_status: 'completed',
+    }), role, 'another-user'));
+    await act(async () => {});
+    await act(async () => {});
+    await act(async () => { await Promise.resolve(); });
+    assert.ok(Array.from(container.ownerDocument.body.querySelectorAll('button')).some((button) => /下载|download/i.test(button.getAttribute('aria-label') ?? button.textContent ?? '')), `${role} can download from the independent detail route`);
+    assert.ok(Array.from(container.ownerDocument.body.querySelectorAll('button')).some((button) => button.textContent === '编辑'), `${role} can edit document details`);
+    mountedRoot?.unmount();
+    mountedRoot = undefined;
+    document.body.replaceChildren();
+  }
+});
+
 test('detail route renders the Vue right drawer and real chunk/history controls for editors', async () => {
   const container = await mountDetail(detailClient(async () => ({
     id: 'doc-1',
