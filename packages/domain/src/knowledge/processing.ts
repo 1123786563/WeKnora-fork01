@@ -32,8 +32,7 @@ export function isKnowledgeProcessingActive(status: string | undefined | null): 
   return status === 'pending' || status === 'processing' || status === 'finalizing';
 }
 
-/** Polling rule (strict mode, Vue gracePoll=false): poll only while the
- *  document parse_status itself is non-terminal. */
+/** Strict polling rule used by background consumers. */
 export function shouldPollKnowledgeSpans(status: string | undefined | null): boolean {
   return isKnowledgeProcessingActive(status);
 }
@@ -56,6 +55,31 @@ export interface KnowledgeSpansView {
   current_stage?: unknown;
   trace?: KnowledgeSpanNode | null;
   [key: string]: unknown;
+}
+
+/** Keep Vue's visible-timeline quiesce grace for delayed postprocess spans. */
+export function shouldGracePollKnowledgeSpans(
+  spans: KnowledgeSpansView,
+  now = Date.now(),
+  graceMs = 2 * 60 * 1000,
+): boolean {
+  if (shouldPollKnowledgeSpans(typeof spans.parse_status === 'string' ? spans.parse_status : undefined)) return true;
+
+  const latestActivity = (node: KnowledgeSpanNode | null | undefined): number => {
+    if (!node || typeof node !== 'object') return 0;
+    const timestamps = [node.updated_at, node.finished_at, node.started_at, node.start_time, node.created_at];
+    let latest = 0;
+    for (const value of timestamps) {
+      if (typeof value !== 'string') continue;
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) latest = Math.max(latest, parsed);
+    }
+    for (const child of node.children ?? []) latest = Math.max(latest, latestActivity(child));
+    return latest;
+  };
+
+  const activity = latestActivity(spans.trace);
+  return activity > 0 && now >= activity && now - activity < graceMs;
 }
 
 export type KnowledgeTimelineStepState = 'pending' | 'running' | 'done' | 'failed';

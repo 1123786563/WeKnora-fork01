@@ -1,15 +1,15 @@
 import {
   buildKnowledgeTimeline,
-  shouldPollKnowledgeSpans,
+  shouldGracePollKnowledgeSpans,
   type KnowledgeSpansView,
   type KnowledgeTimelineStep,
 } from '@weknora/domain/knowledge/processing';
 
 // Minimal port of the polling core of Vue knowledge-processing-timeline.vue:
 // Vue fetches immediately, then keeps ONE interval for the component's whole
-// lifetime. The tick callback decides whether to fetch (strict mode — poll
-// only while parse_status itself is non-terminal); only explicit cleanup
-// clears the interval.
+// lifetime. The tick callback decides whether to fetch, including Vue's
+// bounded grace window for recently active terminal traces; only explicit
+// cleanup clears the interval.
 
 export interface ProcessingTimelineOptions {
   documentId: string;
@@ -42,14 +42,14 @@ export function startProcessingTimeline(options: ProcessingTimelineOptions): Pro
 
   async function tick(): Promise<void> {
     if (stopped || inFlight) return;
-    if (lastSpans && !shouldPollKnowledgeSpans(typeof lastSpans.parse_status === 'string' ? lastSpans.parse_status : undefined)) return;
+    if (lastSpans && !shouldGracePollKnowledgeSpans(lastSpans)) return;
     inFlight = true;
     try {
       const spans = await options.getSpans(options.documentId);
       if (stopped) return;
       lastSpans = spans;
       options.onUpdate?.(buildKnowledgeTimeline(spans), spans);
-      if (!shouldPollKnowledgeSpans(typeof spans.parse_status === 'string' ? spans.parse_status : undefined)) {
+      if (!shouldGracePollKnowledgeSpans(spans)) {
         if (!terminalReported) {
           terminalReported = true;
           options.onStop?.(spans);

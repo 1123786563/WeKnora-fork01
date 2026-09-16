@@ -99,3 +99,28 @@ test('polling errors are surfaced without killing the interval', async () => {
   assert.equal(errors.length, 1, 'recovered on the next tick');
   subscription.stop();
 });
+
+test('keeps polling briefly after completion when the trace was recently active', async () => {
+  const fake = fakeTimer();
+  let fetchCount = 0;
+  const subscription = startProcessingTimeline({
+    documentId: 'doc-4',
+    intervalMs: 2000,
+    getSpans: async () => {
+      fetchCount += 1;
+      return {
+        parse_status: 'completed',
+        trace: {
+          name: 'pipeline',
+          finished_at: new Date().toISOString(),
+          children: [{ name: 'postprocess', status: 'running' }],
+        },
+      };
+    },
+    timer: fake.timer,
+  });
+  await flushTimelineTick();
+  await fake.tick();
+  assert.equal(fetchCount, 2, 'Vue grace-polls recently active completed traces');
+  subscription.stop();
+});
