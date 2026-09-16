@@ -30,6 +30,7 @@ type StartCommand struct {
 	Prompt       string `json:"prompt"`
 	Provider     string `json:"provider"`
 	Epoch        int64  `json:"epoch"`
+	PayloadHash  string `json:"payloadHash"`
 	ExpiresAt    int64  `json:"expiresAt"`
 }
 

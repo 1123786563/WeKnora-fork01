@@ -36,6 +36,9 @@ type RemoteProvider = agentruntime.RemoteProvider
 type RemoteDispatcher interface {
 	Dispatch(context.Context, agentruntime.RunKey, string, string, string, time.Duration, int64, RemoteProvider) (string, error)
 }
+type FencedRemoteDispatcher interface {
+	DispatchFence(context.Context, agentruntime.Fence, string, string, time.Duration, RemoteProvider) (string, error)
+}
 
 func (c RemoteDispatchConfig) validate() error {
 	if c.Dispatcher == nil || c.Provider == nil || c.CommandID == nil {
@@ -247,9 +250,13 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	if w.remote != nil {
 		commandID, payloadHash := w.remote.CommandID(fence)
 		key := fence.RunKey
-		if _, dispatchErr := w.remote.Dispatcher.Dispatch(
-			renewCtx, key, commandID, payloadHash, fence.Owner, w.cfg.Lease, fence.Epoch, w.remote.Provider,
-		); dispatchErr != nil {
+		var dispatchErr error
+		if fenced, ok := w.remote.Dispatcher.(FencedRemoteDispatcher); ok {
+			_, dispatchErr = fenced.DispatchFence(renewCtx, fence, commandID, payloadHash, w.cfg.Lease, w.remote.Provider)
+		} else {
+			_, dispatchErr = w.remote.Dispatcher.Dispatch(renewCtx, key, commandID, payloadHash, fence.Owner, w.cfg.Lease, fence.Epoch, w.remote.Provider)
+		}
+		if dispatchErr != nil {
 			return
 		}
 	}

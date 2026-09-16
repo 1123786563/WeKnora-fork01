@@ -58,8 +58,9 @@ type RemoteCommandProvider interface {
 // Fence identifies a worker's exclusive, expiring claim on a run.
 type Fence struct {
 	RunKey
-	Owner string
-	Epoch int64
+	Owner                                    string
+	Epoch                                    int64
+	TargetID, WorkspaceRef, Prompt, Provider string
 }
 
 // Run is the durable execution query view.

@@ -43,7 +43,10 @@ func (p *paseoRemoteProvider) StartCommand(ctx context.Context, request agentrun
 	if request.CommandID == "" || request.Fence.RunID == "" || request.AttemptID == "" || request.TargetID == "" || request.WorkspaceRef == "" || request.Prompt == "" || request.Provider == "" || request.Fence.Epoch < 1 {
 		return "", errors.New("paseo remote provider requires a complete fenced command")
 	}
-	command := execution.StartCommand{CommandID: request.CommandID, RunID: request.Fence.RunID, AttemptID: request.AttemptID, TargetID: request.TargetID, WorkspaceRef: request.WorkspaceRef, Prompt: request.Prompt, Provider: request.Provider, Epoch: request.Fence.Epoch, ExpiresAt: time.Now().Add(30 * time.Second).UnixMilli()}
+	if request.PayloadHash == "" {
+		return "", errors.New("paseo remote provider requires payload hash")
+	}
+	command := execution.StartCommand{CommandID: request.CommandID, RunID: request.Fence.RunID, AttemptID: request.AttemptID, TargetID: request.TargetID, WorkspaceRef: request.WorkspaceRef, Prompt: request.Prompt, Provider: request.Provider, Epoch: request.Fence.Epoch, PayloadHash: request.PayloadHash, ExpiresAt: time.Now().Add(30 * time.Second).UnixMilli()}
 	admission := execution.AdmissionContext{ServiceIdentity: p.identity, Signature: execution.CommandSignature(command, p.signingSecret), AuthorizationVersion: 1, CommandHash: execution.CommandHash(command), TargetID: command.TargetID, WorkspaceRef: command.WorkspaceRef, WorkspaceTargetID: command.TargetID, Epoch: command.Epoch}
 	response, err := p.client.StartWithAdmission(ctx, command, admission)
 	if err != nil {

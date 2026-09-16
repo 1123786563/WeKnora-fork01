@@ -29,6 +29,15 @@ func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDis
 }
 
 func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
+	return d.dispatch(ctx, agentruntime.Fence{RunKey: key, Owner: worker, Epoch: epoch}, commandID, payloadHash, worker, lease, provider)
+}
+
+func (d *RemoteDispatcher) DispatchFence(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash string, lease time.Duration, provider RemoteProvider) (string, error) {
+	return d.dispatch(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
+}
+
+func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
+	key := fence.RunKey
 	if provider == nil {
 		return "", ErrProviderUnavailable
 	}
@@ -43,7 +52,10 @@ func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey
 		return "", repository.ErrDispatchBusy
 	}
 	var externalID string
-	request := agentruntime.RemoteStartRequest{Fence: agentruntime.Fence{RunKey: key, Epoch: epoch}, CommandID: commandID, PayloadHash: payloadHash, AttemptID: commandID}
+	if fence.TargetID == "" || fence.WorkspaceRef == "" || fence.Prompt == "" || fence.Provider == "" {
+		return "", fmt.Errorf("%w: fenced command context is incomplete", ErrProviderUnavailable)
+	}
+	request := agentruntime.RemoteStartRequest{Fence: fence, CommandID: commandID, PayloadHash: payloadHash, AttemptID: commandID, TargetID: fence.TargetID, WorkspaceRef: fence.WorkspaceRef, Prompt: fence.Prompt, Provider: fence.Provider}
 	commandProvider, ok := provider.(agentruntime.RemoteCommandProvider)
 	if !ok {
 		return "", fmt.Errorf("%w: provider does not support fenced commands", ErrProviderUnavailable)
