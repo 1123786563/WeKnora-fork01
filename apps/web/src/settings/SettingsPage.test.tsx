@@ -214,6 +214,22 @@ test('loading state uses localized shared copy without leaking the API domain', 
   assert.equal(text.includes('configuration'), false, 'no API domain leak');
 });
 
+test('ignores a stale section error after navigating to another section', async () => {
+  let rejectTenant!: (reason: Error) => void;
+  const staleTenant = new Promise<never>((_, reject) => { rejectTenant = reject; });
+  const container = await mountPage(makeClient({ tenant: staleTenant }), '?section=tenant');
+  const generalButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
+    .find((button) => button.textContent?.includes('常规设置'));
+  assert.ok(generalButton, 'the general settings navigation item renders');
+
+  await act(async () => generalButton?.click());
+  await act(async () => { rejectTenant(new Error('stale tenant failure')); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+
+  assert.equal(container.textContent?.includes('stale tenant failure'), false, 'a stale request cannot replace the current section state');
+  assert.ok(container.querySelector('[data-testid="general-preferences-panel"]'), 'the current section remains mounted');
+});
+
 test('settings navigation clears focus after switching sections like the Vue drawer', async () => {
   const container = await mountPage(makeClient(), '?section=general');
   const navigationButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))

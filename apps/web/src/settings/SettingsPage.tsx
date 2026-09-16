@@ -112,6 +112,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const mountedRef = useRef(false);
+  const loadGenerationRef = useRef(0);
   const section = settingsSectionMeta(selectedKey)!;
   const sectionSupported = (key: string) => {
     const integrationCapability = INTEGRATION_SECTIONS.find((item) => item.key === integrationTabForSection(key))?.capability;
@@ -122,16 +123,30 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const roleDenied = !roleAtLeast(role, section.minRole);
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
+    const isCurrentLoad = () => generation === loadGenerationRef.current;
     if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
     setLoading(true); setError(null); setNotice(null);
     try {
-      const next = await readSettingsSection(client, selectedKey, tenantId); setPayload(next);
+      const next = await readSettingsSection(client, selectedKey, tenantId);
+      if (!isCurrentLoad()) return;
+      setPayload(next);
       if (selectedKey === 'retrieval' || selectedKey === 'chathistory') {
-        try { setModels(await client.configuration.models.list()); } catch { setModels([]); }
+        try {
+          const nextModels = await client.configuration.models.list();
+          if (isCurrentLoad()) setModels(nextModels);
+        } catch {
+          if (isCurrentLoad()) setModels([]);
+        }
       }
     }
-    catch (reason) { setPayload(null); setError(errorText(reason, t('common.error'))); }
-    finally { setLoading(false); }
+    catch (reason) {
+      if (!isCurrentLoad()) return;
+      setPayload(null); setError(errorText(reason, t('common.error')));
+    }
+    finally {
+      if (isCurrentLoad()) setLoading(false);
+    }
   }
 
   useEffect(() => { void load(); }, [client, selectedKey, role]);
