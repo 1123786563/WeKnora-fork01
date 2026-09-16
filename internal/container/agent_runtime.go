@@ -34,6 +34,7 @@ func newAgentRuntime(
 	craftExecutor craft.Executor,
 	dispatch *repository.ExecutionDispatchStore,
 	provider workbenchservice.RemoteProvider,
+	usage *workbenchservice.RemoteUsageService,
 ) (*AgentRuntime, error) {
 	executor := func(ctx context.Context, fence agentruntime.Fence) error {
 		run := service.RegisteredGraphExecutor()
@@ -45,7 +46,7 @@ func newAgentRuntime(
 	var r *AgentRuntime
 	var err error
 	if provider != nil {
-		r, err = newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+		r, err = newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, usage)
 	} else {
 		r, err = NewAgentRuntime(cfg, store, executor)
 	}
@@ -193,7 +194,7 @@ func (r *AgentRuntime) SetRecoveryHook(hook func(context.Context, agentruntime.F
 }
 
 func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
-	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, executors...)
+	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, nil, executors...)
 }
 
 // NewAgentRuntimeWithRemoteProvider is the production assembly point for a
@@ -206,10 +207,10 @@ func NewAgentRuntimeWithRemoteProvider(
 	dispatch *repository.ExecutionDispatchStore,
 	provider workbenchservice.RemoteProvider,
 ) (*AgentRuntime, error) {
-	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, nil)
 }
 
-func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
+func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, usage *workbenchservice.RemoteUsageService, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
 	if store == nil {
 		return nil, errors.New("agent run store is required")
 	}
@@ -220,7 +221,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
-	if r.Enabled && provider == nil && len(executors) == 0 {
+	if r.RecoveryEnabled() && provider == nil && len(executors) == 0 {
 		return nil, errors.New("durable agent recovery requires a graph executor or a configured remote provider")
 	}
 	c := service.DefaultWorkerConfig()
@@ -246,6 +247,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		execute = executors[0]
 	}
 	var worker *service.AgentRunWorker
+	var err error
 	if provider != nil {
 		if dispatch == nil {
 			return nil, errors.New("remote dispatch store is required when a provider is configured")
@@ -255,8 +257,12 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		remoteExecute := func(context.Context, agentruntime.Fence) error {
 			return errors.New("trpc graph executor is not wired")
 		}
+		remoteDispatcher := workbenchservice.NewRemoteDispatcher(dispatch)
+		if usage != nil {
+			remoteDispatcher = workbenchservice.NewRemoteDispatcherWithUsage(dispatch, usage)
+		}
 		worker, err = service.NewAgentRunWorkerWithRemoteDispatch(store, remoteExecute, service.RemoteDispatchConfig{
-			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider,
+			Dispatcher: remoteDispatcher, Provider: provider,
 			CommandID: func(fence agentruntime.Fence) (string, string) {
 				return fence.RunID + "/" + fmt.Sprint(fence.Epoch), ""
 			},

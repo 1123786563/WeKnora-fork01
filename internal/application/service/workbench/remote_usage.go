@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"strings"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/execution"
 )
@@ -27,6 +30,7 @@ type RemoteUsageRequest struct {
 	CallID       string
 	AttemptID    string
 	Reservation  string
+	ParentRunID  string
 	Key          string
 	Upper        commercial.Credits
 	Deadline     time.Time
@@ -40,19 +44,96 @@ type RemoteUsageRequest struct {
 	Status       string
 }
 
+// RemoteUsageHandle keeps the server-derived binding private between the
+// reservation and settlement calls. Callers receive no mutable billable
+// source/funding fields to echo back from a provider payload.
+type RemoteUsageHandle struct {
+	reservation commercial.Reservation
+	request     RemoteUsageRequest
+}
+
+// BeginRemote constructs the billable request from the server-owned worker
+// fence. A provider payload cannot supply Source/Funding/PriceVersion; those
+// values are selected here after the durable dispatch claim has succeeded.
+func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime.Fence, commandID string) (RemoteUsageHandle, error) {
+	if fence.TenantID == 0 || fence.RunID == "" || commandID == "" {
+		return RemoteUsageHandle{}, ErrRemoteUsageInvalidRequest
+	}
+	req := RemoteUsageRequest{
+		TenantID: fence.TenantID, RunID: fence.RunID, CallID: commandID,
+		AttemptID: commandID, Upper: 1, Deadline: time.Now().UTC().Add(10 * time.Minute),
+		Source: "platform_gateway", Funding: commercial.FundingPlatform,
+		Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1,
+		OccurredAt: time.Now().UTC(), Dimensions: map[string]int64{commercial.DimensionConnector: 1},
+		Status: commercial.UsageStatusFinal,
+	}
+	res, err := s.beginBound(ctx, req)
+	if err != nil {
+		return RemoteUsageHandle{}, err
+	}
+	return RemoteUsageHandle{reservation: res, request: req}, nil
+}
+
+func (s *RemoteUsageService) FinishRemote(ctx context.Context, handle RemoteUsageHandle) error {
+	if handle.reservation.ID == "" {
+		return ErrRemoteUsageInvalidRequest
+	}
+	return s.finishBound(ctx, handle.reservation.ID, handle.request)
+}
+
 // RemoteUsageService is the single application seam for remote usage. It
 // deliberately accepts no client supplied UsageFact: facts are built from
 // the server side request and trusted provider observation at this boundary.
-type RemoteUsageService struct{ gate commercial.ExecutionGate }
+type remoteBudgetTree interface {
+	AttachChildRun(context.Context, uint64, string, string) error
+}
+
+type RemoteUsageService struct {
+	gate   commercial.ExecutionGate
+	budget remoteBudgetTree
+}
 
 func NewRemoteUsageService(gate commercial.ExecutionGate) (*RemoteUsageService, error) {
 	if gate == nil {
 		return nil, errors.New("remote_usage_gate_missing")
 	}
-	return &RemoteUsageService{gate: gate}, nil
+	s := &RemoteUsageService{gate: gate}
+	if tree, ok := gate.(remoteBudgetTree); ok {
+		s.budget = tree
+	}
+	return s, nil
+}
+
+// NewRemoteUsageServiceWithDB is the container constructor. It connects the
+// same database scoped budget tree used by ExecutionGate, so child admission
+// and reservation cannot drift onto separate stores.
+func NewRemoteUsageServiceWithDB(gate commercial.ExecutionGate, db *gorm.DB) (*RemoteUsageService, error) {
+	s, err := NewRemoteUsageService(gate)
+	if err != nil {
+		return nil, err
+	}
+	if db == nil {
+		return nil, errors.New("remote_usage_budget_database_missing")
+	}
+	s.budget = repocommercial.NewBudgetStore(db)
+	return s, nil
+}
+
+// WithBudgetTree connects child-run admission to the durable task budget.
+// The gate remains the single reservation boundary; this seam only records
+// the parent/root mapping before that boundary is entered.
+func (s *RemoteUsageService) WithBudgetTree(tree remoteBudgetTree) *RemoteUsageService {
+	s.budget = tree
+	return s
 }
 
 func (s *RemoteUsageService) Begin(ctx context.Context, req RemoteUsageRequest) (commercial.Reservation, error) {
+	// The public request shape is untrusted. Only BeginRemote, which builds
+	// the binding from the server-owned worker fence, may enter the gate.
+	return commercial.Reservation{}, ErrRemoteUsageUntrustedSource
+}
+
+func (s *RemoteUsageService) beginBound(ctx context.Context, req RemoteUsageRequest) (commercial.Reservation, error) {
 	if err := validateRemoteIdentity(req); err != nil {
 		return commercial.Reservation{}, err
 	}
@@ -73,16 +154,26 @@ func (s *RemoteUsageService) Begin(ctx context.Context, req RemoteUsageRequest) 
 		}
 		return commercial.Reservation{}, ErrRemoteUsageUntrustedSource
 	}
-	if req.Key == "" {
-		req.Key = stableUsageKey(req)
+	stable := stableUsageKey(req)
+	if req.Key != "" && req.Key != stable {
+		return commercial.Reservation{}, fmt.Errorf("%w: usage key does not match physical identity", ErrRemoteUsageInvalidRequest)
 	}
-	return s.gate.Begin(ctx, commercial.BudgetRequest{TenantID: req.TenantID, RunID: req.RunID, Key: req.Key, Upper: req.Upper, Deadline: req.Deadline})
+	if req.ParentRunID != "" {
+		if s.budget == nil {
+			return commercial.Reservation{}, fmt.Errorf("%w: child budget binding unavailable", ErrRemoteUsageInvalidRequest)
+		}
+		if err := s.budget.AttachChildRun(ctx, req.TenantID, req.RunID, req.ParentRunID); err != nil {
+			return commercial.Reservation{}, err
+		}
+	}
+	return s.gate.Begin(ctx, commercial.BudgetRequest{TenantID: req.TenantID, RunID: req.RunID, Key: stable, Upper: req.Upper, Deadline: req.Deadline})
 }
 
 func (s *RemoteUsageService) Finish(ctx context.Context, reservationID string, req RemoteUsageRequest) error {
-	if reservationID == "" {
-		return ErrRemoteUsageInvalidRequest
-	}
+	return ErrRemoteUsageUntrustedSource
+}
+
+func (s *RemoteUsageService) finishBound(ctx context.Context, reservationID string, req RemoteUsageRequest) error {
 	if err := validateRemoteIdentity(req); err != nil {
 		return err
 	}
@@ -97,9 +188,19 @@ func (s *RemoteUsageService) Finish(ctx context.Context, reservationID string, r
 	}
 	if req.Service == commercial.ServiceModel && !execution.AllowModelSettlement(req.Source, req.Funding) {
 		if req.Funding == commercial.FundingBYOK {
+			// BYOK model calls intentionally have no reservation. Their paired
+			// Finish is a safe no-op, so the lifecycle cannot turn into a
+			// second platform charge.
 			return nil
 		}
 		return ErrRemoteUsageUntrustedSource
+	}
+	if reservationID == "" {
+		return ErrRemoteUsageInvalidRequest
+	}
+	stable := stableUsageKey(req)
+	if reservationID != stable {
+		return fmt.Errorf("%w: reservation does not match physical identity", ErrRemoteUsageInvalidRequest)
 	}
 	fact := commercial.UsageFact{TenantID: req.TenantID, RunID: req.RunID, DelegationID: req.DelegationID, CallID: req.CallID, AttemptID: req.AttemptID, Funding: req.Funding, Service: req.Service, PriceVersion: req.PriceVersion, Revision: req.Revision, OccurredAt: req.OccurredAt, Dimensions: req.Dimensions, Status: req.Status}
 	return s.gate.Finish(ctx, reservationID, fact)

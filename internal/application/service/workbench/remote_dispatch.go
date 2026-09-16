@@ -14,7 +14,8 @@ import (
 // provider/transport error, so callers cannot accidentally retry with a new
 // command id.
 type RemoteDispatcher struct {
-	dispatch *repository.ExecutionDispatchStore
+	store *repository.ExecutionDispatchStore
+	usage *RemoteUsageService
 }
 
 var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
@@ -25,23 +26,30 @@ var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
 type RemoteProvider = agentruntime.RemoteProvider
 
 func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDispatcher {
-	return &RemoteDispatcher{dispatch: dispatch}
+	return &RemoteDispatcher{store: dispatch}
+}
+
+func NewRemoteDispatcherWithUsage(dispatch *repository.ExecutionDispatchStore, usage *RemoteUsageService) *RemoteDispatcher {
+	return &RemoteDispatcher{store: dispatch, usage: usage}
 }
 
 func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
-	return d.dispatch(ctx, agentruntime.Fence{RunKey: key, Owner: worker, Epoch: epoch}, commandID, payloadHash, worker, lease, provider)
+	return d.dispatchRemote(ctx, agentruntime.Fence{RunKey: key, Owner: worker, Epoch: epoch}, commandID, payloadHash, worker, lease, provider)
 }
 
 func (d *RemoteDispatcher) DispatchFence(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash string, lease time.Duration, provider RemoteProvider) (string, error) {
-	return d.dispatch(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
+	return d.dispatchRemote(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
 }
 
-func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
+func (d *RemoteDispatcher) dispatchRemote(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
 	key := fence.RunKey
 	if provider == nil {
 		return "", ErrProviderUnavailable
 	}
-	record, err := d.dispatch.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
+	if d.store == nil {
+		return "", ErrProviderUnavailable
+	}
+	record, err := d.store.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
 	if err != nil {
 		return "", err
 	}
@@ -60,15 +68,28 @@ func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fenc
 	if !ok {
 		return "", fmt.Errorf("%w: provider does not support fenced commands", ErrProviderUnavailable)
 	}
+	if d.usage == nil {
+		return "", fmt.Errorf("%w: trusted usage boundary is unavailable", ErrProviderUnavailable)
+	}
+	usageHandle, err := d.usage.BeginRemote(ctx, fence, commandID)
+	if err != nil {
+		return "", err
+	}
 	externalID, err = commandProvider.StartCommand(ctx, request)
 	if err != nil {
-		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
+		if reconcileErr := d.store.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
 			return "", fmt.Errorf("remote dispatch failed (%v); durable unknown recovery failed: %w", err, reconcileErr)
 		}
 		return "", err
 	}
-	if err := d.dispatch.SaveReceipt(ctx, record, externalID); err != nil {
-		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "receipt_persist_failed", externalID); reconcileErr != nil {
+	if err := d.usage.FinishRemote(ctx, usageHandle); err != nil {
+		if reconcileErr := d.store.ReconcileUnknown(ctx, record, "usage_settlement_failed", externalID); reconcileErr != nil {
+			return "", fmt.Errorf("remote usage settlement failed (%v); durable reconciliation failed: %w", err, reconcileErr)
+		}
+		return "", err
+	}
+	if err := d.store.SaveReceipt(ctx, record, externalID); err != nil {
+		if reconcileErr := d.store.ReconcileUnknown(ctx, record, "receipt_persist_failed", externalID); reconcileErr != nil {
 			return "", fmt.Errorf("receipt persistence failed (%v); durable reconciliation failed: %w", err, reconcileErr)
 		}
 		return "", err
