@@ -30,3 +30,17 @@ func RegisterWorkbenchStartRoutes(r *gin.RouterGroup, h *session.WorkbenchStartH
 	workbench.POST("", h.Start)
 	workbench.GET("/requests/:request_id", h.Lookup)
 }
+
+// RegisterWorkbenchCommandRoutes exposes typed interaction decisions and the
+// closed cancel/steer command union. The handler is optional while deployments
+// are migrating their durable approval adapter; no unsafe fallback is used.
+func RegisterWorkbenchCommandRoutes(r *gin.RouterGroup, h *session.WorkbenchCommandHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	executions := r.Group("/workbench/executions", g.Viewer())
+	workbench := g.apiKeyGroup(executions, apiKeyChat(apiKeyFullAccess()))
+	workbench.GET("/:run_id/interactions", h.ListInteractions)
+	workbench.POST("/interactions/:id/decisions", h.DecideInteraction)
+	workbench.POST("/:run_id/commands", h.Command)
+}
