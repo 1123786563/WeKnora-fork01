@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { canManageTenant, canViewAudit, isEditableMember, invitationIsOpen, roleLabel, tenantRoleFromMemberships } from './summary.ts';
+import { canManageTenant, canViewAudit, isEditableMember, invitationIsOpen, roleLabel, systemAdminPanelKeys, tenantRoleFromMemberships } from './summary.ts';
 
 test('uses explicit tenant roles and invitation terminal states', () => {
   assert.equal(roleLabel('owner'), 'Owner');
@@ -31,4 +31,9 @@ test('resolves the active tenant role from auth memberships', () => {
   assert.equal(tenantRoleFromMemberships([{ tenant_id: 7, role: 'admin' }], 7), 'admin');
   assert.equal(tenantRoleFromMemberships([{ tenant_id: 8, role: 'owner' }], 7), undefined);
   assert.equal(tenantRoleFromMemberships([{ tenant_id: 7, role: 123 }], 7), undefined);
+});
+
+test('exposes the Vue system administration panels only to system admins', () => {
+  assert.deepEqual(systemAdminPanelKeys(true), ['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
+  assert.deepEqual(systemAdminPanelKeys(false), []);
 });

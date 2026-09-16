@@ -26,3 +26,10 @@ export function tenantRoleFromMemberships(memberships: unknown[] | undefined, te
 }
 
 export function invitationIsOpen(status: string): boolean { return status === 'pending'; }
+
+export const SYSTEM_ADMIN_PANEL_KEYS = ['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log'] as const;
+export type SystemAdminPanelKey = typeof SYSTEM_ADMIN_PANEL_KEYS[number];
+
+export function systemAdminPanelKeys(systemAdmin: boolean): SystemAdminPanelKey[] {
+  return systemAdmin ? [...SYSTEM_ADMIN_PANEL_KEYS] : [];
+}
