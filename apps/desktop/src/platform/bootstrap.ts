@@ -62,7 +62,7 @@ export async function resolveDesktopPersonalNode(
       void Promise.resolve(app.DeleteCredential?.(key));
     },
   };
-  return createDesktopAppPersonalNode(credentialBridge, {
+  return await createDesktopAppPersonalNode(credentialBridge, {
     apiBaseURL,
     paseoURL,
     allowedOrigins,
