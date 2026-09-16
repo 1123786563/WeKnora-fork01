@@ -31,6 +31,10 @@ func TestCancelRunReleasesSlotAndDeleteFences(t *testing.T) {
 	require.Equal(t, "canceled", run.Status)
 	require.Error(t, s.SetStatus(context.Background(), f, "succeeded", "stale"))
 	require.NoError(t, s.DeleteSessionRuns(context.Background(), 1, "s1"))
-	_, err = s.Get(context.Background(), key)
-	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	run, err = s.Get(context.Background(), key)
+	require.NoError(t, err)
+	require.Equal(t, "canceled", run.Status)
+	var state string
+	require.NoError(t, db.Table("execution_cleanup").Where("tenant_id=? AND session_id=?", 1, "s1").Pluck("state", &state).Error)
+	require.Equal(t, "tombstoned", state)
 }

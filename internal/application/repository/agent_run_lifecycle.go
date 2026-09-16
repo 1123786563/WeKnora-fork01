@@ -41,11 +41,22 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 	})
 }
 
-// DeleteSessionRuns cancels first, then removes dependent durable records in a
-// single transaction. Deleting the rows makes stale fences fail closed.
+// DeleteSessionRuns writes the session deletion barrier and fences its runs.
+// Durable run/control/usage rows are retained until the cleanup worker proves
+// stop, settlement, and retention; deleting them here would lose late facts.
 func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, sessionID string) error {
 	if tenantID == 0 || sessionID == "" {
 		return agentruntime.ErrConflict
+	}
+	var owner string
+	if err := s.db.WithContext(ctx).Table("sessions").Select("user_id").Where("tenant_id=? AND id=?", tenantID, sessionID).Scan(&owner).Error; err != nil {
+		return err
+	}
+	if owner == "" {
+		return agentruntime.ErrNotFound
+	}
+	if err := s.TombstoneSession(ctx, tenantID, owner, sessionID); err != nil {
+		return err
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var ids []string
@@ -53,19 +64,8 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 			return err
 		}
 		for _, id := range ids {
-			// Mark before deleting so concurrent workers cannot commit a terminal state.
-			if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", tenantID, id).Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
-				return err
-			}
-			for _, table := range []string{"agent_run_inputs", "agent_run_decisions", "agent_run_events", "agent_tool_attempts", "agent_tool_calls", "agent_run_checkpoints"} {
-				if !tx.Migrator().HasTable(table) {
-					continue
-				}
-				if err := tx.Exec("DELETE FROM "+table+" WHERE tenant_id=? AND run_id=?", tenantID, id).Error; err != nil {
-					return err
-				}
-			}
-			if err := tx.Exec("DELETE FROM agent_runs WHERE tenant_id=? AND run_id=?", tenantID, id).Error; err != nil {
+			if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", tenantID, id).
+				Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
 				return err
 			}
 		}

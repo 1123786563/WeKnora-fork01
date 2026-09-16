@@ -35,7 +35,7 @@ func (s *AgentRunService) Cancel(ctx context.Context, key agentruntime.RunKey) e
 	return nil
 }
 
-// DeleteSessionRuns durably fences and removes all runs belonging to a session.
+// DeleteSessionRuns durably fences all runs belonging to a session; cleanup retains records until reconciliation.
 func (s *AgentRunService) DeleteSessionRuns(ctx context.Context, tenantID uint64, sessionID string) error {
 	if s == nil || s.store == nil {
 		return errors.New("agent run store is required")
