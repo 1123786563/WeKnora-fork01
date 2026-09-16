@@ -79,9 +79,15 @@ import {
 } from '@/sync/rig';
 import { RigActivityBar } from '@/components/RigActivityBar';
 import { AnimatedFade } from '@/components/AnimatedOverlay';
+import { useConversationViewModel } from '@/weknora/conversations/context';
+import type { ConversationViewModel } from '@/weknora/conversations/view-model';
 
-export const SessionView = React.memo((props: { id: string }) => {
+export const SessionView = React.memo((props: { id: string; viewModel?: ConversationViewModel }) => {
     const sessionId = props.id;
+    // Product state is optional so legacy Happy routes retain their behavior.
+    // ConversationScreen supplies it through context; raw Happy state remains
+    // inside the existing renderer and is never exposed as a product contract.
+    const conversationViewModel = props.viewModel ?? useConversationViewModel();
     const router = useRouter();
     const isFocused = useIsFocused();
     const session = useSession(sessionId);
@@ -432,6 +438,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         key={sessionId}
                         sessionId={sessionId}
                         session={session}
+                        viewModel={conversationViewModel ?? undefined}
                         active={isFocused}
                         onHeaderBackdropVisibilityChange={contentRunsUnderHeader
                             ? setHeaderBackdropVisible
@@ -630,12 +637,14 @@ export function SessionViewLoaded({
     active = true,
     embedded = false,
     onHeaderBackdropVisibilityChange,
+    viewModel,
 }: {
     sessionId: string;
     session: Session;
     active?: boolean;
     embedded?: boolean;
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
+    viewModel?: ConversationViewModel;
 }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -986,6 +995,7 @@ export function SessionViewLoaded({
                 {messages.length > 0 && (
                     <ChatList
                         session={session}
+                        conversation={viewModel}
                         active={active}
                         topContentInset={chatListTopContentInset}
                         bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}

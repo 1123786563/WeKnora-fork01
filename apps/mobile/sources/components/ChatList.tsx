@@ -18,6 +18,7 @@ import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
 import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 import { perfSince, useCommitPerf } from '@/utils/perfLog';
+import type { ConversationViewModel } from '@/weknora/conversations/view-model';
 
 const SCROLL_THRESHOLD = 300;
 const DOCK_DETAILS_SHOW_OFFSET = 16;
@@ -145,6 +146,8 @@ function windowEndForTurn(messages: Message[], desiredEnd: number, hasMoreOlder:
 
 export const ChatList = React.memo((props: {
     session: Session;
+    /** Optional product model; legacy Happy callers can omit it. */
+    conversation?: ConversationViewModel;
     active?: boolean;
     topContentInset?: number;
     bottomContentInset?: number;
@@ -159,6 +162,7 @@ export const ChatList = React.memo((props: {
         <ChatListInternal
             metadata={props.session.metadata}
             sessionId={props.session.id}
+            conversation={props.conversation}
             active={props.active ?? true}
             messages={messages}
             hasMoreOlder={hasMoreOlder}
@@ -210,6 +214,7 @@ const NewerEnd = React.memo((props: { sessionId: string }) => {
 const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
     sessionId: string,
+    conversation?: ConversationViewModel,
     active: boolean,
     messages: Message[],
     hasMoreOlder: boolean,
@@ -700,7 +705,12 @@ const ChatListInternal = React.memo((props: {
     }, [handoffListRevision]);
 
     return (
-        <View style={{ flex: 1 }}>
+        <View
+            style={{ flex: 1 }}
+            accessibilityLabel={props.conversation?.pendingInteractions.length
+                ? `conversation-pending-${props.conversation.pendingInteractions.length}`
+                : 'conversation'}
+        >
             <FlashList
                 key={`${props.sessionId}:${handoffListRevision}`}
                 ref={listRef}
