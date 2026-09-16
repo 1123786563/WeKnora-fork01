@@ -32,3 +32,24 @@ Base: `6ba63c4b` (`docs(sdd): accept W15 and dispatch W16`)
 Native iOS/Android notification delivery and cold-start interaction were not
 claimed because the required native build/device and push credentials are not
 available in this worktree.
+
+## Round 1 constrained fixes
+
+Applied review findings from `task-W16-final-review.md`:
+
+- Successful ownership verification now routes to `/(app)`, whose product
+  `WorkbenchScreen` owns the notification card and retained Happy renderer;
+  it no longer routes to `/session/[id]` and cannot fall through to the legacy
+  Happy `SessionView` route.
+- Startup reads `Notifications.getLastNotificationResponseAsync()` and sends
+  its payload through the same parser, deduplication, expiry, and auth path as
+  foreground responses.
+- A 2xx execution response is rejected unless non-empty owner and tenant
+  fields exist and match the authenticated product identity and deep-link
+  tenant.
+- Added Router behavior coverage for login recovery, terminated-app response,
+  duplicate/expired intents, ownership rejection, and the absence of POST
+  approve/cancel traffic.
+
+Focused validation after the fix: `git diff --check` passed. TypeScript/Vitest
+and native checks remain `blocked-env` for the dependency/device reasons above.

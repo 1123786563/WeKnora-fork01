@@ -9,6 +9,7 @@ const INTENT_TTL_MS = 10 * 60 * 1000;
 
 export interface NotificationIntent extends NotificationLink {
   receivedAt: number;
+  authorizedAt?: number;
 }
 
 type ResolveTenant = (tenantID: string, signal: AbortSignal) => Promise<boolean>;
@@ -41,12 +42,6 @@ function notificationURL(response: Notifications.NotificationResponse): string |
   return null;
 }
 
-function responseURL(raw: unknown): string | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const record = raw as Record<string, unknown>;
-  return typeof record.url === 'string' ? record.url : null;
-}
-
 function bodyData(body: unknown): Record<string, unknown> | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const root = body as Record<string, unknown>;
@@ -70,7 +65,6 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
   const seen = React.useRef(new Map<string, number>());
   const processing = React.useRef(new Set<string>());
   const abortRef = React.useRef<AbortController | null>(null);
-  const pendingRaw = React.useRef<string | null>(null);
   const current = auth.scope.identity;
 
   const defaultVerify = React.useCallback(async (link: NotificationLink, signal: AbortSignal): Promise<boolean> => {
@@ -93,9 +87,13 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
     if (result.status < 200 || result.status >= 300) return false;
     const data = bodyData(result.body);
     if (!data) return false;
+    // The endpoint's HTTP status alone is not a portable scope proof. Require
+    // the ownership fields from the W03 response envelope and fail closed if
+    // an older/proxy response omits either field.
     const owner = stringField(data, 'owner_id', 'ownerId', 'user_id', 'userId');
     const tenant = stringField(data, 'tenant_id', 'tenantId', 'space_tenant_id');
-    return (!owner || owner === identity.userId) && (!tenant || tenant === link.tenantID);
+    if (!owner || !tenant) return false;
+    return owner === identity.userId && tenant === link.tenantID;
   }, [auth.authSession, current, resolveTenant]);
 
   const openIntent = React.useCallback(async (next: NotificationIntent) => {
@@ -106,6 +104,10 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
       return;
     }
     if (!auth.credential || processing.current.has(key)) return;
+    if (next.authorizedAt) {
+      router.replace('/(app)' as never);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
@@ -120,8 +122,12 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
       // The API response is the ownership check. The URI itself never carries
       // an action, and opening it does not issue approve/cancel traffic.
       seen.current.set(key, Date.now());
-      setIntent(null);
-      router.push({ pathname: '/session/[id]' as never, params: { id: next.runID, resourceTenantId: next.tenantID } } as never);
+      // The verified run is presented by the product workbench. Keeping the
+      // intent in context lets WorkbenchScreen render the pending card and
+      // avoids falling through to Happy's legacy SessionView route.
+      const authorized = { ...next, authorizedAt: Date.now() };
+      setIntent(authorized);
+      router.replace('/(app)' as never);
     } catch (cause) {
       if (!(cause instanceof Error && cause.name === 'AbortError')) setError('NOTIFICATION_UNAVAILABLE');
     } finally {
@@ -141,7 +147,6 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
     const previous = seen.current.get(key);
     if (previous && Date.now() - previous < INTENT_TTL_MS) return;
     seen.current.set(key, Date.now());
-    pendingRaw.current = raw;
     const next = { ...parsed, receivedAt: Date.now() };
     setError(null);
     setIntent(next);
@@ -153,6 +158,12 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
     void Linking.getInitialURL().then((raw) => { if (active) acceptRaw(raw); }).catch(() => undefined);
     const urlSubscription = Linking.addEventListener('url', ({ url }) => acceptRaw(url));
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener((response) => acceptRaw(notificationURL(response)));
+    // A notification tap can launch a terminated app before the response
+    // listener is installed. Expo exposes that response separately; feed it
+    // through the same parser/deduplication path as foreground taps.
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => { if (active && response) acceptRaw(notificationURL(response)); })
+      .catch(() => undefined);
     return () => {
       active = false;
       abortRef.current?.abort();
@@ -169,7 +180,7 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
     intent,
     error,
     retry: () => { if (intent) void openIntent(intent); },
-    dismiss: () => { abortRef.current?.abort(); setIntent(null); setError(null); pendingRaw.current = null; },
+    dismiss: () => { abortRef.current?.abort(); setIntent(null); setError(null); },
   }), [error, intent, openIntent]);
 
   return <NotificationRouterContext.Provider value={value}>{children}</NotificationRouterContext.Provider>;
