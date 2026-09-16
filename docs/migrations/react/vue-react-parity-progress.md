@@ -3928,6 +3928,17 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   flows, real Embed streaming, and native Wails interaction remain open or
   `blocked-env`. No mobile code was modified.
 
+## 2026-09-16 Round R413 — Invite registration and document token parity
+
+- `1facdd6d` makes the invite registration route reuse the complete Vue-derived
+  authentication shell, retaining the invitation-token error path.
+- `c7a1ebfd` applies the semantic surface token to the Vue-equivalent merged
+  Markdown document view.
+- Full Web regression after these changes passed `1182/1182`. This remains
+  unit/component evidence; authenticated paired screenshots, real backend
+  permission/mutation flows, real Embed streaming, and Wails interaction are
+  still open or `blocked-env`. No mobile code was modified.
+
 ## 2026-09-16 Round R412 — Browser connection restored, paired state still blocked
 
 - Browser Use local CDP successfully rendered both applications and captured
