@@ -3906,3 +3906,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `git diff --check` remains clean for parity files. The only dirty paths are
   the user's pre-existing Go/workbench changes and generated workbench plan
   files; no mobile code was modified.
+
+## 2026-09-16 Round R410 — Additional page-local parity fixes
+
+- Parallel page-local reviews added verified fixes for MCP tool-detail open
+  state styling (`3ac24d1d`), empty Ollama download gating (`55be8773`), Vue
+  user-menu external links (`4abf1515`), document merged-Markdown rendering,
+  login background icon ordering, and Chat knowledge-base mention scope
+  de-duplication (`807f0eb6`).
+- Focused evidence: Auth, document detail, PlatformShell, Ollama, and MCP
+  suites passed in the combined 48-test run; Chat agent-selection passed
+  13/13. These remain source/component evidence, not authenticated paired
+  screenshots or real-backend/Wails acceptance. No mobile code was modified.
