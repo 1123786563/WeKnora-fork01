@@ -5,8 +5,12 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/types"
 	contract "github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/stretchr/testify/require"
@@ -27,6 +31,8 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
 	store := NewGormInteractionStore(db)
 	_, err = store.Get(context.Background(), 7, "other", "i1")
 	require.ErrorIs(t, err, ErrInteractionNotFound)
+	_, err = store.Decide(context.Background(), 7, "u1", "i1", contract.InteractionDecision{Action: "approve", ArgsHash: "wrong", DecisionID: "d0", ExpectedRevision: 0})
+	require.ErrorIs(t, err, contract.ErrInteractionActionMismatch)
 
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
@@ -65,6 +71,55 @@ func (s *interactionStoreStub) Decide(_ context.Context, _ uint64, _ string, _ s
 
 type commandPortStub struct{ called bool }
 
+type gateChecker struct{}
+
+func (gateChecker) IsRequired(context.Context, uint64, string, string) (bool, error) {
+	return true, nil
+}
+func (gateChecker) IsEnabled(context.Context, uint64, string, string) (bool, error) { return true, nil }
+
+func TestApprovalGateSuccessDenialAndRace(t *testing.T) {
+	gate := approval.NewGate(&config.Config{Agent: &config.AgentConfig{ToolApprovalTimeoutSeconds: 3}}, gateChecker{}, nil)
+	for _, approved := range []bool{true, false} {
+		bus := event.NewEventBus()
+		pending := make(chan string, 1)
+		bus.On(event.EventToolApprovalRequired, func(_ context.Context, evt event.Event) error {
+			data := evt.Data.(event.ToolApprovalRequiredData)
+			pending <- data.PendingID
+			return nil
+		})
+		result := make(chan approval.Decision, 1)
+		go func() {
+			decision, err := gate.RequestAndWait(context.Background(), approval.PendingRequest{TenantID: 7, UserID: "u1", SessionID: "s1", AssistantMessageID: "m1", EventBus: bus, Args: []byte(`{}`)})
+			require.NoError(t, err)
+			result <- decision
+		}()
+		pendingID := <-pending
+		require.NoError(t, gate.Resolve(7, "u1", pendingID, approval.Decision{Approved: approved}))
+		select {
+		case got := <-result:
+			require.Equal(t, approved, got.Approved)
+		case <-time.After(time.Second):
+			t.Fatal("approval waiter did not resolve")
+		}
+	}
+
+	bus := event.NewEventBus()
+	pending := make(chan string, 1)
+	bus.On(event.EventToolApprovalRequired, func(_ context.Context, evt event.Event) error {
+		pending <- evt.Data.(event.ToolApprovalRequiredData).PendingID
+		return nil
+	})
+	go gate.RequestAndWait(context.Background(), approval.PendingRequest{TenantID: 7, UserID: "u1", SessionID: "s1", AssistantMessageID: "m1", EventBus: bus})
+	pendingID := <-pending
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() { results <- gate.Resolve(7, "u1", pendingID, approval.Decision{Approved: true}) }()
+	}
+	first, second := <-results, <-results
+	require.True(t, (first == nil) != (second == nil), "exactly one decision must win: %v %v", first, second)
+}
+
 func (s *commandPortStub) Steer(context.Context, uint64, string, string, string, int64) error {
 	s.called = true
 	return nil
@@ -81,14 +136,22 @@ func interactionContext() context.Context {
 }
 
 func TestInteractionServiceUsesPersistedDomainAndSingleDecisionPort(t *testing.T) {
-	store := &interactionStoreStub{current: contract.InteractionDecision{ID: "i1", Kind: "tool_approval", ArgsHash: "a"}}
+	store := &interactionStoreStub{current: contract.InteractionDecision{ID: "i1", Kind: "budget", ArgsHash: "a"}}
 	svc := NewInteractionService(store, nil, nil)
 	_, err := svc.Decide(interactionContext(), "i1", contract.InteractionDecision{Kind: "budget", Action: "extend", ArgsHash: "a"})
 	require.ErrorIs(t, err, contract.ErrInteractionActionMismatch)
 	require.Zero(t, store.calls)
-	_, err = svc.Decide(interactionContext(), "i1", contract.InteractionDecision{Kind: "tool_approval", Action: "approve", ArgsHash: "a", DecisionID: "d1"})
+	_, err = svc.Decide(interactionContext(), "i1", contract.InteractionDecision{Kind: "budget", Action: "extend", ArgsHash: "a", DecisionID: "d1"})
 	require.NoError(t, err)
 	require.Equal(t, 1, store.calls)
+}
+
+func TestToolApprovalWithoutGateFailsBeforeDurableCommit(t *testing.T) {
+	store := &interactionStoreStub{current: contract.InteractionDecision{ID: "i1", Kind: "tool_approval", ArgsHash: "a"}}
+	svc := NewInteractionService(store, nil, nil)
+	_, err := svc.Decide(interactionContext(), "i1", contract.InteractionDecision{Kind: "tool_approval", Action: "approve", ArgsHash: "a", DecisionID: "d1"})
+	require.ErrorIs(t, err, ErrCapabilityUnavailable)
+	require.Zero(t, store.calls)
 }
 
 func TestInteractionServiceDoesNotFallbackForUnavailableCommand(t *testing.T) {

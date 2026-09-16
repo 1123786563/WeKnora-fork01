@@ -42,21 +42,21 @@ func commandRouter(h *WorkbenchCommandHandler) *gin.Engine {
 }
 
 func TestWorkbenchCommandDecisionUsesStoredKindAndArgsHash(t *testing.T) {
-	store := &commandStore{current: workbench.InteractionDecision{ID: "i1", Kind: "tool_approval", ArgsHash: "hash"}}
+	store := &commandStore{current: workbench.InteractionDecision{ID: "i1", Kind: "budget", ArgsHash: "hash"}}
 	h := NewWorkbenchCommandHandler(workbenchservice.NewInteractionService(store, nil, nil))
 	r := commandRouter(h)
-	req := httptest.NewRequest(http.MethodPost, "/interactions/i1/decisions", stringsReader(`{"kind":"budget","action":"extend","args_hash":"hash","decision_id":"d1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/interactions/i1/decisions", stringsReader(`{"kind":"tool_approval","action":"approve","args_hash":"hash","decision_id":"d1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
-	req = httptest.NewRequest(http.MethodPost, "/interactions/i1/decisions", stringsReader(`{"kind":"tool_approval","action":"approve","args_hash":"hash","decision_id":"d1"}`))
+	req = httptest.NewRequest(http.MethodPost, "/interactions/i1/decisions", stringsReader(`{"kind":"budget","action":"extend","args_hash":"hash","decision_id":"d1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "tool_approval", store.decided.Kind)
+	require.Equal(t, "budget", store.decided.Kind)
 }
 
 func stringsReader(value string) *strings.Reader { return strings.NewReader(value) }

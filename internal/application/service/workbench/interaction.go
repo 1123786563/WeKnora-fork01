@@ -113,6 +113,9 @@ func (s *GormInteractionStore) Decide(ctx context.Context, tenantID uint64, owne
 		if err := validateInteractionRow(row); err != nil {
 			return err
 		}
+		if input.ArgsHash != row.ArgsHash {
+			return workbench.ErrInteractionActionMismatch
+		}
 		if input.DecisionID != "" && row.DecisionID == input.DecisionID {
 			if row.Action != input.Action {
 				return agentruntime.ErrConflict
@@ -232,7 +235,12 @@ func (p *GormSteerPort) Steer(ctx context.Context, tenantID uint64, ownerID, run
 	if claimed.RowsAffected != 1 {
 		return agentruntime.ErrConflict
 	}
-	return p.streams.AppendSteerEvents(ctx, row.SessionID, row.AssistantMessageID, []interfaces.StreamEvent{{ID: uuid.NewString(), Type: types.ResponseTypeSteer, Content: text, Data: map[string]interface{}{"delivery": "inject"}, Timestamp: time.Now()}})
+	err := p.streams.AppendSteerEvents(ctx, row.SessionID, row.AssistantMessageID, []interfaces.StreamEvent{{ID: uuid.NewString(), Type: types.ResponseTypeSteer, Content: text, Data: map[string]interface{}{"delivery": "inject"}, Timestamp: time.Now()}})
+	if err != nil {
+		_ = p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ?", tenantID, ownerID, runID, expectedRevision+1).Updates(map[string]any{"revision": gorm.Expr("revision - 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error
+		return err
+	}
+	return nil
 }
 
 type Service struct {
@@ -290,6 +298,9 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	}
 	if err := workbench.ValidateInteractionAction(current.Kind, input.Action); err != nil {
 		return workbench.InteractionDecision{}, err
+	}
+	if current.Kind == string(workbench.InteractionToolApproval) && s.approval == nil {
+		return workbench.InteractionDecision{}, ErrCapabilityUnavailable
 	}
 	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
