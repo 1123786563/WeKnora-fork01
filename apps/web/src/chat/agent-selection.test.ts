@@ -41,12 +41,23 @@ test('includes only uploaded attachment ids in the stream body', () => {
 });
 
 test('includes selected KB mentions and omits the field when none are selected', () => {
-  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, [
-    { id: 'kb-1', name: '产品文档', type: 'kb', kb_type: 'document', kb_id: 'kb-1', kb_name: '产品文档' },
-  ]).body.mentioned_items, [
+  const options = buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, [
     { id: 'kb-1', name: '产品文档', type: 'kb', kb_type: 'document', kb_id: 'kb-1', kb_name: '产品文档' },
   ]);
+  assert.deepEqual(options.body.mentioned_items, [
+    { id: 'kb-1', name: '产品文档', type: 'kb', kb_type: 'document', kb_id: 'kb-1', kb_name: '产品文档' },
+  ]);
+  assert.deepEqual(options.body.knowledge_base_ids, ['kb-1']);
   assert.equal('mentioned_items' in buildWebChatStreamOptions('session-1', 'Question', '').body, false);
+});
+
+test('deduplicates an explicitly scoped KB and its KB mention', () => {
+  const options = buildWebChatStreamOptions('session-1', 'Question', '', 'kb-1', undefined, [
+    { id: 'kb-1', name: '产品文档', type: 'kb', kb_id: 'kb-1' },
+    { id: 'kb-2', name: 'FAQ', type: 'kb' },
+  ]);
+
+  assert.deepEqual(options.body.knowledge_base_ids, ['kb-1', 'kb-2']);
 });
 
 test('preserves Vue resource mention types and identifiers in the stream body', () => {
