@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -231,4 +231,44 @@ test('node radii follow the Vue logarithmic clamp for rings and labels', () => {
   assert.equal(graphNodeRadius(0), 8);
   assert.equal(Math.round(graphNodeRadius(2) * 100) / 100, 12.39);
   assert.equal(graphNodeRadius(100000), 24);
+});
+
+test('highlight sets follow the Vue applyHighlight focus contract', () => {
+  const edges = [
+    { source: 'a', target: 'b' },
+    { source: 'c', target: 'b' },
+    { source: 'd', target: 'e' },
+  ];
+  // Hover with no selection: the hovered node is the only focus.
+  const hoverOnly = graphHighlightSets(edges, null, 'b');
+  assert.ok(hoverOnly);
+  assert.deepEqual([...hoverOnly.enlargedNodes], ['b']);
+  assert.deepEqual([...hoverOnly.litNodes].sort(), ['a', 'b', 'c'], 'undirected neighbors stay lit');
+  assert.deepEqual([...hoverOnly.litEdges].sort(), ['a-b', 'c-b'], 'both in- and out-edges light up');
+  assert.equal(hoverOnly.litEdges.has('d-e'), false, 'unrelated edges stay dim');
+
+  // Selection + hover: both are focus nodes; selection stays primary.
+  const both = graphHighlightSets(edges, 'a', 'c');
+  assert.ok(both);
+  assert.deepEqual([...both.enlargedNodes].sort(), ['a', 'c']);
+  assert.deepEqual([...both.litNodes].sort(), ['a', 'b', 'c']);
+  assert.deepEqual([...both.litEdges].sort(), ['a-b', 'c-b']);
+  assert.equal(both.litEdges.has('d-e'), false);
+
+  // Hovering the selected node collapses to a single focus (Vue passes no
+  // hoverSlug when hover === selection).
+  const same = graphHighlightSets(edges, 'b', 'b');
+  assert.ok(same);
+  assert.deepEqual([...same.enlargedNodes], ['b']);
+  assert.deepEqual([...same.litNodes].sort(), ['a', 'b', 'c']);
+
+  // No hover and no selection means nothing to highlight.
+  assert.equal(graphHighlightSets(edges, null, null), null);
+  assert.equal(graphHighlightSets(edges, '', ''), null);
+
+  // Incoming edges to the focus light up too (undirected adjacency).
+  const incoming = graphHighlightSets([{ source: 'x', target: 'focus' }], 'focus', null);
+  assert.ok(incoming);
+  assert.deepEqual([...incoming.litEdges], ['x-focus']);
+  assert.deepEqual([...incoming.litNodes].sort(), ['focus', 'x']);
 });

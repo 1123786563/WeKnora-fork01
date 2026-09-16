@@ -89,13 +89,20 @@ export interface DocumentsBreadcrumbProps {
   supportedFileTypes?: string[];
   /** Vue gates the gear on canManage; the page maps it to its permission signal. */
   canManage?: boolean;
+  /**
+   * Vue ⚙ opens the in-place KB settings surface without leaving the page
+   * (KnowledgeBase.vue:2388 → uiStore.openKBSettings). Pages that host such
+   * an overlay pass this callback; without it the gear keeps the historical
+   * settings-route navigation (/knowledgeBase/<id>/settings).
+   */
+  onOpenSettings?: () => void;
   onNavigate?: (path: string) => void;
   /** When present, the third crumb level is the Vue breadcrumb-tab row. */
   tabs?: DocumentsBreadcrumbTab[];
 }
 
 export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
-  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, supportedFileTypes, canManage = false, onNavigate = defaultNavigate, tabs } = props;
+  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, supportedFileTypes, canManage = false, onOpenSettings, onNavigate = defaultNavigate, tabs } = props;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
@@ -168,7 +175,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(documentsKBSettingsPath(knowledgeBaseId))}>
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
             <GearIcon size={14} />
           </button>
         ) : null}

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Input, Status } from '@weknora/ui';
+import { Button, Card, Dialog, Input, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views';
-import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { navigate } from '../platform/navigation.ts';
 import { DocumentsBreadcrumb, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
 import { computeSupportedFileTypes } from '../documents/page-chrome.ts';
-import { canUploadKnowledgeDocuments, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
+import { KnowledgeSettingsPage } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
+import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
+import { useKbDetailGuideTrigger } from '../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts';
 
 /* Tailwind migration: static per-type classes replacing the former
    .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-* css rules.
@@ -83,6 +86,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return () => { active = false; };
   }, [client, knowledgeBaseId]);
 
+  // Vue KnowledgeBase.vue:2741 + 339-345 — the one-shot kbDetail welcome tour
+  // arms on detail-page entry regardless of the active tab (the Vue computed
+  // never reads it), so a ?tab=graph deep link arms too. The KB metadata this
+  // page already loads carries knowledge_count (filled server-side by GET
+  // /knowledge-bases/:id), so the empty-KB check costs no extra request; the
+  // shell guide host owns dismissal + welcome-tour gating.
+  useKbDetailGuideTrigger({
+    knowledgeBaseId,
+    kbType: typeof kbMeta?.type === 'string' ? kbMeta.type : null,
+    canEdit: canManage,
+    // kbMeta settling decides readiness; an unexpectedly missing knowledge_count
+    // keeps the tour disarmed instead of guessing an empty KB.
+    documentsLoading: kbMeta === null || typeof kbMeta.knowledge_count !== 'number',
+    documentCount: typeof kbMeta?.knowledge_count === 'number' ? kbMeta.knowledge_count : 0,
+  });
+
   const supportedFileTypes = useMemo(() => {
     const rules = (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? [];
     return [...computeSupportedFileTypes(parserEngines, rules)];
@@ -91,13 +110,14 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   // Vue title row (KnowledgeBase.vue L2359-2380): wiki KBs render the third
   // crumb level as the 文档 / Wiki / 图谱 breadcrumb-tab row; the active graph
   // tab carries the tabGraphTip concept-clarification tooltip (Vue t-tooltip).
-  // The row exists only when the KB enables the wiki (Vue isWiki gate); its
-  // content comes from resolveKBSurfaceTabs — the same helper the documents
-  // page nav uses, so both surfaces agree on which tabs exist (permissions.ts).
-  // /knowledgeBase/<id>?tab=… is the canonical KB route form (routes.tsx
-  // knowledgeBaseView) — the same URLs the documents page nav links to.
+  // The row exists only when the KB enables the wiki (Vue isWiki gate —
+  // resolveKBSurfaceTabs returns nothing for a non-wiki KB even when graph
+  // extraction is on, permissions.ts); an empty/absent list falls back to the
+  // plain 文档 crumb inside DocumentsBreadcrumb. /knowledgeBase/<id>?tab=… is
+  // the canonical KB route form (routes.tsx knowledgeBaseView) — the same URLs
+  // the documents page nav links to.
   const kbBasePath = `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`;
-  const resolvedTabs = kbMeta?.indexing_strategy?.wiki_enabled === true ? resolveKBSurfaceTabs(kbMeta) : undefined;
+  const resolvedTabs = kbMeta ? resolveKBSurfaceTabs(kbMeta) : undefined;
   const kbTabs: DocumentsBreadcrumbTab[] | undefined = resolvedTabs
     ? resolvedTabs.map((tab: KBSurfaceTab) => ({
       key: tab,
@@ -111,6 +131,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       title: tab === 'graph' ? t('knowledgeEditor.wikiBrowser.tabGraphTip') : undefined,
     }))
     : undefined;
+
+  // Vue keeps a ?tab=wiki|graph URL readable only for wiki KBs: the template
+  // gates .wiki-main-area on isWiki and renders the documents branch otherwise
+  // (KnowledgeBase.vue:2412/2418). The React tab pages are separate routes, so
+  // a non-wiki deep link falls back to the canonical documents URL instead of
+  // erroring against wiki-only APIs (same view the URL shows in Vue).
+  const wikiTabFallbackPath = useMemo(() => (kbMeta ? kbWikiTabFallbackPath(kbMeta) : undefined), [kbMeta]);
+  useEffect(() => {
+    if (wikiTabFallbackPath) navigate(wikiTabFallbackPath, 'replace');
+  }, [wikiTabFallbackPath]);
+
+  // Vue ⚙ opens the in-place KB settings surface without leaving the page
+  // (KnowledgeBase.vue:2388 → uiStore.openKBSettings → the editor modal).
+  // React hosts the settled KB settings content (KnowledgeSettingsPage, the
+  // same surface the /settings route renders) inside a Dialog overlay.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
@@ -134,8 +170,40 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
   const gesture = useRef<{ kind: 'pan' | 'node'; pointerId: number; startX: number; startY: number; originX: number; originY: number; slug?: string } | null>(null);
   const dragged = useRef(false);
+  // Vue WikiBrowser selection/hover highlight state (graphSelectedSlug /
+  // graphHighlightSlug, L3735/3738): a click/search/ego-preselect selects a
+  // node, hovering another node adds a secondary focus, and a near-stationary
+  // click on the canvas background clears selection + drawer + highlight.
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
+  // Shared mouseleave debounce timer so sliding the pointer between nodes
+  // doesn't flash through the fully-unhighlighted state (Vue L3721-3723).
+  const hoverLeaveTimer = useRef<number | null>(null);
   // Outside-pointerdown closes the expanded search popup, like the Vue t-select.
   const searchShellRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => () => {
+    if (hoverLeaveTimer.current !== null) window.clearTimeout(hoverLeaveTimer.current);
+  }, []);
+
+  // Vue node mouseenter (L4121-4131): cancel any pending leave, then hover.
+  function enterNodeHover(slug: string) {
+    if (hoverLeaveTimer.current !== null) {
+      window.clearTimeout(hoverLeaveTimer.current);
+      hoverLeaveTimer.current = null;
+    }
+    setHoveredSlug(slug);
+  }
+
+  // Vue node mouseleave (L4143-4158): 60ms debounced; with a selection the
+  // highlight falls back to the selection only — derive that in render.
+  function leaveNodeHover() {
+    if (hoverLeaveTimer.current !== null) window.clearTimeout(hoverLeaveTimer.current);
+    hoverLeaveTimer.current = window.setTimeout(() => {
+      hoverLeaveTimer.current = null;
+      setHoveredSlug(null);
+    }, 60);
+  }
 
   async function load(nextMode: 'overview' | 'ego', nextCenter?: string) {
     setStatus({ kind: 'loading' });
@@ -146,6 +214,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       setGraph(result);
       setMode(nextMode);
       setCenter(nextCenter ?? '');
+      // Vue preselects the ego center after a fresh ego render (L3231-3238,
+      // "preselect the center so the highlight / drawer context matches") and
+      // going back to overview clears the selection with it.
+      setSelectedSlug(nextMode === 'ego' && nextCenter ? nextCenter : null);
       setStatus({ kind: 'success' });
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : t('knowledgeBase.graph.loadFailed') });
@@ -298,6 +370,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
     return adjacency;
   }, [visible]);
+  // Vue applyHighlight input (L4558): the selection is the primary focus and
+  // the hovered node becomes a secondary focus while a selection exists; with
+  // no selection the hover alone drives the highlight. Null = plain styling.
+  const highlight = useMemo(
+    () => (visible ? graphHighlightSets(visible.edges, selectedSlug, hoveredSlug) : null),
+    [visible, selectedSlug, hoveredSlug],
+  );
+  // Node lookup for the Vue edge stroke rule: a lit edge takes the type color
+  // of the focus node driving it (hover wins over selection, L4605-4608).
+  const nodeBySlug = useMemo(() => new Map((visible?.nodes ?? []).map((node) => [node.slug, node])), [visible]);
   const toggleGraphType = (graphType: string) => {
     setSelectedTypes((current) => current.includes(graphType) ? current.filter((item) => item !== graphType) : [...current, graphType]);
   };
@@ -420,6 +502,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           }}
           supportedFileTypes={supportedFileTypes}
           canManage={canManage}
+          onOpenSettings={() => setSettingsOpen(true)}
           tabs={kbTabs}
         />
         {/* Vue keeps the document upload subtitle under every tab — the
@@ -429,13 +512,31 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
-            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
+            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onClick={(event) => {
+              // Vue setupPanZoom mouseup (L4544-4553): a near-stationary click
+              // on the svg background clears the selection, the drawer, and
+              // the highlight with it.
+              if (event.target === event.currentTarget && !dragged.current) {
+                setSelectedSlug(null);
+                setHoveredSlug(null);
+                setDrawerNode(null);
+                setDrawerPage(null);
+              }
+            }} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
               <defs>
                 <marker id="wk-graph-arrow-end" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
                   <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#c0c4cc" />
                 </marker>
                 <marker id="wk-graph-arrow-start" viewBox="0 0 10 6" refX="0" refY="3" markerWidth="8" markerHeight="6" orient="auto">
                   <path d="M10,0 L0,3 L10,6 L8,3 Z" fill="#c0c4cc" />
+                </marker>
+                {/* Vue highlight arrows (WikiBrowser.vue L3911-3927): same
+                    geometry as the plain markers but filled brand blue. */}
+                <marker id="wk-graph-arrow-end-hl" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+                  <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#0052d9" />
+                </marker>
+                <marker id="wk-graph-arrow-start-hl" viewBox="0 0 10 6" refX="0" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+                  <path d="M10,0 L0,3 L10,6 L8,3 Z" fill="#0052d9" />
                 </marker>
               </defs>
               <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
@@ -450,7 +551,20 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                     graphNodeRadius(linkCountBySlug.get(edge.source) ?? 0),
                     graphNodeRadius(linkCountBySlug.get(edge.target) ?? 0),
                   );
-                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? 'url(#wk-graph-arrow-end)' : undefined} markerStart={showArrows && edge.bidirectional ? 'url(#wk-graph-arrow-start)' : undefined} className="stroke-[#c0c4cc] [stroke-width:1.2] [stroke-opacity:0.4]" />;
+                  // Vue applyHighlight edge rule (L4601-4619): edges incident to
+                  // a focus node light up (stroke = focus type color, opacity
+                  // 0.9, width 2, #0052d9 hl arrows on both ends of a
+                  // reciprocal pair); every other edge fades to opacity 0.08 /
+                  // width 1 with the plain markers. The hover focus colors an
+                  // edge it touches before the selection does.
+                  const lit = highlight?.litEdges.has(`${edge.source}-${edge.target}`) ?? false;
+                  const focusSlug = lit && highlight
+                    ? (hoveredSlug && hoveredSlug !== selectedSlug && (edge.source === hoveredSlug || edge.target === hoveredSlug)
+                      ? hoveredSlug
+                      : (selectedSlug ?? hoveredSlug)!)
+                    : null;
+                  const stroke = focusSlug ? (GRAPH_NODE_FILL[nodeBySlug.get(focusSlug)?.page_type ?? ''] ?? '#0052d9') : '#c0c4cc';
+                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? `url(#wk-graph-arrow-end${lit ? '-hl' : ''})` : undefined} markerStart={showArrows && edge.bidirectional ? `url(#wk-graph-arrow-start${lit ? '-hl' : ''})` : undefined} className="stroke-[#c0c4cc] [stroke-width:1.2] [stroke-opacity:0.4]" style={highlight ? { stroke, strokeWidth: lit ? 2 : 1, strokeOpacity: lit ? 0.9 : 0.08, transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' } : undefined} />;
                 })}
                 {visible.nodes.map((node, index) => {
                   const position = displayPositions[index]!;
@@ -461,10 +575,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                   const neighborCount = adjacencyBySlug.get(node.slug)?.size ?? 0;
                   const isEgoCenter = graph.meta.mode === 'ego' && graph.meta.center === node.slug;
                   const showExpansionRing = Math.max(0, node.link_count - neighborCount) > 0 && !isEgoCenter;
-                  return <g key={node.slug} className="group/node cursor-pointer outline-none" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onClick={(event) => { if (event.shiftKey) { void bloomNeighbors(node.slug); return; } if (!dragged.current) void openNode(node); }} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}>
+                  // Vue applyHighlight node rule (L4569-4596): focus nodes grow
+                  // by r+3 / stroke-width 3, lit neighbors (and the focus set)
+                  // stay at full opacity, everything else fades to 0.2.
+                  const enlarged = highlight?.enlargedNodes.has(node.slug) ?? false;
+                  const dimmed = highlight ? !highlight.litNodes.has(node.slug) : false;
+                  return <g key={node.slug} className="group/node cursor-pointer outline-none" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 0.2s' }} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onMouseEnter={() => enterNodeHover(node.slug)} onMouseLeave={leaveNodeHover} onClick={(event) => { if (event.shiftKey) { void bloomNeighbors(node.slug); return; } if (!dragged.current) { setSelectedSlug(node.slug); void openNode(node); } }} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSlug(node.slug); void openNode(node); } }}>
                     {showExpansionRing ? <circle cx={position.x} cy={position.y} r={radius + 3} className="node-expansion-ring [fill:none] [stroke-width:1.5] [stroke-dasharray:3_3]" style={{ stroke: fill, opacity: 0.55 }} aria-hidden="true" /> : null}
                     {node.familiar ? <circle cx={position.x} cy={position.y} r={radius + 7} className="wk-graph-familiar-ring [fill:none] [stroke:#0052d9] [stroke-width:2]" style={{ opacity: 0.9 }} aria-hidden="true" /> : null}
-                    <circle cx={position.x} cy={position.y} r={radius} style={{ fill }} className="[stroke:#fff] [stroke-width:2]" />
+                    {selectedSlug === node.slug ? <circle cx={position.x} cy={position.y} r={radius + 5} className="wk-graph-active-ring pointer-events-none [fill:none]" style={{ stroke: fill, strokeWidth: 2, transformOrigin: position.x + "px " + position.y + "px", animation: 'wk-node-active-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite' }} aria-hidden="true" /> : null}
+                    <circle cx={position.x} cy={position.y} r={enlarged ? radius + 3 : radius} style={{ fill, strokeWidth: enlarged ? 3 : 2, transition: 'r 0.2s, stroke-width 0.2s, opacity 0.2s' }} className="[stroke:#fff] [stroke-width:2]" />
                     <text x={position.x} y={position.y + radius + 14} textAnchor="middle" className="pointer-events-none text-[11px] [fill:#66758b]">{node.title.length > 14 ? `${node.title.slice(0, 14)}…` : node.title}</text>
                     {mode === 'ego' && !isEgoCenter && Math.max(0, node.link_count - neighborCount) > 0 ? <g className="node-bloom-btn pointer-events-none opacity-0 transition-opacity group-hover/node:pointer-events-auto group-hover/node:opacity-100" onClick={(event) => { event.stopPropagation(); void bloomNeighbors(node.slug); }}>
                       <circle cx={position.x + Math.SQRT1_2 * (radius + 6)} cy={position.y - Math.SQRT1_2 * (radius + 6)} r={8} className="[fill:#fff] [stroke:#0052d9] [stroke-width:1.5]" />
@@ -588,6 +708,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           <div data-testid="knowledge-graph-reader" className="wk-reader-body max-h-[24rem] overflow-auto leading-[1.6]" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(drawerPage.content) }} />
         </> : null}
       </aside> : null}
+      {/* Vue ⚙ opens the KB settings overlay in place (uiStore.openKBSettings);
+          the Dialog re-hosts the settled KB settings content (KnowledgeSettingsPage,
+          the same surface /knowledgeBase/<id>/settings renders) instead of
+          navigating away from the graph. Gate matches Vue canManage — the gear
+          that opens it only renders for managers. */}
+      {settingsOpen ? (
+        <Dialog
+          open
+          title={t('knowledgeBase.settings')}
+          closeLabel={t('common.close')}
+          onClose={() => setSettingsOpen(false)}
+          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+        >
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} />
+        </Dialog>
+      ) : null}
     </main>
   );
 }

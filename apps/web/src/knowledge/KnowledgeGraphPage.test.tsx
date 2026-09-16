@@ -18,6 +18,9 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement,
   SVGElement: dom.window.SVGElement,
   Event: dom.window.Event,
+  // openContextualGuide dispatches `new CustomEvent(...)`; without this pin the
+  // Node-global CustomEvent wins and jsdom rejects the instance on dispatchEvent.
+  CustomEvent: dom.window.CustomEvent,
   PointerEvent: dom.window.PointerEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
@@ -27,6 +30,7 @@ Object.defineProperty(dom.window.navigator, 'language', { configurable: true, va
 const { createRoot } = await import('react-dom/client');
 const { KnowledgeGraphPage } = await import('./KnowledgeGraphPage.tsx');
 const { graphNodeRadius, layoutGraphNodes } = await import('./graph.ts');
+const { CONTEXTUAL_GUIDE_PENDING_KEY, OPEN_CONTEXTUAL_GUIDE_EVENT } = await import('../../../../packages/views/src/guides/contextual-guides.ts');
 
 let root: Root | undefined;
 afterEach(async () => {
@@ -34,6 +38,7 @@ afterEach(async () => {
   root = undefined;
   document.body.replaceChildren();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 function graphClient(): WeKnoraClient {
@@ -78,12 +83,12 @@ function graphClient(): WeKnoraClient {
   } as unknown as WeKnoraClient;
 }
 
-async function mount() {
+async function mount(client: WeKnoraClient = graphClient()) {
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<KnowledgeGraphPage client={graphClient()} knowledgeBaseId="kb-1" />);
+    root?.render(<KnowledgeGraphPage client={client} knowledgeBaseId="kb-1" />);
   });
   await act(async () => {});
   return container;
@@ -317,7 +322,24 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
   // Title-row actions: ⓘ info popover + ⚙ settings gear (kb-title-actions).
   assert.ok(container.querySelector('.kb-title-actions .kb-info-button'), 'ⓘ info button present');
   assert.ok(container.querySelector('.kb-title-actions .kb-settings-button'), '⚙ settings button present');
-  assert.equal(container.querySelector('.kb-settings-button')?.getAttribute('aria-label'), '设置');
+  const gear = container.querySelector<HTMLButtonElement>('.kb-settings-button');
+  assert.equal(gear?.getAttribute('aria-label'), '设置');
+  assert.equal(gear?.getAttribute('title'), '设置', 'Vue wraps the gear in t-tooltip knowledgeBase.settings');
+
+  // ⚙ opens the in-place KB settings overlay (Vue uiStore.openKBSettings,
+  // KnowledgeBase.vue:2388): a Dialog hosting the settled KB settings surface
+  // instead of navigating to the /settings route.
+  const pathBeforeGear = window.location.pathname;
+  await act(async () => gear!.click());
+  const dialog = document.querySelector('.wk-dialog');
+  assert.ok(dialog, '⚙ opens the settings Dialog overlay');
+  assert.equal(dialog?.getAttribute('role'), 'dialog');
+  assert.equal(dialog?.querySelector('.wk-dialog-header h2')?.textContent, '设置');
+  assert.ok(dialog?.querySelector('[aria-label^="Knowledge settings for"]'), 'Dialog hosts the KB settings surface');
+  assert.equal(window.location.pathname, pathBeforeGear, 'the gear opens the overlay in place — no navigation');
+  // Closing returns to the graph page.
+  await act(async () => (dialog!.querySelector('.wk-dialog-close') as HTMLButtonElement).click());
+  assert.equal(document.querySelector('.wk-dialog'), null, 'Dialog closes back into the graph page');
 
   // Subtitle keeps the document upload copy under the graph tab (Vue renders
   // document-subtitle unconditionally across tabs).
@@ -326,6 +348,9 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
 });
 
 test('graph header collapses to the plain 文档 crumb when wiki is disabled (Vue non-wiki branch)', async () => {
+  // R432: the wiki gate is strict — a graph-enabled KB with the wiki off gets
+  // no tab row either (Vue gates the whole row on isWiki, KnowledgeBase.vue:89,
+  // 2359-2381; the graph view lives inside the wiki surface).
   const client = graphClient() as WeKnoraClient & {
     knowledgeBases: { settings: { get: () => Promise<Record<string, unknown>> } };
   };
@@ -333,7 +358,7 @@ test('graph header collapses to the plain 文档 crumb when wiki is disabled (Vu
     id: 'kb-1',
     name: 'Plain库',
     type: 'document',
-    indexing_strategy: { wiki_enabled: false, graph_enabled: false },
+    indexing_strategy: { wiki_enabled: false, graph_enabled: true },
     chunking_config: {},
   });
   const container = document.createElement('div');
@@ -345,6 +370,355 @@ test('graph header collapses to the plain 文档 crumb when wiki is disabled (Vu
   await act(async () => {});
   const breadcrumb = container.querySelector('h2.document-breadcrumb');
   assert.ok(breadcrumb);
-  assert.equal(breadcrumb.querySelectorAll('a.breadcrumb-tab').length, 0, 'no tab row for documents-only KBs');
+  assert.equal(breadcrumb.querySelectorAll('a.breadcrumb-tab').length, 0, 'no tab row when the wiki is off, even with graph extraction on');
   assert.match(breadcrumb.querySelector('.breadcrumb-current')?.textContent ?? '', /文档/);
+  // Vue keeps the ?tab=… URL readable only for wiki KBs (KnowledgeBase.vue:2412
+  // gates .wiki-main-area on isWiki and renders the documents branch otherwise),
+  // so the React deep link falls back to the canonical documents URL.
+  assert.equal(window.location.pathname, '/knowledgeBase/kb-1', 'non-wiki ?tab=graph deep link falls back to the documents URL');
+});
+
+// --- R432 W2: search box ↔ canvas decoupling + debounce parity (Vue
+// WikiBrowser.vue L4680-4712) ---
+
+function typingHelper() {
+  const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
+  return (input: HTMLInputElement, value: string) => {
+    setValue.call(input, value);
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  };
+}
+
+function countingClient() {
+  const client = graphClient();
+  let listCalls = 0;
+  const inner = client.wiki.list.bind(client.wiki);
+  client.wiki.list = (async (...args: Parameters<typeof inner>) => {
+    listCalls += 1;
+    return inner(...args);
+  }) as typeof client.wiki.list;
+  return { client, calls: () => listCalls };
+}
+
+async function mountWith(client: WeKnoraClient) {
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(<KnowledgeGraphPage client={client} knowledgeBaseId="kb-1" />);
+  });
+  await act(async () => {});
+  return container;
+}
+
+function canvasNodeCount(container: HTMLElement) {
+  return container.querySelectorAll('svg g[role="button"]').length;
+}
+
+test('graph search typing swaps only dropdown options, never canvas nodes', async () => {
+  const container = await mount();
+  const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  assert.ok(input);
+  assert.equal(canvasNodeCount(container), 3);
+  await act(async () => input.focus());
+  await act(async () => typingHelper()(input, 'man'));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+  const titles = [...container.querySelectorAll<HTMLButtonElement>('#wk-graph-search-results button')].map((option) => option.textContent);
+  assert.deepEqual(titles, ['Manual Page'], 'remote search still fills the dropdown');
+  assert.equal(canvasNodeCount(container), 3, 'typing must not filter canvas nodes (Vue WikiBrowser.vue L4680-4712 only rewrites graphSearchOptions)');
+});
+
+test('graph search debounce matches Vue: any single character fires once after 200ms', async () => {
+  const { client, calls } = countingClient();
+  const container = await mountWith(client);
+  const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  assert.ok(input);
+  assert.equal(calls(), 0);
+  await act(async () => input.focus());
+  await act(async () => typingHelper()(input, 'm'));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
+  assert.equal(calls(), 0, 'inside the 200ms debounce window no request fires');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+  assert.equal(calls(), 1, 'any non-empty keyword (even one char) triggers exactly one search after 200ms');
+});
+
+test('graph search empty keyword falls back to the top-500 snapshot without another request', async () => {
+  const { client, calls } = countingClient();
+  const container = await mountWith(client);
+  const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  assert.ok(input);
+  await act(async () => input.focus());
+  await act(async () => typingHelper()(input, 'ma'));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+  assert.equal(calls(), 1);
+  let titles = [...container.querySelectorAll<HTMLButtonElement>('#wk-graph-search-results button')].map((option) => option.textContent);
+  assert.deepEqual(titles, ['Manual Page']);
+  await act(async () => typingHelper()(input, ''));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+  assert.equal(calls(), 1, 'clearing the keyword does not fire another search');
+  titles = [...container.querySelectorAll<HTMLButtonElement>('#wk-graph-search-results button')].map((option) => option.textContent);
+  assert.deepEqual(titles, ['Start', 'Next', 'Third'], 'empty keyword falls back to the link_count-ranked snapshot (graphSearchEffectiveOptions)');
+});
+
+test('graph legend type toggles still narrow the canvas while search stays decoupled', async () => {
+  const container = await mount();
+  assert.equal(canvasNodeCount(container), 3);
+  const summaryToggle = [...container.querySelectorAll<HTMLButtonElement>('[data-testid="knowledge-graph-legend"] button')].find((button) => button.textContent?.trim() === '摘要');
+  assert.ok(summaryToggle, 'summary legend toggle present under the default zh-CN locale');
+  await act(async () => summaryToggle.click());
+  await act(async () => {});
+  assert.equal(canvasNodeCount(container), 2, 'disabling summary removes only the summary node — selectedTypes filtering must survive the search decoupling');
+});
+
+// kbDetail welcome tour arming: Vue KnowledgeBase.vue mounts the guide at the
+// KB-page level (line 2741) with a tab-independent computed (lines 339-345),
+// so a ?tab=graph deep link arms the tour too. The graph page has no document
+// list request; the empty-KB signal comes from knowledge_count on the KB
+// metadata this page already loads (GET /knowledge-bases/:id fills it
+// server-side), so arming costs no extra request.
+async function mountForGuide(client: WeKnoraClient): Promise<string[]> {
+  const seen: string[] = [];
+  const onEvent = (event: Event) => seen.push(String((event as CustomEvent<{ tour: string }>).detail.tour));
+  window.addEventListener(OPEN_CONTEXTUAL_GUIDE_EVENT, onEvent);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const localRoot = createRoot(container);
+  try {
+    await act(async () => {
+      localRoot.render(<KnowledgeGraphPage client={client} knowledgeBaseId="kb-1" />);
+    });
+    await act(async () => {});
+  } finally {
+    await act(async () => localRoot.unmount());
+    container.remove();
+    window.removeEventListener(OPEN_CONTEXTUAL_GUIDE_EVENT, onEvent);
+  }
+  return seen;
+}
+
+function graphClientWithKb(kbExtra: Record<string, unknown>, me: Record<string, unknown> = { user: { id: 'u-1', role: 'admin' } }): WeKnoraClient {
+  const base = graphClient();
+  const mutable = base as unknown as {
+    knowledgeBases: { settings: { get: () => Promise<Record<string, unknown>> } };
+    auth: { me: () => Promise<Record<string, unknown>> };
+  };
+  mutable.knowledgeBases.settings.get = async () => ({
+    id: 'kb-1',
+    name: 'KB',
+    type: 'document',
+    indexing_strategy: { wiki_enabled: true, graph_enabled: true },
+    chunking_config: {},
+    ...kbExtra,
+  });
+  mutable.auth.me = async () => me;
+  return base;
+}
+
+test('kbDetail welcome tour arms on a ?tab=graph deep link for an editable empty KB', async () => {
+  const seen = await mountForGuide(graphClientWithKb({ knowledge_count: 0 }));
+  assert.deepEqual(seen, ['kbDetail'], 'the entry trigger fires for the empty editable KB');
+  const pending = JSON.parse(window.sessionStorage.getItem(CONTEXTUAL_GUIDE_PENDING_KEY) ?? 'null') as { tour?: string } | null;
+  assert.equal(pending?.tour, 'kbDetail', 'pending intent recorded for the shell guide host hand-off');
+});
+
+test('kbDetail welcome tour stays silent on the graph tab for non-empty, viewer-gated or FAQ KBs', async () => {
+  for (const [label, client] of [
+    ['non-empty KB', graphClientWithKb({ knowledge_count: 3 })],
+    ['viewer without edit rights', graphClientWithKb({ knowledge_count: 0 }, { user: { id: 'u-2', role: 'viewer' } })],
+    ['FAQ library', graphClientWithKb({ knowledge_count: 0, type: 'faq', indexing_strategy: {} })],
+    // Unexpected payload without the server-filled count: stay disarmed
+    // instead of guessing an empty KB.
+    ['missing knowledge_count', graphClientWithKb({})],
+  ] as const) {
+    window.sessionStorage.clear();
+    const seen = await mountForGuide(client);
+    assert.deepEqual(seen, [], `no trigger for ${label}`);
+    assert.equal(window.sessionStorage.getItem(CONTEXTUAL_GUIDE_PENDING_KEY), null, `no pending intent for ${label}`);
+  }
+});
+
+// --- R432 W1: selection/hover edge highlight parity (Vue WikiBrowser.vue
+// applyHighlight/clearHighlight L4558-4635) ---
+
+// Fixture mirroring the wiki parity graph shape: a hub-mid reciprocal pair, a
+// mid-leaf branch, and a far node whose only edge (far-hub) must stay dim
+// while mid is focused.
+function highlightClient(): WeKnoraClient {
+  return {
+    wiki: {
+      graph: async () => ({
+        nodes: [
+          { slug: 'hub', title: 'Hub', page_type: 'summary', link_count: 5 },
+          { slug: 'mid', title: 'Mid', page_type: 'entity', link_count: 2 },
+          { slug: 'leaf', title: 'Leaf', page_type: 'concept', link_count: 1 },
+          { slug: 'far', title: 'Far', page_type: 'synthesis', link_count: 1 },
+        ],
+        edges: [
+          { source: 'hub', target: 'mid' },
+          { source: 'mid', target: 'hub' },
+          { source: 'mid', target: 'leaf' },
+          { source: 'far', target: 'hub' },
+        ],
+        meta: { mode: 'overview', total: 4, returned: 4, truncated: false },
+      }),
+      list: async () => ({ pages: [], total: 0, page: 1, page_size: 20, total_pages: 0 }),
+      get: async (knowledgeBaseId: string, slug: string) => ({ title: slug, summary: '', content: '# Page', version: 1, slug, knowledgeBaseId }),
+    },
+    knowledgeBases: {
+      settings: {
+        get: async () => ({
+          id: 'kb-1',
+          name: 'Wiki图谱fixture',
+          type: 'document',
+          created_at: '2026-01-02T03:04:05Z',
+          indexing_strategy: { wiki_enabled: true, graph_enabled: true },
+          chunking_config: {},
+        }),
+        parserEngines: async () => ({ data: [] }),
+      },
+      list: async () => [{ id: 'kb-1', name: 'Wiki图谱fixture' }],
+    },
+    auth: {
+      me: async () => ({ user: { id: 'u-1', role: 'admin' } }),
+    },
+  } as unknown as WeKnoraClient;
+}
+
+function canvasSvg(container: HTMLElement) {
+  return container.querySelector<SVGSVGElement>('[data-testid="knowledge-graph-surface"] > svg');
+}
+
+function nodeGroup(container: HTMLElement, title: string) {
+  return container.querySelector<SVGGElement>(`svg g[role="button"][aria-label^="${title} ·"]`);
+}
+
+function mainCircle(group: SVGGElement) {
+  // The main circle is the only direct circle child without aria-hidden (the
+  // expansion/familiar/active rings are all aria-hidden decorations).
+  return group.querySelector<SVGCircleElement>(':scope > circle:not([aria-hidden])');
+}
+
+function litLine(group: SVGGElement, ...markers: string[]) {
+  return [...group.querySelectorAll<SVGLineElement>('line')].find((line) => markers.every((marker) => line.getAttribute('marker-end') === marker || line.getAttribute('marker-start') === marker));
+}
+
+test('graph defines the Vue highlight arrow markers (arrow-end-hl / arrow-start-hl, fill #0052d9)', async () => {
+  const container = await mount(highlightClient());
+  const markerEndHl = container.querySelector('marker#wk-graph-arrow-end-hl');
+  assert.ok(markerEndHl, 'highlight end marker present');
+  assert.equal(markerEndHl.getAttribute('viewBox'), '0 0 10 6');
+  assert.equal(markerEndHl.getAttribute('refX'), '10');
+  assert.equal(markerEndHl.getAttribute('refY'), '3');
+  assert.equal(markerEndHl.getAttribute('markerWidth'), '8');
+  assert.equal(markerEndHl.getAttribute('markerHeight'), '6');
+  assert.equal(markerEndHl.getAttribute('orient'), 'auto');
+  assert.equal(markerEndHl.querySelector('path')?.getAttribute('d'), 'M0,0 L10,3 L0,6 L2,3 Z');
+  assert.equal(markerEndHl.querySelector('path')?.getAttribute('fill'), '#0052d9');
+  const markerStartHl = container.querySelector('marker#wk-graph-arrow-start-hl');
+  assert.ok(markerStartHl, 'highlight start marker present');
+  assert.equal(markerStartHl.getAttribute('refX'), '0');
+  assert.equal(markerStartHl.getAttribute('refY'), '3');
+  assert.equal(markerStartHl.getAttribute('markerWidth'), '8');
+  assert.equal(markerStartHl.getAttribute('markerHeight'), '6');
+  assert.equal(markerStartHl.getAttribute('orient'), 'auto');
+  assert.equal(markerStartHl.querySelector('path')?.getAttribute('d'), 'M10,0 L0,3 L10,6 L8,3 Z');
+  assert.equal(markerStartHl.querySelector('path')?.getAttribute('fill'), '#0052d9');
+  // Without hover/selection every edge keeps the plain markers (clearHighlight).
+  const group = canvasSvg(container)!.querySelector('g')!;
+  for (const line of group.querySelectorAll('line')) {
+    assert.equal(line.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)');
+    assert.equal(line.getAttribute('style'), null, 'plain edges carry no inline highlight overrides');
+  }
+});
+
+test('graph hover highlights incident edges and dims the rest like Vue applyHighlight', async () => {
+  const container = await mount(highlightClient());
+  const svg = canvasSvg(container)!;
+  const group = svg.querySelector('g')!;
+  const mid = nodeGroup(container, 'Mid')!;
+  assert.ok(mid);
+  await act(async () => mid.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true })));
+
+  // Lit edges: stroke = focus node type color (mid is entity → #2ba471),
+  // opacity 0.9, width 2, highlight arrows on both ends of the hub↔mid pair.
+  // (jsdom serializes the hex stroke as rgb, so accept both.)
+  const hasEntityStroke = (style: string | null) => Boolean(style && (style.includes('#2ba471') || style.includes('rgb(43, 164, 113)')));
+  const bidir = litLine(group, 'url(#wk-graph-arrow-end-hl)', 'url(#wk-graph-arrow-start-hl)');
+  assert.ok(bidir, 'reciprocal hub-mid edge swaps both markers to the highlight arrows');
+  assert.equal(hasEntityStroke(bidir.getAttribute('style')), true, 'edge stroke takes the focus node type color');
+  assert.ok((bidir.getAttribute('style') ?? '').includes('stroke-opacity: 0.9'), 'lit edge opacity 0.9');
+  assert.ok((bidir.getAttribute('style') ?? '').includes('stroke-width: 2'), 'lit edge width 2');
+  const leafEdge = [...group.querySelectorAll('line')].find((line) => line !== bidir && (line.getAttribute('style') ?? '').includes('stroke-opacity: 0.9'));
+  assert.ok(leafEdge, 'mid-leaf edge lights up too');
+  assert.equal(leafEdge.getAttribute('marker-end'), 'url(#wk-graph-arrow-end-hl)');
+  assert.equal(leafEdge.getAttribute('marker-start'), null, 'one-way lit edge keeps a single arrow');
+
+  // Unrelated edge: opacity 0.08, width 1, plain markers (Vue L4612-4616).
+  const dim = [...group.querySelectorAll('line')].find((line) => (line.getAttribute('style') ?? '').includes('stroke-opacity: 0.08'));
+  assert.ok(dim, 'far-hub edge dims while mid is focused');
+  assert.equal(dim.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)');
+  assert.ok((dim.getAttribute('style') ?? '').includes('stroke-width: 1'));
+
+  // Nodes: focus grows r+3 / stroke-width 3, neighbors stay lit, the
+  // unconnected node fades to opacity 0.2 (Vue L4569-4596).
+  const midCircle = mainCircle(mid)!;
+  assert.equal(midCircle.getAttribute('r'), String(graphNodeRadius(2) + 3), 'focus node r+3');
+  assert.ok((midCircle.getAttribute('style') ?? '').includes('stroke-width: 3'), 'focus node stroke-width 3');
+  const hub = nodeGroup(container, 'Hub')!;
+  assert.equal(mainCircle(hub)!.getAttribute('r'), String(graphNodeRadius(5)), 'neighbor keeps its radius');
+  assert.equal(hub.getAttribute('style')?.replace(' ', '').includes('opacity:1'), true, 'neighbor stays at full opacity');
+  const far = nodeGroup(container, 'Far')!;
+  assert.equal(far.getAttribute('style')?.replace(' ', '').includes('opacity:0.2'), true, 'unrelated node fades to opacity 0.2');
+
+  // mouseleave debounces 60ms then falls back to plain styling (no selection).
+  await act(async () => mid.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true })));
+  assert.equal(bidir.getAttribute('marker-end'), 'url(#wk-graph-arrow-end-hl)', 'still highlighted inside the 60ms leave debounce');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
+  assert.equal(bidir.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)', 'clearHighlight restores plain markers');
+  assert.equal(bidir.getAttribute('style') ?? '', '', 'inline highlight overrides removed');
+  assert.equal(far.getAttribute('style')?.replace(' ', '').includes('opacity:0.2'), false, 'dimmed node restored to full opacity');
+});
+
+test('graph click selects (drawer + persistent highlight) and background click clears like Vue', async () => {
+  const container = await mount(highlightClient());
+  const svg = canvasSvg(container)!;
+  const group = svg.querySelector('g')!;
+  const mid = nodeGroup(container, 'Mid')!;
+  await act(async () => mid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  await act(async () => {});
+  // Drawer opens and the selection keeps the highlight on (Vue click →
+  // graphSelectedSlug + applyHighlight + openGraphDrawer).
+  assert.ok(container.querySelector('aside[role="dialog"]'), 'drawer opens on click');
+  const bidir = litLine(group, 'url(#wk-graph-arrow-end-hl)', 'url(#wk-graph-arrow-start-hl)');
+  assert.ok(bidir, 'selection keeps the hub-mid edge lit');
+  // Vue activeRing: r+5 selection pulse ring on the selected node.
+  const activeRing = mid.querySelector(':scope > circle.wk-graph-active-ring');
+  assert.ok(activeRing, 'selection ring rendered');
+  assert.equal(activeRing.getAttribute('r'), String(graphNodeRadius(2) + 5));
+
+  // Closing the drawer keeps the highlight (Vue t-drawer close never clears
+  // graphSelectedSlug — only a background click does).
+  await act(async () => container.querySelector<HTMLElement>('aside[role="dialog"] button')!.click());
+  assert.equal(container.querySelector('aside[role="dialog"]'), null, 'drawer closed');
+  assert.equal(litLine(group, 'url(#wk-graph-arrow-end-hl)', 'url(#wk-graph-arrow-start-hl)'), bidir, 'highlight survives the drawer close');
+
+  // Near-stationary background click clears selection + drawer + highlight.
+  // (React delegates through bubbling, so the synthetic click must bubble;
+  // the handler only acts when target === currentTarget, i.e. the svg itself.)
+  await act(async () => svg.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  assert.equal(bidir.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)', 'background click restores plain markers');
+  assert.equal(mid.querySelector(':scope > circle.wk-graph-active-ring'), null, 'selection ring cleared');
+  assert.equal(container.querySelector('aside[role="dialog"]'), null);
+});
+
+test('graph keyboard selection produces the same highlight as Vue applyHighlight', async () => {
+  const container = await mount(highlightClient());
+  const group = canvasSvg(container)!.querySelector('g')!;
+  const mid = nodeGroup(container, 'Mid')!;
+  await act(async () => mid.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  await act(async () => {});
+  const bidir = litLine(group, 'url(#wk-graph-arrow-end-hl)', 'url(#wk-graph-arrow-start-hl)');
+  assert.ok(bidir, 'keyboard selection lights the incident edges');
+  assert.ok(mid.querySelector(':scope > circle.wk-graph-active-ring'), 'keyboard selection shows the selection ring');
+  assert.ok(container.querySelector('aside[role="dialog"]'), 'keyboard selection opens the drawer like Enter on the Vue canvas');
 });

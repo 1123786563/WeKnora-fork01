@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { classifyKnowledgeBaseMetadataError, computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs } from './permissions.ts';
+import { classifyKnowledgeBaseMetadataError, computeKBPermissions, kbTypeRedirectPath, kbWikiTabFallbackPath, resolveKBSurfaceTabs } from './permissions.ts';
 
 test('viewer role hides editing controls for a shared KB', () => {
   const kb = { id: 'kb-1', user_id: 'someone-else' };
@@ -52,9 +52,25 @@ test('faq-type KBs redirect to the FAQ route', () => {
   assert.equal(kbTypeRedirectPath({ type: 'faq' }), undefined);
 });
 
-test('wiki and graph tabs follow the indexing strategy', () => {
-  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1' }), ['documents']);
-  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: true } }), ['documents', 'wiki']);
+test('the tab row exists only for wiki KBs (Vue isWiki gate, KnowledgeBase.vue:89/2359-2381)', () => {
+  // No wiki → no tabs at all; the caller falls back to the plain 文档 crumb.
+  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1' }), []);
+  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: false } }), []);
+  // Wiki off but graph on still gets no tab row: the Vue graph view lives
+  // inside the wiki surface (WikiBrowser) and is never gated separately.
+  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: true } }), []);
+  // A wiki KB always shows the three tabs — graph is not independently gated.
+  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: true } }), ['documents', 'wiki', 'graph']);
   assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: true, graph_enabled: true } }), ['documents', 'wiki', 'graph']);
-  assert.deepEqual(resolveKBSurfaceTabs({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: true } }), ['documents', 'graph']);
+});
+
+test('non-wiki ?tab deep links fall back to the canonical documents URL', () => {
+  // Vue keeps the ?tab=graph URL but renders the documents branch when isWiki
+  // is false (KnowledgeBase.vue:2412/2418); the React pages are separate
+  // routes, so the deep link redirects to the documents URL instead.
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false, graph_enabled: true } }), '/knowledgeBase/kb-1');
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: false } }), '/knowledgeBase/kb-1');
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: true } }), undefined);
+  assert.equal(kbWikiTabFallbackPath({ id: 'kb-1', indexing_strategy: { wiki_enabled: true, graph_enabled: true } }), undefined);
+  assert.equal(kbWikiTabFallbackPath({ indexing_strategy: { wiki_enabled: false } }), undefined);
 });

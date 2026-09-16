@@ -183,6 +183,50 @@ export function graphNodeRadius(linkCount: number): number {
   return Math.max(8, Math.min(24, 8 + Math.log(linkCount + 1) * 4));
 }
 
+/**
+ * Vue WikiBrowser applyHighlight/clearHighlight contract (L4558-4635):
+ * a selection (click/search, or the ego-center preselect) is the primary
+ * focus; while a selection exists, hovering another node adds it as a
+ * secondary focus. With no selection the hovered node is the only focus.
+ * Edges incident to either focus light up; nodes are enlarged (r+3 /
+ * stroke-width 3), their undirected neighbors stay fully opaque, and every
+ * other node fades to opacity 0.2. Returning null means "nothing to
+ * highlight" — the renderer keeps the plain edge/node styling.
+ */
+export interface GraphHighlightSets {
+  /** focus slugs — drawn enlarged like Vue's r+3 / stroke-width 3 circles */
+  enlargedNodes: Set<string>;
+  /** focus nodes plus their undirected neighbors — kept at full opacity */
+  litNodes: Set<string>;
+  /** "source-target" keys of edges incident to either focus slug */
+  litEdges: Set<string>;
+}
+
+export function graphHighlightSets(
+  edges: ReadonlyArray<{ source: string; target: string }>,
+  selectedSlug: string | null | undefined,
+  hoveredSlug: string | null | undefined,
+): GraphHighlightSets | null {
+  const primary = selectedSlug || hoveredSlug || null;
+  if (!primary) return null;
+  const secondary = selectedSlug && hoveredSlug && hoveredSlug !== selectedSlug ? hoveredSlug : null;
+  const focus = secondary ? new Set([primary, secondary]) : new Set([primary]);
+  const litEdges = new Set<string>();
+  const neighbors = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    if (!neighbors.has(edge.source)) neighbors.set(edge.source, new Set());
+    if (!neighbors.has(edge.target)) neighbors.set(edge.target, new Set());
+    neighbors.get(edge.source)!.add(edge.target);
+    neighbors.get(edge.target)!.add(edge.source);
+    if (focus.has(edge.source) || focus.has(edge.target)) litEdges.add(`${edge.source}-${edge.target}`);
+  }
+  const litNodes = new Set<string>(focus);
+  for (const slug of focus) {
+    for (const neighbor of neighbors.get(slug) ?? []) litNodes.add(neighbor);
+  }
+  return { enlargedNodes: focus, litNodes, litEdges };
+}
+
 /** Vue WikiBrowser setEdgePositions margin: keep end markers clear of node circles. */
 export const GRAPH_EDGE_ARROW_MARGIN = 4;
 

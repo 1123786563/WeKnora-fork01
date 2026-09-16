@@ -4283,3 +4283,37 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   documents-page-only (deep link `?tab=graph` does not arm it); Vue
   selected/hover edge highlight (applyHighlight) unimplemented. No Vue,
   mobile, or Go code was modified.
+
+## 2026-09-16 Round R433 — Graph applyHighlight, strict isWiki gating, in-place ⚙, deep-link guide
+
+- Graph selection/hover highlight now mirrors Vue's applyHighlight/clearHighlight
+  (WikiBrowser.vue:4558-4635): `graphHighlightSets(edges, selectedSlug, hoveredSlug)`
+  computes the focus/enlarged/lit sets; edges incident to a focus light up with the
+  focus node's type color (hover focus wins over selection), opacity 0.9, width 2,
+  and the `#0052d9` highlight arrow markers (`wk-graph-arrow-{end,start}-hl`); every
+  other edge fades to 0.08/width 1 with plain markers; focus nodes grow r+3 /
+  stroke-width 3, undirected neighbors keep full opacity, the rest fade to 0.2; the
+  selected node carries the pulsing active ring (`wk-node-active-pulse` keyframes in
+  styles.css, transform-origin pinned to the node center because the React renderer
+  uses absolute cx/cy instead of Vue's per-node translate group); a near-stationary
+  click on the canvas background clears selection, hover, drawer, and highlight.
+- Tab gating is now the strict Vue isWiki contract (KnowledgeBase.vue:89,2359-2381):
+  `resolveKBSurfaceTabs` returns all three tabs only when `wiki_enabled`, otherwise an
+  empty row and the plain 文档 crumb — and `kbWikiTabFallbackPath` redirects non-wiki
+  `?tab=wiki|graph` deep links to the canonical documents URL, matching Vue keeping
+  the URL but rendering the documents branch.
+- The breadcrumb ⚙ now opens the KB settings surface in place where the host page
+  provides `onOpenSettings` (Vue uiStore.openKBSettings), falling back to the
+  historical settings route otherwise.
+- The kbDetail welcome tour now arms on graph deep links too (`useKbDetailGuideTrigger`
+  wired into KnowledgeGraphPage off `kbMeta.knowledge_count`), closing the
+  "documents-page-only trigger" gap.
+- Gates: `pnpm test:web` 1330/1330, `pnpm test:shared` 568/568, `pnpm typecheck:web`
+  clean.
+- Paired-browser evidence (1440×900, zh-CN, wiki fixture KB): selecting the summary
+  node lights its incident edges in the type blue with directional arrows, fades the
+  unlinked edge and the Index node to near-invisible, and keeps 概念/实体 neighbors
+  at full color — identical on both sides
+  (`screenshots/r433-20260916/`: vue/react select-highlight pair + react hover
+  secondary focus; `r432-20260916/react-kb-guide-graph-deeplink.png` from the
+  concurrent slice). No Vue, mobile, or Go code was modified.

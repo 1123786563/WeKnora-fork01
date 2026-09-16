@@ -118,10 +118,29 @@ export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | n
 
 export type KBSurfaceTab = 'documents' | 'wiki' | 'graph';
 
-/** Wiki/graph tabs only exist when the indexing strategy enables them. */
+/**
+ * Vue gates the whole 文档/Wiki/图谱 tab row on isWiki alone
+ * (KnowledgeBase.vue:89 `!!kbInfo.indexing_strategy.wiki_enabled`, template
+ * 2359-2381): a wiki KB always shows the three tabs — the graph view lives
+ * inside the wiki surface and is never gated separately — while a KB with the
+ * wiki off renders the plain 文档 crumb and no tab row at all, even when graph
+ * extraction is enabled. Empty result = the caller falls back to the crumb.
+ */
 export function resolveKBSurfaceTabs(kb: KBSurfaceKB): KBSurfaceTab[] {
-  const tabs: KBSurfaceTab[] = ['documents'];
-  if (kb.indexing_strategy?.wiki_enabled === true) tabs.push('wiki');
-  if (kb.indexing_strategy?.graph_enabled === true) tabs.push('graph');
-  return tabs;
+  if (kb.indexing_strategy?.wiki_enabled !== true) return [];
+  return ['documents', 'wiki', 'graph'];
+}
+
+/**
+ * The ?tab=wiki|graph views only exist for wiki KBs: Vue keeps the URL but
+ * renders the documents branch when isWiki is false (KnowledgeBase.vue:2412
+ * gates .wiki-main-area on isWiki, 2418 renders the documents branch on
+ * `!isWiki`). The React tab pages are separate routes, so a non-wiki deep
+ * link falls back to the canonical documents URL — the same view Vue shows.
+ * Mirrors kbTypeRedirectPath: undefined when the current URL is already right.
+ */
+export function kbWikiTabFallbackPath(kb: KBSurfaceKB): string | undefined {
+  const id = typeof kb.id === 'string' ? kb.id : undefined;
+  if (!id || kb.indexing_strategy?.wiki_enabled === true) return undefined;
+  return `/knowledgeBase/${encodeURIComponent(id)}`;
 }

@@ -2563,8 +2563,13 @@ export function KnowledgeDocumentsPage({
     lastSelectedIndex.current = -1;
   }
   const pageTotal = state.status === "success" ? state.page.total : 0;
+  // resolveKBSurfaceTabs is the strict Vue isWiki gate (permissions.ts): a KB
+  // with the wiki off yields no tabs at all — even with graph extraction on —
+  // and the breadcrumb falls back to the plain 文档 crumb. While the KB
+  // metadata is still loading the Vue page also shows the plain crumb
+  // (isWiki=false until kbInfo lands), so the fallback is empty too.
   const tabs = useMemo(
-    () => (kbMeta ? resolveKBSurfaceTabs(kbMeta) : ["documents" as const]),
+    () => (kbMeta ? resolveKBSurfaceTabs(kbMeta) : []),
     [kbMeta],
   );
 
