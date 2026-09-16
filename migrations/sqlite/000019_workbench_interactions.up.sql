@@ -15,6 +15,7 @@ CREATE TABLE workbench_interactions (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, id),
     CHECK (kind IN ('tool_approval','budget','recovery')),
+    CHECK (length(trim(args_hash)) > 0),
     FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs (tenant_id, run_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_workbench_interactions_owner ON workbench_interactions (tenant_id, owner_id, run_id, created_at);

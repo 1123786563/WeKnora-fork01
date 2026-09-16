@@ -15,6 +15,7 @@ CREATE TABLE workbench_interactions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, id),
     CONSTRAINT ck_workbench_interaction_kind CHECK (kind IN ('tool_approval','budget','recovery')),
+    CONSTRAINT ck_workbench_interaction_args_hash CHECK (length(trim(args_hash)) > 0),
     CONSTRAINT ck_workbench_interaction_action CHECK (action = '' OR (kind = 'tool_approval' AND action IN ('approve','reject')) OR (kind = 'budget' AND action = 'extend') OR (kind = 'recovery' AND action IN ('retry','provide_result','terminate'))),
     CONSTRAINT fk_workbench_interaction_run FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs (tenant_id, run_id) ON DELETE CASCADE
 );

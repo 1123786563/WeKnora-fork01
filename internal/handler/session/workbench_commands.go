@@ -59,6 +59,10 @@ func (h *WorkbenchCommandHandler) DecideInteraction(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
 		return
 	}
+	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "decision_id and args_hash are required"})
+		return
+	}
 	decision, err := h.interactions.Decide(commandContext(c), c.Param("id"), input)
 	if err != nil {
 		writeWorkbenchCommandError(c, err)

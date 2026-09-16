@@ -40,6 +40,8 @@ type interactionRow struct {
 	ExpectedRevision                   int64
 	ExpiresAt                          *time.Time
 	Revoked                            bool
+	CreatedAt                          time.Time
+	UpdatedAt                          time.Time
 }
 
 func (interactionRow) TableName() string { return "workbench_interactions" }
@@ -52,6 +54,10 @@ func (r interactionRow) decision() workbench.InteractionDecision {
 // scoped by tenant and owner, and Decide locks the row before checking the
 // revision and decision id, making retries idempotent across replicas.
 type GormInteractionStore struct{ db *gorm.DB }
+
+type DecisionCompensator interface {
+	RollbackDecision(ctx context.Context, tenantID uint64, ownerID, id, decisionID string, revision int64) error
+}
 
 func NewGormInteractionStore(db *gorm.DB) *GormInteractionStore { return &GormInteractionStore{db: db} }
 func (s *GormInteractionStore) DB() *gorm.DB {
@@ -92,6 +98,9 @@ func (s *GormInteractionStore) Get(ctx context.Context, tenantID uint64, ownerID
 }
 
 func (s *GormInteractionStore) Decide(ctx context.Context, tenantID uint64, ownerID, id string, input workbench.InteractionDecision) (workbench.InteractionDecision, error) {
+	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
+		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
+	}
 	var result workbench.InteractionDecision
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row interactionRow
@@ -131,6 +140,17 @@ func (s *GormInteractionStore) Decide(ctx context.Context, tenantID uint64, owne
 		return nil
 	})
 	return result, err
+}
+
+func (s *GormInteractionStore) RollbackDecision(ctx context.Context, tenantID uint64, ownerID, id, decisionID string, revision int64) error {
+	updated := s.db.WithContext(ctx).Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND decision_id = ? AND expected_revision = ?", tenantID, ownerID, id, decisionID, revision).Updates(map[string]any{"decision_id": "", "action": "", "status": "pending", "expected_revision": gorm.Expr("expected_revision - 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return agentruntime.ErrConflict
+	}
+	return nil
 }
 
 func validateInteractionRow(row interactionRow) error {
@@ -205,6 +225,13 @@ func (p *GormSteerPort) Steer(ctx context.Context, tenantID uint64, ownerID, run
 	if row.Revision != expectedRevision {
 		return agentruntime.ErrConflict
 	}
+	claimed := p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", tenantID, ownerID, runID, expectedRevision).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if claimed.Error != nil {
+		return claimed.Error
+	}
+	if claimed.RowsAffected != 1 {
+		return agentruntime.ErrConflict
+	}
 	return p.streams.AppendSteerEvents(ctx, row.SessionID, row.AssistantMessageID, []interfaces.StreamEvent{{ID: uuid.NewString(), Type: types.ResponseTypeSteer, Content: text, Data: map[string]interface{}{"delivery": "inject"}, Timestamp: time.Now()}})
 }
 
@@ -264,18 +291,29 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	if err := workbench.ValidateInteractionAction(current.Kind, input.Action); err != nil {
 		return workbench.InteractionDecision{}, err
 	}
-	if input.ArgsHash != "" && current.ArgsHash != "" && input.ArgsHash != current.ArgsHash {
+	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
 	}
-	if current.Kind == string(workbench.InteractionToolApproval) && s.approval != nil {
-		if err := s.approval.Resolve(tenant, owner, current.ID, approval.Decision{Approved: input.Action == "approve"}); err != nil {
-			return workbench.InteractionDecision{}, err
-		}
+	if input.ArgsHash != current.ArgsHash {
+		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
 	}
 	input.ID = current.ID
 	input.Kind = current.Kind
 	input.ArgsHash = current.ArgsHash
-	return s.store.Decide(ctx, tenant, owner, current.ID, input)
+	result, err := s.store.Decide(ctx, tenant, owner, current.ID, input)
+	if err != nil {
+		return workbench.InteractionDecision{}, err
+	}
+	newDecision := result.ExpectedRevision == input.ExpectedRevision+1
+	if current.Kind == string(workbench.InteractionToolApproval) && s.approval != nil && newDecision {
+		if err := s.approval.Resolve(tenant, owner, current.ID, approval.Decision{Approved: input.Action == "approve"}); err != nil {
+			if compensator, ok := s.store.(DecisionCompensator); ok {
+				_ = compensator.RollbackDecision(ctx, tenant, owner, current.ID, input.DecisionID, result.ExpectedRevision)
+			}
+			return workbench.InteractionDecision{}, err
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) Command(ctx context.Context, runID string, command workbench.ExecutionCommand) error {

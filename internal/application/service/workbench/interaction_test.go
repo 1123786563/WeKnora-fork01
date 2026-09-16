@@ -34,7 +34,7 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, e := store.Decide(context.Background(), 7, "u1", "i1", contract.InteractionDecision{Action: "approve", DecisionID: "d1", ExpectedRevision: 0})
+			_, e := store.Decide(context.Background(), 7, "u1", "i1", contract.InteractionDecision{Action: "approve", ArgsHash: "h", DecisionID: "d1", ExpectedRevision: 0})
 			results <- e
 		}()
 	}
