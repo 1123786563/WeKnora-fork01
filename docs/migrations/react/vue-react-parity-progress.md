@@ -4253,3 +4253,33 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   viewport edge at 1440px on the upload step (Vue has right/left/bottom/top fallback); React fit-to-view resets
   viewport instead of computing the Vue bbox fit. An accidental write to the main worktree early in this round was
   fully reverted (main `git status` clean except pre-existing untracked docs). No Vue, mobile, or Go code was modified.
+
+## 2026-09-16 Round R432 — Documents breadcrumb tabs inline, graph search Vue behavior
+
+- Documents tab header now matches Vue's information architecture
+  (KnowledgeBase.vue:2330-2408): the 文档/Wiki/图谱 row renders inline as the
+  third breadcrumb level via the shared `DocumentsBreadcrumb` tabs anatomy
+  (documents active, graph tab carrying the tabGraphTip tooltip), and the
+  standalone top-right `wk-kb-tabs` nav is gone. The manual 刷新 button was
+  removed with it — Vue's document header has no reload action; list refresh
+  stays driven by upload/processing watchers (`reloadToken` mechanism kept
+  intact in state). Clicking the breadcrumb 图谱 tab SPA-navigates to
+  `?tab=graph` and renders the graph surface (verified live).
+- Landed alongside (concurrent orchestrator slice, same R432 backlog item):
+  graph search now mirrors Vue's remote-search semantics — 200ms debounce, any
+  non-empty keyword, empty keyword restores the top-500 snapshot, and typing
+  never filters the canvas (query removed from the visible-nodes filter; the
+  canvas narrows only through the type allow-list, WikiBrowser.vue:4680-4712).
+- Gates: `pnpm test:web` 1322/1322, `pnpm test:shared` 568/568,
+  `pnpm typecheck:web` clean.
+- Paired-browser evidence (1440×900, zh-CN, wiki fixture KB
+  `7cea6ec0-8a07-4c83-9309-f802a61b3d5c`): breadcrumb tab row, ⓘ/⚙, subtitle,
+  and the absence of top-right actions match Vue on the documents tab
+  (`screenshots/r432-20260916/`, react/vue pair).
+- Remaining R432 backlog (from the r431 evidence doc): guide card placement
+  can overflow the right viewport edge at 1440px on the upload step; React
+  fit-to-view resets viewport instead of computing the Vue bbox fit; ⚙ lands
+  on the KB settings page instead of Vue's settings drawer; guide trigger is
+  documents-page-only (deep link `?tab=graph` does not arm it); Vue
+  selected/hover edge highlight (applyHighlight) unimplemented. No Vue,
+  mobile, or Go code was modified.

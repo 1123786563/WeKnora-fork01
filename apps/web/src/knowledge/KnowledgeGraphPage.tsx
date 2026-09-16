@@ -226,9 +226,13 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }
 
   useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes]);
+  // Vue handleGraphRemoteSearch (WikiBrowser.vue L4680-4712): any non-empty
+  // keyword debounces 200ms into a remote wiki search; an empty keyword just
+  // clears the keyword results so the dropdown falls back to the top-500
+  // snapshot. Typing never touches the canvas — see the visible memo below.
   useEffect(() => {
     const keyword = query.trim();
-    if (keyword.length < 2) { setSearchResults([]); setSearchLoading(false); return; }
+    if (!keyword) { setSearchResults([]); setSearchLoading(false); return; }
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setSearchLoading(true);
@@ -237,7 +241,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       }).catch(() => {
         if (!cancelled) setSearchResults([]);
       }).finally(() => { if (!cancelled) setSearchLoading(false); });
-    }, 250);
+    }, 200);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [client, knowledgeBaseId, query]);
 
@@ -269,7 +273,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawerNode]);
 
-  const visible = useMemo(() => graph ? filterGraphNodes(graph, { query, types: selectedTypes }) : null, [graph, query, selectedTypes]);
+  // Vue search never filters the canvas: handleGraphRemoteSearch only swaps
+  // dropdown options (WikiBrowser.vue L4680-4712), so typing leaves the node
+  // set untouched. The canvas narrows only through the type allow-list
+  // (graphFilterTypesToArray, re-fetched server-side), which the selectedTypes
+  // load effect mirrors — keep query out of this filter.
+  const visible = useMemo(() => graph ? filterGraphNodes(graph, { types: selectedTypes }) : null, [graph, selectedTypes]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, surfaceSize.width, surfaceSize.height) : [], [visible, surfaceSize.width, surfaceSize.height]);
   const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
   const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);

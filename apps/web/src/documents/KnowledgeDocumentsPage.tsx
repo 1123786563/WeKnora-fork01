@@ -103,6 +103,7 @@ import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
+  type DocumentsBreadcrumbTab,
   EditIcon,
   Icon,
   LinkIcon,
@@ -2567,6 +2568,24 @@ export function KnowledgeDocumentsPage({
     [kbMeta],
   );
 
+  // Vue renders the 文档/Wiki/图谱 row inline as the third breadcrumb level
+  // (KnowledgeBase.vue:2359-2380, activeKbTab === 'documents' here); the
+  // label keys match the graph page's breadcrumb tabs so both surfaces read
+  // identically.
+  const breadcrumbTabs: DocumentsBreadcrumbTab[] = tabs.map((tab) => ({
+    key: tab,
+    label: tab === "documents"
+      ? t("knowledgeEditor.wikiBrowser.tabDocuments")
+      : tab === "wiki"
+        ? "Wiki" /* Vue template renders the wiki tab as the literal "Wiki" (KnowledgeBase.vue L2365) */
+        : t("knowledgeEditor.wikiBrowser.tabGraph"),
+    href: tab === "documents"
+      ? documentsKBDetailPath(knowledgeBaseId)
+      : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}?tab=${tab}`,
+    active: tab === "documents",
+    title: tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined,
+  }));
+
   // Vue canConfirm: empty batch, empty manual content or a required model
   // missing (multimodal/ASR) disables the confirm button.
   const canConfirm = useMemo(() => {
@@ -3306,6 +3325,7 @@ export function KnowledgeDocumentsPage({
             }}
             supportedFileTypes={[...supportedFileTypes]}
             canManage={canContribute}
+            tabs={breadcrumbTabs}
           />
           <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
           {kbMetaError ? (
@@ -3334,39 +3354,10 @@ export function KnowledgeDocumentsPage({
             </Status>
           ) : null}
         </div>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          <nav
-            className="wk-kb-tabs"
-            aria-label={t("knowledgeBase.documents.title")}
-          >
-            {tabs.map((tab) => (
-              <a
-                key={tab}
-                className={tab === "documents" ? "is-active" : ""}
-                // Vue keeps all three surfaces on one KB page (activeKbTab
-                // state); the React routes express the same through ?tab=.
-                // A path suffix like /graph has no route and would 404.
-                href={
-                  tab === "documents"
-                    ? documentsKBDetailPath(knowledgeBaseId)
-                    : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}?tab=${tab}`
-                }
-              >
-                {tab === "documents"
-                  ? t("knowledgeBase.documents.tabDocuments")
-                  : tab === "wiki"
-                    ? t("knowledgeBase.documents.tabWiki")
-                    : t("knowledgeBase.documents.tabGraph")}
-              </a>
-            ))}
-          </nav>
-          <Button
-            type="button"
-            onClick={() => setReloadToken((value) => value + 1)}
-          >
-            {t("knowledgeBase.documents.reload")}
-          </Button>
-        </div>
+        {/* Vue's document header (KnowledgeBase.vue:2330-2408) has no
+            top-right actions: the tab row lives in the breadcrumb and there
+            is no manual reload button — uploads/uploads-in-progress refresh
+            the lists through their own watchers. */}
       </header>
       <div className="wk-documents-surface">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
