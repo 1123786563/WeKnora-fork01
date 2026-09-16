@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/execution"
 	"gorm.io/gorm"
@@ -22,15 +23,16 @@ type ExecutionTargetStore interface {
 }
 
 type executionTargetRow struct {
-	TenantID          uint64 `gorm:"primaryKey;column:tenant_id"`
-	ID                string `gorm:"primaryKey;column:id"`
-	OwnerID           string `gorm:"column:owner_id"`
-	Kind              string `gorm:"column:kind"`
-	State             string `gorm:"column:state"`
-	CredentialVersion int64  `gorm:"column:credential_version"`
-	RuntimeID         string `gorm:"column:runtime_id"`
-	ExternalTargetID  string `gorm:"column:external_target_id"`
-	RootRef           string `gorm:"column:root_ref"`
+	TenantID          uint64     `gorm:"primaryKey;column:tenant_id"`
+	ID                string     `gorm:"primaryKey;column:id"`
+	OwnerID           string     `gorm:"column:owner_id"`
+	Kind              string     `gorm:"column:kind"`
+	State             string     `gorm:"column:state"`
+	CredentialVersion int64      `gorm:"column:credential_version"`
+	RuntimeID         string     `gorm:"column:runtime_id"`
+	ExternalTargetID  string     `gorm:"column:external_target_id"`
+	RootRef           string     `gorm:"column:root_ref"`
+	RevokedAt         *time.Time `gorm:"column:revoked_at"`
 }
 
 func (executionTargetRow) TableName() string { return "execution_targets" }
@@ -51,7 +53,7 @@ func NewExecutionTargetStore(db *gorm.DB) ExecutionTargetStore {
 }
 
 func toTarget(row executionTargetRow) execution.Target {
-	return execution.Target{ID: row.ID, TenantID: row.TenantID, OwnerID: row.OwnerID, Kind: row.Kind, State: row.State, CredentialVersion: row.CredentialVersion, RuntimeID: row.RuntimeID, ExternalTargetID: row.ExternalTargetID}
+	return execution.Target{ID: row.ID, TenantID: row.TenantID, OwnerID: row.OwnerID, Kind: row.Kind, State: row.State, CredentialVersion: row.CredentialVersion, RuntimeID: row.RuntimeID, ExternalTargetID: row.ExternalTargetID, RevokedAt: row.RevokedAt}
 }
 
 func (s *executionTargetStore) CreateTarget(ctx context.Context, target execution.Target, rootRef string) error {
@@ -83,7 +85,8 @@ func (s *executionTargetStore) ListOwnedTargets(ctx context.Context, tenantID ui
 }
 
 func (s *executionTargetStore) RevokeTarget(ctx context.Context, tenantID uint64, actor, targetID string) error {
-	result := s.db.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenantID, actor, targetID, "active").Updates(map[string]any{"state": "revoked"})
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenantID, actor, targetID, "active").Updates(map[string]any{"state": "revoked", "revoked_at": now})
 	if result.Error != nil {
 		return result.Error
 	}

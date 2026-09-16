@@ -23,6 +23,8 @@ var versionedSQLiteTables = []string{
 	"tenant_skill_snapshots",
 	"tenant_user_env_vars",
 	"tenant_skill_catalog",
+	"execution_targets",
+	"execution_workspaces",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -39,10 +41,12 @@ var versionedSQLiteColumns = map[string][]string{
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
-	"tenant_skill_snapshots": {"planned_name"}, // 000086, 000088
+	"tenant_skill_snapshots": {"planned_name"},                                   // 000086, 000088
+	"execution_targets":      {"revoked_at", "runtime_id", "external_target_id"}, // 000018
+	"execution_workspaces":   {"target_id", "root_ref"},                          // 000018
 }
 
-const expectedSQLiteMigrationVersion = 16
+const expectedSQLiteMigrationVersion = 18
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

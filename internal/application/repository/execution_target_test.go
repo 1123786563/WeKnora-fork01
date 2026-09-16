@@ -39,6 +39,9 @@ func TestExecutionTargetStoreRevocationAndUniqueBinding(t *testing.T) {
 	require.NoError(t, store.CreateTarget(ctx, target, "root"))
 	require.Error(t, store.CreateTarget(ctx, execution.Target{ID: "t2", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 1, RuntimeID: "r1", ExternalTargetID: "x1"}, "root"))
 	require.NoError(t, store.RevokeTarget(ctx, 1, "u1", "t1"))
+	var row executionTargetRow
+	require.NoError(t, store.(*executionTargetStore).db.First(&row, "tenant_id = ? AND id = ?", 1, "t1").Error)
+	require.NotNil(t, row.RevokedAt)
 	_, err := store.GetOwnedTarget(ctx, 1, "u1", "t1")
 	require.ErrorIs(t, err, ErrExecutionTargetNotFound)
 }
