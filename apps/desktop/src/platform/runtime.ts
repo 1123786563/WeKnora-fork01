@@ -2,14 +2,28 @@ import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation } fr
 import { hasDesktopFileBridge, type DesktopFileBridge } from './files.ts';
 import { readWailsBridge, resolveDesktopApiBaseUrlWhenReady, type WailsAppBridge } from './wails.ts';
 import { createPersonalNodeRuntime, type PersonalNodeComposition, type PersonalNodeConnector } from '@weknora/paseo-adapter';
+import { createDesktopCredentialStorage, type DesktopCredentialBridge } from './credentials.ts';
+
+export type DesktopPersonalNodeRuntimeInput = Omit<PersonalNodeComposition, 'credentials'> & {
+  credentialBridge?: DesktopCredentialBridge;
+  credentialStorage?: Storage;
+  credentialKey?: string;
+};
 
 /**
  * Desktop's runtime composition owns this entry point. Callers must provide
  * the Wails/OS credential store and server-issued Paseo endpoint; the adapter
  * enforces endpoint and bearer checks before returning a connector.
  */
-export function createDesktopPersonalNodeRuntime(input: PersonalNodeComposition): PersonalNodeConnector {
-  return createPersonalNodeRuntime(input);
+export function createDesktopPersonalNodeRuntime(input: DesktopPersonalNodeRuntimeInput): PersonalNodeConnector {
+  const key = input.credentialKey ?? 'weknora.desktop.personal-node-credential';
+  const storage = createDesktopCredentialStorage(input.credentialStorage, input.credentialBridge);
+  const bearer = storage.read(key);
+  if (!bearer?.trim()) throw new Error('PASEO_CREDENTIAL_MISSING');
+  return createPersonalNodeRuntime({
+    ...input,
+    credentials: { read: () => bearer, clear: () => { storage.remove(key); } },
+  });
 }
 
 export const DESKTOP_WINDOW_DEFAULTS = {
@@ -31,6 +45,7 @@ export interface DesktopRuntimeAdapters {
   fileBridge: DesktopFileBridge;
   normalizeLocation: () => string;
   openExternal: (url: string) => void;
+  personalNode?: PersonalNodeConnector;
 }
 
 type DesktopOpenTarget = Pick<Window, 'open'>;
@@ -73,7 +88,11 @@ export function createDesktopRuntimeAdapters(
   };
 }
 
-export async function installDesktopRuntime(): Promise<DesktopRuntimeAdapters> {
+export interface DesktopRuntimeInstallOptions {
+  personalNode?: DesktopPersonalNodeRuntimeInput;
+}
+
+export async function installDesktopRuntime(options: DesktopRuntimeInstallOptions = {}): Promise<DesktopRuntimeAdapters> {
   const browserWindow = typeof window === 'undefined' ? undefined : window as Window & {
     runtime?: DesktopWindowRuntime;
     go?: { main?: { App?: WailsAppBridge } };
@@ -94,6 +113,10 @@ export async function installDesktopRuntime(): Promise<DesktopRuntimeAdapters> {
   const app = readWailsBridge(browserWindow?.go?.main?.App ?? initialApp);
   const fileBridge = hasDesktopFileBridge(app) ? app : {};
   const adapters = createDesktopRuntimeAdapters(app, runtime, fileBridge, browserWindow?.location);
+  // The Wails entry point owns the connector lifetime. The actual credential
+  // read happens through the Wails bridge-backed store above; localStorage is
+  // never used when that bridge is present.
+  if (options.personalNode) adapters.personalNode = createDesktopPersonalNodeRuntime(options.personalNode);
   if (browserWindow) {
     browserWindow.__WEKNORA_DESKTOP__ = adapters;
     const current = adapters.normalizeLocation();

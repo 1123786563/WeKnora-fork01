@@ -86,7 +86,11 @@ func TestExecutionRegistrationRoutesUseRealRegistrationTargetRevokeLifecycle(t *
 			tenant = 2
 		}
 		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, tenant)
-		ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+		owner := "u1"
+		if value := c.GetHeader("X-Test-Owner"); value != "" {
+			owner = value
+		}
+		ctx = context.WithValue(ctx, types.UserIDContextKey, owner)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 		if len(c.Errors) > 0 && !c.IsAborted() {
@@ -131,6 +135,17 @@ func TestExecutionRegistrationRoutesUseRealRegistrationTargetRevokeLifecycle(t *
 	crossTenant := httptest.NewRequest(http.MethodPost, "/api/v1/execution-targets/"+completed.Data.Registration.ID+"/revoke", nil)
 	crossTenant.Header.Set("X-Test-Tenant", "2")
 	engine.ServeHTTP(res, crossTenant)
+	require.Equal(t, http.StatusNotFound, res.Code)
+	res = httptest.NewRecorder()
+	crossOwner := httptest.NewRequest(http.MethodPost, "/api/v1/execution-targets/"+completed.Data.Registration.ID+"/revoke", nil)
+	crossOwner.Header.Set("X-Test-Owner", "u2")
+	engine.ServeHTTP(res, crossOwner)
+	require.Equal(t, http.StatusNotFound, res.Code)
+	// A replay of the original completion idempotency key after revoke must be
+	// rejected and must not issue a fresh active grant.
+	res = httptest.NewRecorder()
+	replay := httptest.NewRequest(http.MethodPost, "/api/v1/execution-targets/registrations", bytes.NewReader(complete))
+	engine.ServeHTTP(res, replay)
 	require.Equal(t, http.StatusNotFound, res.Code)
 	res = httptest.NewRecorder()
 	engine.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/api/v1/execution-targets/"+completed.Data.Registration.ID+"/revoke", nil))
