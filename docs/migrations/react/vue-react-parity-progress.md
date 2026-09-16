@@ -3949,3 +3949,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   browser tooling path but is not same-condition Vue/React visual acceptance;
   credentials/session transfer and authenticated mutation evidence remain
   unavailable. No mobile code was modified.
+
+## 2026-09-16 Round R414 — Web/Desktop/Embed platform regression
+
+- Parallel platform checks passed: Web typecheck and build, Desktop renderer
+  tests `9/9` and typecheck, and Embed tests `16/16` and typecheck.
+- The Web build retains only the existing chunk-size advisory. These checks
+  establish static/build/component evidence and do not replace authenticated
+  paired screenshots, real backend mutations, real Embed streaming, or native
+  Wails interaction. No mobile code was modified.
