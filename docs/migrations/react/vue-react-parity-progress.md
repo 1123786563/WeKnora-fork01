@@ -3918,3 +3918,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   suites passed in the combined 48-test run; Chat agent-selection passed
   13/13. These remain source/component evidence, not authenticated paired
   screenshots or real-backend/Wails acceptance. No mobile code was modified.
+
+## 2026-09-16 Round R411 — Full Web regression after page-local fixes
+
+- The current Web suite completed with `1181/1181` tests passing after the
+  additional Auth, document, Platform, Settings, MCP, and Chat changes.
+- This confirms unit/component regression only. Authenticated Vue/React
+  screenshots, computed-style comparison, real backend permission/mutation
+  flows, real Embed streaming, and native Wails interaction remain open or
+  `blocked-env`. No mobile code was modified.
