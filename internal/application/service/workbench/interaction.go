@@ -72,17 +72,19 @@ func (s *GormInteractionStore) DB() *gorm.DB {
 }
 
 func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.PendingRequest, pendingID string) error {
-	if s == nil || s.db == nil || req.TenantID == 0 || strings.TrimSpace(req.RunID) == "" || strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(pendingID) == "" {
+	ownerID := canonicalOwnerID(ctx, req.UserID)
+	if s == nil || s.db == nil || req.TenantID == 0 || strings.TrimSpace(req.RunID) == "" || ownerID == "" || strings.TrimSpace(pendingID) == "" {
 		return ErrCapabilityUnavailable
 	}
 	hash := sha256.Sum256(req.Args)
 	expires := time.Now().Add(10 * time.Minute)
-	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: req.UserID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), Status: "pending", ExpiresAt: &expires}
+	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), Status: "pending", ExpiresAt: &expires}
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 
 func (s *GormInteractionStore) DeletePending(ctx context.Context, req approval.PendingRequest, pendingID string) error {
-	return s.db.WithContext(ctx).Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND status = 'pending'", req.TenantID, req.UserID, pendingID).Updates(map[string]any{"status": "revoked", "revoked": true, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error
+	ownerID := canonicalOwnerID(ctx, req.UserID)
+	return s.db.WithContext(ctx).Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND status = 'pending'", req.TenantID, ownerID, pendingID).Updates(map[string]any{"status": "revoked", "revoked": true, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error
 }
 
 func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerID, runID string) ([]workbench.InteractionDecision, error) {
@@ -318,11 +320,22 @@ func identity(ctx context.Context) (uint64, string, error) {
 	if !ok || tenant == 0 {
 		return 0, "", errors.New("tenant context is required")
 	}
-	owner, ok := types.UserIDFromContext(ctx)
-	if !ok || strings.TrimSpace(owner) == "" {
+	owner := canonicalOwnerID(ctx, "")
+	if owner == "" {
 		return 0, "", errors.New("actor context is required")
 	}
 	return tenant, owner, nil
+}
+
+// canonicalOwnerID is the single storage-key projection for workbench actor
+// scope. Principal.StorageID keeps web users, API subjects, and embed callers
+// in disjoint namespaces; the fallback is retained only for internal callers
+// that already supplied a storage key before a Principal context was added.
+func canonicalOwnerID(ctx context.Context, fallback string) string {
+	if principal, ok := types.PrincipalFromContext(ctx); ok {
+		return principal.StorageID()
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func (s *Service) List(ctx context.Context, runID string) ([]workbench.InteractionDecision, error) {

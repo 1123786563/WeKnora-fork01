@@ -30,6 +30,11 @@ func commandContext(c *gin.Context) context.Context {
 	if tenant, ok := c.Get(types.TenantIDContextKey.String()); ok {
 		ctx = context.WithValue(ctx, types.TenantIDContextKey, tenant)
 	}
+	if principal, ok := c.Get(types.PrincipalContextKey.String()); ok {
+		if p, valid := principal.(types.Principal); valid && p.Valid() {
+			ctx = types.WithPrincipal(ctx, p)
+		}
+	}
 	if actor, ok := c.Get(types.UserIDContextKey.String()); ok {
 		ctx = context.WithValue(ctx, types.UserIDContextKey, actor)
 	}

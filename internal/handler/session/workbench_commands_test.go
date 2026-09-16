@@ -49,11 +49,16 @@ func (s *commandStore) Decide(_ context.Context, _ uint64, _ string, _ string, i
 }
 
 func commandRouter(h *WorkbenchCommandHandler) *gin.Engine {
+	return commandRouterForIdentity(h, 7, types.Principal{Type: types.PrincipalWebUser, ID: "u1"})
+}
+
+func commandRouterForIdentity(h *WorkbenchCommandHandler, tenant uint64, principal types.Principal) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/interactions/:id/decisions", func(c *gin.Context) {
-		c.Set(types.TenantIDContextKey.String(), uint64(7))
-		c.Set(types.UserIDContextKey.String(), "u1")
+		c.Set(types.TenantIDContextKey.String(), tenant)
+		c.Set(types.UserIDContextKey.String(), principal.ID)
+		c.Set(types.PrincipalContextKey.String(), principal)
 		h.DecideInteraction(c)
 	})
 	return r
@@ -81,7 +86,7 @@ func TestWorkbenchDecisionHTTPUsesGormCASAndIdempotency(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:w05_http_cas?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(`CREATE TABLE workbench_interactions (tenant_id INTEGER, id TEXT, run_id TEXT, owner_id TEXT, kind TEXT, args_hash TEXT, decision_id TEXT DEFAULT '', action TEXT DEFAULT '', status TEXT DEFAULT 'pending', expected_revision INTEGER DEFAULT 0, expires_at DATETIME, revoked BOOLEAN DEFAULT 0, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id,id))`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO workbench_interactions (tenant_id,id,run_id,owner_id,kind,args_hash,status,expected_revision) VALUES (7,'i1','run-1','u1','budget','hash','pending',0)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO workbench_interactions (tenant_id,id,run_id,owner_id,kind,args_hash,status,expected_revision) VALUES (7,'i1','run-1','web_user:u1','budget','hash','pending',0)`).Error)
 	service := workbenchservice.NewInteractionService(workbenchservice.NewGormInteractionStore(db), nil, nil)
 	h := NewWorkbenchCommandHandler(service)
 	r := commandRouter(h)
@@ -120,8 +125,9 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 		return nil
 	})
 	result := make(chan approval.Decision, 1)
+	approvalCtx := types.WithPrincipal(context.Background(), types.Principal{Type: types.PrincipalWebUser, ID: "u1"})
 	go func() {
-		decision, waitErr := gate.RequestAndWait(context.Background(), approval.PendingRequest{TenantID: 7, UserID: "u1", RunID: "run-1", RequestID: "request-1", EventBus: bus, Args: args})
+		decision, waitErr := gate.RequestAndWait(approvalCtx, approval.PendingRequest{TenantID: 7, UserID: "u1", RunID: "run-1", RequestID: "request-1", EventBus: bus, Args: args})
 		require.NoError(t, waitErr)
 		result <- decision
 	}()
@@ -135,6 +141,7 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 	}
 	require.NoError(t, db.Table("workbench_interactions").Where("id = ?", id).Take(&row).Error)
 	require.Equal(t, "run-1", row.RunID)
+	require.Equal(t, "web_user:u1", row.OwnerID)
 	require.Equal(t, hex.EncodeToString(hash[:]), row.ArgsHash)
 	post := func(tenant uint64, owner, action, decisionID string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/interactions/"+id+"/decisions", strings.NewReader(`{"kind":"tool_approval","action":"`+action+`","args_hash":"`+row.ArgsHash+`","decision_id":"`+decisionID+`","expected_revision":0}`))
@@ -151,6 +158,12 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 	var status string
 	require.NoError(t, db.Table("workbench_interactions").Select("status").Where("id = ?", id).Scan(&status).Error)
 	require.Equal(t, "resolved", status)
+	other := commandRouterForIdentity(h, 7, types.Principal{Type: types.PrincipalWebUser, ID: "u2"})
+	otherReq := httptest.NewRequest(http.MethodPost, "/interactions/"+id+"/decisions", strings.NewReader(`{"kind":"tool_approval","action":"approve","args_hash":"`+row.ArgsHash+`","decision_id":"d2","expected_revision":0}`))
+	otherReq.Header.Set("Content-Type", "application/json")
+	otherResp := httptest.NewRecorder()
+	other.ServeHTTP(otherResp, otherReq)
+	require.Equal(t, http.StatusNotFound, otherResp.Code)
 	_, err = store.Get(context.Background(), 8, "u1", id)
 	require.ErrorIs(t, err, workbenchservice.ErrInteractionNotFound)
 }

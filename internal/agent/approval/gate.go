@@ -15,6 +15,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -355,6 +356,13 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 	}
 	if req.EventBus == nil {
 		return Decision{}, fmt.Errorf("tool approval: EventBus is nil")
+	}
+	// The durable projection and every resolve caller use the terminal
+	// principal's storage key. Normalize the request at the gate boundary so a
+	// legacy caller that still passes the display UserID cannot create a waiter
+	// that the authenticated HTTP decision endpoint cannot resolve.
+	if principal, ok := types.PrincipalFromContext(ctx); ok {
+		req.UserID = principal.StorageID()
 	}
 
 	pendingID := uuid.New().String()
