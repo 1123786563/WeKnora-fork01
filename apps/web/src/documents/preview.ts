@@ -1,10 +1,11 @@
 import type { KnowledgeDocument } from '@weknora/api-client';
-import { createElement, type ReactElement } from 'react';
+import { createElement, useEffect, useRef, type ReactElement } from 'react';
 import * as XLSX from 'xlsx';
+import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
 import { previewKindForFile, previewStatus, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
 export interface KnowledgeDocumentPreviewModel {
-  kind: KnowledgePreviewKind;
+  kind: DocumentPreviewKind;
   availability: {
     kind: 'ready' | 'processing' | 'error' | 'unsupported';
     label: string;
@@ -15,7 +16,8 @@ export interface KnowledgeDocumentPreviewModel {
   fileName: string;
 }
 
-export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'audio' | 'video' | 'spreadsheet';
+export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'audio' | 'video' | 'spreadsheet' | 'mermaid';
+export type DocumentPreviewKind = KnowledgePreviewKind | 'mermaid';
 export type PreviewBody = string | Blob | ArrayBuffer;
 
 export interface SpreadsheetPreviewSheet {
@@ -27,8 +29,13 @@ export interface SpreadsheetPreviewModel {
   sheets: SpreadsheetPreviewSheet[];
 }
 
-export function isInlinePreviewKind(kind: KnowledgePreviewKind): kind is InlinePreviewKind {
-  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'spreadsheet';
+export function isInlinePreviewKind(kind: DocumentPreviewKind): kind is InlinePreviewKind {
+  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'spreadsheet' || kind === 'mermaid';
+}
+
+function previewKindForDocument(fileName: string): DocumentPreviewKind {
+  const extension = fileName.trim().toLowerCase().split('.').pop() ?? '';
+  return extension === 'mmd' || extension === 'mermaid' ? 'mermaid' : previewKindForFile(fileName);
 }
 
 export async function readPreviewText(body: PreviewBody): Promise<string> {
@@ -84,7 +91,7 @@ export function DocumentPreviewContent({
   fileName,
   spreadsheet,
 }: {
-  kind: InlinePreviewKind;
+  kind: InlinePreviewKind | 'mermaid';
   text?: string;
   url?: string;
   fileName?: string;
@@ -117,6 +124,7 @@ export function DocumentPreviewContent({
   if (kind === 'video') {
     return createElement('video', { className: 'wk-preview-video block max-h-[calc(100vh-240px)] max-w-full', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
+  if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName });
   return createElement('iframe', {
     className: 'wk-preview-pdf',
     src: url,
@@ -124,10 +132,25 @@ export function DocumentPreviewContent({
   });
 }
 
+function MermaidPreview({ text, fileName }: { text: string; fileName?: string }): ReactElement {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!root.current || typeof document === 'undefined') return;
+    const code = document.createElement('code');
+    code.textContent = text;
+    const source = document.createElement('pre');
+    source.dataset.markdownDiagram = 'mermaid';
+    source.append(code);
+    root.current.replaceChildren(source);
+    void hydrateMermaidBlocksWithBrowserDefaults(root.current, 'wk-document-mermaid').catch(() => {});
+  }, [text]);
+  return createElement('div', { ref: root, className: 'wk-preview-mermaid min-h-16 overflow-auto', 'aria-label': `${fileName || 'Document'} Mermaid diagram` });
+}
+
 export function buildDocumentPreview(document: KnowledgeDocument, previewPath: string): KnowledgeDocumentPreviewModel {
   const fileName = document.file_name || document.title || 'document';
   const status = previewStatus(document);
-  const kind = previewKindForFile(fileName);
+  const kind = previewKindForDocument(fileName);
   const inline = isInlinePreviewKind(kind);
   const availability = status.kind === 'processing'
     ? { kind: 'processing' as const, label: status.label }

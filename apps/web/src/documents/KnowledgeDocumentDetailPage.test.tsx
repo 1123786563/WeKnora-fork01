@@ -349,6 +349,18 @@ test('completed Excel detail opens the Vue-style inline worksheet preview', asyn
   assert.equal(body.querySelectorAll('.wk-preview-spreadsheet thead th').length, 3);
 });
 
+test('completed Mermaid detail loads the source into the Vue-style inline preview', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'architecture.mmd', source: 'file', file_type: 'mmd', parse_status: 'completed',
+  }));
+  (client as any).knowledgeBases.documents.preview = async () => ({ body: 'graph TD\n  A[Start] --> B[Finish]', headers: {}, contentType: 'text/plain' });
+
+  const container = await mountDetail(client);
+  const body = container.ownerDocument.body;
+  assert.ok(Array.from(body.querySelectorAll('button')).some((button) => button.textContent === '预览'));
+  assert.equal(body.querySelector('.wk-preview-mermaid code')?.textContent, 'graph TD\n  A[Start] --> B[Finish]');
+});
+
 test('document preview ignores delayed text from a document that was replaced', async () => {
   const previewCalls: string[] = [];
   let releaseFirstPreview!: () => void;

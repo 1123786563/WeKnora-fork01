@@ -47,6 +47,14 @@ test('marks spreadsheet documents as inline previewable like the Vue document pr
   assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'brief.xlsx', parse_status: 'completed' }, '/preview').downloadOnly, false);
 });
 
+test('recognizes Mermaid files as inline previews like the Vue document preview', () => {
+  const preview = buildDocumentPreview({ id: 'doc-1', file_name: 'architecture.mmd', parse_status: 'completed' }, '/preview');
+
+  assert.equal(preview.kind, 'mermaid');
+  assert.equal(preview.ready, true);
+  assert.equal(preview.downloadOnly, false);
+});
+
 test('reads every Vue-supported spreadsheet sheet into safe table rows', async () => {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([

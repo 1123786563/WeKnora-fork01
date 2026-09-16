@@ -387,7 +387,7 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
     void client.knowledgeBases.documents.preview(document.id, controller.signal).then(async (response) => {
       if (!active) return;
       const contentType = response.contentType || response.headers['content-type'];
-      if (model.kind === 'text' || model.kind === 'markdown') {
+      if (model.kind === 'text' || model.kind === 'markdown' || model.kind === 'mermaid') {
         const text = await readCurrentPreviewText(response.body, () => active);
         if (text !== undefined) setPreviewState({ status: 'text', text });
         return;
