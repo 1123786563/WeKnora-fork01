@@ -178,6 +178,9 @@ importers:
       '@weknora/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@weknora/domain':
         specifier: workspace:*
         version: link:../../packages/domain

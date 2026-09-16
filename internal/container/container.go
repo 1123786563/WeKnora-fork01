@@ -170,8 +170,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
 	must(container.Invoke(registerAgentRunResourceProtection))
 	// Resolve the runtime through this wrapper so the durable resource
-	// repository is always connected to the post-claim recovery hook.
+	// repository is always connected to the post-claim recovery hook;
+	// *AgentRuntime must only be provided once for dig, so the bare
+	// NewAgentRuntime provider stays unregistered here.
 	must(container.Provide(newAgentRuntime))
+	must(container.Provide(repository.NewAgentRunSnapshotRepository))
+	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))

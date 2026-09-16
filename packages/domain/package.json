@@ -10,7 +10,7 @@
     "./craft/reconnect": "./src/craft/reconnect.ts",
     "./craft/usage": "./src/craft/usage.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
-    "./mobile": "./src/mobile/auth-return.ts"
+    "./mobile": "./src/mobile/index.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"
