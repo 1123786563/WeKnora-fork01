@@ -433,7 +433,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     setSettingsMode('edit'); setSettingsOrg(org); setSettingsSection('basic');
     setFormName(org.name); setFormDescription(strOf(org.description));
     setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]); setSharedAgents([]); setDetailFeeds(idleDetailFeeds);
-    setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
+    setMemberSearchQuery(''); setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
     setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
   }
@@ -1239,7 +1239,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         </div>
       ) : null}
 
-      {toast ? <div className={'fixed left-1/2 top-[24px] z-[3000] flex items-center rounded-[8px] px-[18px] py-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] box-border max-w-[420px] bg-[rgba(23,26,29,0.86)] -translate-x-1/2 ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : 'text-[#ffb4ae]')} role="status">{toast.text}</div> : null}
+      {toast ? <div className={'fixed left-1/2 top-[24px] z-[3000] flex items-center rounded-[8px] px-[18px] py-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] box-border max-w-[420px] bg-[rgba(23,26,29,0.86)] -translate-x-1/2 ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : toast.tone === 'warning' ? 'text-[#faad14]' : 'text-[#ffb4ae]')} role="status">{toast.text}</div> : null}
     </main>
   );
 }
