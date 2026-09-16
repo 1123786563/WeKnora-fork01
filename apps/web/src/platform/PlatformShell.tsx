@@ -107,11 +107,6 @@ function buildNavItems(t: (key: string) => string, labels: Record<string, string
 
 const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
 
-// Vue chatHeader.clearConfirmBody / deleteConfirmBody (zh-CN). The chat.*
-// domain does not exist in @weknora/i18n yet, so the confirm copy is inlined
-// here; reported as missing keys in the slice evidence.
-const CLEAR_SESSION_CONFIRM = '确认清空当前对话的全部消息？对话本身会保留，此操作无法恢复。';
-const DELETE_SESSION_CONFIRM = '确认删除当前对话？删除后将无法恢复。';
 const SHELL_SESSION_PAGE_SIZE = 30;
 
 type TenantMembership = { tenantId: string; tenantName: string; role: string };
@@ -456,12 +451,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }
 
   async function clearShellSessionMessages(sessionId: string): Promise<void> {
-    if (!window.confirm(CLEAR_SESSION_CONFIRM)) return;
     try { await client.sessions.clear(sessionId); } catch { /* messages reload on the next visit */ }
   }
 
   async function deleteShellSession(sessionId: string): Promise<void> {
-    if (!window.confirm(DELETE_SESSION_CONFIRM)) return;
     try { await client.sessions.remove(sessionId); } catch { return; }
     sessionsRef.current = sessionsRef.current.filter((session) => session.id !== sessionId);
     sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - 1);

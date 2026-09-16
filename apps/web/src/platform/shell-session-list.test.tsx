@@ -158,7 +158,8 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
     remove: async (sessionId: string) => { calls.push(`remove:${sessionId}`); },
   });
   const originalConfirm = window.confirm;
-  window.confirm = () => true;
+  let nativeConfirmCalls = 0;
+  window.confirm = () => { nativeConfirmCalls += 1; return true; };
   try {
     await mountShell({ client });
     const menus = [...document.querySelectorAll('nav[aria-label="我的对话"] li details')];
@@ -195,6 +196,7 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
     assert.ok(clearConfirm, 'expected the clear confirmation action');
     await act(async () => { (clearConfirm as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('clear:session-3'));
+    assert.equal(nativeConfirmCalls, 0, 'session danger actions use the row confirmation only');
     // Vue menu.vue row menu uses upload.deleteRecord (删除记录), not chatHeader.deleteSession.
     const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录');
     assert.ok(deleteItem, 'expected the 删除记录 menu item');
@@ -203,6 +205,7 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
     assert.ok(deleteConfirm, 'expected the delete confirmation action');
     await act(async () => { (deleteConfirm as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('remove:session-3'));
+    assert.equal(nativeConfirmCalls, 0, 'session danger actions use the row confirmation only');
   } finally {
     window.confirm = originalConfirm;
   }
