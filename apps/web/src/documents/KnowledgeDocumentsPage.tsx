@@ -180,6 +180,38 @@ export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | n
   return isAdmin;
 }
 
+function hasContributorRole(me: KBSurfaceMe | null | undefined): boolean {
+  const roles = [me?.user?.role, ...(me?.memberships ?? []).map((membership) => membership.role)];
+  return roles.some((role) => {
+    const normalized = typeof role === "string" ? role.trim().toLowerCase() : "";
+    return normalized === "contributor" || normalized === "admin" || normalized === "system_admin";
+  }) || me?.user?.is_superuser === true;
+}
+
+function kbPermission(kb: KBSurfaceKB): string | undefined {
+  const permission = kb.my_permission ?? kb.permission;
+  return typeof permission === "string" && permission.trim() ? permission.trim().toLowerCase() : undefined;
+}
+
+/** Vue canDownloadKnowledge: downloads are narrower than upload/edit access. */
+export function canDownloadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+  if (!hasContributorRole(me)) return false;
+  const permission = kbPermission(kb);
+  return permission === undefined || ["owner", "admin", "editor"].includes(permission);
+}
+
+/** Vue canMutateKnowledge: move/delete/batch actions require contributor-level access. */
+export function canMutateKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+  const userId = me?.user?.id;
+  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
+  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
+  const permission = kbPermission(kb);
+  if (permission === "viewer") return false;
+  if (permission === "owner" || permission === "admin" || permission === "editor") return true;
+  if (isCreator || hasContributorRole(me)) return true;
+  return false;
+}
+
 function displayName(document: KnowledgeDocument): string {
   return document.file_name || document.title || document.id;
 }
@@ -268,9 +300,10 @@ function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 
 function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
 function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"}><path d="m5 8 7 7 7-7" /></Icon>; }
 
-function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
   canDownload: boolean;
+  canMutateKnowledge: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   actions: ReturnType<typeof documentRowActions>;
   onDownload: () => void;
@@ -294,9 +327,9 @@ function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload,
       {actions.canCancelParse || document.trace ? menuItem(t("knowledgeBase.timeline.title"), <MoreIcon />, onViewTrace) : null}
       {actions.canReparse && !actions.canCancelParse ? menuItem(t("knowledgeBase.rebuildDocument"), <RefreshIcon />, onReparse) : null}
       {actions.canCancelParse ? menuItem(t("knowledgeBase.documents.cancelParse"), <RefreshIcon />, onCancelParse) : null}
-      {menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove)}
-      {menuItem(t("menu.batchManage"), <MoreIcon />, onBatchManage)}
-      {menuItem(t("knowledgeBase.deleteDocument"), <DeleteIcon />, onDelete, true)}
+      {canMutateKnowledge ? menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove) : null}
+      {canMutateKnowledge ? menuItem(t("menu.batchManage"), <MoreIcon />, onBatchManage) : null}
+      {canMutateKnowledge ? menuItem(t("knowledgeBase.deleteDocument"), <DeleteIcon />, onDelete, true) : null}
     </span>
   </span>;
 }
@@ -384,6 +417,7 @@ export function DocumentCardGrid({
   selected,
   batchMode,
   canContribute,
+  canMutateKnowledge: canMutateKnowledgeProp,
   canDownload,
   t,
   onOpen,
@@ -404,6 +438,7 @@ export function DocumentCardGrid({
   selected: Set<string>;
   batchMode: boolean;
   canContribute: boolean;
+  canMutateKnowledge?: boolean;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   onOpen: (document: KnowledgeDocument) => void;
@@ -419,6 +454,7 @@ export function DocumentCardGrid({
   onBatchManage: (document: KnowledgeDocument) => void;
   onDelete: (document: KnowledgeDocument) => void;
 }) {
+  const canMutateKnowledge = canMutateKnowledgeProp ?? canContribute;
   const [hovered, setHovered] = useState<{ document: KnowledgeDocument; position: { x: number; y: number } } | null>(null);
   const hoverTimer = useRef<number | null>(null);
   const clearHover = () => {
@@ -454,7 +490,7 @@ export function DocumentCardGrid({
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
-            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           {parseInFlight ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-success-text [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-danger [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-current text-[9px] leading-none" aria-hidden="true">×</span><span>{t("knowledgeBase.parsingFailed")}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
         </div>
@@ -2068,6 +2104,8 @@ export function KnowledgeDocumentsPage({
   // Vue keeps upload/mutation controls behind the resolved KB capability;
   // while the KB/auth requests are pending, render the viewer-safe state.
   const [canContribute, setCanContribute] = useState(false);
+  const [canDownload, setCanDownload] = useState(false);
+  const [canMutate, setCanMutate] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [parseStatus, setParseStatus] = useState("");
@@ -2259,6 +2297,8 @@ export function KnowledgeDocumentsPage({
         setMe(me as KBSurfaceMe | null);
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+        setCanDownload(canDownloadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+        setCanMutate(canMutateKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
         setKbList(
           (list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({
             id: String(item.id),
@@ -2273,6 +2313,8 @@ export function KnowledgeDocumentsPage({
         if (active) {
           setKbMeta(null);
           setCanContribute(false);
+          setCanDownload(false);
+          setCanMutate(false);
           setKbMetaError(classifyKnowledgeBaseMetadataError(error, t("knowledgeBase.getInfoFailed")));
         }
       });
@@ -3687,7 +3729,8 @@ export function KnowledgeDocumentsPage({
                 selected={selected}
                 batchMode={batchMode}
                 canContribute={canContribute}
-                canDownload={canContribute}
+                canMutateKnowledge={canMutate}
+                canDownload={canDownload}
                 t={t}
                 onOpen={(document) => onOpenDocument?.(document)}
                 onOpenFolder={(path) => setFolderPath(path || undefined)}
@@ -3765,7 +3808,7 @@ export function KnowledgeDocumentsPage({
                       {canContribute ? (
                         <span className="wk-row-actions font-mono text-[0.8rem] text-muted">
                           {/* Vue row tag cell: click opens TagEditDialog (L333). */}
-                          <DocumentCardActionMenu document={document} canDownload={canContribute} t={t} actions={actions} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
+                          <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutate} t={t} actions={actions} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
                         </span>
                       ) : null}
                     </li>

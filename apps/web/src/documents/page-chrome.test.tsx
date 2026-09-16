@@ -24,7 +24,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing, canUploadKnowledgeDocuments } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing, canUploadKnowledgeDocuments, canDownloadKnowledgeDocuments, canMutateKnowledgeDocuments } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -60,6 +60,26 @@ test('upload permission keeps Vue creator precedence over a stale viewer project
     ),
     true,
   );
+});
+
+test('document permissions keep Vue download and mutation gates separate from upload access', () => {
+  const contributor = { user: { id: 'contributor' }, memberships: [{ role: 'contributor' }] };
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1' }, contributor), true);
+  assert.equal(canMutateKnowledgeDocuments({ id: 'kb-1' }, contributor), true);
+  const sharedEditor = { user: { id: 'viewer' }, memberships: [{ role: 'viewer' }] };
+  assert.equal(canUploadKnowledgeDocuments({ id: 'kb-1', my_permission: 'editor' }, sharedEditor), true);
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', my_permission: 'editor' }, sharedEditor), false);
+  assert.equal(canMutateKnowledgeDocuments({ id: 'kb-1', my_permission: 'editor' }, sharedEditor), true);
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, contributor), false);
+  assert.equal(canMutateKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, contributor), false);
+});
+
+test('documents page wires the Vue download and mutation gates into both views', () => {
+  const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /setCanDownload\(canDownloadKnowledgeDocuments\(kb as KBSurfaceKB/);
+  assert.match(source, /setCanMutate\(canMutateKnowledgeDocuments\(kb as KBSurfaceKB/);
+  assert.match(source, /canMutateKnowledge=\{canMutate\}/);
+  assert.match(source, /canDownload=\{canDownload\}/);
 });
 
 // --- DocumentsBreadcrumb (Vue KnowledgeBase.vue document-title-row parity) -------
@@ -328,6 +348,35 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
   assert.ok(html.includes('批量管理'), 'batch management action is present');
   assert.ok(html.includes('选择 guide.md'), 'selection checkboxes appear only after entering batch mode');
   assert.ok(html.includes('删除文档'), 'delete action is present');
+});
+
+test('editor document cards keep edit actions but hide Vue contributor-only mutations', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'manual-1', file_name: 'notes.md', source: 'manual', file_type: 'md', parse_status: 'completed' }],
+    folders: [],
+    selected: new Set<string>(),
+    batchMode: false,
+    canContribute: true,
+    canMutateKnowledge: false,
+    canDownload: false,
+    t,
+    onOpen: noop,
+    onOpenFolder: noop,
+    onToggle: noop,
+    onTagEdit: noop,
+    onReparse: noop,
+    onCancelParse: noop,
+    onDownload: noop,
+    onEdit: noop,
+    onViewTrace: noop,
+    onMove: noop,
+    onBatchManage: noop,
+    onDelete: noop,
+  }));
+  assert.ok(html.includes('编辑文档'), 'editor still sees manual document editing');
+  assert.ok(!html.includes('移动到目录'), 'editor does not see folder move');
+  assert.ok(!html.includes('批量管理'), 'editor does not see batch management');
+  assert.ok(!html.includes('删除文档'), 'editor does not see delete');
 });
 
 test('document card hover placement prefers the right side and falls back within the viewport', () => {
