@@ -64,11 +64,11 @@ embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 
 影响：读者无法从 matrix、baseline、inventory、acceptance 得出唯一的当前 route inventory 规模；“全部覆盖”声明的分母不稳定。历史 baseline 可以保留，但必须显式标为 historical snapshot，并在 canonical matrix 顶部给出 current snapshot=59。
 
-### P1 — CSV 没有稳定 row ID 列，却被其他文档当作稳定行 ID 清单
+### Resolved — CSV 的稳定 route-to-row 映射
 
-`docs/migrations/react/route-parity.csv:1` 的字段从 `route_or_entry` 开始，没有 `row_id`；而 `docs/migrations/react/evidence/vue-react-parity/2026-09-12-baseline-and-inventory.md:84,101` 声明每行有稳定 `R001-R053`，`docs/migrations/react/vue-react-parity-progress.md:1057,1066` 又以 R/N 行数作为 sanity check。
+`docs/migrations/react/route-row-map.csv` 现在为当前 59 条入口提供显式 `R001-R059`、`route_or_entry` 和 `kind`。原始 `route-parity.csv` 保留迁移历史格式；canonical matrix 指向该映射文件，旧 baseline 中的 R001-R053/R001-R056 明确属于历史快照。
 
-影响：CSV 的插入、排序或删除会改变隐式行号，无法独立复核 matrix/ledger 的 R 编号映射。应在文档范围内补充显式 ID 列或提供机器可读的 route-to-row 映射；在此之前，不能把“按 CSV 顺序对应”当成稳定 contract。
+影响：稳定映射缺口已关闭；后续 route 变更仍需同步更新 `route-parity.csv` 与 `route-row-map.csv`，并通过行数、重复 ID 和 route 对齐检查。
 
 ### P1 — Apps Vue authority 已解析，运行时 parity 仍未闭环
 

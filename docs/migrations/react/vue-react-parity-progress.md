@@ -3802,3 +3802,17 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   comparison, real Embed streaming, protected preview/reference behavior, and
   native Wails interaction remain `blocked-env` or open per R397-R398. No
   mobile code was modified.
+
+## 2026-09-16 Round R402 — Make the current route denominator machine-addressable
+
+- Added `docs/migrations/react/route-row-map.csv`, an explicit `R001-R059`
+  mapping for every current route, settings surface, independent entry, file
+  route, WebSocket route, and Embed route. A reproducible check confirms the
+  map has 59 rows, zero duplicate IDs, and exactly matches the route/kind pairs
+  in `route-parity.csv`.
+- Updated the canonical matrix and route audit to distinguish the current
+  59-row mapping from historical 53/56-row snapshots. This closes the stable
+  row-to-route documentation gap, but does not promote any row to `accepted`.
+- Visual/computed-style comparison, authenticated permissions and mutations,
+  real Embed token/streaming, and Wails feature interaction remain open or
+  `blocked-env`. No mobile code was modified.

@@ -1,6 +1,6 @@
 # Vue → React canonical page/state inventory
 
-Current inventory audit (2026-09-16): `route-parity.csv` currently has 59 data rows with kind counts page 18, settings-section 26, redirect 5, layout+redirect 1, dev-only 1, independent-entry 1, special-file-route 5, special-websocket 1, and special-embed-route 1. The 53-row/56-row values below are historical baseline snapshots and must not be used as the current denominator. CSV currently has no explicit stable `row_id` column; the four Apps Vue source references resolve to historical commit `9b0c11c4` and are documented in `artifacts/apps-vue-authority-20260916.md`. Visual, permission, and mutation acceptance remains open. See `artifacts/route-inventory-parity-ledger-audit-20260916.md`.
+Current inventory audit (2026-09-16): `route-parity.csv` currently has 59 data rows with kind counts page 18, settings-section 26, redirect 5, layout+redirect 1, dev-only 1, independent-entry 1, special-file-route 5, special-websocket 1, and special-embed-route 1. The 53-row/56-row values below are historical baseline snapshots and must not be used as the current denominator. Stable IDs and route kinds are explicitly mapped in `route-row-map.csv`; the four Apps Vue source references resolve to historical commit `9b0c11c4` and are documented in `artifacts/apps-vue-authority-20260916.md`. Visual, permission, and mutation acceptance remains open. See `artifacts/route-inventory-parity-ledger-audit-20260916.md`.
 
 Latest addendum (2026-09-15 R320): N005 share dialog now matches the Vue-only share title, 520px dialog width, and icon-only shared-list settings/unshare actions with accessible labels; focused share dialog 13/13, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r320-share-dialog-actions.md`. Authenticated paired screenshot and real-backend share/unshare evidence remain open.
 
@@ -16,7 +16,7 @@ Status values: `pending` / `implementing` / `review` / `accepted` / `blocked`. E
 
 ## Inventory method
 
-Canonical rows were reconciled from `docs/migrations/react/route-parity.csv` (53 rows), Vue router/navigation/view trees, settings registry, special file/WebSocket routes, React route resolver/render switch, app source trees, shared packages, prior progress/evidence, and live-test records. Inventory counts at this baseline: Vue views 171, Vue components 94, Vue stores 23, Vue composables 27, Vue API modules 33, Vue i18n files 21; React app source files: web 132, desktop 9, embed 7, mobile app 22, mobile src 66; shared packages: api-client 53, domain 42, views 32, i18n 9, ui 3, contracts 2.
+Canonical rows were reconciled from `docs/migrations/react/route-parity.csv` (historical 53-row snapshot; current 59-row mapping is `route-row-map.csv`), Vue router/navigation/view trees, settings registry, special file/WebSocket routes, React route resolver/render switch, app source trees, shared packages, prior progress/evidence, and live-test records. Inventory counts at this baseline: Vue views 171, Vue components 94, Vue stores 23, Vue composables 27, Vue API modules 33, Vue i18n files 21; React app source files: web 132, desktop 9, embed 7, mobile app 22, mobile src 66; shared packages: api-client 53, domain 42, views 32, i18n 9, ui 3, contracts 2.
 
 ## State profiles used by row inventory
 
