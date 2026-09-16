@@ -36,6 +36,11 @@ const USER_BUBBLE = "ml-auto box-border w-max max-w-[min(76%,820px)] rounded-[8p
 /** .wk-list li effective values (the styles.css rule wins the unlayered tie) */
 export const TOOL_LIST_ITEM = "flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]";
 
+export type AssistantTimelineItem =
+  | { kind: 'thinking'; text: string }
+  | { kind: 'tool'; id: string; name?: string; status: 'pending' | 'completed' | 'failed'; result?: unknown }
+  | { kind: 'finish' };
+
 export interface PendingChatMessage {
   content: string;
   status: 'pending' | 'failed';
@@ -146,6 +151,16 @@ function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable;
   </button>;
 }
 
+/** Vue AgentStreamDisplay order: reasoning first, tool calls next, finish last. */
+export function assistantTimelineItems(message: ChatMessage): AssistantTimelineItem[] {
+  const extras = assistantMessageExtras(message);
+  const items: AssistantTimelineItem[] = [];
+  if (extras.thinking) items.push({ kind: 'thinking', text: extras.thinking });
+  for (const call of extras.toolCalls) items.push({ kind: 'tool', ...call });
+  if (message.is_completed === true && items.length > 0) items.push({ kind: 'finish' });
+  return items;
+}
+
 function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
   return <li className="wk-chat-typing m-0 flex min-h-[28px] list-none items-center border-b border-[#edf0f5] py-[0.8rem]" role="status" aria-label={copyTable.thinkingAlt}>
     <span className="wk-chat-typing-dots inline-flex gap-[4px]" aria-hidden="true"><i className={TYPING_DOT} /><i className={`${TYPING_DOT} [animation-delay:150ms]`} /><i className={`${TYPING_DOT} [animation-delay:300ms]`} /></span>
@@ -153,13 +168,24 @@ function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
 }
 
 function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
-  const extras = assistantMessageExtras(props.message);
-  if (!extras.thinking && extras.toolCalls.length === 0) return null;
-  return <details className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]'>
-    <summary className='cursor-pointer px-[10px] py-[6px] text-[rgba(0,0,0,0.6)]'>{props.copy.thinkingAndTools}</summary>
-    {extras.thinking ? <pre className='mx-[10px] mb-[8px] mt-0 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{extras.thinking}</pre> : null}
-    {extras.toolCalls.length > 0 ? <ul className='wk-list m-0 list-none p-0'>{extras.toolCalls.map((call) => <li key={call.id} className={TOOL_LIST_ITEM}><strong>{call.name ?? call.id}</strong><small className='text-[rgba(0,0,0,0.4)]'>{call.status}</small></li>)}</ul> : null}
-  </details>;
+  const items = assistantTimelineItems(props.message);
+  if (items.length === 0) return null;
+  return <section className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]' aria-label={props.copy.thinkingAndTools}>
+    <ol className='wk-chat-agent-timeline m-0 list-none p-[6px]'>
+      {items.map((item, index) => item.kind === 'thinking' ? <li key={`thinking-${index}`} className='wk-chat-agent-timeline-item border-b border-[#edf0f5] py-[6px] last:border-b-0'>
+        <details>
+          <summary className='cursor-pointer text-[rgba(0,0,0,0.6)]'>{props.copy.thinkingAndTools}</summary>
+          <pre className='mx-0 mb-0 mt-[6px] max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{item.text}</pre>
+        </details>
+      </li> : item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
+        <details className='min-w-0'>
+          <summary className='cursor-pointer truncate'>{item.name ?? item.id}</summary>
+          {item.result !== undefined ? <pre className='mt-[6px] max-h-[180px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2)}</pre> : null}
+        </details>
+        <small className='shrink-0 text-[rgba(0,0,0,0.4)]'>{item.status}</small>
+      </li> : <li key='finish' className='wk-chat-agent-timeline-item flex items-center gap-[6px] py-[6px] text-[rgba(0,0,0,0.6)]' data-status='completed' role='status'>✓ <span>{props.copy.approvalResolved}</span></li>)}
+    </ol>
+  </section>;
 }
 
 function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenList }: { copy: ChatCopyTable; message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void>; onOpenList?: (messageId: string) => void }) {
