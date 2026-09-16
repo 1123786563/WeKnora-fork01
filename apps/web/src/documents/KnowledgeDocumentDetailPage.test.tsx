@@ -319,6 +319,7 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
   const mergedSurface = container.ownerDocument.body.querySelector('.wk-document-merged');
   assert.ok(mergedSurface?.querySelector('h1'), 'Vue renders merged Markdown headings instead of exposing raw markers');
   assert.ok(mergedSurface?.querySelector('ul'), 'Vue renders merged Markdown lists instead of plain text');
+  assert.match(mergedSurface?.className ?? '', /bg-surface-muted/, 'merged code blocks use the project surface token');
 });
 
 test('document preview ignores delayed text from a document that was replaced', async () => {
