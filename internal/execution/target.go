@@ -12,40 +12,12 @@ import (
 var ErrTargetForbidden = errors.New("target_forbidden")
 var ErrTargetUntrusted = errors.New("target_untrusted")
 
-type targetIdentityContextKey struct{}
-
-// TrustedTargetIdentity is injected only by node/service authentication. A
-// mobile request cannot manufacture this value through JSON.
-type TrustedTargetIdentity struct {
-	RuntimeID         string
-	ExternalTargetID  string
-	CredentialVersion int64
-}
-
-func WithTrustedTargetIdentity(ctx context.Context, identity TrustedTargetIdentity) context.Context {
-	return context.WithValue(ctx, targetIdentityContextKey{}, identity)
-}
-
-func TrustedTargetIdentityFromContext(ctx context.Context) (TrustedTargetIdentity, bool) {
-	identity, ok := ctx.Value(targetIdentityContextKey{}).(TrustedTargetIdentity)
-	return identity, ok
-}
-
-// TargetVerifier is the trust boundary for node/service registration. The
-// default context verifier is deliberately fail-closed until an authenticated
-// node middleware injects a current identity.
-type TargetVerifier interface {
-	VerifyTarget(context.Context, Target) error
-}
-
-type ContextTargetVerifier struct{}
-
-func (ContextTargetVerifier) VerifyTarget(ctx context.Context, target Target) error {
-	identity, ok := TrustedTargetIdentityFromContext(ctx)
-	if !ok || identity.RuntimeID != target.RuntimeID || identity.ExternalTargetID != target.ExternalTargetID || identity.CredentialVersion != target.CredentialVersion || identity.CredentialVersion <= 0 {
-		return ErrTargetUntrusted
-	}
-	return nil
+// TargetIdentityProvider is the non-bypassable trust boundary for node
+// registration. Implementations must resolve identity and the current
+// credential version from a trusted persistent/provider source; request JSON
+// and request context are never accepted as the source of truth.
+type TargetIdentityProvider interface {
+	VerifyTarget(context.Context, uint64, string, Target) error
 }
 
 // Target is the public projection of a registered execution target. Secrets,

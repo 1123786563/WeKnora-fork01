@@ -22,6 +22,35 @@ type ExecutionTargetStore interface {
 	GetOwnedWorkspace(ctx context.Context, tenantID uint64, actor, workspaceID string) (execution.Workspace, error)
 }
 
+// executionTargetIdentityProvider is backed by the node-registration
+// projection. It is intentionally separate from execution_targets: a target
+// cannot authorize its own first registration.
+type executionTargetIdentityProvider struct{ db *gorm.DB }
+
+func NewExecutionTargetIdentityProvider(db *gorm.DB) execution.TargetIdentityProvider {
+	return &executionTargetIdentityProvider{db: db}
+}
+
+type executionTargetIdentityRow struct {
+	TenantID          uint64 `gorm:"primaryKey;column:tenant_id"`
+	RuntimeID         string `gorm:"primaryKey;column:runtime_id"`
+	ExternalTargetID  string `gorm:"primaryKey;column:external_target_id"`
+	OwnerID           string `gorm:"column:owner_id"`
+	CredentialVersion int64  `gorm:"column:credential_version"`
+	State             string `gorm:"column:state"`
+}
+
+func (executionTargetIdentityRow) TableName() string { return "execution_target_identities" }
+
+func (p *executionTargetIdentityProvider) VerifyTarget(ctx context.Context, tenantID uint64, actor string, target execution.Target) error {
+	var identity executionTargetIdentityRow
+	err := p.db.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", tenantID, actor, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active").First(&identity).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return execution.ErrTargetUntrusted
+	}
+	return err
+}
+
 type executionTargetRow struct {
 	TenantID          uint64     `gorm:"primaryKey;column:tenant_id"`
 	ID                string     `gorm:"primaryKey;column:id"`

@@ -193,6 +193,34 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 	require.Zero(t, defaultTableCount, "x-migrations-table must select the configured table")
 }
 
+// TestExecutionTargetSQLiteFullMigrationDownUp verifies the current full
+// migration chain retains both the W04 v17 and W18 target identity schema.
+// It intentionally runs against the repository migration root; no migration
+// versions are filtered from this fixture.
+func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "execution-target-down-up.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	db := openSQLiteDB(t, dbPath)
+	version, dirty := sqliteMigrationState(t, db)
+	require.Equal(t, 18, version)
+	require.False(t, dirty)
+	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
+	require.True(t, sqliteTableExists(t, db, "execution_workspaces"))
+
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -1))
+	version, dirty = sqliteMigrationState(t, db)
+	require.Equal(t, 17, version)
+	require.False(t, dirty)
+	require.False(t, sqliteTableExists(t, db, "execution_target_identities"))
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 1))
+	version, dirty = sqliteMigrationState(t, db)
+	require.Equal(t, 18, version)
+	require.False(t, dirty)
+	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
+}
+
 // TestWorkbenchSQLiteDownRefusesPaseo catches a rollback that would silently
 // drop remote-driver state for a binary that can only execute platform runs.
 func TestWorkbenchSQLiteDownRefusesPaseo(t *testing.T) {

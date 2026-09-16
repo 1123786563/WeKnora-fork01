@@ -18,6 +18,21 @@ CREATE TABLE execution_targets (
 );
 CREATE INDEX idx_execution_targets_owner
     ON execution_targets (tenant_id, owner_id, state, created_at);
+CREATE TABLE execution_target_identities (
+    tenant_id INTEGER NOT NULL,
+    runtime_id VARCHAR(255) NOT NULL,
+    external_target_id VARCHAR(512) NOT NULL,
+    owner_id VARCHAR(512) NOT NULL,
+    credential_version INTEGER NOT NULL,
+    state VARCHAR(32) NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, runtime_id, external_target_id),
+    CHECK (credential_version > 0),
+    CHECK (state IN ('active', 'revoked'))
+);
+CREATE INDEX idx_execution_target_identities_owner
+    ON execution_target_identities (tenant_id, owner_id, state);
 CREATE TABLE execution_workspaces (
     tenant_id INTEGER NOT NULL,
     id VARCHAR(128) NOT NULL,

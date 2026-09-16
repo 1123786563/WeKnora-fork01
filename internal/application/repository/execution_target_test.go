@@ -14,7 +14,7 @@ func openExecutionTargetTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&executionTargetRow{}, &executionWorkspaceRow{}))
+	require.NoError(t, db.AutoMigrate(&executionTargetRow{}, &executionWorkspaceRow{}, &executionTargetIdentityRow{}))
 	require.NoError(t, db.Exec("CREATE UNIQUE INDEX uq_execution_targets_runtime_external ON execution_targets (runtime_id, external_target_id)").Error)
 	return db
 }
@@ -57,4 +57,16 @@ func TestExecutionTargetStoreWorkspaceIsOwnedThroughTarget(t *testing.T) {
 	require.Equal(t, execution.Workspace{ID: "w1", TenantID: 1, TargetID: "t1", RootRef: "opaque-root"}, got)
 	_, err = store.GetOwnedWorkspace(ctx, 1, "u2", "w1")
 	require.ErrorIs(t, err, ErrExecutionTargetNotFound)
+}
+
+func TestExecutionTargetIdentityProviderRejectsSelfAssertionAndStaleRotation(t *testing.T) {
+	db := openExecutionTargetTestDB(t)
+	provider := NewExecutionTargetIdentityProvider(db)
+	ctx := context.Background()
+	target := execution.Target{RuntimeID: "r1", ExternalTargetID: "x1", CredentialVersion: 2}
+	require.ErrorIs(t, provider.VerifyTarget(ctx, 1, "u1", target), execution.ErrTargetUntrusted)
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: "r1", ExternalTargetID: "x1", OwnerID: "u1", CredentialVersion: 1, State: "active"}).Error)
+	require.ErrorIs(t, provider.VerifyTarget(ctx, 1, "u1", target), execution.ErrTargetUntrusted)
+	require.NoError(t, db.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND runtime_id = ? AND external_target_id = ?", 1, "r1", "x1").Update("credential_version", 2).Error)
+	require.NoError(t, provider.VerifyTarget(ctx, 1, "u1", target))
 }

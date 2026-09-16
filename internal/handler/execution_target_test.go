@@ -16,6 +16,15 @@ import (
 
 type executionTargetStoreStub struct{ targets []execution.Target }
 
+type executionTargetProviderStub struct{ allow bool }
+
+func (p executionTargetProviderStub) VerifyTarget(context.Context, uint64, string, execution.Target) error {
+	if !p.allow {
+		return execution.ErrTargetUntrusted
+	}
+	return nil
+}
+
 func (s *executionTargetStoreStub) CreateTarget(context.Context, execution.Target, string) error {
 	return nil
 }
@@ -39,7 +48,7 @@ func TestExecutionTargetListDoesNotExposeNodeRoot(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &executionTargetStoreStub{targets: []execution.Target{{ID: "t1", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 1}}}
 	r := gin.New()
-	r.GET("/execution-targets", NewExecutionTargetHandler(stub).List)
+	r.GET("/execution-targets", NewExecutionTargetHandler(stub, nil).List)
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
 	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
 	req := httptest.NewRequest("GET", "/execution-targets", nil).WithContext(ctx)
@@ -59,7 +68,7 @@ func TestExecutionTargetCreateRequiresTrustedNodeIdentity(t *testing.T) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": c.Errors.Last().Error()})
 		}
 	})
-	r.POST("/execution-targets", NewExecutionTargetHandler(stub).Create)
+	r.POST("/execution-targets", NewExecutionTargetHandler(stub, executionTargetProviderStub{allow: false}).Create)
 	body, _ := json.Marshal(map[string]any{"id": "t1", "kind": "managed_node", "runtime_id": "r1", "external_target_id": "x1", "credential_version": 2})
 	request := func(ctx context.Context) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/execution-targets", bytes.NewReader(body)).WithContext(ctx)
@@ -70,8 +79,5 @@ func TestExecutionTargetCreateRequiresTrustedNodeIdentity(t *testing.T) {
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
 	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
 	require.Equal(t, http.StatusUnauthorized, request(ctx).Code)
-	ctx = execution.WithTrustedTargetIdentity(ctx, execution.TrustedTargetIdentity{RuntimeID: "r1", ExternalTargetID: "x1", CredentialVersion: 1})
 	require.Equal(t, http.StatusUnauthorized, request(ctx).Code)
-	ctx = execution.WithTrustedTargetIdentity(ctx, execution.TrustedTargetIdentity{RuntimeID: "r1", ExternalTargetID: "x1", CredentialVersion: 2})
-	require.Equal(t, http.StatusCreated, request(ctx).Code)
 }

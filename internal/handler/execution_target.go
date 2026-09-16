@@ -14,14 +14,10 @@ import (
 
 type ExecutionTargetHandler struct {
 	store    repository.ExecutionTargetStore
-	verifier execution.TargetVerifier
+	verifier execution.TargetIdentityProvider
 }
 
-func NewExecutionTargetHandler(store repository.ExecutionTargetStore, verifiers ...execution.TargetVerifier) *ExecutionTargetHandler {
-	var verifier execution.TargetVerifier = execution.ContextTargetVerifier{}
-	if len(verifiers) > 0 && verifiers[0] != nil {
-		verifier = verifiers[0]
-	}
+func NewExecutionTargetHandler(store repository.ExecutionTargetStore, verifier execution.TargetIdentityProvider) *ExecutionTargetHandler {
 	return &ExecutionTargetHandler{store: store, verifier: verifier}
 }
 
@@ -95,7 +91,7 @@ func (h *ExecutionTargetHandler) Create(c *gin.Context) {
 	// root_ref is resolved by the node registration layer and is intentionally
 	// absent from this client-facing request.
 	target := execution.Target{ID: req.ID, TenantID: tenant, OwnerID: actor, Kind: req.Kind, State: "active", CredentialVersion: req.CredentialVersion, RuntimeID: req.RuntimeID, ExternalTargetID: req.ExternalTargetID}
-	if h.verifier == nil || h.verifier.VerifyTarget(c.Request.Context(), target) != nil {
+	if h.verifier == nil || h.verifier.VerifyTarget(c.Request.Context(), tenant, actor, target) != nil {
 		c.Error(apperrors.NewUnauthorizedError("execution target identity is not trusted"))
 		return
 	}

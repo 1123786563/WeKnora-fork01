@@ -1,9 +1,6 @@
 package execution
 
-import (
-	"context"
-	"testing"
-)
+import "testing"
 
 func TestTargetCannotCrossSpace(t *testing.T) {
 	target := Target{ID: "n", TenantID: 1, OwnerID: "u", Kind: "managed_node", State: "active", CredentialVersion: 1}
@@ -32,21 +29,5 @@ func TestAuthorizeTargetRejectsWrongOwnerRevokedAndInvalidCredential(t *testing.
 				t.Fatal("target unexpectedly authorized")
 			}
 		})
-	}
-}
-
-func TestContextTargetVerifierRejectsSelfAssertedOrStaleIdentity(t *testing.T) {
-	target := Target{RuntimeID: "runtime-1", ExternalTargetID: "node-1", CredentialVersion: 3}
-	verifier := ContextTargetVerifier{}
-	if err := verifier.VerifyTarget(context.Background(), target); err == nil {
-		t.Fatal("self-asserted target identity was trusted")
-	}
-	ctx := WithTrustedTargetIdentity(context.Background(), TrustedTargetIdentity{RuntimeID: "runtime-1", ExternalTargetID: "node-1", CredentialVersion: 2})
-	if err := verifier.VerifyTarget(ctx, target); err == nil {
-		t.Fatal("stale credential version was trusted")
-	}
-	ctx = WithTrustedTargetIdentity(context.Background(), TrustedTargetIdentity{RuntimeID: "runtime-1", ExternalTargetID: "node-1", CredentialVersion: 3})
-	if err := verifier.VerifyTarget(ctx, target); err != nil {
-		t.Fatal(err)
 	}
 }
