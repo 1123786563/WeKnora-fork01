@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   // The Embed entry is copied below web/embed/ for Lite and served behind
   // /embed/. Keeping the base explicit prevents it from resolving assets
   // against the main Web SPA.

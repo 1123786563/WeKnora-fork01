@@ -7,7 +7,6 @@ import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/emb
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 import { Button } from '../../../packages/ui/src/button.tsx';
-import '../../../packages/ui/src/theme.css';
 import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldShowEmbedTimestamp, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
