@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Pressable } from 'react-native';
 import { t } from '@/text';
 import { MobileGlassSurface } from '@/components/MobileGlass';
@@ -220,7 +220,7 @@ export default function SessionHistory() {
                 >
                 <Pressable
                     style={({ pressed }) => [styles.sessionPressable, Platform.OS !== 'web' && pressed && { opacity: 0.72 }]}
-                    onPress={() => navigateToSession(session.id)}
+                    onPress={() => navigateToSession(session.id, createProductSessionNavigationFromSession(session))}
                 >
                     <Avatar
                         id={avatarId}

@@ -20,7 +20,7 @@ import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
-import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigationFromSession, useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { t } from '@/text';
@@ -627,7 +627,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     isSingle?: boolean;
 }) => {
     const styles = stylesheet;
-    const sessionPressHandlers = useSessionPressHandlers(session.id);
+    const sessionPressHandlers = useSessionPressHandlers(session.id, createProductSessionNavigationFromSession(session));
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
     const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';

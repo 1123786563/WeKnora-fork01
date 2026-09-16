@@ -15,7 +15,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 
 export default function MachineDetailScreen() {
@@ -344,7 +344,7 @@ export default function MachineDetailScreen() {
                                 key={session.id}
                                 title={getSessionName(session)}
                                 subtitle={getSessionSubtitle(session)}
-                                onPress={() => navigateToSession(session.id)}
+                                onPress={() => navigateToSession(session.id, createProductSessionNavigationFromSession(session))}
                                 rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
                             />
                         ))}

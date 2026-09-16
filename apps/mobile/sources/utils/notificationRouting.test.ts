@@ -4,13 +4,15 @@ import {
     getSessionRouteFromNotificationResponse,
 } from './notificationRouting';
 
+const productSession = { spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', resourceUserId: 'user-1', resourceTenantId: 'tenant-1', runId: 'run-1' };
+
 describe('getSessionRouteFromNotificationData', () => {
     it('returns a session route when sessionId exists', () => {
-        expect(getSessionRouteFromNotificationData({ sessionId: 'session-123' })).toBe('/session/session-123');
+        expect(getSessionRouteFromNotificationData({ sessionId: 'session-123', productSession })).toContain('/session/session-123?');
     });
 
     it('encodes session ids that contain spaces', () => {
-        expect(getSessionRouteFromNotificationData({ sessionId: 'session 123' })).toBe('/session/session%20123');
+        expect(getSessionRouteFromNotificationData({ sessionId: 'session 123', productSession })).toContain('/session/session%20123?');
     });
 
     it('returns null when sessionId is missing', () => {
@@ -22,7 +24,7 @@ describe('getSessionRouteFromNotificationData', () => {
     });
 
     it('uses a session url when present', () => {
-        expect(getSessionRouteFromNotificationData({ url: '/session/session-123' })).toBe('/session/session-123');
+        expect(getSessionRouteFromNotificationData({ url: '/session/session-123', productSession })).toContain('/session/session-123?');
     });
 });
 
@@ -32,11 +34,11 @@ describe('getSessionRouteFromNotificationResponse', () => {
             notification: {
                 request: {
                     content: {
-                        data: { sessionId: 'session-123' }
+                        data: { sessionId: 'session-123', productSession }
                     }
                 }
             }
-        })).toBe('/session/session-123');
+        })).toContain('/session/session-123?');
     });
 
     it('returns null when content data is missing', () => {

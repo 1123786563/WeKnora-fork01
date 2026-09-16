@@ -11,7 +11,7 @@ import { StatusDot } from './StatusDot';
 import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigationFromSession, useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -231,7 +231,7 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const status = session.hasUnread && !needsUserAction
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
-    const sessionPressHandlers = useSessionPressHandlers(session.id);
+    const sessionPressHandlers = useSessionPressHandlers(session.id, createProductSessionNavigationFromSession(session));
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
