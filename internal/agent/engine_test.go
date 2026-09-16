@@ -298,9 +298,10 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 
 	bus := event.NewEventBus()
 	var observed event.ToolApprovalRequiredData
+	principal := types.Principal{Type: types.PrincipalWebUser, ID: "u1"}
 	bus.On(event.EventToolApprovalRequired, func(_ context.Context, evt event.Event) error {
 		observed = evt.Data.(event.ToolApprovalRequiredData)
-		return gate.Resolve(observed.TenantID, "u1", observed.PendingID, approval.Decision{Approved: false, Reason: "test projection"})
+		return gate.Resolve(observed.TenantID, principal.StorageID(), observed.PendingID, approval.Decision{Approved: false, Reason: "test projection"})
 	})
 
 	ctx := context.Background()
@@ -308,7 +309,7 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
 	ctx = context.WithValue(ctx, types.RunIDContextKey, "durable-run-42")
 	ctx = context.WithValue(ctx, types.RequestIDContextKey, "request-42")
-	ctx = types.WithPrincipal(ctx, types.Principal{Type: types.PrincipalWebUser, ID: "u1"})
+	ctx = types.WithPrincipal(ctx, principal)
 
 	registry := agenttools.NewToolRegistry()
 	manager := internalmcp.NewMCPManager(nil)
@@ -320,13 +321,19 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	_, err = agenttools.RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, metadata)
 	require.NoError(t, err)
 	registry.PrepareMCPTools(ctx)
-	_, err = registry.ExecuteTool(ctx, agenttools.ToolDiscoverMCPTools, json.RawMessage(`{"mode":"describe","server_id":"orders","tool_name":"get_order"}`))
+	describeResult, err := registry.ExecuteTool(ctx, agenttools.ToolDiscoverMCPTools, json.RawMessage(`{"mode":"describe","server_id":"orders","tool_name":"get_order"}`))
 	require.NoError(t, err)
+	var described struct {
+		ToolRef string `json:"tool_ref"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(describeResult.Output), &described))
+	require.NotEmpty(t, described.ToolRef, "describe must return a callable tool_ref")
 
 	engine := newTestEngine(t, &mockChat{})
 	engine.toolRegistry = registry
 	engine.eventBus = bus
-	result := engine.runToolCall(ctx, types.LLMToolCall{ID: "call-42", Function: types.FunctionCall{Name: "mcp_Orders_get_order", Arguments: `{"id":"42"}`}}, 0, 0, 1, "session-42", "assistant-42")
+	proxyArgs := fmt.Sprintf(`{"tool_ref":%q,"arguments":{"id":"42"}}`, described.ToolRef)
+	result := engine.runToolCall(ctx, types.LLMToolCall{ID: "call-42", Function: types.FunctionCall{Name: agenttools.ToolCallMCPTool, Arguments: proxyArgs}}, 0, 0, 1, "session-42", "assistant-42")
 	require.NotNil(t, result.Result)
 	require.False(t, result.Result.Success)
 	require.Equal(t, "request-42", observed.RequestID)
@@ -335,7 +342,7 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT run_id, owner_id, kind FROM workbench_interactions WHERE tenant_id = 7").Row().Scan(&runID, &ownerID, &kind))
 	require.Equal(t, "durable-run-42", runID)
 	require.NotEqual(t, observed.RequestID, runID)
-	require.Equal(t, "u1", ownerID)
+	require.Equal(t, principal.StorageID(), ownerID)
 	require.Equal(t, "tool_approval", kind)
 }
 
