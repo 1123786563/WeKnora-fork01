@@ -243,7 +243,10 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 		}
 		if result.Applied {
 			if w.deviceRevoker != nil {
-				if revokeErr := w.deviceRevoker.RevokeForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, 0); revokeErr != nil {
+				if d.DeviceRevision <= 0 {
+					return fmt.Errorf("notification_device_revoke:%s: missing registration revision", d.ID)
+				}
+				if revokeErr := w.deviceRevoker.RevokeForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, d.DeviceRevision); revokeErr != nil {
 					return fmt.Errorf("notification_device_revoke:%s: %w", d.ID, revokeErr)
 				}
 			}

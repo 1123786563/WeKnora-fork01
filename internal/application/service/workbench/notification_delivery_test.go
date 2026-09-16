@@ -214,6 +214,29 @@ func TestNotificationDeliveryPermanentProviderErrorRevokesDevice(t *testing.T) {
 	require.ErrorIs(t, getErr, repository.ErrMobileDeviceNotFound)
 }
 
+func TestNotificationDeliveryPermanentFailureDoesNotRevokeReboundRegistration(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "rebound-device")
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithRevoker(store, &notificationProviderSpy{}, "rebound-worker", revoker)
+	deliveries, err := store.Claim(context.Background(), "rebound-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	require.Equal(t, int64(1), deliveries[0].DeviceRevision)
+	// The provider failed for revision 1, but the user rebinds the same
+	// installation before the failure callback runs. The CAS revoke must
+	// reject revision 1 and preserve the replacement registration.
+	require.NoError(t, revoker.Bind(context.Background(), repository.DeviceRegistration{
+		TenantID: 1, OwnerID: "u1", DeviceID: "rebound-device", Environment: "dev", Platform: "ios",
+		TokenCiphertext: "cipher-v2", TokenHash: repository.DeviceTokenHash("token-v2"), Revision: 1, ScopeGeneration: 0,
+	}))
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "DeviceNotRegistered", Revoke: true, Retry: false})
+	require.ErrorIs(t, err, repository.ErrMobileDeviceRevision)
+	active, getErr := revoker.GetActiveForTenant(context.Background(), 1, "u1", "rebound-device")
+	require.NoError(t, getErr)
+	require.Equal(t, int64(2), active.Revision)
+	require.Equal(t, repository.DeviceTokenHash("token-v2"), active.TokenHash)
+}
+
 func deliveryTestAdmission(runID string) agentruntime.Admission {
 	return agentruntime.Admission{
 		Key: agentruntime.RunKey{TenantID: 1, RunID: runID}, SessionID: "s1", UserID: "u1",

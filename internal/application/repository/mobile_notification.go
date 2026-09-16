@@ -31,11 +31,15 @@ type NotificationIntent struct {
 // NotificationDelivery is a leased delivery attempt. Fence changes every time
 // a lease is acquired, so a late worker cannot acknowledge a newer attempt.
 type NotificationDelivery struct {
-	ID         string
-	Intent     NotificationIntent
-	Attempt    int64
-	Fence      int64
-	LeaseUntil time.Time
+	ID     string
+	Intent NotificationIntent
+	// DeviceRevision is the registration revision observed when this lease
+	// was acquired. Permanent provider failures must revoke only this exact
+	// registration; a later rebind must survive the failure callback.
+	DeviceRevision int64
+	Attempt        int64
+	Fence          int64
+	LeaseUntil     time.Time
 }
 
 type mobileNotificationRow struct {
@@ -250,15 +254,46 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 			if update.RowsAffected != 1 {
 				continue
 			}
+			// Capture the registration revision after leasing. The provider call
+			// may race with a device rebind; the revoker receives this snapshot
+			// as an expected version and therefore cannot revoke the replacement.
+			deviceRevision, revisionErr := s.activeDeviceRevision(tx, candidate.TenantID, candidate.OwnerID, candidate.DeviceID, candidate.Environment)
+			if revisionErr != nil {
+				return revisionErr
+			}
 			out = append(out, NotificationDelivery{
-				ID:      candidate.ID,
-				Intent:  NotificationIntent{TenantID: candidate.TenantID, EventID: candidate.EventID, OwnerID: candidate.OwnerID, DeviceID: candidate.DeviceID, Environment: candidate.Environment, Kind: candidate.Kind, RunID: candidate.RunID, ExpiresAt: candidate.ExpiresAt},
-				Attempt: candidate.Attempt + 1, Fence: newFence, LeaseUntil: until,
+				ID:             candidate.ID,
+				Intent:         NotificationIntent{TenantID: candidate.TenantID, EventID: candidate.EventID, OwnerID: candidate.OwnerID, DeviceID: candidate.DeviceID, Environment: candidate.Environment, Kind: candidate.Kind, RunID: candidate.RunID, ExpiresAt: candidate.ExpiresAt},
+				DeviceRevision: deviceRevision, Attempt: candidate.Attempt + 1, Fence: newFence, LeaseUntil: until,
 			})
 		}
 		return nil
 	})
 	return out, err
+}
+
+func (s *NotificationStore) activeDeviceRevision(tx *gorm.DB, tenant uint64, owner, device, environment string) (int64, error) {
+	// A few repository unit tests intentionally provide a minimal legacy
+	// mobile_devices table. Those tests do not exercise device revocation, so
+	// preserve their schema-only claim coverage while production migrations
+	// always expose the revision column.
+	if !tx.Migrator().HasColumn(&mobileDeviceRow{}, "revision") {
+		return 0, nil
+	}
+	var row struct{ Revision int64 }
+	err := tx.Table("mobile_devices").Select("revision").Where(
+		"tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revoked_at IS NULL",
+		tenant, owner, device, environment).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrMobileDeviceNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if row.Revision <= 0 {
+		return 0, ErrMobileDeviceRevision
+	}
+	return row.Revision, nil
 }
 
 // Ack marks one delivery sent only if the worker still owns the exact lease
