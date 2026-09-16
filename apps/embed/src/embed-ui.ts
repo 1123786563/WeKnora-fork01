@@ -12,6 +12,92 @@ export interface EmbedUploadCapabilities {
   allowImageUpload: boolean;
 }
 
+export interface EmbedFileIssue {
+  file: File;
+  reason: 'type' | 'size' | 'count';
+}
+
+export const EMBED_MAX_IMAGES = 5;
+export const EMBED_MAX_ATTACHMENTS = 5;
+export const EMBED_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const EMBED_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const EMBED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+
+export function isEmbedImage(file: File): boolean {
+  return file.type.startsWith('image/');
+}
+
+export function partitionUploadFiles(files: readonly File[], imageCount = 0, attachmentCount = 0): {
+  images: File[];
+  attachments: File[];
+  rejected: EmbedFileIssue[];
+} {
+  const images: File[] = [];
+  const attachments: File[] = [];
+  const rejected: EmbedFileIssue[] = [];
+  for (const file of files) {
+    if (isEmbedImage(file)) {
+      if (!EMBED_IMAGE_TYPES.includes(file.type as (typeof EMBED_IMAGE_TYPES)[number])) rejected.push({ file, reason: 'type' });
+      else if (file.size > EMBED_MAX_IMAGE_BYTES) rejected.push({ file, reason: 'size' });
+      else if (imageCount + images.length >= EMBED_MAX_IMAGES) rejected.push({ file, reason: 'count' });
+      else images.push(file);
+    } else if (file.size > EMBED_MAX_ATTACHMENT_BYTES) {
+      rejected.push({ file, reason: 'size' });
+    } else if (attachmentCount + attachments.length >= EMBED_MAX_ATTACHMENTS) {
+      rejected.push({ file, reason: 'count' });
+    } else {
+      attachments.push(file);
+    }
+  }
+  return { images, attachments, rejected };
+}
+
+export function formatEmbedFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function formatEmbedConversationTimestamp(value: unknown, locale: string, now = new Date()): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const isYesterday = date.getFullYear() === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && date.getDate() === yesterday.getDate();
+  if (locale === 'zh-CN') {
+    if (sameDay) return `今天 ${time}`;
+    if (isYesterday) return `昨天 ${time}`;
+    return date.getFullYear() === now.getFullYear()
+      ? `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+      : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  }
+  if (locale === 'ja-JP') {
+    if (sameDay) return `今日 ${time}`;
+    if (isYesterday) return `昨日 ${time}`;
+    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${time}`;
+  }
+  if (locale === 'ko-KR') {
+    if (sameDay) return `오늘 ${time}`;
+    if (isYesterday) return `어제 ${time}`;
+    return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()} ${time}`;
+  }
+  if (locale === 'ru-RU') {
+    if (sameDay) return `Сегодня ${time}`;
+    if (isYesterday) return `Вчера ${time}`;
+    return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()} ${time}`;
+  }
+  if (sameDay) return `Today ${time}`;
+  if (isYesterday) return `Yesterday ${time}`;
+  const month = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date);
+  return date.getFullYear() === now.getFullYear()
+    ? `${month} ${date.getDate()}, ${time}`
+    : `${month} ${date.getDate()}, ${date.getFullYear()} ${time}`;
+}
+
 const uploadLabels: Record<string, { file: string; image: string }> = {
   'zh-CN': { file: '上传附件', image: '上传图片' },
   'en-US': { file: 'Upload file', image: 'Upload image' },

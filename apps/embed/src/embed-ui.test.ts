@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -52,6 +52,33 @@ test('upload controls require the same permission conjunction as the Vue embed',
     allowFileUpload: false,
     allowImageUpload: false,
   });
+});
+
+test('upload validation matches the Vue limits and separates image files', () => {
+  const image = new File(['png'], 'p.png', { type: 'image/png' });
+  const text = new File(['hello'], 'notes.txt', { type: 'text/plain' });
+  const result = partitionUploadFiles([image, text]);
+  assert.deepEqual(result.images, [image]);
+  assert.deepEqual(result.attachments, [text]);
+  assert.deepEqual(result.rejected, []);
+  assert.equal(partitionUploadFiles([image], 5).rejected[0]?.reason, 'count');
+  assert.equal(partitionUploadFiles([new File(['x'], 'bad.svg', { type: 'image/svg+xml' })]).rejected[0]?.reason, 'type');
+});
+
+test('file-size labels match the Vue attachment cards', () => {
+  assert.equal(formatEmbedFileSize(512), '512 B');
+  assert.equal(formatEmbedFileSize(2048), '2.0 KB');
+  assert.equal(formatEmbedFileSize(2 * 1024 * 1024), '2.0 MB');
+  assert.equal(formatEmbedFileSize(0), '');
+});
+
+test('conversation timestamps follow the Vue today/yesterday/year buckets', () => {
+  const now = new Date(2026, 8, 16, 12, 0);
+  assert.equal(formatEmbedConversationTimestamp(new Date(2026, 8, 16, 9, 4).toISOString(), 'en-US', now), 'Today 09:04');
+  assert.equal(formatEmbedConversationTimestamp(new Date(2026, 8, 15, 9, 4).toISOString(), 'en-US', now), 'Yesterday 09:04');
+  assert.equal(formatEmbedConversationTimestamp(new Date(2026, 8, 2, 9, 4).toISOString(), 'en-US', now), 'Sep 2, 09:04');
+  assert.equal(formatEmbedConversationTimestamp(new Date(2025, 8, 2, 9, 4).toISOString(), 'zh-CN', now), '2025年9月2日 09:04');
+  assert.equal(formatEmbedConversationTimestamp('invalid', 'en-US', now), '');
 });
 
 test('knowledge references map to a flat source list', () => {
