@@ -132,8 +132,20 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 			payload, _ = json.Marshal(map[string]any{"source_type": source.Type, "payload": json.RawMessage(source.Payload)})
 		}
 		now := time.Now().UTC()
-		incomplete := source.SourceSeq > 0 && source.SourceSeq > seq
-		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: append([]byte(nil), payload...), CreatedAt: now}
+		var sourceCursor struct{ Seq int64 }
+		_ = tx.WithContext(ctx).Table("execution_observations").Select("COALESCE(MAX(source_seq), 0) AS seq").Where("tenant_id = ? AND binding_id = ? AND generation = ?", key.TenantID, bindingID, source.Generation).Scan(&sourceCursor).Error
+		incomplete := source.SourceSeq > 0 && sourceCursor.Seq > 0 && source.SourceSeq > sourceCursor.Seq+1
+		confirmedSnapshot := []byte(`[]`)
+		if incomplete {
+			var prior []executionObservationRow
+			_ = tx.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND product_seq < ?", key.TenantID, key.RunID, seq).Order("product_seq ASC").Find(&prior).Error
+			confirmed := make([]workbench.ExecutionEvent, 0, len(prior))
+			for _, item := range prior {
+				confirmed = append(confirmed, toExecutionEvent(item))
+			}
+			confirmedSnapshot, _ = json.Marshal(confirmed)
+		}
+		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
 		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}

@@ -64,6 +64,7 @@ type sourceEventRequest struct {
 	Type        string          `json:"type"`
 	Payload     json.RawMessage `json:"payload"`
 	PayloadHash string          `json:"payload_hash"`
+	SourceSeq   int64           `json:"source_seq"`
 }
 
 // IngestWorkbenchSourceEvent is the authenticated callback boundary used by a
@@ -79,7 +80,7 @@ func (h *WorkbenchReadHandler) IngestWorkbenchSourceEvent(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	event, err := h.ingestor.IngestSourceEvent(c.Request.Context(), request.BindingID, repository.SourceObservation{BindingID: request.BindingID, Generation: request.Generation, EventID: request.EventID, AttemptID: request.AttemptID, Type: request.Type, Payload: request.Payload, PayloadHash: request.PayloadHash})
+	event, err := h.ingestor.IngestSourceEvent(c.Request.Context(), request.BindingID, repository.SourceObservation{BindingID: request.BindingID, Generation: request.Generation, EventID: request.EventID, AttemptID: request.AttemptID, Type: request.Type, Payload: request.Payload, PayloadHash: request.PayloadHash, SourceSeq: request.SourceSeq})
 	if errors.Is(err, repository.ErrSourceBinding) || (err == nil && event.RunID != key.RunID) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return

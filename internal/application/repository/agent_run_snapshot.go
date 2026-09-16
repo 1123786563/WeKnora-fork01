@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -164,10 +165,20 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			return err
 		}
 		var observation struct {
-			Incomplete   int
-			ConfirmedSeq int64
+			Incomplete        int
+			ConfirmedSeq      int64
+			ConfirmedSnapshot []byte
 		}
-		_ = tx.Table("execution_observations").Select("COALESCE(MAX(CASE WHEN history_incomplete THEN 1 ELSE 0 END), 0) AS incomplete, COALESCE(MAX(CASE WHEN history_incomplete THEN product_seq ELSE 0 END), 0) - 1 AS confirmed_seq").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Scan(&observation).Error
+		var observationRow struct {
+			HistoryIncomplete bool
+			ProductSeq        int64
+			ConfirmedSnapshot []byte
+		}
+		if tx.Table("execution_observations").Select("history_incomplete, product_seq, confirmed_snapshot").Where("tenant_id = ? AND run_id = ? AND history_incomplete = ?", key.TenantID, key.RunID, true).Order("product_seq DESC").Take(&observationRow).Error == nil {
+			observation.Incomplete = 1
+			observation.ConfirmedSeq = observationRow.ProductSeq - 1
+			observation.ConfirmedSnapshot = observationRow.ConfirmedSnapshot
+		}
 		events := make([]workbench.ExecutionEvent, 0, len(rows))
 		var watermark int64
 		for _, row := range rows {
@@ -196,6 +207,12 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 		}
 		if confirmed == 0 && !incomplete {
 			confirmed = watermark
+		}
+		if incomplete && len(observation.ConfirmedSnapshot) > 0 {
+			var fallback []workbench.ExecutionEvent
+			if json.Unmarshal(observation.ConfirmedSnapshot, &fallback) == nil && len(fallback) > 0 {
+				events = fallback
+			}
 		}
 		result = workbench.ExecutionSnapshot{Execution: execution, Watermark: watermark, Incomplete: incomplete, ConfirmedWatermark: confirmed, Events: events}
 		return result.Validate()

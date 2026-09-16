@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -80,4 +81,38 @@ func TestWorkbenchHTTPOwnershipUsesRealStoreAndProjection(t *testing.T) {
 	require.Equal(t, http.StatusOK, request(1, "u1").Code)
 	require.Equal(t, http.StatusNotFound, request(1, "u2").Code)
 	require.Equal(t, http.StatusNotFound, request(2, "u1").Code)
+}
+
+func TestWorkbenchHTTPSourceEventToSnapshotAndSSEUsesRealRepository(t *testing.T) {
+	db := openWorkbenchHTTPDB(t)
+	store := repository.NewAgentRunStore(db)
+	_, err := store.Admit(context.Background(), workbenchAdmission())
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`INSERT INTO execution_dispatches (tenant_id, command_id, run_id, attempt_id, payload_hash, state, worker, epoch) VALUES (1, 'binding-1', 'r1', 'a1', '', 'completed', 'w', 1)`).Error)
+	h := session.NewWorkbenchReadHandler(store, repository.NewAgentRunSnapshotRepository(db), repository.NewExecutionObservationStore(db))
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/workbench/executions/:run_id/source-events", h.IngestWorkbenchSourceEvent)
+	r.GET("/workbench/executions/:run_id/snapshot", h.GetWorkbenchSnapshot)
+	r.GET("/workbench/executions/:run_id/events", h.StreamWorkbenchEvents)
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
+		ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+		req = req.WithContext(ctx)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	body := `{"binding_id":"binding-1","generation":"g1","event_id":"e1","attempt_id":"a1","type":"text.delta","source_seq":1,"payload":{"text":"confirmed"}}`
+	// source_seq is carried by the provider body and is persisted separately
+	// from the product seq allocated by the repository.
+	require.Equal(t, http.StatusAccepted, request(http.MethodPost, "/workbench/executions/r1/source-events", body).Code)
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET status = 'succeeded' WHERE tenant_id = 1 AND run_id = 'r1'`).Error)
+	snapshot := request(http.MethodGet, "/workbench/executions/r1/snapshot", "")
+	require.Equal(t, http.StatusOK, snapshot.Code)
+	require.Contains(t, snapshot.Body.String(), "confirmed")
+	events := request(http.MethodGet, "/workbench/executions/r1/events", "")
+	require.Equal(t, http.StatusOK, events.Code)
+	require.Contains(t, events.Body.String(), "text.delta")
 }
