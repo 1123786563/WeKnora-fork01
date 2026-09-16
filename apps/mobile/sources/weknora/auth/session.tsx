@@ -40,6 +40,12 @@ function deviceEpochKey(origin: string, deviceId: string): string {
   return `weknora:mobile-device-epoch:${encodeURIComponent(new URL(origin).origin)}:${encodeURIComponent(deviceId)}`;
 }
 
+/** Server epoch is authoritative, while local values protect against a
+ * restart that occurs between revoke and SecureStore persistence. */
+export function mergeDeviceScopeHighWater(...values: Array<number | undefined>): number {
+  return values.reduce((highWater, value) => Number.isSafeInteger(value) && (value as number) >= 0 ? Math.max(highWater, value as number) : highWater, 0);
+}
+
 type ProductAuthContextValue = {
   credential: BearerCredential | null;
   authSession: ProductAuthSession | null;
@@ -109,7 +115,7 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
       setCredential(value);
       // Flush only with the freshly restored in-memory credential. The queue
       // itself contains no bearer and therefore cannot authenticate a request.
-      void flushPendingRevocations(pendingStore(host?.origin ?? ''), value).catch(() => undefined);
+      if (identity.tenantId) void flushPendingRevocations(pendingStore(host?.origin ?? ''), value, { tenantId: identity.tenantId, ownerId: identity.userId }).catch(() => undefined);
       void syncMobileDevice(host?.origin ?? '', value, scope.capture().generation, mobileDevice).catch(() => undefined);
     }).catch(() => { if (active) setCredential(null); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -135,14 +141,16 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     await authSession.refreshCoordinator.replace(result.credential);
     scope.switchTo({ origin: host.origin, userId: result.userId, tenantId: result.tenantId });
     setCredential(result.credential);
-    void flushPendingRevocations(pendingStore(host.origin), result.credential).catch(() => undefined);
+    if (result.tenantId) void flushPendingRevocations(pendingStore(host.origin), result.credential, { tenantId: result.tenantId, ownerId: result.userId }).catch(() => undefined);
     void syncMobileDevice(host.origin, result.credential, scope.capture().generation, mobileDevice).catch(() => undefined);
   }, [adapter, authSession, host, scope]);
   const logout = React.useCallback(async () => {
     const current = scope.identity();
     const currentCredential = credential;
-    if (currentCredential && current.origin && mobileDevice.current) {
-      await revokeOnLogout({ origin: current.origin, deviceId: mobileDevice.current.deviceId, revision: mobileDevice.current.revision, credential: currentCredential, pending: pendingStore(current.origin) });
+    let serverScopeGeneration: number | undefined;
+    if (currentCredential && current.origin && mobileDevice.current && current.tenantId && current.userId) {
+      const revoked = await revokeOnLogout({ origin: current.origin, deviceId: mobileDevice.current.deviceId, revision: mobileDevice.current.revision, credential: currentCredential, pending: pendingStore(current.origin), tenantId: current.tenantId, ownerId: current.userId });
+      serverScopeGeneration = revoked.scopeGeneration;
     }
     scope.logout();
     // RevokeForTenant advances the durable server epoch by one. scope.logout
@@ -151,7 +159,7 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     if (mobileDevice.current) {
       const persisted = await SecureStore.getItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId));
       const persistedGeneration = persisted ? Number.parseInt(persisted, 10) : 0;
-      const highWater = Math.max(scope.capture().generation, mobileDevice.current.scopeGeneration ?? 0, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : 0);
+      const highWater = mergeDeviceScopeHighWater(scope.capture().generation, mobileDevice.current.scopeGeneration, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : undefined, serverScopeGeneration);
       mobileDevice.current = { ...mobileDevice.current, scopeGeneration: highWater, revision: undefined };
       await SecureStore.setItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId), String(highWater));
     }

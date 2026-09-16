@@ -80,7 +80,9 @@ func TestMobileDeviceStaleRevocationCannotResurrect(t *testing.T) {
 	in.TokenCiphertext = "enc:token-b"
 	in.Revision = 1
 	require.ErrorIs(t, s.Bind(ctx, in), ErrMobileDeviceRevision)
-	require.NoError(t, s.Bind(ctx, DeviceRegistration{TenantID: 1, OwnerID: "u1", DeviceID: "d", Environment: "dev", Platform: "ios", TokenCiphertext: "enc:token-b", TokenHash: DeviceTokenHash("token-b"), ScopeGeneration: 2}))
+	in.Revision = 0
+	in.ScopeGeneration = 3
+	require.NoError(t, s.Bind(ctx, DeviceRegistration{TenantID: 1, OwnerID: "u1", DeviceID: "d", Environment: "dev", Platform: "ios", TokenCiphertext: "enc:token-b", TokenHash: DeviceTokenHash("token-b"), ScopeGeneration: 3}))
 }
 
 func TestMobileDeviceScopeGenerationRevokesOlderBindings(t *testing.T) {
@@ -105,10 +107,10 @@ func TestMobileDeviceRebindAfterLogoutAllocatesServerRevision(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-a")))
 	require.NoError(t, s.RevokeForTenant(ctx, 1, "u1", "d", 1))
-	// Logout advances the durable scope epoch. A new login must carry that
-	// server-observed epoch before a revision-less registration can rebind.
+	// Logout advances the durable scope epoch to 2. A new login receives the
+	// next signed transition (3) before a revision-less registration rebinds.
 	rebind := mobileRegistration(1, "u1", "d", "token-b")
-	rebind.ScopeGeneration = 2
+	rebind.ScopeGeneration = 3
 	require.NoError(t, s.Bind(ctx, rebind))
 	row, err := s.GetActiveForTenant(ctx, 1, "u1", "d")
 	require.NoError(t, err)
@@ -134,11 +136,33 @@ func TestMobileDeviceRevisionlessReplayAfterLogoutCannotReopen(t *testing.T) {
 	newLogin := first
 	newLogin.TokenCiphertext = "enc:token-b"
 	newLogin.TokenHash = DeviceTokenHash("token-b")
-	newLogin.ScopeGeneration = 2
+	newLogin.ScopeGeneration = 3
 	require.NoError(t, s.Bind(ctx, newLogin))
 	active, err = s.ListActiveForTenant(ctx, 1, "u1", "dev")
 	require.NoError(t, err)
 	require.Len(t, active, 1)
+}
+
+func TestMobileDeviceRegistrationIntentIssuedBeforeConcurrentLogoutCannotReopen(t *testing.T) {
+	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
+	ctx := context.Background()
+	first := mobileRegistration(1, "u1", "d", "token-a")
+	require.NoError(t, s.Bind(ctx, first))
+	// The handler may already have read and signed epoch 2 when logout commits
+	// the same epoch.  Equality is therefore stale, even without a revision.
+	require.NoError(t, s.RevokeForTenant(ctx, 1, "u1", "d", 1))
+	late := first
+	late.Revision = 0
+	late.ScopeGeneration = 2
+	late.TokenCiphertext = "enc:token-b"
+	late.TokenHash = DeviceTokenHash("token-b")
+	require.ErrorIs(t, s.Bind(ctx, late), ErrMobileDeviceRevision)
+	active, err := s.ListActiveForTenant(ctx, 1, "u1", "dev")
+	require.NoError(t, err)
+	require.Empty(t, active)
+	// A new login's strictly newer server epoch remains valid.
+	late.ScopeGeneration = 3
+	require.NoError(t, s.Bind(ctx, late))
 }
 
 func TestMobileDeviceRejectsFutureRevisionAndLowerEpoch(t *testing.T) {

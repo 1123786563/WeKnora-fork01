@@ -30,6 +30,9 @@ export async function issueRegistrationIntent(input: Pick<DeviceRegistrationInpu
 export interface PendingRevocation {
   origin: string;
   deviceId: string;
+  /** Identity captured before logout; never replay another account's row. */
+  tenantId: string;
+  ownerId: string;
   revision?: number;
 }
 
@@ -85,7 +88,15 @@ export async function registerDevice(input: DeviceRegistrationInput): Promise<{ 
   return { revision: payload.data?.revision as number | undefined };
 }
 
-export async function revokeDevice(input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'>): Promise<void> {
+function responseScopeGeneration(response: Response): number | undefined {
+  const raw = response.headers.get('X-Mobile-Scope-Generation');
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error('INVALID_DEVICE_RESPONSE');
+  return value;
+}
+
+export async function revokeDevice(input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'>): Promise<{ scopeGeneration?: number }> {
   const fetcher = input.fetchImpl ?? fetch;
   const token = accessToken(input.credential);
   const query = input.revision === undefined ? '' : `?revision=${encodeURIComponent(String(input.revision))}`;
@@ -95,6 +106,7 @@ export async function revokeDevice(input: Omit<DeviceRegistrationInput, 'token' 
     signal: input.signal,
   });
   if (!response.ok && response.status !== 404) throw await responseError(response);
+  return { scopeGeneration: responseScopeGeneration(response) };
 }
 
 /** Permission denial is a valid product state: chat remains usable. */
@@ -105,14 +117,15 @@ export async function registerAfterPermission(input: DeviceRegistrationInput & {
 
 /** Logout first revokes remotely; offline logout leaves only a minimal retry reference. */
 export async function revokeOnLogout(
-  input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'> & { pending: PendingRevocationStore },
-): Promise<void> {
+  input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'> & { pending: PendingRevocationStore; tenantId: string; ownerId: string },
+): Promise<{ scopeGeneration?: number }> {
   try {
-    await revokeDevice(input);
+    return await revokeDevice(input);
   } catch {
     const rows = await input.pending.read();
-    const duplicate = rows.some((row) => row.origin === input.origin && row.deviceId === input.deviceId && row.revision === input.revision);
-    if (!duplicate) await input.pending.write([...rows, { origin: input.origin, deviceId: input.deviceId, revision: input.revision }]);
+    const duplicate = rows.some((row) => row.origin === input.origin && row.deviceId === input.deviceId && row.tenantId === input.tenantId && row.ownerId === input.ownerId && row.revision === input.revision);
+    if (!duplicate) await input.pending.write([...rows, { origin: input.origin, deviceId: input.deviceId, tenantId: input.tenantId, ownerId: input.ownerId, revision: input.revision }]);
+    return {};
   }
 }
 
@@ -122,11 +135,18 @@ export async function revokeOnLogout(
  * only fetch is rejected by retaining the queue instead of persisting a
  * bearer token alongside it.
  */
-export async function flushPendingRevocations(store: PendingRevocationStore, credential: Credential, fetchImpl?: typeof fetch): Promise<number> {
+export async function flushPendingRevocations(store: PendingRevocationStore, credential: Credential, identity: { tenantId: string; ownerId: string }, fetchImpl?: typeof fetch): Promise<number> {
   const rows = await store.read();
   if (credential.kind !== 'bearer' || !credential.accessToken.trim()) return 0;
   const remaining: PendingRevocation[] = [];
   for (const row of rows) {
+    // A queue is shared by the server origin across accounts.  Keep another
+    // account's intent until that same tenant/owner logs in; never replay it
+    // with the current bearer or treat its 404 as successful cleanup.
+    if (row.tenantId !== identity.tenantId || row.ownerId !== identity.ownerId) {
+      remaining.push(row);
+      continue;
+    }
     try {
       await revokeDevice({ ...row, credential, fetchImpl });
     } catch {
