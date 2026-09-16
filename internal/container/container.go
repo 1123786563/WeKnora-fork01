@@ -175,6 +175,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// NewAgentRuntime provider stays unregistered here.
 	must(container.Provide(newAgentRuntime))
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
+	must(container.Provide(repository.NewExecutionTargetStore))
+	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
 	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))
@@ -510,6 +512,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewMessageSuggestionHandler))
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
+	must(container.Provide(handler.NewExecutionTargetHandler))
 	must(container.Provide(func(
 		s *service.TenantSkillService, streams interfaces.StreamManager,
 	) *handler.SandboxSkillHandler {

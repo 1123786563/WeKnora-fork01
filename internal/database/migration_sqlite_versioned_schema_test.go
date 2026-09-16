@@ -23,6 +23,9 @@ var versionedSQLiteTables = []string{
 	"tenant_skill_snapshots",
 	"tenant_user_env_vars",
 	"tenant_skill_catalog",
+	"execution_targets",
+	"execution_target_identities",
+	"execution_workspaces",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -39,7 +42,10 @@ var versionedSQLiteColumns = map[string][]string{
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
-	"tenant_skill_snapshots": {"planned_name"}, // 000086, 000088
+	"tenant_skill_snapshots":      {"planned_name"},                                   // 000086, 000088
+	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id"}, // 000057
+	"execution_target_identities": {"credential_version", "external_target_id"},       // 000057
+	"execution_workspaces":        {"target_id", "root_ref"},                          // 000057
 }
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
@@ -47,8 +53,9 @@ var versionedSQLiteColumns = map[string][]string{
 // interaction queue. The versioned SQLite migration stream continues through
 // 000040 (open-connector 000041-000044) and the Craft tables through 000052,
 // native OIDC exchange through 000053, tenant skills at 000054, the workbench
-// run rebuild at 000055 and the workbench request queue at 000056.
-const expectedSQLiteMigrationVersion = 56
+// run rebuild at 000055, the workbench request queue at 000056 and the
+// execution target schema at 000057.
+const expectedSQLiteMigrationVersion = 57
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
