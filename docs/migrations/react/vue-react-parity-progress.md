@@ -3705,3 +3705,29 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   pass. The build emits only existing chunk-size and test-only `import.meta`
   warnings. These results are static/unit/build evidence and do not complete
   runtime parity acceptance.
+
+## 2026-09-16 Round R397 — Isolated Embed completion slice, Wails retry, and authenticated audit
+
+- `4dd6b740` completes the current isolated Embed implementation slice: the
+  React entry now covers the Vue-derived header tokens/title modes, suggested
+  question loading, timestamps, typing/scroll states, file and image previews,
+  upload limits, Web Search toggle, stop flow, follow-up questions, session
+  title events, references, and error visibility. It uses the project Button
+  wrapper and preserves the independent `/embed/` entry boundary.
+- `100f51f3` adds the channel-scoped follow-up suggestion API operations and
+  session headers, with encoded-path and request-contract tests.
+- `f93d3223` makes the desktop renderer wait for a late Wails binding before
+  resolving the API root; the focused desktop suite is now 9/9. `ab86e359`
+  rejects malformed encoded Apps deep-link IDs, and `7b1df4dc` closes the
+  corresponding route-inventory follow-up.
+- `c416c526` records fresh anonymous browser/backend evidence: health and auth
+  configuration endpoints return 200, protected API calls return 401, and
+  anonymous login/register/protected-route behavior is verified. No safe
+  credentials are available for authenticated tenant permissions, mutations,
+  portal interactions, or real Embed streaming, so those remain `blocked-env`.
+- Focused/full verification for this round: Web 1172/1172; Embed 15/15;
+  Embed API 6/6; Desktop 9/9; Web, Embed, and Desktop typechecks/builds pass;
+  route tests 13/13; `git diff --check` passes. Builds retain only advisory
+  chunk-size and CSS import-order warnings. These are static/unit/build and
+  anonymous browser/backend evidence, not full authenticated or native Wails
+  acceptance. No mobile code was modified.
