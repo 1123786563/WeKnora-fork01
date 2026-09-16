@@ -67,11 +67,17 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     let active = true;
     setLoading(Boolean(adapter));
     setCredential(null);
-    if (adapter) adapter.read().then((value) => {
-      if (active) setCredential(value.kind === 'bearer' ? value : null);
-    }).finally(() => { if (active) setLoading(false); });
+    if (adapter) adapter.read().then(async (value) => {
+      if (!active || value.kind !== 'bearer') { if (active) setCredential(null); return; }
+      // The server is the only authority for the product identity. A bearer
+      // token alone must never revive a stale/local tenant selection.
+      const identity = await authSession?.me();
+      if (!active || !identity) return;
+      scope.switchTo({ origin: host?.origin ?? '', userId: identity.userId, tenantId: identity.tenantId });
+      setCredential(value);
+    }).catch(() => { if (active) setCredential(null); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [adapter]);
+  }, [adapter, authSession, host?.origin, scope]);
 
   const login = React.useCallback(async (email: string, password: string) => {
     if (!host || !adapter || !authSession) throw new Error('SERVER_REQUIRED');

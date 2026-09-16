@@ -8,6 +8,8 @@ export { ProductConversationMessages } from './ProductConversationMessages';
 export interface ConversationScreenProps {
   sessionId: string;
   viewModel: ConversationViewModel;
+  /** Injectable native renderer seam used by the RN interaction tests. */
+  sessionRenderer?: React.ComponentType<{ id: string; viewModel: ConversationViewModel }>;
 }
 
 export function ConversationControlPanel({ viewModel }: { viewModel: ConversationViewModel }) {
@@ -33,11 +35,12 @@ export function ConversationControlPanel({ viewModel }: { viewModel: Conversatio
         <View key={item.id} accessibilityLabel={`pending-interaction-${item.id}`} style={{ paddingVertical: 6 }}>
           <Text>{item.label}</Text>
           {item.reason ? <Text>{item.reason}</Text> : null}
+          {item.error ? <Text accessibilityRole="alert">{item.error}</Text> : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`批准 ${item.label}`} onPress={() => void viewModel.commands.approve?.(item.id)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`批准 ${item.label}`} onPress={() => void viewModel.commands.approve?.(item.id, item.revision ?? 0)}>
               <Text>批准</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`拒绝 ${item.label}`} onPress={() => void viewModel.commands.reject?.(item.id)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`拒绝 ${item.label}`} onPress={() => void viewModel.commands.reject?.(item.id, item.revision ?? 0)}>
               <Text>拒绝</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={`刷新 ${item.label}`} onPress={() => void viewModel.commands.refreshPending?.(item.id)}>
@@ -51,7 +54,7 @@ export function ConversationControlPanel({ viewModel }: { viewModel: Conversatio
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
   const executionNotice = viewModel.execution?.status === 'unknown'
@@ -68,7 +71,7 @@ export function ConversationScreen({ sessionId, viewModel }: ConversationScreenP
           </View>
         )}
         <ConversationControlPanel viewModel={viewModel} />
-        <SessionView id={sessionId} viewModel={viewModel} />
+        <SessionRenderer id={sessionId} viewModel={viewModel} />
       </View>
     </ConversationViewModelContext.Provider>
   );

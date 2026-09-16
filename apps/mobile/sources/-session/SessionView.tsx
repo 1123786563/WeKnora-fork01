@@ -1007,8 +1007,9 @@ export function SessionViewLoaded({
     let content = (
         <>
             <Deferred>
-                {messages.length > 0 && (
-                    viewModel ? <ProductConversationMessages viewModel={viewModel} /> : (
+                {viewModel ? (
+                    <ProductConversationMessages viewModel={viewModel} />
+                ) : messages.length > 0 ? (
                         <ChatList
                             session={session}
                             conversation={viewModel}
@@ -1022,12 +1023,11 @@ export function SessionViewLoaded({
                                 ? handleChatBottomVisibilityChange
                                 : undefined}
                         />
-                    )
-                )}
+                ) : null}
             </Deferred>
         </>
     );
-    const placeholder = messages.length === 0 ? (
+    const placeholder = !viewModel && messages.length === 0 ? (
         <>
             {isLoaded ? (
                 <EmptyMessages session={session} />

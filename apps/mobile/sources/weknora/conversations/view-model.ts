@@ -34,6 +34,8 @@ export interface PendingInteraction {
   status: PendingInteractionStatus;
   label: string;
   reason?: string;
+  revision?: number;
+  error?: string;
 }
 
 export interface ConversationCapabilities {
@@ -57,6 +59,18 @@ export interface ConversationExecution {
   status: string;
   revision?: number;
   reason?: string;
+}
+
+export interface ConversationRequestRecord {
+  requestID: string;
+  runID?: string;
+  status: string;
+  reason?: string;
+}
+
+export interface ConversationRequestStorage {
+  getLatest(): Promise<ConversationRequestRecord | undefined>;
+  set(record: ConversationRequestRecord): Promise<void>;
 }
 
 export interface ConversationViewModel {
@@ -96,6 +110,7 @@ export function createProductConversationViewModel(input: {
   executions: ExecutionApi;
   messages?: ConversationMessage[];
   pendingInteractions?: PendingInteraction[];
+  requestStorage?: ConversationRequestStorage;
 }): ConversationViewModel {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
@@ -105,6 +120,10 @@ export function createProductConversationViewModel(input: {
   const updateExecution = (execution: ConversationExecution | null) => {
     model.execution = execution;
     notify();
+  };
+  const persistExecution = async (execution: ConversationExecution) => {
+    if (!input.requestStorage) return;
+    await input.requestStorage.set({ requestID: execution.requestID, runID: execution.runID || undefined, status: execution.status, ...(execution.reason ? { reason: execution.reason } : {}) });
   };
   const send = createSendController(async (text, requestID) => {
     latestRequestID = requestID;
@@ -119,7 +138,9 @@ export function createProductConversationViewModel(input: {
       budget_upper: input.budgetUpper,
     }, captured.signal);
     if (!input.scope.accept(captured.generation)) return;
-    updateExecution({ runID: ack.run_id, requestID: ack.request_id, status: ack.status });
+    const execution = { runID: ack.run_id, requestID: ack.request_id, status: ack.status };
+    updateExecution(execution);
+    await persistExecution(execution);
     // A start acknowledgement is admission only. Re-read the durable request
     // so an unknown/pending response survives a remount and scope transition.
     if (ack.status === 'unknown' || ack.status === 'pending' || ack.status === 'dispatching') {
@@ -127,12 +148,20 @@ export function createProductConversationViewModel(input: {
     }
   });
   const refreshRequest = async (requestID: string, signal?: AbortSignal): Promise<void> => {
-    const lookup = await input.executions.lookup(requestID, signal);
+    const captured = input.scope.capture();
+    const lookup = await input.executions.lookup(requestID, signal ?? captured.signal);
+    if (signal?.aborted || captured.signal.aborted) return;
+    if (!input.scope.accept(captured.generation)) return;
+    let execution: ConversationExecution;
     if (lookup.state === 'unknown' || lookup.state === 'pending' || lookup.state === 'dispatching') {
-      updateExecution({ runID: lookup.run_id ?? model.execution?.runID ?? '', requestID, status: lookup.state, reason: lookup.reason });
+      execution = { runID: lookup.run_id ?? model.execution?.runID ?? '', requestID, status: lookup.state, reason: lookup.reason };
     } else if (lookup.run_id) {
-      updateExecution({ runID: lookup.run_id, requestID, status: lookup.state, reason: lookup.reason });
+      execution = { runID: lookup.run_id, requestID, status: lookup.state, reason: lookup.reason };
+    } else {
+      execution = { runID: model.execution?.runID ?? '', requestID, status: lookup.state, reason: lookup.reason };
     }
+    updateExecution(execution);
+    await persistExecution(execution);
   };
   model = createConversationViewModel({
     scope: { ...identity, spaceId: input.spaceId },
@@ -145,14 +174,30 @@ export function createProductConversationViewModel(input: {
       refreshPending: async (interactionID) => { await refreshRequest(latestRequestID ?? interactionID); },
       approve: async (interactionID, expectedRevision = 0) => {
         if (!input.executions.decide) throw new Error('APPROVAL_UNSUPPORTED');
-        await input.executions.decide(interactionID, { action: 'approve', expected_revision: expectedRevision });
+        const captured = input.scope.capture();
+        try {
+          await input.executions.decide(interactionID, { action: 'approve', expected_revision: expectedRevision }, captured.signal);
+        } catch (error) {
+          const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
+          if (item) { item.error = error instanceof Error ? error.message : 'APPROVAL_FAILED'; notify(); }
+          throw error;
+        }
+        if (!input.scope.accept(captured.generation)) return;
         const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
         if (item) item.status = 'approved';
         notify();
       },
       reject: async (interactionID, expectedRevision = 0) => {
         if (!input.executions.decide) throw new Error('APPROVAL_UNSUPPORTED');
-        await input.executions.decide(interactionID, { action: 'reject', expected_revision: expectedRevision });
+        const captured = input.scope.capture();
+        try {
+          await input.executions.decide(interactionID, { action: 'reject', expected_revision: expectedRevision }, captured.signal);
+        } catch (error) {
+          const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
+          if (item) { item.error = error instanceof Error ? error.message : 'APPROVAL_FAILED'; notify(); }
+          throw error;
+        }
+        if (!input.scope.accept(captured.generation)) return;
         const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
         if (item) item.status = 'rejected';
         notify();
@@ -162,6 +207,16 @@ export function createProductConversationViewModel(input: {
   });
   model.subscribe = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
   model.getSnapshot = () => model;
+  if (input.requestStorage) {
+    void input.requestStorage.getLatest().then((record) => {
+      if (!record) return;
+      latestRequestID = record.requestID;
+      updateExecution({ runID: record.runID ?? '', requestID: record.requestID, status: record.status, reason: record.reason });
+      if (record.status === 'unknown' || record.status === 'pending' || record.status === 'dispatching') {
+        void refreshRequest(record.requestID).catch(() => undefined);
+      }
+    }).catch(() => undefined);
+  }
   return model;
 }
 
@@ -191,12 +246,18 @@ export function createProductExecutionApi(input: {
     const result = await client.request(request);
     return result;
   });
+  const scoped = async <T,>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> => {
+    const captured = input.scope.capture();
+    const result = await operation(signal ?? captured.signal);
+    if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
+    return result;
+  };
   return {
-    start: (request, signal) => executions.start(request, signal),
-    lookup: (requestID, signal) => executions.lookup(requestID, signal),
-    command: (runID, command, signal) => executions.command(runID, command, signal),
+    start: (request, signal) => scoped((activeSignal) => executions.start(request, activeSignal), signal),
+    lookup: (requestID, signal) => scoped((activeSignal) => executions.lookup(requestID, activeSignal), signal),
+    command: (runID, command, signal) => scoped((activeSignal) => executions.command(runID, command, activeSignal), signal),
     decide: async (interactionID, decision, signal) => {
-      await client.chat.approvals.resolveTool(interactionID, { decision: decision.action }, signal);
+      await scoped((activeSignal) => client.chat.approvals.resolveTool(interactionID, { decision: decision.action, expected_revision: decision.expected_revision }, activeSignal), signal);
     },
   };
 }

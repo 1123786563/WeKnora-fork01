@@ -37,6 +37,14 @@ test('rejects invalid approval decisions and malformed success envelopes', async
   await assert.rejects(() => api.resolveTool('pending-1', { decision: 'reject' }), ContractError);
 });
 
+test('forwards the expected revision for approval CAS', async () => {
+  const { createChatApprovalsApi } = await import('./approvals.ts');
+  const requests: unknown[] = [];
+  const api = createChatApprovalsApi(async (request) => { requests.push(request); return { success: true }; });
+  await api.resolveTool('pending-1', { decision: 'reject', expected_revision: 7 });
+  assert.deepEqual((requests[0] as { body: unknown }).body, { decision: 'reject', expected_revision: 7 });
+});
+
 test('resolves and cancels MCP OAuth through their distinct routes', async () => {
   const { createChatApprovalsApi } = await import('./approvals.ts');
   const requests: unknown[] = [];

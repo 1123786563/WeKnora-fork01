@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createExecutionStorage, createExpoSQLiteExecutionDriver, createSecureStoreAeadCipher, type ExecutionStorageDriver, type ExecutionStorageRow, type ExecutionStorageTransaction, type ExpoSQLiteDatabase } from './execution-storage';
+import { createExecutionStorage, createExpoSQLiteExecutionDriver, createPersistentExecutionRequestStorage, createSecureStoreAeadCipher, type ExecutionStorageDriver, type ExecutionStorageRow, type ExecutionStorageTransaction, type ExpoSQLiteDatabase } from './execution-storage';
 import type { ExecutionEvent } from '@weknora/contracts';
 
 const event = (seq: number): ExecutionEvent => ({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq, type: 'future.event', occurred_at: '2026-09-12T00:00:00Z', payload: { value: seq } });
@@ -22,6 +22,16 @@ const cipher = {
 };
 
 describe('execution storage', () => {
+  it('persists the latest request admission across a remount', async () => {
+    let value: string | null = null;
+    const request = createPersistentExecutionRequestStorage({
+      getItem: async () => value,
+      setItem: async (_key, next) => { value = next; },
+    }, 'request');
+    await request.set({ requestID: 'q-1', runID: 'run-1', status: 'pending' });
+    const remounted = createPersistentExecutionRequestStorage({ getItem: async () => value, setItem: async () => undefined }, 'request');
+    expect(await remounted.getLatest()).toEqual({ requestID: 'q-1', runID: 'run-1', status: 'pending' });
+  });
   it('commits projection and cursor through one transaction and decrypts on read', async () => {
     const storage = createExecutionStorage(driver(), cipher, { origin: 'https://a', tenantID: 't', userID: 'u' });
     await storage.commit(event(1));

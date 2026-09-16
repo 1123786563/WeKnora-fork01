@@ -24,6 +24,8 @@ export interface ExecutionStorageTransaction {
   findEvent(scopeKey: string, runID: string, seq: number): Promise<ExecutionStorageRow | undefined>;
   insertEvent(row: ExecutionStorageRow): Promise<void>;
   setCursor(scopeKey: string, runID: string, seq: number): Promise<void>;
+  getLatestRequest?(scopeKey: string): Promise<Record<string, unknown> | undefined>;
+  setLatestRequest?(scopeKey: string, value: Record<string, unknown>): Promise<void>;
 }
 
 export interface ExecutionStorageDriver {
@@ -48,7 +50,10 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
     scope_key TEXT NOT NULL, run_id TEXT NOT NULL, seq INTEGER NOT NULL,
     PRIMARY KEY (scope_key, run_id)
   )`;
-  const initialized = Promise.all([db.runAsync(schemaEvents), db.runAsync(schemaCursors)]).then(() => undefined);
+  const schemaRequests = `CREATE TABLE IF NOT EXISTS execution_requests (
+    scope_key TEXT PRIMARY KEY, request_json TEXT NOT NULL
+  )`;
+  const initialized = Promise.all([db.runAsync(schemaEvents), db.runAsync(schemaCursors), db.runAsync(schemaRequests)]).then(() => undefined);
   return {
     async transaction<T>(work: (tx: ExecutionStorageTransaction) => Promise<T>) {
       await initialized;
@@ -65,6 +70,13 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
         setCursor: async (scope, run, seq) => {
           await db.runAsync('INSERT INTO execution_cursors(scope_key, run_id, seq) VALUES (?, ?, ?) ON CONFLICT(scope_key, run_id) DO UPDATE SET seq = excluded.seq', scope, run, seq);
         },
+        getLatestRequest: async (scope) => {
+          const row = await db.getFirstAsync<{ request_json: string }>('SELECT request_json FROM execution_requests WHERE scope_key = ?', scope);
+          return row ? JSON.parse(row.request_json) as Record<string, unknown> : undefined;
+        },
+        setLatestRequest: async (scope, value) => {
+          await db.runAsync('INSERT INTO execution_requests(scope_key, request_json) VALUES (?, ?) ON CONFLICT(scope_key) DO UPDATE SET request_json = excluded.request_json', scope, JSON.stringify(value));
+        },
       }));
     },
     async clearScope(scope) {
@@ -72,6 +84,7 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
       await db.withTransactionAsync(async () => {
         await db.runAsync('DELETE FROM execution_events WHERE scope_key = ?', scope);
         await db.runAsync('DELETE FROM execution_cursors WHERE scope_key = ?', scope);
+        await db.runAsync('DELETE FROM execution_requests WHERE scope_key = ?', scope);
       });
     },
   };
@@ -177,7 +190,42 @@ export function createExecutionStorage(driver: ExecutionStorageDriver, cipher: P
       return rows;
     },
     clear: () => driver.clearScope(key),
+    async getLatestRequest(): Promise<Record<string, unknown> | undefined> {
+      return driver.transaction(async (tx) => tx.getLatestRequest?.(key));
+    },
+    async setLatestRequest(value: Record<string, unknown>): Promise<void> {
+      await driver.transaction(async (tx) => {
+        if (!tx.setLatestRequest) throw new Error('execution request persistence is unavailable');
+        await tx.setLatestRequest(key, value);
+      });
+    },
   };
 }
 
 export type ExecutionStorage = ReturnType<typeof createExecutionStorage>;
+
+/** Small durable request index used before a native SQLite driver is injected.
+ * The value contains no prompt or credential; only the opaque request identity
+ * and server admission state are persisted. */
+export interface ExecutionRequestStringStore {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+}
+
+export function createPersistentExecutionRequestStorage(store: ExecutionRequestStringStore, key: string) {
+  return {
+    async getLatest(): Promise<{ requestID: string; runID?: string; status: string; reason?: string } | undefined> {
+      const value = await store.getItem(key);
+      if (!value) return undefined;
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object' || typeof (parsed as Record<string, unknown>).requestID !== 'string' || typeof (parsed as Record<string, unknown>).status !== 'string') return undefined;
+        const row = parsed as Record<string, unknown>;
+        return { requestID: row.requestID as string, status: row.status as string, ...(typeof row.runID === 'string' ? { runID: row.runID } : {}), ...(typeof row.reason === 'string' ? { reason: row.reason } : {}) };
+      } catch { return undefined; }
+    },
+    async set(record: { requestID: string; runID?: string; status: string; reason?: string }) {
+      await store.setItem(key, JSON.stringify(record));
+    },
+  };
+}

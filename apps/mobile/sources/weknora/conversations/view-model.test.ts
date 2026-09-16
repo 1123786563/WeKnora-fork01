@@ -59,6 +59,23 @@ test('product VM uses a fresh request id and refreshes unknown admission', async
   assert.deepEqual(calls, ['start:request-unique', 'lookup:request-unique']);
 });
 
+test('product VM restores a persisted pending request and rechecks it after remount', async () => {
+  const calls: string[] = [];
+  let persisted: { requestID: string; runID?: string; status: string } | undefined = { requestID: 'q-restart', runID: 'run-old', status: 'pending' };
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'q', status: 'pending' }),
+    lookup: async (requestID: string) => { calls.push(requestID); return { state: 'admitted' as const, run_id: 'run-new' }; },
+    command: async () => ({}),
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any;
+  const storage = { getLatest: async () => persisted, set: async (record: typeof persisted) => { persisted = record; } };
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions, requestStorage: storage });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(model.execution?.requestID, 'q-restart');
+  assert.equal(model.execution?.runID, 'run-new');
+  assert.deepEqual(calls, ['q-restart']);
+});
+
 test('product VM approvals call typed decision and update the card state', async () => {
   const decisions: Array<[string, string, number]> = [];
   const executions = {

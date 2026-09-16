@@ -6,6 +6,7 @@ export type MCPOAuthDecision = 'authorize' | 'cancel';
 
 export interface ResolveToolApprovalInput {
   decision: ToolApprovalDecision;
+  expected_revision?: number;
   modifiedArgs?: Record<string, unknown>;
   reason?: string;
 }
@@ -30,6 +31,9 @@ export function createChatApprovalsApi(request: (input: ClientRequest) => Promis
       if (input.decision !== 'approve' && input.decision !== 'reject') {
         throw new Error('decision must be approve or reject');
       }
+      if (input.expected_revision !== undefined && (!Number.isSafeInteger(input.expected_revision) || input.expected_revision < 0)) {
+        throw new Error('expected_revision must be a non-negative safe integer');
+      }
       if (
         input.modifiedArgs !== undefined
         && (typeof input.modifiedArgs !== 'object' || input.modifiedArgs === null || Array.isArray(input.modifiedArgs))
@@ -41,6 +45,7 @@ export function createChatApprovalsApi(request: (input: ClientRequest) => Promis
         path: `/api/v1/agent/tool-approvals/${encodedId(pendingId, 'pendingId')}`,
         body: {
           decision: input.decision,
+          ...(input.expected_revision === undefined ? {} : { expected_revision: input.expected_revision }),
           ...(input.modifiedArgs === undefined ? {} : { modified_args: input.modifiedArgs }),
           ...(input.reason === undefined ? {} : { reason: input.reason }),
         },
