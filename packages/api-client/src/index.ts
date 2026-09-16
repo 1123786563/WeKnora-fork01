@@ -89,6 +89,14 @@ export type {
   SandboxSkillUpdate,
   SkillAcceptedResult,
 } from './configuration.ts';
+export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
+export type {
+  ExecutionsApi,
+  ExecutionCommandInput,
+  RequestLookup,
+  RequestLookupState,
+  StartExecutionInput,
+} from './mobile/executions.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';
 export type {
   ChatApprovalsApi,
