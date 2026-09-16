@@ -85,3 +85,16 @@ func TestExpoProviderBatchReturnsPerItemPartialResults(t *testing.T) {
 	require.Equal(t, "DeviceNotRegistered", providerErr.Code)
 	require.False(t, providerErr.Retry)
 }
+
+func TestExpoProviderRejectsMalformedEndpointAsConfigurationError(t *testing.T) {
+	provider := NewExpoProvider("://bad", "")
+	_, err := provider.Send(context.Background(), "token", PushPayload{})
+	var providerErr *ProviderError
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	_, err = provider.SendBatch(context.Background(), []PushBatchItem{{ID: "d1", Token: "token"}})
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+}

@@ -23,29 +23,39 @@ type notificationProviderSpy struct {
 }
 
 type batchNotificationProvider struct {
-	mu      sync.Mutex
-	called  int
-	failID  string
-	seenIDs []string
+	mu        sync.Mutex
+	called    int
+	failID    string
+	failIndex int
+	failOnce  bool
+	seenIDs   []string
+	calls     [][]string
 }
 
-func (p *batchNotificationProvider) Send(context.Context, repository.NotificationDelivery) error {
-	return fmt.Errorf("single item path should not be used")
+func (p *batchNotificationProvider) Send(_ context.Context, d repository.NotificationDelivery) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.called++
+	p.calls = append(p.calls, []string{d.ID})
+	return nil
 }
 
 func (p *batchNotificationProvider) SendBatch(_ context.Context, deliveries []repository.NotificationDelivery) ([]NotificationBatchResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.called++
+	callIDs := make([]string, 0, len(deliveries))
 	results := make([]NotificationBatchResult, 0, len(deliveries))
-	for _, d := range deliveries {
+	for i, d := range deliveries {
 		p.seenIDs = append(p.seenIDs, d.ID)
-		if d.ID == p.failID {
+		callIDs = append(callIDs, d.ID)
+		if (d.ID == p.failID || (p.failIndex >= 0 && i == p.failIndex)) && (!p.failOnce || p.called == 1) {
 			results = append(results, NotificationBatchResult{DeliveryID: d.ID, Err: &pushnotification.ProviderError{Code: "UnknownTransport", Retry: true}})
 			continue
 		}
 		results = append(results, NotificationBatchResult{DeliveryID: d.ID, Receipt: pushnotification.PushReceipt{ID: "receipt-" + d.ID, Status: "ok"}})
 	}
+	p.calls = append(p.calls, callIDs)
 	return results, nil
 }
 
@@ -186,29 +196,64 @@ func TestNotificationDeliveryBatchRetriesOnlyFailedItem(t *testing.T) {
 		require.NoError(t, store.Enqueue(context.Background(), repository.NotificationIntent{TenantID: 1, EventID: "batch-event-" + device, OwnerID: "u1", DeviceID: device, Environment: "dev", Kind: "completed", RunID: "batch-run", ExpiresAt: time.Now().Add(time.Hour)}))
 	}
 	store := repository.NewNotificationStore(db)
-	deliveries, err := store.Claim(context.Background(), "batch-worker", 10, time.Minute)
-	require.NoError(t, err)
-	require.Len(t, deliveries, 2)
-	provider := &batchNotificationProvider{failID: deliveries[1].ID}
+	provider := &batchNotificationProvider{failIndex: 1, failOnce: true}
 	worker := NewNotificationDeliveryWorker(store, provider, "batch-worker")
-	// Reuse the existing leases: runBatch is exercised directly to isolate the
-	// partial-result contract from the claim scheduler.
-	require.NoError(t, worker.runBatch(context.Background(), provider, deliveries))
+	// Exercise the public claim/RunOnce path. The provider fails only its
+	// second item on the first call; the next claim must select that row alone.
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	require.Len(t, provider.calls, 1)
+	require.Len(t, provider.calls[0], 2)
+	failedID := provider.calls[0][1]
+	require.NoError(t, db.Exec(`UPDATE mobile_notification_intents SET next_attempt_at=NULL WHERE id=?`, failedID).Error)
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	require.Len(t, provider.calls, 2)
+	require.Equal(t, []string{failedID}, provider.calls[1], "only the failed delivery is retried")
 	var states []struct{ ID, State string }
 	require.NoError(t, db.Table("mobile_notification_intents").Select("id,state").Order("id").Find(&states).Error)
 	require.Len(t, states, 2)
-	var sent, pending int
 	for _, state := range states {
-		if state.State == "sent" {
-			sent++
-		}
-		if state.State == "pending" {
-			pending++
-		}
+		require.Equal(t, "sent", state.State)
 	}
-	require.Equal(t, 1, sent)
-	require.Equal(t, 1, pending)
-	require.Equal(t, 1, provider.called)
+}
+
+func TestNotificationDeliveryPermanentProviderErrorDoesNotRevokeDevice(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "provider-config-device")
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	health := repository.NewNotificationProviderStateStore(db)
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithHealth(store, &notificationProviderSpy{}, "provider-config-worker", revoker, health, "mobile")
+	deliveries, err := store.Claim(context.Background(), "provider-config-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "InvalidCredentials", Revoke: false, Retry: false})
+	require.NoError(t, err)
+	state, stateErr := health.State(context.Background(), "mobile")
+	require.NoError(t, stateErr)
+	require.True(t, state.Paused)
+	_, err = revoker.GetActiveForTenant(context.Background(), 1, "u1", "provider-config-device")
+	require.NoError(t, err, "provider-wide configuration failure must preserve registration")
+}
+
+func TestInvalidNotificationEndpointPausesDurablyAndDoesNotClaim(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "invalid-endpoint-device")
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	health := repository.NewNotificationProviderStateStore(db)
+	provider := NewHTTPNotificationProvider("://bad")
+	worker := NewNotificationDeliveryWorkerWithHealth(store, provider, "invalid-endpoint-worker", nil, health, "mobile")
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err := health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.True(t, state.Paused)
+	require.EqualValues(t, 1, state.AlertCount)
+	// A repeated pass observes the durable pause before Claim and must not call
+	// the malformed provider or create another alert.
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err = health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, state.AlertCount)
+	var delivery struct{ State string }
+	require.NoError(t, db.Table("mobile_notification_intents").Select("state").Order("id").Take(&delivery).Error)
+	require.Equal(t, "pending", delivery.State)
 }
 
 func TestNotificationProviderPausePersistsAndRecovers(t *testing.T) {

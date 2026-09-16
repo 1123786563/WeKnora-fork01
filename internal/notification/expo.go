@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,14 @@ func NewExpoProvider(endpoint, accessToken string) *ExpoProvider {
 	}
 	return &ExpoProvider{endpoint: strings.TrimSpace(endpoint), accessToken: strings.TrimSpace(accessToken), client: &http.Client{Timeout: 10 * time.Second}}
 }
+func (p *ExpoProvider) Configured() bool {
+	if p == nil {
+		return false
+	}
+	u, err := url.Parse(strings.TrimSpace(p.endpoint))
+	return err == nil && u.Scheme != "" && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
+}
+
 func NewExpoProviderWithClient(endpoint, accessToken string, client *http.Client) *ExpoProvider {
 	p := NewExpoProvider(endpoint, accessToken)
 	if client != nil {
@@ -59,6 +68,9 @@ func (p *ExpoProvider) Send(ctx context.Context, token string, payload PushPaylo
 	if p == nil || strings.TrimSpace(p.endpoint) == "" {
 		return PushReceipt{}, &ProviderError{Code: "InvalidProviderConfig", Revoke: false, Retry: false, Err: fmt.Errorf("expo endpoint is not configured")}
 	}
+	if !p.Configured() {
+		return PushReceipt{}, &ProviderError{Code: "InvalidProviderConfig", Revoke: false, Retry: false, Err: fmt.Errorf("invalid expo endpoint")}
+	}
 	if strings.TrimSpace(token) == "" {
 		return PushReceipt{}, &ProviderError{Code: "InvalidRegistration", Revoke: true, Retry: false, Err: fmt.Errorf("empty push token")}
 	}
@@ -68,7 +80,7 @@ func (p *ExpoProvider) Send(ctx context.Context, token string, payload PushPaylo
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return PushReceipt{}, err
+		return PushReceipt{}, &ProviderError{Code: "InvalidProviderConfig", Revoke: false, Retry: false, Err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.accessToken != "" {
@@ -123,6 +135,9 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 	if p == nil || strings.TrimSpace(p.endpoint) == "" {
 		return nil, &ProviderError{Code: "InvalidProviderConfig", Retry: false, Err: fmt.Errorf("expo endpoint is not configured")}
 	}
+	if !p.Configured() {
+		return nil, &ProviderError{Code: "InvalidProviderConfig", Retry: false, Err: fmt.Errorf("invalid expo endpoint")}
+	}
 	if len(items) == 0 {
 		return []PushBatchResult{}, nil
 	}
@@ -140,7 +155,7 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, &ProviderError{Code: "InvalidProviderConfig", Revoke: false, Retry: false, Err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.accessToken != "" {

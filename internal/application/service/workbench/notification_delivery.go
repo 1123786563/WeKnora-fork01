@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -77,7 +79,13 @@ type PushNotificationProvider struct {
 }
 
 func (p *PushNotificationProvider) Configured() bool {
-	return p != nil && p.provider != nil && p.resolve != nil
+	if p == nil || p.provider == nil || p.resolve == nil {
+		return false
+	}
+	if configured, ok := p.provider.(interface{ Configured() bool }); ok {
+		return configured.Configured()
+	}
+	return true
 }
 
 func NewPushNotificationProvider(provider pushnotification.PushProvider, resolve func(context.Context, repository.NotificationDelivery) (string, error)) *PushNotificationProvider {
@@ -135,10 +143,17 @@ type HTTPNotificationProvider struct {
 	client   *http.Client
 }
 
-func (p *HTTPNotificationProvider) Configured() bool { return p != nil && p.endpoint != "" }
+func (p *HTTPNotificationProvider) Configured() bool {
+	return p != nil && validNotificationEndpoint(p.endpoint)
+}
 
 func NewHTTPNotificationProvider(endpoint string) *HTTPNotificationProvider {
-	return &HTTPNotificationProvider{endpoint: endpoint, client: &http.Client{Timeout: 10 * time.Second}}
+	return &HTTPNotificationProvider{endpoint: strings.TrimSpace(endpoint), client: &http.Client{Timeout: 10 * time.Second}}
+}
+
+func validNotificationEndpoint(endpoint string) bool {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	return err == nil && u.Scheme != "" && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 func (p *HTTPNotificationProvider) Send(ctx context.Context, d repository.NotificationDelivery) error {
@@ -151,8 +166,11 @@ func (p *HTTPNotificationProvider) SendReceipt(ctx context.Context, d repository
 }
 
 func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.NotificationDelivery, requireReceipt bool) (pushnotification.PushReceipt, error) {
-	if p == nil || p.endpoint == "" {
+	if p == nil || strings.TrimSpace(p.endpoint) == "" {
 		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "mobile_notification_provider_unconfigured", Retry: false, Err: errors.New("mobile notification provider is not configured")}
+	}
+	if !validNotificationEndpoint(p.endpoint) {
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Err: fmt.Errorf("invalid mobile notification provider endpoint")}
 	}
 	payload, err := json.Marshal(map[string]any{"tenant_id": d.Intent.TenantID, "owner_id": d.Intent.OwnerID, "device_id": d.Intent.DeviceID, "environment": d.Intent.Environment, "event_id": d.Intent.EventID, "run_id": d.Intent.RunID, "kind": d.Intent.Kind, "attempt": d.Attempt})
 	if err != nil {
@@ -372,7 +390,7 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 	var providerErr *pushnotification.ProviderError
 	if cause != nil && errors.As(cause, &providerErr) && !providerErr.Retry {
 		providerPaused := false
-		if providerErr.Code == "InvalidProviderConfig" || providerErr.Code == "mobile_notification_provider_unconfigured" {
+		if isProviderConfigurationError(providerErr.Code) {
 			if w.providerHealth != nil && w.providerKey != "" {
 				if err := w.providerHealth.Pause(ctx, w.providerKey, notificationErrorText(cause)); err != nil {
 					return fmt.Errorf("notification_provider_pause_persist:%s: %w", w.providerKey, err)
@@ -391,7 +409,7 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 				return fmt.Errorf("notification_delivery_expire_persist:%s: %w: %v", d.ID, result.Err, cause)
 			}
 			if result.Applied {
-				if w.deviceRevoker != nil {
+				if w.deviceRevoker != nil && providerErr.Revoke {
 					if d.DeviceRevision <= 0 {
 						return fmt.Errorf("notification_device_revoke:%s: missing registration revision", d.ID)
 					}
@@ -428,6 +446,15 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 		return fmt.Errorf("notification_delivery_retry_fence_lost:%s: %w", d.ID, cause)
 	}
 	return fmt.Errorf("notification_delivery_retry_fence_lost:%s", d.ID)
+}
+
+func isProviderConfigurationError(code string) bool {
+	switch code {
+	case "InvalidProviderConfig", "mobile_notification_provider_unconfigured", "InvalidCredentials", "InvalidProviderToken":
+		return true
+	default:
+		return false
+	}
 }
 
 func providerErrRetryAfter(err *pushnotification.ProviderError) time.Duration {
