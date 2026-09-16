@@ -84,3 +84,7 @@ test('MCP tool details restore focus and keep detail ids unique per rendered too
   assert.match(source, /trigger\.focus\(\)/);
   assert.match(source, /mcp-tool-detail-\$\{index\}/);
 });
+
+test('MCP tool detail trigger keeps the Vue open-state brand color', () => {
+  assert.match(source, /className=\{`[^`]*\$\{isOpen \? 'text-\[#07c05f\]' : 'text-\[#66758b\]'\}`\}/);
+});
