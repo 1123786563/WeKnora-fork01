@@ -31,4 +31,25 @@ describe('ExecutionSSEParser', () => {
     expect(() => parser.push(new TextEncoder().encode(`id: 2\ndata: ${JSON.stringify({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq: 1, type: 'text.delta', occurred_at: '2026-09-12T00:00:00Z', payload: {} })}\n\n`))).toThrow(/id must equal/);
     expect(() => parser.push(new TextEncoder().encode(`id: 9007199254740992\ndata: ${JSON.stringify({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq: 1, type: 'text.delta', occurred_at: '2026-09-12T00:00:00Z', payload: {} })}\n\n`))).toThrow(/id must equal/);
   });
+
+  it('handles 256 events and a final frame without a trailing delimiter', () => {
+    const parser = new ExecutionSSEParser();
+    const source = Array.from({ length: 256 }, (_, index) => frame(index + 1)).join('')
+      + `id: 257\ndata: ${JSON.stringify({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq: 257, type: 'final', occurred_at: '2026-09-12T00:00:00Z', payload: {} })}`;
+    const bytes = new TextEncoder().encode(source);
+    const out = [...parser.push(bytes.slice(0, 1234)), ...parser.push(bytes.slice(1234), true)];
+    expect(out).toHaveLength(257);
+    expect(out.at(-1)?.data.seq).toBe(257);
+  });
+
+  it('passes AbortSignal through the native reader', async () => {
+    const controller = new AbortController();
+    let received: AbortSignal | undefined;
+    const transport = (await import('./stream-transport')).createFetchStreamTransport(async (_url, init) => {
+      received = init?.signal as AbortSignal;
+      return { ok: true, body: { getReader: () => ({ read: async () => { controller.abort(); throw new DOMException('Aborted', 'AbortError'); }, releaseLock: () => {} }) } } as unknown as Response;
+    });
+    await expect(transport.open({ url: 'https://example.test', headers: {}, signal: controller.signal }, () => {})).rejects.toThrow('Aborted');
+    expect(received).toBe(controller.signal);
+  });
 });

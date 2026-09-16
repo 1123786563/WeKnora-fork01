@@ -74,4 +74,19 @@ describe('execution storage', () => {
     expect((await restarted.read('r'))[0]?.payload.value).toBe(1);
     expect(secure.size).toBe(1);
   });
+
+  it('round trips a large encrypted payload without argument-spread overflow', async () => {
+    const secure = new Map<string, string>();
+    const store = { getItemAsync: async (key: string) => secure.get(key) ?? null, setItemAsync: async (key: string, value: string) => { secure.set(key, value); } };
+    const aead = {
+      randomBytes: (size: number) => new Uint8Array(size).fill(9),
+      encrypt: (message: Uint8Array) => message,
+      decrypt: (ciphertext: Uint8Array) => ciphertext,
+    };
+    const cipher = createSecureStoreAeadCipher(store, aead);
+    const payload = { text: 'x'.repeat(200_000) };
+    const encrypted = await cipher.encrypt(payload, 'scope\u0000run\u00001');
+    expect(encrypted.ciphertext.length).toBeGreaterThan(200_000);
+    expect(await cipher.decrypt(encrypted, 'scope\u0000run\u00001')).toEqual(payload);
+  });
 });

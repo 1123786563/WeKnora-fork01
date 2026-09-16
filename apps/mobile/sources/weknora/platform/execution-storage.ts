@@ -88,7 +88,14 @@ export interface AeadBox {
   decrypt(ciphertext: Uint8Array, aad: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array;
 }
 
-const b64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
+function b64(bytes: Uint8Array): string {
+  // Avoid spreading large payloads into a single call stack frame on Hermes/JSC.
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
 const unb64 = (value: string): Uint8Array => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
 /** SecureStore-backed key with an injected libsodium XChaCha20-Poly1305 implementation. */
