@@ -364,6 +364,36 @@ test('settings renders shared agents and protects the organization owner member'
   assert.match(dialog.textContent ?? '', /Research agent/);
 });
 
+test('members section filters the Vue-parity member list by name or email', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.members.list = async () => ({
+    items: [
+      { id: 'member-alice', user_id: 'u1', username: 'Alice', email: 'alice@example.dev', role: 'admin', tenant_id: 1, joined_at: '2030-01-01' },
+      { id: 'member-bob', user_id: 'u2', username: 'Bob', email: 'bob@example.dev', role: 'viewer', tenant_id: 2, joined_at: '2030-01-02' },
+    ],
+    total: 2,
+  });
+  const root = await mountPage(client);
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '共享空间成员');
+  assert.ok(membersNav);
+  await click(membersNav);
+  await act(async () => {});
+  assert.match(dialog.textContent ?? '', /Alice/);
+  assert.match(dialog.textContent ?? '', /Bob/);
+
+  const search = dialog.querySelector('input[placeholder="搜索成员…"]') as HTMLInputElement | null;
+  assert.ok(search, 'Vue members section exposes a member search input');
+  await setInputValueAsync(search, 'bob@');
+
+  assert.match(dialog.textContent ?? '', /Bob/);
+  assert.doesNotMatch(dialog.textContent ?? '', /Alice/);
+  assert.equal(dialog.querySelector('[aria-label="共享空间成员 count"]')?.textContent, '1');
+});
+
 test('settings modal exposes an equivalent section selector when the sidebar is hidden on mobile', async () => {
   const { client } = clientWith([ownerOrg]);
   const root = await mountPage(client);

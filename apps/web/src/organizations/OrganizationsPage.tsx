@@ -273,6 +273,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [requests, setRequests] = useState<OrganizationJoinRequest[]>([]);
   const [sharedResources, setSharedResources] = useState<Array<Record<string, unknown>>>([]);
   const [sharedAgents, setSharedAgents] = useState<Array<Record<string, unknown>>>([]);
@@ -808,6 +809,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     ['agents', 'organization.sharedResources.agentListTitle'],
     ['invite', 'organization.settings.inviteLink'],
   ];
+  const normalizedMemberSearchQuery = memberSearchQuery.trim().toLocaleLowerCase();
+  const filteredMembers = normalizedMemberSearchQuery
+    ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
+    : members;
   // Vue OrganizationSettingsModal.isAdmin requires both organization-level
   // admin/owner membership and tenant-level admin access. The list-level
   // canManageOrg check alone must not make an editor/viewer's settings form
@@ -975,12 +980,18 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : settingsSection === 'members' ? (
                     <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.members.listTitle')}</h2>
-                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
+                      <div className="mb-[16px] flex flex-wrap items-start justify-between gap-[12px]">
+                        <div>
+                          <div className="flex items-center gap-[8px]"><h2 className={ORG_SECTION_TITLE + ' mb-0'}>{t(locale, 'organization.members.listTitle')}</h2><span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span></div>
+                          <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
+                        </div>
+                        {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[34px] w-[min(100%,240px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                      </div>
                       {settingsCanManage ? <div className="mb-[16px] rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9] p-[12px]"><div className="mb-[8px] flex items-center justify-between gap-[12px]"><strong className="text-[14px]">{t(locale, 'organization.addMember.button')}</strong><Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>{roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}</Select></div><Input className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />{memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => <div key={String(candidate.tenant_id)} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[13px]">{strOf(candidate.tenant_name)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span></div><button type="button" className={ORG_BTN_OUTLINE} disabled={memberInviteSaving === String(candidate.tenant_id)} onClick={() => void inviteMember(candidate)}>{t(locale, 'organization.addMember.confirmBtn')}</button></div>)}</div> : null}
                       {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
                       {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
-                      {detailFeeds.members.status === 'ready' ? members.map((member) => (
+                      {detailFeeds.members.status === 'ready' && members.length > 0 && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim())}</p> : null}
+                      {detailFeeds.members.status === 'ready' ? filteredMembers.map((member) => (
                         <div key={member.id} className={ORG_MEMBER_ROW}>
                           <div className={ORG_MEMBER_COPY}>
                             <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{member.tenant_name ?? member.username}</strong>
