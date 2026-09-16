@@ -1,5 +1,7 @@
 # Vue → React canonical page/state inventory
 
+Current inventory audit (2026-09-16): `route-parity.csv` currently has 59 data rows with kind counts page 18, settings-section 26, redirect 5, layout+redirect 1, dev-only 1, independent-entry 1, special-file-route 5, special-websocket 1, and special-embed-route 1. The 53-row/56-row values below are historical baseline snapshots and must not be used as the current denominator. CSV currently has no explicit stable `row_id` column; Apps Vue source references also require authority resolution. See `artifacts/route-inventory-parity-ledger-audit-20260916.md`.
+
 Latest addendum (2026-09-15 R320): N005 share dialog now matches the Vue-only share title, 520px dialog width, and icon-only shared-list settings/unshare actions with accessible labels; focused share dialog 13/13, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r320-share-dialog-actions.md`. Authenticated paired screenshot and real-backend share/unshare evidence remain open.
 
 Latest addendum (2026-09-15 R319): the expanded platform navigation item geometry now matches Vue's 38px row, 14px left inset, 4px radius, and 600-weight labels; computed-style audit plus focused Shell 30/30, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r319-shell-nav-geometry.md`. This remains review evidence pending an authenticated post-edit screenshot and responsive/locale/theme/native coverage.

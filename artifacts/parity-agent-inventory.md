@@ -21,7 +21,7 @@
 - `docs/agents/issue-tracker.md`、`docs/agents/domain.md`：已读取。`static`
 - `docs/superpowers/plans/2026-09-10-react-multiclient-migration.md`：方案 B 仍是计划建议，不是已批准完成；要求保留旧 URL、Embed、Lite/Wails、六种语言和 Vue 语义。`static`
 - `docs/superpowers/plans/2026-09-10-react-migration-inventory.md`：既有库存称 Vue 组件/API/Swagger 操作等静态库存；补充调查明确要求双向路由、`/files`、SSE、WS、Embed、无独立路由设置和弹层。`static`
-- `docs/migrations/react/route-parity.csv`：53 行入口/表面权威清单，含特殊文件、WebSocket、Embed 和设置项。`static`
+- `docs/migrations/react/route-parity.csv`：历史基线曾记录 53 行；2026-09-16 当前快照为 59 行入口/表面清单，含特殊文件、WebSocket、Embed 和设置项。当前行数与 Apps authority 缺口见 `artifacts/route-inventory-parity-ledger-audit-20260916.md`。`static`
 - `docs/migrations/react/vue-react-parity-matrix.md`：当前矩阵；头部记录 Vue baseline source commit `5cf093706ebecdfe8bc4eca80886e80c01805289`、task base `9b79558b6229d79d0ceebe22e1de4a439982c615`。矩阵仍以 `review` 为主，不能批量视为 accepted。`static`
 - `docs/migrations/react/vue-react-parity-progress.md`：截至 R326 的逐轮证据；明确大量行仍缺同条件 Vue/React、真实后端、Wails/iOS/Android 或负路径证据。`static`
 

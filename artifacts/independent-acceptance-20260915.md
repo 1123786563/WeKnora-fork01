@@ -12,7 +12,7 @@
 
 已覆盖的入口类别：认证/引导、平台 shell、知识库列表与详情、Wiki/FAQ/Graph、Agent、组织、Chat、Settings、Embed、文件代理和 sandbox WS 均有 route/source 或 shared-view 静态映射。React 另保留兼容别名 `/knowledgeBase/:id/{documents,wiki,faq,settings}`、`/platform/chat`、`/creatChat` 以及 React-only `/platform/configuration`、`/platform/administration`；这些不是新增 Vue 路由，不能重复计数。
 
-发现的追溯缺口：CSV 第 21–24 行的 `/platform/apps*` 四行分别引用 `frontend/src/views/apps/AppsView.vue`、`ConnectionsView.vue`、`AuthorizationView.vue`、`ActionView.vue`，但四个文件在当前 worktree 均不存在。`apps/web/src/apps/AppsPages.tsx`、`model.ts` 与 focused test 存在。应在后续审查中确认 Vue app surface 的真实历史/上游来源，再更新 authority 字段；本轮不改该共享台账。
+发现的追溯缺口：CSV 第 21–24 行的 `/platform/apps*` 四行分别引用 `frontend/src/views/apps/AppsView.vue`、`ConnectionsView.vue`、`AuthorizationView.vue`、`ActionView.vue`，但四个文件在当前 worktree 均不存在。`apps/web/src/apps/AppsPages.tsx`、`model.ts` 与 focused test 存在。应在后续审查中确认 Vue app surface 的真实历史/上游来源，再更新 authority 字段；本轮不改业务代码。2026-09-16 当前快照审计进一步确认 CSV 为 59 条数据行、没有显式 `row_id`，详见 `artifacts/route-inventory-parity-ledger-audit-20260916.md`。
 
 ## 当前未覆盖/未闭环清单
 

@@ -85,3 +85,9 @@ pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit
 ```
 
 检查结果与 commit 输出应记录在交付消息中；检查仅覆盖静态/单元层，不宣称浏览器、后端、Wails、Embed 独立构建或移动端验收通过。
+
+## 7. 2026-09-16 当前快照审计补充
+
+`route-parity.csv` 当前包含 59 条数据行，kind 分布为 page 18、settings-section 26、redirect 5、layout+redirect 1、dev-only 1、independent-entry 1、special-file-route 5、special-websocket 1、special-embed-route 1。CSV 没有显式 `row_id` 列；早期 baseline 中的 53/56 行数和 R 编号属于历史快照，不能作为当前唯一分母。
+
+当前静态存在性检查还发现四个 `/platform/apps*` 行引用的 Vue `frontend/src/views/apps/*.vue` 文件不存在，另有 `embed.html` 行把两个路径合并在一个字段中。React Apps 页面存在并不补足 Vue authority 追溯。详细命令、路径和影响见 `artifacts/route-inventory-parity-ledger-audit-20260916.md`。在 authority 解析和显式 ID contract 完成前，这些项保持 review/open，不标记为 parity accepted。

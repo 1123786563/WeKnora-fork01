@@ -1,5 +1,7 @@
 # Baseline and canonical inventory evidence (2026-09-12)
 
+Historical snapshot notice (2026-09-16): this file records the 2026-09-12 baseline, not the current route denominator. The current `route-parity.csv` has 59 data rows and no explicit `row_id` column; the 53/56 row counts and R001-R053/R001-R056 references below are retained as historical evidence. Current drift and missing Apps authority paths are recorded in `artifacts/route-inventory-parity-ledger-audit-20260916.md`.
+
 ## Workspace baseline
 
 - Worktree: `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/react-multiclient`.
