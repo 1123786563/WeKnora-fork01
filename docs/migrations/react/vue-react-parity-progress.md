@@ -4028,6 +4028,22 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   permission/mutation flows, real Embed streaming, and native Wails feature
   interaction remain open or `blocked-env`. No mobile code was modified.
 
+## 2026-09-16 Round R428 — Parallel organization, composer, approval, and agent parity
+
+- Four independent Vue-baseline fixes landed: organization settings now hide
+  join-request controls from non-admin roles (`9bcc161b`); Chat composer now
+  matches Vue Enter/Shift/Ctrl/IME/Alt shortcut behavior (`6a390cb3`); tool
+  approval uses a synchronous submission lock to prevent duplicate approve or
+  reject requests (`56975878`); and Agent list actions now enforce Vue's
+  builtin/shared write-permission gates (`e652f06a`).
+- Shared regression passed `501/501`; integrated Web regression passed
+  `1231/1231`; Web typecheck, `git diff --check`, Web build, Embed build,
+  Desktop 9/9 tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real backend organization/
+  chat/approval/agent permission and mutation flows, and per-feature Wails
+  interaction remain open or `blocked-env`. No mobile code was modified.
+
 ## 2026-09-16 Round R420 — Parallel platform/chat/knowledge/MCP parity
 
 - Four independent Vue-baseline slices landed: platform tenant-switcher
