@@ -3852,3 +3852,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `Unable to load browser request-header policy`. This preserves the current
   `blocked-env` classification for paired DOM/screenshots and interaction
   evidence; it is not a page-parity result. No mobile code was modified.
+
+## 2026-09-16 Round R406 — Integrations form and channel-entry parity review
+
+- `4d1dd75a` fixes two confirmed Web integrations differences against the Vue
+  channel panels and settings forms: channel cards now expose the same edit
+  entry through keyboard Enter/Space as well as pointer activation, and the
+  API direct-header permission control uses a compact checkbox token instead
+  of the accidental full-width input geometry.
+- Focused integrations contract tests pass 9/9, `git diff --check` passes, and
+  Web typecheck was run. This is source/focused-unit/static evidence only;
+  authenticated permission mutation, paired Vue/React computed styles and
+  screenshots, and native Wails interaction remain unverified. No mobile code
+  was modified.
