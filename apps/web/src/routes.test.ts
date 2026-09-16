@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { authNavigationTarget, guardRoute, nextPathAfterAuth, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
+import { authNavigationTarget, guardRoute, nextPathAfterAuth, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, shouldReloadOnPopState, type RouteGuardContext } from './routes.tsx';
 
 const authenticated: RouteGuardContext = {
   authenticated: true,
@@ -228,4 +228,9 @@ test('requires authentication before rendering not-found pages under protected p
     reason: 'authentication-required',
   });
   assert.equal(guardRoute('/unknown', loggedOut).kind, 'allow');
+});
+
+test('keeps same-path settings history in the SPA for query and subsection back/forward', () => {
+  assert.equal(shouldReloadOnPopState('/platform/settings', '/platform/settings'), false);
+  assert.equal(shouldReloadOnPopState('/platform/settings', '/platform/knowledge-bases'), true);
 });

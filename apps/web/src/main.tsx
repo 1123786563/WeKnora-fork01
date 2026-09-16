@@ -13,7 +13,7 @@ import { createBrowserCredentialAdapter, persistBrowserCredential } from './plat
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
+import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, shouldReloadOnPopState } from './routes.tsx';
 import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
 const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
 const IntegrationsRoutePage = lazy(() => import('./integrations/IntegrationsRoutePage.tsx').then((module) => ({ default: module.IntegrationsRoutePage })));
@@ -140,10 +140,16 @@ initTheme();
 const platformAdapters = createWebPlatformAdapters();
 
 // Most route transitions intentionally use full navigations so authentication,
-// tenant scope, and capability guards are re-evaluated. Settings and legacy
-// integrations may use history.pushState; reload those history entries instead
-// of leaving the initial route's React tree mounted after Back/Forward.
-window.addEventListener('popstate', () => window.location.reload());
+// tenant scope, and capability guards are re-evaluated. Settings owns its
+// same-path query/subsection history through popstate; only reload when browser
+// history changes the pathname and therefore the route tree.
+let previousPathname = window.location.pathname;
+window.addEventListener('popstate', () => {
+  const currentPathname = window.location.pathname;
+  const reload = shouldReloadOnPopState(previousPathname, currentPathname);
+  previousPathname = currentPathname;
+  if (reload) window.location.reload();
+});
 
 function nextPathAfterAuth(): string {
   const next = new URLSearchParams(window.location.search).get('next');

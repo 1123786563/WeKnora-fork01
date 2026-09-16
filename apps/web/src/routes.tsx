@@ -122,6 +122,15 @@ export function authNavigationTarget(search: string, invited: boolean): string {
   return invited ? '/platform/knowledge-bases' : nextPathAfterAuth(search);
 }
 
+/**
+ * Settings owns same-path query/subsection history through its popstate
+ * listener. A full reload is only needed when browser history changes the
+ * page path and the entry point must select a different route tree.
+ */
+export function shouldReloadOnPopState(previousPathname: string, currentPathname: string): boolean {
+  return previousPathname !== currentPathname;
+}
+
 export interface RouteGuardContext {
   authenticated: boolean;
   tenantId: string | null;
