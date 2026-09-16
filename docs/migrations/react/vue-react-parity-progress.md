@@ -3662,10 +3662,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Anonymous route behavior is verified; existing-session protected views remain
   `blocked-env` because the available auth/backend state did not provide a
   comparable authenticated workspace for both applications.
-- `c0ba752d` records the Embed audit. The current target checkout has no React
-  `apps/embed` implementation matching Vue's isolated bridge, origin pinning,
-  file proxy, attachment rendering, and differentiated recovery states; this is
-  an explicit remaining parity gap, not accepted from the historical source.
+- `c0ba752d` records the initial Embed audit. The current checkout now does have
+  a React `apps/embed` isolated entry and bridge/client implementation, but the
+  old audit text is stale and must not be treated as the current implementation
+  inventory. A fresh source comparison is required for the remaining Vue chat
+  states and visual contract.
 - `f1abccb1` records the knowledge-base audit: F-01 (metadata failure rendered
   as viewer read-only) and F-02 (independent document detail misses ordinary
   tenant admin/contributor permission) remain P1 follow-ups requiring runtime
@@ -3690,9 +3691,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   connection, authorization, and action/endpoint views, including terminal
   states and permission-sensitive controls.
 - `6cff26d3` adds a Vue-aligned Embed bridge contract for pinned origins, token
-  parsing, error mapping, and image/file handling. This is only a reusable
-  bridge seam: the isolated React Embed entry, attachment UI, and full host
-  integration are not present in the current checkout and remain open.
+  parsing, error mapping, and image/file handling. The isolated React Embed
+  entry is present and builds, but source comparison still finds open parity
+  gaps in timestamps, typing state, follow-up suggestions, Web Search controls,
+  and rendered attachment/image affordances; full host/runtime acceptance is
+  therefore still open.
 - Browser evidence continues to verify anonymous login/register/protected-route
   behavior only. Authenticated same-condition screenshots, real backend
   permission/mutation flows, and native Wails launch/feature interaction remain
