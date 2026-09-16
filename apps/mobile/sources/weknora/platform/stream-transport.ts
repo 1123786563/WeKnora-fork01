@@ -33,7 +33,13 @@ function parseFrame(raw: string): ParsedExecutionFrame | undefined {
   if (data.length === 0) return undefined;
   let decoded: unknown;
   try { decoded = JSON.parse(data.join('\n')) as unknown; } catch { throw new Error('invalid execution SSE JSON'); }
-  return { ...(id === undefined ? {} : { id }), event, data: parseExecutionEvent(decoded) };
+  const parsed = parseExecutionEvent(decoded);
+  if (id !== undefined) {
+    if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) < 0 || String(parsed.seq) !== id) {
+      throw new Error('execution SSE id must equal payload.seq');
+    }
+  }
+  return { ...(id === undefined ? {} : { id }), event, data: parsed };
 }
 
 /** Incremental SSE parser: CRLF may be split between any two byte chunks. */

@@ -25,4 +25,10 @@ describe('ExecutionSSEParser', () => {
     const parser = new ExecutionSSEParser();
     expect(() => parser.push(new TextEncoder().encode('data: {"schema_version":2}\n\n'))).toThrow(/SCHEMA_VERSION/);
   });
+
+  it('rejects an id that disagrees with seq or exceeds safe integer range', () => {
+    const parser = new ExecutionSSEParser();
+    expect(() => parser.push(new TextEncoder().encode(`id: 2\ndata: ${JSON.stringify({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq: 1, type: 'text.delta', occurred_at: '2026-09-12T00:00:00Z', payload: {} })}\n\n`))).toThrow(/id must equal/);
+    expect(() => parser.push(new TextEncoder().encode(`id: 9007199254740992\ndata: ${JSON.stringify({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq: 1, type: 'text.delta', occurred_at: '2026-09-12T00:00:00Z', payload: {} })}\n\n`))).toThrow(/id must equal/);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createExecutionStorage, type ExecutionStorageDriver, type ExecutionStorageRow, type ExecutionStorageTransaction } from './execution-storage';
+import { createExecutionStorage, createExpoSQLiteExecutionDriver, createSecureStoreAeadCipher, type ExecutionStorageDriver, type ExecutionStorageRow, type ExecutionStorageTransaction, type ExpoSQLiteDatabase } from './execution-storage';
 import type { ExecutionEvent } from '@weknora/contracts';
 
 const event = (seq: number): ExecutionEvent => ({ schema_version: 1, run_id: 'r', attempt_id: 'a', seq, type: 'future.event', occurred_at: '2026-09-12T00:00:00Z', payload: { value: seq } });
@@ -40,5 +40,38 @@ describe('execution storage', () => {
     await a.clear();
     expect(await a.read('r')).toEqual([]);
     expect(await b.read('r')).toHaveLength(1);
+  });
+
+  it('provides a runnable SQLite/SecureStore/AEAD seam that survives a new storage instance', async () => {
+    const events = new Map<string, string>();
+    const cursors = new Map<string, number>();
+    const db: ExpoSQLiteDatabase = {
+      withTransactionAsync: async (work) => work(),
+      runAsync: async (sql, ...params) => {
+        if (sql.startsWith('INSERT INTO execution_events')) events.set(`${params[0]}:${params[1]}:${params[2]}`, String(params[3]));
+        if (sql.startsWith('INSERT INTO execution_cursors')) cursors.set(`${params[0]}:${params[1]}`, Number(params[2]));
+        if (sql.startsWith('DELETE FROM execution_events')) for (const key of events.keys()) if (key.startsWith(`${params[0]}:`)) events.delete(key);
+        if (sql.startsWith('DELETE FROM execution_cursors')) for (const key of cursors.keys()) if (key.startsWith(`${params[0]}:`)) cursors.delete(key);
+      },
+      getFirstAsync: async (sql, ...params) => {
+        if (sql.startsWith('SELECT seq')) return (cursors.has(`${params[0]}:${params[1]}`) ? { seq: cursors.get(`${params[0]}:${params[1]}`) } : null) as never;
+        const value = events.get(`${params[0]}:${params[1]}:${params[2]}`);
+        return (value === undefined ? null : { event_json: value }) as never;
+      },
+      getAllAsync: async () => [],
+    };
+    const secure = new Map<string, string>();
+    const store = { getItemAsync: async (key: string) => secure.get(key) ?? null, setItemAsync: async (key: string, value: string) => { secure.set(key, value); } };
+    const aead = {
+      randomBytes: (size: number) => new Uint8Array(size).fill(7),
+      encrypt: (message: Uint8Array) => message,
+      decrypt: (ciphertext: Uint8Array) => ciphertext,
+    };
+    const first = createExecutionStorage(createExpoSQLiteExecutionDriver(db), createSecureStoreAeadCipher(store, aead), { origin: 'https://a', tenantID: 't', userID: 'u' });
+    await first.commit(event(1));
+    const restarted = createExecutionStorage(createExpoSQLiteExecutionDriver(db), createSecureStoreAeadCipher(store, aead), { origin: 'https://a', tenantID: 't', userID: 'u' });
+    await restarted.commit(event(1));
+    expect((await restarted.read('r'))[0]?.payload.value).toBe(1);
+    expect(secure.size).toBe(1);
   });
 });
