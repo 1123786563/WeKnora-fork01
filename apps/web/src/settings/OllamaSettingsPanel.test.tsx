@@ -82,3 +82,25 @@ test('disables the Vue download action until a non-blank model name is entered',
   await act(async () => downloadButton.click());
   assert.equal(downloadCalls, 0, 'an empty model name must not call the download API');
 });
+
+test('shows the Vue testing state and hides model management while retesting', async () => {
+  let resolveStatus: ((value: { available: boolean }) => void) | undefined;
+  const statusPromise = new Promise<{ available: boolean }>((resolve) => { resolveStatus = resolve; });
+  const client = makeClient();
+  client.settings.ollama.status = async () => statusPromise;
+  const container = await mount({ status: { available: true }, models: [] }, client);
+
+  const retest = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find((button) => button.textContent?.includes('重新检测'));
+  assert.ok(retest, 'the retest action renders');
+  await act(async () => retest?.click());
+
+  assert.match(container.textContent ?? '', /检测中/);
+  assert.doesNotMatch(container.textContent ?? '', /下载新模型/);
+  assert.doesNotMatch(container.textContent ?? '', /已下载的模型/);
+
+  resolveStatus?.({ available: true });
+  await act(async () => { await statusPromise; });
+  assert.doesNotMatch(container.textContent ?? '', /检测中/);
+  assert.match(container.textContent ?? '', /可用/);
+});

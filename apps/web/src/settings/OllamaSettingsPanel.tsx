@@ -23,22 +23,23 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const copy = OLLAMA_EXTRA_COPY[locale];
-  const [status, setStatus] = useState<OllamaStatus>(initial.status ?? { available: false });
+  const [status, setStatus] = useState<OllamaStatus | null>(initial.status ?? null);
   const [models, setModels] = useState<OllamaModel[]>(initial.models ?? []);
   const [modelName, setModelName] = useState('');
   const [activeTask, setActiveTask] = useState('');
   const [progress, setProgress] = useState<SettingsPayload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => { const next = payload(initialValue); setStatus(next.status ?? { available: false }); setModels(next.models ?? []); }, [initialValue]);
 
   async function refresh() {
-    setBusy(true); setError(null); setNotice(null);
+    setBusy(true); setTesting(true); setStatus(null); setError(null); setNotice(null);
     try { const [nextStatus, nextModels] = await Promise.all([client.settings.ollama.status(), client.settings.ollama.models()]); setStatus(nextStatus); setModels(nextModels); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed')); }
-    finally { setBusy(false); }
+    catch (reason) { setStatus({ available: false }); setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed')); }
+    finally { setTesting(false); setBusy(false); }
   }
 
   async function download() {
@@ -63,10 +64,10 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
         <div><h3>{t('ollamaSettings.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.description')}</p></div>
         <Button type="button" disabled={busy} onClick={() => void refresh()}>{t('ollamaSettings.status.retest')}</Button>
       </div>
-      <Status tone={status.available ? 'success' : 'warning'}>{status.available ? t('ollamaSettings.status.available') + (status.version ? ' · ' + status.version : '') : t('ollamaSettings.status.unavailable') + (status.error ? ': ' + status.error : '')}</Status>
-      <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{t('ollamaSettings.address.label')}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{status.baseUrl || '—'}</dd></div></dl>
+      <Status tone={testing ? 'neutral' : status?.available ? 'success' : 'warning'}>{testing ? t('ollamaSettings.status.testing') : status?.available ? t('ollamaSettings.status.available') + (status.version ? ' · ' + status.version : '') : status ? t('ollamaSettings.status.unavailable') + (status.error ? ': ' + status.error : '') : t('ollamaSettings.status.untested')}</Status>
+      <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{t('ollamaSettings.address.label')}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{status?.baseUrl || '—'}</dd></div></dl>
     </Card>
-    {status.available ? <>
+    {status?.available && !testing ? <>
       <Card>
         <h3>{t('ollamaSettings.download.title')}</h3>
         <p className="wk-muted text-muted">{t('ollamaSettings.download.descPrefix')} <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer">{t('ollamaSettings.download.browse')}</a></p>
