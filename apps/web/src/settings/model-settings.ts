@@ -500,6 +500,9 @@ export function modelFieldErrorKey(field: ModelFieldKey, draft: ModelDraft): str
 const MODEL_TAB_TYPES: ReadonlyArray<ModelType> = ["chat", "embedding", "rerank", "vllm", "asr"];
 export function subsectionToFilter(value: string | null | undefined): ModelType | null {
   if (!value) return null;
+  // Vue's knowledge-base model entry opens the KnowledgeQA model flow, while
+  // ModelSettings.vue groups backend type KnowledgeQA under its chat tab.
+  if (value === "knowledgeqa") return "chat";
   return (MODEL_TAB_TYPES as ReadonlyArray<string>).includes(value) ? value as ModelType : null;
 }
 export function modelValidationErrorKey(error: ModelDraftValidationError): string {
