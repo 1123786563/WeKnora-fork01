@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { agentGroupOf, filterAgentsByQuery, groupAgents } from './agent-groups.ts';
+import { agentGroupOf, filterAgentsByQuery, groupAgents, canManageAgent } from './agent-groups.ts';
 
 // Vue baseline: frontend/src/views/agent/AgentList.vue 73-155 — the list is
 // grouped into builtin / created-by-me / shared with collapsible headers and
@@ -47,4 +47,11 @@ test('search filters case-insensitively over name and description', () => {
   assert.deepEqual(filterAgentsByQuery(agents, 'docs').map((item) => item.id), ['b']);
   assert.equal(filterAgentsByQuery(agents, '  ').length, 2, 'blank query keeps everything');
   assert.equal(filterAgentsByQuery(agents, 'nomatch').length, 0);
+});
+
+test('matches Vue write permissions for built-in and shared agents', () => {
+  assert.equal(canManageAgent(agent({ is_builtin: true, created_by: 'u1' })), false);
+  assert.equal(canManageAgent(agent({ created_by: 'u2', permission: 'viewer' })), false);
+  assert.equal(canManageAgent(agent({ created_by: 'u2', permission: 'editor' })), true);
+  assert.equal(canManageAgent(agent({ created_by: 'u1' })), true);
 });

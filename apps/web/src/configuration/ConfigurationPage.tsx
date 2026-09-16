@@ -6,7 +6,7 @@ import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 import { AgentOperations, ModelDebugPanel, SkillOperations } from './ConfigurationOperations.tsx';
 import { modelInUseDetails, type ModelUsageDetails } from './model-usage.ts';
 import { ModelUsageNotice } from './ModelUsageNotice.tsx';
-import { filterAgentsByQuery, groupAgents, type AgentGroupKey } from './agent-groups.ts';
+import { canManageAgent, filterAgentsByQuery, groupAgents, type AgentGroupKey } from './agent-groups.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
@@ -34,7 +34,8 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     const row = item as Record<string, unknown>;
     const status = configurationStatus(row);
     const disabled = sectionKey === 'agents' && row.disabled_by_server === true;
-    return <li key={String(row.id ?? row.name ?? index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span className="font-mono text-[0.8rem] text-muted">{status}{disabled ? ' · disabled by server' : ''}{row.is_builtin === true ? ' · builtin' : ''}</span><small>{values(row) || (sectionKey === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; use Test/health operations for provider state.')}</small></div>{configurationSections.find((section) => section.key === sectionKey)?.writeSupport === 'supported' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" onClick={() => openEditor(sectionKey, item)}>Edit</Button>{sectionKey === 'skills' ? null : <Button type="button" onClick={() => void removeConfiguration(sectionKey, String(row.id ?? ''))}>Remove</Button>}</div> : null}</li>;
+    const writable = sectionKey !== 'agents' || canManageAgent(row);
+    return <li key={String(row.id ?? row.name ?? index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span className="font-mono text-[0.8rem] text-muted">{status}{disabled ? ' · disabled by server' : ''}{row.is_builtin === true ? ' · builtin' : ''}</span><small>{values(row) || (sectionKey === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; use Test/health operations for provider state.')}</small></div>{configurationSections.find((section) => section.key === sectionKey)?.writeSupport === 'supported' && writable ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" onClick={() => openEditor(sectionKey, item)}>Edit</Button>{sectionKey === 'skills' ? null : <Button type="button" onClick={() => void removeConfiguration(sectionKey, String(row.id ?? ''))}>Remove</Button>}</div> : null}</li>;
   }
 
   function renderAgentGroups() {

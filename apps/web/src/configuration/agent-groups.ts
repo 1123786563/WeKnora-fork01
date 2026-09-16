@@ -11,7 +11,15 @@ export interface AgentRowLike {
   description?: unknown;
   is_builtin?: unknown;
   created_by?: unknown;
+  permission?: unknown;
   [key: string]: unknown;
+}
+
+/** Mirrors the Vue list's client-side guard for the permissions present here. */
+export function canManageAgent(agent: AgentRowLike): boolean {
+  if (agent.is_builtin === true) return false;
+  if (typeof agent.permission === 'string' && agent.permission !== 'editor' && agent.permission !== 'admin') return false;
+  return true;
 }
 
 export function agentGroupOf(agent: AgentRowLike, currentUserId: string): AgentGroupKey {
