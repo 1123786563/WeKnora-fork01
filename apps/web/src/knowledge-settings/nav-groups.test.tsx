@@ -208,9 +208,10 @@ test('clicking a nav item activates it (Vue .nav-item.active) and swaps the cont
 
 test('unported Vue sections render the shared placeholder instead of a fabricated editor', async () => {
   await renderPage(clientFor({ dataSources: [], shareList: 0, activityCalls: [] }));
-  const chunkingButton = navButtons().find((button) => button.getAttribute('data-section') === 'chunking');
-  assert.ok(chunkingButton, 'chunking nav item must exist (Vue renders it)');
-  await act(async () => { chunkingButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  // R439 ported models/chunking/advanced; multimodal stays unported (phase 3).
+  const multimodalButton = navButtons().find((button) => button.getAttribute('data-section') === 'multimodal');
+  assert.ok(multimodalButton, 'multimodal nav item must exist (Vue renders it)');
+  await act(async () => { multimodalButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   const text = document.body.textContent ?? '';
   assert.match(text, /not been ported/, 'placeholder must reuse the shared not-yet-ported notice');
   assert.equal(document.body.querySelector('select'), null, 'no invented editing controls for unported sections');

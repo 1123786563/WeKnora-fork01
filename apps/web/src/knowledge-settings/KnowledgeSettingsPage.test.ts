@@ -34,17 +34,19 @@ const documentKnowledgeBase: KnowledgeSettingsInput = {
 };
 
 test('exposes Vue-aligned sections and gates document-only sections for FAQ bases', () => {
+  // R439: models/chunking/advanced join the ported sections (Vue contract).
   assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
-    'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
+    'models', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
   ]);
+  // Vue keeps models in the basic group for FAQ bases; chunking/advanced stay document-only.
   assert.deepEqual(getKnowledgeSettingsSections({ id: 'kb-2', name: 'FAQ', type: 'faq' }).map((section) => section.key), [
-    'vectorStore', 'datasource', 'share', 'activity',
+    'models', 'vectorStore', 'datasource', 'share', 'activity',
   ]);
 });
 
 test('exposes every Vue knowledge-base detail section in the editor order', () => {
   assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
-    'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
+    'models', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
   ]);
 });
 

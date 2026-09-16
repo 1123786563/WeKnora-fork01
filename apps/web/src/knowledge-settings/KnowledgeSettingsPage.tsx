@@ -6,36 +6,61 @@ import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
 import { KnowledgeBaseShareDialog } from '../knowledge-bases/KnowledgeBaseShareDialog.tsx';
 import { KnowledgeBaseActivityPanel } from '../knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import {
+  CHILD_CHUNK_SIZE_RANGE,
+  CHUNKING_LANGUAGE_LABEL_KEYS,
+  CHUNKING_LANGUAGE_VALUES,
+  CHUNKING_SEPARATOR_LABEL_KEYS,
+  CHUNKING_SEPARATOR_VALUES,
+  CHUNKING_STRATEGY_VALUES,
+  CHUNK_OVERLAP_RANGE,
+  CHUNK_SIZE_RANGE,
+  PARENT_CHUNK_SIZE_RANGE,
+  QUESTION_COUNT_RANGE,
+  TOKEN_LIMIT_RANGE,
+  clampQuestionCount,
+  filterKnowledgeSettingsModels,
+  isChunkOverlapTooHigh,
+  isChunkingAdvancedDisabled,
+  type KnowledgeSettingsModelOption,
+} from './editorSections.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import './KnowledgeSettingsPage.css';
 
 type ProjectUi = typeof import('@weknora/ui');
 
+export type { KnowledgeSettingsModelOption } from './editorSections.ts';
+
 export interface KnowledgeEditorOptions {
   parserEngines: Array<{ Name: string; Description: string; Available?: boolean }>;
   storageBackends: Array<{ id: string; name: string; provider: string; status: string }>;
   vectorStores: Array<{ id: string; name: string; engine_type: string; source: string; readonly: boolean }>;
+  models: KnowledgeSettingsModelOption[];
   loading: boolean;
   error: string | null;
 }
 
-const idleEditorOptions: KnowledgeEditorOptions = { parserEngines: [], storageBackends: [], vectorStores: [], loading: false, error: null };
+const idleEditorOptions: KnowledgeEditorOptions = { parserEngines: [], storageBackends: [], vectorStores: [], models: [], loading: false, error: null };
 
-// Loads the live parser/vector/storage catalogues through the authenticated
-// settings API when the settings surface opens (Vue editorResources contract).
-// Each endpoint degrades independently so one failing catalogue cannot blank
-// the other two.
+// Loads the live parser/vector/storage/model catalogues through the
+// authenticated settings/configuration APIs when the settings surface opens
+// (Vue editorResources + chatResources contract). Each endpoint degrades
+// independently so one failing catalogue cannot blank the others.
 export async function loadKnowledgeSettingsOptions(client: WeKnoraClient): Promise<Omit<KnowledgeEditorOptions, 'loading'>> {
-  const [parser, storage, vector] = await Promise.allSettled([
+  const [parser, storage, vector, models] = await Promise.allSettled([
     Promise.resolve().then(() => client.knowledgeBases.settings.parserEngines()),
     Promise.resolve().then(() => client.knowledgeBases.settings.storageBackends()),
     Promise.resolve().then(() => client.knowledgeBases.settings.vectorStores()),
+    Promise.resolve().then(() => client.configuration.models.list()),
   ]);
-  const failures = [parser, storage, vector].filter((outcome) => outcome.status === 'rejected') as Array<PromiseRejectedResult>;
+  const outcomes = [parser, storage, vector, models];
+  const failures = outcomes.filter((outcome) => outcome.status === 'rejected') as Array<PromiseRejectedResult>;
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
   return {
     parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
     storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
     vectorStores: vector.status === 'fulfilled' ? vector.value.data.map((item) => ({ id: item.id, name: item.name, engine_type: item.engine_type, source: item.source, readonly: item.readonly })) : [],
+    models: models.status === 'fulfilled' ? models.value.map((item) => ({ id: item.id, name: item.name, displayName: text(item.display_name), type: text(item.type), source: text(item.source), ...(item.status === undefined ? {} : { status: text(item.status) }) })) : [],
     error: failures.length > 0 ? (failures[0]!.reason instanceof Error ? failures[0]!.reason.message : 'Unable to load settings options') : null,
   };
 }
@@ -51,6 +76,7 @@ export type KnowledgeSettingsSectionKey =
 
 const PORTED_KNOWLEDGE_SETTINGS_SECTIONS = new Set<KnowledgeSettingsSectionKey>([
   'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
+  'models', 'chunking', 'advanced',
 ]);
 
 export function isPortedKnowledgeSettingsSection(key: KnowledgeSettingsSectionKey): boolean {
@@ -112,8 +138,11 @@ interface SettingSummary {
 }
 
 const sections: KnowledgeSettingsSection[] = [
+  { key: 'models', label: 'Models', description: 'Language and embedding models' },
   { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health' },
   { key: 'parser', label: 'Parser', description: 'File-type parser rules' },
+  { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior' },
+  { key: 'advanced', label: 'Advanced', description: 'Question generation and extra options' },
   { key: 'storage', label: 'Storage', description: 'Files and document instance' },
   { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status' },
   { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base' },
@@ -154,7 +183,9 @@ export function getKnowledgeSettingsSections(
 ): KnowledgeSettingsSection[] {
   const canViewActivity = options.canViewActivity ?? true;
   return sections.filter((section) => {
-    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph') return !isFaqKnowledgeBase(knowledgeBase);
+    // Vue gates chunking/advanced (and parser/storage/graph) behind !isFAQ;
+    // models stays available for FAQ bases like the Vue basic group.
+    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph' || section.key === 'chunking' || section.key === 'advanced') return !isFaqKnowledgeBase(knowledgeBase);
     if (section.key === 'activity') return canViewActivity;
     return true;
   });
@@ -368,6 +399,16 @@ interface GraphExtractInput {
   customInstructions?: string;
 }
 
+// Draft values edited through the R439 editor sections. Absent fields keep the
+// round-trip values computed from the loaded KB config, so a section that was
+// never opened still sends exactly the R437 payload.
+export interface KnowledgeSettingsEditorOverrides {
+  llmModelId?: string;
+  embeddingModelId?: string;
+  documentSplitting?: Partial<Pick<KnowledgeSettingsSavePayload['documentSplitting'], 'chunkSize' | 'chunkOverlap' | 'separators' | 'enableParentChild' | 'parentChunkSize' | 'childChunkSize' | 'strategy' | 'tokenLimit' | 'languages'>>;
+  questionGeneration?: Partial<Pick<KnowledgeSettingsSavePayload['questionGeneration'], 'enabled' | 'questionCount' | 'customInstructions'>>;
+}
+
 // Builds the exact KBModelConfigRequest body the Vue KnowledgeBaseEditorModal
 // sends on update: the loaded KB config round-trips unchanged while the given
 // parser-engine rules (the only editable control on this surface) replace
@@ -378,6 +419,7 @@ export function buildKnowledgeSettingsConfigPayload(
   knowledgeBase: KnowledgeSettingsInput,
   parserEngineRules: Array<Record<string, unknown>>,
   nodeExtract?: GraphExtractInput,
+  overrides?: KnowledgeSettingsEditorOverrides,
 ): KnowledgeSettingsSavePayload {
   const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
   const record = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
@@ -398,7 +440,7 @@ export function buildKnowledgeSettingsConfigPayload(
   const storageProvider = text(knowledgeBase.storage_provider_config && record(knowledgeBase.storage_provider_config).provider)
     || text(knowledgeBase.storage_config && record(knowledgeBase.storage_config).provider)
     || 'local';
-  return {
+  const payload: KnowledgeSettingsSavePayload = {
     llmModelId: text(knowledgeBase.summary_model_id),
     embeddingModelId: text(knowledgeBase.embedding_model_id),
     vlm_config: {
@@ -442,6 +484,19 @@ export function buildKnowledgeSettingsConfigPayload(
       customInstructions: text(questionGeneration.custom_instructions),
     },
   };
+  // R439 editor sections: apply draft values on top of the round-trip payload.
+  // Only explicitly defined override fields replace the computed value.
+  if (overrides) {
+    const defined = <T extends Record<string, unknown>>(patch: T | undefined): Partial<T> => {
+      if (!patch) return {};
+      return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as Partial<T>;
+    };
+    if (typeof overrides.llmModelId === 'string') payload.llmModelId = overrides.llmModelId;
+    if (typeof overrides.embeddingModelId === 'string') payload.embeddingModelId = overrides.embeddingModelId;
+    payload.documentSplitting = { ...payload.documentSplitting, ...defined(overrides.documentSplitting) };
+    payload.questionGeneration = { ...payload.questionGeneration, ...defined(overrides.questionGeneration) };
+  }
+  return payload;
 }
 
 // Sends the update through the authenticated client transport. The
@@ -525,14 +580,23 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   // Vue editor save semantics: one in-flight save at a time (button :loading),
   // success toast, failure keeps the form intact and surfaces the message.
   const [saveState, setSaveState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'error'; message: string }>({ status: 'idle', message: '' });
+  // R439 editor drafts (models/chunking/advanced): absent fields keep the
+  // round-trip values from the loaded KB config.
+  const [editorDraft, setEditorDraft] = useState<KnowledgeSettingsEditorOverrides>({});
   const canManage = knowledgeSettingsCanEdit(role);
   const canSave = canManage && Boolean(client) && Boolean(currentKnowledgeBase.id);
+  // Single source of truth for the section controls: what a save would PUT
+  // right now (committed config round-trip merged with the live draft).
+  const editorPayload = useMemo(
+    () => buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, parserRules(currentKnowledgeBase), graphExtract, editorDraft),
+    [currentKnowledgeBase, graphExtract, editorDraft],
+  );
   const handleSave = () => {
     if (!client || !currentKnowledgeBase.id || saveState.status === 'saving' || !canSave) return;
     const rules = (pendingParserEngine
       ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
       : parserRules(currentKnowledgeBase)) as Array<Record<string, unknown>>;
-    const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract);
+    const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract, editorDraft);
     setSaveState({ status: 'saving', message: '' });
     void saveKnowledgeSettings(client, currentKnowledgeBase.id, payload).then(() => {
       setSavedParserRules(rules);
@@ -602,7 +666,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active.description}</p>
                 </>
               ) : null}
-              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
+              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
                 // Vue renders this section fully; the React port has not migrated
                 // it yet — surface the shared notice instead of a fabricated editor.
                 <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
@@ -632,7 +696,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
 }
 
 interface SettingsSectionProps {
-  summary: SettingSummary;
+  summary?: SettingSummary;
   section: KnowledgeSettingsSectionKey;
   graphExtract: GraphExtractConfig;
   modelId: string;
@@ -647,21 +711,39 @@ interface SettingsSectionProps {
   t: (key: string) => string;
   StatusComponent: ElementType;
   onGraphChange: (value: GraphExtractConfig) => void;
+  editorPayload: KnowledgeSettingsSavePayload;
+  editorDraft: KnowledgeSettingsEditorOverrides;
+  onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void;
 }
 
-function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange }: SettingsSectionProps) {
+function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
+  // models/chunking/advanced carry no summary card (Vue has none either);
+  // the legacy sections keep theirs.
+  const summaryLabel = summary?.label ?? '';
+  const summaryDetail = summary?.detail ?? '';
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
-      <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
-        <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
-        <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
-      </div>
+      {summary ? (
+        <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
+          <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
+          <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
+        </div>
+      ) : null}
+      {section === 'models' ? (
+        <ModelsSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
+      ) : null}
+      {section === 'chunking' ? (
+        <ChunkingSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+      ) : null}
+      {section === 'advanced' ? (
+        <AdvancedSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+      ) : null}
       {section === 'vectorStore' ? (
         <div style={{ display: 'grid', gap: '0.4rem' }}>
           <label style={{ display: 'grid', gap: '0.25rem' }}>
             {t('kbSettings.vectorStore.engineLabel')}
-            <select value={summary.label} disabled aria-label={t('kbSettings.vectorStore.engineLabel')}>
-              <option value={summary.label}>{summary.label}</option>
+            <select value={summaryLabel} disabled aria-label={t('kbSettings.vectorStore.engineLabel')}>
+              <option value={summaryLabel}>{summaryLabel}</option>
               {editorOptions.vectorStores.filter((store) => store.id && store.id !== '').map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}
             </select>
           </label>
@@ -690,8 +772,8 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <div style={{ display: 'grid', gap: '0.4rem' }}>
           <label style={{ display: 'grid', gap: '0.25rem' }}>
             {t('kbSettings.storage.instanceLabel')}
-            <select value={summary.detail} disabled aria-label={t('kbSettings.storage.instanceLabel')}>
-              <option value={summary.detail}>{summary.label}</option>
+            <select value={summaryDetail} disabled aria-label={t('kbSettings.storage.instanceLabel')}>
+              <option value={summaryDetail}>{summaryLabel}</option>
               {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}
             </select>
           </label>
@@ -715,6 +797,250 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
           : <p className="wk-muted" style={{ margin: 0 }}>This knowledge base is not shared.</p>
       ) : null}
       {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
+    </div>
+  );
+}
+
+// ---- R439 editor sections (Vue KBModelConfig / KBChunkingSettings / KBAdvancedSettings) ----
+
+interface EditorSectionProps {
+  editorPayload: KnowledgeSettingsSavePayload;
+  editorDraft: KnowledgeSettingsEditorOverrides;
+  t: (key: string) => string;
+  onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void;
+}
+
+// Vue .setting-row layout: info column (label + desc) and control column.
+function EditorSettingRow({ label, description, required, control }: { label: string; description?: string; required?: boolean; control: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem', padding: '0.9rem 0', borderBottom: '1px solid #dce3ed', flexWrap: 'wrap' }}>
+      <div style={{ flex: '0 1 40%', minWidth: '12rem' }}>
+        <label style={{ fontWeight: 500 }}>
+          {label}
+          {required ? <span aria-hidden="true"> *</span> : null}
+        </label>
+        {description ? <p className="wk-muted" style={{ margin: '0.2rem 0 0', fontSize: '0.85rem' }}>{description}</p> : null}
+      </div>
+      <div style={{ flex: '0 1 55%', minWidth: '12rem' }}>{control}</div>
+    </div>
+  );
+}
+
+// Vue KBModelConfig: llm (KnowledgeQA) and embedding (Embedding) selectors fed
+// by the live model catalogue, unavailable models excluded (modelDefaults).
+function ModelsSettingsSection({ editorPayload, editorDraft, models, t, onDraftChange }: EditorSectionProps & { models: KnowledgeSettingsModelOption[] }) {
+  const optionLabel = (model: KnowledgeSettingsModelOption) => model.displayName || model.name;
+  const renderSelector = (type: string, labelKey: string, placeholderKey: string, value: string, onChange: (next: string) => void, required?: boolean) => (
+    <EditorSettingRow
+      label={t(labelKey)}
+      required={required}
+      control={(
+        <select value={value} aria-label={t(labelKey)} onChange={(event) => onChange(event.target.value)}>
+          <option value="">{t(placeholderKey)}</option>
+          {filterKnowledgeSettingsModels(models, type).map((model) => (
+            <option key={model.id} value={model.id}>{optionLabel(model)}</option>
+          ))}
+        </select>
+      )}
+    />
+  );
+  return (
+    <div>
+      {renderSelector('KnowledgeQA', 'knowledgeEditor.models.llmLabel', 'knowledgeEditor.models.llmPlaceholder', editorPayload.llmModelId, (next) => onDraftChange({ ...editorDraft, llmModelId: next }), true)}
+      {renderSelector('Embedding', 'knowledgeEditor.models.embeddingLabel', 'knowledgeEditor.models.embeddingPlaceholder', editorPayload.embeddingModelId, (next) => onDraftChange({ ...editorDraft, embeddingModelId: next }), true)}
+    </div>
+  );
+}
+
+// Vue KBChunkingSettings: strategy select, size/overlap sliders with the
+// overlap warning, parent-child sliders, and a collapsed token/language panel.
+function ChunkingSettingsSection({ editorPayload, editorDraft, t, onDraftChange }: EditorSectionProps) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const splitting = editorPayload.documentSplitting;
+  const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['documentSplitting']>) => {
+    onDraftChange({ ...editorDraft, documentSplitting: { ...editorDraft.documentSplitting, ...patch } });
+  };
+  const slider = (labelKey: string, value: number, range: { min: number; max: number; step: number }, onChange: (next: number) => void, disabled?: boolean) => (
+    <div style={{ display: 'grid', gap: '0.25rem' }}>
+      <input
+        type="range"
+        aria-label={t(labelKey)}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span style={{ fontWeight: 500 }}>{value} {t('knowledgeEditor.chunking.characters')}</span>
+    </div>
+  );
+  const multiSelect = (labelKey: string, values: string[], options: Array<{ value: string; label: string }>, onChange: (next: string[]) => void, disabled?: boolean) => (
+    <select
+      multiple
+      aria-label={t(labelKey)}
+      value={values}
+      disabled={disabled}
+      onChange={(event) => onChange([...(event.target as HTMLSelectElement).selectedOptions].map((option) => option.value))}
+    >
+      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  );
+  const strategy = splitting.strategy;
+  const strategyInfo = CHUNKING_STRATEGY_VALUES.includes(strategy as (typeof CHUNKING_STRATEGY_VALUES)[number])
+    ? { label: t(`knowledgeEditor.chunking.strategies.${strategy}.label`), tooltip: t(`knowledgeEditor.chunking.strategies.${strategy}.tooltip`) }
+    : null;
+  return (
+    <div>
+      <EditorSettingRow
+        label={t('knowledgeEditor.chunking.strategyLabel')}
+        control={(
+          <select
+            aria-label={t('knowledgeEditor.chunking.strategyLabel')}
+            value={strategy}
+            onChange={(event) => set({ strategy: event.target.value })}
+          >
+            <option value=""></option>
+            {CHUNKING_STRATEGY_VALUES.map((value) => <option key={value} value={value}>{t(`knowledgeEditor.chunking.strategies.${value}.label`)}</option>)}
+          </select>
+        )}
+      />
+      {strategyInfo ? (
+        <p className="wk-muted" style={{ margin: '0 0 0.6rem', borderLeft: '3px solid #07c05f', paddingLeft: '0.6rem' }}>
+          <strong>{strategyInfo.label}:</strong> {strategyInfo.tooltip}
+        </p>
+      ) : null}
+      <EditorSettingRow
+        label={t('knowledgeEditor.chunking.sizeLabel')}
+        control={slider('knowledgeEditor.chunking.sizeLabel', splitting.chunkSize, CHUNK_SIZE_RANGE, (next) => set({ chunkSize: next }))}
+      />
+      <EditorSettingRow
+        label={t('knowledgeEditor.chunking.overlapLabel')}
+        control={slider('knowledgeEditor.chunking.overlapLabel', splitting.chunkOverlap, CHUNK_OVERLAP_RANGE, (next) => set({ chunkOverlap: next }))}
+      />
+      {isChunkOverlapTooHigh(splitting.chunkSize, splitting.chunkOverlap) ? (
+        <p role="status" style={{ margin: 0, color: '#b54708', fontSize: '0.85rem' }}>{t('knowledgeEditor.chunking.overlapWarning')}</p>
+      ) : null}
+      <EditorSettingRow
+        label={t('knowledgeEditor.chunking.separatorsLabel')}
+        control={multiSelect(
+          'knowledgeEditor.chunking.separatorsLabel',
+          splitting.separators,
+          CHUNKING_SEPARATOR_VALUES.map((value) => ({ value, label: t(CHUNKING_SEPARATOR_LABEL_KEYS[value]!) })),
+          (next) => set({ separators: next }),
+        )}
+      />
+      <EditorSettingRow
+        label={t('knowledgeEditor.chunking.parentChildLabel')}
+        control={(
+          <input
+            type="checkbox"
+            aria-label={t('knowledgeEditor.chunking.parentChildLabel')}
+            checked={splitting.enableParentChild}
+            onChange={(event) => set({ enableParentChild: event.target.checked })}
+          />
+        )}
+      />
+      {splitting.enableParentChild ? (
+        <>
+          <EditorSettingRow
+            label={t('knowledgeEditor.chunking.parentChunkSizeLabel')}
+            control={slider('knowledgeEditor.chunking.parentChunkSizeLabel', splitting.parentChunkSize, PARENT_CHUNK_SIZE_RANGE, (next) => set({ parentChunkSize: next }))}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.chunking.childChunkSizeLabel')}
+            control={slider('knowledgeEditor.chunking.childChunkSizeLabel', splitting.childChunkSize, CHILD_CHUNK_SIZE_RANGE, (next) => set({ childChunkSize: next }))}
+          />
+        </>
+      ) : null}
+      <button type="button" style={{ background: 'transparent', border: 'none', padding: '0.6rem 0', cursor: 'pointer', fontWeight: 500, color: 'inherit' }} onClick={() => setAdvancedOpen((open) => !open)}>
+        {advancedOpen ? '▾' : '▸'} {t('knowledgeEditor.chunking.advancedLabel')}
+      </button>
+      {advancedOpen ? (
+        <div>
+          <EditorSettingRow
+            label={t('knowledgeEditor.chunking.tokenLimitLabel')}
+            control={(
+              <input
+                type="number"
+                aria-label={t('knowledgeEditor.chunking.tokenLimitLabel')}
+                min={TOKEN_LIMIT_RANGE.min}
+                max={TOKEN_LIMIT_RANGE.max}
+                step={TOKEN_LIMIT_RANGE.step}
+                value={splitting.tokenLimit}
+                disabled={isChunkingAdvancedDisabled(strategy)}
+                onChange={(event) => set({ tokenLimit: Number(event.target.value) })}
+              />
+            )}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.chunking.languagesLabel')}
+            control={multiSelect(
+              'knowledgeEditor.chunking.languagesLabel',
+              splitting.languages,
+              CHUNKING_LANGUAGE_VALUES.map((value) => ({ value, label: t(CHUNKING_LANGUAGE_LABEL_KEYS[value]!) })),
+              (next) => set({ languages: next }),
+              isChunkingAdvancedDisabled(strategy),
+            )}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Vue KBAdvancedSettings (question-generation block): the auto-tag and
+// table-metadata rows are not part of this round.
+function AdvancedSettingsSection({ editorPayload, editorDraft, t, onDraftChange }: EditorSectionProps) {
+  const questionGeneration = editorPayload.questionGeneration;
+  const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['questionGeneration']>) => {
+    onDraftChange({ ...editorDraft, questionGeneration: { ...editorDraft.questionGeneration, ...patch } });
+  };
+  return (
+    <div>
+      <EditorSettingRow
+        label={t('knowledgeEditor.advanced.questionGeneration.label')}
+        description={t('knowledgeEditor.advanced.questionGeneration.description')}
+        control={(
+          <input
+            type="checkbox"
+            aria-label={t('knowledgeEditor.advanced.questionGeneration.label')}
+            checked={questionGeneration.enabled}
+            onChange={(event) => set({ enabled: event.target.checked })}
+          />
+        )}
+      />
+      {questionGeneration.enabled ? (
+        <>
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
+            control={(
+              <input
+                type="number"
+                aria-label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
+                min={QUESTION_COUNT_RANGE.min}
+                max={QUESTION_COUNT_RANGE.max}
+                step={QUESTION_COUNT_RANGE.step}
+                value={clampQuestionCount(questionGeneration.questionCount)}
+                onChange={(event) => set({ questionCount: clampQuestionCount(Number(event.target.value)) })}
+              />
+            )}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+            control={(
+              <textarea
+                aria-label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+                maxLength={4000}
+                rows={3}
+                placeholder={t('knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder')}
+                value={questionGeneration.customInstructions}
+                onChange={(event) => set({ customInstructions: event.target.value })}
+              />
+            )}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

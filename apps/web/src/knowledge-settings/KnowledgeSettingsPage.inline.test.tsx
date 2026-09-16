@@ -55,6 +55,9 @@ interface ClientCalls { dataSources: string[]; shareList: number; activityCalls:
 function clientFor(calls: ClientCalls): WeKnoraClient {
   return {
     request: async () => ({ data: [] }),
+    configuration: {
+      models: { list: async () => [{ id: 'llm-1', name: 'gpt-x', type: 'KnowledgeQA', source: 'remote' }] },
+    },
     dataSources: {
       list: async (kbId: string) => {
         calls.dataSources.push(kbId);

@@ -4440,3 +4440,30 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1398/1398, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r438-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R439 — Settings editors phase 2, administration/appconnector/platform-settings sweeps
+
+- Five parallel agents (A1 settings editors phase 2, A2 administration, A3 integrations/appconnector, A4
+  platform settings, A5 verifier), file-domain mutually exclusive, TDD. A5 verdicts: A1/A2/A4 PASS; A3's dead
+  code (catalogRiskTone never consumed) wired by the orchestrator in-round.
+- A1: three editor sections migrated into the grouped IA against KnowledgeBaseEditorModal.vue — models (live
+  /api/v1/models catalogue as a fourth loadKnowledgeSettingsOptions path, modelDefaults exclusion, saves
+  llmModelId/embeddingModelId), chunking (strategy select + sliders + overlap warning + separators + parent-child
+  coupling, saves documentSplitting), advanced (questionGeneration toggle/count/instructions). Payload builder
+  gained an optional overrides arg; override-free calls keep the exact R437 round-trip. Directory 50/50; zero
+  new i18n copy. Phase-3: multimodal/asr/faq, wiki synthetic model row, autoTag, KBChunkingDebug.
+- A2: administration member search (320ms debounce + server q + page reset + search-aware empty state) and
+  invite default role viewer→contributor per TenantMembers.vue; 2 mirrored keys ×5 locale. Deferred: management
+  pagination UI, popconfirm shape, two-step invite.
+- A3: Vue authority clarified — Apps four views exist in the current checkout, not only at 9b0c11c4. Fixed:
+  revoke CAS conflict branch (409/VERSION_CONFLICT → warning + reload), connection/app state badges with Vue
+  vocabulary + tones, published/risk/installation labels; catalogRiskTone wired into the AppsPage risk badge
+  (verifier caught it as dead code). Deferred: schema-digest shape, ellipsis grouping, React's extra authorize
+  busy-guard kept as a documented safety-side deviation.
+- A4: platform settings sections/nav/save-semantics verified aligned; added the Vue success toast after each
+  accepted preference change (shared keys ×5 locale). Deferred G2: Vue persists preferences per-user
+  (WeKnora_${userId}_*) while React uses flat keys — cross-user crosstalk risk, fix belongs in
+  packages/domain local-preferences.ts + theme.ts.
+- Gates: `pnpm test:web` 1423/1423, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r439-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

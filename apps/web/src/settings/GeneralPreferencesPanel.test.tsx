@@ -118,6 +118,64 @@ test('applies persisted font preferences when the panel mounts', async () => {
   assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), '1.125');
 });
 
+async function changeSelect(container: Element, index: number, value: string) {
+  const select = container.querySelectorAll('select')[index]!;
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+}
+
+// Vue GeneralSettings.vue shows MessagePlugin.success(t('language.languageSaved'))
+// after an accepted language change, with the message resolved in the NEW locale
+// (locale.value is updated before the toast is created).
+test('language change persists and shows the Vue success message in the new locale', async () => {
+  const container = await mountPanel();
+
+  await changeSelect(container, 0, 'en-US');
+
+  assert.equal(dom.window.localStorage.getItem('locale'), 'en-US');
+  assert.match(container.textContent ?? '', /Language settings saved/);
+});
+
+// Vue GeneralSettings.vue handlers (theme/font/size) show common.success after
+// each accepted change; a rejected value rolls the form back silently.
+test('theme change shows the Vue common.success feedback', async () => {
+  const container = await mountPanel();
+
+  await changeSelect(container, 1, 'dark');
+
+  assert.equal(readLocalPreferences(dom.window.localStorage).theme, 'dark');
+  assert.match(container.textContent ?? '', /成功/);
+});
+
+// The shared i18n tables carry every font option label (font.sans.* /
+// font.mono.*) in all 5 locales, mirroring frontend/src/i18n/locales/*.ts.
+// jsdom's UA resolves to the linux platform set; pin the localized labels so a
+// locale that loses its font keys (falling back to the zh table) fails here.
+test('font option labels follow the active locale (en-US Vue table)', async () => {
+  dom.window.localStorage.setItem('locale', 'en-US');
+  const container = await mountPanel();
+
+  const sansOptions = Array.from(container.querySelectorAll('select')[2]!.options).map((option) => option.text);
+  assert.equal(sansOptions.length, 4);
+  assert.equal(sansOptions[0], 'System Default');
+  assert.equal(sansOptions[sansOptions.length - 1], 'Generic Sans-Serif');
+  const monoOptions = Array.from(container.querySelectorAll('select')[3]!.options).map((option) => option.text);
+  assert.equal(monoOptions.length, 4);
+  assert.equal(monoOptions[monoOptions.length - 1], 'Generic Monospace');
+});
+
+test('font option labels follow the active locale (ja-JP Vue table)', async () => {
+  dom.window.localStorage.setItem('locale', 'ja-JP');
+  const container = await mountPanel();
+
+  const sansOptions = Array.from(container.querySelectorAll('select')[2]!.options).map((option) => option.text);
+  assert.equal(sansOptions.length, 4);
+  assert.equal(sansOptions[0], 'システムデフォルト');
+  assert.equal(sansOptions[sansOptions.length - 1], '汎用サンセリフ');
+});
+
 test('font previews use semantic surface and neutral border tokens', async () => {
   const container = await mountPanel();
   const previews = Array.from(container.querySelectorAll('[data-testid^="font-preview-"]'));

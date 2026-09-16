@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
-import { Select, Switch } from '@weknora/ui';
+import { Select, Status, Switch } from '@weknora/ui';
 
 function readStoredLocale(): Locale {
   const stored = window.localStorage.getItem('locale');
@@ -50,9 +50,10 @@ function visibleMonoKeys(platform: 'mac' | 'windows' | 'linux'): string[] {
   return ['system', 'dejavu-mono', 'liberation-mono', 'monospace'];
 }
 
-// Shared i18n only ships the field labels (font.uiFont etc.); the per-option
-// labels (font.sans.pingfang ...) are NOT in packages/i18n — these fallbacks
-// mirror the Vue zh-CN locale table verbatim until the keys are ported.
+// Shared i18n ships both the field labels (font.uiFont …) and the per-option
+// labels (font.sans.pingfang …) for all 5 locales; this table only backs the
+// lookup up in case a key is ever pruned — it mirrors the Vue zh-CN locale
+// table (frontend/src/i18n/locales/zh-CN.ts) verbatim.
 const FONT_LABELS: Record<string, Record<string, string>> = {
   'zh-CN': {
     'sans:system': '系统默认', 'sans:pingfang': '苹方 PingFang SC', 'sans:georgia': 'Georgia 衬线', 'sans:yahei': '微软雅黑 Microsoft YaHei',
@@ -120,6 +121,10 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
   const [sansFont, setSansFont] = useState<string>(() => window.localStorage.getItem('font_sans') ?? 'system');
   const [monoFont, setMonoFont] = useState<string>(() => window.localStorage.getItem('font_mono') ?? 'system');
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(readAutoCheckUpdate);
+  // Vue GeneralSettings.vue closes each accepted preference change with a
+  // MessagePlugin.success (language.languageSaved / common.success); the React
+  // domain surfaces the same feedback as an inline success Status.
+  const [notice, setNotice] = useState<string | null>(null);
   const platform = useMemo(detectPlatform, []);
   const t = (key: string) => formatMessage(locale, key);
   const autoUpdateCopy = AUTO_UPDATE_COPY[locale];
@@ -136,28 +141,35 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
     setLocale(next);
     window.localStorage.setItem('locale', next);
     window.dispatchEvent(new window.Event('weknora:locale-changed'));
+    // Vue resolves the toast after locale.value updates, so the message uses
+    // the NEW locale.
+    setNotice(formatMessage(next, 'language.languageSaved'));
   }
   function handleThemeChange(next: string) {
     if (!isValidTheme(next)) return;
     setTheme(next);
     writeLocalPreferences(window.localStorage, { theme: next });
     window.dispatchEvent(new window.Event('weknora:theme-changed'));
+    setNotice(formatMessage(locale, 'common.success'));
   }
   function handleFontSizeChange(next: string) {
     if (!isValidFontSize(next)) return;
     setFontSize(next);
     writeLocalPreferences(window.localStorage, { fontSize: next });
     applyFontCssVariables(sansFont, monoFont, next);
+    setNotice(formatMessage(locale, 'common.success'));
   }
   function handleSansFontChange(next: string) {
     setSansFont(next);
     window.localStorage.setItem('font_sans', next);
     applyFontCssVariables(next, monoFont, fontSize);
+    setNotice(formatMessage(locale, 'common.success'));
   }
   function handleMonoFontChange(next: string) {
     setMonoFont(next);
     window.localStorage.setItem('font_mono', next);
     applyFontCssVariables(sansFont, next, fontSize);
+    setNotice(formatMessage(locale, 'common.success'));
   }
 
   function handleAutoCheckUpdateChange(enabled: boolean) {
@@ -176,6 +188,7 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
         <h2>{t('general.title')}</h2>
         <p className="section-description">{t('general.description')}</p>
       </div>
+      {notice ? <div data-testid="general-preferences-notice" role="status"><Status tone="success">{notice}</Status></div> : null}
       <div className="settings-group">
         <div className="setting-row">
           <div className="setting-info">
