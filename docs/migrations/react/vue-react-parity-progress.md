@@ -4027,3 +4027,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   authenticated paired Vue/React browser screenshots, real backend
   permission/mutation flows, real Embed streaming, and native Wails feature
   interaction remain open or `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R420 — Parallel platform/chat/knowledge/MCP parity
+
+- Four independent Vue-baseline slices landed: platform tenant-switcher
+  capability/collapse gating (`643433ef`), visible assistant trace timeline
+  for thinking/tool/finish states (`73c100b8`), omission of empty graph node
+  and relation collections (`89737973`), and Vue-aligned MCP policy control
+  layout (`b6328fb6`).
+- Integrated evidence passed: Web full regression `1205/1205`, Web and shared
+  typechecks, shared tests `500/500`, Web build, and Embed build. The four
+  focused slices reported platform `26/26`, chat views `68/68` plus Web chat
+  `98/98`, knowledge `38/38`, and MCP `28/28`.
+- Build output retains existing large-chunk advisories. Static/unit/component
+  evidence still does not prove authenticated paired Vue/React screenshots,
+  real backend permission/mutation flows, real Embed streaming, or Wails
+  native feature interaction; those remain open or `blocked-env`. No mobile
+  code was modified.
