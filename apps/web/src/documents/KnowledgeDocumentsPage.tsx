@@ -2279,7 +2279,7 @@ export function KnowledgeDocumentsPage({
     return () => {
       active = false;
     };
-  }, [client, knowledgeBaseId, kbMetaAttempt, t]);
+  }, [client, knowledgeBaseId, kbMetaAttempt, locale]);
 
   useEffect(() => {
     let active = true;
