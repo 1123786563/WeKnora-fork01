@@ -55,6 +55,7 @@ function findAddTile(container: HTMLElement, label: string) {
 interface EmbedMountInput {
   embedChannels?: IntegrationResource[];
   agents?: { id: string; name: string; config?: Record<string, unknown> }[];
+  canEdit?: boolean;
   onCreateEmbed?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<IntegrationResource | void>;
   onUpdateEmbed?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onRotateEmbed?: (id: string) => Promise<void>;
@@ -75,6 +76,7 @@ async function mountEmbedPage(input: EmbedMountInput = {}) {
       apiBaseUrl: 'https://weknora.test',
       locale: 'zh-CN',
       agents: input.agents ?? [{ id: 'agent-1', name: '知识助手' }],
+      canEdit: input.canEdit ?? true,
       onOpenEmbed: input.onOpenEmbed,
       actions: {
         onCreateEmbed: input.onCreateEmbed ?? (async () => undefined),
@@ -289,6 +291,26 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
     enabled: true,
     agent_id: 'agent-1',
   });
+});
+
+test('non-admin embed editing keeps Vue fields read-only and hides the mutation footer', async () => {
+  const channel: IntegrationResource = {
+    id: 'ch-readonly', name: '只读渠道', agent_id: 'agent-1', enabled: true,
+    allowed_origins: ['https://readonly.example.test'], publish_token: 'tok_readonly',
+  };
+  const container = await mountEmbedPage({ embedChannels: [channel], canEdit: false });
+  await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
+
+  const firstStep = container.querySelector('.wk-embed-step') as HTMLElement;
+  await act(async () => { firstStep.click(); });
+  const form = container.querySelector('form')!;
+  const editableControls = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea'));
+  assert.ok(editableControls.length > 0, 'read-only drawer still exposes the Vue configuration fields');
+  assert.ok(editableControls.every((control) => control.disabled || Array.from(control.closest('form')?.querySelectorAll('fieldset') ?? []).some((field) => field.contains(control) && field.disabled)), 'Vue disables every embed field for non-admins');
+  assert.equal(form.querySelector('.wk-form-actions'), null, 'Vue hides the SettingDrawer footer for non-admins');
+
+  await act(async () => { (container.querySelector('.wk-embed-step') as HTMLElement).click(); });
+  assert.equal(Array.from(container.querySelectorAll('button')).some((button) => button.title === '重置渠道密钥'), false, 'Vue hides reset-key mutation for non-admins');
 });
 
 test('the wizard walks all steps with localized copy and no raw key leaks', async () => {

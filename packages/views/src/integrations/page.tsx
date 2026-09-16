@@ -561,6 +561,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             previewLoading={embedPreviewLoading}
             onPreview={previewEmbedChannel}
             busy={busy}
+            canEdit={canEdit}
             canSubmit={canEdit && Boolean(actions.onCreateEmbed || actions.onUpdateEmbed)}
             onNext={embedNext}
             onBack={embedBack}
@@ -1069,7 +1070,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
 // lines 70-386): 渠道 → 安全限流 → 对话能力 → 外观展示 → 事件回调, plus the
 // edit-only 部署 step with snippet tabs, server examples and the channel key
 // controls. Copy follows the embedPublish.* verbatim fallback layer.
-function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onAgentPicked, step, steps, originsText, onOriginsText, onNameTouched, editing, detail, editingEnabled, onEditingEnabled, warning, status, snippetTab, onSnippetTab, serverTab, onServerTab, revealed, onReveal, onRotate, previewLoading, onPreview, busy, canSubmit, onNext, onBack, onGoTo, onSave, onCancel }: {
+function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onAgentPicked, step, steps, originsText, onOriginsText, onNameTouched, editing, detail, editingEnabled, onEditingEnabled, warning, status, snippetTab, onSnippetTab, serverTab, onServerTab, revealed, onReveal, onRotate, previewLoading, onPreview, busy, canEdit, canSubmit, onNext, onBack, onGoTo, onSave, onCancel }: {
   t: Translator;
   apiBaseUrl: string;
   agents?: readonly IntegrationAgentOption[];
@@ -1098,6 +1099,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
   previewLoading: boolean;
   onPreview: (channel: IntegrationResource) => void;
   busy: boolean;
+  canEdit: boolean;
   canSubmit: boolean;
   onNext: () => void;
   onBack: () => void;
@@ -1144,6 +1146,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
         </button>
       ))}
     </div>
+    <fieldset disabled={!canEdit} className="contents">
     {warning ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{warning}</p> : null}
     {status ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{status}</p> : null}
 
@@ -1261,6 +1264,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
     </fieldset> : null}
     {/* Vue renders the deploy-after-save hint inside step 5 for create mode. */}
     {step === 4 && !isEditing ? <div className="wk-embed-deploy-hint" role="note">ℹ️<p>{t('embedPublish.deployAfterSaveHint')}</p></div> : null}
+    </fieldset>
 
     {/* Step 6 exists only while editing (Vue template v-else-if="editingId"). */}
     {step >= 5 && channel ? <fieldset className="wk-im-step-body">
@@ -1313,11 +1317,11 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       {!token ? <p className="wk-muted text-muted">{t('embedPublish.channelKeyHint')}</p> : null}
     </fieldset> : null}
 
-    <div className="wk-form-actions">
+    {canEdit ? <div className="wk-form-actions">
       {step > 0 ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
       <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !canSubmit}>{step < steps.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
       <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={onCancel}>{t('common.cancel')}</button>
-    </div>
+    </div> : null}
   </form>;
 }
 
