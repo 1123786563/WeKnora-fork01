@@ -50,12 +50,12 @@ var versionedSQLiteColumns = map[string][]string{
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
 // attempts, decisions, inputs, events, checkpoints); 000019 the workbench
-// interaction queue and 000020 the execution dispatch log. The versioned
-// SQLite migration stream continues through 000040 (open-connector
-// 000041-000044) and the Craft tables through 000052, native OIDC exchange
-// through 000053, tenant skills at 000054, the workbench run rebuild at
-// 000055, the workbench request queue at 000056 and the execution target
-// schema at 000057.
+// interaction queue, 000020 the execution dispatch log and 000021 the
+// execution observation cursors. The versioned SQLite migration stream
+// continues through 000040 (open-connector 000041-000044) and the Craft
+// tables through 000052, native OIDC exchange through 000053, tenant skills
+// at 000054, the workbench run rebuild at 000055, the workbench request
+// queue at 000056 and the execution target schema at 000057.
 const expectedSQLiteMigrationVersion = 57
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {

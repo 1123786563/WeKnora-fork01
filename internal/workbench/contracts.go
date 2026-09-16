@@ -50,9 +50,11 @@ type ExecutionEvent struct {
 }
 
 type ExecutionSnapshot struct {
-	Execution ExecutionDTO     `json:"execution"`
-	Watermark int64            `json:"watermark"`
-	Events    []ExecutionEvent `json:"events"`
+	Execution          ExecutionDTO     `json:"execution"`
+	Watermark          int64            `json:"watermark"`
+	Incomplete         bool             `json:"incomplete"`
+	ConfirmedWatermark int64            `json:"confirmed_watermark"`
+	Events             []ExecutionEvent `json:"events"`
 }
 
 var iso8601 = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$`)

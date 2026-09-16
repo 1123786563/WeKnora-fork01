@@ -15,8 +15,9 @@ import (
 func NewWorkbenchReadHandler(
 	runs *repository.AgentRunStore,
 	snapshots *repository.AgentRunSnapshotRepository,
+	ingestor *repository.ExecutionObservationStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots)
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor)
 }
 
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run

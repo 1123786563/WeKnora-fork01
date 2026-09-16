@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -100,6 +101,38 @@ func executionFromRun(ctx context.Context, resolver CapabilityResolver, row snap
 	}
 }
 
+func projectExecutionEvents(execution workbench.ExecutionDTO, events []workbench.ExecutionEvent) workbench.ExecutionDTO {
+	// The durable run row remains authoritative for a terminal outcome. While a
+	// run is active, however, provider observations can advance the product
+	// projection before the worker updates agent_runs; expose that progress in
+	// the same DTO consumed by the mobile client.
+	if execution.RunStatus == "queued" || execution.RunStatus == "running" || execution.RunStatus == "reconciling" {
+		succeeded, failed, canceled := false, false, false
+		for _, event := range events {
+			switch event.Type {
+			case "run.completed", "execution.succeeded", "status.succeeded":
+				succeeded = true
+			case "run.failed", "execution.failed", "status.failed":
+				failed = true
+			case "run.canceled", "execution.canceled", "status.canceled":
+				canceled = true
+			}
+		}
+		switch {
+		case canceled:
+			execution.RunStatus, execution.ExecutionStatus = "canceled", "canceled"
+		case failed:
+			execution.RunStatus, execution.ExecutionStatus = "failed", "failed"
+		case succeeded:
+			execution.RunStatus, execution.ExecutionStatus = "succeeded", "succeeded"
+		}
+		if canceled || failed || succeeded {
+			execution.SettlementStatus = "settled"
+		}
+	}
+	return execution
+}
+
 // ReadRunSnapshot reads the run row and all retained events in one database
 // transaction. The transaction gives callers a single watermark and prevents
 // a concurrent event append from producing a snapshot whose execution seq is
@@ -131,6 +164,26 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			Order("seq ASC").Find(&rows).Error; err != nil {
 			return err
 		}
+		var observation struct {
+			Incomplete        int
+			ConfirmedSeq      int64
+			ConfirmedSnapshot []byte
+		}
+		var sourceRows []executionObservationRow
+		_ = tx.Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Find(&sourceRows).Error
+		for _, sourceRow := range sourceRows {
+			if sourceRow.SourceSeq <= 0 {
+				continue
+			}
+			var cursor executionSourceCursorRow
+			if tx.Where("tenant_id = ? AND binding_id = ? AND generation = ?", key.TenantID, sourceRow.BindingID, sourceRow.Generation).Take(&cursor).Error == nil && sourceRow.SourceSeq > cursor.LastConfirmedSeq {
+				observation.Incomplete = 1
+				if cursor.LastConfirmedSeq > observation.ConfirmedSeq {
+					observation.ConfirmedSeq = cursor.LastConfirmedSeq
+					observation.ConfirmedSnapshot = cursor.ConfirmedSnapshot
+				}
+			}
+		}
 		events := make([]workbench.ExecutionEvent, 0, len(rows))
 		var watermark int64
 		for _, row := range rows {
@@ -151,7 +204,22 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 		if resolver == nil {
 			resolver = environmentCapabilityResolver{}
 		}
-		result = workbench.ExecutionSnapshot{Execution: executionFromRun(ctx, resolver, run, watermark), Watermark: watermark, Events: events}
+		execution := projectExecutionEvents(executionFromRun(ctx, resolver, run, watermark), events)
+		incomplete := observation.Incomplete > 0 || (len(events) > 0 && events[0].Seq > 1)
+		confirmed := observation.ConfirmedSeq
+		if confirmed < 0 {
+			confirmed = 0
+		}
+		if confirmed == 0 && !incomplete {
+			confirmed = watermark
+		}
+		if incomplete && len(observation.ConfirmedSnapshot) > 0 {
+			var fallback []workbench.ExecutionEvent
+			if json.Unmarshal(observation.ConfirmedSnapshot, &fallback) == nil && len(fallback) > 0 {
+				events = fallback
+			}
+		}
+		result = workbench.ExecutionSnapshot{Execution: execution, Watermark: watermark, Incomplete: incomplete, ConfirmedWatermark: confirmed, Events: events}
 		return result.Validate()
 	}, txOptions)
 	return result, err

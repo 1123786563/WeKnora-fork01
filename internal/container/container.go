@@ -170,6 +170,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// durable worker. Keep it in the same database scope as AgentRunStore so
 	// provider starts can never bypass the W20 fence.
 	must(container.Provide(repository.NewExecutionDispatchStore))
+	must(container.Provide(repository.NewExecutionObservationStore))
 	must(container.Provide(newPaseoRemoteProvider))
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.

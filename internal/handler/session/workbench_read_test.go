@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,31 @@ func (s *workbenchRunReaderStub) GetOwnedRun(_ context.Context, tenantID uint64,
 type workbenchSnapshotReaderStub struct {
 	snapshotCalls int
 	snapshot      workbench.ExecutionSnapshot
+}
+
+type workbenchSourceIngestorStub struct {
+	event  workbench.ExecutionEvent
+	source repository.SourceObservation
+}
+
+func (s *workbenchSourceIngestorStub) IngestSourceEvent(_ context.Context, _ string, source repository.SourceObservation) (workbench.ExecutionEvent, error) {
+	s.source = source
+	return s.event, nil
+}
+
+func TestIngestWorkbenchSourceEventPOSTProjectsIntoSnapshotSeam(t *testing.T) {
+	runs := &workbenchRunReaderStub{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}}}
+	ingestor := &workbenchSourceIngestorStub{event: testWorkbenchEvent(1)}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/workbench/executions/r1/source-events", bytes.NewBufferString(`{"binding_id":"b1","generation":"g1","event_id":"e1","type":"text.delta","payload":{"text":"ok"}}`))
+	c.Params = gin.Params{{Key: "run_id", Value: "r1"}}
+	ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(1))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+	c.Request = c.Request.WithContext(ctx)
+	NewWorkbenchReadHandler(runs, &workbenchSnapshotReaderStub{}, ingestor).IngestWorkbenchSourceEvent(c)
+	require.Equal(t, http.StatusAccepted, recorder.Code)
+	require.Equal(t, "b1", ingestor.source.BindingID)
 }
 
 type workbenchStreamReaderStub struct {
@@ -127,6 +153,11 @@ func workbenchStreamRequest(t *testing.T) (*gin.Context, *httptest.ResponseRecor
 
 func testWorkbenchEvent(seq int64) workbench.ExecutionEvent {
 	return workbench.ExecutionEvent{SchemaVersion: 1, RunID: "r1", AttemptID: "a1", Seq: seq, Type: "text.delta", OccurredAt: "2026-09-16T00:00:00Z", Payload: json.RawMessage(`{"seq":1}`)}
+}
+
+func TestNormalizeWorkbenchEventsDeduplicatesAndOrdersByProductSeq(t *testing.T) {
+	events := normalizeWorkbenchEvents([]workbench.ExecutionEvent{testWorkbenchEvent(3), testWorkbenchEvent(1), testWorkbenchEvent(3), testWorkbenchEvent(2)})
+	require.Equal(t, []int64{1, 2, 3}, []int64{events[0].Seq, events[1].Seq, events[2].Seq})
 }
 
 func TestStreamWorkbenchDrainsMoreThanOnePage(t *testing.T) {

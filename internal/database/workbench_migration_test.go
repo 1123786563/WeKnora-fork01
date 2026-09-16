@@ -235,16 +235,23 @@ func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
 	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
 	require.True(t, sqliteTableExists(t, db, "execution_workspaces"))
 
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -1))
+	// Step down past every execution/workbench-family migration (targets at
+	// 57, requests at 56, the run rebuild at 55, then observations/dispatch/
+	// interactions at 21/20/19) so the paseo-owned tables are all absent.
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -19))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 56, version)
+	require.Equal(t, 16, version)
 	require.False(t, dirty)
 	require.False(t, sqliteTableExists(t, db, "execution_target_identities"))
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 1))
+	require.False(t, sqliteTableExists(t, db, "execution_observations"))
+	require.False(t, sqliteTableExists(t, db, "execution_source_cursors"))
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 19))
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 57, version)
 	require.False(t, dirty)
 	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
+	require.True(t, sqliteTableExists(t, db, "execution_observations"))
+	require.True(t, sqliteTableExists(t, db, "execution_source_cursors"))
 }
 
 // TestWorkbenchSQLiteDownRefusesPaseo catches a rollback that would silently
@@ -278,7 +285,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000021_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
@@ -297,7 +304,7 @@ func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") {
+		if entry.IsDir() {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
