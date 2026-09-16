@@ -523,6 +523,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
 	must(container.Provide(handler.NewExecutionTargetHandler))
+	must(container.Provide(execution.NewRegistrationService))
+	must(container.Provide(handler.NewExecutionRegistrationHandler))
 	must(container.Provide(func(
 		s *service.TenantSkillService, streams interfaces.StreamManager,
 	) *handler.SandboxSkillHandler {

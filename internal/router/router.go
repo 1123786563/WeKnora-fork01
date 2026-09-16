@@ -52,10 +52,11 @@ type RouterParams struct {
 	AuditLogService              interfaces.AuditLogService
 	ChunkHandler                 *handler.ChunkHandler
 	SessionHandler               *session.Handler
-	WorkbenchHandler             *session.WorkbenchReadHandler    `optional:"true"`
-	WorkbenchStartHandler        *session.WorkbenchStartHandler   `optional:"true"`
-	WorkbenchCommandHandler      *session.WorkbenchCommandHandler `optional:"true"`
-	ExecutionTargetHandler       *handler.ExecutionTargetHandler  `optional:"true"`
+	WorkbenchHandler             *session.WorkbenchReadHandler         `optional:"true"`
+	WorkbenchStartHandler        *session.WorkbenchStartHandler        `optional:"true"`
+	WorkbenchCommandHandler      *session.WorkbenchCommandHandler      `optional:"true"`
+	ExecutionTargetHandler       *handler.ExecutionTargetHandler       `optional:"true"`
+	ExecutionRegistrationHandler *handler.ExecutionRegistrationHandler `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
 	ModelHandler                 *handler.ModelHandler
@@ -298,6 +299,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, rbacGuards, params.ExecutionTargetHandler)
+		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)

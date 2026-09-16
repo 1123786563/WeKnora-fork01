@@ -36,6 +36,19 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 	}
 }
 
+// RegisterExecutionRegistrationRoutes exposes only the authenticated personal
+// node control plane. The handler still rechecks tenant and owner predicates;
+// the route guard is not an ownership substitute.
+func RegisterExecutionRegistrationRoutes(r *gin.RouterGroup, h *handler.ExecutionRegistrationHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	registrations := g.apiKeyGroup(r.Group("/execution-registrations", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	registrations.POST("/challenges", h.CreateChallenge)
+	registrations.POST("", h.Complete)
+	registrations.DELETE("/:id", h.Revoke)
+}
+
 // RegisterWorkbenchStartRoutes adds the write and request-reconciliation
 // endpoints. They share the same authenticated API-key policy as reads.
 func RegisterWorkbenchStartRoutes(r *gin.RouterGroup, h *session.WorkbenchStartHandler, g *rbacGuards) {
