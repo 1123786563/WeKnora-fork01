@@ -28,6 +28,9 @@ func (p executionTargetProviderStub) VerifyTarget(context.Context, uint64, strin
 func (s *executionTargetStoreStub) CreateTarget(context.Context, execution.Target, string) error {
 	return nil
 }
+func (s *executionTargetStoreStub) CreateTargetIfTrusted(context.Context, execution.Target, string) error {
+	return nil
+}
 func (s *executionTargetStoreStub) GetOwnedTarget(context.Context, uint64, string, string) (execution.Target, error) {
 	return s.targets[0], nil
 }

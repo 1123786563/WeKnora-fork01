@@ -95,7 +95,7 @@ func (h *ExecutionTargetHandler) Create(c *gin.Context) {
 		c.Error(apperrors.NewUnauthorizedError("execution target identity is not trusted"))
 		return
 	}
-	if err := h.store.CreateTarget(c.Request.Context(), target, ""); err != nil {
+	if err := h.store.CreateTargetIfTrusted(c.Request.Context(), target, ""); err != nil {
 		c.Error(err)
 		return
 	}

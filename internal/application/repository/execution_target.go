@@ -7,6 +7,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/execution"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrExecutionTargetNotFound = errors.New("execution target not found")
@@ -15,6 +16,10 @@ var ErrExecutionTargetNotFound = errors.New("execution target not found")
 // Every request-facing read includes both tenant and owner predicates.
 type ExecutionTargetStore interface {
 	CreateTarget(ctx context.Context, target execution.Target, rootRef string) error
+	// CreateTargetIfTrusted rechecks the persisted node identity and inserts the
+	// target in one transaction. This closes the verify-then-insert rotation
+	// race; callers must still perform the provider preflight at the HTTP seam.
+	CreateTargetIfTrusted(ctx context.Context, target execution.Target, rootRef string) error
 	GetOwnedTarget(ctx context.Context, tenantID uint64, actor, targetID string) (execution.Target, error)
 	ListOwnedTargets(ctx context.Context, tenantID uint64, actor string) ([]execution.Target, error)
 	RevokeTarget(ctx context.Context, tenantID uint64, actor, targetID string) error
@@ -87,6 +92,22 @@ func toTarget(row executionTargetRow) execution.Target {
 
 func (s *executionTargetStore) CreateTarget(ctx context.Context, target execution.Target, rootRef string) error {
 	return s.db.WithContext(ctx).Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, RootRef: rootRef}).Error
+}
+
+func (s *executionTargetStore) CreateTargetIfTrusted(ctx context.Context, target execution.Target, rootRef string) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var identity executionTargetIdentityRow
+		query := tx.Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", target.TenantID, target.OwnerID, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active")
+		if tx.Dialector.Name() == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.First(&identity).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+			return execution.ErrTargetUntrusted
+		} else if err != nil {
+			return err
+		}
+		return tx.Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, RootRef: rootRef}).Error
+	})
 }
 
 func (s *executionTargetStore) GetOwnedTarget(ctx context.Context, tenantID uint64, actor, targetID string) (execution.Target, error) {

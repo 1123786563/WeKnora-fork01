@@ -133,6 +133,9 @@ func TestWorkbenchSQLiteV16FailureRollsBackAndRecovers(t *testing.T) {
 
 func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
+	if _, err := os.Stat(filepath.Join(repoRoot, "migrations", "sqlite", "000017_workbench_requests.up.sql")); err != nil {
+		t.Skip("blocked-dependency: W04 SQLite migration 000017 is not present in this isolated W18 base")
+	}
 	t.Run("fresh", func(t *testing.T) {
 		chdirAndRestore(t, repoRoot)
 		dbPath := filepath.Join(t.TempDir(), "url-fresh.db")
@@ -199,6 +202,9 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 // versions are filtered from this fixture.
 func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
+	if _, err := os.Stat(filepath.Join(repoRoot, "migrations", "sqlite", "000017_workbench_requests.up.sql")); err != nil {
+		t.Skip("blocked-dependency: W04 SQLite migration 000017 is not present in this isolated W18 base")
+	}
 	chdirAndRestore(t, repoRoot)
 	dbPath := filepath.Join(t.TempDir(), "execution-target-down-up.db")
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))

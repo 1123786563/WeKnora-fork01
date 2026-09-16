@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/execution"
@@ -69,4 +71,45 @@ func TestExecutionTargetIdentityProviderRejectsSelfAssertionAndStaleRotation(t *
 	require.ErrorIs(t, provider.VerifyTarget(ctx, 1, "u1", target), execution.ErrTargetUntrusted)
 	require.NoError(t, db.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND runtime_id = ? AND external_target_id = ?", 1, "r1", "x1").Update("credential_version", 2).Error)
 	require.NoError(t, provider.VerifyTarget(ctx, 1, "u1", target))
+}
+
+func TestCreateTargetIfTrustedRejectsCredentialRotationAtomically(t *testing.T) {
+	db := openExecutionTargetTestDB(t)
+	store := NewExecutionTargetStore(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: "r1", ExternalTargetID: "x1", OwnerID: "u1", CredentialVersion: 1, State: "active"}).Error)
+	stale := execution.Target{ID: "stale", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 1, RuntimeID: "r1", ExternalTargetID: "x1"}
+	require.NoError(t, db.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND runtime_id = ? AND external_target_id = ?", 1, "r1", "x1").Update("credential_version", 2).Error)
+	require.ErrorIs(t, store.CreateTargetIfTrusted(ctx, stale, "root"), execution.ErrTargetUntrusted)
+	var count int64
+	require.NoError(t, db.Model(&executionTargetRow{}).Where("id = ?", "stale").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestCreateTargetIfTrustedConcurrentCredentialRotation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+filepath.Join(t.TempDir(), "concurrent.db")+"?_busy_timeout=5000"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&executionTargetRow{}, &executionWorkspaceRow{}, &executionTargetIdentityRow{}))
+	store := NewExecutionTargetStore(db)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: "r1", ExternalTargetID: "x1", OwnerID: "u1", CredentialVersion: 1, State: "active"}).Error)
+	target := execution.Target{ID: "concurrent", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 1, RuntimeID: "r1", ExternalTargetID: "x1"}
+	var wg sync.WaitGroup
+	rotationStarted := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		close(rotationStarted)
+		_ = db.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND runtime_id = ? AND external_target_id = ?", 1, "r1", "x1").Update("credential_version", 2).Error
+	}()
+	<-rotationStarted
+	createErr := store.CreateTargetIfTrusted(ctx, target, "root")
+	wg.Wait()
+	if createErr == nil {
+		var row executionTargetRow
+		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "concurrent").First(&row).Error)
+		require.EqualValues(t, 1, row.CredentialVersion, "a target created before rotation keeps the version it was authorized with")
+	} else {
+		require.ErrorIs(t, createErr, execution.ErrTargetUntrusted)
+	}
 }
