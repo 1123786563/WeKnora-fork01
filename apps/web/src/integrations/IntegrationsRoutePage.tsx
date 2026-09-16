@@ -16,6 +16,10 @@ function currentIntegrationsLocale() {
   try { return integrationsLocale(window.localStorage.getItem('locale')); } catch { return integrationsLocale(null); }
 }
 
+export function restoreApiPlaygroundFocus(trigger: HTMLElement | null, open: boolean) {
+  if (!open) trigger?.focus();
+}
+
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
 export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgentId, embedded = false, apiBaseUrl = resolveApiBaseUrl(), canEdit = true }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; activeAgentId?: string | null; embedded?: boolean; apiBaseUrl?: string; canEdit?: boolean }) {
@@ -33,6 +37,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   const [agentsError, setAgentsError] = useState('');
   const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
   const [apiPlaygroundOpen, setApiPlaygroundOpen] = useState(false);
+  const playgroundTrigger = useRef<HTMLElement | null>(null);
   // Vue keeps the raw create-response token in memory for the Playground (the
   // list endpoint only returns masked keys). Same lifecycle here.
   const [playgroundApiKey, setPlaygroundApiKey] = useState('');
@@ -100,6 +105,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   }, [client, tab, activeTenantId]);
 
   useEffect(() => { if (tab === 'api' && activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client, tab]);
+  useEffect(() => { restoreApiPlaygroundFocus(playgroundTrigger.current, apiPlaygroundOpen); }, [apiPlaygroundOpen]);
 
   async function openEmbed(channel: IntegrationResource) {
     // Vue openPreviewForChannel (AgentEmbedChannelPanel.vue L993-1036): an
@@ -175,7 +181,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   return <>
     {embedPreviewNotice ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />
   </>;
 }
