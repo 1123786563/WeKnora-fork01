@@ -68,6 +68,7 @@ export function WikiPage({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [canContribute, setCanContribute] = useState(canContributeProp);
 
   useEffect(() => {
@@ -307,6 +308,26 @@ export function WikiPage({
     }
   }
 
+  async function deleteWikiPage() {
+    if (!canContribute || !selected || deleteBusy) return;
+    if (!window.confirm(t("wikiBrowser.deletePageConfirm", { title: selected.title }))) return;
+    setDeleteBusy(true);
+    try {
+      await client.wiki.remove(knowledgeBaseId, selected.slug);
+      setSelected(null);
+      setEditing(false);
+      setSaveState(null);
+      await loadPages();
+    } catch (error) {
+      setSaveState({
+        status: "error",
+        message: error instanceof Error ? error.message : t("wikiBrowser.deletePageFailed"),
+      });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   async function openHistory() {
     if (!selected) return;
     setHistoryOpen(true);
@@ -505,8 +526,16 @@ export function WikiPage({
                   <Button type="button" onClick={() => void openHistory()}>
                     {t("wikiBrowser.historyBtn")}
                   </Button>
+                  {canContribute ? <Button
+                    type="button"
+                    loading={deleteBusy}
+                    onClick={() => void deleteWikiPage()}
+                  >
+                    {t("wikiBrowser.deletePageBtn")}
+                  </Button> : null}
                 </div>
               </div>
+              {saveState?.status === "error" ? <Status tone="error">{saveState.message}</Status> : null}
               <pre className="wk-wiki-reader-content m-0 box-border min-h-[22rem] overflow-auto rounded-md border border-[#d8e0eb] bg-[#f8fafc] p-4 font-[inherit] leading-[1.65] whitespace-pre-wrap">{selected.content}</pre>
             </article>
           ) : null}

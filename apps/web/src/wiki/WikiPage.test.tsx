@@ -82,3 +82,10 @@ test('contributor mode keeps Wiki create and editor surfaces available', () => {
   assert.match(html, /class="wk-wiki-editor/);
   assert.match(html, /新建页面|新建 Wiki 页面/);
 });
+
+test('Vue page actions expose a contributor-only delete operation backed by the Wiki API', () => {
+  const source = WikiPage.toString();
+  assert.match(source, /deleteWikiPage\(/);
+  assert.match(source, /client\.wiki\.remove\(knowledgeBaseId,selected\.slug\)/);
+  assert.match(source, /wikiBrowser\.deletePageConfirm/);
+});
