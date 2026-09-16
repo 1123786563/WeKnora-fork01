@@ -42,7 +42,7 @@ function catalogItem(id: string, name: string, installations: SkillCatalogInstal
   return { id, name, installations, ...extra };
 }
 
-function renderPanel(role: 'viewer' | 'admin', props: { initialSkills?: never[]; initialCatalog?: SkillCatalog[]; initialSandboxConfigs?: SandboxConfigRecord[] } = {}) {
+function renderPanel(role: 'viewer' | 'admin' | 'owner' | 'system-admin', props: { initialSkills?: never[]; initialCatalog?: SkillCatalog[]; initialSandboxConfigs?: SandboxConfigRecord[] } = {}) {
   return renderToStaticMarkup(React.createElement(SkillSettingsPanel, { client, role, ...props }));
 }
 
@@ -53,6 +53,12 @@ test('skill settings keeps viewer state read-only', () => {
   assert.match(html, new RegExp(formatMessage('zh-CN', 'settings.skills.description')));
   assert.match(html, /PDF/);
   assert.doesNotMatch(html, /<button/);
+});
+
+test('system admins receive the Vue admin skill catalog controls', () => {
+  const html = renderPanel('system-admin', { initialCatalog: [], initialSandboxConfigs: [] });
+  assert.match(html, /添加技能/);
+  assert.doesNotMatch(html, /<h3/);
 });
 
 // --- Loading / empty states (SkillSettings.vue:14-33) --------------------------------
