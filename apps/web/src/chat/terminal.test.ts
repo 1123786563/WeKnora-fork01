@@ -54,6 +54,30 @@ test('opens with a short-lived ticket, isolates websocket credentials, and maps 
   assert.ok(snapshots.length >= 4);
 });
 
+test('lookup opens without provisioning and keeps an unbound sandbox actionable', async () => {
+  let openedUrl = '';
+  const sockets: FakeSocket[] = [];
+  const controller = createWebTerminalController({
+    sessionId: 'session-1',
+    wsOrigin: 'https://weknora.test',
+    issueTicket: async () => ({ ticket: 'lookup-ticket', expiresIn: 120 }),
+    socketFactory: (url) => {
+      openedUrl = url;
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      return socket;
+    },
+  });
+
+  await controller.open();
+
+  assert.equal(new URL(openedUrl).searchParams.has('provision'), false);
+  sockets[0]!.onmessage?.({
+    data: JSON.stringify({ type: 'error', code: 'SANDBOX_NOT_BOUND', message: 'not started' }),
+  });
+  assert.equal(controller.snapshot().status, 'needs_provision');
+});
+
 test('ignores stale websocket events after close and never sends input to a closed socket', async () => {
   let socket: FakeSocket | undefined;
   const controller = createWebTerminalController({

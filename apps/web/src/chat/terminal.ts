@@ -94,7 +94,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
     return expected === generation ? socket : null;
   }
 
-  function handleControl(expected: number, raw: string): void {
+  function handleControl(expected: number, raw: string, provisionAttempted: boolean): void {
     if (!currentSocket(expected)) return;
     let frame: Record<string, unknown>;
     try {
@@ -119,12 +119,13 @@ export function createWebTerminalController(options: WebTerminalControllerOption
       const message = typeof frame.message === 'string' && frame.message.trim()
         ? frame.message
         : options.errorCopy ?? 'Terminal connection failed';
-      publish({ ...snapshot, status: terminalStatusFromCode(code, true), error: message });
+      publish({ ...snapshot, status: terminalStatusFromCode(code, provisionAttempted), error: message });
     }
   }
 
   async function open(input: { provision?: boolean; signal?: AbortSignal } = {}): Promise<void> {
     const expected = ++generation;
+    const provisionAttempted = input.provision === true;
     socket?.close(1000, 'replaced');
     socket = null;
     publish({ status: 'connecting', output: '', error: undefined });
@@ -140,7 +141,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
     if (expected !== generation) return;
     const url = withProvision(
       terminalWebSocketUrl(options.wsOrigin, options.sessionId, ticket.ticket, options.basePath),
-      input.provision !== false,
+      provisionAttempted,
     );
     const nextSocket = options.socketFactory(url);
     socket = nextSocket;
@@ -153,7 +154,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
     nextSocket.onmessage = (event) => {
       if (!currentSocket(expected)) return;
       if (typeof event.data === 'string') {
-        handleControl(expected, event.data);
+        handleControl(expected, event.data, provisionAttempted);
         return;
       }
       if (event.data instanceof ArrayBuffer || ArrayBuffer.isView(event.data)) {
