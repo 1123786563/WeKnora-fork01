@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-09-16T01:43:00Z",
+  "mode": "existing browser session, values redacted",
+  "sessionPresence": {
+    "vue": { "localStorageKeys": ["weknora_memberships", "weknora_refresh_token", "weknora_tenant", "weknora_token", "weknora_user"], "tokenPresent": true, "authMeStatus": 200 },
+    "react": { "localStorageKeys": ["weknora_memberships", "weknora_refresh_token", "weknora_tenant", "weknora_token", "weknora_user"], "tokenPresent": true, "authMeStatus": 200, "sessionCopiedFrom": "vue origin for local parity probe" }
+  },
+  "viewport": { "width": 1355, "height": 720 },
+  "targets": [
+    {
+      "name": "vue",
+      "routes": [
+        { "route": "/login", "finalURL": "http://127.0.0.1:5180/login", "visibleState": "login page in browser-use before navigation" },
+        { "route": "/platform/apps", "finalURL": "http://127.0.0.1:5180/platform/apps", "visibleState": "blank document; no heading; body text empty; root children 13", "screenshot": "vue-existing-session-platform-apps.png" },
+        { "route": "/platform/settings", "finalURL": "http://127.0.0.1:5180/platform/settings", "visibleState": "blank document; no heading; body text empty; dialogs 0", "screenshot": "vue-existing-session-platform-settings.png" }
+      ]
+    },
+    {
+      "name": "react",
+      "routes": [
+        { "route": "/platform/apps", "finalURL": "http://127.0.0.1:5181/onboarding/workspace", "visibleState": "workspace onboarding; text says deployment only supports invitation and user has no create-workspace permission", "screenshot": "react-existing-session-platform-apps.png" },
+        { "route": "/platform/settings", "finalURL": "http://127.0.0.1:5181/onboarding/workspace", "visibleState": "workspace onboarding; settings Portal not reached", "screenshot": "react-existing-session-platform-settings.png" }
+      ]
+    }
+  ],
+  "evidenceBoundary": {
+    "blockedEnv": [
+      "authenticated Vue apps/settings visible render: session API is 200 but both pages are blank",
+      "authenticated React apps/settings visible render: UI resolves to workspace onboarding despite auth/me 200",
+      "settings Portal interaction: no authenticated settings surface was rendered on either target"
+    ],
+    "redaction": "No token, email, user id, tenant id, or response credential was written to this file."
+  }
+}
