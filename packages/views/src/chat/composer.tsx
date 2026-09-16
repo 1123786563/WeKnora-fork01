@@ -74,6 +74,8 @@ export interface ChatComposerProps {
   onModelChange?(modelId: string): void;
   /** Vue control-right swaps send for stop while a reply is streaming. */
   streaming?: boolean;
+  /** Vue shows stop whenever the active session cannot accept a steer. */
+  canSteer?: boolean;
   onStop?(): void;
   /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
   copy?: ChatCopyTable;
@@ -85,7 +87,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const mentionSearchRef = useRef<HTMLInputElement>(null);
@@ -97,7 +99,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
     onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
   }
 
-  const showStop = streaming && !draft.trim();
+  const showStop = streaming && (!canSteer || !draft.trim());
   function selectAttachments(event: ChangeEvent<HTMLInputElement>): void {
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';

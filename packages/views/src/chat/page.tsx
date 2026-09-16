@@ -620,6 +620,7 @@ export function ChatPage(props: ChatPageProps) {
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
           streaming={streaming}
+          canSteer={Boolean(props.onSteer)}
           onStop={props.onStopStream}
         />
       </div>

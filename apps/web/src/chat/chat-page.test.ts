@@ -42,6 +42,22 @@ test('streaming steer composer renders one localized task label', () => {
   assert.equal(labels.length, 1);
 });
 
+test('streaming non-steer sessions keep the stop action visible with a stale draft', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    draft: 'draft typed before the reply started',
+    disabled: true,
+    streaming: true,
+    onDraftChange: () => undefined,
+    onSubmit: () => undefined,
+    onStop: () => undefined,
+    copy: resolveChatCopy('zh-CN'),
+  }));
+
+  // Vue Input-field: isReplying && (!canSteer || !query.trim()) => stop.
+  assert.match(html, /class="wk-chat-stop/);
+  assert.doesNotMatch(html, /type="submit"/);
+});
+
 const baseProps = {
   sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
   selectedSessionId: 'session-1',
