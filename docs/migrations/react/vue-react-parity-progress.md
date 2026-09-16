@@ -3895,3 +3895,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   authenticated permission mutation, paired Vue/React computed styles and
   screenshots, and native Wails interaction remain unverified. No mobile code
   was modified.
+
+## 2026-09-16 Round R409 — Post-graph full Web regression
+
+- After the Graph arrow/toggle interaction coverage was integrated, the current
+  Web workspace regression completed with `1176/1176` tests passing. This is
+  unit/component evidence only; it does not promote authenticated visual,
+  real-backend mutation, browser Portal, real Embed streaming, or native Wails
+  rows to accepted.
+- `git diff --check` remains clean for parity files. The only dirty paths are
+  the user's pre-existing Go/workbench changes and generated workbench plan
+  files; no mobile code was modified.
