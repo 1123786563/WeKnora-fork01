@@ -4146,3 +4146,19 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Vue/React screenshots and computed-style sweeps, real backend settings/FAQ/
   administration mutation and permission flows, and per-feature Wails
   interaction remain open or `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R427 — Parallel route, FAQ, upload, and processing parity
+
+- Four independent Vue-baseline fixes landed: same-path Settings history now
+  uses React navigation instead of an unconditional reload (`537ef203`); the
+  development Markdown fixture omits the custom result for blank input like
+  Vue (`61b440cb`); knowledge upload progress rejects the invalid zero KB
+  identifier (`d580d4cc`); and processing timeline polling preserves Vue's
+  post-terminal quiesce grace for delayed work (`1bb49af7`).
+- Shared regression passed `500/500`; integrated Web regression passed
+  `1231/1231`; Web typecheck, `git diff --check`, Web build, Embed build,
+  Desktop 9/9 tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real backend route/FAQ/
+  upload/processing permission and mutation flows, and per-feature Wails
+  interaction remain open or `blocked-env`. No mobile code was modified.
