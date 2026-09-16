@@ -69,6 +69,10 @@ export function renderMarkdownFixture(markdown: string): string {
   return renderChatMarkdown(markdown);
 }
 
+export function shouldRenderCustomMarkdown(markdown: string): boolean {
+  return markdown.trim().length > 0;
+}
+
 export function DevMarkdownPage() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [streamBuffer, setStreamBuffer] = useState('');
@@ -158,8 +162,9 @@ export function DevMarkdownPage() {
         Paste any Markdown here to test rendering.
         <Textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} rows={12} />
       </label>
-      <section ref={outputRef} aria-label="Rendered Markdown" className="wk-markdown-test-output" dangerouslySetInnerHTML={{ __html: renderMarkdownFixture(markdown) }}>
-      </section>
+      {shouldRenderCustomMarkdown(markdown) && (
+        <section ref={outputRef} aria-label="Rendered Markdown" className="wk-markdown-test-output" dangerouslySetInnerHTML={{ __html: renderMarkdownFixture(markdown) }} />
+      )}
     </main>
   );
 }
