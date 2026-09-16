@@ -88,3 +88,7 @@ test('MCP tool details restore focus and keep detail ids unique per rendered too
 test('MCP tool detail trigger keeps the Vue open-state brand color', () => {
   assert.match(source, /className=\{`[^`]*\$\{isOpen \? 'text-\[#07c05f\]' : 'text-\[#66758b\]'\}`\}/);
 });
+
+test('MCP policy controls preserve the Vue inline control layout', () => {
+  assert.match(source, /className="items-center cursor-pointer leading-5 inline-flex gap-2 text-\[12px\]/);
+});
