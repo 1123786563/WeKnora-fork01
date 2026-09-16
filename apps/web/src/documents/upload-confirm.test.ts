@@ -62,10 +62,6 @@ test('keeps Vue source preview order and exposes removable source items', () => 
   assert.deepEqual(getUploadConfirmSourceItems({
     files: [{ name: 'notes.md' }, { name: 'diagram.png' }],
     urls: ['https://example.test/doc'],
-    multimodalEnabled: false,
-    multimodalModelId: '',
-    asrEnabled: false,
-    asrModelId: '',
   }), [
     { kind: 'url', index: 0, label: 'https://example.test/doc', meta: 'URL' },
     { kind: 'file', index: 0, label: 'notes.md', meta: 'File' },

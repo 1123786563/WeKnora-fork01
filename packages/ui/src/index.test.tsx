@@ -98,9 +98,9 @@ test('Sheet gives its title an accessible labelled relationship', () => {
 
 test('Status renders the semantic live-region contract for each tone', () => {
   const markup = renderToStaticMarkup(<><Status>Loading</Status><Status tone="success">Saved</Status><Status tone="error">Failed</Status></>);
-  assert.match(markup, /Loading.{0,200}role="status"/s);
-  assert.match(markup, /Saved.{0,200}role="status"/s);
-  assert.match(markup, /Failed.{0,200}role="alert"/s);
+  assert.match(markup, /role="status"[^>]*>Loading</);
+  assert.match(markup, /role="status"[^>]*>Saved</);
+  assert.match(markup, /role="alert"[^>]*>Failed</);
 });
 
 test('shared overlay primitives retain Vue-derived style hooks', () => {

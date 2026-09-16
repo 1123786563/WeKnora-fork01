@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import React, { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from './lib/utils.ts';
 import './theme.css';
 export { Dialog } from './dialog.tsx';

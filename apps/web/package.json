@@ -16,8 +16,8 @@
     "@weknora/i18n": "workspace:*",
     "@weknora/ui": "file:../../packages/ui",
     "@weknora/views": "workspace:*",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "xlsx": "file:./vendor/xlsx-0.20.2.tgz"
   },
   "devDependencies": {

@@ -198,20 +198,6 @@ export function parseKnowledgeBaseConfigUpdateInput(value: unknown): KnowledgeBa
   return input as KnowledgeBaseConfigUpdateInput;
 }
 
-export interface KnowledgeBaseConfigInput {
-  chunking_config?: Record<string, unknown>;
-  image_processing_config?: Record<string, unknown>;
-  faq_config?: Record<string, unknown>;
-  wiki_config?: Record<string, unknown>;
-  auto_tag_config?: Record<string, unknown>;
-  indexing_strategy?: {
-    vector_enabled: boolean;
-    keyword_enabled: boolean;
-    wiki_enabled: boolean;
-    graph_enabled: boolean;
-  };
-}
-
 export interface KnowledgeBaseUpdateInput {
   name: string;
   description?: string;
