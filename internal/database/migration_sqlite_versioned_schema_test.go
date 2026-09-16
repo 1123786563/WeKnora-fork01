@@ -48,7 +48,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"execution_workspaces":        {"target_id", "root_ref"},                          // 000018
 }
 
-const expectedSQLiteMigrationVersion = 20
+const expectedSQLiteMigrationVersion = 21
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

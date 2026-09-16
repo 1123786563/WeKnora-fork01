@@ -129,6 +129,11 @@ func testWorkbenchEvent(seq int64) workbench.ExecutionEvent {
 	return workbench.ExecutionEvent{SchemaVersion: 1, RunID: "r1", AttemptID: "a1", Seq: seq, Type: "text.delta", OccurredAt: "2026-09-16T00:00:00Z", Payload: json.RawMessage(`{"seq":1}`)}
 }
 
+func TestNormalizeWorkbenchEventsDeduplicatesAndOrdersByProductSeq(t *testing.T) {
+	events := normalizeWorkbenchEvents([]workbench.ExecutionEvent{testWorkbenchEvent(3), testWorkbenchEvent(1), testWorkbenchEvent(3), testWorkbenchEvent(2)})
+	require.Equal(t, []int64{1, 2, 3}, []int64{events[0].Seq, events[1].Seq, events[2].Seq})
+}
+
 func TestStreamWorkbenchDrainsMoreThanOnePage(t *testing.T) {
 	first := make([]workbench.ExecutionEvent, 256)
 	for i := range first {

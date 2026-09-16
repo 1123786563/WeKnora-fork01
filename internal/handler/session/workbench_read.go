@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -198,6 +199,7 @@ func isTerminalWorkbenchStatus(status string) bool {
 }
 
 func flushWorkbenchEvents(c *gin.Context, events []workbench.ExecutionEvent) bool {
+	events = normalizeWorkbenchEvents(events)
 	for _, event := range events {
 		if err := writeWorkbenchSSE(c.Writer, event.Seq, event.Type, event.Payload); err != nil {
 			return false
@@ -205,6 +207,24 @@ func flushWorkbenchEvents(c *gin.Context, events []workbench.ExecutionEvent) boo
 		flushWorkbenchWriter(c)
 	}
 	return true
+}
+
+// normalizeWorkbenchEvents is a defensive client-stream boundary. Durable
+// ingestion already de-duplicates source events, but reconnect adapters may
+// still hand us a repeated or out-of-order page. Product seq is authoritative:
+// emit each seq once and in ascending order without dropping unknown types.
+func normalizeWorkbenchEvents(events []workbench.ExecutionEvent) []workbench.ExecutionEvent {
+	seen := make(map[int64]struct{}, len(events))
+	result := make([]workbench.ExecutionEvent, 0, len(events))
+	for _, event := range events {
+		if _, exists := seen[event.Seq]; exists {
+			continue
+		}
+		seen[event.Seq] = struct{}{}
+		result = append(result, event)
+	}
+	sort.SliceStable(result, func(i, j int) bool { return result[i].Seq < result[j].Seq })
+	return result
 }
 
 func flushWorkbenchWriter(c *gin.Context) {
