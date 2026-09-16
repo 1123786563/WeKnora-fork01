@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldShowEmbedTimestamp, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -79,6 +79,21 @@ test('conversation timestamps follow the Vue today/yesterday/year buckets', () =
   assert.equal(formatEmbedConversationTimestamp(new Date(2026, 8, 2, 9, 4).toISOString(), 'en-US', now), 'Sep 2, 09:04');
   assert.equal(formatEmbedConversationTimestamp(new Date(2025, 8, 2, 9, 4).toISOString(), 'zh-CN', now), '2025年9月2日 09:04');
   assert.equal(formatEmbedConversationTimestamp('invalid', 'en-US', now), '');
+});
+
+test('conversation timestamp insertion follows the Vue turn grouping', () => {
+  const messages = [
+    { role: 'user', created_at: '2026-09-16T09:00:00.000Z' },
+    { role: 'assistant', created_at: '2026-09-16T09:00:01.000Z' },
+    { role: 'user', created_at: '2026-09-16T09:02:00.000Z' },
+    { role: 'assistant', created_at: '2026-09-16T09:02:01.000Z' },
+    { role: 'user', created_at: '2026-09-16T09:08:00.000Z' },
+  ];
+  assert.equal(shouldShowEmbedTimestamp(messages, 0), true);
+  assert.equal(shouldShowEmbedTimestamp(messages, 1), false);
+  assert.equal(shouldShowEmbedTimestamp(messages, 2), false);
+  assert.equal(shouldShowEmbedTimestamp(messages, 3), false);
+  assert.equal(shouldShowEmbedTimestamp(messages, 4), true);
 });
 
 test('knowledge references map to a flat source list', () => {

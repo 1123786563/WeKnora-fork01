@@ -8,7 +8,7 @@ import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 import { Button } from '../../../packages/ui/src/button.tsx';
 import '../../../packages/ui/src/theme.css';
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences, translate } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldShowEmbedTimestamp, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -397,7 +397,7 @@ export function EmbedApp() {
         {status !== 'error' && messages.length === 0 && (suggestedLoading || suggested.length > 0) ? <div className="embed-suggestions"><p className="embed-suggestions-title">{suggested.length > 0 ? t('embed.suggestedQuestions', 'You can ask me') : null}</p>{suggestedLoading && suggested.length === 0 ? [1, 2, 3, 4].map((item) => <div className="embed-suggestion-skeleton" key={item} />) : suggested.map((item, index) => <button type="button" key={`${textOf(item.question)}-${index}`} onClick={() => void sendMessage(undefined, textOf(item.question))}>{textOf(item.question)}</button>)}</div> : null}
         <div className="embed-messages">
           {messages.map((message, index) => <article key={textOf(message.id) || `${message.role}-${index}`}>
-            {index === 0 || messages[index - 1]?.role !== 'user' || (() => { const previous = new Date(messages[index - 1]?.created_at || '').getTime(); const current = new Date(message.created_at || '').getTime(); return Number.isFinite(current) && (!Number.isFinite(previous) || current - previous >= 5 * 60 * 1000 || new Date(messages[index - 1]?.created_at || '').toDateString() !== new Date(message.created_at || '').toDateString()); })() ? <time className="embed-timestamp" dateTime={message.created_at}>{formatEmbedConversationTimestamp(message.created_at, effectiveLocale)}</time> : null}
+            {shouldShowEmbedTimestamp(messages, index) ? <time className="embed-timestamp" dateTime={message.created_at}>{formatEmbedConversationTimestamp(message.created_at, effectiveLocale)}</time> : null}
             <div className={`embed-message embed-message-${message.role === 'user' ? 'user' : 'assistant'}`}>
             <div className="embed-bubble embed-bubble-assistant">
             {message.role === 'user' && Array.isArray(message.images) ? <div className="embed-message-images">{message.images.map((image, imageIndex) => <img key={imageIndex} src={textOf(asRecord(image).url ?? asRecord(image).data)} alt="" />)}</div> : null}

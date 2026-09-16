@@ -98,6 +98,18 @@ export function formatEmbedConversationTimestamp(value: unknown, locale: string,
     : `${month} ${date.getDate()}, ${date.getFullYear()} ${time}`;
 }
 
+export function shouldShowEmbedTimestamp(messages: readonly { role?: unknown; created_at?: unknown }[], index: number, gapMs = 5 * 60 * 1000): boolean {
+  const current = messages[index];
+  if (!current || typeof current.created_at !== 'string' || Number.isNaN(new Date(current.created_at).getTime())) return false;
+  const previous = messages[index - 1];
+  if (!previous) return true;
+  if (current.role === 'assistant' && previous.role === 'user') return false;
+  if (typeof previous.created_at !== 'string' || Number.isNaN(new Date(previous.created_at).getTime())) return true;
+  const currentDate = new Date(current.created_at);
+  const previousDate = new Date(previous.created_at);
+  return currentDate.toDateString() !== previousDate.toDateString() || currentDate.getTime() - previousDate.getTime() >= gapMs;
+}
+
 const uploadLabels: Record<string, { file: string; image: string }> = {
   'zh-CN': { file: '上传附件', image: '上传图片' },
   'en-US': { file: 'Upload file', image: 'Upload image' },
