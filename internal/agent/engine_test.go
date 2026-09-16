@@ -8,14 +8,20 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/compaction"
 	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
+	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type countingTool struct {
@@ -253,6 +259,94 @@ func TestRunToolCallRejectsUnresolvedHandlesBeforeExecution(t *testing.T) {
 	require.False(t, result.Result.Success)
 	require.Contains(t, result.Result.Error, "unresolved model handles")
 }
+
+type engineApprovalChecker struct{}
+
+func (engineApprovalChecker) IsRequired(context.Context, uint64, string, string) (bool, error) {
+	return true, nil
+}
+
+func (engineApprovalChecker) IsEnabled(context.Context, uint64, string, string) (bool, error) {
+	return true, nil
+}
+
+// TestAgentRunToolCallProjectsDurableRunID exercises the production seam that
+// previously lost the durable identity: AgentEngine.runToolCall installs a
+// ToolExecContext, MCPTool turns it into PendingRequest, and the real Gate
+// observer persists it through GormInteractionStore. RequestID is supplied
+// independently to prove it is not being used as a run identity fallback.
+func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/run-id.db?_busy_timeout=5000"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Exec(`CREATE TABLE workbench_interactions (
+		tenant_id INTEGER NOT NULL, id VARCHAR(128) NOT NULL, run_id VARCHAR(128) NOT NULL,
+		owner_id VARCHAR(255) NOT NULL, kind VARCHAR(32) NOT NULL, args_hash VARCHAR(128) NOT NULL,
+		decision_id VARCHAR(128) NOT NULL DEFAULT '', action VARCHAR(32) NOT NULL DEFAULT '',
+		status VARCHAR(32) NOT NULL DEFAULT 'pending', expected_revision INTEGER NOT NULL DEFAULT 0,
+		expires_at DATETIME, revoked INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (tenant_id, id)
+	)`).Error)
+
+	gate := approval.NewGate(&config.Config{Agent: &config.AgentConfig{ToolApprovalTimeoutSeconds: 2}}, engineApprovalChecker{}, nil)
+	store := workbenchservice.NewGormInteractionStore(db)
+	_ = workbenchservice.NewInteractionServiceWithApproval(store, nil, nil, gate)
+
+	bus := event.NewEventBus()
+	var observed event.ToolApprovalRequiredData
+	principal := types.Principal{Type: types.PrincipalWebUser, ID: "u1"}
+	bus.On(event.EventToolApprovalRequired, func(_ context.Context, evt event.Event) error {
+		observed = evt.Data.(event.ToolApprovalRequiredData)
+		return gate.Resolve(observed.TenantID, principal.StorageID(), observed.PendingID, approval.Decision{Approved: false, Reason: "test projection"})
+	})
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, types.TenantIDContextKey, uint64(7))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+	ctx = context.WithValue(ctx, types.RunIDContextKey, "durable-run-42")
+	ctx = context.WithValue(ctx, types.RequestIDContextKey, "request-42")
+	ctx = types.WithPrincipal(ctx, principal)
+
+	registry := agenttools.NewToolRegistry()
+	manager := internalmcp.NewMCPManager(nil)
+	defer manager.Shutdown()
+	service := &types.MCPService{ID: "orders", TenantID: 7, Enabled: true, Name: "Orders", URL: strPtr("http://127.0.0.1:1")}
+	metadata := &agenttools.MCPMetadataIO{Get: func(context.Context, uint64, string) (*types.MCPMetadata, error) {
+		return &types.MCPMetadata{Tools: []*types.MCPTool{{Name: "get_order", Description: "lookup order", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`)}}}, nil
+	}}
+	_, err = agenttools.RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, metadata)
+	require.NoError(t, err)
+	registry.PrepareMCPTools(ctx)
+	describeResult, err := registry.ExecuteTool(ctx, agenttools.ToolDiscoverMCPTools, json.RawMessage(`{"mode":"describe","server_id":"orders","tool_name":"get_order"}`))
+	require.NoError(t, err)
+	var described struct {
+		ToolRef string `json:"tool_ref"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(describeResult.Output), &described))
+	require.NotEmpty(t, described.ToolRef, "describe must return a callable tool_ref")
+
+	engine := newTestEngine(t, &mockChat{})
+	engine.toolRegistry = registry
+	engine.eventBus = bus
+	proxyArgs := fmt.Sprintf(`{"tool_ref":%q,"arguments":{"id":"42"}}`, described.ToolRef)
+	result := engine.runToolCall(ctx, types.LLMToolCall{ID: "call-42", Function: types.FunctionCall{Name: agenttools.ToolCallMCPTool, Arguments: proxyArgs}}, 0, 0, 1, "session-42", "assistant-42")
+	require.NotNil(t, result.Result)
+	require.False(t, result.Result.Success)
+	require.Equal(t, "request-42", observed.RequestID)
+
+	var runID, ownerID, kind string
+	require.NoError(t, db.Raw("SELECT run_id, owner_id, kind FROM workbench_interactions WHERE tenant_id = 7").Row().Scan(&runID, &ownerID, &kind))
+	require.Equal(t, "durable-run-42", runID)
+	require.NotEqual(t, observed.RequestID, runID)
+	require.Equal(t, principal.StorageID(), ownerID)
+	require.Equal(t, "tool_approval", kind)
+}
+
+func strPtr(value string) *string { return &value }
 
 func TestRunToolCallDecodesHandlesAfterJSONRepair(t *testing.T) {
 	newEngine := func() (*AgentEngine, *countingTool) {

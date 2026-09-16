@@ -23,3 +23,17 @@ func TestRegisterWorkbenchStartRoutesDeclaresStartAndLookup(t *testing.T) {
 	require.True(t, seen[http.MethodPost+" /api/v1/workbench/executions"])
 	require.True(t, seen[http.MethodGet+" /api/v1/workbench/executions/requests/:request_id"])
 }
+
+func TestRegisterWorkbenchCommandRoutesDeclaresTypedEndpoints(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	g := &rbacGuards{cfg: &config.Config{}}
+	RegisterWorkbenchCommandRoutes(r.Group("/api/v1"), session.NewWorkbenchCommandHandler(nil), g)
+	seen := map[string]bool{}
+	for _, route := range r.Routes() {
+		seen[route.Method+" "+route.Path] = true
+	}
+	require.True(t, seen[http.MethodGet+" /api/v1/workbench/executions/:run_id/interactions"])
+	require.True(t, seen[http.MethodPost+" /api/v1/workbench/executions/interactions/:id/decisions"])
+	require.True(t, seen[http.MethodPost+" /api/v1/workbench/executions/:run_id/commands"])
+}

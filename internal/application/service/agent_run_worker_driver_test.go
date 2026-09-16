@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/database"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -51,17 +53,27 @@ func TestAgentRunWorkerTickSkipsPaseo(t *testing.T) {
 	_, err = store.Admit(ctx, paseo)
 	require.NoError(t, err)
 
-	executed := make(chan agentruntime.Fence, 1)
-	worker, err := NewAgentRunWorker(store, func(_ context.Context, fence agentruntime.Fence) error {
-		executed <- fence
+	type execution struct {
+		fence agentruntime.Fence
+		runID string
+	}
+	executed := make(chan execution, 1)
+	worker, err := NewAgentRunWorker(store, func(ctx context.Context, fence agentruntime.Fence) error {
+		runID, ok := types.RunIDFromContext(ctx)
+		if !ok {
+			return errors.New("worker did not install durable run id")
+		}
+		executed <- execution{fence: fence, runID: runID}
 		return nil
 	}, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 2})
 	require.NoError(t, err)
 	require.NoError(t, worker.Tick(ctx))
 
 	select {
-	case fence := <-executed:
-		require.Equal(t, platform.Key, fence.RunKey)
+	case got := <-executed:
+		require.Equal(t, platform.Key, got.fence.RunKey)
+		require.Equal(t, platform.Key.RunID, got.runID)
+		require.NotEqual(t, platform.RequestID, got.runID)
 	case <-time.After(time.Second):
 		t.Fatal("platform worker did not execute its platform run")
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -85,6 +86,7 @@ type Decision struct {
 // PendingRequest carries everything needed to block and notify the UI.
 type PendingRequest struct {
 	TenantID           uint64
+	RunID              string // durable execution identity; distinct from RequestID
 	UserID             string // owner of the session that initiated the call (used for Resolve authorization); empty disables user check
 	SessionID          string
 	AssistantMessageID string
@@ -148,12 +150,35 @@ var _ MCPApproval = (*Gate)(nil)
 // (issue #1173 cross-instance support). Without redis, the gate degrades to
 // single-process behavior (deployments must use sticky sessions).
 type Gate struct {
-	mu        sync.Mutex
-	pending   map[string]*waiter
-	checker   Checker
-	timeout   time.Duration
-	rdb       *redis.Client // optional; nil disables cross-instance fan-out
-	failClose bool          // when true, NeedsApproval errors block (require approval) instead of skip
+	mu              sync.Mutex
+	pending         map[string]*waiter
+	checker         Checker
+	timeout         time.Duration
+	rdb             *redis.Client // optional; nil disables cross-instance fan-out
+	failClose       bool          // when true, NeedsApproval errors block (require approval) instead of skip
+	pendingObserver func(context.Context, PendingRequest, string) error
+	pendingRollback func(context.Context, PendingRequest, string) error
+}
+
+// SetPendingObserver installs the durable interaction projector used by the
+// mobile workbench. The observer runs before the approval-required event is
+// emitted; an error fails closed and removes the in-memory waiter.
+func (g *Gate) SetPendingObserver(observer func(context.Context, PendingRequest, string) error) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.pendingObserver = observer
+	g.mu.Unlock()
+}
+
+func (g *Gate) SetPendingRollback(rollback func(context.Context, PendingRequest, string) error) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.pendingRollback = rollback
+	g.mu.Unlock()
 }
 
 type waiter struct {
@@ -345,6 +370,13 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 	if req.EventBus == nil {
 		return Decision{}, fmt.Errorf("tool approval: EventBus is nil")
 	}
+	// The durable projection and every resolve caller use the terminal
+	// principal's storage key. Normalize the request at the gate boundary so a
+	// legacy caller that still passes the display UserID cannot create a waiter
+	// that the authenticated HTTP decision endpoint cannot resolve.
+	if principal, ok := types.PrincipalFromContext(ctx); ok {
+		req.UserID = principal.StorageID()
+	}
 
 	pendingID := uuid.New().String()
 	w := &waiter{
@@ -355,7 +387,17 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 
 	g.mu.Lock()
 	g.pending[pendingID] = w
+	observer := g.pendingObserver
+	rollback := g.pendingRollback
 	g.mu.Unlock()
+	if observer != nil {
+		if err := observer(ctx, req, pendingID); err != nil {
+			g.mu.Lock()
+			delete(g.pending, pendingID)
+			g.mu.Unlock()
+			return Decision{}, fmt.Errorf("persist tool approval interaction: %w", err)
+		}
+	}
 
 	defer func() {
 		g.mu.Lock()
@@ -402,6 +444,11 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 		},
 		RequestID: req.RequestID,
 	}); err != nil {
+		if rollback != nil {
+			if rollbackErr := rollback(ctx, req, pendingID); rollbackErr != nil {
+				return Decision{}, fmt.Errorf("emit tool approval required: %w (rollback pending interaction: %v)", err, rollbackErr)
+			}
+		}
 		return Decision{}, fmt.Errorf("emit tool approval required: %w", err)
 	}
 

@@ -525,8 +525,12 @@ func (e *AgentEngine) runToolCall(
 	})
 
 	principal, _ := types.PrincipalFromContext(ctx)
+	runID, _ := types.RunIDFromContext(ctx)
+	requestID, _ := types.RequestIDFromContext(ctx)
 	execTimeout := toolExecutionTimeout(tc.Function.Name)
 	toolExecCtx := agenttools.WithToolExecContext(toolCtx, &agenttools.ToolExecContext{
+		RunID:              runID,
+		RequestID:          requestID,
 		SessionID:          sessionID,
 		AssistantMessageID: assistantMessageID,
 		EventBus:           e.eventBus,

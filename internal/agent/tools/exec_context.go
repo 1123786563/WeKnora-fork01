@@ -11,6 +11,8 @@ type execCtxKey struct{}
 
 // ToolExecContext is attached to context during agent tool execution (per tool call).
 type ToolExecContext struct {
+	// RunID is the durable execution identity. It is distinct from RequestID.
+	RunID              string
 	SessionID          string
 	AssistantMessageID string
 	RequestID          string

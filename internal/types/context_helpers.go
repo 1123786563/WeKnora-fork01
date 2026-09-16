@@ -49,6 +49,13 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return v, ok && v != ""
 }
 
+// RunIDFromContext extracts the durable execution identity installed by the
+// admission/worker boundary. Empty or non-string values are treated as absent.
+func RunIDFromContext(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(RunIDContextKey).(string)
+	return v, ok && strings.TrimSpace(v) != ""
+}
+
 // UserIDFromContext extracts the user ID string from ctx.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(UserIDContextKey).(string)
