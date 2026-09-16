@@ -28,7 +28,7 @@ func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDis
 	return &RemoteDispatcher{dispatch: dispatch}
 }
 
-func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
+func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
 	if provider == nil {
 		return "", ErrProviderUnavailable
 	}
@@ -42,7 +42,13 @@ func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey
 	if !record.New {
 		return "", repository.ErrDispatchBusy
 	}
-	externalID, err := provider.Start(ctx, key, commandID)
+	var externalID string
+	request := agentruntime.RemoteStartRequest{Fence: agentruntime.Fence{RunKey: key, Epoch: epoch}, CommandID: commandID, PayloadHash: payloadHash, AttemptID: commandID}
+	if commandProvider, ok := provider.(agentruntime.RemoteCommandProvider); ok {
+		externalID, err = commandProvider.StartCommand(ctx, request)
+	} else {
+		externalID, err = provider.Start(ctx, key, commandID)
+	}
 	if err != nil {
 		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
 			return "", fmt.Errorf("remote dispatch failed (%v); durable unknown recovery failed: %w", err, reconcileErr)

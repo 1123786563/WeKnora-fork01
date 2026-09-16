@@ -44,13 +44,21 @@ func newPaseoRemoteProvider() (workbenchservice.RemoteProvider, error) {
 }
 
 func (p *paseoRemoteProvider) Start(ctx context.Context, key agentruntime.RunKey, commandID string) (string, error) {
+	return p.StartCommand(ctx, agentruntime.RemoteStartRequest{Fence: agentruntime.Fence{RunKey: key}, CommandID: commandID, AttemptID: commandID, TargetID: p.target, WorkspaceRef: p.workspace, Prompt: p.prompt, Provider: p.provider})
+}
+
+func (p *paseoRemoteProvider) StartCommand(ctx context.Context, request agentruntime.RemoteStartRequest) (string, error) {
 	if p == nil || p.client == nil {
 		return "", errors.New("paseo remote provider is unavailable")
 	}
+	if request.CommandID == "" || request.Fence.RunID == "" || request.AttemptID == "" || request.TargetID == "" || request.WorkspaceRef == "" || request.Prompt == "" || request.Provider == "" || request.Fence.Epoch < 1 {
+		return "", errors.New("paseo remote provider requires a complete fenced command")
+	}
 	payload := map[string]any{
-		"commandID": commandID, "runID": key.RunID, "attemptID": commandID,
-		"targetID": p.target, "workspaceRef": p.workspace, "prompt": p.prompt,
-		"provider": p.provider, "epoch": 1, "expiresAt": time.Now().Add(30 * time.Second).UnixMilli(),
+		"commandID": request.CommandID, "runID": request.Fence.RunID, "attemptID": request.AttemptID,
+		"targetID": request.TargetID, "workspaceRef": request.WorkspaceRef, "prompt": request.Prompt,
+		"provider": request.Provider, "epoch": request.Fence.Epoch, "expiresAt": time.Now().Add(30 * time.Second).UnixMilli(),
+		"payloadHash": request.PayloadHash,
 	}
 	body, err := json.Marshal(map[string]any{"version": 1, "operation": "start", "payload": payload})
 	if err != nil {

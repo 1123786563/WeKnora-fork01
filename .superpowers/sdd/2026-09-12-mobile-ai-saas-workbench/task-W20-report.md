@@ -113,3 +113,17 @@ Fix-round-2 verification:
   `repository.WorkbenchRequestRepository` is absent, while recovery config
   fields arrive only with the later config-chain commits. `git diff --check`
   passes for this scoped fix.
+
+## Review fix round 4
+
+- Added `RemoteStartRequest` and the optional `RemoteCommandProvider` port.
+  Dispatch now forwards the worker fence epoch and immutable payload hash;
+  concrete providers receive fenced command data instead of relying on a
+  global prompt or hard-coded epoch.
+- The Paseo HTTP adapter implements `StartCommand`, validates command fields,
+  and sends the versioned bridge envelope with epoch, attempt, prompt, target,
+  workspace, provider, and payload hash. The bridge remains responsible for
+  admission/HMAC verification; bearer transport alone is not authorization.
+- Targeted Go execution was attempted, but the local cgo toolchain is blocked
+  by the host Xcode license gate. This is recorded as `blocked-env`; no live
+  Paseo acceptance is claimed.

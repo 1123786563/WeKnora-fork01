@@ -34,7 +34,7 @@ type RemoteDispatchConfig struct {
 type RemoteProvider = agentruntime.RemoteProvider
 
 type RemoteDispatcher interface {
-	Dispatch(context.Context, agentruntime.RunKey, string, string, string, time.Duration, RemoteProvider) (string, error)
+	Dispatch(context.Context, agentruntime.RunKey, string, string, string, time.Duration, int64, RemoteProvider) (string, error)
 }
 
 func (c RemoteDispatchConfig) validate() error {
@@ -248,7 +248,7 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 		commandID, payloadHash := w.remote.CommandID(fence)
 		key := fence.RunKey
 		if _, dispatchErr := w.remote.Dispatcher.Dispatch(
-			renewCtx, key, commandID, payloadHash, fence.Owner, w.cfg.Lease, w.remote.Provider,
+			renewCtx, key, commandID, payloadHash, fence.Owner, w.cfg.Lease, fence.Epoch, w.remote.Provider,
 		); dispatchErr != nil {
 			return
 		}
