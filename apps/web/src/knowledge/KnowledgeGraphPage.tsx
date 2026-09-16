@@ -229,12 +229,17 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           </div>
           <details className="mt-2 text-[.875rem] text-[#52627a]">
             <summary className="inline-block cursor-pointer">{t('wikiBrowser.helpButtonTitle')}</summary>
-            <dl className="mt-2 max-w-[34rem] rounded-[6px] border border-[#d8e0eb] bg-white p-[.65rem_.8rem] shadow-[0_8px_20px_rgba(31,52,84,.12)]">
-              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpClickDesc')}</dd></div>
-              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
-              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
-              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpDragAction')}</dt><dd className="m-0">{t('wikiBrowser.helpDragDesc')}</dd></div>
-              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpZoomAction')}</dt><dd className="m-0">{t('wikiBrowser.helpZoomDesc')}</dd></div>
+            <dl className="mt-2 min-w-[15rem] max-w-[20rem] rounded-[6px] border border-[#d8e0eb] bg-white p-[.65rem_.8rem] shadow-[0_8px_20px_rgba(31,52,84,.12)]">
+              <div className="mb-2 select-none text-[11px] font-normal uppercase leading-[14px] tracking-[.04em] text-muted">{t('wikiBrowser.helpTitle')}</div>
+              <div className="flex flex-col gap-[6px]">
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpClickDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpHoverPlusAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpHoverPlusDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpDragAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpDragDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpPanAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpPanDesc')}</dd></div>
+                <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-foreground">{t('wikiBrowser.helpZoomAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpZoomDesc')}</dd></div>
+              </div>
             </dl>
           </details></> : null}
         </div>

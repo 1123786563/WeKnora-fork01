@@ -88,3 +88,22 @@ test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract'
   assert.equal(line.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)');
   assert.equal(line.getAttribute('marker-start'), 'url(#wk-graph-arrow-start)');
 });
+
+test('graph help lists every canvas gesture documented by Vue', async () => {
+  const container = await mount();
+  const help = container.querySelector('details');
+  assert.ok(help);
+
+  const heading = help.querySelector('dl > div:not(.grid)');
+  assert.equal(heading?.textContent?.trim(), '画布操作');
+  const rows = [...help.querySelectorAll('dl div.grid')].map((row) => row.textContent?.trim());
+  assert.deepEqual(rows, [
+    '单击打开节点详情',
+    '双击以该节点为中心聚焦',
+    'Shift + 单击叠加该节点邻居到画布',
+    '悬浮 → ⊕同 Shift + 单击',
+    '拖拽节点手动调整节点位置',
+    '拖拽空白平移画布',
+    '滚轮缩放画布',
+  ]);
+});
