@@ -58,6 +58,23 @@ test('retrieval keeps the Vue rerank-model-first slider order', async () => {
   assert.ok(Boolean(model.compareDocumentPosition(slider) & 4), 'the rerank selector precedes the threshold sliders');
 });
 
+test('chat history hides the embedding model row while indexing is disabled like Vue', async () => {
+  const client = { settings: { chatHistory: { config: { update: async (body: Record<string, unknown>) => body } } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ConfigSettingsPanel
+      client={client}
+      section="chathistory"
+      initialValue={{ enabled: false, embedding_model_id: 'embed-1' }}
+      models={[{ id: 'embed-1', name: 'Embedding' }]}
+    />,
+  ));
+
+  assert.equal(container.querySelector('[data-testid="embedding_model_id"]'), null);
+});
+
 test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async () => {
   const client = { settings: { parser: { config: { update: async (body: Record<string, unknown>) => body, }, check: async () => ({ connected: true }) } } } as unknown as WeKnoraClient;
   const container = document.createElement('div');

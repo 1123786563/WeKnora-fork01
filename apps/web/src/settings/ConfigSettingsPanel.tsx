@@ -172,7 +172,27 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
       {slider('rerank_top_k', 1, 100, 1, t('retrievalSettings.rerankTopKLabel'))}
       {slider('rerank_threshold', -10, 10, 0.1, t('retrievalSettings.rerankThresholdLabel'), (value) => value.toFixed(2))}
       {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<Input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} /></label> : null}
-    </> : section === 'chathistory' ? <><div className="setting-row"><div className="setting-info"><label>{t('chatHistorySettings.enableLabel')}</label><p className="desc">{t('chatHistorySettings.enableDescription')}</p></div><div className="setting-control"><Switch checked={values.enabled === true} disabled={busy} onCheckedChange={(checked) => setValue('enabled', checked)} aria-label={t('chatHistorySettings.enableLabel')} /></div></div><div className="setting-row"><div className="setting-info"><label>{t('chatHistorySettings.embeddingModelLabel')}</label><p className="desc">{t('chatHistorySettings.embeddingModelDescription')}</p></div><div className="setting-control setting-control--model">{modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true || values.enabled !== true) : <Input value={String(values.embedding_model_id)} disabled={embeddingLocked === true || values.enabled !== true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}</div>{embeddingLocked === true ? <p className="desc warning-text text-[#b26a08]" data-testid="embedding-locked-note">{t('chatHistorySettings.embeddingModelLocked')}</p> : null}</div></> : <>
+    </> : section === 'chathistory' ? <>
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>{t('chatHistorySettings.enableLabel')}</label>
+          <p className="desc">{t('chatHistorySettings.enableDescription')}</p>
+        </div>
+        <div className="setting-control">
+          <Switch checked={values.enabled === true} disabled={busy} onCheckedChange={(checked) => setValue('enabled', checked)} aria-label={t('chatHistorySettings.enableLabel')} />
+        </div>
+      </div>
+      {values.enabled === true ? <div className="setting-row">
+        <div className="setting-info">
+          <label>{t('chatHistorySettings.embeddingModelLabel')}</label>
+          <p className="desc">{t('chatHistorySettings.embeddingModelDescription')}</p>
+          {embeddingLocked === true ? <p className="desc warning-text text-[#b26a08]" data-testid="embedding-locked-note">{t('chatHistorySettings.embeddingModelLocked')}</p> : null}
+        </div>
+        <div className="setting-control setting-control--model">
+          {modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true) : <Input value={String(values.embedding_model_id)} disabled={embeddingLocked === true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}
+        </div>
+      </div> : null}
+    </> : <>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU</h3>
         <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label>
         <label>Backend<Select data-testid="mineru-model" value={String(values.mineru_model)} onChange={(event) => setValue('mineru_model', event.target.value)}><option value="pipeline">pipeline</option><option value="vlm-auto-engine">vlm-auto-engine</option><option value="vlm-http-client">vlm-http-client</option><option value="hybrid-auto-engine">hybrid-auto-engine</option><option value="hybrid-http-client">hybrid-http-client</option></Select></label>
