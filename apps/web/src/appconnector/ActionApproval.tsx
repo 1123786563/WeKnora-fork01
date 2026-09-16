@@ -20,6 +20,7 @@ interface ActionApprovalProps {
    * (that requires the connection/risk the original action was born with).
    */
   prepare?: ActionPrepareContext;
+  canDrive?: boolean;
 }
 
 /**
@@ -31,7 +32,7 @@ interface ActionApprovalProps {
  * the action shows 等待操作批准 again. An unknown outcome offers ONLY a
  * query path — never "再发一次".
  */
-export function ActionApproval({ client, actionId, prepare }: ActionApprovalProps) {
+export function ActionApproval({ client, actionId, prepare, canDrive = false }: ActionApprovalProps) {
   const [currentId, setCurrentId] = useState(actionId);
   const [detail, setDetail] = useState<ActionDetail | null>(null);
   const [draftContent, setDraftContent] = useState('');
@@ -151,6 +152,7 @@ export function ActionApproval({ client, actionId, prepare }: ActionApprovalProp
         {status !== '' ? <Status>{status}</Status> : null}
         {error !== null ? <Status tone="error">{error}</Status> : null}
       </div>
+      {!canDrive && detail !== null ? <Status>当前角色无法审批或执行操作（需要空间所有者或管理员）。</Status> : null}
       {detail === null ? (
         error === null ? <Status>正在加载操作状态…</Status> : null
       ) : (
@@ -170,13 +172,13 @@ export function ActionApproval({ client, actionId, prepare }: ActionApprovalProp
             </>
           ) : (
             <>
-              {state === 'awaiting_approval' || state === 'authorized' ? (
+              {canDrive && (state === 'awaiting_approval' || state === 'authorized') ? (
                 <Button type="button" aria-label="批准当前内容摘要" disabled={busy} onClick={() => void approve()}>批准此内容</Button>
               ) : null}
-              {state === 'authorized' ? (
+              {canDrive && state === 'authorized' ? (
                 <Button type="button" aria-label="执行已批准的操作" disabled={busy} onClick={() => void execute()}>执行</Button>
               ) : null}
-              {prepare !== undefined && state === 'awaiting_approval' ? (
+              {canDrive && prepare !== undefined && state === 'awaiting_approval' ? (
                 <div>
                   <label htmlFor="action-content-edit">修改内容（生成新摘要，原批准失效）</label>
                   <textarea

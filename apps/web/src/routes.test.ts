@@ -9,12 +9,29 @@ const authenticated: RouteGuardContext = {
 
 test('redirects unauthenticated apps deep links to login while retaining the query', () => {
   const path = '/platform/apps?tab=connections&filter=slack';
-  assert.deepEqual(resolveRoute(path), { kind: 'apps', path: '/platform/apps' });
+  assert.deepEqual(resolveRoute(path), { kind: 'apps-catalog', path: '/platform/apps' });
   assert.deepEqual(guardRoute(path, { ...authenticated, authenticated: false, tenantId: null }), {
     kind: 'redirect',
     to: `/login?next=${encodeURIComponent(path)}`,
     reason: 'authentication-required',
   });
+});
+
+test('resolves all Vue app connector modes and protects every mode', () => {
+  assert.deepEqual(resolveRoute('/platform/apps'), { kind: 'apps-catalog', path: '/platform/apps' });
+  assert.deepEqual(resolveRoute('/platform/apps/connections'), { kind: 'apps-connections', path: '/platform/apps/connections' });
+  assert.deepEqual(resolveRoute('/platform/apps/authorization/attempt-1'), { kind: 'apps-authorization', path: '/platform/apps/authorization/attempt-1', id: 'attempt-1' });
+  assert.deepEqual(resolveRoute('/platform/apps/actions/action-1'), { kind: 'apps-action', path: '/platform/apps/actions/action-1', id: 'action-1' });
+  for (const path of ['/platform/apps/connections', '/platform/apps/authorization/attempt-1', '/platform/apps/actions/action-1']) {
+    assert.deepEqual(guardRoute(path, { authenticated: false, tenantId: null }), {
+      kind: 'redirect', to: `/login?next=${encodeURIComponent(path)}`, reason: 'authentication-required',
+    });
+  }
+});
+
+test('rejects malformed or empty app connector ids as unknown routes', () => {
+  assert.equal(resolveRoute('/platform/apps/actions/%E0%A4%A').kind, 'not-found');
+  assert.equal(resolveRoute('/platform/apps/authorization/').kind, 'not-found');
 });
 
 test('does not turn an unknown protected path into a successful page', () => {

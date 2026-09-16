@@ -10,6 +10,7 @@ interface TaskDetailCommercePanelProps {
   prepare?: ActionPrepareContext;
   /** Task budget facts; the readout shows no fabricated numbers when absent. */
   budget?: TaskBudgetSnapshot;
+  canDrive?: boolean;
 }
 
 /**
@@ -24,11 +25,11 @@ interface TaskDetailCommercePanelProps {
  * Craft/mobile consumers share the same contracts/client) instead of being
  * wired into a navigation that does not exist here.
  */
-export function TaskDetailCommercePanel({ client, taskId, actionId, prepare, budget }: TaskDetailCommercePanelProps) {
+export function TaskDetailCommercePanel({ client, taskId, actionId, prepare, budget, canDrive }: TaskDetailCommercePanelProps) {
   return (
     <section aria-label="任务预算与外部写操作审批">
       <TaskBudget client={client} taskId={taskId} snapshot={budget} />
-      <ActionApproval client={client} actionId={actionId} prepare={prepare} />
+      <ActionApproval client={client} actionId={actionId} prepare={prepare} canDrive={canDrive} />
     </section>
   );
 }

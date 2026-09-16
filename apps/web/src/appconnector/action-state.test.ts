@@ -8,11 +8,11 @@ test('unknown write is shown as reconciliation',()=>{
 test('succeeded is terminal completion',()=>{
  assert.equal(actionMessage('succeeded'),'操作已完成');
 });
-test('in-flight and settled-processing states show in-progress copy',()=>{
- assert.equal(actionMessage('dispatched'),'操作处理中');
- assert.equal(actionMessage('queued'),'操作处理中');
- assert.equal(actionMessage('authorized'),'操作处理中');
- assert.equal(actionMessage('failed'),'操作处理中');
+test('Vue lifecycle labels distinguish approval, dispatch, and failure',()=>{
+ assert.equal(actionMessage('dispatched'),'已派发');
+ assert.equal(actionMessage('queued'),'已入队');
+ assert.equal(actionMessage('authorized'),'已批准');
+ assert.equal(actionMessage('failed'),'操作失败');
 });
 test('every A03 lifecycle state is covered by an explicit message',()=>{
  const states=['awaiting_approval','authorized','queued','dispatched','succeeded','failed','unknown'];

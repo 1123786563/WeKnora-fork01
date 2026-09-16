@@ -162,6 +162,8 @@ export { CheckoutPage } from './commercial/CheckoutPage.tsx';
 export { RefundPage } from './commercial/RefundPage.tsx';
 export { AdminCommercialPage } from './commercial/AdminCommercialPage.tsx';
 export { AppsPage } from './appconnector/AppsPage.tsx';
+export { ConnectionsPage } from './appconnector/ConnectionsPage.tsx';
+export { AuthorizationPage } from './appconnector/AuthorizationPage.tsx';
 export { ActionApproval } from './appconnector/ActionApproval.tsx';
 export { TaskDetailCommercePanel } from './appconnector/TaskDetailCommercePanel.tsx';
 export { TaskBudget } from './commercial/TaskBudget.tsx';

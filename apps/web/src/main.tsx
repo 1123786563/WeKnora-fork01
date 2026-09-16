@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { createJsonTransport, createWeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
-import { KnowledgeBasesPage, AppsPage } from './App.tsx';
+import { KnowledgeBasesPage, AppsPage, ConnectionsPage, AuthorizationPage, ActionApproval } from './App.tsx';
 import { CraftRoutes } from './features/craft/routes.tsx';
 import { IntegrationsPage } from './integrations/IntegrationsPage.tsx';
 import { parseIntegrationRoute } from './integrations/route.ts';
@@ -12,6 +12,14 @@ import { guardRoute, nextPathAfterAuth, resolveRoute } from './routes.tsx';
 import { resolveApiBaseUrl, wailsBridgeFromWindow } from './platform/desktop-bridge.ts';
 
 const session = readLegacyPlatformSession();
+function currentTenantRole(): string | undefined {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem('weknora_memberships') ?? 'null');
+    if (!Array.isArray(raw)) return undefined;
+    const row = raw.find((value) => value && String(value.tenant_id) === String(session.tenantId));
+    return typeof row?.role === 'string' ? row.role : undefined;
+  } catch { return undefined; }
+}
 const apiBaseUrl = await resolveApiBaseUrl({
   injected: window.__WEKNORA_API_BASE__,
   bridge: wailsBridgeFromWindow(window),
@@ -73,7 +81,10 @@ createRoot(document.getElementById('root')!).render(
     />
   ) : (
     route.kind === 'login' || route.kind === 'onboarding' ? <AuthRoutes client={client} navigation={{ replace: replaceAuthTarget }} /> :
-    route.kind === 'apps' ? <AppsPage client={client} scopeController={scopeController} /> :
+    route.kind === 'apps-catalog' ? <AppsPage client={client} scopeController={scopeController} /> :
+    route.kind === 'apps-connections' ? <ConnectionsPage client={client} scopeController={scopeController} role={currentTenantRole()} onNavigate={(path) => { window.history.pushState(null, '', path); window.location.assign(path); }} /> :
+    route.kind === 'apps-authorization' ? <AuthorizationPage client={client} scopeController={scopeController} attemptId={route.id} onNavigate={(path) => { window.history.pushState(null, '', path); window.location.assign(path); }} /> :
+    route.kind === 'apps-action' ? <ActionApproval client={client} actionId={route.id} canDrive={currentTenantRole() === 'owner' || currentTenantRole() === 'admin'} /> :
     route.kind === 'platform' ? <KnowledgeBasesPage client={client} scopeController={scopeController} /> :
     renderNotFound(route.path)
   ),
