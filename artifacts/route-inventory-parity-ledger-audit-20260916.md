@@ -50,7 +50,7 @@ PY
 embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 ```
 
-这不证明 React Apps 实现不存在；当前 React 实现位于 `apps/web/src/apps/AppsPages.tsx` 等文件。它证明 CSV 的 `current_source` 字段不能直接作为当前 Vue authority 的存在性证明，四个 Apps 来源必须补充真实历史提交、上游路径或明确的 `source_status` 说明。`embed.html` 则应拆成两个可分别存在性检查的路径。
+这不证明 React Apps 实现不存在；当前 React 实现位于 `apps/web/src/apps/AppsPages.tsx` 等文件。四个 Apps Vue authority 已在历史提交 `9b0c11c4` 解析，映射与复核命令见 `artifacts/apps-vue-authority-20260916.md`。`embed.html` 仍应拆成两个可分别存在性检查的路径。
 
 ## 发现
 
@@ -70,9 +70,9 @@ embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 
 影响：CSV 的插入、排序或删除会改变隐式行号，无法独立复核 matrix/ledger 的 R 编号映射。应在文档范围内补充显式 ID 列或提供机器可读的 route-to-row 映射；在此之前，不能把“按 CSV 顺序对应”当成稳定 contract。
 
-### P1 — Apps Vue authority 未闭环
+### P1 — Apps Vue authority 已解析，运行时 parity 仍未闭环
 
-`docs/migrations/react/route-inventory-20260915.md:28` 把 Apps 描述为 React 额外能力；但 CSV 的四个 `/platform/apps*` 行却分别指向不存在的 Vue `frontend/src/views/apps/*.vue` 文件。现有 `artifacts/independent-acceptance-20260915.md:21-23` 已识别该矛盾，但仍是 open follow-up。
+CSV 的四个 `/platform/apps*` 行在当前 checkout 中没有物理文件，但历史提交 `9b0c11c4` 提供了可复核的 Vue authority；现有 React Apps 实现与该历史基线的视觉、权限和 mutation 对照仍需独立验收。
 
 影响：Apps 的“Vue 基线”目前只能证明为未解析的来源引用，不能支撑视觉、交互、权限和生命周期 parity。应在 authority 解析完成前将这四行标为 `source_status=unresolved` 或 `react-only/compatibility`，并保留待确认项。
 
@@ -88,7 +88,7 @@ embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 
 | 要求 | 当前证据 | 结论 |
 |---|---|---|
-| route/source 静态盘点 | CSV、route inventory、matrix、源码引用 | 部分满足；Apps authority 和 row-ID contract 未闭环 |
+| route/source 静态盘点 | CSV、route inventory、matrix、历史 Apps authority artifact | Apps authority 已解析；row-ID contract 未闭环 |
 | 单元/类型/构建 | R397 ledger 与相关 artifacts | 只能证明实现/测试层，不证明逐页 parity |
 | mock/fixture | 各模块 evidence 中的 fixture 记录 | 只能证明测试分支，不等于真实后端 |
 | 匿名浏览器 | `artifacts/authenticated-browser-backend-audit-20260916.md` 及 `browser-evidence-20260916-r2` | 只证明登录、匿名保护路由和 401 边界 |
@@ -100,6 +100,6 @@ embed.html                     frontend/embed.html; frontend/src/embed-main.ts
 
 1. 在 canonical matrix 顶部增加 current inventory snapshot（59 rows、kind counts、SHA/date），并把 53/56 数字标为历史快照。
 2. 给 `route-parity.csv` 增加显式稳定 ID，或新增同目录映射文件并让 sanity check 校验它。
-3. 解析四个 Apps Vue authority 路径；在解析前不要把 React Apps route 标成 Vue parity accepted。
+3. 保留四个 Apps Vue authority 的历史提交映射；在视觉、权限和 mutation 验收前不要把 React Apps route 标成 parity accepted。
 4. 清理通配符/目录型 artifact 引用，并将缺失证据明确标注为 `missing`/`blocked-env`。
 5. 保持 R397 的证据分层和未完成结论，待认证凭据、浏览器策略、Embed token 与 Wails 环境恢复后再做最终 acceptance。
