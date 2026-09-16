@@ -4213,3 +4213,43 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: integrated `pnpm test:web` 1305/1305, `pnpm test:shared` 568/568, `pnpm typecheck:web` clean.
 - Authenticated paired browser evidence (1440×900, zh-CN, light, real backend :8080): `evidence/vue-react-parity/2026-09-16-r430-browser-parity-pair.md` + 12 screenshots (`screenshots/r430-20260916/`, 6 Vue/React pairs) confirm all four R428 diffs closed and the wiki graph canvas parity (node colors, legend, fit/arrows controls, overview count, search + help).
 - New diffs found in R430 browser pass, deferred to R431 (N012/N004 domain): graph tab header information architecture (Vue embeds breadcrumb + 文档/Wiki/图谱 tabs inside the KB page; React `?tab=graph` is a standalone page header), graph search control shape (Vue select-style dropdown arrow vs React plain input), edge arrow visibility under identical conditions (React edges render without directional arrows), and Vue's one-time KB-onboarding guide overlay is not implemented in React. Not staged: `apps/desktop/vite.config.ts` and other files owned by the external concurrent craft/workbench process — untouched by this round. No Vue, mobile, or Go code was modified.
+
+## 2026-09-16 Round R431 — Four parallel slices closing the R430 browser diffs
+
+- Four Vue-baseline fixes landed in worktree `.worktrees/react-multiclient` (branch `codex/react-vue-parity-align`), closing all four diffs R430's browser pass deferred to this round: (1) graph tab header information architecture — `KnowledgeGraphPage.tsx` now renders the KB-embedded header via the shared `DocumentsBreadcrumb` (知识库 > KB name > 文档/Wiki/图谱 tab row with brand-green active tab, `aria-current`, `tabGraphTip` tooltip, ⓘ info popover, ⚙ gated by `resolveKBSurfaceTabs`/`canManage` and landing on the existing KB settings route) plus the unconditional documents subtitle, replacing the standalone "知识图谱" heading; (2) graph search control shape — rebuilt as a filterable-select combobox shell (search prefix icon, rotating chevron, 32px/4px radius/`--td-shadow-1`), empty-keyword dropdown falls back to a node snapshot mirroring Vue's `graphSearchEffectiveOptions`, with combobox ARIA and full keyboard navigation; (3) edge arrow visibility — root cause was center-to-center lines painted under nodes that fully covered the markers; `graphEdgeEndpoints()` replicates Vue `setEdgePositions` endpoint retraction (radius+4), marker fill moved to a direct attribute, toggle icon now an inline eye SVG; (4) KB one-time onboarding guide — React guide UI already existed; added `shouldArmKbDetailGuideOnEntry` (mirrors `KnowledgeBase.vue:339-345`: non-FAQ, editable, loaded, empty KB), the `useKbDetailGuideTrigger` hook wired on the documents page, and the `data-guide="kb-detail-add-doc"` step-2 target.
+- A canvas regression introduced en route (shortened subtitle exposed `mx-auto` shrink-to-fit in the flex-column shell, collapsing the canvas to a ~544px centered column) was found in paired browser verification and fixed; the canvas is now a full-bleed flex area with a ResizeObserver-synced viewBox (measured 1114×798), matching Vue's `.wiki-main-area`.
+- Gates on the final tree: `pnpm typecheck:web` clean; `pnpm test:web` 1318/1318; `pnpm test:shared` 568/568; web/embed/desktop builds pass; desktop tests 9/9; `git diff --check` clean.
+- Authenticated paired browser evidence (1440×900, zh-CN, light, real backend :8080): `evidence/vue-react-parity/2026-09-16-r431-browser-parity-pair.md` + `screenshots/r431-20260916/` (guide firing on KB entry, aligned graph header/search/legend, full-page and zoomed arrow shots vs the Vue pair) confirm all four diffs closed and the canvas layout regression fixed.
+- Recorded residuals for R432 (non-blocking): ⚙ opens the existing KB settings route instead of Vue's global settings drawer surface; tab-row gating uses `resolveKBSurfaceTabs` (wiki-off/graph-on KBs show 文档/图谱) vs Vue's strict isWiki; React search input still filters canvas nodes and uses 250ms/2-char debounce vs Vue 200ms/any-char; Vue's selected/hover edge highlight interaction (applyHighlight + highlight markers) is not implemented; the guide trigger lives on the documents page so a direct `?tab=graph` deep link does not arm it; tab switching is link navigation across three React pages vs Vue's in-component tab state.
+- Provenance/dependency notes: the four slices plus the concurrent SPA-navigation/KB-page work were committed together by the concurrent orchestrator as `6139859a`; the graph page header depends on the `DocumentsBreadcrumb` tabs slot introduced there (a rollback of `DocumentsPageChrome.tsx` would break the header compile). The canvas-layout final delta was committed separately by this round. No Vue, mobile, or Go code was modified.
+
+## 2026-09-16 Round R431 — Graph tab chrome, search select shape, arrows, KB onboarding guide, and full-bleed canvas
+
+- Four R430 browser diffs closed on `codex/react-vue-parity-align`: (1) the graph page dropped its standalone
+  eyebrow/h1 header for the Vue breadcrumb chrome — 知识库 > KB名 > 文档/Wiki/图谱 tab row (graph tab active with the
+  tabGraphTip tooltip), KB info ⓘ + settings ⚙ actions, and the unconditional upload subtitle, reusing/extending
+  `DocumentsBreadcrumb` (Vue KnowledgeBase.vue:2330-2408); the documents page tab links now use `?tab=` query URLs so
+  the graph link no longer 404s; (2) the graph search control renders the Vue t-select shape (search prefix icon +
+  chevron suffix, 320px absolute top-left overlay) while keeping the remote-search dropdown semantics
+  (WikiBrowser.vue:12-17); (3) SVG edge arrows now render with direct `fill="#c0c4cc"` marker attributes (the Tailwind
+  arbitrary class was not applied inside marker paths), `showArrows` defaulting on with bidirectional `marker-start`
+  (WikiBrowser.vue:3877-3968); (4) the Vue kbDetail onboarding guide (SpotlightGuide: 3 steps intro/upload/done,
+  `1 / 3` progress, storage key `weknora:contextual-guide-kb-detail:v1`, 600ms delay, `[data-guide="kb-detail-add-doc"]`
+  spotlight) is wired through the shared ContextualGuideHost with host-level tests.
+- This session's paired-browser pass then surfaced one more real diff — React's graph canvas was a fixed ~500px card
+  while Vue's `.wiki-graph` fills the whole content area — fixed by measuring the surface with a ResizeObserver,
+  feeding the real box into `layoutGraphNodes`, the dynamic `viewBox`, and the pointer mapping, and making the page a
+  full-width/full-height flex column (main padding 24px/32px/0, surface flex-1).
+- Live paired-browser evidence (1440×900, zh-CN, light, real backend :8080, wiki fixture KB
+  `7cea6ec0-8a07-4c83-9309-f802a61b3d5c`, 4 nodes/5 edges): breadcrumb chrome, tab row, ⓘ/⚙, subtitle, select-shaped
+  search, visible directional arrows, legend/actions/status, and the full 3-step guide flow (next/prev navigation,
+  upload-button spotlight, close persists `storageKey='1'`) all match Vue
+  (`evidence/vue-react-parity/screenshots/r431-20260916/`: react/vue graph fullbleed + guide step1 pairs).
+- Gates: `pnpm test:web` 1318/1318, `pnpm test:shared` 568/568, `pnpm typecheck:web` clean. Note: an external
+  concurrent process committed most of this round's slices as `6139859a` mid-flight (same worktree); this entry's
+  commit adds the full-bleed canvas fix and the paired-guide/fullbleed screenshots on top of it.
+- New diffs deferred to R432: documents tab renders its 文档/Wiki/图谱 tab row as a standalone top-right nav + 刷新
+  button instead of Vue's inline breadcrumb tabs (graph tab is correct); guide card placement can overflow the right
+  viewport edge at 1440px on the upload step (Vue has right/left/bottom/top fallback); React fit-to-view resets
+  viewport instead of computing the Vue bbox fit. An accidental write to the main worktree early in this round was
+  fully reverted (main `git status` clean except pre-existing untracked docs). No Vue, mobile, or Go code was modified.

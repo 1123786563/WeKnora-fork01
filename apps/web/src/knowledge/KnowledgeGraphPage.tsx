@@ -43,6 +43,23 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
+  // Vue WikiBrowser renders the graph SVG at the measured .wiki-graph size
+  // (renderGraph reads clientWidth/clientHeight). Track the surface box so the
+  // node layout and viewBox match the real full-bleed area instead of a fixed
+  // 760×420 card.
+  const [surfaceSize, setSurfaceSize] = useState({ width: 760, height: 420 });
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = surfaceRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect && rect.width >= 1 && rect.height >= 1) setSurfaceSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -253,7 +270,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }, [drawerNode]);
 
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query, types: selectedTypes }) : null, [graph, query, selectedTypes]);
-  const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
+  const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, surfaceSize.width, surfaceSize.height) : [], [visible, surfaceSize.width, surfaceSize.height]);
   const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
   const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);
   const displayEdges = useMemo(() => visible ? displayGraphEdges(visible.edges) : [], [visible]);
@@ -337,7 +354,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : event.currentTarget.ownerSVGElement;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) / rect.width) * 760, y: ((event.clientY - rect.top) / rect.height) * 420 };
+    // The viewBox mirrors the measured surface size, so the mapping is 1:1.
+    return { x: ((event.clientX - rect.left) / rect.width) * surfaceSize.width, y: ((event.clientY - rect.top) / rect.height) * surfaceSize.height };
   }
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
@@ -374,12 +392,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }
 
   return (
-    /* Vue KnowledgeBase.vue renders the graph surface full-bleed (.wiki-graph
-       width/height 100%) and this page only ever mounts inside the platform
-       shell ([&_.wk-page]:max-w-none!). No auto margins: a flex-column child
-       with margin:auto opts out of align-items stretch and shrink-wraps to the
-       header's max-content width (the R431 narrow-centred-column regression). */
-    <main className="wk-page box-border w-full max-w-none px-[1.25rem] py-12">
+    /* Vue KnowledgeBase.vue renders the graph surface full-bleed: the page is
+       a flex column (document-header 24px/32px/0 + .wiki-main-area flex:1) and
+       .wiki-graph fills that area (width/height 100%). This page only ever
+       mounts inside the platform shell, whose outlet gives .wk-page
+       h-full/overflow-y-auto/max-w-none. */
+    <main className="wk-page flex min-h-0 flex-1 flex-col box-border px-8 pt-6 pb-0">
       <header className="wk-header mb-6">
         <DocumentsBreadcrumb
           t={t}
@@ -399,10 +417,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
             document-subtitle line is unconditional in KnowledgeBase.vue. */}
         <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t('knowledgeEditor.document.subtitle')}</p>
       </header>
-      <Card className="relative overflow-hidden p-0">
-        <div data-testid="knowledge-graph-surface" className="relative min-h-[500px] overflow-hidden bg-white max-[720px]:min-h-[26rem]">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+        <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
-            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
+            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
               <defs>
                 <marker id="wk-graph-arrow-end" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
                   <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#c0c4cc" />
