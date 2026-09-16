@@ -3999,3 +3999,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   component evidence. Full authenticated browser, real sandbox backend, and
   Wails interaction evidence remain open or `blocked-env`. No mobile code was
   modified.
+
+## 2026-09-16 Round R418 — Full Web regression after Sandbox fix
+
+- The full Web regression now exits cleanly with `1195/1195` tests passing,
+  `0` failing, `0` cancelled, and `0` skipped. This includes the previously
+  pending SandboxSettingsPanel suite and is unit/component evidence for the
+  React Web implementation.
+- This result does not promote the parity matrix to complete: authenticated
+  same-condition Vue/React screenshots, real backend permission and mutation
+  flows, real Embed streaming, and native Wails interaction remain open or
+  `blocked-env`. No mobile code was modified.
