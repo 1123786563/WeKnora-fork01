@@ -3648,3 +3648,33 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   same-condition page/state screenshots and real backend permissions/mutations
   are unavailable, and native Wails launch/OS integration remains
   `blocked-env`. No mobile code was touched.
+
+## 2026-09-16 Round R395 — Deep-link, document, Embed, browser, and P1 audit
+
+- `5a5bd768` maps the Vue-only `knowledgeqa` settings trigger to the React
+  models conversation subsection and adds regression coverage. The original
+  P1 non-URL settings gap is therefore closed for this known trigger.
+- `add1dd8a` gates document download actions by the Vue-supported source types
+  (`file` and `manual`), with a regression test; URL-backed documents no longer
+  expose an invalid download affordance.
+- `57800916` records same-viewport browser evidence for anonymous login,
+  registration, protected apps/settings routes, and existing-session behavior.
+  Anonymous route behavior is verified; existing-session protected views remain
+  `blocked-env` because the available auth/backend state did not provide a
+  comparable authenticated workspace for both applications.
+- `c0ba752d` records the Embed audit. The current target checkout has no React
+  `apps/embed` implementation matching Vue's isolated bridge, origin pinning,
+  file proxy, attachment rendering, and differentiated recovery states; this is
+  an explicit remaining parity gap, not accepted from the historical source.
+- `f1abccb1` records the knowledge-base audit: F-01 (metadata failure rendered
+  as viewer read-only) and F-02 (independent document detail misses ordinary
+  tenant admin/contributor permission) remain P1 follow-ups requiring runtime
+  and permission-contract confirmation.
+- `5346563c` corrects the debounce test timing so the Vue 500ms autosave test
+  observes the effect after React commits the state update; it does not alter
+  production save behavior.
+- Final verification after this round: Web tests 1164/1164, Web typecheck,
+  Web build, desktop renderer tests 8/8, desktop typecheck, and `git diff
+  --check` pass. This is static/unit/build evidence. Authenticated real-backend
+  mutation/permission flows, full Embed runtime, and native Wails interaction
+  remain open; no mobile files were modified.
