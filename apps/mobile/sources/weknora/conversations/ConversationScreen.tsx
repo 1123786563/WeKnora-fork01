@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SessionView } from '@/-session/SessionView';
 import { ConversationViewModelContext } from './context';
-import type { ConversationViewModel } from './view-model';
+import { createRequestID, type ConversationViewModel } from './view-model';
 
 export interface ConversationScreenProps {
   sessionId: string;
@@ -16,7 +16,7 @@ export function ConversationControlPanel({ viewModel }: { viewModel: Conversatio
     if (!viewModel.send || !draft.trim() || busy) return;
     setBusy(true);
     try {
-      await viewModel.send.submit(draft, `mobile:${viewModel.scope.userId ?? 'anonymous'}:${draft}`);
+      await viewModel.send.submit(draft, createRequestID());
       setDraft('');
     } finally {
       setBusy(false);
@@ -29,11 +29,43 @@ export function ConversationControlPanel({ viewModel }: { viewModel: Conversatio
         <Text>{busy ? '发送中' : '发送'}</Text>
       </Pressable>
       {viewModel.pendingInteractions.filter((item) => item.status === 'pending').map((item) => (
-        <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`审批 ${item.label}`} onPress={() => void viewModel.commands.refreshPending?.(item.id)}>
+        <View key={item.id} accessibilityLabel={`pending-interaction-${item.id}`} style={{ paddingVertical: 6 }}>
           <Text>{item.label}</Text>
-        </Pressable>
+          {item.reason ? <Text>{item.reason}</Text> : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`批准 ${item.label}`} onPress={() => void viewModel.commands.approve?.(item.id)}>
+              <Text>批准</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`拒绝 ${item.label}`} onPress={() => void viewModel.commands.reject?.(item.id)}>
+              <Text>拒绝</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`刷新 ${item.label}`} onPress={() => void viewModel.commands.refreshPending?.(item.id)}>
+              <Text>刷新</Text>
+            </Pressable>
+          </View>
+        </View>
       ))}
     </View>
+  );
+}
+
+/** Product message projection. It deliberately consumes only VM messages. */
+export function ProductConversationMessages({ viewModel }: { viewModel: ConversationViewModel }) {
+  return (
+    <ScrollView accessibilityLabel="product-conversation-messages" contentContainerStyle={{ padding: 16, gap: 10 }}>
+      {viewModel.messages.map((message) => (
+        <View key={message.id} accessibilityLabel={`message-${message.id}`}>
+          <Text accessibilityLabel={`message-role-${message.id}`}>{message.role}</Text>
+          <Text>{message.text}</Text>
+        </View>
+      ))}
+      {viewModel.execution ? (
+        <View accessibilityLabel="execution-state">
+          <Text>{viewModel.execution.status}</Text>
+          {viewModel.execution.reason ? <Text>{viewModel.execution.reason}</Text> : null}
+        </View>
+      ) : null}
+    </ScrollView>
   );
 }
 
@@ -53,7 +85,7 @@ export function ConversationScreen({ sessionId, viewModel }: ConversationScreenP
           </View>
         )}
         <ConversationControlPanel viewModel={viewModel} />
-        <SessionView id={sessionId} />
+        <SessionView id={sessionId} viewModel={viewModel} />
       </View>
     </ConversationViewModelContext.Provider>
   );
