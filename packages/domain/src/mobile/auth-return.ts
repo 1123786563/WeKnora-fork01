@@ -1,5 +1,12 @@
 const pendingStates = new Set<string>();
 
+/** Rehydrates a state issued before a native process restart. */
+export function registerAuthState(state: string): void {
+  const normalized = state.trim();
+  if (!normalized) throw new Error('AUTH_STATE');
+  pendingStates.add(normalized);
+}
+
 export function createAuthState(random: () => string = () => {
   const bytes = new Uint8Array(24);
   globalThis.crypto?.getRandomValues?.(bytes);

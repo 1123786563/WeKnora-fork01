@@ -10,6 +10,7 @@ import { validateLoginCredentials } from './loginValidation';
 import { generatePKCE } from '@/utils/oauth';
 
 const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
+const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
 const AUTH_RETURN_REDIRECT = 'weknora://auth-return';
 
 export default function LoginScreen() {
@@ -59,9 +60,12 @@ export default function LoginScreen() {
       const result = await api.startNative(AUTH_RETURN_REDIRECT, challenge);
       if (!result.authorization_url) throw new Error('OIDC_AUTHORIZATION_URL_MISSING');
       await SecureStore.setItemAsync(NATIVE_PKCE_VERIFIER_KEY, verifier);
+      if (!result.state) throw new Error('OIDC_STATE_MISSING');
+      await SecureStore.setItemAsync(NATIVE_OIDC_STATE_KEY, JSON.stringify({ state: result.state, redirect_uri: AUTH_RETURN_REDIRECT, issued_at: Date.now() }));
       await Linking.openURL(result.authorization_url);
     } catch {
       await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY);
+      await SecureStore.deleteItemAsync(NATIVE_OIDC_STATE_KEY);
       setError('Provider sign-in could not be started.');
     } finally { setOidcLoading(false); }
   };

@@ -63,3 +63,44 @@ func TestMobileOIDCExchangeHTTPMatrix(t *testing.T) {
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+func TestMobileOIDCExchangeRejectsBindingExpiryAndURLCredentials(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repository.MobileExchange{}))
+	store := repository.NewMobileExchangeStore(db)
+	verifier := "v"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	for _, row := range []repository.MobileExchange{
+		{CodeHash: repository.HashMobileExchangeValue("wrong-verifier"), StateHash: repository.HashMobileExchangeValue("s1"), RedirectURI: "weknora://auth-return", Challenge: challenge, Subject: "u1", ExpiresAt: time.Now().Add(time.Minute)},
+		{CodeHash: repository.HashMobileExchangeValue("wrong-state"), StateHash: repository.HashMobileExchangeValue("s2"), RedirectURI: "weknora://auth-return", Challenge: challenge, Subject: "u1", ExpiresAt: time.Now().Add(time.Minute)},
+		{CodeHash: repository.HashMobileExchangeValue("wrong-redirect"), StateHash: repository.HashMobileExchangeValue("s3"), RedirectURI: "weknora://auth-return", Challenge: challenge, Subject: "u1", ExpiresAt: time.Now().Add(time.Minute)},
+		{CodeHash: repository.HashMobileExchangeValue("expired"), StateHash: repository.HashMobileExchangeValue("s4"), RedirectURI: "weknora://auth-return", Challenge: challenge, Subject: "u1", ExpiresAt: time.Now().Add(-time.Hour)},
+	} {
+		require.NoError(t, store.Put(context.Background(), row))
+	}
+	h := NewAuthHandler(&config.Config{}, &mobileExchangeUserService{}, nil, nil, nil)
+	h.SetMobileExchangeStore(store)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/auth/mobile/exchange", h.MobileOIDCExchange)
+	request := func(code, state, redirect, v string, token bool) int {
+		values := map[string]string{"code": code, "state": state, "redirect_uri": redirect, "code_verifier": v}
+		b, _ := json.Marshal(values)
+		path := "/auth/mobile/exchange"
+		if token {
+			path += "?access_token=leak"
+		}
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
+		req.Header.Set("content-type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+	require.Equal(t, http.StatusUnauthorized, request("wrong-verifier", "s1", "weknora://auth-return", "bad", false))
+	require.Equal(t, http.StatusUnauthorized, request("wrong-state", "bad", "weknora://auth-return", verifier, false))
+	require.Equal(t, http.StatusUnauthorized, request("wrong-redirect", "s3", "weknora://other", verifier, false))
+	require.Equal(t, http.StatusUnauthorized, request("expired", "s4", "weknora://auth-return", verifier, false))
+	require.Equal(t, http.StatusBadRequest, request("wrong-state", "s2", "weknora://auth-return", verifier, true))
+}

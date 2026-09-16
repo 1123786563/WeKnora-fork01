@@ -3,11 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { AUTH_RETURN_REDIRECT, buildNativeExchangeInput, evaluateAuthReturn, type AuthReturnOutcome } from './auth-return-status';
+import { registerAuthState } from '@weknora/domain/mobile';
 import { useProductAuth } from './session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createOIDCApi } from '@weknora/api-client';
 
 const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
+const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
 
 const COPY: Record<AuthReturnOutcome['status'], { title: string; body: string }> = {
   verified: {
@@ -43,9 +45,17 @@ export default function AuthReturnScreen() {
 
   React.useEffect(() => {
     if (evaluated.current) return;
-    evaluated.current = evaluateAuthReturn(params, AUTH_RETURN_REDIRECT);
-    setOutcome(evaluated.current);
-    if (evaluated.current.status === 'verified' && host) {
+    void (async () => {
+      const stateRecord = await SecureStore.getItemAsync(NATIVE_OIDC_STATE_KEY);
+      if (stateRecord) {
+        try {
+          const parsed = JSON.parse(stateRecord) as { state?: unknown; issued_at?: unknown };
+          if (typeof parsed.state === 'string' && typeof parsed.issued_at === 'number' && Date.now() - parsed.issued_at <= 10 * 60 * 1000) registerAuthState(parsed.state);
+        } catch { /* malformed local state is rejected below */ }
+      }
+      evaluated.current = evaluateAuthReturn(params, AUTH_RETURN_REDIRECT);
+      setOutcome(evaluated.current);
+      if (evaluated.current.status === 'verified' && host) {
       void (async () => {
         const verifier = await SecureStore.getItemAsync(NATIVE_PKCE_VERIFIER_KEY);
         const input = buildNativeExchangeInput(params, AUTH_RETURN_REDIRECT, verifier ?? '');
@@ -61,9 +71,16 @@ export default function AuthReturnScreen() {
           await auth.replaceCredential({ kind: 'bearer', accessToken: payload.token, ...(payload.refresh_token ? { refreshToken: payload.refresh_token } : {}) });
           router.replace('/(app)');
         } catch { setOutcome({ status: 'rejected' }); }
-        finally { await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY); }
+        finally {
+          await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY);
+          await SecureStore.deleteItemAsync(NATIVE_OIDC_STATE_KEY);
+        }
       })();
-    }
+      } else {
+        await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY);
+        await SecureStore.deleteItemAsync(NATIVE_OIDC_STATE_KEY);
+      }
+    })();
   }, [auth, host, params, router]);
 
   const copy = outcome ? COPY[outcome.status] : null;

@@ -50,18 +50,19 @@ func (s *MobileExchangeStore) ConsumeMobileExchange(ctx context.Context, codeHas
 	var subject string
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		consumed := now.UTC()
-		result := tx.Model(&MobileExchange{}).
-			Where("code_hash = ? AND state_hash = ? AND redirect_uri = ? AND challenge = ? AND consumed_at IS NULL AND expires_at > ?", codeHash, stateHash, redirectURI, challenge, now.UTC()).
-			Updates(map[string]any{"consumed_at": consumed})
+		var row MobileExchange
+		if err := tx.Where("code_hash = ? AND state_hash = ? AND redirect_uri = ? AND challenge = ? AND consumed_at IS NULL", codeHash, stateHash, redirectURI, challenge).First(&row).Error; err != nil {
+			return ErrMobileExchangeInvalid
+		}
+		if !row.ExpiresAt.After(now.UTC()) {
+			return ErrMobileExchangeInvalid
+		}
+		result := tx.Model(&MobileExchange{}).Where("code_hash = ? AND consumed_at IS NULL", codeHash).Updates(map[string]any{"consumed_at": consumed})
 		if result.Error != nil || result.RowsAffected != 1 {
 			if result.Error != nil {
 				return result.Error
 			}
 			return ErrMobileExchangeInvalid
-		}
-		var row MobileExchange
-		if err := tx.Where("code_hash = ?", codeHash).First(&row).Error; err != nil {
-			return err
 		}
 		subject = row.Subject
 		return nil
