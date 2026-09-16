@@ -3731,3 +3731,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   chunk-size and CSS import-order warnings. These are static/unit/build and
   anonymous browser/backend evidence, not full authenticated or native Wails
   acceptance. No mobile code was modified.
+
+## 2026-09-16 Round R398 — Embed timestamp grouping and browser-policy recheck
+
+- `033f29d8` completes the Embed timestamp grouping rule against
+  `EmbedChatCore.vue`: render at the start of a user turn, after a five-minute
+  gap, or when the calendar date changes; the formatter keeps Vue's locale
+  buckets for today/yesterday/year. Embed focused coverage is now 16/16.
+- A fresh CUA browser inventory was attempted against the local runtime, but
+  the environment returned `Unable to load browser request-header policy` before
+  any browser tab could be controlled. Existing anonymous HTTP/backend
+  evidence remains valid; authenticated paired screenshots and real Embed
+  streaming remain `blocked-env`.
+- Current source audit finds the Embed behavior contract covered by tests, while
+  `apps/embed/src/styles.css` still contains standalone CSS rather than a full
+  migration to the shared Tailwind/shadcn token wrappers. This remains an
+  explicit visual-implementation follow-up and prevents claiming complete
+  pixel-level parity.
