@@ -245,6 +245,18 @@ test('sandbox list renders Vue backend tabs with named-only counts, card warning
   assert.equal(Array.from(legacyCard.querySelectorAll('button')).find((button) => button.textContent === t('settings.sandbox.viewSandboxes')), undefined);
 });
 
+test('non-legacy sandbox cards open the editor from the card surface like Vue', async () => {
+  const { client } = makeClient(() => okCatalog([]), [cubeRecord]);
+  const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
+  const card = container.querySelector<HTMLElement>('.wk-sandbox-card');
+  assert.ok(card, 'the configured sandbox card should render');
+  assert.equal(card?.getAttribute('role'), 'button');
+
+  await act(async () => card?.click());
+
+  assert.ok(container.querySelector('[data-testid="sandbox-editor"]'), 'clicking the card should open the editor');
+});
+
 test('script policy disable requires confirmation while enable applies directly (SandboxSettings.vue:47-55)', () => {
   const enabledHtml = renderToStaticMarkup(<SandboxSettingsPanel
     client={{} as never}

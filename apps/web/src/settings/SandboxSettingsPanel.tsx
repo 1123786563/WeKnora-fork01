@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import './sandbox-settings.css';
 import {
   parseSandboxConfigurationConflict,
@@ -1818,8 +1818,23 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           {filtered.map((item) => {
             const warnings = buildCardWarnings(item, dockerBackendEnabled);
             const summary = targetSummary(item);
+            const cardInteractive = canEdit && !isLegacyRecord(item);
             return (
-              <Card key={item.id} className="wk-sandbox-card">
+              <Card
+                key={item.id}
+                className={`wk-sandbox-card${cardInteractive ? ' cursor-pointer' : ''}`}
+                {...(cardInteractive ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  onClick: () => openEdit(item),
+                  onKeyDown: (event: KeyboardEvent) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openEdit(item);
+                    }
+                  },
+                } : {})}
+              >
                 <div className="wk-sandbox-card-header">
                   <div>
                     <span className="wk-muted text-muted">{backendLabel(item.sandbox_type)}</span>
@@ -1827,7 +1842,11 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
                     {isLegacyRecord(item) ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.legacyConfig')}</span> : null}
                   </div>
                   {canEdit ? (
-                    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+                    <div
+                      className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       {!isLegacyRecord(item) ? <Button type="button" onClick={() => openEdit(item)}>{t('common.edit')}</Button> : null}
                       {/* Vue cardMenu offers inventory for cube/e2b only (SandboxSettings.vue:299-301). */}
                       {item.sandbox_type === 'cube' || item.sandbox_type === 'e2b' ? (
