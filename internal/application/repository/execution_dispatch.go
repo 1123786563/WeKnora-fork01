@@ -15,6 +15,7 @@ var (
 	ErrDispatchBusy      = errors.New("execution dispatch lease is held")
 	ErrDispatchConflict  = errors.New("execution dispatch conflicts with the durable record")
 	ErrDispatchLeaseLost = errors.New("execution dispatch lease lost")
+	ErrDispatchUnknown   = errors.New("execution dispatch outcome is unknown")
 )
 
 // DispatchRecord is the durable intent/receipt for one provider command.
@@ -25,6 +26,9 @@ type DispatchRecord struct {
 	CommandID, RunID, AttemptID, PayloadHash, State, ExternalID string
 	TenantID                                                    uint64
 	Epoch                                                       int64
+	Worker                                                      string
+	LeaseUntil                                                  time.Time
+	New                                                         bool
 }
 
 type executionDispatchRow struct {
@@ -46,7 +50,11 @@ type executionDispatchRow struct {
 func (executionDispatchRow) TableName() string { return "execution_dispatches" }
 
 func (r executionDispatchRow) record() DispatchRecord {
-	return DispatchRecord{TenantID: r.TenantID, CommandID: r.CommandID, RunID: r.RunID, AttemptID: r.AttemptID, PayloadHash: r.PayloadHash, State: r.State, ExternalID: r.ExternalID, Epoch: r.Epoch}
+	result := DispatchRecord{TenantID: r.TenantID, CommandID: r.CommandID, RunID: r.RunID, AttemptID: r.AttemptID, PayloadHash: r.PayloadHash, State: r.State, ExternalID: r.ExternalID, Epoch: r.Epoch, Worker: r.Worker}
+	if r.LeaseUntil != nil {
+		result.LeaseUntil = r.LeaseUntil.UTC()
+	}
+	return result
 }
 
 // ExecutionDispatchStore persists provider intents and receipts. It is kept
@@ -89,43 +97,125 @@ func (s *ExecutionDispatchStore) getLocked(ctx context.Context, tx *gorm.DB, key
 // a live claim by the same worker is idempotent; another worker must wait for
 // the lease to expire, and a changed run epoch can never reuse the old fence.
 func (s *ExecutionDispatchStore) ClaimDispatch(ctx context.Context, key agentruntime.RunKey, commandID, worker string, lease time.Duration) (DispatchRecord, error) {
+	return s.ClaimDispatchWithPayloadHash(ctx, key, commandID, "", worker, lease)
+}
+
+// ClaimDispatchWithPayloadHash is the provider-facing form. A non-empty hash
+// is immutable for a command id; changing it is a conflict rather than a new
+// attempt under the same id.
+func (s *ExecutionDispatchStore) ClaimDispatchWithPayloadHash(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration) (DispatchRecord, error) {
 	if key.TenantID == 0 || key.RunID == "" || strings.TrimSpace(commandID) == "" || strings.TrimSpace(worker) == "" || lease <= 0 {
 		return DispatchRecord{}, agentruntime.ErrConflict
 	}
 	var result DispatchRecord
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		epoch, err := s.lockRun(ctx, tx, key)
-		if err != nil {
-			return err
-		}
-		row, err := s.getLocked(ctx, tx, key, commandID)
-		now := time.Now().UTC()
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			row = executionDispatchRow{TenantID: key.TenantID, CommandID: commandID, RunID: key.RunID, AttemptID: commandID, State: "claimed", Worker: worker, Epoch: epoch, LeaseUntil: ptrTime(now.Add(lease))}
-			if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
+	var err error
+	for attempt := 0; attempt < 8; attempt++ {
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			epoch, err := s.lockRun(ctx, tx, key)
+			if err != nil {
+				return err
+			}
+			row, err := s.getLocked(ctx, tx, key, commandID)
+			now := time.Now().UTC()
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				row = executionDispatchRow{TenantID: key.TenantID, CommandID: commandID, RunID: key.RunID, AttemptID: commandID, PayloadHash: payloadHash, State: "claimed", Worker: worker, Epoch: epoch, LeaseUntil: ptrTime(now.Add(lease))}
+				if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
+					return err
+				}
+				result = row.record()
+				result.New = true
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if payloadHash != "" && row.PayloadHash != "" && row.PayloadHash != payloadHash {
+				return ErrDispatchConflict
+			}
+			if row.RunID != key.RunID || row.Epoch != epoch {
+				return ErrDispatchLeaseLost
+			}
+			if row.PayloadHash == "" && payloadHash != "" {
+				row.PayloadHash = payloadHash
+			}
+			if row.State == "completed" || row.State == "reconciled" {
+				result = row.record()
+				return nil
+			}
+			if row.State == "unknown" {
+				return ErrDispatchUnknown
+			}
+			if row.LeaseUntil == nil || !row.LeaseUntil.After(now) {
+				_ = tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", key.TenantID, commandID).Updates(map[string]any{"state": "unknown", "observed_state": "lease_expired", "lease_until": nil, "updated_at": now}).Error
+				return ErrDispatchUnknown
+			}
+			if row.LeaseUntil != nil && row.LeaseUntil.After(now) && row.Worker != worker {
+				return ErrDispatchBusy
+			}
+			row.State, row.Worker, row.LeaseUntil = "claimed", worker, ptrTime(now.Add(lease))
+			updates := map[string]any{"state": row.State, "worker": worker, "lease_until": row.LeaseUntil, "updated_at": now}
+			if payloadHash != "" {
+				updates["payload_hash"] = payloadHash
+			}
+			if err := tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", key.TenantID, commandID).Updates(updates).Error; err != nil {
 				return err
 			}
 			result = row.record()
 			return nil
+		})
+		if err == nil || !isSQLiteBusy(s.db, err) {
+			break
 		}
+		select {
+		case <-ctx.Done():
+			return DispatchRecord{}, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 10 * time.Millisecond):
+		}
+	}
+	return result, err
+}
+
+func isSQLiteBusy(db *gorm.DB, err error) bool {
+	return db.Dialector.Name() == "sqlite" && (strings.Contains(strings.ToLower(err.Error()), "database is locked") || strings.Contains(strings.ToLower(err.Error()), "database table is locked"))
+}
+
+// RecoverUnknown is an explicit recovery fence. It is the only operation
+// that can turn an unknown/expired intent back into a claim, and only after a
+// trusted observation proves that no provider process was started.
+func (s *ExecutionDispatchStore) RecoverUnknown(ctx context.Context, record DispatchRecord, worker string, lease time.Duration) (DispatchRecord, error) {
+	if record.TenantID == 0 || record.RunID == "" || record.CommandID == "" || strings.TrimSpace(worker) == "" || lease <= 0 {
+		return DispatchRecord{}, agentruntime.ErrConflict
+	}
+	var result DispatchRecord
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		epoch, err := s.lockRun(ctx, tx, agentruntime.RunKey{TenantID: record.TenantID, RunID: record.RunID})
 		if err != nil {
 			return err
 		}
-		if row.RunID != key.RunID || row.Epoch != epoch {
+		if epoch != record.Epoch {
 			return ErrDispatchLeaseLost
 		}
-		if row.State == "completed" || row.State == "reconciled" {
-			result = row.record()
-			return nil
-		}
-		if row.LeaseUntil != nil && row.LeaseUntil.After(now) && row.Worker != worker {
-			return ErrDispatchBusy
-		}
-		row.State, row.Worker, row.LeaseUntil = "claimed", worker, ptrTime(now.Add(lease))
-		if err := tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", key.TenantID, commandID).Updates(map[string]any{"state": row.State, "worker": worker, "lease_until": row.LeaseUntil, "updated_at": now}).Error; err != nil {
+		row, err := s.getLocked(ctx, tx, agentruntime.RunKey{TenantID: record.TenantID, RunID: record.RunID}, record.CommandID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return agentruntime.ErrNotFound
+			}
 			return err
 		}
+		if row.State != "unknown" || row.ObservedState != "not_started" {
+			return ErrDispatchUnknown
+		}
+		if record.PayloadHash != "" && row.PayloadHash != record.PayloadHash {
+			return ErrDispatchConflict
+		}
+		now := time.Now().UTC()
+		until := now.Add(lease)
+		if err := tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", record.TenantID, record.CommandID).Updates(map[string]any{"state": "claimed", "worker": worker, "lease_until": until, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		row.State, row.Worker, row.LeaseUntil = "claimed", worker, &until
 		result = row.record()
+		result.New = true
 		return nil
 	})
 	return result, err
@@ -155,11 +245,17 @@ func (s *ExecutionDispatchStore) SaveReceipt(ctx context.Context, record Dispatc
 		if row.RunID != record.RunID || row.AttemptID != record.AttemptID || row.Epoch != record.Epoch {
 			return ErrDispatchConflict
 		}
+		if record.PayloadHash != "" && row.PayloadHash != record.PayloadHash {
+			return ErrDispatchConflict
+		}
 		if row.ExternalID != "" && row.ExternalID != externalID {
 			return ErrDispatchConflict
 		}
 		if row.State == "completed" && row.ExternalID == externalID {
 			return nil
+		}
+		if row.Worker != record.Worker || row.State != "claimed" || row.LeaseUntil == nil || !row.LeaseUntil.After(time.Now().UTC()) {
+			return ErrDispatchLeaseLost
 		}
 		now := time.Now().UTC()
 		return tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", record.TenantID, record.CommandID).Updates(map[string]any{"state": "completed", "external_id": externalID, "lease_until": nil, "updated_at": now}).Error

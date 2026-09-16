@@ -17,19 +17,34 @@ type RemoteDispatcher struct {
 	dispatch *repository.ExecutionDispatchStore
 }
 
+var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
+
+// RemoteProvider is implemented by the real Paseo bridge adapter. There is no
+// callback fallback: a missing provider fails closed before the dispatch
+// intent can be sent to an external process.
+type RemoteProvider interface {
+	Start(context.Context, agentruntime.RunKey, string) (string, error)
+}
+
 func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDispatcher {
 	return &RemoteDispatcher{dispatch: dispatch}
 }
 
-func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, worker string, lease time.Duration, start func(context.Context) (string, error)) (string, error) {
-	record, err := d.dispatch.ClaimDispatch(ctx, key, commandID, worker, lease)
+func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
+	if provider == nil {
+		return "", ErrProviderUnavailable
+	}
+	record, err := d.dispatch.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
 	if err != nil {
 		return "", err
 	}
 	if record.State == "completed" || record.State == "reconciled" {
 		return record.ExternalID, nil
 	}
-	externalID, err := start(ctx)
+	if !record.New {
+		return "", repository.ErrDispatchBusy
+	}
+	externalID, err := provider.Start(ctx, key, commandID)
 	if err != nil {
 		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
 			return "", fmt.Errorf("remote dispatch failed (%v); durable unknown recovery failed: %w", err, reconcileErr)
