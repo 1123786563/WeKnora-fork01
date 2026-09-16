@@ -168,3 +168,21 @@ func nextEventSeq(tx *gorm.DB, f agentruntime.Fence) int64 {
 	}
 	return r.Seq + 1
 }
+
+// NotificationEventKind is the single event-to-notification policy. Streaming
+// token events intentionally return false; only durable user-actionable or
+// terminal outcomes can create a mobile notification intent.
+func NotificationEventKind(eventType string) (string, bool) {
+	switch eventType {
+	case "run_completed", "execution.succeeded", "completed", "succeeded":
+		return "completed", true
+	case "run_failed", "execution.failed", "failed", "error":
+		return "failed", true
+	case "interaction_requested", "waiting_user", "approval_requested":
+		return "interaction_requested", true
+	case "budget_exhausted", "budget_exceeded":
+		return "budget_exhausted", true
+	default:
+		return "", false
+	}
+}
