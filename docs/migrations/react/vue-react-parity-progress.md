@@ -4092,3 +4092,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   sandbox/skill mutation and permission flows, and per-feature Wails/native
   interaction remain open or `blocked-env`. No Vue, mobile, Go, or pre-existing
   workbench migration changes were modified.
+
+## 2026-09-16 Round R424 — Parallel graph, settings, model, and integrations parity
+
+- Four independent Vue-baseline fixes landed: MCP mutation controls are now
+  admin-only like Vue (`87432b20`); embedded Integrations preserves the tab
+  selected by the user until the parent tab changes (`562a491a`); the Web
+  knowledge graph now matches Vue frontier/familiar-node rings, responsive
+  canvas structure, and uses the safe Markdown reader in its detail drawer
+  (`d5362e3e`); and Model Debug reselects a valid type/model after catalog
+  refresh (`fb8d5ff8`).
+- Scoped tests passed: MCP 29/29, Integrations 62/62, Graph 13/13, Model
+  Debug 47/47. Integrated Web regression passed `1219/1219`; `pnpm
+  typecheck:web`, `git diff --check`, Web build, Embed build, Desktop 9/9
+  tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real MCP/model/graph/
+  integrations backend mutation and permission flows, and per-feature Wails
+  interaction remain open or `blocked-env`. No mobile code was modified.
