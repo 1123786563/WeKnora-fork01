@@ -66,8 +66,20 @@ type AdmissionVerifier struct {
 type BridgeClient struct{ config BridgeConfig }
 
 type BridgeResponse struct {
-	ID    string `json:"id"`
-	State string `json:"state,omitempty"`
+	ID    string            `json:"id"`
+	State string            `json:"state,omitempty"`
+	Usage *UsageObservation `json:"usage,omitempty"`
+}
+
+// UsageObservation is provider output only. The bridge cannot choose funding
+// or source; those remain in the server-side worker binding.
+type UsageObservation struct {
+	Service      string           `json:"service,omitempty"`
+	Status       string           `json:"status,omitempty"`
+	PriceVersion string           `json:"price_version,omitempty"`
+	Revision     int64            `json:"revision,omitempty"`
+	OccurredAt   time.Time        `json:"occurred_at,omitempty"`
+	Dimensions   map[string]int64 `json:"dimensions,omitempty"`
 }
 
 type bridgeEnvelope struct {

@@ -18,6 +18,19 @@ the execution gate, and explicit keys must equal the derived
 
 ## Evidence
 
+The integration fix adds the actual `RemoteDispatcher` path coverage:
+
+- `go test ./internal/application/service/workbench -run 'TestRemoteDispatcher|TestRemoteUsage' -count=1` — PASS.
+- `go test -race ./internal/application/service/workbench -run 'TestRemoteDispatcher|TestRemoteUsage' -count=1` — PASS.
+- `go test ./internal/application/service/workbench ./internal/container -run '^$' -count=1` — PASS (compile-only).
+- `go vet ./internal/application/service/workbench ./internal/container ./internal/execution ./internal/agent/runtime` — PASS.
+
+The tests exercise the real durable dispatch store with a fenced provider,
+trusted usage Begin/Finish ordering, child budget attachment, BYOK model
+no-reservation, idempotent replay, and post-provider missing-usage
+reconciliation. A provider response that lacks a trusted usage observation is
+left `reconciled`/unknown and is never synthesized into a billable success.
+
 - RED was reconstructed from the task brief: before the policy file existed,
   `go test ./internal/execution -run TestRemoteUsage -count=1` failed because
   `AllowModelSettlement` was undefined.

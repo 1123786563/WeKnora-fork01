@@ -197,17 +197,33 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, nil, executors...)
 }
 
-// NewAgentRuntimeWithRemoteProvider is the production assembly point for a
-// Paseo-backed worker. The provider and durable dispatch store are explicit
-// dependencies so an enabled runtime cannot accidentally invoke a provider
-// outside the W20 intent/receipt fence.
+// NewAgentRuntimeWithRemoteProvider is retained as a fail-closed compatibility
+// entry point. Provider-enabled production assembly must use the constructor
+// below with the trusted usage service; silently creating a worker that can
+// claim durable intents without billing is unsafe.
 func NewAgentRuntimeWithRemoteProvider(
 	cfg *config.Config,
 	store *repository.AgentRunStore,
 	dispatch *repository.ExecutionDispatchStore,
 	provider workbenchservice.RemoteProvider,
 ) (*AgentRuntime, error) {
-	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, nil)
+	// A provider-enabled runtime must be constructed through the container's
+	// trusted usage binding. Returning a worker that can claim a dispatch and
+	// fail only after the claim leaves durable intents stranded.
+	return nil, errors.New("remote provider requires trusted usage service; use container assembly")
+}
+
+// NewAgentRuntimeWithRemoteProviderAndUsage is the explicit assembly point for
+// a Paseo-backed worker. The provider, dispatch log, and trusted usage service
+// are all required before the worker can claim a run.
+func NewAgentRuntimeWithRemoteProviderAndUsage(
+	cfg *config.Config,
+	store *repository.AgentRunStore,
+	dispatch *repository.ExecutionDispatchStore,
+	provider workbenchservice.RemoteProvider,
+	usage *workbenchservice.RemoteUsageService,
+) (*AgentRuntime, error) {
+	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, usage)
 }
 
 func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, usage *workbenchservice.RemoteUsageService, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
@@ -251,6 +267,9 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 	if provider != nil {
 		if dispatch == nil {
 			return nil, errors.New("remote dispatch store is required when a provider is configured")
+		}
+		if usage == nil {
+			return nil, errors.New("trusted usage service is required when a remote provider is configured")
 		}
 		// Remote dispatch executes through the W20 intent/receipt fence; a
 		// local graph executor is not wired in provider mode.

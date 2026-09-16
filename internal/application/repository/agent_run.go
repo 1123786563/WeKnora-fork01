@@ -293,10 +293,19 @@ func (s *AgentRunStore) ClaimDriver(
 			return e
 		}
 		var snapshot struct {
-			Prompt       string `json:"prompt"`
-			Text         string `json:"text"`
-			WorkspaceRef string `json:"workspaceRef"`
-			Provider     string `json:"provider"`
+			Prompt          string           `json:"prompt"`
+			Text            string           `json:"text"`
+			WorkspaceRef    string           `json:"workspaceRef"`
+			Provider        string           `json:"provider"`
+			ParentRunID     string           `json:"parent_run_id"`
+			UsageSource     string           `json:"usage_source"`
+			UsageFunding    string           `json:"usage_funding"`
+			UsageService    string           `json:"usage_service"`
+			PriceVersion    string           `json:"price_version"`
+			UsageUpper      int64            `json:"usage_upper"`
+			UsageRevision   int64            `json:"usage_revision"`
+			UsageStatus     string           `json:"usage_status"`
+			UsageDimensions map[string]int64 `json:"usage_dimensions"`
 		}
 		_ = json.Unmarshal([]byte(row.Snapshot), &snapshot)
 		prompt := snapshot.Prompt
@@ -311,7 +320,10 @@ func (s *AgentRunStore) ClaimDriver(
 		if provider == "" {
 			provider = driver
 		}
-		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider}
+		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider,
+			ParentRunID: snapshot.ParentRunID, UsageSource: snapshot.UsageSource, UsageFunding: snapshot.UsageFunding,
+			UsageService: snapshot.UsageService, UsagePriceVersion: snapshot.PriceVersion, UsageUpper: snapshot.UsageUpper,
+			UsageRevision: snapshot.UsageRevision, UsageStatus: snapshot.UsageStatus, UsageDimensions: snapshot.UsageDimensions}
 		return nil
 	})
 	return fence, err

@@ -59,13 +59,50 @@ func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime
 	if fence.TenantID == 0 || fence.RunID == "" || commandID == "" {
 		return RemoteUsageHandle{}, ErrRemoteUsageInvalidRequest
 	}
+	service := fence.UsageService
+	if service == "" {
+		service = commercial.ServiceConnector
+	}
+	funding := fence.UsageFunding
+	if funding == "" {
+		funding = commercial.FundingPlatform
+	}
+	source := fence.UsageSource
+	if source == "" {
+		// This is a server-side default for legacy platform admissions. A
+		// remote provider can never set it because it is read from the worker
+		// fence before the provider call.
+		source = "platform_gateway"
+	}
+	price := fence.UsagePriceVersion
+	if price == "" {
+		price = "remote-v1"
+	}
+	revision := fence.UsageRevision
+	if revision <= 0 {
+		revision = 1
+	}
+	status := fence.UsageStatus
+	if status == "" {
+		status = commercial.UsageStatusFinal
+	}
+	dimensions := cloneDimensions(fence.UsageDimensions)
+	if dimensions == nil {
+		dimension := commercial.DimensionConnector
+		if service == commercial.ServiceModel {
+			dimension = commercial.DimensionModel
+		}
+		dimensions = map[string]int64{dimension: 1}
+	}
+	upper := commercial.Credits(fence.UsageUpper)
+	if upper <= 0 {
+		upper = 1
+	}
 	req := RemoteUsageRequest{
 		TenantID: fence.TenantID, RunID: fence.RunID, CallID: commandID,
-		AttemptID: commandID, Upper: 1, Deadline: time.Now().UTC().Add(10 * time.Minute),
-		Source: "platform_gateway", Funding: commercial.FundingPlatform,
-		Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1,
-		OccurredAt: time.Now().UTC(), Dimensions: map[string]int64{commercial.DimensionConnector: 1},
-		Status: commercial.UsageStatusFinal,
+		AttemptID: commandID, ParentRunID: fence.ParentRunID, Upper: upper, Deadline: time.Now().UTC().Add(10 * time.Minute),
+		Source: source, Funding: funding, Service: service, PriceVersion: price, Revision: revision,
+		OccurredAt: time.Now().UTC(), Dimensions: dimensions, Status: status,
 	}
 	res, err := s.beginBound(ctx, req)
 	if err != nil {
@@ -75,10 +112,42 @@ func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime
 }
 
 func (s *RemoteUsageService) FinishRemote(ctx context.Context, handle RemoteUsageHandle) error {
+	return s.FinishRemoteObservation(ctx, handle, nil)
+}
+
+// FinishRemoteObservation applies provider quantities while retaining the
+// server-owned funding/source/price/identity binding. Unknown or partial
+// observations are deliberately rejected as billable facts; the dispatcher
+// must persist the command as unknown so a later observation can reconcile it.
+func (s *RemoteUsageService) FinishRemoteObservation(ctx context.Context, handle RemoteUsageHandle, observation *agentruntime.RemoteUsageObservation) error {
+	req := handle.request
+	if observation != nil {
+		if observation.Service != "" && observation.Service != req.Service {
+			return ErrRemoteUsageInvalidRequest
+		}
+		if observation.PriceVersion != "" && observation.PriceVersion != req.PriceVersion {
+			return ErrRemoteUsageInvalidRequest
+		}
+		if observation.Revision > 0 {
+			req.Revision = observation.Revision
+		}
+		if !observation.OccurredAt.IsZero() {
+			req.OccurredAt = observation.OccurredAt
+		}
+		if observation.Dimensions != nil {
+			req.Dimensions = cloneDimensions(observation.Dimensions)
+		}
+		if observation.Status != "" {
+			req.Status = observation.Status
+		}
+	}
+	if req.Funding == commercial.FundingBYOK && req.Service == commercial.ServiceModel {
+		return s.finishBound(ctx, "", req)
+	}
 	if handle.reservation.ID == "" {
 		return ErrRemoteUsageInvalidRequest
 	}
-	return s.finishBound(ctx, handle.reservation.ID, handle.request)
+	return s.finishBound(ctx, handle.reservation.ID, req)
 }
 
 // RemoteUsageService is the single application seam for remote usage. It
@@ -222,4 +291,15 @@ func validateRemoteIdentity(req RemoteUsageRequest) error {
 
 func stableUsageKey(req RemoteUsageRequest) string {
 	return fmt.Sprintf("%s:%s:%d", req.CallID, req.AttemptID, req.Revision)
+}
+
+func cloneDimensions(in map[string]int64) map[string]int64 {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

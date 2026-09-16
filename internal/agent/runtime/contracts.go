@@ -51,6 +51,30 @@ type RemoteStartRequest struct {
 	Provider     string
 }
 
+// RemoteUsageObservation is provider output only. It deliberately contains
+// no funding/source fields: those are selected by the server-side execution
+// binding before the provider is called.
+type RemoteUsageObservation struct {
+	Service      string
+	Status       string
+	PriceVersion string
+	Revision     int64
+	OccurredAt   time.Time
+	Dimensions   map[string]int64
+}
+
+type RemoteStartResult struct {
+	ExternalID string
+	Usage      *RemoteUsageObservation
+}
+
+// RemoteUsageProvider is an additive capability. Older providers may still
+// implement RemoteCommandProvider; the dispatcher then treats missing usage
+// as an unknown outcome and durably reconciles the dispatch.
+type RemoteUsageProvider interface {
+	StartCommandWithUsage(context.Context, RemoteStartRequest) (RemoteStartResult, error)
+}
+
 type RemoteCommandProvider interface {
 	StartCommand(context.Context, RemoteStartRequest) (string, error)
 }
@@ -61,6 +85,13 @@ type Fence struct {
 	Owner                                    string
 	Epoch                                    int64
 	TargetID, WorkspaceRef, Prompt, Provider string
+	// The following values are server-owned execution-binding metadata. They
+	// are restored from the immutable admission snapshot, never accepted from
+	// a remote provider response.
+	ParentRunID, UsageSource, UsageFunding, UsageService, UsagePriceVersion string
+	UsageUpper, UsageRevision                                               int64
+	UsageStatus                                                             string
+	UsageDimensions                                                         map[string]int64
 }
 
 // RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.
