@@ -9,9 +9,15 @@ import { authorizationHeader, readLegacyPlatformSession } from './platform/legac
 import './styles.css';
 import { AuthRoutes } from './auth/AuthPages.tsx';
 import { guardRoute, nextPathAfterAuth, resolveRoute } from './routes.tsx';
+import { resolveApiBaseUrl, wailsBridgeFromWindow } from './platform/desktop-bridge.ts';
 
 const session = readLegacyPlatformSession();
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+const apiBaseUrl = await resolveApiBaseUrl({
+  injected: window.__WEKNORA_API_BASE__,
+  bridge: wailsBridgeFromWindow(window),
+  configured: import.meta.env.VITE_API_BASE_URL ?? '',
+  origin: window.location.origin,
+});
 const scopeController = createScopeController({
   origin: apiBaseUrl || window.location.origin,
   userId: null,
