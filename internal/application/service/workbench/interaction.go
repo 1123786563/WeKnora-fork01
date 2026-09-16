@@ -172,7 +172,13 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 	}
 	hash := sha256.Sum256(req.Args)
 	expires := time.Now().Add(10 * time.Minute)
-	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), ExternalPendingID: pendingID, Status: "pending", ExpiresAt: &expires}
+	credentialVersion := req.CredentialVersion
+	// Platform approvals use the initial trusted credential snapshot. Remote
+	// target callers must provide their positive rotated version explicitly.
+	if credentialVersion <= 0 {
+		credentialVersion = 1
+	}
+	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), ExternalPendingID: pendingID, CredentialVersion: credentialVersion, Status: "pending", ExpiresAt: &expires}
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 
@@ -479,6 +485,9 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	if current.Kind == string(workbench.InteractionToolApproval) && s.approval == nil {
 		return workbench.InteractionDecision{}, ErrCapabilityUnavailable
 	}
+	if current.Kind == string(workbench.InteractionToolApproval) && current.CredentialVersion < 1 {
+		return workbench.InteractionDecision{}, ErrInteractionRevoked
+	}
 	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
 	}
@@ -510,9 +519,10 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 			externalPendingID = current.ID
 		}
 		if err := s.remoteInteraction.SubmitInteraction(ctx, tenant, owner, current.RunID, externalPendingID, current.ArgsHash, input.Action, current.CredentialVersion, result.ExpectedRevision); err != nil {
-			if compensator, ok := s.store.(DecisionCompensator); ok {
-				_ = compensator.RollbackDecision(ctx, tenant, owner, current.ID, input.DecisionID, result.ExpectedRevision)
-			}
+			// The in-memory gate has already delivered this decision. Reopening the
+			// W05 CAS would make a retry race able to resolve a second approval.
+			// Keep the durable decision resolved and let remote reconciliation retry
+			// the same decision_id/revision.
 			return workbench.InteractionDecision{}, fmt.Errorf("%w: remote interaction: %v", ErrCommandRecoveryUnknown, err)
 		}
 	}

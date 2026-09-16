@@ -7,6 +7,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
+	"time"
 )
 
 // NewWorkbenchReadHandler wires the ownership facade to the same durable run
@@ -24,7 +25,11 @@ func NewWorkbenchReadHandler(
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.
 func NewWorkbenchAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
-	return workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+	coordinator := workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+	if db != nil {
+		coordinator.SetWorkspaceLeaseStore(workbenchservice.NewGormWorkspaceLeaseStore(db), 2*time.Minute)
+	}
+	return coordinator
 }
 
 func NewWorkbenchStartHandler(admission *workbenchservice.AdmissionCoordinator) *session.WorkbenchStartHandler {
@@ -35,11 +40,15 @@ func NewWorkbenchInteractionStore(db *gorm.DB) *workbenchservice.GormInteraction
 	return workbenchservice.NewGormInteractionStore(db)
 }
 
-func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager) *workbenchservice.Service {
+func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager, provider workbenchservice.RemoteProvider) *workbenchservice.Service {
 	// Command ports are intentionally nil until the lifecycle/stream adapters
 	// are supplied by the runtime container; command requests fail closed with
 	// capability_unavailable rather than mutating a different subsystem.
-	return workbenchservice.NewInteractionServiceWithApproval(store, workbenchservice.NewGormSteerPort(storeDB(store), streams), workbenchservice.NewGormCancelPort(storeDB(store)), gate)
+	service := workbenchservice.NewInteractionServiceWithApproval(store, workbenchservice.NewGormSteerPort(storeDB(store), streams), workbenchservice.NewGormCancelPort(storeDB(store)), gate)
+	if remote, ok := provider.(workbenchservice.RemoteInteractionPort); ok {
+		service.SetRemoteInteractionPort(remote)
+	}
+	return service
 }
 
 // storeDB is kept in the service constructor's dependency graph through the

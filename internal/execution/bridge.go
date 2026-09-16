@@ -92,14 +92,14 @@ func decodeBridgeEnvelope(data []byte) (bridgeEnvelope, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return bridgeEnvelope{}, ErrBridgeProtocol
 	}
-	if envelope.Operation != "start" && envelope.Operation != "observe" && envelope.Operation != "cancel" {
+	if envelope.Operation != "start" && envelope.Operation != "observe" && envelope.Operation != "cancel" && envelope.Operation != "control" {
 		return bridgeEnvelope{}, ErrBridgeProtocol
 	}
 	return envelope, nil
 }
 
 func encodeBridgeEnvelope(operation string, payload any) ([]byte, error) {
-	if operation != "start" && operation != "observe" && operation != "cancel" {
+	if operation != "start" && operation != "observe" && operation != "cancel" && operation != "control" {
 		return nil, ErrBridgeProtocol
 	}
 	return json.Marshal(bridgeEnvelope{Version: 1, Operation: operation, Payload: mustJSON(payload)})
@@ -162,7 +162,7 @@ func (c *BridgeClient) request(ctx context.Context, operation string, payload an
 	if c == nil || c.config.BaseURL == "" || c.config.ServiceToken == "" {
 		return BridgeResponse{}, ErrBridgeUnavailable
 	}
-	if operation != "start" && operation != "observe" && operation != "cancel" {
+	if operation != "start" && operation != "observe" && operation != "cancel" && operation != "control" {
 		return BridgeResponse{}, ErrBridgeInvalidRequest
 	}
 	body, err := json.Marshal(map[string]any{"version": 1, "operation": operation, "payload": payload})
@@ -256,6 +256,16 @@ func (c *BridgeClient) Start(ctx context.Context, command StartCommand) (BridgeR
 		return BridgeResponse{}, fmt.Errorf("%w: missing id", ErrBridgeUnavailable)
 	}
 	return result, err
+}
+
+// Control forwards a fixed, already-authorized control envelope to the
+// provider. It is used for approval decisions after the durable W05 CAS.
+func (c *BridgeClient) Control(ctx context.Context, payload any) error {
+	if c == nil {
+		return ErrBridgeUnavailable
+	}
+	_, err := c.request(ctx, "control", payload)
+	return err
 }
 
 func (c *BridgeClient) Observe(ctx context.Context, id string) (BridgeResponse, error) {

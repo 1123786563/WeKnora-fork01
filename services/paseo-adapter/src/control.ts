@@ -44,7 +44,7 @@ export async function cancelAndObserve(
     if (signal?.aborted) throw new BridgeError('BRIDGE_CANCELLED');
     const observation = await port.observe(command.externalID, { signal });
     const state = observation.processState.toLowerCase();
-    if (observation.fresh && (state === 'exited' || state === 'destroyed')) return { state: 'confirmed', observation };
+    if (observation.fresh && (observation.epoch === undefined || observation.epoch === command.epoch) && (state === 'exited' || state === 'destroyed')) return { state: 'confirmed', observation };
     if (state === 'unknown' || state === 'not_found') return { state: 'unknown', observation };
     await new Promise(resolve => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))));
   }

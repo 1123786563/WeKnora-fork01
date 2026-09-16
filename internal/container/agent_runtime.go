@@ -220,7 +220,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
-	if r.Enabled && provider == nil && len(executors) == 0 {
+	if r.Enabled != nil && *r.Enabled && provider == nil && len(executors) == 0 {
 		return nil, errors.New("durable agent recovery requires a graph executor or a configured remote provider")
 	}
 	c := service.DefaultWorkerConfig()
@@ -246,6 +246,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		execute = executors[0]
 	}
 	var worker *service.AgentRunWorker
+	var err error
 	if provider != nil {
 		if dispatch == nil {
 			return nil, errors.New("remote dispatch store is required when a provider is configured")
@@ -256,7 +257,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 			return errors.New("trpc graph executor is not wired")
 		}
 		worker, err = service.NewAgentRunWorkerWithRemoteDispatch(store, remoteExecute, service.RemoteDispatchConfig{
-			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider,
+			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider, Controller: remoteController(provider),
 			CommandID: func(fence agentruntime.Fence) (string, string) {
 				return fence.RunID + "/" + fmt.Sprint(fence.Epoch), ""
 			},
@@ -278,6 +279,11 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 	runs := service.NewAgentRunService(store, wake)
 	service.RegisterAgentRunService(runs)
 	return &AgentRuntime{Runs: runs, Worker: worker}, nil
+}
+
+func remoteController(provider workbenchservice.RemoteProvider) agentruntime.RemoteExecutionStopper {
+	controller, _ := provider.(agentruntime.RemoteExecutionStopper)
+	return controller
 }
 
 // Start launches the durable worker. An enabled runtime without a registered

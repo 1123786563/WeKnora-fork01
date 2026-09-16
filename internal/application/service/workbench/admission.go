@@ -70,6 +70,23 @@ type AdmissionCoordinator struct {
 	requests *repository.WorkbenchRequestRepository
 	budget   TaskBudgetPort
 	publish  func(context.Context, agentruntime.RunKey) error
+	leases   WorkspaceLeaseStore
+	leaseTTL time.Duration
+}
+
+// SetWorkspaceLeaseStore connects admission to the durable tenant/workspace
+// lease table. It is intentionally a setter so existing local/platform
+// deployments remain source-compatible while remote admission fails closed
+// only when a workspace is actually requested.
+func (a *AdmissionCoordinator) SetWorkspaceLeaseStore(store WorkspaceLeaseStore, ttl time.Duration) {
+	if a == nil {
+		return
+	}
+	a.leases = store
+	if ttl <= 0 {
+		ttl = 2 * time.Minute
+	}
+	a.leaseTTL = ttl
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -224,6 +241,20 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)
 		return agentruntime.Run{}, err
 	}
+	var lease WorkspaceLease
+	if a.leases != nil && strings.TrimSpace(in.WorkspaceRef) != "" {
+		ttl := a.leaseTTL
+		if ttl <= 0 {
+			ttl = 2 * time.Minute
+		}
+		lease, err = a.leases.AcquireWorkspaceLease(ctx, req.TenantID, in.WorkspaceRef, run.Key.RunID, req.ActorID, ttl)
+		if err != nil {
+			_ = a.requests.UpdateFromState(ctx, req, "pending", "rejected", reservation, run.Key.RunID, err.Error())
+			_ = a.budget.ReleaseUnstarted(ctx, reservation)
+			return agentruntime.Run{}, err
+		}
+	}
+
 	// Mark the durable dispatch record before invoking the wake-up callback.
 	// If the callback succeeds but this request returns before its final CAS,
 	// retries observe dispatching and return the same run without republishing.
@@ -238,8 +269,11 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		return agentruntime.Run{}, err
 	}
 	if err = a.publish(ctx, run.Key); err != nil {
-		// A known callback failure is retryable. If this CAS itself fails, the
-		// dispatching state remains safe and the worker's durable scan recovers it.
+		// A known callback failure is retryable. Release only the lease acquired
+		// for this run; an unknown provider outcome keeps it fenced.
+		if a.leases != nil && lease.RunID != "" {
+			_ = a.leases.ReleaseWorkspaceLease(context.WithoutCancel(ctx), lease, req.ActorID)
+		}
 		_ = a.requests.UpdateFromState(ctx, req, "dispatching", "pending", reservation, run.Key.RunID, err.Error())
 		return agentruntime.Run{}, err
 	}

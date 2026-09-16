@@ -19,8 +19,18 @@ type ExecutionObservation struct {
 }
 
 func MayReleaseWorkspace(runStatus string, observation ExecutionObservation) bool {
+	return MayReleaseWorkspaceAtEpoch(runStatus, 0, observation)
+}
+
+// MayReleaseWorkspaceAtEpoch only accepts an observation from the current
+// provider epoch. Epoch zero is retained for legacy callers that do not yet
+// have a fenced remote command; all fenced callers must pass a positive epoch.
+func MayReleaseWorkspaceAtEpoch(runStatus string, currentEpoch int64, observation ExecutionObservation) bool {
 	status := strings.ToLower(strings.TrimSpace(runStatus))
 	if status != "canceled" && status != "failed" && status != "succeeded" {
+		return false
+	}
+	if currentEpoch > 0 && observation.Epoch != currentEpoch {
 		return false
 	}
 	if !observation.Fresh {
@@ -63,6 +73,17 @@ type RemoteControl interface {
 // running or unknown observation remains unconfirmed so the workspace stays
 // fenced and callers can retry reconciliation with the same external ID.
 func StopRemoteExecution(ctx context.Context, remote RemoteControl, externalID string, observeTimeout time.Duration) (StopResult, error) {
+	return stopRemoteExecutionAtEpoch(ctx, remote, externalID, 0, observeTimeout)
+}
+
+// StopRemoteExecutionAtEpoch fences provider observations to the epoch that
+// issued the stop. A response from a reused external ID can never release the
+// current workspace.
+func StopRemoteExecutionAtEpoch(ctx context.Context, remote RemoteControl, externalID string, epoch int64, observeTimeout time.Duration) (StopResult, error) {
+	return stopRemoteExecutionAtEpoch(ctx, remote, externalID, epoch, observeTimeout)
+}
+
+func stopRemoteExecutionAtEpoch(ctx context.Context, remote RemoteControl, externalID string, epoch int64, observeTimeout time.Duration) (StopResult, error) {
 	result := StopResult{ExternalID: strings.TrimSpace(externalID), State: StopUnknown}
 	if remote == nil || result.ExternalID == "" {
 		return result, ErrWorkspaceLeaseLost
@@ -82,7 +103,7 @@ func StopRemoteExecution(ctx context.Context, remote RemoteControl, externalID s
 			return result, err
 		}
 		result.Observation = observation
-		if MayReleaseWorkspace("canceled", observation) {
+		if MayReleaseWorkspaceAtEpoch("canceled", epoch, observation) {
 			result.State, result.Confirmed, result.Observation.Fresh = StopConfirmed, true, true
 			return result, nil
 		}

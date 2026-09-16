@@ -14,7 +14,7 @@ import (
 // provider/transport error, so callers cannot accidentally retry with a new
 // command id.
 type RemoteDispatcher struct {
-	dispatch *repository.ExecutionDispatchStore
+	store *repository.ExecutionDispatchStore
 }
 
 var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
@@ -24,8 +24,8 @@ var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
 // intent can be sent to an external process.
 type RemoteProvider = agentruntime.RemoteProvider
 
-func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDispatcher {
-	return &RemoteDispatcher{dispatch: dispatch}
+func NewRemoteDispatcher(store *repository.ExecutionDispatchStore) *RemoteDispatcher {
+	return &RemoteDispatcher{store: store}
 }
 
 func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
@@ -41,7 +41,7 @@ func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fenc
 	if provider == nil {
 		return "", ErrProviderUnavailable
 	}
-	record, err := d.dispatch.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
+	record, err := d.store.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
 	if err != nil {
 		return "", err
 	}
@@ -62,13 +62,13 @@ func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fenc
 	}
 	externalID, err = commandProvider.StartCommand(ctx, request)
 	if err != nil {
-		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
+		if reconcileErr := d.store.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
 			return "", fmt.Errorf("remote dispatch failed (%v); durable unknown recovery failed: %w", err, reconcileErr)
 		}
 		return "", err
 	}
-	if err := d.dispatch.SaveReceipt(ctx, record, externalID); err != nil {
-		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "receipt_persist_failed", externalID); reconcileErr != nil {
+	if err := d.store.SaveReceipt(ctx, record, externalID); err != nil {
+		if reconcileErr := d.store.ReconcileUnknown(ctx, record, "receipt_persist_failed", externalID); reconcileErr != nil {
 			return "", fmt.Errorf("receipt persistence failed (%v); durable reconciliation failed: %w", err, reconcileErr)
 		}
 		return "", err

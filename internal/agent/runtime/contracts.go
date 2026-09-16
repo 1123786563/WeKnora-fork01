@@ -55,6 +55,20 @@ type RemoteCommandProvider interface {
 	StartCommand(context.Context, RemoteStartRequest) (string, error)
 }
 
+// RemoteExecutionStopper is implemented by provider adapters that can stop and
+// observe a previously started execution. The epoch is part of the contract:
+// a reused external ID from another attempt must never release the current
+// workspace lease.
+type RemoteExecutionStopper interface {
+	StopRemoteExecution(context.Context, string, int64, time.Duration) (RemoteStopResult, error)
+}
+
+type RemoteStopResult struct {
+	State        string
+	ProcessState string
+	Epoch        int64
+}
+
 // Fence identifies a worker's exclusive, expiring claim on a run.
 type Fence struct {
 	RunKey

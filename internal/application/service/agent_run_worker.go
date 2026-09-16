@@ -26,6 +26,7 @@ type WorkerConfig struct {
 type RemoteDispatchConfig struct {
 	Dispatcher FencedRemoteDispatcher
 	Provider   RemoteProvider
+	Controller agentruntime.RemoteExecutionStopper
 	CommandID  func(agentruntime.Fence) (commandID, payloadHash string)
 }
 
@@ -61,6 +62,13 @@ func (c WorkerConfig) Validate() error {
 	return nil
 }
 
+type activeExecution struct {
+	cancel     context.CancelFunc
+	fence      agentruntime.Fence
+	externalID string
+	controller agentruntime.RemoteExecutionStopper
+}
+
 type AgentRunWorker struct {
 	store     agentruntime.RunStore
 	execute   func(context.Context, agentruntime.Fence) error
@@ -69,7 +77,7 @@ type AgentRunWorker struct {
 	owner     string
 	remote    *RemoteDispatchConfig
 	mu        sync.Mutex
-	active    map[string]context.CancelFunc
+	active    map[string]*activeExecution
 	done      chan struct{}
 }
 
@@ -94,12 +102,12 @@ func NewAgentRunWorker(store agentruntime.RunStore, execute func(context.Context
 		return nil, errors.New("agent worker store and executor are required")
 	}
 	if !cfg.Enabled {
-		return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc), done: make(chan struct{})}, nil
+		return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]*activeExecution), done: make(chan struct{})}, nil
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc), done: make(chan struct{})}, nil
+	return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]*activeExecution), done: make(chan struct{})}, nil
 }
 
 // NewAgentRunWorkerWithRemoteDispatch is the production worker entrypoint for
@@ -202,7 +210,7 @@ func (w *AgentRunWorker) Tick(ctx context.Context) error {
 			continue
 		}
 		runCtx, cancel := context.WithCancel(context.Background()) // independent of HTTP/request ctx
-		w.active[id] = cancel
+		w.active[id] = &activeExecution{cancel: cancel}
 		w.mu.Unlock()
 		fence, claimErr := w.claim(ctx, key)
 		if claimErr != nil {
@@ -298,8 +306,20 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	// execution identity.
 	if w.remote != nil {
 		commandID, payloadHash := w.remote.CommandID(fence)
-		_, dispatchErr := w.remote.Dispatcher.DispatchFence(executionCtx, fence, commandID, payloadHash, w.cfg.Lease, w.remote.Provider)
+		externalID, dispatchErr := w.remote.Dispatcher.DispatchFence(executionCtx, fence, commandID, payloadHash, w.cfg.Lease, w.remote.Provider)
 		if dispatchErr != nil {
+			return
+		}
+		w.mu.Lock()
+		if active := w.active[id]; active != nil {
+			active.fence, active.externalID, active.controller = fence, externalID, w.remote.Controller
+		}
+		w.mu.Unlock()
+		// Cancellation can win while the provider start is in flight. Reconcile
+		// the receipt with a detached bounded context so a late start cannot
+		// leave a live remote process behind.
+		if workerCtx.Err() != nil && w.remote.Controller != nil && externalID != "" {
+			_, _ = w.remote.Controller.StopRemoteExecution(context.WithoutCancel(context.Background()), externalID, fence.Epoch, 10*time.Second)
 			return
 		}
 	}
@@ -356,23 +376,37 @@ func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
 	}
 	id := fmt.Sprintf("%d/%s", key.TenantID, key.RunID)
 	w.mu.Lock()
-	cancel, ok := w.active[id]
+	active, ok := w.active[id]
+	if ok && active != nil {
+		active.cancel()
+	}
 	w.mu.Unlock()
-	if ok {
-		cancel()
+	if !ok || active == nil {
+		return nil
+	}
+	if active.controller != nil && active.externalID != "" {
+		_, err := active.controller.StopRemoteExecution(context.WithoutCancel(context.Background()), active.externalID, active.fence.Epoch, 10*time.Second)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (w *AgentRunWorker) drain() {
 	w.mu.Lock()
-	cancels := make([]context.CancelFunc, 0, len(w.active))
-	for _, c := range w.active {
-		cancels = append(cancels, c)
+	executions := make([]*activeExecution, 0, len(w.active))
+	for _, active := range w.active {
+		executions = append(executions, active)
 	}
 	w.mu.Unlock()
-	for _, cancel := range cancels {
-		cancel()
+	for _, active := range executions {
+		if active != nil && active.cancel != nil {
+			active.cancel()
+		}
+		if active != nil && active.controller != nil && active.externalID != "" {
+			_, _ = active.controller.StopRemoteExecution(context.Background(), active.externalID, active.fence.Epoch, time.Second)
+		}
 	}
 	deadline := time.NewTimer(time.Second)
 	defer deadline.Stop()

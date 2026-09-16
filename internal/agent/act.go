@@ -530,6 +530,7 @@ func (e *AgentEngine) runToolCall(
 	execTimeout := toolExecutionTimeout(tc.Function.Name)
 	toolExecCtx := agenttools.WithToolExecContext(toolCtx, &agenttools.ToolExecContext{
 		RunID:              runID,
+		CredentialVersion:  1,
 		RequestID:          requestID,
 		SessionID:          sessionID,
 		AssistantMessageID: assistantMessageID,
