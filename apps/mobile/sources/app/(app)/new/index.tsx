@@ -41,7 +41,8 @@ import { machineSpawnNewSession, sessionSetAgentModes } from '@/sync/ops';
 import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
-import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { navigateCreatedProductSession } from '@/utils/productSessionEntry';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useWorktrees } from '@/hooks/useWorktrees';
 import { useShallow } from 'zustand/react/shallow';
@@ -1556,13 +1557,16 @@ function NewSessionScreen() {
                     }
 
                     const createdSession = storage.getState().sessions[result.sessionId];
-                    const productNavigation = createProductSessionNavigationFromSession(createdSession);
-                    if (!productNavigation) {
-                        Modal.alert(t('common.error'), 'The new product session is not ready yet. Please retry after synchronization.');
+                    const navigated = navigateCreatedProductSession({
+                        sessionId: result.sessionId,
+                        session: createdSession,
+                        navigate: navigateToSession,
+                        onUnavailable: () => Modal.alert(t('common.error'), 'The new product session is not ready yet. Please retry after synchronization.'),
+                    });
+                    if (!navigated) {
                         break;
                     }
                     router.back();
-                    navigateToSession(result.sessionId, productNavigation);
                     break;
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(

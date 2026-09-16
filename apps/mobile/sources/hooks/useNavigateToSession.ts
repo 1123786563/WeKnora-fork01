@@ -59,6 +59,19 @@ export function navigateToSession(router: Router, sessionId: string, product?: P
     router.push(sessionHref(sessionId, selection));
 }
 
+/** Explicit legacy Happy navigation. Product entry points must use the product API below. */
+export function navigateToLegacySession(router: Router, sessionId: string) {
+    navigateToSession(router, sessionId);
+}
+
+/** Product navigation is fail-closed when durable product metadata is absent. */
+export function navigateToProductSession(router: Router, session: any): boolean {
+    const product = createProductSessionNavigationFromSession(session);
+    if (!product) return false;
+    navigateToSession(router, session.id, product);
+    return true;
+}
+
 export function useNavigateToSession() {
     const router = useRouter();
     return useCallback((sessionId: string, product?: ProductSessionNavigation) => {
