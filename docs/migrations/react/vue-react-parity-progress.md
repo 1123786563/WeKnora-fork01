@@ -3767,3 +3767,19 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   screenshots, computed-style comparison, authenticated permissions/mutations,
   real Embed streaming, or native Wails interaction. No mobile code was
   modified.
+
+## 2026-09-16 Round R400 — Resolve historical Apps Vue authority
+
+- `4157fdf8` resolves the four Apps Vue authority references through historical
+  commit `9b0c11c4`: `AppsView.vue`, `ConnectionsView.vue`,
+  `AuthorizationView.vue`, and `ActionView.vue`. The mapping and reproducible
+  `git cat-file`/router checks are recorded in
+  `artifacts/apps-vue-authority-20260916.md`.
+- The prior “current file missing” finding was a checkout-location issue and is
+  closed as a static source-trace problem. It does not grant parity acceptance:
+  same-condition visual comparison, authenticated permission gates, provider
+  authorization, action mutations, and terminal/error runtime states remain
+  to be verified against this historical Vue authority.
+- Route inventory still lacks an explicit stable `row_id`, and the combined
+  `embed.html` field still needs splitting. These remain documentation-quality
+  follow-ups. No mobile code was modified.
