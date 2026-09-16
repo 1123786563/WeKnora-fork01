@@ -75,14 +75,14 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
       </label>
       <label>{scope === 'skill' ? t('envVarSettings.skillOnSandbox', { name: 'ID' }) : t('envVarSettings.sandboxPick')}<Input required value={scopeId} onChange={(event) => setScopeId(event.target.value)} /></label>
       <label>{t('envVarSettings.namePlaceholder')}<Input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>{t('envVarSettings.valuePlaceholder')}<Input required value={value} onChange={(event) => setValue(event.target.value)} /></label>
+      <label>{t('envVarSettings.valuePlaceholder')}<Input type="password" autoComplete="new-password" required value={value} onChange={(event) => setValue(event.target.value)} /></label>
       <Button type="submit" loading={busy}>{t('envVarSettings.save')}</Button>
     </form>
     {rows(initialPayload).length === 0
       ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">{t('envVarSettings.sandboxEmpty')}</p>
       : <ul className="wk-list m-0 list-none p-0">{rows(initialPayload).map((row) => (
         <li key={row.scope + ':' + row.scopeId + ':' + row.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
-          <strong>{row.name}</strong> · {row.scope} {row.scopeId} = {row.value}
+          <strong>{row.name}</strong> · {row.scope} {row.scopeId}
           <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>{t('envVarSettings.delete')}</Button>
         </li>
       ))}</ul>}
