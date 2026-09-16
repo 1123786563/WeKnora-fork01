@@ -4044,3 +4044,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   real backend permission/mutation flows, real Embed streaming, or Wails
   native feature interaction; those remain open or `blocked-env`. No mobile
   code was modified.
+
+## 2026-09-16 Round R421 — Parallel detail/upload/model/playground parity
+
+- Four independent Vue-baseline slices landed: spreadsheet (Excel/CSV/TSV)
+  document preview with protected download/retry behavior (`bedcf465`),
+  always-mounted upload confirmation sections matching Vue `v-show`
+  (`bcb81ad2`), Ollama retest loading/management visibility (`6d5d58a6`),
+  and API Playground trigger-focus restoration after close (`d843a633`).
+- Integrated Web regression passed `1210/1210`; Web and shared typechecks
+  passed. Shared tests initially exposed a package ownership defect: the UI
+  interaction test directly imported `jsdom` without declaring it. The
+  dependency was added to `@weknora/ui` and lockfile in `2cebab6a`; the
+  corrected shared suite then passed `500/500`. Web and Embed builds passed.
+- Build output retains existing large-chunk advisories, including the new
+  spreadsheet preview chunk. These remain static/unit/component results;
+  authenticated paired Vue/React browser screenshots, real backend
+  permission/mutation flows, real Embed streaming, and Wails native
+  interaction remain open or `blocked-env`. No mobile code was modified.
