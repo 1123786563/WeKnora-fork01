@@ -7,12 +7,23 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/execution"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 )
 
 type noopCleanupFilePurger struct{}
 
 func (noopCleanupFilePurger) PurgeSessionFiles(context.Context, CleanupClaim) error { return nil }
+
+type recordingCleanupFiles struct {
+	interfaces.FileService
+	deleted []string
+}
+
+func (f *recordingCleanupFiles) DeleteFile(_ context.Context, ref string) error {
+	f.deleted = append(f.deleted, ref)
+	return nil
+}
 
 func TestExecutionCleanupTombstoneClaimAndSettlement(t *testing.T) {
 	db := openRunTestDB(t)
@@ -34,6 +45,9 @@ func TestExecutionCleanupTombstoneClaimAndSettlement(t *testing.T) {
 	claim, err = s.ClaimCleanup(ctx, "cleanup-worker-2", time.Minute)
 	require.NoError(t, err)
 	require.NoError(t, s.CompleteCleanup(ctx, claim, execution.CleanupFacts{Stopped: true, Settled: true, RetentionElapsed: true}))
+	require.NoError(t, db.Table("execution_cleanup").Where("tenant_id=? AND session_id=?", 1, "s1").Pluck("state", &state).Error)
+	require.Equal(t, "cleanup_ready", state)
+	require.NoError(t, s.RunCleanupPurgeOnce(ctx, "cleanup-purger", time.Minute))
 	require.NoError(t, db.Table("execution_cleanup").Where("tenant_id=? AND session_id=?", 1, "s1").Pluck("state", &state).Error)
 	require.Equal(t, "purged", state)
 }
@@ -59,4 +73,20 @@ func TestExecutionCleanupFactsAreMonotonicAndRevisionFenced(t *testing.T) {
 	require.True(t, stopped)
 	require.False(t, settled)
 	require.False(t, retained)
+}
+
+func TestFileCleanupPurgerPreservesSharedRefsAndIsIdempotent(t *testing.T) {
+	db := openRunTestDB(t)
+	files := &recordingCleanupFiles{}
+	purger := NewFileCleanupPurger(db, files)
+	require.NoError(t, db.Exec("INSERT INTO execution_cleanup (tenant_id, owner_id, session_id, deletion_revision, state) VALUES (1,'u1','s1',1,'cleanup_ready'),(1,'u1','s2',1,'tombstoned')").Error)
+	require.NoError(t, db.Exec("INSERT INTO execution_cleanup_artifacts (tenant_id,session_id,deletion_revision,ref,kind) VALUES (1,'s1',1,'blob://shared','file'),(1,'s2',1,'blob://shared','file')").Error)
+	claim := CleanupClaim{TenantID: 1, OwnerID: "u1", SessionID: "s1", DeletionRevision: 1, Worker: "w", Epoch: 1}
+	require.ErrorIs(t, purger.PurgeSessionFiles(context.Background(), claim), ErrCleanupSharedReference)
+	require.Empty(t, files.deleted)
+	require.NoError(t, db.Exec("DELETE FROM execution_cleanup_artifacts WHERE session_id='s2'").Error)
+	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
+	require.Equal(t, []string{"blob://shared"}, files.deleted)
+	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
+	require.Equal(t, []string{"blob://shared"}, files.deleted)
 }

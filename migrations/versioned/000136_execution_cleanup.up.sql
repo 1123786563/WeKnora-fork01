@@ -17,7 +17,7 @@ CREATE TABLE execution_cleanup (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, session_id),
-    CHECK (state IN ('tombstoned', 'cleanup_claimed', 'cleanup_pending', 'purged'))
+    CHECK (state IN ('tombstoned', 'cleanup_claimed', 'cleanup_pending', 'cleanup_ready', 'purged'))
 );
 CREATE INDEX idx_execution_cleanup_claim ON execution_cleanup (state, lease_until, updated_at);
 CREATE INDEX idx_execution_cleanup_owner ON execution_cleanup (tenant_id, owner_id, session_id);

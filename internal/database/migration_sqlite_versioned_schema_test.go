@@ -27,6 +27,7 @@ var versionedSQLiteTables = []string{
 	"execution_target_identities",
 	"execution_workspaces",
 	"execution_cleanup",
+	"execution_cleanup_artifacts",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -57,7 +58,7 @@ var versionedSQLiteColumns = map[string][]string{
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
 // queue at 000056 and the execution target schema at 000057 and cleanup ledger at 000058.
-const expectedSQLiteMigrationVersion = 58
+const expectedSQLiteMigrationVersion = 60
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

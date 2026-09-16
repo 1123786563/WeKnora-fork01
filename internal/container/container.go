@@ -501,7 +501,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// W33 cleanup worker uses the repository-owned observation source. It
 	// remains fail-closed for W26 file/blob/backup deletion until that adapter
 	// is registered.
-	must(container.Invoke(func(store *repository.AgentRunStore, cleaner interfaces.ResourceCleaner) {
+	must(container.Invoke(func(store *repository.AgentRunStore, files interfaces.FileService, cleaner interfaces.ResourceCleaner) {
+		store.SetCleanupFilePurger(repository.NewFileCleanupPurger(store.DB(), files))
 		StartExecutionCleanupSweep(store, cleaner)
 	}))
 

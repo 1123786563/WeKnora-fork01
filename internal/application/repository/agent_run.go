@@ -30,6 +30,14 @@ func NewAgentRunStore(db *gorm.DB) *AgentRunStore {
 	return &AgentRunStore{db: db, cleanupSource: NewDurableCleanupObservationSource(db)}
 }
 
+// DB exposes the already-scoped business DB for container-owned adapters.
+func (s *AgentRunStore) DB() *gorm.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
 type agentRunRow struct {
 	TenantID                                                              uint64
 	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
