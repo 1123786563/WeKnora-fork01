@@ -617,3 +617,27 @@ test('rail clicks sync ?scope= (created/joined set it, all removes it)', async (
   assert.equal(railFor('我创建的')!.getAttribute('title'), '我创建的 (1)');
   assert.equal(railFor('我加入的')!.getAttribute('title'), '我加入的 (1)');
 });
+
+// R435-A3: Vue OrganizationSettingsModal.vue gates the role-upgrade entry with
+// canRequestUpgrade (edit mode + space role below admin + tenant admin+) and
+// narrows upgradeRoleOptions to roles above the current one.
+test('role-upgrade entry follows the Vue canRequestUpgrade/upgradeRoleOptions contract', async () => {
+  const { canRequestUpgradeForOrg, upgradeRoleOptionsForRole } = await import('./OrganizationsPage.tsx');
+
+  // Create mode never offers an upgrade request.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'create', myRole: 'viewer', tenantAdmin: true }), false);
+  // A missing space role cannot request an upgrade.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: '', tenantAdmin: true }), false);
+  // Admins (and owners) already hold the top space role.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'admin', tenantAdmin: true }), false);
+  // Below tenant admin the modal shows the read-only tenant-role hint instead.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'editor', tenantAdmin: false }), false);
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'viewer', tenantAdmin: true }), true);
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'editor', tenantAdmin: true }), true);
+
+  // Vue upgradeRoleOptions: only roles above the current space role.
+  assert.deepEqual(upgradeRoleOptionsForRole('viewer'), ['editor', 'admin']);
+  assert.deepEqual(upgradeRoleOptionsForRole('editor'), ['admin']);
+  assert.deepEqual(upgradeRoleOptionsForRole('admin'), []);
+  assert.deepEqual(upgradeRoleOptionsForRole(''), []);
+});

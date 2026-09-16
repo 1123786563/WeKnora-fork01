@@ -279,6 +279,8 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   const [history, setHistory] = useState<{ id: string; rows: KnowledgeChunkRevision[] } | null>(null);
   const [historyLoading, setHistoryLoading] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryNotice, setRetryNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const load = (page = 1) => {
@@ -316,15 +318,20 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
     } finally { setSavingId(null); }
   };
 
+  /** Vue retryChunkIndex: only expected_revision travels; a still-failed result raises indexFailed, otherwise indexRetrySuccess. */
   const retryIndex = async (chunk: KnowledgeChunk) => {
     setMutationError(null);
-    setSavingId(chunk.id);
+    setRetryNotice(null);
+    setRetryingId(chunk.id);
     try {
       const updated = await client.knowledgeBases.documents.updateChunk(document.id, chunk.id, { expected_revision: chunk.content_revision ?? 0 });
       setState((current) => ({ ...current, chunks: current.chunks.map((row) => row.id === chunk.id ? updated : row) }));
+      setRetryNotice(updated.index_status === 'failed'
+        ? { tone: 'error', message: t('knowledgeBase.indexFailed') }
+        : { tone: 'success', message: t('knowledgeBase.indexRetrySuccess') });
     } catch (error: unknown) {
-      setMutationError(error instanceof Error ? error.message : t('common.error'));
-    } finally { setSavingId(null); }
+      setRetryNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
+    } finally { setRetryingId(null); }
   };
 
   const showHistory = (chunk: KnowledgeChunk) => {
@@ -336,6 +343,7 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   return <section className="wk-document-chunks mt-4" aria-label={t('knowledgeBase.viewChunks')} hidden={view === 'preview'}>
     <div className="mb-3 flex items-center justify-between gap-3"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.viewChunks')} {state.total ? `(${state.total})` : ''}</h3></div>
     {mutationError ? <Status tone="error">{mutationError}</Status> : null}
+    {retryNotice ? <Status tone={retryNotice.tone}>{retryNotice.message}</Status> : null}
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
     {state.status === 'error' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
     {state.status === 'success' && state.chunks.length === 0 ? <Status>{t('common.empty')}</Status> : null}
@@ -345,7 +353,7 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
         : <div className="wk-document-merged text-[13px] text-muted">—</div>
       : null}
     {state.status === 'success' && view !== 'merged' ? <><div className="flex flex-col gap-3">{state.chunks.map((chunk, index) => <article key={chunk.id} className="rounded-[8px] border border-line-soft bg-surface p-3" data-chunk-id={chunk.id}>
-      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" loading={savingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('common.retry')}</Button> : null}</span> : null}</div>
+      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</span> : null}</div>
       {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[120px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <p className="m-0 whitespace-pre-wrap text-[13px] text-ink">{chunk.content || '—'}</p>}
       {history?.id === chunk.id ? <div className="mt-3 border-t border-line-soft pt-3"><strong className="text-[12px]">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="m-0 mt-2 list-decimal pl-5 text-[12px]">{history?.rows.map((row) => <li key={row.revision} className="mb-2"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="ml-2" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
     </article>)}</div>{state.total > 25 ? <nav className="mt-3 flex items-center justify-between" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.page}</span><Button type="button" disabled={state.page * 25 >= state.total} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}</> : null}

@@ -137,6 +137,82 @@ test('metadata editor submits structured values and keeps the draft after a fail
   assert.ok(metadataSection?.querySelector('input[placeholder="字段值"]'), 'failed save retains row editing');
 });
 
+test('failed chunk retry follows the Vue retryIndex contract: copy, payload, and success feedback', async () => {
+  const updateCalls: Array<Record<string, unknown>> = [];
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
+  ]);
+  (client as any).knowledgeBases.documents.updateChunk = async (_documentId: string, _chunkId: string, input: Record<string, unknown>) => {
+    updateCalls.push(input);
+    return { id: 'chunk-1', content: 'Broken chunk', content_revision: 4, is_enabled: true, index_status: 'completed' };
+  };
+  const container = await mountDetail(client);
+  await act(async () => { Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
+
+  const body = () => container.ownerDocument.body;
+  const retryButton = () => Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '重试索引');
+  const retry = retryButton();
+  assert.ok(retry, 'Vue labels the failed-index action with knowledgeBase.retryIndex (重试索引), not common.retry');
+  assert.equal(retry?.getAttribute('title') || retry?.getAttribute('aria-label'), '重试索引');
+
+  await act(async () => { retry!.click(); });
+  await act(async () => {});
+  assert.deepEqual(updateCalls, [{ expected_revision: 3 }], 'Vue retryChunkIndex sends only expected_revision, no content or is_enabled');
+  assert.ok(body().textContent?.includes('索引已同步'), 'Vue shows the indexRetrySuccess message after a successful retry');
+  assert.ok(!retryButton(), 'a recovered chunk no longer offers the retry action');
+});
+
+test('a retry that stays failed surfaces the Vue indexFailed error and keeps the retry control', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
+  ]);
+  (client as any).knowledgeBases.documents.updateChunk = async () => ({ id: 'chunk-1', content: 'Broken chunk', content_revision: 4, is_enabled: true, index_status: 'failed' });
+  const container = await mountDetail(client);
+  await act(async () => { Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
+
+  const retry = () => Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '重试索引');
+  assert.ok(retry());
+  await act(async () => { retry()!.click(); });
+  await act(async () => {});
+  assert.ok(container.ownerDocument.body.textContent?.includes('索引同步失败'), 'Vue shows indexFailed when the returned chunk is still failed');
+  assert.ok(retry(), 'the retry affordance remains for a still-failed chunk');
+});
+
+test('retry isolates its loading state from the enable/disable control and viewers see no retry action', async () => {
+  let release: ((value: Record<string, unknown>) => void) | undefined;
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
+  ]);
+  (client as any).knowledgeBases.documents.updateChunk = async () => new Promise((resolve) => { release = resolve; });
+  const container = await mountDetail(client);
+  await act(async () => { Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
+
+  const retry = () => Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '重试索引') as HTMLButtonElement;
+  const toggle = () => Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '停用') as HTMLButtonElement;
+  await act(async () => { retry().click(); });
+  assert.ok(retry().disabled, 'an in-flight retry cannot be double-submitted');
+  assert.ok(!toggle().disabled, 'Vue retry loading never disables the chunk enable/disable switch');
+  await act(async () => { release!({ id: 'chunk-1', content: 'Broken chunk', content_revision: 4, is_enabled: true, index_status: 'completed' }); });
+  await act(async () => {});
+  assert.ok(!retry(), 'retry clears after completion');
+
+  const viewer = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'viewer', 'owner-1', [
+    { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
+  ]);
+  mountedRoot?.unmount();
+  document.body.replaceChildren();
+  const viewerContainer = await mountDetail(viewer);
+  assert.equal(Array.from(viewerContainer.ownerDocument.body.querySelectorAll('button')).some((button) => button.textContent === '重试索引'), false, 'viewers never see the chunk retry control');
+});
+
 async function mountDetail(client: never, documentId = 'doc-1') {
   const container = document.createElement('div');
   document.body.append(container);
@@ -413,8 +489,8 @@ test('chunk enabled state can be toggled and failed indexing can be retried', as
   const container = await mountDetail(client);
   const enable = Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '启用');
   assert.ok(enable);
-  const retry = Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '重试');
-  assert.ok(retry);
+  const retry = Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '重试索引');
+  assert.ok(retry, 'Vue labels the failed-index action with knowledgeBase.retryIndex');
   await act(async () => { retry!.click(); });
   const refreshedEnable = Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '启用');
   assert.ok(refreshedEnable);

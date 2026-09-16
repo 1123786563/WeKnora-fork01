@@ -4317,3 +4317,37 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   (`screenshots/r433-20260916/`: vue/react select-highlight pair + react hover
   secondary focus; `r432-20260916/react-kb-guide-graph-deeplink.png` from the
   concurrent slice). No Vue, mobile, or Go code was modified.
+
+## 2026-09-16 Round R435 — Code-parity TDD round: settings surface, doc retry contract, org gating, chat approval args
+
+- Five parallel agents (A1 knowledge-settings, A2 document-detail, A3 metadata/org, A4 chat, A5 verifier) in one
+  dispatch, file-domain mutually exclusive, all implementation slices red→green TDD. R434 numbering was left to
+  the external concurrent orchestrator (its graph fit-to-view / guide-placement WIP was in flight in this
+  worktree and was not touched by this round).
+- A1: legacy `knowledge-settings/KnowledgeSettingsPage.tsx` now matches the Vue inline editor contract
+  (KnowledgeBaseEditorModal.vue:423-434) — datasource mounts the live `DataSourcesPage` (canManage gating), share
+  mounts `KnowledgeBaseShareDialog` inline, activity mounts `KnowledgeBaseActivityPanel`, and
+  `loadKnowledgeSettingsOptions` loads parser/vector/storage catalogues from the authenticated settings API with
+  per-endpoint degradation; parser select lists live available engines, vector/storage selects render the Vue
+  read-only edit-state shape. Verifier caught a cross-domain regression (synchronous catalogue calls broke the
+  graph page's sparse mock client, test:web 1339/1340); fixed with lazy thunks +
+  `loadKnowledgeSettingsOptionsToleratesMissingMethods` regression test → 1340/1340. Deferred: legacy surface
+  save pipeline (App.tsx aligned modal still owns full save semantics).
+- A2: document-detail retry-index feedback now matches Vue `doc-content.vue` — 「重试索引」copy,「索引已同步」
+  success /「索引同步失败」still-failed feedback, dedicated `retryingId`/`retryNotice` so retry loading no longer
+  disables the enable/disable toggles, localized title/aria, viewer gating. Scoped documents regression 199/199.
+  Accepted delta recorded: Vue icon+tooltip+toast vs React text button + inline Status (R370-established shape).
+- A3: structured metadata-row editing verified already closed in R370 (no change; domain constraint honored).
+  Fallback slice: org role-upgrade request now gated per Vue `OrganizationSettingsModal.vue` via
+  `canRequestUpgradeForOrg` (editing + non-admin space role + tenant admin+) with role options converged
+  (`upgradeRoleOptionsForRole`: viewer→editor/admin, editor→admin). Deferred: `hasPendingUpgrade` needs an
+  api-client field.
+- A4: tool-approval args editing matches Vue `ToolApprovalCard.vue` — per-keystroke JSON validation
+  (`approvalArgsStatus.isJsonValid`) disables approve with inline alert, `argsModified`「已修改」status, reject
+  carries localized `reason` (`userRejected`), button order reject · approve, new 5-locale keys
+  `approvalArgsModified`/`approvalRejectedReason`. Deferred: Vue approval countdown. Ten-state CHAT-SURFACE audit
+  recorded: other nine states verified aligned.
+- Gates: `pnpm test:web` 1340/1340, `pnpm test:shared` 570/570, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Code-contract round — no browser pairing; live capture for the touched surfaces (KB settings dialog, doc
+  retry, org settings, chat approval) deferred to the next browser round. Evidence:
+  `evidence/vue-react-parity/2026-09-16-r435-code-parity-round.md`. No Vue, mobile, or Go code was modified.

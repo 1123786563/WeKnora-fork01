@@ -3,8 +3,41 @@ import type { ElementType } from 'react';
 import type { KnowledgeBase } from '@weknora/contracts';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
+import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
+import { KnowledgeBaseShareDialog } from '../knowledge-bases/KnowledgeBaseShareDialog.tsx';
+import { KnowledgeBaseActivityPanel } from '../knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type ProjectUi = typeof import('@weknora/ui');
+
+export interface KnowledgeEditorOptions {
+  parserEngines: Array<{ Name: string; Description: string; Available?: boolean }>;
+  storageBackends: Array<{ id: string; name: string; provider: string; status: string }>;
+  vectorStores: Array<{ id: string; name: string; engine_type: string; source: string; readonly: boolean }>;
+  loading: boolean;
+  error: string | null;
+}
+
+const idleEditorOptions: KnowledgeEditorOptions = { parserEngines: [], storageBackends: [], vectorStores: [], loading: false, error: null };
+
+// Loads the live parser/vector/storage catalogues through the authenticated
+// settings API when the settings surface opens (Vue editorResources contract).
+// Each endpoint degrades independently so one failing catalogue cannot blank
+// the other two.
+export async function loadKnowledgeSettingsOptions(client: WeKnoraClient): Promise<Omit<KnowledgeEditorOptions, 'loading'>> {
+  const [parser, storage, vector] = await Promise.allSettled([
+    Promise.resolve().then(() => client.knowledgeBases.settings.parserEngines()),
+    Promise.resolve().then(() => client.knowledgeBases.settings.storageBackends()),
+    Promise.resolve().then(() => client.knowledgeBases.settings.vectorStores()),
+  ]);
+  const failures = [parser, storage, vector].filter((outcome) => outcome.status === 'rejected') as Array<PromiseRejectedResult>;
+  return {
+    parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
+    storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
+    vectorStores: vector.status === 'fulfilled' ? vector.value.data.map((item) => ({ id: item.id, name: item.name, engine_type: item.engine_type, source: item.source, readonly: item.readonly })) : [],
+    error: failures.length > 0 ? (failures[0]!.reason instanceof Error ? failures[0]!.reason.message : 'Unable to load settings options') : null,
+  };
+}
 
 export type KnowledgeSettingsSectionKey = 'vectorStore' | 'parser' | 'storage' | 'datasource' | 'share' | 'activity' | 'graph';
 
@@ -169,14 +202,6 @@ function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
   return 'neutral';
 }
 
-function activityRows(value: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
-  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
-    return activityRows((value as { data: unknown }).data);
-  }
-  return [];
-}
-
 interface KnowledgeSettingsPageProps {
   knowledgeBase?: KnowledgeSettingsInput;
   knowledgeBaseId?: string;
@@ -191,9 +216,13 @@ export function knowledgeSettingsCanEdit(role: 'owner' | 'admin' | 'viewer' | un
 }
 
 export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, knowledgeBaseId, client, role = 'viewer', canViewActivity = true, initialSection }: KnowledgeSettingsPageProps) {
+  const locale = useAppLocale();
+  const t = createTranslator(locale);
   const [ui, setUi] = useState<ProjectUi | null>(null);
   const [loadedKnowledgeBase, setLoadedKnowledgeBase] = useState<KnowledgeSettingsInput | null>(providedKnowledgeBase ?? null);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [editorOptions, setEditorOptions] = useState<KnowledgeEditorOptions>(idleEditorOptions);
+  const [pendingParserEngine, setPendingParserEngine] = useState('');
   const knowledgeBase = providedKnowledgeBase ?? loadedKnowledgeBase;
   useEffect(() => {
     if (providedKnowledgeBase || !knowledgeBaseId || !client) return;
@@ -203,13 +232,21 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       setLoadState('idle');
     }).catch(() => setLoadState('error'));
   }, [client, knowledgeBaseId, providedKnowledgeBase]);
+  // Vue loads the parser/vector/storage catalogues through editorResources
+  // when the settings surface opens; mirror that live loading here.
+  useEffect(() => {
+    if (!client) return;
+    let mounted = true;
+    setEditorOptions({ ...idleEditorOptions, loading: true });
+    void loadKnowledgeSettingsOptions(client).then((options) => {
+      if (mounted) setEditorOptions({ ...options, loading: false });
+    });
+    return () => { mounted = false; };
+  }, [client]);
   const fallbackKnowledgeBase: KnowledgeSettingsInput = { id: knowledgeBaseId ?? '', name: '', type: 'document' };
   const currentKnowledgeBase = knowledgeBase ?? fallbackKnowledgeBase;
   const availableSections = useMemo(() => getKnowledgeSettingsSections(currentKnowledgeBase, { canViewActivity }), [currentKnowledgeBase, canViewActivity]);
   const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? availableSections[0]?.key ?? 'vectorStore');
-  const [activity, setActivity] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
-  const [dataSources, setDataSources] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
-  const [shares, setShares] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
   const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
     enabled: currentKnowledgeBase.extract_config?.enabled === true,
     text: currentKnowledgeBase.extract_config?.text ?? '',
@@ -218,7 +255,10 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     relations: currentKnowledgeBase.extract_config?.relations ?? [],
     customInstructions: currentKnowledgeBase.extract_config?.customInstructions ?? currentKnowledgeBase.extract_config?.custom_instructions ?? '',
   }));
-  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, activity: activity.rows.length > 0 ? activity.rows : currentKnowledgeBase.activity });
+  const parserRulesForSummary = pendingParserEngine
+    ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
+    : currentKnowledgeBase.chunking_config?.parser_engine_rules;
+  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, chunking_config: { parser_engine_rules: parserRulesForSummary } });
   const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
 
   useEffect(() => {
@@ -228,45 +268,6 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   useEffect(() => {
     if (!availableSections.some((section) => section.key === activeSection)) setActiveSection(availableSections[0]?.key ?? 'vectorStore');
   }, [activeSection, availableSections]);
-
-  useEffect(() => {
-    if (activeSection !== 'activity' || !client || !canViewActivity) return;
-    let mounted = true;
-    setActivity({ status: 'loading', rows: [] });
-    void client.request({
-      method: 'GET',
-      path: getKnowledgeBaseActivityPath(currentKnowledgeBase.id),
-    }).then((value) => {
-      if (mounted) setActivity({ status: 'ready', rows: activityRows(value) });
-    }).catch((error: unknown) => {
-      if (mounted) setActivity({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load activity' });
-    });
-    return () => { mounted = false; };
-  }, [activeSection, canViewActivity, client, currentKnowledgeBase.id]);
-
-  useEffect(() => {
-    if (activeSection !== 'datasource' || !client) return;
-    let mounted = true;
-    setDataSources({ status: 'loading', rows: [] });
-    void client.request({ method: 'GET', path: getKnowledgeBaseDataSourcesPath(currentKnowledgeBase.id) }).then((value) => {
-      if (mounted) setDataSources({ status: 'ready', rows: rowsFromEnvelope(value, 'data') });
-    }).catch((error: unknown) => {
-      if (mounted) setDataSources({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load data sources' });
-    });
-    return () => { mounted = false; };
-  }, [activeSection, client, currentKnowledgeBase.id]);
-
-  useEffect(() => {
-    if (activeSection !== 'share' || !client) return;
-    let mounted = true;
-    setShares({ status: 'loading', rows: [] });
-    void client.request({ method: 'GET', path: getKnowledgeBaseSharesPath(currentKnowledgeBase.id) }).then((value) => {
-      if (mounted) setShares({ status: 'ready', rows: rowsFromEnvelope(value, 'shares') });
-    }).catch((error: unknown) => {
-      if (mounted) setShares({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load shares' });
-    });
-    return () => { mounted = false; };
-  }, [activeSection, client, currentKnowledgeBase.id]);
 
   const CardComponent = ui?.Card ?? 'section';
   const ButtonComponent = ui?.Button ?? 'button';
@@ -304,51 +305,103 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
           <p className="wk-eyebrow">{active?.label}</p>
           <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active?.label}</h3>
           <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
-          {active?.key === 'activity' && activity.status === 'loading' ? <StatusComponent>Loading activity…</StatusComponent> : null}
-          {active?.key === 'activity' && activity.status === 'error' ? <StatusComponent tone="error">{activity.message}</StatusComponent> : null}
-          {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} dataSources={dataSources} shares={shares} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
+          {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key]} section={active.key} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
         </section>
       </div>
     </CardComponent>
   );
 }
 
-function SettingsSection({ summary, section, rows, dataSources, shares, graphExtract, modelId, client, StatusComponent, onGraphChange }: { summary: SettingSummary; section: KnowledgeSettingsSectionKey; rows: Array<Record<string, unknown>>; dataSources: { status: string; rows: Array<Record<string, unknown>>; message?: string }; shares: { status: string; rows: Array<Record<string, unknown>>; message?: string }; graphExtract: GraphExtractConfig; modelId: string; client?: WeKnoraClient; StatusComponent: ElementType; onGraphChange: (value: GraphExtractConfig) => void }) {
+interface SettingsSectionProps {
+  summary: SettingSummary;
+  section: KnowledgeSettingsSectionKey;
+  graphExtract: GraphExtractConfig;
+  modelId: string;
+  client?: WeKnoraClient;
+  knowledgeBaseId: string;
+  knowledgeBaseName: string;
+  canManage: boolean;
+  editorOptions: KnowledgeEditorOptions;
+  pendingParserEngine: string;
+  configuredParserEngine: string;
+  onPendingParserEngine: (value: string) => void;
+  t: (key: string) => string;
+  StatusComponent: ElementType;
+  onGraphChange: (value: GraphExtractConfig) => void;
+}
+
+function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange }: SettingsSectionProps) {
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
       <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
         <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
         <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
       </div>
-      {section === 'vectorStore' ? <p className="wk-muted" style={{ margin: 0 }}>Bindings are read-only after creation. An unavailable binding needs recovery in the global Vector Stores settings.</p> : null}
-      {section === 'parser' ? <p className="wk-muted" style={{ margin: 0 }}>Parser overrides are grouped by file type; files without an override use the platform default.</p> : null}
-      {section === 'storage' ? <p className="wk-muted" style={{ margin: 0 }}>The selected storage instance owns uploaded files. Existing files may require migration before changing it.</p> : null}
-      {section === 'activity' ? (
-        rows.length > 0 ? (
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            {rows.slice(0, 5).map((row, index) => <div key={String(row.id ?? index)} style={{ borderBottom: '1px solid #edf0f5', padding: '0.65rem 0' }}><strong>{titleCase(text(row.action) || 'Change')}</strong><span className="wk-muted">{' · '}{titleCase(text(row.outcome) || 'recorded')}</span></div>)}
-          </div>
-        ) : <p className="wk-muted" style={{ margin: 0 }}>No recorded changes for this knowledge base.</p>
+      {section === 'vectorStore' ? (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <label style={{ display: 'grid', gap: '0.25rem' }}>
+            {t('kbSettings.vectorStore.engineLabel')}
+            <select value={summary.label} disabled aria-label={t('kbSettings.vectorStore.engineLabel')}>
+              <option value={summary.label}>{summary.label}</option>
+              {editorOptions.vectorStores.filter((store) => store.id && store.id !== '').map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}
+            </select>
+          </label>
+          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.vectorStore.immutableHint')}</p>
+          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
+        </div>
       ) : null}
-      {section === 'datasource' ? <RemoteRows state={dataSources} empty="No data sources configured." label={(row) => `${String(row.name ?? 'Unnamed source')} · ${String(row.status ?? 'unknown')}`} StatusComponent={StatusComponent} /> : null}
-      {section === 'share' ? <RemoteRows state={shares} empty="This knowledge base is not shared." label={(row) => `${String(row.organization_name ?? row.organization_id ?? 'Unknown space')} · ${String(row.permission ?? 'viewer')}`} StatusComponent={StatusComponent} /> : null}
+      {section === 'parser' ? (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <label style={{ display: 'grid', gap: '0.25rem' }}>
+            {t('kbSettings.parser.title')}
+            <select
+              value={pendingParserEngine || configuredParserEngine}
+              disabled={editorOptions.loading}
+              aria-label={t('kbSettings.parser.title')}
+              onChange={(event) => onPendingParserEngine(event.target.value)}
+            >
+              <option value="">{t('kbSettings.parser.default')}</option>
+              {editorOptions.parserEngines.filter((engine) => engine.Available !== false).map((engine) => <option key={engine.Name} value={engine.Name}>{localizedEngineName(engine.Name, t)}</option>)}
+            </select>
+          </label>
+          <p className="wk-muted" style={{ margin: 0 }}>{editorOptions.error ?? t('kbSettings.parser.goConfig')}</p>
+        </div>
+      ) : null}
+      {section === 'storage' ? (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <label style={{ display: 'grid', gap: '0.25rem' }}>
+            {t('kbSettings.storage.instanceLabel')}
+            <select value={summary.detail} disabled aria-label={t('kbSettings.storage.instanceLabel')}>
+              <option value={summary.detail}>{summary.label}</option>
+              {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}
+            </select>
+          </label>
+          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.storage.migrateHint')}</p>
+          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
+        </div>
+      ) : null}
+      {section === 'activity' ? (
+        client && knowledgeBaseId
+          ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={knowledgeBaseId} />
+          : <p className="wk-muted" style={{ margin: 0 }}>No recorded changes for this knowledge base.</p>
+      ) : null}
+      {section === 'datasource' ? (
+        client && knowledgeBaseId
+          ? <div style={{ maxHeight: '34rem', overflow: 'auto' }}><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={canManage} /></div>
+          : <p className="wk-muted" style={{ margin: 0 }}>No data sources configured.</p>
+      ) : null}
+      {section === 'share' ? (
+        client && knowledgeBaseId
+          ? <KnowledgeBaseShareDialog client={client} knowledgeBaseId={knowledgeBaseId} knowledgeBaseName={knowledgeBaseName} open inline onClose={() => undefined} onChanged={() => undefined} />
+          : <p className="wk-muted" style={{ margin: 0 }}>This knowledge base is not shared.</p>
+      ) : null}
       {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
     </div>
   );
 }
 
-function rowsFromEnvelope(value: unknown, preferredKey: 'data' | 'shares'): Array<Record<string, unknown>> {
-  if (Array.isArray(value)) return activityRows(value);
-  if (value && typeof value === 'object') {
-    const row = value as Record<string, unknown>;
-    return activityRows(row[preferredKey] ?? row.data ?? row.items);
-  }
-  return [];
-}
-
-function RemoteRows({ state, empty, label, StatusComponent }: { state: { status: string; rows: Array<Record<string, unknown>>; message?: string }; empty: string; label: (row: Record<string, unknown>) => string; StatusComponent: ElementType }) {
-  if (state.status === 'loading') return <StatusComponent>Loading…</StatusComponent>;
-  if (state.status === 'error') return <StatusComponent tone="error">{state.message}</StatusComponent>;
-  if (state.rows.length === 0) return <p className="wk-muted" style={{ margin: 0 }}>{empty}</p>;
-  return <div style={{ display: 'grid', gap: '0.5rem' }}>{state.rows.slice(0, 30).map((row, index) => <div key={String(row.id ?? index)} style={{ borderBottom: '1px solid #edf0f5', padding: '0.65rem 0' }}>{label(row)}</div>)}</div>;
+function localizedEngineName(name: string, t: (key: string) => string): string {
+  const key = `kbSettings.parser.engines.${name}.name`;
+  const translated = t(key);
+  return translated === key ? name : translated;
 }

@@ -11,6 +11,28 @@ export type ApprovalArgsParseResult =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; error: string };
 
+/** Live editing status mirroring the Vue ToolApprovalCard contract. */
+export interface ApprovalArgsStatus {
+  /** Empty drafts count as valid (Vue isJsonValid). */
+  valid: boolean;
+  /** Trimmed draft differs from the initial args (Vue argsDirty). */
+  dirty: boolean;
+}
+
+/**
+ * Vue ToolApprovalCard validates on every keystroke: an empty draft stays
+ * valid, anything else must parse as JSON, and "dirty" flags edits away from
+ * the original arguments so the card can show the argsModified hint.
+ */
+export function approvalArgsStatus(draft: string, initialDraft: string): ApprovalArgsStatus {
+  const trimmed = draft.trim();
+  let valid = true;
+  if (trimmed) {
+    try { JSON.parse(trimmed); } catch { valid = false; }
+  }
+  return { valid, dirty: trimmed !== initialDraft.trim() };
+}
+
 /** Parses the textarea draft; only JSON objects are accepted as tool arguments. */
 export function parseApprovalArgsInput(draft: string, copy?: Pick<ChatCopyTable, 'approvalInvalidJson' | 'approvalArgsObject'>): ApprovalArgsParseResult {
   const trimmed = draft.trim();
@@ -28,12 +50,16 @@ export function parseApprovalArgsInput(draft: string, copy?: Pick<ChatCopyTable,
 }
 
 export type ApprovalResolutionPayload =
-  | { ok: true; decision: 'approve' | 'reject'; modifiedArgs?: Record<string, unknown> }
+  | { ok: true; decision: 'approve' | 'reject'; modifiedArgs?: Record<string, unknown>; reason?: string }
   | { ok: false; error: string };
 
 /** Builds the payload for onResolveToolApproval; approve validates the edited args. */
-export function approvalResolution(decision: 'approve' | 'reject', draft: string, expanded: boolean, copy?: Pick<ChatCopyTable, 'approvalInvalidJson' | 'approvalArgsObject'>): ApprovalResolutionPayload {
-  if (decision === 'reject') return { ok: true, decision: 'reject' };
+export function approvalResolution(decision: 'approve' | 'reject', draft: string, expanded: boolean, copy?: Pick<ChatCopyTable, 'approvalInvalidJson' | 'approvalArgsObject' | 'approvalRejectedReason'>): ApprovalResolutionPayload {
+  if (decision === 'reject') {
+    // Vue sends the localized agentStream.toolApproval.userRejected reason.
+    const reason = copy?.approvalRejectedReason;
+    return reason ? { ok: true, decision: 'reject', reason } : { ok: true, decision: 'reject' };
+  }
   if (!expanded) return { ok: true, decision: 'approve' };
   const parsed = parseApprovalArgsInput(draft, copy);
   if (!parsed.ok) return parsed;
@@ -43,17 +69,22 @@ export function approvalResolution(decision: 'approve' | 'reject', draft: string
 export interface ToolApprovalCardProps {
   approval: ChatToolApprovalPrompt;
   busy: boolean;
-  onResolve?: (pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>) => Promise<void>;
+  onResolve?: (pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string) => Promise<void>;
   copy?: ChatCopyTable;
 }
 
 /** Expandable approval card: view/edit the tool call arguments as JSON before approving. */
 export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprovalCardProps) {
-  const [draft, setDraft] = useState(() => initialApprovalArgsDraft(approval));
+  const [initialDraft] = useState(() => initialApprovalArgsDraft(approval));
+  const [draft, setDraft] = useState(initialDraft);
   const [argsError, setArgsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const pending = approval.status === 'pending' && Boolean(onResolve);
+  // Vue ToolApprovalCard validates on every keystroke: invalid JSON disables
+  // the approve action, edits away from the original args show the
+  // argsModified hint.
+  const argsStatus = approvalArgsStatus(draft, initialDraft);
 
   async function resolve(decision: 'approve' | 'reject') {
     if (!onResolve || submittingRef.current) return;
@@ -69,7 +100,7 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
     }
     setArgsError(null);
     try {
-      await onResolve(approval.pendingId, resolution.decision, resolution.modifiedArgs);
+      await onResolve(approval.pendingId, resolution.decision, resolution.modifiedArgs, resolution.reason);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -95,9 +126,13 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
         />
         {argsError ? <p role="alert" className="wk-chat-approval-error m-0 text-[0.75rem] text-[#b42318]">{argsError}</p> : null}
       </details>
+      {/* Vue shows the live args status both collapsed and expanded; one
+          always-visible line after the editor covers both placements. */}
+      {!argsStatus.valid ? <p role="alert" className="wk-chat-approval-invalid m-0 text-[0.75rem] text-[#b42318]">{copy?.approvalInvalidJson ?? 'Invalid JSON'}</p>
+        : argsStatus.dirty ? <p role="status" className="wk-chat-approval-dirty m-0 text-[0.75rem] text-[rgba(0,0,0,0.6)]">{copy?.approvalArgsModified ?? 'Modified'}</p> : null}
       <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-        <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
         <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('reject')}>{copy?.approvalReject ?? 'Reject'}</button>
+        <button type="button" disabled={busy || submitting || !argsStatus.valid} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
       </div>
     </div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.decision ? `${copy?.approvalResolved ?? 'Resolved'}: ${approval.decision}` : (copy?.approvalResolved ?? 'Resolved')}</small>}
   </div>;

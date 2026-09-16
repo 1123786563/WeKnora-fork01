@@ -633,8 +633,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
-  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void> {
-    await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}) }, scope.signal);
+  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string): Promise<void> {
+    await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}), ...(reason ? { reason } : {}) }, scope.signal);
     rememberApprovalResolution(pendingId, decision);
     setStreamState((current) => ({ ...current, approvals: applyToolApprovalResolution(current.approvals, pendingId, decision) }));
   }

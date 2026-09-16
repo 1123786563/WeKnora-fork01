@@ -106,6 +106,10 @@ approvalReject: '拒绝',
 approvalResolved: '已处理',
 approvalInvalidJson: 'JSON 格式无效',
 approvalArgsObject: '参数必须是 JSON 对象',
+/** agentStream.toolApproval.argsModified */
+approvalArgsModified: '已修改',
+/** agentStream.toolApproval.userRejected */
+approvalRejectedReason: '用户拒绝',
 oauthTitle: 'MCP 授权',
 oauthTool: '工具',
 oauthAuthorize: '去授权',
@@ -390,6 +394,10 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   approvalResolved: 'Resolved',
   approvalInvalidJson: 'Invalid JSON',
   approvalArgsObject: 'Arguments must be a JSON object',
+  /** agentStream.toolApproval.argsModified */
+  approvalArgsModified: 'Modified',
+  /** agentStream.toolApproval.userRejected */
+  approvalRejectedReason: 'User rejected',
   oauthTitle: 'MCP authorization',
   oauthTool: 'Tool',
   oauthAuthorize: 'Authorize',
@@ -597,6 +605,10 @@ operationFailed: 'Operation failed',
   approvalResolved: '処理済み',
   approvalInvalidJson: 'JSON が無効です',
   approvalArgsObject: '引数は JSON オブジェクトである必要があります',
+  /** agentStream.toolApproval.argsModified */
+  approvalArgsModified: '変更あり',
+  /** agentStream.toolApproval.userRejected */
+  approvalRejectedReason: 'ユーザが拒否しました',
   oauthTitle: 'MCP 認証',
   oauthTool: 'ツール',
   oauthAuthorize: '認証する',
@@ -804,6 +816,10 @@ operationFailed: '操作に失敗しました',
   approvalResolved: '처리됨',
   approvalInvalidJson: '잘못된 JSON',
   approvalArgsObject: '인수는 JSON 객체여야 합니다',
+  /** agentStream.toolApproval.argsModified */
+  approvalArgsModified: '수정됨',
+  /** agentStream.toolApproval.userRejected */
+  approvalRejectedReason: '사용자 거부',
   oauthTitle: 'MCP 인증',
   oauthTool: '도구',
   oauthAuthorize: '승인하기',
@@ -1011,6 +1027,10 @@ operationFailed: '작업에 실패했습니다',
   approvalResolved: 'Обработано',
   approvalInvalidJson: 'Недопустимый JSON',
   approvalArgsObject: 'Аргументы должны быть объектом JSON',
+  /** agentStream.toolApproval.argsModified */
+  approvalArgsModified: 'Изменено',
+  /** agentStream.toolApproval.userRejected */
+  approvalRejectedReason: 'Отклонено пользователем',
   oauthTitle: 'Авторизация MCP',
   oauthTool: 'Инструмент',
   oauthAuthorize: 'Авторизовать',

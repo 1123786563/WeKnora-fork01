@@ -102,7 +102,7 @@ export interface ChatPageProps {
   onStarterQuestionClick?(question: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
-  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void>;
+  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
@@ -195,7 +195,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
       approval={approval}
       busy={busy !== null}
       onResolve={props.onResolveToolApproval
-        ? (pendingId, decision, modifiedArgs) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs))
+        ? (pendingId, decision, modifiedArgs, reason) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs, reason))
         : undefined}
       copy={props.copy}
     />)}

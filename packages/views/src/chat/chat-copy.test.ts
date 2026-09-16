@@ -114,3 +114,25 @@ test('resolveChatLocale stays within the supported locale set', () => {
   // contract is asserted: the resolved locale always has a copy table.
   assert.ok(CHAT_COPY_LOCALES.includes(resolveChatLocale()));
 });
+
+test('resolveChatCopy exposes the Vue tool-approval args editing labels in every locale', () => {
+  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts agentStream.toolApproval.
+  const modified = {
+    'zh-CN': '已修改',
+    'en-US': 'Modified',
+    'ja-JP': '変更あり',
+    'ko-KR': '수정됨',
+    'ru-RU': 'Изменено',
+  } as const;
+  const rejected = {
+    'zh-CN': '用户拒绝',
+    'en-US': 'User rejected',
+    'ja-JP': 'ユーザが拒否しました',
+    'ko-KR': '사용자 거부',
+    'ru-RU': 'Отклонено пользователем',
+  } as const;
+  for (const locale of CHAT_COPY_LOCALES) {
+    assert.equal(resolveChatCopy(locale).approvalArgsModified, modified[locale]);
+    assert.equal(resolveChatCopy(locale).approvalRejectedReason, rejected[locale]);
+  }
+});
