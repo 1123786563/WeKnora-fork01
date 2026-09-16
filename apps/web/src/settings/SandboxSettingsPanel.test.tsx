@@ -907,6 +907,7 @@ test('inventory session rows open the chat session through onOpenSession (Sandbo
 
   // Assertions run only after the flow has fully settled.
   assert.deepEqual(opened, ['session-a'], 'clicking a row reports its session id exactly once');
+  assert.equal(container.querySelector('.wk-sandbox-inventory-overlay'), null, 'Vue closes the occupancy drawer before opening the chat session');
   assert.equal(rowButtons.length, 2, 'every session row is a click target');
 });
 

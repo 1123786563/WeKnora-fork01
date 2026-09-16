@@ -221,6 +221,11 @@
   100% { background-position: -200% 0; }
 }
 
+@keyframes wk-chat-sq-refresh-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @keyframes wk-chat-session-spin {
   to { transform: rotate(360deg); }
 }

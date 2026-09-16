@@ -123,6 +123,8 @@ export interface IntegrationsPageProps {
   agents?: readonly IntegrationAgentOption[];
   /** Vue step-3 file-KB options (IMChannelPanel.vue knowledgeBases). */
   knowledgeBases?: readonly IntegrationKnowledgeBaseOption[];
+  /** Vue IM/Embed panels expose mutation controls only to tenant admins. */
+  canEdit?: boolean;
 }
 
 function initialLocale(): Locale {
@@ -134,7 +136,7 @@ function initialLocale(): Locale {
   }
 }
 
-export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [] }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [], canEdit = true }: IntegrationsPageProps) {
   const [locale, setLocale] = useState<Locale>(localeProp ?? initialLocale());
   useEffect(() => { if (localeProp) setLocale(localeProp); }, [localeProp]);
   const t = (key: string, values?: Record<string, string | number>) => integrationsT(locale, key, values);
@@ -489,6 +491,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           items={tab === 'im' ? imChannels : embedChannels}
           showCreate={tab === 'im' ? imWizardOpen : embedWizardOpen}
           onToggleCreate={() => (tab === 'im' ? (imWizardOpen ? closeImWizard() : openImCreate()) : (embedWizardOpen ? closeEmbedWizard() : openEmbedCreate()))}
+          canEdit={canEdit}
           busy={busy}
           t={t}
           renamingId={renaming}
@@ -500,8 +503,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           // Vue makes the whole channel card clickable: both tabs open the same
           // wizard drawer used by create (AgentEmbedChannelPanel openDrawer L854).
           onOpenCard={tab === 'embed' ? openEmbedEdit : openImEdit}
-          onToggle={tab === 'im' && actions.onToggleIm ? (id) => run(async () => { await actions.onToggleIm?.(id); onReload?.(); }) : undefined}
-          onDelete={actions.onDeleteEmbed || actions.onDeleteIm ? deleteChannel : undefined}
+          onToggle={canEdit && tab === 'im' && actions.onToggleIm ? (id) => run(async () => { await actions.onToggleIm?.(id); onReload?.(); }) : undefined}
+          onDelete={canEdit && (actions.onDeleteEmbed || actions.onDeleteIm) ? deleteChannel : undefined}
           imCreateSlot={tab === 'im' ? <ImWizardPanel
             locale={locale}
             t={t}
@@ -523,7 +526,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             wechatQrError={wechatQrError}
             onStartWeChatBinding={() => void startWeChatBinding()}
             busy={busy}
-            canSubmit={Boolean(actions.onCreateIm || actions.onUpdateIm)}
+            canSubmit={canEdit && Boolean(actions.onCreateIm || actions.onUpdateIm)}
             onNext={imNext}
             onBack={imBack}
             onSave={saveImWizard}
@@ -558,7 +561,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             previewLoading={embedPreviewLoading}
             onPreview={previewEmbedChannel}
             busy={busy}
-            canSubmit={Boolean(actions.onCreateEmbed || actions.onUpdateEmbed)}
+            canSubmit={canEdit && Boolean(actions.onCreateEmbed || actions.onUpdateEmbed)}
             onNext={embedNext}
             onBack={embedBack}
             onGoTo={embedGoTo}
@@ -788,13 +791,14 @@ const EMBED_PREVIEW_FRAME_CLASS =
 const EMBED_PREVIEW_LAUNCHER_CLASS =
   'absolute bottom-[20px] right-[20px] h-[48px] w-[48px] cursor-pointer rounded-full border-0 text-[22px] text-white shadow-[0_4px_16px_rgba(0,0,0,.18)]';
 
-function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
+function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, canEdit, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
   copy: ChannelListCopy;
   locale: Locale;
   items: readonly IntegrationResource[];
   showCreate: boolean;
   onToggleCreate: () => void;
+  canEdit: boolean;
   busy: boolean;
   t: Translator;
   renamingId: string | null;
@@ -853,14 +857,14 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
           </div>
         </article>;
       })}
-      <button type="button" className={CHANNEL_CARD_ADD_CLASS} onClick={onToggleCreate}>
+      {canEdit ? <button type="button" className={CHANNEL_CARD_ADD_CLASS} onClick={onToggleCreate}>
         <span className={CHANNEL_BADGE_ADD_CLASS} aria-hidden="true">+</span>
         <div className={CHANNEL_CARD_BODY_CLASS}>
           <div className={CHANNEL_CARD_HEADER_CLASS}>
             <span className={CHANNEL_CARD_TITLE_ADD_CLASS}>{copy.addTileLabel}</span>
           </div>
         </div>
-      </button>
+      </button> : null}
     </div>
     {showCreate ? <div className={INTEGRATION_DRAWER_OVERLAY_CLASS} role="presentation" onClick={onToggleCreate}>
       <aside className={INTEGRATION_DRAWER_CLASS_STEPS} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>

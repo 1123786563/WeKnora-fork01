@@ -328,6 +328,31 @@ test('new-conversation view renders the starter-questions skeleton while loading
   assert.match(html, /wk-chat-starter-skeleton/);
 });
 
+test('new-conversation starters keep Vue refresh control and existing cards during refresh', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    starterQuestions: ['保留这条问题'],
+    starterQuestionsLoading: true,
+    onRefreshStarterQuestions: () => undefined,
+    locale: 'zh-CN',
+  }));
+
+  // Vue creatChat keeps the old cards when sqLoading is true and questions
+  // already exist; only the refresh affordance becomes disabled/spinning.
+  assert.match(html, /aria-label="换一批"/);
+  assert.match(html, /title="换一批"/);
+  assert.match(html, /wk-chat-starter-refresh[^>]*disabled=""/);
+  assert.match(html, /保留这条问题/);
+  assert.doesNotMatch(html, /wk-chat-starter-skeleton/);
+});
+
 test('chat page passes the typing indicator while streaming without assistant content', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],

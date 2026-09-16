@@ -20,7 +20,10 @@ export function TenantDeleteZone({ client, tenantId, tenantName, onDeleted }: {
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const armed = confirmText === tenantName && tenantName.length > 0;
+  // TenantInfo.vue enables its destructive confirmation once the trimmed
+  // input equals the tenant name, so pasted whitespace must not strand the
+  // React owner in a disabled dialog.
+  const armed = confirmText.trim() === tenantName && tenantName.length > 0;
 
   function closeDialog() {
     if (busy) return;

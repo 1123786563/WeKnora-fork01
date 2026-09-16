@@ -3958,3 +3958,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   establish static/build/component evidence and do not replace authenticated
   paired screenshots, real backend mutations, real Embed streaming, or native
   Wails interaction. No mobile code was modified.
+
+## 2026-09-16 Round R415 — Parallel page parity fixes and regression boundary
+
+- Parallel Auth, Knowledge Graph, Embed, and remaining Web reviews landed
+  `1954fe2f`, `8fa9b1fd`, and `cdc14622`; the working-tree page fixes also cover
+  Markdown fixtures, starter-question refresh, integration edit gating,
+  platform navigation, parser controls, retrieval sliders, capability-gated
+  settings links, tenant delete confirmation, and model-debug thinking state.
+- Focused Web suites for Auth/Graph/Chat/Markdown/Settings/Model Debug/Sandbox
+  and supporting surfaces passed; Web typecheck/build passed, Desktop passed
+  `9/9`, and Embed passed `17/17` with typechecks. A full Web run reached
+  `1193` passing tests but was not promoted to a clean full-suite pass because
+  two concurrently executed jsdom suites remained pending until interruption.
+- Browser evidence remains `blocked-env` for paired authenticated Vue/React
+  screenshots and real backend mutation states; the existing R412 evidence is
+  explicitly unpaired. Wails native interaction and real Embed streaming remain
+  unverified. No mobile code was modified.

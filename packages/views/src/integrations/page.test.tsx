@@ -80,6 +80,15 @@ test('channel cards preserve keyboard activation and a compact permission checkb
   assert.doesNotMatch(source, /className="box-border w-full max-w-\[420px\].*type="checkbox"/);
 });
 
+test('integration mutations are explicitly gated by the Vue admin boundary', () => {
+  const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /canEdit = true/);
+  assert.match(source, /canEdit && tab === 'im' && actions\.onToggleIm/);
+  assert.match(source, /canEdit && \(actions\.onDeleteEmbed \|\| actions\.onDeleteIm\)/);
+  assert.match(source, /\{canEdit \? <button type="button" className=\{CHANNEL_CARD_ADD_CLASS\}/);
+  assert.match(source, /canSubmit=\{canEdit && Boolean\(actions\.onCreateEmbed \|\| actions\.onUpdateEmbed\)\}/);
+});
+
 test('im and embed section copy resolves for all five locales without leaking raw keys', () => {
   const locales = ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const;
   for (const locale of locales) {

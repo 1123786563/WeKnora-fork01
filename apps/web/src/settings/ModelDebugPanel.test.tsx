@@ -103,6 +103,28 @@ test('model debug gates the thinking toggle on modelSupportsThinking', async () 
   assert.match(container.textContent ?? '', /仅对支持思考模式的模型生效/);
 });
 
+test('model debug clears thinking after selecting a model that does not support it', async () => {
+  const container = await mount(clientWithDebug(), [qwenModel, chatModel]);
+  const thinkingToggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
+  assert.ok(thinkingToggle);
+  await click(thinkingToggle);
+  assert.equal(thinkingToggle.getAttribute('aria-checked'), 'true');
+
+  const selectModel = async (modelId: string) => {
+    const combobox = container.querySelector<HTMLButtonElement>('[role="combobox"]');
+    assert.ok(combobox);
+    await click(combobox);
+    const option = container.querySelector<HTMLButtonElement>(`[role="option"][data-value="${modelId}"]`);
+    assert.ok(option);
+    await click(option);
+  };
+
+  await selectModel('chat-1');
+  assert.equal(container.querySelector('[role="switch"]'), null, 'OpenAI does not expose thinking controls');
+  await selectModel('chat-2');
+  assert.equal(container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute('aria-checked'), 'false');
+});
+
 test('model debug rerank asks for documents and ranks only with both inputs', async () => {
   const container = await mount(clientWithDebug(), [rerankModel]);
   const text = container.textContent ?? '';

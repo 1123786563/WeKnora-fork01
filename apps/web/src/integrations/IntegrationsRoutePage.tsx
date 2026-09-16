@@ -18,7 +18,7 @@ function currentIntegrationsLocale() {
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
-export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgentId, embedded = false, apiBaseUrl = resolveApiBaseUrl() }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; activeAgentId?: string | null; embedded?: boolean; apiBaseUrl?: string }) {
+export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgentId, embedded = false, apiBaseUrl = resolveApiBaseUrl(), canEdit = true }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; activeAgentId?: string | null; embedded?: boolean; apiBaseUrl?: string; canEdit?: boolean }) {
   const [localTab, setTab] = useState<IntegrationKey>(integrationKeyFromQuery(window.location.search));
   const tab = activeTab ?? localTab;
   const [embedChannels, setEmbedChannels] = useState<IntegrationResource[]>([]);
@@ -175,7 +175,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   return <>
     {embedPreviewNotice ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />
   </>;
 }

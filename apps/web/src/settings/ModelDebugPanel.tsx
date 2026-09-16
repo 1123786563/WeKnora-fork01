@@ -134,6 +134,8 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
   }
   function selectModel(id: string) {
     setSelectedId(id);
+    const next = models.find((item) => item.id === id);
+    if (!next || !modelSupportsThinking(next as unknown as Parameters<typeof modelSupportsThinking>[0])) setThinking(false);
     resetResult();
   }
 

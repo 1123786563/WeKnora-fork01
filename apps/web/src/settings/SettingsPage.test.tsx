@@ -87,15 +87,22 @@ function makeClient(options: {
   } as unknown as WeKnoraClient;
 }
 
-async function mountPage(client: WeKnoraClient, search = '', role: 'owner' | 'system-admin' = 'owner') {
+async function mountPage(
+  client: WeKnoraClient,
+  search = '',
+  role: 'owner' | 'system-admin' = 'owner',
+  capabilities: Record<string, { supported: boolean }> = {},
+) {
   if (search) dom.window.history.replaceState(null, '', '/platform/settings' + search);
   const mountHost = document.createElement('div');
   document.body.append(mountHost);
   mountedRoot = createRoot(mountHost);
   await act(async () => {
-    mountedRoot?.render(<SettingsPage client={client} tenantId={10000} role={role} />);
+    mountedRoot?.render(<SettingsPage client={client} tenantId={10000} role={role} capabilities={capabilities} />);
   });
-  await act(async () => {});
+  // The page and section panels are lazy-loaded; allow the first import and
+  // its ensuing state update to settle when this file runs in isolation.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
   return document.body;
 }
 
@@ -148,6 +155,32 @@ test('tenant section shows the Vue info rows instead of the English form', async
   const deleteZone = container.querySelector('[data-testid="tenant-delete-zone"]');
   assert.ok(tenantInfo && deleteZone, 'tenant info and owner danger zone render');
   assert.equal(Boolean(tenantInfo.compareDocumentPosition(deleteZone) & 4), true, 'danger zone follows tenant information like Vue');
+});
+
+test('tenant deletion accepts a space-padded confirmation name like the Vue dialog', async () => {
+  const container = await mountPage(makeClient({ tenant: { id: 10000, name: 'Parity 空间', description: '' } }), '?section=tenant');
+  const openDelete = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find((button) => button.textContent === '删除空间');
+  assert.ok(openDelete, 'the owner danger-zone action renders');
+  await act(async () => openDelete.click());
+  await act(async () => {});
+  const input = container.querySelector<HTMLInputElement>('[role="dialog"] input');
+  assert.ok(input, 'the confirmation dialog input renders');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '  Parity 空间  ');
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  assert.equal(container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')?.disabled, false,
+    'Vue enables deletion after trim() matches the tenant name');
+});
+
+test('an unsupported settings section falls back to general and is absent from the Vue-equivalent navigation', async () => {
+  const container = await mountPage(makeClient(), '?section=sandbox', 'owner', { 'settings.sandbox': { supported: false } });
+  await act(async () => {});
+  assert.ok(container.querySelector('[data-testid="general-preferences-panel"]'), 'unsupported deep links fall back to general');
+  assert.equal(Array.from(container.querySelectorAll('.wks-nav-label')).some((node) => node.textContent === '沙箱'), false,
+    'unsupported settings sections are not navigable');
+  assert.equal(dom.window.location.search, '?section=general', 'the normalized section is reflected in the URL');
 });
 
 test('userprofile section shows the Vue rows and localized change-password copy', async () => {

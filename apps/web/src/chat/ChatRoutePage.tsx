@@ -80,6 +80,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
   const [starterQuestionsLoading, setStarterQuestionsLoading] = useState(false);
+  const [starterQuestionsRefreshKey, setStarterQuestionsRefreshKey] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     return (query.get('agentId') ?? query.get('agent_id') ?? '').trim();
@@ -442,7 +443,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       },
     );
     return () => { active = false; };
-  }, [client, selectedAgentId, selectedSessionId, scope.signal]);
+  }, [client, selectedAgentId, selectedSessionId, scope.signal, starterQuestionsRefreshKey]);
+
+  function refreshStarterQuestions(): void {
+    if (selectedSessionId || !selectedAgentId) return;
+    setStarterQuestionsRefreshKey((current) => current + 1);
+  }
 
   function selectSession(sessionId: string, preserveAttachments = false) {
     chatRunIdRef.current += 1;
@@ -1093,6 +1099,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onModelChange={setSelectedModelId}
     starterQuestions={starterQuestions}
     starterQuestionsLoading={starterQuestionsLoading}
+    onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}
     toolApprovals={(() => {
       const live = Object.values(streamState.approvals);

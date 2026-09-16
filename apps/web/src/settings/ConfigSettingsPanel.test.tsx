@@ -32,12 +32,40 @@ test('retrieval changes auto-save after the Vue 500ms debounce', async () => {
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{ embedding_top_k: 50 }} models={[]} />));
 
-  const input = container.querySelector('input') as HTMLInputElement;
+  const input = container.querySelector('input[type="range"]') as HTMLInputElement;
   assert.ok(input, 'retrieval control should render');
   await act(async () => {
-    (container.querySelector('button[aria-label="Increase"]') as HTMLButtonElement).click();
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '51');
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    input.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.embedding_top_k, 51);
+});
+
+test('retrieval keeps the Vue rerank-model-first slider order', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{}} models={[{ id: 'rerank-1', name: 'Rerank' }]} />));
+
+  const model = container.querySelector('[data-testid="rerank_model_id"]');
+  const slider = container.querySelector('input[type="range"]');
+  assert.ok(model, 'Vue renders the rerank selector first');
+  assert.ok(slider, 'Vue retrieval thresholds use sliders rather than number steppers');
+  assert.ok(Boolean(model.compareDocumentPosition(slider) & 4), 'the rerank selector precedes the threshold sliders');
+});
+
+test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async () => {
+  const client = { settings: { parser: { config: { update: async (body: Record<string, unknown>) => body, }, check: async () => ({ connected: true }) } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
+
+  for (const field of ['mineru-model', 'mineru-vllm-server-url', 'mineru-parse-method', 'mineru-language', 'mineru-cloud-model', 'paddleocr-vl-endpoint', 'paddleocr-vl-cloud-model']) {
+    assert.ok(container.querySelector(`[data-testid="${field}"]`), `${field} should be configurable like ParserEngineSettings.vue`);
+  }
 });

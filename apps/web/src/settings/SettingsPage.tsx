@@ -39,6 +39,18 @@ function errorText(error: unknown, fallback: string): string { return error inst
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
+// Keep the ordinary settings sections behind the same deployment gates as
+// Settings.vue's SETTINGS_SECTION_CAPABILITY map. Integrations are described
+// by their registry; these entries have no integration-tab counterpart.
+const SETTINGS_SECTION_CAPABILITIES: Readonly<Record<string, string | undefined>> = {
+  websearch: 'settings.websearch',
+  vectorstore: 'settings.vectorstore',
+  storage: 'settings.storage',
+  sandbox: 'settings.sandbox',
+  skills: 'settings.sandbox',
+  envvars: 'settings.sandbox',
+  mcp: 'settings.mcp',
+};
 
 export async function readSettingsSection(client: WeKnoraClient, key: string, tenantId: number): Promise<unknown> {
   switch (key) {
@@ -101,13 +113,16 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const openerRef = useRef<HTMLElement | null>(null);
   const mountedRef = useRef(false);
   const section = settingsSectionMeta(selectedKey)!;
-  const integrationSupported = (key: string) => { const capability = INTEGRATION_SECTIONS.find((item) => item.key === integrationTabForSection(key))?.capability; return !capability || isCapabilitySupported(capabilities, capability, { liteMode }); };
+  const sectionSupported = (key: string) => {
+    const integrationCapability = INTEGRATION_SECTIONS.find((item) => item.key === integrationTabForSection(key))?.capability;
+    return isCapabilitySupported(capabilities, integrationCapability ?? SETTINGS_SECTION_CAPABILITIES[key], { liteMode });
+  };
   const integrationTab = integrationTabForSection(selectedKey);
-  const visibleSections = settingsSectionsForRole(role).filter((item) => integrationSupported(item.key));
+  const visibleSections = settingsSectionsForRole(role).filter((item) => sectionSupported(item.key));
   const roleDenied = !roleAtLeast(role, section.minRole);
 
   async function load() {
-    if (integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
+    if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
     setLoading(true); setError(null); setNotice(null);
     try {
       const next = await readSettingsSection(client, selectedKey, tenantId); setPayload(next);
@@ -131,8 +146,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     if (Array.isArray(payload) && payload.length === 0) openContextualGuide('tenantModels');
   }, [integrationTab, payload, selectedKey]);
   useEffect(() => {
-    if (!integrationTab) return;
-    const next = integrationSupported(selectedKey) ? selectedKey : 'general';
+    const next = sectionSupported(selectedKey) ? selectedKey : 'general';
+    if (next === selectedKey) return;
     if (next !== selectedKey) { setSelectedKey(next); setNotice(t('settings.capabilityUnavailable')); }
     const query = selectSettingsQuery(next, window.location.search);
     window.history.replaceState(null, '', '/platform/settings?' + query);
@@ -309,7 +324,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             </nav>
             <section className="wks-content" aria-live="polite">
               <div className={`wks-content-wrapper${selectedKey === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(selectedKey) || integrationTab ? ' wks-content-wrapper--full' : '')}`}>
-                {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded />) : <div className="wk-settings-section wks-section">
+                {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
                   {/* Panels owning their full Vue section header render it themselves:
                       general/models here, and members — TenantMembers.vue:8-65 renders
                       the h2 + permissions popover + audit entry + section-description

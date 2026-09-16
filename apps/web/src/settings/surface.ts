@@ -228,7 +228,35 @@ export function settingsConfigPatch(section: SettingsConfigSection, values: Reco
     try { parsed = new URL(endpoint); } catch { throw new Error('Parser endpoint must be an absolute URL'); }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('Parser endpoint must use HTTP(S)');
   }
-  const patch: Record<string, unknown> = { mineru_endpoint: endpoint };
+  // ParserEngineSettings.vue builds one complete config payload.  Keeping
+  // these fields here (rather than dropping every control except endpoint and
+  // key) makes the React panel safe to use for all of the Vue engine options.
+  const stringField = (key: string, fallback = '') => typeof values[key] === 'string' ? values[key].trim() : fallback;
+  const booleanField = (key: string, fallback: boolean) => typeof values[key] === 'boolean' ? values[key] : fallback;
+  const parseMethod = stringField('mineru_parse_method', 'auto');
+  const patch: Record<string, unknown> = {
+    mineru_endpoint: endpoint,
+    mineru_model: stringField('mineru_model', 'pipeline'),
+    mineru_vlm_server_url: stringField('mineru_vlm_server_url'),
+    mineru_enable_formula: booleanField('mineru_enable_formula', true),
+    mineru_enable_table: booleanField('mineru_enable_table', true),
+    mineru_parse_method: parseMethod,
+    // This legacy flag is intentionally derived from the newer Vue control.
+    mineru_enable_ocr: parseMethod !== 'txt',
+    mineru_language: stringField('mineru_language', 'ch'),
+    mineru_cloud_model: stringField('mineru_cloud_model', 'pipeline'),
+    mineru_cloud_enable_formula: booleanField('mineru_cloud_enable_formula', true),
+    mineru_cloud_enable_table: booleanField('mineru_cloud_enable_table', true),
+    mineru_cloud_enable_ocr: booleanField('mineru_cloud_enable_ocr', true),
+    mineru_cloud_language: stringField('mineru_cloud_language', 'ch'),
+    paddleocr_vl_endpoint: stringField('paddleocr_vl_endpoint'),
+    paddleocr_vl_use_seal_recognition: booleanField('paddleocr_vl_use_seal_recognition', true),
+    paddleocr_vl_use_chart_recognition: booleanField('paddleocr_vl_use_chart_recognition', false),
+    paddleocr_vl_cloud_token: stringField('paddleocr_vl_cloud_token'),
+    paddleocr_vl_cloud_model: stringField('paddleocr_vl_cloud_model', 'PaddleOCR-VL-1.6'),
+    paddleocr_vl_cloud_use_seal_recognition: booleanField('paddleocr_vl_cloud_use_seal_recognition', true),
+    paddleocr_vl_cloud_use_chart_recognition: booleanField('paddleocr_vl_cloud_use_chart_recognition', false),
+  };
   const apiKey = typeof values.mineru_api_key === 'string' ? values.mineru_api_key.trim() : '';
   if (apiKey) patch.mineru_api_key = apiKey;
   return patch;

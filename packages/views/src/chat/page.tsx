@@ -97,6 +97,8 @@ export interface ChatPageProps {
   starterQuestions?: readonly string[];
   /** True while the agent suggested-questions request is in flight (skeleton chips). */
   starterQuestionsLoading?: boolean;
+  /** Vue creatChat refresh action for the current starter-question set. */
+  onRefreshStarterQuestions?(): void;
   onStarterQuestionClick?(question: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
@@ -543,7 +545,7 @@ export function ChatPage(props: ChatPageProps) {
             {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
                 whose padding override (0 0 24px) replaces the base 48px padding. */}
             <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
-            {props.starterQuestionsLoading ? (
+            {props.starterQuestionsLoading && (props.starterQuestions?.length ?? 0) === 0 ? (
               <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
                 {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton block h-[37px] w-[180px] rounded-[10px] bg-[linear-gradient(90deg,#eceef1_25%,#f6f7f8_50%,#eceef1_75%)] bg-[length:200%_100%] animate-[wk-chat-skeleton_1.4s_infinite_ease] motion-reduce:animate-none" aria-hidden="true" /></li>)}
               </ul>
@@ -551,6 +553,18 @@ export function ChatPage(props: ChatPageProps) {
               <>
                 <p className="wk-chat-starters-caption m-0 text-center text-[13px] tracking-[0.01em] text-[rgba(0,0,0,0.26)]">
                   <span>{copy.suggestedQuestions}</span>
+                  {props.onRefreshStarterQuestions ? <button
+                    type="button"
+                    className="wk-chat-starter-refresh inline-flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.26)] transition-[background,color] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[#07c05f] disabled:cursor-default disabled:opacity-70"
+                    disabled={props.starterQuestionsLoading}
+                    title={copy.refreshSuggestedQuestions}
+                    aria-label={copy.refreshSuggestedQuestions}
+                    onClick={props.onRefreshStarterQuestions}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={props.starterQuestionsLoading ? 'wk-chat-starter-refresh-icon animate-[wk-chat-sq-refresh-rotate_0.8s_linear_infinite] motion-reduce:animate-none' : 'wk-chat-starter-refresh-icon'}>
+                      <path d="M10 3.5V1.5M10 1.5H8" /><path d="M10 1.5A4.5 4.5 0 1 0 10.7 7" />
+                    </svg>
+                  </button> : null}
                 </p>
                 <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
                   {props.starterQuestions!.map((question, index) => (

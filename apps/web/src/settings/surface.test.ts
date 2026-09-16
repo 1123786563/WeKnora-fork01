@@ -123,9 +123,33 @@ test('builds field-level patches for retrieval, chat history, and parser setting
     embedding_top_k: 20, vector_threshold: 0.25, keyword_threshold: 0.3, rerank_top_k: 10, rerank_threshold: -0.2, rerank_model_id: 'rerank-1',
   });
   assert.deepEqual(settingsConfigPatch('chathistory', { enabled: true, embedding_model_id: 'embed-1' }), { enabled: true, embedding_model_id: 'embed-1' });
-  assert.deepEqual(settingsConfigPatch('parser', { mineru_endpoint: ' https://mineru.example ', mineru_api_key: '  ' }), { mineru_endpoint: 'https://mineru.example' });
+  const parser = settingsConfigPatch('parser', { mineru_endpoint: ' https://mineru.example ', mineru_api_key: '  ' });
+  assert.equal(parser.mineru_endpoint, 'https://mineru.example');
+  assert.equal('mineru_api_key' in parser, false);
   assert.throws(() => settingsConfigPatch('retrieval', { embedding_top_k: '0', vector_threshold: '0', keyword_threshold: '0', rerank_top_k: '1', rerank_threshold: '0', rerank_model_id: '' }), /embedding_top_k/);
   assert.throws(() => settingsConfigPatch('parser', { mineru_endpoint: 'not-a-url' }), /endpoint/);
+});
+
+test('preserves the Vue parser-engine configuration fields when saving', () => {
+  assert.deepEqual(settingsConfigPatch('parser', {
+    mineru_endpoint: ' https://mineru.example ', mineru_api_key: ' mineru-key ', mineru_model: 'vlm-auto-engine',
+    mineru_vlm_server_url: ' https://vllm.example ', mineru_enable_formula: false, mineru_enable_table: true,
+    mineru_parse_method: 'txt', mineru_language: ' en ', mineru_cloud_model: 'vlm',
+    mineru_cloud_enable_formula: false, mineru_cloud_enable_table: true, mineru_cloud_enable_ocr: false,
+    mineru_cloud_language: ' ja ', paddleocr_vl_endpoint: ' https://paddle.example ',
+    paddleocr_vl_use_seal_recognition: false, paddleocr_vl_use_chart_recognition: true,
+    paddleocr_vl_cloud_token: ' paddle-token ', paddleocr_vl_cloud_model: ' PaddleOCR-VL-1.6 ',
+    paddleocr_vl_cloud_use_seal_recognition: false, paddleocr_vl_cloud_use_chart_recognition: true,
+  }), {
+    mineru_endpoint: 'https://mineru.example', mineru_api_key: 'mineru-key', mineru_model: 'vlm-auto-engine',
+    mineru_vlm_server_url: 'https://vllm.example', mineru_enable_formula: false, mineru_enable_table: true,
+    mineru_parse_method: 'txt', mineru_enable_ocr: false, mineru_language: 'en', mineru_cloud_model: 'vlm',
+    mineru_cloud_enable_formula: false, mineru_cloud_enable_table: true, mineru_cloud_enable_ocr: false,
+    mineru_cloud_language: 'ja', paddleocr_vl_endpoint: 'https://paddle.example',
+    paddleocr_vl_use_seal_recognition: false, paddleocr_vl_use_chart_recognition: true,
+    paddleocr_vl_cloud_token: 'paddle-token', paddleocr_vl_cloud_model: 'PaddleOCR-VL-1.6',
+    paddleocr_vl_cloud_use_seal_recognition: false, paddleocr_vl_cloud_use_chart_recognition: true,
+  });
 });
 
 test('requires a concrete Ollama model name before starting a download', () => {
