@@ -10,6 +10,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@weknora/paseo-adapter": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

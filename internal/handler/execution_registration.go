@@ -100,6 +100,8 @@ func (h *ExecutionRegistrationHandler) Revoke(c *gin.Context) {
 
 func mapRegistrationError(err error) error {
 	switch {
+	case errors.Is(err, execution.ErrRegistrationUnavailable):
+		return apperrors.NewServiceUnavailableError("personal node registration unavailable")
 	case errors.Is(err, execution.ErrRegistrationInvalid), errors.Is(err, execution.ErrRegistrationChallenge), errors.Is(err, execution.ErrRegistrationReplay):
 		return apperrors.NewBadRequestError(err.Error())
 	case errors.Is(err, execution.ErrRegistrationNotFound):

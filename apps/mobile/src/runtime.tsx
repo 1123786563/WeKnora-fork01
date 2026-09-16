@@ -12,6 +12,7 @@ import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, resetMobileSessionState, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { createMobileOIDCPKCE, matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
 import { isLocale, type Locale } from '@weknora/i18n';
+export { createMobilePersonalNodeRuntime } from './platform/personalNodeRuntime.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
 const OIDC_VERIFIER_KEY = 'weknora.mobile.oidc-verifier';

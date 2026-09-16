@@ -14,6 +14,15 @@ import (
 	"gorm.io/gorm"
 )
 
+type testTargetProvisioner struct{}
+
+func (testTargetProvisioner) ProvisionPersonalTarget(context.Context, *gorm.DB, Target) error {
+	return nil
+}
+func (testTargetProvisioner) RevokePersonalTarget(context.Context, *gorm.DB, Target, time.Time) error {
+	return nil
+}
+
 func openRegistrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+url.PathEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -47,9 +56,20 @@ func TestValidateNodeGrantRejectsOldEpochAndExpired(t *testing.T) {
 	}{"n", 1}, "start", 101), ErrRegistrationUnauthorized)
 }
 
-func TestRegistrationProofConsumesChallengeAndIsIdempotent(t *testing.T) {
+func TestRegistrationFailsClosedWithoutTargetProvisionerAndKeepsChallenge(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	svc := NewRegistrationService(openRegistrationDB(t), nil)
+	req := makeRegistrationRequest(t, svc, now, "missing-provisioner")
+	_, _, err := svc.Complete(context.Background(), 1, "u1", req, now)
+	require.ErrorIs(t, err, ErrRegistrationUnavailable)
+	var challenge registrationChallengeRow
+	require.NoError(t, svc.db.First(&challenge, "challenge_id = ?", req.ChallengeID).Error)
+	require.Nil(t, challenge.ConsumedAt)
+}
+
+func TestRegistrationProofConsumesChallengeAndIsIdempotent(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	svc := NewRegistrationService(openRegistrationDB(t), testTargetProvisioner{})
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	registration, grant, err := svc.Complete(context.Background(), 1, "u1", req, now)
 	require.NoError(t, err)
@@ -70,7 +90,7 @@ func TestRegistrationProofConsumesChallengeAndIsIdempotent(t *testing.T) {
 
 func TestRegistrationRejectsReplayAndCrossTargetProof(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t), nil)
+	svc := NewRegistrationService(openRegistrationDB(t), testTargetProvisioner{})
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	req.ExternalTargetID = "other"
 	_, _, err := svc.Complete(context.Background(), 1, "u1", req, now)
@@ -83,7 +103,7 @@ func TestRegistrationRejectsReplayAndCrossTargetProof(t *testing.T) {
 
 func TestRegistrationRevocationBumpsCredentialVersionAndScopesOwner(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t), nil)
+	svc := NewRegistrationService(openRegistrationDB(t), testTargetProvisioner{})
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	registration, _, err := svc.Complete(context.Background(), 1, "u1", req, now)
 	require.NoError(t, err)
@@ -97,7 +117,7 @@ func TestRegistrationRevocationBumpsCredentialVersionAndScopesOwner(t *testing.T
 
 func TestRegistrationReplayAfterRevocationReturnsNoGrant(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t), nil)
+	svc := NewRegistrationService(openRegistrationDB(t), testTargetProvisioner{})
 	req := makeRegistrationRequest(t, svc, now, "revoked-replay")
 	registration, grant, err := svc.Complete(context.Background(), 1, "u1", req, now)
 	require.NoError(t, err)

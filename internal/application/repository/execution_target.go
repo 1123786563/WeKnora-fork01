@@ -41,15 +41,22 @@ func (s *executionTargetStore) ProvisionPersonalTarget(ctx context.Context, tx *
 	return tx.WithContext(ctx).Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID}).Error
 }
 
-func (s *executionTargetStore) RevokePersonalTarget(ctx context.Context, tx *gorm.DB, tenant uint64, owner, id string, now time.Time) error {
+func (s *executionTargetStore) RevokePersonalTarget(ctx context.Context, tx *gorm.DB, expected execution.Target, now time.Time) error {
 	if tx == nil {
 		tx = s.db
 	}
 	var target executionTargetRow
-	if err := tx.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND id = ?", tenant, owner, id).First(&target).Error; err != nil {
+	if err := tx.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion).First(&target).Error; err != nil {
 		return err
 	}
-	result := tx.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenant, owner, id, "active").Updates(map[string]any{
+	// The legacy registration alias updates its registration row after this
+	// method returns. Preflight that projection here so the target and identity
+	// rows cannot be fenced while a divergent registration remains active.
+	var registration registrationProjectionRow
+	if err := tx.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion, "active").First(&registration).Error; err != nil {
+		return err
+	}
+	result := tx.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion, "active").Updates(map[string]any{
 		"state": "revoked", "revoked_at": now.UTC(), "credential_version": gorm.Expr("credential_version + 1"),
 	})
 	if result.Error != nil {
@@ -58,7 +65,7 @@ func (s *executionTargetStore) RevokePersonalTarget(ctx context.Context, tx *gor
 	if result.RowsAffected == 0 {
 		return ErrExecutionTargetNotFound
 	}
-	identityResult := tx.WithContext(ctx).Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND state = ?", tenant, owner, target.RuntimeID, target.ExternalTargetID, "active").Updates(map[string]any{"state": "revoked", "credential_version": gorm.Expr("credential_version + 1")})
+	identityResult := tx.WithContext(ctx).Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, target.RuntimeID, target.ExternalTargetID, expected.CredentialVersion, "active").Updates(map[string]any{"state": "revoked", "credential_version": gorm.Expr("credential_version + 1")})
 	if identityResult.Error != nil {
 		return identityResult.Error
 	}
@@ -208,7 +215,7 @@ func (s *executionTargetStore) RevokeTarget(ctx context.Context, tenantID uint64
 		if target.Kind != "personal_node" {
 			return nil
 		}
-		registration := tx.Model(&registrationProjectionRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND state = ?", tenantID, actor, targetID, target.RuntimeID, target.ExternalTargetID, "active").Updates(map[string]any{
+		registration := tx.Model(&registrationProjectionRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", tenantID, actor, targetID, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active").Updates(map[string]any{
 			"state": "revoked", "revoked_at": now, "credential_version": gorm.Expr("credential_version + 1"),
 		})
 		if registration.Error != nil {
@@ -217,7 +224,7 @@ func (s *executionTargetStore) RevokeTarget(ctx context.Context, tenantID uint64
 		if registration.RowsAffected != 1 {
 			return ErrExecutionTargetNotFound
 		}
-		identity := tx.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND state = ?", tenantID, actor, target.RuntimeID, target.ExternalTargetID, "active").Updates(map[string]any{
+		identity := tx.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", tenantID, actor, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active").Updates(map[string]any{
 			"state": "revoked", "credential_version": gorm.Expr("credential_version + 1"),
 		})
 		if identity.Error != nil {

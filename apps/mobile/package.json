@@ -86,6 +86,7 @@
     "@weknora/contracts": "workspace:*",
     "@weknora/domain": "workspace:*",
     "@weknora/i18n": "workspace:*",
+    "@weknora/paseo-adapter": "workspace:*",
     "abort-controller": "^3.0.0",
     "anser": "^1.4.10",
     "ansi-regex": "^5.0.1",

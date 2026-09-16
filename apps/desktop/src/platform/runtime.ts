@@ -1,6 +1,16 @@
 import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation } from './navigation.ts';
 import { hasDesktopFileBridge, type DesktopFileBridge } from './files.ts';
 import { readWailsBridge, resolveDesktopApiBaseUrlWhenReady, type WailsAppBridge } from './wails.ts';
+import { createPersonalNodeRuntime, type PersonalNodeComposition, type PersonalNodeConnector } from '@weknora/paseo-adapter';
+
+/**
+ * Desktop's runtime composition owns this entry point. Callers must provide
+ * the Wails/OS credential store and server-issued Paseo endpoint; the adapter
+ * enforces endpoint and bearer checks before returning a connector.
+ */
+export function createDesktopPersonalNodeRuntime(input: PersonalNodeComposition): PersonalNodeConnector {
+  return createPersonalNodeRuntime(input);
+}
 
 export const DESKTOP_WINDOW_DEFAULTS = {
   width: 1440,

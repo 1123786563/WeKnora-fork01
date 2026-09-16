@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/stretchr/testify/require"
@@ -101,6 +102,33 @@ func TestExecutionTargetFacadeRejectsMismatchedRegistrationProjection(t *testing
 	require.NoError(t, db.First(&row, "tenant_id = ? AND id = ?", 1, target.ID).Error)
 	require.Equal(t, "active", row.State)
 	require.EqualValues(t, 1, row.CredentialVersion)
+}
+
+func TestExecutionTargetFacadeRejectsDivergentCredentialVersions(t *testing.T) {
+	db := openExecutionTargetTestDB(t)
+	store := NewExecutionTargetStore(db)
+	target := execution.Target{ID: "node-divergent", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: "runtime-divergent", ExternalTargetID: "external-divergent"}
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, OwnerID: target.OwnerID, CredentialVersion: 2, State: "active"}).Error)
+	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: target.OwnerID, ID: target.ID, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, CredentialVersion: 1, State: "active"}).Error)
+	require.NoError(t, store.CreateTarget(context.Background(), target, "opaque"))
+	require.ErrorIs(t, store.RevokeTarget(context.Background(), 1, target.OwnerID, target.ID), ErrExecutionTargetNotFound)
+	var row executionTargetRow
+	require.NoError(t, db.First(&row, "tenant_id = ? AND id = ?", 1, target.ID).Error)
+	require.Equal(t, "active", row.State)
+}
+
+func TestLegacyPersonalTargetRevokeRejectsDivergentRegistrationVersion(t *testing.T) {
+	db := openExecutionTargetTestDB(t)
+	provisioner := NewPersonalTargetProvisioner(db)
+	target := execution.Target{ID: "legacy-divergent", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: "runtime-legacy", ExternalTargetID: "external-legacy"}
+	require.NoError(t, db.Create(&executionTargetRow{TenantID: 1, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: 1, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID}).Error)
+	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: target.OwnerID, ID: target.ID, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, CredentialVersion: 2, State: "active"}).Error)
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, OwnerID: target.OwnerID, CredentialVersion: 1, State: "active"}).Error)
+	err := provisioner.RevokePersonalTarget(context.Background(), db, target, time.Now().UTC())
+	require.Error(t, err)
+	var state string
+	require.NoError(t, db.Raw("SELECT state FROM execution_targets WHERE id = ?", target.ID).Row().Scan(&state))
+	require.Equal(t, "active", state)
 }
 
 func TestExecutionTargetStoreWorkspaceIsOwnedThroughTarget(t *testing.T) {

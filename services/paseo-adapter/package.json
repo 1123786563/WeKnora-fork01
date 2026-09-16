@@ -2,6 +2,10 @@
   "name": "@weknora/paseo-adapter",
   "version": "0.0.0",
   "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime-composition.ts"
+  },
   "type": "module",
   "scripts": {
     "test": "tsx --test src/*.test.ts",
