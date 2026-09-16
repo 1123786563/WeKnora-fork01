@@ -8,7 +8,7 @@ import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { apiSocket } from '@/sync/apiSocket';
 import { createCredentials, productCredentialKey } from './credentials';
 import { getCurrentExpoPushToken, getPushPermissionInfo } from '@/sync/pushRegistration';
-import { flushPendingRevocations, registerDevice, revokeOnLogout, type PendingRevocation, type PendingRevocationStore } from '@/weknora/notifications/registration';
+import { flushPendingRevocations, issueRegistrationIntent, registerDevice, revokeOnLogout, type PendingRevocation, type PendingRevocationStore } from '@/weknora/notifications/registration';
 
 const store = {
   get: (key: string) => SecureStore.getItemAsync(key),
@@ -122,10 +122,11 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     const deviceId = await nativeDeviceId();
     const persisted = await SecureStore.getItemAsync(deviceEpochKey(origin, deviceId));
     const persistedGeneration = persisted ? Number.parseInt(persisted, 10) : 0;
-    const serverGeneration = Math.max(generation, ref.current?.scopeGeneration ?? 0, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : 0);
-    const result = await registerDevice({ origin, deviceId, platform: Platform.OS, token, scopeGeneration: serverGeneration, ...(ref.current?.revision === undefined ? {} : { revision: ref.current.revision }), credential: next });
-    ref.current = { deviceId, revision: result.revision, scopeGeneration: serverGeneration };
-    await SecureStore.setItemAsync(deviceEpochKey(origin, deviceId), String(serverGeneration));
+    const intent = await issueRegistrationIntent({ origin, deviceId, credential: next });
+    const serverGeneration = Math.max(intent.scopeGeneration, ref.current?.scopeGeneration ?? 0, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : 0);
+    const result = await registerDevice({ origin, deviceId, platform: Platform.OS, token, scopeGeneration: intent.scopeGeneration, registrationIntent: intent.registrationIntent, ...(ref.current?.revision === undefined ? {} : { revision: ref.current.revision }), credential: next });
+    ref.current = { deviceId, revision: result.revision, scopeGeneration: Math.max(serverGeneration, intent.scopeGeneration) };
+    await SecureStore.setItemAsync(deviceEpochKey(origin, deviceId), String(Math.max(serverGeneration, intent.scopeGeneration)));
   }
 
   const login = React.useCallback(async (email: string, password: string) => {
@@ -148,8 +149,11 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     // advances the local generation by the same transition; retain that
     // observed value for a subsequent login, including after auth replacement.
     if (mobileDevice.current) {
-      mobileDevice.current = { ...mobileDevice.current, scopeGeneration: scope.capture().generation, revision: undefined };
-      await SecureStore.setItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId), String(scope.capture().generation));
+      const persisted = await SecureStore.getItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId));
+      const persistedGeneration = persisted ? Number.parseInt(persisted, 10) : 0;
+      const highWater = Math.max(scope.capture().generation, mobileDevice.current.scopeGeneration ?? 0, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : 0);
+      mobileDevice.current = { ...mobileDevice.current, scopeGeneration: highWater, revision: undefined };
+      await SecureStore.setItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId), String(highWater));
     }
     if (authSession) await authSession.refreshCoordinator.invalidate();
     else if (adapter) await adapter.clear();

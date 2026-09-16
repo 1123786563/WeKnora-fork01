@@ -72,6 +72,7 @@ func RegisterMobileDeviceRoutes(r *gin.RouterGroup, h *handler.MobileDeviceHandl
 	}
 	devices := g.apiKeyGroup(r.Group("/mobile/devices", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
 	devices.GET("", h.List)
+	devices.POST("/:id/registration-intent", h.IssueIntent)
 	devices.PUT("/:id", h.Register)
 	devices.DELETE("/:id", h.Revoke)
 	devices.POST("/:id/presence", h.Presence)
