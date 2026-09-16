@@ -908,7 +908,13 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
           ))}
         </div>
 
-        <div className={'min-h-12' + (loading ? ' pointer-events-none opacity-55' : '')}>
+        <div className={'relative min-h-12' + (loading ? ' pointer-events-none opacity-55' : '')} aria-busy={loading}>
+          {loading ? (
+            <div className='flex min-h-12 items-center justify-center gap-2 py-4 text-[13px] text-[rgba(0,0,0,0.4)]' role='status' aria-label={t('common.loading')}>
+              <span className='h-4 w-4 animate-spin rounded-full border-2 border-line-neutral border-t-accent' aria-hidden='true' />
+              <span>{t('common.loading')}</span>
+            </div>
+          ) : null}
           {listBody}
         </div>
         {statusHint ? <p className='mb-0 mt-3 text-[12px] leading-[18px] text-[rgba(0,0,0,0.6)]'>{statusHint}</p> : null}

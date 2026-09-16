@@ -55,6 +55,7 @@ function makeClient(overrides: {
   pendingItems?: Record<string, unknown>[];
   topics?: Record<string, unknown>[];
   documents?: Record<string, unknown>[];
+  activePageGate?: Promise<{ rows: Record<string, unknown>[]; total: number }>;
   updateEnabled?: (enabled: boolean) => Promise<Record<string, unknown>>;
   onCall?: (call: MemoryCall) => void;
 } = {}) {
@@ -77,6 +78,7 @@ function makeClient(overrides: {
           items: {
             list: async (params: { status?: string; limit?: number; offset?: number }) => {
               record('GET', '/memory/items?' + (params.status ? 'status=' + params.status + '&' : '') + 'limit=' + (params.limit ?? 0) + '&offset=' + (params.offset ?? 0));
+              if (params.status === 'active' && params.limit === 20 && overrides.activePageGate) return overrides.activePageGate;
               if (params.status === 'pending') return page(overrides.pendingItems, overrides.pendingItems?.length ?? 0);
               if (params.status === 'active' || params.status === undefined) return page(overrides.activeItems, overrides.activeTotal ?? overrides.activeItems?.length ?? 0);
               return page(undefined, 0);
@@ -114,6 +116,26 @@ async function mountPanel(client: never) {
   await act(async () => {});
   return container;
 }
+
+test('shows the Vue loading indicator while the selected memory page is pending', async () => {
+  let release!: () => void;
+  const activePageGate = new Promise<{ rows: Record<string, unknown>[]; total: number }>((resolve) => {
+    release = () => resolve({ rows: [], total: 0 });
+  });
+  const { client } = makeClient({ activePageGate });
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+
+  await act(async () => {
+    mountedRoot?.render(<PersonalMemorySettingsPanel client={client} initialSettings={null} />);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(container.querySelector('[role="status"]')?.getAttribute('aria-label'), formatMessage('zh-CN', 'common.loading'), 'Vue t-loading equivalent is visible during list load');
+  release();
+  await act(async () => {});
+});
 
 // Vue parity anchor: MemorySettings.vue onMounted → loadSettings + reload, and
 // loadCounts requests limit:1 per status so every tab carries its own count.
