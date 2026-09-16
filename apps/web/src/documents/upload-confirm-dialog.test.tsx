@@ -86,6 +86,12 @@ test('upload confirmation cannot be dismissed while its request is in flight', (
   assert.equal(canCloseUploadConfirmDialog(true), false);
 });
 
+test('upload confirmation stays mounted while closed like the Vue v-show host', () => {
+  const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /<Dialog\s+open=\{uploadDialogOpen\}/);
+  assert.doesNotMatch(source, /\{uploadDialogOpen \? \(/);
+});
+
 test('upload confirmation footer keeps the Vue cancel-then-confirm action order', () => {
   const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
   const footerStart = source.indexOf('className="wk-upload-confirm-footer');

@@ -3846,9 +3846,9 @@ export function KnowledgeDocumentsPage({
           </section>
         </div>
       </div>
-      {uploadDialogOpen ? (
+      <>
         <Dialog
-          open
+          open={uploadDialogOpen}
           title={dialogTitle}
           className="wk-upload-confirm-dialog"
           closeLabel={ct("common.close")}
@@ -4035,7 +4035,7 @@ export function KnowledgeDocumentsPage({
             </Button>
           </div>
       </Dialog>
-      ) : null}
+      </>
       {/* Vue opens URL import from the page-level source menu too; this must
           not be nested under uploadDialogOpen, which is only true after files
           have already been staged. */}
