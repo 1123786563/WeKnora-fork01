@@ -59,7 +59,9 @@ test('keeps selection deterministic and supports select-all and clear', () => {
 
 test('only permits mutations when Vue-equivalent edit permission exists', () => {
   assert.equal(canDocumentAction('preview', { canView: true, canEdit: false }), true);
-  assert.equal(canDocumentAction('download', { canView: true, canEdit: false }), true);
+  assert.equal(canDocumentAction('download', { canView: true, canEdit: false }, { type: 'file' }), true);
+  assert.equal(canDocumentAction('download', { canView: true, canEdit: false }, { type: 'manual' }), true);
+  assert.equal(canDocumentAction('download', { canView: true, canEdit: false }, { type: 'url' }), false);
   assert.equal(canDocumentAction('delete', { canView: true, canEdit: false }), false);
   assert.equal(canDocumentAction('delete', { canView: true, canEdit: true }), true);
   assert.equal(canDocumentAction('preview', { canView: false, canEdit: true }), false);

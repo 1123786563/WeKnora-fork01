@@ -71,9 +71,11 @@ export function toggleDocumentSelection(selection: Set<string>, id: string, chec
   return next;
 }
 
-export function canDocumentAction(action: 'preview' | 'download' | 'edit' | 'reparse' | 'cancel' | 'delete' | 'tags', permission: { canView: boolean; canEdit: boolean }): boolean {
+export function canDocumentAction(action: 'preview' | 'download' | 'edit' | 'reparse' | 'cancel' | 'delete' | 'tags', permission: { canView: boolean; canEdit: boolean }, document?: { type?: string; [key: string]: unknown }): boolean {
   if (!permission.canView) return false;
-  return action === 'preview' || action === 'download' ? true : permission.canEdit;
+  if (action === 'preview') return true;
+  if (action === 'download') return document?.type === 'file' || document?.type === 'manual';
+  return permission.canEdit;
 }
 
 export interface TimelineStep { key: 'uploaded' | 'parsing' | 'enriching' | 'indexed' | 'failed' | 'cancelled'; state: 'done' | 'active' | 'error' | 'muted' }
