@@ -262,3 +262,20 @@ func TestNotificationDeliveryDoesNotMaskRetryDatabaseError(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "notification_delivery_retry_persist")
 }
+
+func TestNotificationRetryBackoffIsBoundedAndJittered(t *testing.T) {
+	first := notificationRetryDelay("delivery-a", 1, 0)
+	second := notificationRetryDelay("delivery-a", 2, 0)
+	if first < time.Second || first >= 2*time.Second {
+		t.Fatalf("first backoff=%s", first)
+	}
+	if second < 2*time.Second || second >= 4*time.Second {
+		t.Fatalf("second backoff=%s", second)
+	}
+	if got := notificationRetryDelay("delivery-a", 99, 10*time.Minute); got != 5*time.Minute {
+		t.Fatalf("cap=%s", got)
+	}
+	if got := notificationRetryDelay("delivery-a", 1, 5*time.Second); got != 5*time.Second {
+		t.Fatalf("retry-after hint=%s", got)
+	}
+}

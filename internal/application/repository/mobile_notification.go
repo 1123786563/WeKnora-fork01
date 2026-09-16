@@ -39,22 +39,25 @@ type NotificationDelivery struct {
 }
 
 type mobileNotificationRow struct {
-	ID          string `gorm:"column:id"`
-	TenantID    uint64
-	EventID     string
-	OwnerID     string
-	DeviceID    string
-	Environment string
-	Kind        string
-	RunID       string
-	ExpiresAt   time.Time
-	State       string
-	Attempt     int64
-	LeaseOwner  string
-	LeaseUntil  *time.Time
-	Fence       int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            string `gorm:"column:id"`
+	TenantID      uint64
+	EventID       string
+	OwnerID       string
+	DeviceID      string
+	Environment   string
+	Kind          string
+	RunID         string
+	ExpiresAt     time.Time
+	State         string
+	Attempt       int64
+	LeaseOwner    string
+	LeaseUntil    *time.Time
+	NextAttemptAt *time.Time
+	ReceiptID     string
+	LastError     string
+	Fence         int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (mobileNotificationRow) TableName() string { return "mobile_notification_intents" }
@@ -216,6 +219,7 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 		var candidates []mobileNotificationRow
 		leaseExpired := notificationLeaseExpiredSQL(tx.Dialector.Name())
 		q := tx.Where(`expires_at > ? AND
+			(next_attempt_at IS NULL OR next_attempt_at <= ?) AND
 			(state = 'pending' OR (state = 'in_flight' AND (lease_until IS NULL OR `+leaseExpired+`))) AND
 			EXISTS (SELECT 1 FROM mobile_devices d
 				WHERE d.tenant_id = mobile_notification_intents.tenant_id
@@ -226,7 +230,7 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 			EXISTS (SELECT 1 FROM agent_runs r
 				WHERE r.tenant_id = mobile_notification_intents.tenant_id
 				  AND r.run_id = mobile_notification_intents.run_id
-				  AND r.owner_id = mobile_notification_intents.owner_id)`, now, now).
+				  AND r.owner_id = mobile_notification_intents.owner_id)`, now, now, now).
 			Order("created_at ASC, id ASC").Limit(limit).Find(&candidates)
 		if q.Error != nil {
 			return q.Error
@@ -288,7 +292,46 @@ func (s *NotificationStore) RetryResult(ctx context.Context, id, worker string, 
 	now := time.Now().UTC()
 	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
 		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ?", id, worker, fence).
-		Updates(map[string]interface{}{"state": "pending", "lease_owner": "", "lease_until": nil, "updated_at": now})
+		Updates(map[string]interface{}{"state": "pending", "lease_owner": "", "lease_until": nil, "next_attempt_at": now, "updated_at": now})
+	return NotificationRetryResult{Applied: result.Error == nil && result.RowsAffected == 1, Err: result.Error}
+}
+
+// RetryAt releases a leased intent at a bounded future time and records the
+// provider reason. The fence remains authoritative, so stale workers cannot
+// schedule a newer attempt.
+func (s *NotificationStore) RetryAt(ctx context.Context, id, worker string, fence int64, next time.Time, reason string) NotificationRetryResult {
+	if s == nil || s.db == nil || id == "" || worker == "" || fence <= 0 || next.IsZero() {
+		return NotificationRetryResult{Err: errors.New("invalid_notification_retry")}
+	}
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ?", id, worker, fence).
+		Updates(map[string]interface{}{"state": "pending", "lease_owner": "", "lease_until": nil, "next_attempt_at": next.UTC(), "last_error": reason, "updated_at": now})
+	return NotificationRetryResult{Applied: result.Error == nil && result.RowsAffected == 1, Err: result.Error}
+}
+
+// AckReceipt records the provider receipt before marking a delivery terminal.
+func (s *NotificationStore) AckReceipt(ctx context.Context, id, worker string, fence int64, receiptID string) NotificationRetryResult {
+	if s == nil || s.db == nil || id == "" || worker == "" || fence <= 0 || strings.TrimSpace(receiptID) == "" {
+		return NotificationRetryResult{Err: errors.New("invalid_notification_receipt")}
+	}
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ? AND (lease_until IS NULL OR lease_until > ?)", id, worker, fence, now).
+		Updates(map[string]interface{}{"state": "sent", "lease_owner": "", "lease_until": nil, "receipt_id": receiptID, "last_error": "", "updated_at": now})
+	return NotificationRetryResult{Applied: result.Error == nil && result.RowsAffected == 1, Err: result.Error}
+}
+
+// Expire marks a permanently failed delivery terminal without allowing a
+// stale worker to overwrite a newer fence. The original event remains durable.
+func (s *NotificationStore) Expire(ctx context.Context, id, worker string, fence int64, reason string) NotificationRetryResult {
+	if s == nil || s.db == nil || id == "" || worker == "" || fence <= 0 {
+		return NotificationRetryResult{Err: errors.New("invalid_notification_expire")}
+	}
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ?", id, worker, fence).
+		Updates(map[string]interface{}{"state": "expired", "lease_owner": "", "lease_until": nil, "last_error": reason, "updated_at": now})
 	return NotificationRetryResult{Applied: result.Error == nil && result.RowsAffected == 1, Err: result.Error}
 }
 

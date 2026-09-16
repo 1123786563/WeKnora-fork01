@@ -709,8 +709,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 // deployment-configured HTTP gateway. An empty endpoint is valid during local
 // development: the worker remains durable and fail-closed until the gateway
 // is configured.
-func newMobileNotificationProvider() workbenchservice.NotificationProvider {
-	return workbenchservice.NewHTTPNotificationProvider(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")))
+func newMobileNotificationProvider(cfg *config.Config) workbenchservice.NotificationProvider {
+	endpoint := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL"))
+	if endpoint == "" && cfg != nil && cfg.MobileNotification != nil {
+		endpoint = strings.TrimSpace(cfg.MobileNotification.ProviderURL)
+	}
+	return workbenchservice.NewHTTPNotificationProvider(endpoint)
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver

@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 )
 
 // NotificationProvider is the final push vendor boundary. Implementations
@@ -16,6 +19,13 @@ import (
 // the delivery and must not cache authorization across a lease.
 type NotificationProvider interface {
 	Send(context.Context, repository.NotificationDelivery) error
+}
+
+// NotificationReceiptProvider is an optional stronger provider contract. A
+// worker uses it when available so an HTTP 2xx is not recorded as sent without
+// the vendor receipt ID. Legacy scoped gateways may implement only Send.
+type NotificationReceiptProvider interface {
+	SendReceipt(context.Context, repository.NotificationDelivery) (pushnotification.PushReceipt, error)
 }
 
 // HTTPNotificationProvider is the server-side adapter for the mobile push
@@ -33,32 +43,57 @@ func NewHTTPNotificationProvider(endpoint string) *HTTPNotificationProvider {
 }
 
 func (p *HTTPNotificationProvider) Send(ctx context.Context, d repository.NotificationDelivery) error {
+	_, err := p.send(ctx, d, false)
+	return err
+}
+
+func (p *HTTPNotificationProvider) SendReceipt(ctx context.Context, d repository.NotificationDelivery) (pushnotification.PushReceipt, error) {
+	return p.send(ctx, d, true)
+}
+
+func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.NotificationDelivery, requireReceipt bool) (pushnotification.PushReceipt, error) {
 	if p == nil || p.endpoint == "" {
-		return fmt.Errorf("mobile_notification_provider_unconfigured")
+		return pushnotification.PushReceipt{}, fmt.Errorf("mobile_notification_provider_unconfigured")
 	}
-	payload, err := json.Marshal(map[string]any{
-		"tenant_id": d.Intent.TenantID, "owner_id": d.Intent.OwnerID,
-		"device_id": d.Intent.DeviceID, "environment": d.Intent.Environment,
-		"event_id": d.Intent.EventID, "run_id": d.Intent.RunID,
-		"kind": d.Intent.Kind, "attempt": d.Attempt,
-	})
+	payload, err := json.Marshal(map[string]any{"tenant_id": d.Intent.TenantID, "owner_id": d.Intent.OwnerID, "device_id": d.Intent.DeviceID, "environment": d.Intent.Environment, "event_id": d.Intent.EventID, "run_id": d.Intent.RunID, "kind": d.Intent.Kind, "attempt": d.Attempt})
 	if err != nil {
-		return err
+		return pushnotification.PushReceipt{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return pushnotification.PushReceipt{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return err
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "UnknownTransport", Retry: true, Err: err}
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("mobile_notification_provider_status_%d", resp.StatusCode)
+	var body struct {
+		ID        string `json:"id"`
+		ReceiptID string `json:"receipt_id"`
+		Status    string `json:"status"`
 	}
-	return nil
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		code := "UnknownTransport"
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			code = "InvalidProviderToken"
+		}
+		revoke, retry := pushnotification.ClassifyPushFailure(code)
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: code, Revoke: revoke, Retry: retry, StatusCode: resp.StatusCode}
+	}
+	id := body.ID
+	if id == "" {
+		id = body.ReceiptID
+	}
+	if id == "" && requireReceipt {
+		return pushnotification.PushReceipt{}, pushnotification.ErrMissingReceiptID
+	}
+	return pushnotification.PushReceipt{ID: id, Status: body.Status}, nil
 }
 
 // NotificationDeliveryWorker consumes leased intents and performs the final
@@ -97,11 +132,30 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 			firstErr = firstNonNil(firstErr, w.releaseDelivery(ctx, delivery))
 			continue
 		}
-		if err := w.provider.Send(ctx, delivery); err != nil {
-			firstErr = firstNonNil(firstErr, w.releaseDeliveryWithCause(ctx, delivery, err))
+		var receiptID string
+		var sendErr error
+		if receiptProvider, ok := w.provider.(NotificationReceiptProvider); ok {
+			var receipt pushnotification.PushReceipt
+			receipt, sendErr = receiptProvider.SendReceipt(ctx, delivery)
+			receiptID = receipt.ID
+		} else {
+			sendErr = w.provider.Send(ctx, delivery)
+		}
+		if sendErr != nil {
+			firstErr = firstNonNil(firstErr, w.releaseDeliveryWithCause(ctx, delivery, sendErr))
 			continue
 		}
-		if !w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
+		ack := false
+		if receiptID != "" {
+			result := w.store.AckReceipt(ctx, delivery.ID, w.worker, delivery.Fence, receiptID)
+			ack = result.Applied
+			if result.Err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("notification_delivery_ack_persist:%s: %w", delivery.ID, result.Err)
+			}
+		} else {
+			ack = w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence)
+		}
+		if !ack && firstErr == nil {
 			firstErr = fmt.Errorf("notification_delivery_ack_fence_lost:%s", delivery.ID)
 		}
 	}
@@ -123,7 +177,24 @@ func (w *NotificationDeliveryWorker) releaseDelivery(ctx context.Context, d repo
 }
 
 func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Context, d repository.NotificationDelivery, cause error) error {
-	result := w.store.RetryResult(ctx, d.ID, w.worker, d.Fence)
+	// A provider can explicitly classify a permanent receipt failure.  Expire
+	// that row instead of retrying a bad token forever; the durable event stays
+	// available for audit and the device registration can be revoked separately.
+	var providerErr *pushnotification.ProviderError
+	if cause != nil && errors.As(cause, &providerErr) && !providerErr.Retry {
+		result := w.store.Expire(ctx, d.ID, w.worker, d.Fence, providerErr.Code)
+		if result.Err != nil {
+			return fmt.Errorf("notification_delivery_expire_persist:%s: %w: %v", d.ID, result.Err, cause)
+		}
+		if result.Applied {
+			return nil
+		}
+	}
+	next := time.Now().UTC()
+	if cause != nil {
+		next = next.Add(notificationRetryDelay(d.ID, d.Attempt, providerErrRetryAfter(providerErr)))
+	}
+	result := w.store.RetryAt(ctx, d.ID, w.worker, d.Fence, next, notificationErrorText(cause))
 	if result.Err != nil {
 		if cause != nil {
 			return fmt.Errorf("notification_delivery_retry_persist:%s: %w: %v", d.ID, result.Err, cause)
@@ -144,6 +215,53 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 		return fmt.Errorf("notification_delivery_retry_fence_lost:%s: %w", d.ID, cause)
 	}
 	return fmt.Errorf("notification_delivery_retry_fence_lost:%s", d.ID)
+}
+
+func providerErrRetryAfter(err *pushnotification.ProviderError) time.Duration {
+	if err == nil {
+		return 0
+	}
+	return err.RetryAfter
+}
+func notificationErrorText(err error) string {
+	if err == nil {
+		return "authorization_revalidation"
+	}
+	return err.Error()
+}
+
+// notificationRetryDelay is bounded exponential backoff with stable per-ID
+// jitter. Stable jitter spreads a batch without making retry timing impossible
+// to inspect in tests or operations. A provider Retry-After hint wins when it
+// is larger, but the five-minute cap always applies.
+func notificationRetryDelay(id string, attempt int64, hint time.Duration) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 8 {
+		attempt = 8
+	}
+	base := time.Second << (attempt - 1)
+	if base > 5*time.Minute {
+		base = 5 * time.Minute
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	jitter := time.Duration(h.Sum32() % uint32(maxDuration(base/2, time.Millisecond)))
+	delay := base + jitter
+	if hint > delay {
+		delay = hint
+	}
+	if delay > 5*time.Minute {
+		delay = 5 * time.Minute
+	}
+	return delay
+}
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Start runs the delivery loop in the same lifecycle as projection. Provider

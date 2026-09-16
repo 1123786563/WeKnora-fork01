@@ -18,22 +18,23 @@ import (
 
 // Config 应用程序总配置
 type Config struct {
-	Conversation    *ConversationConfig    `yaml:"conversation"     json:"conversation"`
-	Server          *ServerConfig          `yaml:"server"           json:"server"`
-	KnowledgeBase   *KnowledgeBaseConfig   `yaml:"knowledge_base"   json:"knowledge_base"`
-	Tenant          *TenantConfig          `yaml:"tenant"           json:"tenant"`
-	Auth            *AuthConfig            `yaml:"auth"             json:"auth"`
-	Audit           *AuditConfig           `yaml:"audit"            json:"audit"`
-	OIDCAuth        *OIDCAuthConfig        `yaml:"oidc_auth"        json:"oidc_auth"`
-	Models          []ModelConfig          `yaml:"models"           json:"models"`
-	VectorDatabase  *VectorDatabaseConfig  `yaml:"vector_database"  json:"vector_database"`
-	DocReader       *DocReaderConfig       `yaml:"docreader"        json:"docreader"`
-	StreamManager   *StreamManagerConfig   `yaml:"stream_manager"   json:"stream_manager"`
-	ExtractManager  *ExtractManagerConfig  `yaml:"extract"          json:"extract"`
-	WebSearch       *WebSearchConfig       `yaml:"web_search"       json:"web_search"`
-	PromptTemplates *PromptTemplatesConfig `yaml:"prompt_templates" json:"prompt_templates"`
-	IM              *IMConfig              `yaml:"im"               json:"im"`
-	Agent           *AgentConfig           `yaml:"agent"            json:"agent"`
+	Conversation       *ConversationConfig       `yaml:"conversation"     json:"conversation"`
+	Server             *ServerConfig             `yaml:"server"           json:"server"`
+	KnowledgeBase      *KnowledgeBaseConfig      `yaml:"knowledge_base"   json:"knowledge_base"`
+	Tenant             *TenantConfig             `yaml:"tenant"           json:"tenant"`
+	Auth               *AuthConfig               `yaml:"auth"             json:"auth"`
+	Audit              *AuditConfig              `yaml:"audit"            json:"audit"`
+	OIDCAuth           *OIDCAuthConfig           `yaml:"oidc_auth"        json:"oidc_auth"`
+	Models             []ModelConfig             `yaml:"models"           json:"models"`
+	VectorDatabase     *VectorDatabaseConfig     `yaml:"vector_database"  json:"vector_database"`
+	DocReader          *DocReaderConfig          `yaml:"docreader"        json:"docreader"`
+	StreamManager      *StreamManagerConfig      `yaml:"stream_manager"   json:"stream_manager"`
+	ExtractManager     *ExtractManagerConfig     `yaml:"extract"          json:"extract"`
+	WebSearch          *WebSearchConfig          `yaml:"web_search"       json:"web_search"`
+	PromptTemplates    *PromptTemplatesConfig    `yaml:"prompt_templates" json:"prompt_templates"`
+	IM                 *IMConfig                 `yaml:"im"               json:"im"`
+	Agent              *AgentConfig              `yaml:"agent"            json:"agent"`
+	MobileNotification *MobileNotificationConfig `yaml:"mobile_notification" json:"mobile_notification"`
 	// OpenConnector is the T16 deployment config of the open-connector
 	// dispatch path. DEFAULT OFF: a nil section or unset enabled keeps the
 	// explicit refusing dispatcher (the API fails closed with 503, never a
@@ -129,6 +130,16 @@ func OpenConnectorRuntimeIDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// MobileNotificationConfig controls the optional push delivery gateway.
+// An empty endpoint keeps the durable outbox active while failing provider
+// sends closed; credentials are read from the environment and never logged.
+type MobileNotificationConfig struct {
+	ProviderURL string        `yaml:"provider_url" json:"provider_url"`
+	AccessToken string        `yaml:"access_token" json:"-"`
+	RetryBase   time.Duration `yaml:"retry_base" json:"retry_base"`
+	RetryMax    time.Duration `yaml:"retry_max" json:"retry_max"`
 }
 
 // AgentConfig represents the global agent settings.
@@ -696,6 +707,7 @@ func LoadConfig() (*Config, error) {
 	// Validate configuration values
 	applyOIDCEnvOverrides(&cfg)
 	applyAgentEnvOverrides(&cfg)
+	applyMobileNotificationEnvOverrides(&cfg)
 	applyKnowledgeBaseEnvOverrides(&cfg)
 	applyAuthAndTenantDefaults(&cfg)
 	applyAuditDefaults(&cfg)
@@ -811,6 +823,34 @@ func ValidateConfig(cfg *Config) error {
 		return fmt.Errorf("config validation errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func applyMobileNotificationEnvOverrides(cfg *Config) {
+	if cfg.MobileNotification == nil {
+		cfg.MobileNotification = &MobileNotificationConfig{}
+	}
+	if cfg.MobileNotification.RetryBase <= 0 {
+		cfg.MobileNotification.RetryBase = time.Second
+	}
+	if cfg.MobileNotification.RetryMax <= 0 {
+		cfg.MobileNotification.RetryMax = 5 * time.Minute
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")); value != "" {
+		cfg.MobileNotification.ProviderURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN")); value != "" {
+		cfg.MobileNotification.AccessToken = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_RETRY_BASE")); value != "" {
+		if d, err := time.ParseDuration(value); err == nil && d > 0 {
+			cfg.MobileNotification.RetryBase = d
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_RETRY_MAX")); value != "" {
+		if d, err := time.ParseDuration(value); err == nil && d > 0 {
+			cfg.MobileNotification.RetryMax = d
+		}
+	}
 }
 
 func applyOIDCEnvOverrides(cfg *Config) {
