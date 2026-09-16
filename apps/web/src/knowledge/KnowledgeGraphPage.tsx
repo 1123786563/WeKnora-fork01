@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Input, Status } from '@weknora/ui';
-import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 /* Tailwind migration: static per-type classes replacing the former
@@ -35,6 +35,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const depth = 1;
   const [query, setQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>(() => [...WIKI_GRAPH_TYPES]);
+  const [showArrows, setShowArrows] = useState(true);
   const [searchResults, setSearchResults] = useState<Array<{ title: string; slug: string }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
@@ -135,6 +136,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
   const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
   const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);
+  const displayEdges = useMemo(() => visible ? displayGraphEdges(visible.edges) : [], [visible]);
   const toggleGraphType = (graphType: string) => {
     setSelectedTypes((current) => current.includes(graphType) ? current.filter((item) => item !== graphType) : [...current, graphType]);
   };
@@ -213,6 +215,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           {mode === 'ego' ? <Button type="button" onClick={() => void load('overview')}>{t('wikiBrowser.backToOverview')}</Button> : null}
           {frontier.length > 0 ? <Button type="button" onClick={() => void growFrontier()} disabled={status.kind === 'loading'} title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })}>{t('wikiBrowser.growFrontier', { count: frontier.length })}</Button> : null}
           <Button type="button" onClick={() => setViewport({ x: 0, y: 0, scale: 1 })}>{t('wikiBrowser.fitView')}</Button>
+          <Button type="button" variant="text" size="small" aria-pressed={showArrows} onClick={() => setShowArrows((value) => !value)} title={showArrows ? t('wikiBrowser.hideArrows') : t('wikiBrowser.showArrows')}>
+            {showArrows ? t('wikiBrowser.hideArrows') : t('wikiBrowser.showArrows')}
+          </Button>
           <Button type="button" onClick={() => void load(mode, center || undefined)} disabled={status.kind === 'loading'}>{t('common.refresh')}</Button>
         </div>
       </header>
@@ -239,8 +244,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           {graphStatusCard ? <div className="my-[.75rem] max-w-[28rem] rounded-[8px] border border-[#d8e0eb] bg-white p-[.75rem_.9rem] shadow-[0_8px_20px_rgba(31,52,84,.1)]"><div className="flex items-center gap-[.4rem] text-[.8rem] text-[#52627a]"><span aria-hidden="true">◌</span><strong>{graphStatusCard.title}</strong></div><div className="mt-[.25rem] truncate text-[1rem] font-semibold text-[#1d2939]">{graphStatusCard.primary}</div><div className="mt-[.25rem] text-[.8rem] text-[#667085]">{graphStatusCard.secondary}</div></div> : null}
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
             <svg className="block w-full min-h-[24rem] max-[720px]:min-h-[18rem] my-4 border border-line rounded-card bg-[#fbfcfe] cursor-grab touch-none select-none active:cursor-grabbing" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
+              <defs>
+                <marker id="wk-graph-arrow-end" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+                  <path d="M0,0 L10,3 L0,6 L2,3 Z" className="fill-[#c0c4cc]" />
+                </marker>
+                <marker id="wk-graph-arrow-start" viewBox="0 0 10 6" refX="0" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+                  <path d="M10,0 L0,3 L10,6 L8,3 Z" className="fill-[#c0c4cc]" />
+                </marker>
+              </defs>
               <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
-                {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="stroke-[#b5c1d3] [stroke-width:1.5]" /> : null; })}
+                {displayEdges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd={showArrows ? 'url(#wk-graph-arrow-end)' : undefined} markerStart={showArrows && edge.bidirectional ? 'url(#wk-graph-arrow-start)' : undefined} className="stroke-[#b5c1d3] [stroke-width:1.5]" /> : null; })}
                 {visible.nodes.map((node, index) => { const position = displayPositions[index]!; const circleClass = node.familiar ? '[stroke:#f79009] [stroke-width:4]' : `${GRAPH_NODE_CIRCLE[node.page_type] ?? '[fill:#98a2b3] [stroke:#667085]'} [stroke-width:2]`; return <g key={node.slug} className="cursor-pointer outline-none [&:hover_circle]:[fill:#6941c6] [&:focus_circle]:[fill:#6941c6]" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onClick={() => { if (!dragged.current) void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} className={circleClass} /><text x={position.x} y={position.y + 40} textAnchor="middle" className="[fill:#27364d] text-[12px] pointer-events-none">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
               </g>
             </svg>

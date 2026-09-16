@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -41,6 +41,17 @@ test('preserves a multi-type graph legend selection in the API query', () => {
   assert.deepEqual(graphQueryParams('overview', '', 1, ['summary', 'entity']), {
     mode: 'overview', limit: 500, types: ['summary', 'entity'],
   });
+});
+
+test('deduplicates reciprocal Vue graph links while preserving bidirectional arrow intent', () => {
+  assert.deepEqual(displayGraphEdges([
+    { source: 'docs/start', target: 'docs/next' },
+    { source: 'docs/next', target: 'docs/start' },
+    { source: 'docs/third', target: 'docs/next' },
+  ]), [
+    { source: 'docs/start', target: 'docs/next', bidirectional: true },
+    { source: 'docs/third', target: 'docs/next', bidirectional: false },
+  ]);
 });
 
 test('merges bloom results without duplicating nodes or edges and preserves familiar state', () => {

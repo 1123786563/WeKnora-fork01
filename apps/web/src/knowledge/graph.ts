@@ -1,4 +1,4 @@
-import type { WikiGraphData, WikiGraphNode, WikiGraphQueryParams } from '@weknora/api-client';
+import type { WikiGraphData, WikiGraphEdge, WikiGraphNode, WikiGraphQueryParams } from '@weknora/api-client';
 
 export interface GraphFilter {
   query?: string;
@@ -12,6 +12,28 @@ export interface GraphNodePosition {
 }
 
 export const WIKI_GRAPH_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'index'] as const;
+
+export interface DisplayGraphEdge extends WikiGraphEdge {
+  bidirectional: boolean;
+}
+
+/**
+ * Mirrors Vue WikiBrowser's graph renderer: reciprocal links share one SVG
+ * line and receive an arrow at both ends. Keeping this derived from the API
+ * edges means the backend contract stays unchanged.
+ */
+export function displayGraphEdges(edges: readonly WikiGraphEdge[]): DisplayGraphEdge[] {
+  const seen = new Set<string>();
+  const result: DisplayGraphEdge[] = [];
+  for (const edge of edges) {
+    const pair = [edge.source, edge.target].sort().join('\u0000');
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+    const bidirectional = edges.some((candidate) => candidate.source === edge.target && candidate.target === edge.source);
+    result.push({ ...edge, bidirectional });
+  }
+  return result;
+}
 
 export function graphQueryParams(
   mode: 'overview' | 'ego',
