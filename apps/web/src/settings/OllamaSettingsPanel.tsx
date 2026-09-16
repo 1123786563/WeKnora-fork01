@@ -42,6 +42,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
   }
 
   async function download() {
+    if (!modelName.trim()) return;
     setBusy(true); setError(null); setNotice(null);
     try { const result = await client.settings.ollama.download(ollamaModelInput(modelName)); const id = taskId(result); setActiveTask(id); setProgress(result); setModelName(''); setNotice(t('ollamaSettings.toasts.downloadStarted', { name: id || '' })); }
     catch (reason) { setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.downloadFailed')); }
@@ -69,7 +70,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
       <Card>
         <h3>{t('ollamaSettings.download.title')}</h3>
         <p className="wk-muted text-muted">{t('ollamaSettings.download.descPrefix')} <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer">{t('ollamaSettings.download.browse')}</a></p>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Input aria-label={t('ollamaSettings.download.placeholder')} className="w-full min-w-0" value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" disabled={busy} onClick={() => void download()}>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Input aria-label={t('ollamaSettings.download.placeholder')} className="w-full min-w-0" value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" disabled={busy || !modelName.trim()} onClick={() => void download()}>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>
         {progress ? <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.task}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{activeTask || copy.accepted}</dd></div><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.progress}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{String(progress.progress ?? progress.status ?? copy.reported)}</dd></div></dl> : null}
       </Card>
       <Card>

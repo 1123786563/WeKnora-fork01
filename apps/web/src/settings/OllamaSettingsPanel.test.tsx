@@ -32,24 +32,24 @@ afterEach(async () => {
   dom.window.localStorage.clear();
 });
 
-function makeClient(): WeKnoraClient {
+function makeClient(onDownload?: () => void): WeKnoraClient {
   return {
     settings: {
       ollama: {
         status: async () => ({ available: false }),
         models: async () => [],
-        download: async () => ({ task_id: 'task-1' }),
+        download: async () => { onDownload?.(); return { task_id: 'task-1' }; },
         progress: async () => ({ status: 'running' }),
       },
     },
   } as unknown as WeKnoraClient;
 }
 
-async function mount(initialValue: unknown) {
+async function mount(initialValue: unknown, client = makeClient()) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
-  await act(async () => mountedRoot?.render(<OllamaSettingsPanel client={makeClient()} initialValue={initialValue} />));
+  await act(async () => mountedRoot?.render(<OllamaSettingsPanel client={client} initialValue={initialValue} />));
   return container;
 }
 
@@ -66,4 +66,19 @@ test('keeps the Vue model-library link in the download section', async () => {
   assert.ok(link, 'the Ollama model library link is rendered');
   assert.equal(link?.getAttribute('target'), '_blank');
   assert.equal(link?.textContent, '浏览 Ollama 模型库');
+});
+
+test('disables the Vue download action until a non-blank model name is entered', async () => {
+  let downloadCalls = 0;
+  const container = await mount(
+    { status: { available: true }, models: [] },
+    makeClient(() => { downloadCalls += 1; }),
+  );
+  const downloadButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find((button) => button.textContent?.includes('下载'));
+  assert.ok(downloadButton, 'the download action renders');
+  assert.equal(downloadButton.disabled, true, 'Vue disables an empty download action');
+
+  await act(async () => downloadButton.click());
+  assert.equal(downloadCalls, 0, 'an empty model name must not call the download API');
 });
