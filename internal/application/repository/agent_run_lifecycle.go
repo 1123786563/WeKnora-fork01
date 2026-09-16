@@ -68,6 +68,13 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 				Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
 				return err
 			}
+			payload, err := json.Marshal(map[string]string{"reason": "session_deleted"})
+			if err != nil {
+				return err
+			}
+			if err := tx.Create(&agentRunEventRow{TenantID: tenantID, RunID: id, Seq: nextEventSeq(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: id}}), EventType: "cancellation_requested", Payload: string(payload)}).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=?", tenantID, sessionID).Update("active_agent_run_id", nil).Error
 	})

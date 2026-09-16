@@ -13,10 +13,12 @@ import (
 // CleanupClaim is the fenced lease for one session tombstone. The epoch is
 // bumped for every claim so a delayed worker cannot complete a newer claim.
 type CleanupClaim struct {
-	TenantID  uint64
-	SessionID string
-	Worker    string
-	Epoch     int64
+	TenantID         uint64
+	OwnerID          string
+	SessionID        string
+	DeletionRevision int64
+	Worker           string
+	Epoch            int64
 }
 
 type executionCleanupRow struct {
@@ -50,6 +52,27 @@ func (s *AgentRunStore) TombstoneSession(ctx context.Context, tenant uint64, own
 		return runtime.ErrNotFound
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing executionCleanupRow
+		err := tx.Where("tenant_id=? AND session_id=?", tenant, sessionID).Take(&existing).Error
+		if err == nil {
+			if existing.OwnerID != owner {
+				return runtime.ErrNotFound
+			}
+			// A new deletion revision invalidates all observations and claims
+			// from the previous deletion. This is deliberately not idempotent:
+			// replaying the delete must advance the barrier.
+			return tx.Model(&executionCleanupRow{}).
+				Where("tenant_id=? AND session_id=? AND owner_id=?", tenant, sessionID, owner).
+				Updates(map[string]any{
+					"state": "tombstoned", "deletion_revision": gorm.Expr("deletion_revision+1"),
+					"worker": "", "lease_until": nil, "epoch": gorm.Expr("epoch+1"),
+					"stopped": false, "settled": false, "retention_elapsed": false,
+					"updated_at": s.cleanupNowExpr(),
+				}).Error
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		var session struct {
 			OwnerID string `gorm:"column:user_id"`
 		}
@@ -57,21 +80,6 @@ func (s *AgentRunStore) TombstoneSession(ctx context.Context, tenant uint64, own
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return runtime.ErrNotFound
 			}
-			return err
-		}
-		var existing executionCleanupRow
-		err := tx.Where("tenant_id=? AND session_id=?", tenant, sessionID).Take(&existing).Error
-		if err == nil {
-			if existing.OwnerID != owner {
-				return runtime.ErrNotFound
-			}
-			if existing.State == "purged" {
-				return nil
-			}
-			return tx.Model(&executionCleanupRow{}).Where("tenant_id=? AND session_id=? AND owner_id=?", tenant, sessionID, owner).
-				Updates(map[string]any{"state": "tombstoned", "worker": "", "lease_until": nil, "updated_at": s.cleanupNowExpr()}).Error
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
 		var revision struct{ Revision int64 }
@@ -107,7 +115,7 @@ func (s *AgentRunStore) ClaimCleanup(ctx context.Context, worker string, lease t
 		if updated.RowsAffected != 1 {
 			return runtime.ErrConflict
 		}
-		claim = CleanupClaim{TenantID: row.TenantID, SessionID: row.SessionID, Worker: worker, Epoch: row.Epoch + 1}
+		claim = CleanupClaim{TenantID: row.TenantID, OwnerID: row.OwnerID, SessionID: row.SessionID, DeletionRevision: row.DeletionRevision, Worker: worker, Epoch: row.Epoch + 1}
 		return nil
 	})
 	return claim, err
@@ -116,23 +124,77 @@ func (s *AgentRunStore) ClaimCleanup(ctx context.Context, worker string, lease t
 // CompleteCleanup records observed stop/settlement/retention facts under the
 // claim fence. Purging is only marked after all three facts are true.
 func (s *AgentRunStore) CompleteCleanup(ctx context.Context, claim CleanupClaim, facts execution.CleanupFacts) error {
-	if claim.TenantID == 0 || claim.SessionID == "" || claim.Worker == "" || claim.Epoch <= 0 {
+	if claim.TenantID == 0 || claim.OwnerID == "" || claim.SessionID == "" || claim.DeletionRevision <= 0 || claim.Worker == "" || claim.Epoch <= 0 {
 		return runtime.ErrConflict
 	}
-	state := "cleanup_pending"
-	if execution.CanPurge(facts) {
-		state = "purged"
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row executionCleanupRow
+		if err := tx.Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_claimed'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return runtime.ErrLeaseLost
+			}
+			return err
+		}
+		stopped, settled, retained := row.Stopped || facts.Stopped, row.Settled || facts.Settled, row.RetentionElapsed || facts.RetentionElapsed
+		state := "cleanup_pending"
+		if execution.CanPurge(execution.CleanupFacts{Stopped: stopped, Settled: settled, RetentionElapsed: retained}) {
+			state = "purged"
+		}
+		updated := tx.Model(&executionCleanupRow{}).
+			Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_claimed'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch).
+			Updates(map[string]any{"state": state, "stopped": stopped, "settled": settled, "retention_elapsed": retained, "worker": "", "lease_until": nil, "updated_at": s.cleanupNowExpr()})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return runtime.ErrLeaseLost
+		}
+		return nil
+	})
+}
+
+// CleanupObservationSource is the production adapter boundary. Each method
+// must query the authoritative stop, usage, replay and restore systems for
+// this deletion revision; absence or uncertainty is false.
+type CleanupObservationSource interface {
+	ObserveStop(context.Context, CleanupClaim) (bool, error)
+	ObserveUsage(context.Context, CleanupClaim) (bool, error)
+	ObserveReplay(context.Context, CleanupClaim) (bool, error)
+	ObserveBackupRestore(context.Context, CleanupClaim) (bool, error)
+	ObserveRetention(context.Context, CleanupClaim) (bool, error)
+}
+
+// RunCleanupOnce executes one leased observation cycle. It intentionally does
+// not fake provider/file evidence; callers must supply real adapters.
+func (s *AgentRunStore) RunCleanupOnce(ctx context.Context, worker string, lease time.Duration, source CleanupObservationSource) error {
+	if source == nil {
+		return runtime.ErrConflict
 	}
-	updated := s.db.WithContext(ctx).Model(&executionCleanupRow{}).
-		Where("tenant_id=? AND session_id=? AND worker=? AND epoch=? AND state='cleanup_claimed'", claim.TenantID, claim.SessionID, claim.Worker, claim.Epoch).
-		Updates(map[string]any{"state": state, "stopped": facts.Stopped, "settled": facts.Settled, "retention_elapsed": facts.RetentionElapsed, "worker": "", "lease_until": nil, "updated_at": s.cleanupNowExpr()})
-	if updated.Error != nil {
-		return updated.Error
+	claim, err := s.ClaimCleanup(ctx, worker, lease)
+	if err != nil {
+		return err
 	}
-	if updated.RowsAffected != 1 {
-		return runtime.ErrLeaseLost
+	stop, err := source.ObserveStop(ctx, claim)
+	if err != nil {
+		return err
 	}
-	return nil
+	usage, err := source.ObserveUsage(ctx, claim)
+	if err != nil {
+		return err
+	}
+	replay, err := source.ObserveReplay(ctx, claim)
+	if err != nil {
+		return err
+	}
+	restore, err := source.ObserveBackupRestore(ctx, claim)
+	if err != nil {
+		return err
+	}
+	retention, err := source.ObserveRetention(ctx, claim)
+	if err != nil {
+		return err
+	}
+	return s.CompleteCleanup(ctx, claim, execution.CleanupFacts{Stopped: stop && replay, Settled: usage, RetentionElapsed: retention && restore})
 }
 
 func (s *AgentRunStore) cleanupNowExpr() any {
