@@ -3828,3 +3828,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Evidence is source/focused-unit only; authenticated paired Vue/React
   screenshots, real backend permission mutations, and Wails feature
   interaction remain open. No mobile code was modified.
+
+## 2026-09-16 Round R404 — Move the upload confirmation footer onto the UI utility pipeline
+
+- `1d73b926` replaces the remaining inline `style` object in
+  `UploadConfirmDialog.tsx` with Tailwind utility classes for flex layout,
+  alignment, and spacing. The dialog continues to use the project `Button`,
+  `Dialog`, and `Status` wrappers; no Vue behavior or API contract changed.
+- Web full regression remains 1172/1172, Web typecheck passes, and
+  `git diff --check` passes. This is implementation/unit/static evidence; it
+  does not replace same-condition Vue screenshots or real backend mutation
+  verification. No mobile code was modified.
