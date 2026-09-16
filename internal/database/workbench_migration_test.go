@@ -220,11 +220,15 @@ func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
 	require.Equal(t, 17, version)
 	require.False(t, dirty)
 	require.False(t, sqliteTableExists(t, db, "execution_target_identities"))
+	require.False(t, sqliteTableExists(t, db, "execution_observations"))
+	require.False(t, sqliteTableExists(t, db, "execution_source_cursors"))
 	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 4))
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 21, version)
 	require.False(t, dirty)
 	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
+	require.True(t, sqliteTableExists(t, db, "execution_observations"))
+	require.True(t, sqliteTableExists(t, db, "execution_source_cursors"))
 }
 
 // TestWorkbenchSQLiteDownRefusesPaseo catches a rollback that would silently
