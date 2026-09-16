@@ -10,7 +10,7 @@ import { formatMessage, isLocale, supportedLocales } from '@weknora/i18n';
 import { Input, Select, Textarea } from '@weknora/ui';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { buildInviteLink, copyText, sharedResourceRow } from './settings-actions.ts';
-import { organizationRoleLabel } from './summary.ts';
+import { organizationRoleLabel, organizationSettingsSections } from './summary.ts';
 import './organizations.css';
 import emptyIllustration from './empty-organizations.svg';
 
@@ -808,21 +808,6 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const previewName = strOf(joinPreview?.name);
   const previewDescription = strOf(joinPreview?.description);
   const searchRowFull = (row: Record<string, unknown>) => numOf(row.member_limit) > 0 && numOf(row.member_count) >= numOf(row.member_limit);
-  const settingsNavItems: Array<[string, string]> = settingsMode === 'create' ? [
-    ['basic', 'organization.editor.navBasic'],
-    ['permissions', 'organization.editor.navPermissions'],
-  ] : [
-    ['basic', 'organization.editor.navBasic'],
-    ['members', 'organization.members.listTitle'],
-    ['requests', 'organization.joinRequests.listTitle'],
-    ['shares', 'organization.sharedResources.kbListTitle'],
-    ['agents', 'organization.sharedResources.agentListTitle'],
-    ['invite', 'organization.settings.inviteLink'],
-  ];
-  const normalizedMemberSearchQuery = memberSearchQuery.trim().toLocaleLowerCase();
-  const filteredMembers = normalizedMemberSearchQuery
-    ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
-    : members;
   // Vue OrganizationSettingsModal.isAdmin requires both organization-level
   // admin/owner membership and tenant-level admin access. The list-level
   // canManageOrg check alone must not make an editor/viewer's settings form
@@ -830,6 +815,21 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const settingsOrgAdmin = settingsMode === 'create' || Boolean(settingsOrg && (settingsOrg.is_owner === true || settingsOrg.my_role === 'admin'));
   const settingsCanManage = canManageOrg && settingsOrgAdmin;
   const showSettingsRoleHint = settingsMode === 'edit' && settingsOrgAdmin && !canManageOrg;
+  const settingsNavLabels: Record<string, string> = {
+    basic: 'organization.editor.navBasic',
+    permissions: 'organization.editor.navPermissions',
+    members: 'organization.members.listTitle',
+    requests: 'organization.joinRequests.listTitle',
+    shares: 'organization.sharedResources.kbListTitle',
+    agents: 'organization.sharedResources.agentListTitle',
+    invite: 'organization.settings.inviteLink',
+  };
+  const settingsNavItems: Array<[string, string]> = organizationSettingsSections(settingsMode, settingsCanManage)
+    .map((key) => [key, settingsNavLabels[key]] as [string, string]);
+  const normalizedMemberSearchQuery = memberSearchQuery.trim().toLocaleLowerCase();
+  const filteredMembers = normalizedMemberSearchQuery
+    ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
+    : members;
   const feedStatus = (key: DetailFeedKey, fallback: string) => {
     const state = detailFeeds[key];
     if (state.status === 'loading') return <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p>;

@@ -545,10 +545,7 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   assert.equal(textButtons(dialog, '移除').length, 0);
 
   const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
-  assert.ok(requestsNav);
-  await click(requestsNav);
-  assert.equal(textButtons(dialog, '通过').length, 0);
-  assert.equal(textButtons(dialog, '拒绝').length, 0);
+  assert.equal(requestsNav, undefined, 'Vue hides join-request navigation from non-admin organization members');
 
   const inviteNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '邀请链接');
   assert.ok(inviteNav);
