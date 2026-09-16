@@ -18,3 +18,13 @@ test('message artifact rows expose preview and protected download actions', () =
   assert.match(html, />预览<\/button>/);
   assert.match(html, />下载<\/button>/);
 });
+
+test('message artifact rows keep the download-only artifact list available without a preview handler', () => {
+  const html = renderToStaticMarkup(React.createElement(MessageList, {
+    messages: [{ id: 'message-2', session_id: 'session-1', role: 'assistant', content: 'done', artifacts: [{ index: 0, file_name: 'chart.html', file_type: 'text/html' }] }],
+    copy: resolveChatCopy('zh-CN'),
+    onArtifactDownload: async () => undefined,
+  }));
+
+  assert.match(html, />产物<\/button>/);
+});

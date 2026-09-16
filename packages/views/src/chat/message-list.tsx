@@ -378,7 +378,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
             <FallbackInfoButton copy={t} message={message} />
           </div> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
-          {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview ? openArtifactList : undefined} /> : null}
+          {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}
         </div>
       </li>
       </Fragment>;
