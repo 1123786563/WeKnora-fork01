@@ -6,7 +6,7 @@ function abortError(signal?: AbortSignal): BridgeError | undefined {
   return new BridgeError('BRIDGE_CANCELLED');
 }
 
-async function bounded<T>(work: Promise<T>, options: BridgeOptions): Promise<T> {
+async function bounded<T>(work: () => Promise<T>, options: BridgeOptions): Promise<T> {
   const aborted = abortError(options.signal);
   if (aborted) throw aborted;
   const timeoutMs = options.timeoutMs ?? 30_000;
@@ -19,7 +19,7 @@ async function bounded<T>(work: Promise<T>, options: BridgeOptions): Promise<T> 
     options.signal?.addEventListener('abort', onAbort, { once: true });
   });
   try {
-    return await Promise.race([work, cancellation]);
+    return await Promise.race([work(), cancellation]);
   } catch (error) {
     if (error instanceof BridgeError) throw error;
     throw new BridgeError('PASEO_UNAVAILABLE');
@@ -39,16 +39,19 @@ export async function startViaBridge(
 ): Promise<{ id: string }> {
   validateStartCommand(command);
   if (command.expiresAt <= now) throw new BridgeError('COMMAND_EXPIRED');
-  if (!options.admit) throw new BridgeError('ADMISSION_REQUIRED');
+  if (!options.admission) throw new BridgeError('ADMISSION_REQUIRED');
+  const admission = options.admission;
+  if (!admission.serviceIdentity || !admission.signature || admission.authorizationVersion !== 1 || admission.targetID !== command.targetID || admission.workspaceRef !== command.workspaceRef || admission.workspaceTargetID !== command.targetID || admission.epoch !== command.epoch || !admission.commandHash) {
+    throw new BridgeError('ADMISSION_FORBIDDEN');
+  }
   const startedAt = Date.now();
-  const admission = await options.admit(command).catch(() => { throw new BridgeError('ADMISSION_FORBIDDEN'); });
-  void admission;
+  await admission.verify(command, admission).catch(() => { throw new BridgeError('ADMISSION_FORBIDDEN'); });
   if (options.signal?.aborted) throw new BridgeError('BRIDGE_CANCELLED');
   const timeoutMs = options.timeoutMs ?? 30_000;
   if (timeoutMs <= 0 || Date.now() - startedAt >= timeoutMs) throw new BridgeError('BRIDGE_TIMEOUT');
   let cwd: string;
   try {
-    cwd = await bounded(resolveWorkspace(command.workspaceRef), { ...options, timeoutMs: timeoutMs - (Date.now() - startedAt) });
+    cwd = await bounded(() => resolveWorkspace(command.workspaceRef), { ...options, timeoutMs: timeoutMs - (Date.now() - startedAt) });
   } catch (error) {
     if (error instanceof BridgeError && ['BRIDGE_TIMEOUT', 'BRIDGE_CANCELLED'].includes(error.code)) throw error;
     throw new BridgeError('WORKSPACE_FORBIDDEN');
@@ -58,7 +61,7 @@ export async function startViaBridge(
   if (options.signal?.aborted) throw new BridgeError('BRIDGE_CANCELLED');
   if (Date.now() - startedAt >= timeoutMs) throw new BridgeError('BRIDGE_TIMEOUT');
   try {
-    return await bounded(port.create({ cwd, prompt: command.prompt, provider: command.provider }, options), { ...options, timeoutMs: timeoutMs - (Date.now() - startedAt) });
+    return await bounded(() => port.create({ cwd, prompt: command.prompt, provider: command.provider }, options), { ...options, timeoutMs: timeoutMs - (Date.now() - startedAt) });
   } catch (error) {
     if (error instanceof BridgeError) throw error;
     throw new BridgeError('PASEO_UNAVAILABLE');

@@ -36,8 +36,20 @@ type BridgeConfig struct {
 	HTTPClient     *http.Client
 	Timeout        time.Duration
 	VerifyIdentity func(context.Context) error
-	VerifyCommand  func(context.Context, StartCommand) error
-	Authorize      func(context.Context, StartCommand) error
+	VerifyCommand  func(context.Context, StartCommand, AdmissionContext) error
+	Authorize      func(context.Context, StartCommand, AdmissionContext) error
+	Admission      AdmissionContext
+}
+
+type AdmissionContext struct {
+	ServiceIdentity      string
+	Signature            string
+	AuthorizationVersion int
+	CommandHash          string
+	TargetID             string
+	WorkspaceRef         string
+	WorkspaceTargetID    string
+	Epoch                int64
 }
 
 type BridgeClient struct{ config BridgeConfig }
@@ -57,6 +69,19 @@ type bridgeResponseEnvelope struct {
 	Version   int             `json:"version"`
 	Operation string          `json:"operation"`
 	Payload   json.RawMessage `json:"payload"`
+}
+
+func decodeBridgeEnvelope(data []byte) (bridgeEnvelope, error) {
+	var envelope bridgeEnvelope
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil || envelope.Version != 1 || envelope.Operation == "" || len(envelope.Payload) == 0 {
+		return bridgeEnvelope{}, ErrBridgeProtocol
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return bridgeEnvelope{}, ErrBridgeProtocol
+	}
+	return envelope, nil
 }
 
 func NewBridgeClient(config BridgeConfig) *BridgeClient {
@@ -153,10 +178,14 @@ func (c *BridgeClient) Start(ctx context.Context, command StartCommand) (BridgeR
 	if err := c.config.VerifyIdentity(ctx); err != nil {
 		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
-	if err := c.config.VerifyCommand(ctx, command); err != nil {
+	admission := c.config.Admission
+	if admission.ServiceIdentity == "" || admission.Signature == "" || admission.AuthorizationVersion != 1 || admission.CommandHash == "" || admission.TargetID != command.TargetID || admission.WorkspaceRef != command.WorkspaceRef || admission.WorkspaceTargetID != command.TargetID || admission.Epoch != command.Epoch {
 		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
-	if err := c.config.Authorize(ctx, command); err != nil {
+	if err := c.config.VerifyCommand(ctx, command, admission); err != nil {
+		return BridgeResponse{}, ErrBridgeUnauthorized
+	}
+	if err := c.config.Authorize(ctx, command, admission); err != nil {
 		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
 	result, err := c.request(ctx, "start", command)

@@ -22,7 +22,19 @@ export interface BridgeOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   /** Trusted server-side admission; callers must not construct this from request JSON. */
-  admit?: (command: StartCommand) => Promise<void>;
+  admission?: TrustedAdmission;
+}
+
+export interface TrustedAdmission {
+  serviceIdentity: string;
+  signature: string;
+  authorizationVersion: number;
+  commandHash: string;
+  targetID: string;
+  workspaceRef: string;
+  workspaceTargetID: string;
+  epoch: number;
+  verify: (command: StartCommand, admission: TrustedAdmission) => Promise<void>;
 }
 
 export class BridgeError extends Error {

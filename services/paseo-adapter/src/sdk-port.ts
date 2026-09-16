@@ -5,7 +5,8 @@ import { BridgeError } from './protocol.ts';
 /** Narrow adapter around public @getpaseo/client methods only. */
 export function createSdkPort(client: PaseoClient): PaseoPort {
   return {
-    async create({ cwd, prompt, provider }) {
+    async create({ cwd, prompt, provider }, options) {
+      if (options?.signal?.aborted) throw new BridgeError('PASEO_CANCEL_UNAVAILABLE');
       try {
         const agent = await client.agents.create({ config: { provider }, cwd, prompt });
         return { id: agent.id };

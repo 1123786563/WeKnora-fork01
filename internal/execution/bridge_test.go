@@ -44,7 +44,8 @@ func TestBridgeFixedProtocolAndAuthorization(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": 1, "operation": "start", "payload": BridgeResponse{ID: "paseo-1"}})
 	}))
 	defer server.Close()
-	got, err := NewBridgeClient(BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand) error { return nil }, Authorize: func(context.Context, StartCommand) error { return nil }}).Start(context.Background(), validStartCommand())
+	cmd := validStartCommand()
+	got, err := NewBridgeClient(BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: AdmissionContext{ServiceIdentity: "weknora-execution", Signature: "sig", AuthorizationVersion: 1, CommandHash: "hash", TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}).Start(context.Background(), cmd)
 	if err != nil || got.ID != "paseo-1" {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
@@ -59,13 +60,33 @@ func TestBridgeRejectsWithoutTrustedAdmission(t *testing.T) {
 	}
 }
 
+func TestBridgeRejectsTamperedAdmissionBeforeNetwork(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
+	defer server.Close()
+	cmd := validStartCommand()
+	base := BridgeConfig{BaseURL: server.URL, ServiceToken: "secret", Admission: AdmissionContext{ServiceIdentity: "weknora-execution", Signature: "sig", AuthorizationVersion: 1, CommandHash: "hash", TargetID: cmd.TargetID, WorkspaceRef: cmd.WorkspaceRef, WorkspaceTargetID: cmd.TargetID, Epoch: cmd.Epoch}, VerifyIdentity: func(context.Context) error { return nil }, VerifyCommand: func(context.Context, StartCommand, AdmissionContext) error { return nil }, Authorize: func(context.Context, StartCommand, AdmissionContext) error { return nil }}
+	for name, mutate := range map[string]func(*AdmissionContext){"identity": func(a *AdmissionContext) { a.ServiceIdentity = "" }, "signature": func(a *AdmissionContext) { a.Signature = "" }, "authz": func(a *AdmissionContext) { a.AuthorizationVersion = 2 }, "target": func(a *AdmissionContext) { a.TargetID = "other" }, "workspace": func(a *AdmissionContext) { a.WorkspaceTargetID = "other" }} {
+		t.Run(name, func(t *testing.T) {
+			cfg := base
+			mutate(&cfg.Admission)
+			if _, err := NewBridgeClient(cfg).Start(context.Background(), cmd); !errors.Is(err, ErrBridgeUnauthorized) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+	if called {
+		t.Fatal("tampered admission reached bridge")
+	}
+}
+
 func TestCanonicalFixtureUsesCamelCasePayload(t *testing.T) {
 	b, err := os.ReadFile("testdata/start-command.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var envelope bridgeEnvelope
-	if err := json.Unmarshal(b, &envelope); err != nil {
+	envelope, err := decodeBridgeEnvelope(b)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if envelope.Version != 1 || envelope.Operation != "start" {
@@ -77,6 +98,12 @@ func TestCanonicalFixtureUsesCamelCasePayload(t *testing.T) {
 	}
 	if cmd.CommandID != "cmd-1" || cmd.WorkspaceRef != "workspace-1" || cmd.ExpiresAt != 4102444800000 {
 		t.Fatalf("command=%+v", cmd)
+	}
+}
+
+func TestBridgeRejectsUnknownEnvelopeFields(t *testing.T) {
+	if _, err := decodeBridgeEnvelope([]byte(`{"version":1,"operation":"start","extra":true,"payload":{}}`)); !errors.Is(err, ErrBridgeProtocol) {
+		t.Fatalf("error=%v", err)
 	}
 }
 
