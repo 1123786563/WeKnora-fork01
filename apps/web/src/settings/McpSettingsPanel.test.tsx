@@ -47,6 +47,19 @@ test('MCP settings keeps the Vue empty state for a viewer', () => {
   assert.doesNotMatch(html, /添加服务/);
 });
 
+test('MCP settings keeps the Vue admin-only management boundary for an owner', () => {
+  const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
+    client,
+    initialServices: [{ id: 'mcp-1', name: 'Docs', description: 'Search docs', enabled: true, transport_type: 'sse', is_builtin: false }],
+    role: 'owner',
+  }));
+  assert.doesNotMatch(html, /编辑/);
+  assert.doesNotMatch(html, /删除/);
+  assert.doesNotMatch(html, /添加服务/);
+  assert.doesNotMatch(html, /role="switch"/);
+  assert.match(html, /Docs/);
+});
+
 test('MCP settings renders service metadata and admin actions', () => {
   const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
     client,

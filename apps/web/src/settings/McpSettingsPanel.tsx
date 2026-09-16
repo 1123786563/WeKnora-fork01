@@ -664,7 +664,9 @@ export function normalizeMcpAdvancedNumber(value: number | "", fallback: number,
 export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const t = createTranslator(useAppLocale());
   const locale = useAppLocale();
-  const canEdit = role === "admin" || role === "owner";
+  // Vue McpSettings.vue gates every MCP mutation and management control with
+  // authStore.hasRole('admin'); owners retain read-only visibility.
+  const canEdit = role === "admin";
   const [services, setServices] = useState<McpService[]>(() =>
     (initialServices ?? []).map(asService),
   );
