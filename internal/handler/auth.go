@@ -98,7 +98,13 @@ func (h *AuthHandler) MobileOIDCExchange(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "native OIDC exchange unavailable"})
 		return
 	}
-	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Code) == "" || strings.TrimSpace(req.State) == "" || strings.TrimSpace(req.RedirectURI) == "" || strings.TrimSpace(req.CodeVerifier) == "" || c.Query("token") != "" || c.Query("access_token") != "" {
+	for _, key := range []string{"token", "access_token", "id_token", "refresh_token"} {
+		if _, present := c.GetQuery(key); present {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid native OIDC exchange"})
+			return
+		}
+	}
+	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Code) == "" || strings.TrimSpace(req.State) == "" || strings.TrimSpace(req.RedirectURI) == "" || strings.TrimSpace(req.CodeVerifier) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid native OIDC exchange"})
 		return
 	}

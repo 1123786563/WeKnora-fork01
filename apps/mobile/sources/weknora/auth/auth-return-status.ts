@@ -26,12 +26,13 @@ export function buildNativeExchangeInput(params: AuthReturnParams, redirect: str
 }
 
 function firstParam(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null;
+  if (Array.isArray(value)) return value.length === 1 && typeof value[0] === 'string' ? value[0] : null;
   return typeof value === 'string' ? value : null;
 }
 
 /** Rebuild the callback URL exactly as the browser handed it to the app. */
 export function buildCallbackUrl(params: AuthReturnParams, redirect: string): string | null {
+  if (Object.values(params).some((value) => Array.isArray(value) && value.length !== 1)) return null;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     const first = firstParam(value);
@@ -48,6 +49,7 @@ export function buildCallbackUrl(params: AuthReturnParams, redirect: string): st
  * in the URL. Anything else is ignored without touching stored credentials.
  */
 export function evaluateAuthReturn(params: AuthReturnParams, redirect: string): AuthReturnOutcome {
+  if (Object.values(params).some((value) => Array.isArray(value) && value.length !== 1)) return { status: 'rejected' };
   const state = firstParam(params.state)?.trim() ?? '';
   if (!state) return { status: 'missing_state' };
   if (!consumeAuthState(state)) return { status: 'unknown_state' };

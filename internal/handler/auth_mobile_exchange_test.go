@@ -103,4 +103,12 @@ func TestMobileOIDCExchangeRejectsBindingExpiryAndURLCredentials(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, request("wrong-redirect", "s3", "weknora://other", verifier, false))
 	require.Equal(t, http.StatusUnauthorized, request("expired", "s4", "weknora://auth-return", verifier, false))
 	require.Equal(t, http.StatusBadRequest, request("wrong-state", "s2", "weknora://auth-return", verifier, true))
+	for _, key := range []string{"token", "id_token", "refresh_token", "access_token"} {
+		b, _ := json.Marshal(map[string]string{"code": "wrong-state", "state": "s2", "redirect_uri": "weknora://auth-return", "code_verifier": verifier})
+		req := httptest.NewRequest(http.MethodPost, "/auth/mobile/exchange?"+key+"=x&"+key+"=y", bytes.NewReader(b))
+		req.Header.Set("content-type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code, key)
+	}
 }

@@ -50,6 +50,7 @@ export default function AuthReturnScreen() {
       if (stateRecord) {
         try {
           const parsed = JSON.parse(stateRecord) as { state?: unknown; issued_at?: unknown };
+          if (parsed.redirect_uri !== AUTH_RETURN_REDIRECT) throw new Error('OIDC_REDIRECT_MISMATCH');
           if (typeof parsed.state === 'string' && typeof parsed.issued_at === 'number' && Date.now() - parsed.issued_at <= 10 * 60 * 1000) {
             registerAuthState(parsed.state);
             // Delete before consuming so a concurrent/cold-start callback

@@ -29,9 +29,7 @@ describe('evaluateAuthReturn', () => {
     expect(evaluateAuthReturn({ state: fragmentState, token: 'secret' }, AUTH_RETURN_REDIRECT)).toEqual({ status: 'rejected' });
   });
 
-  test('callback URL keeps only the first value of repeated params', () => {
-    expect(buildCallbackUrl({ state: ['a', 'b'], code: 'c' }, AUTH_RETURN_REDIRECT)).toBe(
-      `${AUTH_RETURN_REDIRECT}?state=a&code=c`,
-    );
+  test('callback URL rejects repeated parameters instead of dropping values', () => {
+    expect(buildCallbackUrl({ state: ['a', 'b'], code: 'c' }, AUTH_RETURN_REDIRECT)).toBeNull();
   });
 });
