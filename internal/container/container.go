@@ -164,6 +164,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+<<<<<<< HEAD
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
@@ -171,6 +172,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Resolve the runtime through this wrapper so the durable resource
 	// repository is always connected to the post-claim recovery hook.
 	must(container.Provide(newAgentRuntime))
+=======
+	must(container.Provide(repository.NewAgentRunSnapshotRepository))
+	must(container.Provide(NewWorkbenchReadHandler))
+	must(container.Provide(NewAgentRuntime))
+>>>>>>> 72e938293 (feat(workbench): serve owned snapshots and replayable events)
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
