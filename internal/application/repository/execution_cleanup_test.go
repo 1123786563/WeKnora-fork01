@@ -44,6 +44,8 @@ func TestExecutionCleanupTombstoneClaimAndSettlement(t *testing.T) {
 	require.Equal(t, "cleanup_pending", state)
 	claim, err = s.ClaimCleanup(ctx, "cleanup-worker-2", time.Minute)
 	require.NoError(t, err)
+	require.NoError(t, s.RecordCleanupBackupRestore(ctx, claim, true))
+	require.NoError(t, s.RecordCleanupRetention(ctx, claim, time.Now().Add(-time.Second)))
 	require.NoError(t, s.CompleteCleanup(ctx, claim, execution.CleanupFacts{Stopped: true, Settled: true, RetentionElapsed: true}))
 	require.NoError(t, db.Table("execution_cleanup").Where("tenant_id=? AND session_id=?", 1, "s1").Pluck("state", &state).Error)
 	require.Equal(t, "cleanup_ready", state)

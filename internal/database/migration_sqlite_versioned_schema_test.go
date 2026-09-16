@@ -57,8 +57,8 @@ var versionedSQLiteColumns = map[string][]string{
 // continues through 000040 (open-connector 000041-000044) and the Craft
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
-// queue at 000056 and the execution target schema at 000057 and cleanup ledger at 000058.
-const expectedSQLiteMigrationVersion = 60
+// queue at 000056 and the execution target schema at 000057 and cleanup ledger at 000061-000063.
+const expectedSQLiteMigrationVersion = 64
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
