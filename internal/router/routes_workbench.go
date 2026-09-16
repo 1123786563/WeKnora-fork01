@@ -61,3 +61,18 @@ func RegisterWorkbenchCommandRoutes(r *gin.RouterGroup, h *session.WorkbenchComm
 	workbench.POST("/interactions/:id/decisions", h.DecideInteraction)
 	workbench.POST("/:run_id/commands", h.Command)
 }
+
+// RegisterMobileDeviceRoutes keeps device registration under the same
+// authenticated API boundary as the workbench. The handler derives owner and
+// tenant from the auth context; neither route parameter nor body can rewrite
+// that scope.
+func RegisterMobileDeviceRoutes(r *gin.RouterGroup, h *handler.MobileDeviceHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	devices := g.apiKeyGroup(r.Group("/mobile/devices", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	devices.GET("", h.List)
+	devices.PUT("/:id", h.Register)
+	devices.DELETE("/:id", h.Revoke)
+	devices.POST("/:id/presence", h.Presence)
+}
