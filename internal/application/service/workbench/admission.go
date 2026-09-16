@@ -12,6 +12,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -68,8 +69,17 @@ type AdmissionCoordinator struct {
 	db       *gorm.DB
 	runs     *repository.AgentRunStore
 	requests *repository.WorkbenchRequestRepository
+	targets  repository.ExecutionTargetStore
 	budget   TaskBudgetPort
 	publish  func(context.Context, agentruntime.RunKey) error
+}
+
+// NewAdmissionCoordinatorWithTargets wires W20 admission to the trusted
+// execution-target projection used by personal-node registration.
+func NewAdmissionCoordinatorWithTargets(db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
+	a := NewAdmissionCoordinator(db, runs, budget, publish)
+	a.targets = targets
+	return a
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -125,8 +135,25 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 	if in.TargetID == "" {
 		in.TargetID = "platform"
 	}
+	var target execution.Target
 	if in.TargetID != "platform" {
-		return agentruntime.Run{}, agentruntime.ErrConflict
+		if a.targets == nil {
+			return agentruntime.Run{}, execution.ErrTargetForbidden
+		}
+		target, err = a.targets.GetOwnedTarget(ctx, tenant, actor, in.TargetID)
+		if err != nil {
+			return agentruntime.Run{}, execution.ErrTargetForbidden
+		}
+		if err = execution.AuthorizeTarget(target, tenant, actor); err != nil {
+			return agentruntime.Run{}, err
+		}
+		if strings.TrimSpace(in.WorkspaceRef) == "" {
+			return agentruntime.Run{}, agentruntime.ErrConflict
+		}
+		workspace, workspaceErr := a.targets.GetOwnedWorkspace(ctx, tenant, actor, in.WorkspaceRef)
+		if workspaceErr != nil || workspace.TargetID != target.ID {
+			return agentruntime.Run{}, execution.ErrTargetForbidden
+		}
 	}
 	hash := requestHash(in)
 	req := repository.WorkbenchRequest{TenantID: tenant, ActorID: actor, RequestID: in.RequestID, RequestHash: hash,
@@ -215,10 +242,25 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		}
 	}
 	assistantID := uuid.NewString()
-	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
+	driver := "platform"
+	credentialVersion := int64(0)
+	if in.TargetID != "platform" {
+		driver = "paseo"
+		// Re-resolve at the final admission seam so a revoke between Start and
+		// retry cannot reuse a stale target projection.
+		resolved, resolveErr := a.targets.GetOwnedTarget(ctx, req.TenantID, req.ActorID, in.TargetID)
+		if resolveErr != nil {
+			return agentruntime.Run{}, execution.ErrTargetForbidden
+		}
+		if resolveErr = execution.AuthorizeTarget(resolved, req.TenantID, req.ActorID); resolveErr != nil {
+			return agentruntime.Run{}, resolveErr
+		}
+		credentialVersion = resolved.CredentialVersion
+	}
+	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "credential_version": credentialVersion, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline})
+	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: driver, TargetID: in.TargetID, BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline})
 	if err != nil {
 		_ = a.requests.UpdatePending(ctx, req, "rejected", reservation, "", err.Error())
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)

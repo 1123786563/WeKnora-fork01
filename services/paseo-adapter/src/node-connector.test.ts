@@ -35,6 +35,7 @@ test('configured Paseo transport sends ack, heartbeat, logs, and rotates credent
   const calls: Array<{ path: string; auth?: string }> = [];
   const transport = new PaseoPersonalNodeTransport({
     baseURL: 'https://bridge.example.test',
+    allowedOrigins: ['https://bridge.example.test'],
     bearer: 'old',
     fetchImpl: async (input, init) => {
       const url = String(input);
@@ -49,5 +50,6 @@ test('configured Paseo transport sends ack, heartbeat, logs, and rotates credent
   await transport.close();
   assert.deepEqual(calls.map(call => call.path), ['/v1/commands', '/v1/heartbeat', '/v1/logs', '/v1/credentials/rotate', '/v1/close']);
   assert.equal(calls[3].auth, 'Bearer old');
-  assert.throws(() => new PaseoPersonalNodeTransport({ baseURL: 'http://daemon.example.test' }), /PASEO_ENDPOINT_FORBIDDEN/);
+  assert.throws(() => new PaseoPersonalNodeTransport({ baseURL: 'https://evil.example.test', allowedOrigins: ['https://bridge.example.test'] }), /PASEO_ENDPOINT_FORBIDDEN/);
+  assert.throws(() => new PaseoPersonalNodeTransport({ baseURL: 'http://daemon.example.test', allowedOrigins: ['http://daemon.example.test'] }), /PASEO_ENDPOINT_FORBIDDEN/);
 });

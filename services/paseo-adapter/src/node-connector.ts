@@ -51,8 +51,12 @@ export interface PersonalNodeTransport {
 }
 
 export interface PersonalNodeTransportConfig {
-  /** Server-provided, pinned Paseo bridge URL. It is never accepted from a command payload. */
+  /** Server-provided Paseo bridge URL. It is never accepted from a command payload. */
   baseURL: string;
+  /** Exact trusted origins configured by the server deployment. */
+  allowedOrigins: readonly string[];
+  /** Test-only loopback escape hatch; production callers must leave this false. */
+  allowLoopback?: boolean;
   fetchImpl?: typeof fetch;
   bearer?: string;
 }
@@ -71,7 +75,9 @@ export class PaseoPersonalNodeTransport implements PersonalNodeTransport {
   private readonly fetchImpl: typeof fetch;
   constructor(config: PersonalNodeTransportConfig) {
     this.baseURL = new URL(config.baseURL);
-    if (this.baseURL.protocol !== 'https:' && this.baseURL.hostname !== 'localhost' && this.baseURL.hostname !== '127.0.0.1') throw new Error('PASEO_ENDPOINT_FORBIDDEN');
+    const origin = this.baseURL.origin;
+    const loopback = config.allowLoopback === true && (this.baseURL.hostname === 'localhost' || this.baseURL.hostname === '127.0.0.1' || this.baseURL.hostname === '[::1]');
+    if (!loopback && (this.baseURL.protocol !== 'https:' || !config.allowedOrigins.some(candidate => new URL(candidate).origin === origin))) throw new Error('PASEO_ENDPOINT_FORBIDDEN');
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.bearer = config.bearer;
   }

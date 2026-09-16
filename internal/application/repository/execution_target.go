@@ -58,7 +58,14 @@ func (s *executionTargetStore) RevokePersonalTarget(ctx context.Context, tx *gor
 	if result.RowsAffected == 0 {
 		return ErrExecutionTargetNotFound
 	}
-	return tx.WithContext(ctx).Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ?", tenant, owner, target.RuntimeID, target.ExternalTargetID).Updates(map[string]any{"state": "revoked", "credential_version": gorm.Expr("credential_version + 1")}).Error
+	identityResult := tx.WithContext(ctx).Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND state = ?", tenant, owner, target.RuntimeID, target.ExternalTargetID, "active").Updates(map[string]any{"state": "revoked", "credential_version": gorm.Expr("credential_version + 1")})
+	if identityResult.Error != nil {
+		return identityResult.Error
+	}
+	if identityResult.RowsAffected != 1 {
+		return ErrExecutionTargetNotFound
+	}
+	return nil
 }
 
 // executionTargetIdentityProvider is backed by the node-registration
