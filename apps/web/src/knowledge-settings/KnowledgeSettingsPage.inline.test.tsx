@@ -130,10 +130,11 @@ async function renderPage(client: WeKnoraClient): Promise<HTMLElement> {
   return container;
 }
 
-function clickSection(label: string): void {
-  const button = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes(label) && (candidate.textContent ?? '').includes(label === 'Parser' ? 'File-type parser rules' : label === 'Data sources' ? 'External connectors' : label === 'Share' ? 'Spaces with access' : 'Recent configuration changes'));
-  assert.ok(button, `expected a ${label} section button; got: ${JSON.stringify([...document.body.querySelectorAll('button')].map((candidate) => candidate.textContent))}`);
-  button.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+function clickSection(section: string): void {
+  // R438 grouped nav: nav items carry data-section (Vue currentSection keys).
+  const button = document.body.querySelector(`button[data-section="${section}"]`);
+  assert.ok(button, `expected a ${section} section button; got: ${JSON.stringify([...document.body.querySelectorAll('button[data-section]')].map((candidate) => candidate.textContent))}`);
+  button!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
 }
 
 test('options loader normalizes the live parser/vector/storage endpoints and degrades independently', async () => {
@@ -150,18 +151,18 @@ test('options loader normalizes the live parser/vector/storage endpoints and deg
 test('sections mount the Vue-equivalent inline surfaces: datasource page, share dialog, activity panel, and live parser select', async () => {
   const calls: ClientCalls = { dataSources: [], shareList: 0, activityCalls: [] };
   await renderPage(clientFor(calls));
-  await act(async () => { clickSection('Data sources'); });
+  await act(async () => { clickSection('datasource'); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.deepEqual(calls.dataSources, ['kb-1'], 'expected DataSourcesPage to load through client.dataSources.list');
   assert.match(document.body.textContent ?? '', /Feishu docs/);
-  await act(async () => { clickSection('Share'); });
+  await act(async () => { clickSection('share'); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.ok(calls.shareList >= 1, 'expected the inline share dialog to load organizations');
-  await act(async () => { clickSection('Activity'); });
+  await act(async () => { clickSection('activity'); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.activityCalls.length, 1);
   assert.equal(calls.activityCalls[0]!.knowledgeBaseId, 'kb-1');
-  await act(async () => { clickSection('Parser'); });
+  await act(async () => { clickSection('parser'); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   const select = document.body.querySelector('select');
   assert.ok(select, 'expected a parser engine select');

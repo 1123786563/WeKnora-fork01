@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ElementType } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import type { KnowledgeBase } from '@weknora/contracts';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
@@ -7,6 +7,7 @@ import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
 import { KnowledgeBaseShareDialog } from '../knowledge-bases/KnowledgeBaseShareDialog.tsx';
 import { KnowledgeBaseActivityPanel } from '../knowledge-bases/KnowledgeBaseActivityPanel.tsx';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import './KnowledgeSettingsPage.css';
 
 type ProjectUi = typeof import('@weknora/ui');
 
@@ -39,7 +40,22 @@ export async function loadKnowledgeSettingsOptions(client: WeKnoraClient): Promi
   };
 }
 
-export type KnowledgeSettingsSectionKey = 'vectorStore' | 'parser' | 'storage' | 'datasource' | 'share' | 'activity' | 'graph';
+// Full Vue editor section keys (KnowledgeBaseEditorModal.vue navItems).
+// Sections the React surface already implements stay interactive; the rest
+// render the shared not-yet-ported placeholder so the information architecture
+// matches Vue without fabricating editors.
+export type KnowledgeSettingsSectionKey =
+  | 'basic' | 'models' | 'vectorStore' | 'faq' | 'parser' | 'chunking'
+  | 'multimodal' | 'asr' | 'graph' | 'advanced' | 'storage' | 'datasource'
+  | 'share' | 'activity';
+
+const PORTED_KNOWLEDGE_SETTINGS_SECTIONS = new Set<KnowledgeSettingsSectionKey>([
+  'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
+]);
+
+export function isPortedKnowledgeSettingsSection(key: KnowledgeSettingsSectionKey): boolean {
+  return PORTED_KNOWLEDGE_SETTINGS_SECTIONS.has(key);
+}
 
 export type KnowledgeSettingsInput = KnowledgeBase & {
   type?: string;
@@ -143,6 +159,110 @@ export function getKnowledgeSettingsSections(
     return true;
   });
 }
+
+// ---- Grouped navigation (Vue KnowledgeBaseEditorModal.vue navGroups) ----
+
+export interface KnowledgeSettingsNavItem {
+  key: KnowledgeSettingsSectionKey;
+  labelKey: string;
+  badge?: number;
+}
+
+export interface KnowledgeSettingsNavGroup {
+  key: string;
+  labelKey: string;
+  items: KnowledgeSettingsNavItem[];
+}
+
+// Vue navItems labels: every item uses knowledgeEditor.sidebar.<key> except
+// parser, which reuses settings.parserEngine.
+function knowledgeSettingsNavItemLabelKey(key: KnowledgeSettingsSectionKey): string {
+  return key === 'parser' ? 'settings.parserEngine' : `knowledgeEditor.sidebar.${key}`;
+}
+
+const KNOWLEDGE_SETTINGS_NAV_GROUP_LABEL_KEYS: Record<string, string> = {
+  basic: 'knowledgeEditor.navGroups.basic',
+  processing: 'knowledgeEditor.navGroups.processing',
+  data: 'knowledgeEditor.navGroups.data',
+  integration: 'knowledgeEditor.navGroups.integration',
+  management: 'knowledgeEditor.navGroups.management',
+};
+
+// Mirrors the Vue editor: navItems order then pickItems regrouping. FAQ bases
+// collapse to the basic group (+ share/activity when permitted) because the
+// document-only items never enter navItems; empty groups are dropped.
+export function getKnowledgeSettingsNavGroups(
+  knowledgeBase: Pick<KnowledgeSettingsInput, 'type' | 'id'> & { data_source_count?: number },
+  options: { canViewActivity?: boolean } = {},
+): KnowledgeSettingsNavGroup[] {
+  const canViewActivity = options.canViewActivity ?? true;
+  const isFaq = knowledgeBase.type?.toLowerCase() === 'faq';
+  const hasKbId = Boolean(knowledgeBase.id);
+  const itemMap = new Map<KnowledgeSettingsSectionKey, KnowledgeSettingsNavItem>();
+  const push = (key: KnowledgeSettingsSectionKey, badge?: number) => {
+    itemMap.set(key, { key, labelKey: knowledgeSettingsNavItemLabelKey(key), ...(badge === undefined ? {} : { badge }) });
+  };
+  push('basic');
+  push('models');
+  push('vectorStore');
+  if (isFaq) {
+    push('faq');
+  } else {
+    push('parser');
+    push('multimodal');
+    push('asr');
+    push('storage');
+    push('chunking');
+    push('graph');
+    push('advanced');
+    if (hasKbId) {
+      const dataSourceCount = typeof knowledgeBase.data_source_count === 'number' && knowledgeBase.data_source_count > 0
+        ? knowledgeBase.data_source_count
+        : undefined;
+      push('datasource', dataSourceCount);
+    }
+  }
+  if (hasKbId) push('share');
+  if (canViewActivity) push('activity');
+  const pick = (keys: KnowledgeSettingsSectionKey[]): KnowledgeSettingsNavItem[] =>
+    keys.map((key) => itemMap.get(key)).filter((item): item is KnowledgeSettingsNavItem => Boolean(item));
+  return [
+    { key: 'basic', items: pick(['basic', 'models', 'vectorStore', 'faq']) },
+    { key: 'processing', items: pick(['parser', 'chunking', 'multimodal', 'asr', 'graph', 'advanced']) },
+    { key: 'data', items: pick(['storage', 'datasource']) },
+    { key: 'integration', items: pick(['share']) },
+    { key: 'management', items: pick(['activity']) },
+  ]
+    .map((group) => ({ ...group, labelKey: KNOWLEDGE_SETTINGS_NAV_GROUP_LABEL_KEYS[group.key]! }))
+    .filter((group) => group.items.length > 0);
+}
+
+// Inline lucide-style stroke icons keyed by the Vue t-icon names
+// (KnowledgeBaseEditorModal.vue navItems icon field).
+function navIcon(paths: ReactNode): ReactNode {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths}
+    </svg>
+  );
+}
+
+const KNOWLEDGE_SETTINGS_NAV_ICONS: Record<KnowledgeSettingsSectionKey, ReactNode> = {
+  basic: navIcon(<><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" /></>),
+  models: navIcon(<><rect x="5" y="5" width="14" height="14" rx="2" /><rect x="9.5" y="9.5" width="5" height="5" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>),
+  vectorStore: navIcon(<><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" /><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" /></>),
+  faq: navIcon(<><circle cx="12" cy="12" r="9" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4M12 17.5h.01" /></>),
+  parser: navIcon(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><circle cx="11" cy="13" r="2.5" /><path d="M13 15l2.5 2.5" /></>),
+  chunking: navIcon(<><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M4 16V6a2 2 0 0 1 2-2h10" /></>),
+  multimodal: navIcon(<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></>),
+  asr: navIcon(<><path d="M11 5L6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></>),
+  graph: navIcon(<><circle cx="5" cy="6" r="2.5" /><circle cx="19" cy="6" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="M7.5 6h9M6.5 8l4.5 8M17.5 8L13 16" /></>),
+  advanced: navIcon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
+  storage: navIcon(<path d="M17.5 19a4.5 4.5 0 0 0 .38-8.98 7 7 0 0 0-13.76 1.86A4 4 0 0 0 6 19z" />),
+  datasource: navIcon(<><path d="M17.5 19a4.5 4.5 0 0 0 .38-8.98 7 7 0 0 0-13.76 1.86A4 4 0 0 0 6 19z" /><path d="M12 12v7M9 16l3 3 3-3" /></>),
+  share: navIcon(<><circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" /><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" /></>),
+  activity: navIcon(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></>),
+};
 
 export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput): KnowledgeSettingsSummary {
   const rules = parserRules(knowledgeBase);
@@ -381,7 +501,11 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   const fallbackKnowledgeBase: KnowledgeSettingsInput = { id: knowledgeBaseId ?? '', name: '', type: 'document' };
   const currentKnowledgeBase = knowledgeBase ?? fallbackKnowledgeBase;
   const availableSections = useMemo(() => getKnowledgeSettingsSections(currentKnowledgeBase, { canViewActivity }), [currentKnowledgeBase, canViewActivity]);
-  const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? availableSections[0]?.key ?? 'vectorStore');
+  // Vue editor contract: nav groups drive the sidebar; the content area renders
+  // the active section, with unported Vue sections shown as placeholders.
+  const navGroups = useMemo(() => getKnowledgeSettingsNavGroups(currentKnowledgeBase, { canViewActivity }), [currentKnowledgeBase, canViewActivity]);
+  const navKeys = useMemo(() => navGroups.flatMap((group) => group.items.map((item) => item.key)), [navGroups]);
+  const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? navKeys[0] ?? 'basic');
   const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
     enabled: currentKnowledgeBase.extract_config?.enabled === true,
     text: currentKnowledgeBase.extract_config?.text ?? '',
@@ -418,15 +542,15 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       setSaveState({ status: 'error', message: error instanceof Error && error.message ? error.message : t('common.error') });
     });
   };
-  const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
+  const active = availableSections.find((section) => section.key === activeSection);
 
   useEffect(() => {
     void import('@weknora/ui').then(setUi);
   }, []);
 
   useEffect(() => {
-    if (!availableSections.some((section) => section.key === activeSection)) setActiveSection(availableSections[0]?.key ?? 'vectorStore');
-  }, [activeSection, availableSections]);
+    if (!navKeys.includes(activeSection)) setActiveSection(navKeys[0] ?? 'basic');
+  }, [activeSection, navKeys]);
 
   const CardComponent = ui?.Card ?? 'section';
   const ButtonComponent = ui?.Button ?? 'button';
@@ -434,54 +558,74 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
 
   return (
     <CardComponent aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 0.8fr) minmax(0, 2fr)', gap: '1.5rem', alignItems: 'start' }}>
-        <aside aria-label="Knowledge settings navigation">
-          <p className="wk-eyebrow">Knowledge settings</p>
-          <h2 style={{ margin: '0.35rem 0 1.1rem', fontSize: '1.2rem' }}>{currentKnowledgeBase.name}</h2>
-          <nav style={{ display: 'grid', gap: '0.4rem' }}>
-            {availableSections.map((section) => {
-              const item = summary[section.key];
-              return (
-                <ButtonComponent
-                  key={section.key}
-                  type="button"
-                  aria-current={active?.key === section.key ? 'page' : undefined}
-                  onClick={() => setActiveSection(section.key)}
-                  style={{ textAlign: 'left', borderColor: active?.key === section.key ? '#2e6de6' : undefined, background: active?.key === section.key ? '#edf3ff' : '#fff' }}
-                >
-                  <span style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontWeight: 700 }}>
-                    {section.label}
-                    <span aria-hidden="true" style={{ color: item.kind === 'unavailable' ? '#b42318' : '#66758b' }}>•</span>
-                  </span>
-                  <span className="wk-muted" style={{ display: 'block', fontSize: '0.78rem' }}>{section.description}</span>
-                </ButtonComponent>
-              );
-            })}
-          </nav>
-        </aside>
+      {/* Vue KnowledgeBaseEditorModal .settings-modal frame (1000x750) */}
+      <div
+        className="wkbs-modal"
+        style={{ width: '90vw', maxWidth: '1000px', height: '85vh', maxHeight: '750px', borderRadius: '12px' }}
+      >
+        <div className="wkbs-container">
+          {/* Vue .settings-sidebar (208px) */}
+          <aside className="wkbs-sidebar" style={{ width: '208px' }}>
+            <div className="wkbs-sidebar-header">
+              <h2 className="wkbs-sidebar-title">{t('knowledgeEditor.titleEdit')}</h2>
+            </div>
+            <nav className="wkbs-nav" aria-label="Knowledge settings sections">
+              {navGroups.map((group) => (
+                <div key={group.key} className="wkbs-nav-group">
+                  <div className="wkbs-nav-group-title">{t(group.labelKey)}</div>
+                  {group.items.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      data-section={item.key}
+                      className={`wkbs-nav-item${activeSection === item.key ? ' is-active' : ''}`}
+                      aria-current={activeSection === item.key ? 'page' : undefined}
+                      onClick={() => setActiveSection(item.key)}
+                    >
+                      <span className="wkbs-nav-icon">{KNOWLEDGE_SETTINGS_NAV_ICONS[item.key]}</span>
+                      <span className="wkbs-nav-label">{t(item.labelKey)}</span>
+                      {item.badge ? <span className="wkbs-nav-badge">{item.badge}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </nav>
+          </aside>
 
-        <section aria-labelledby="knowledge-settings-section-title" style={{ minWidth: 0 }}>
-          <p className="wk-eyebrow">{active?.label}</p>
-          <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active?.label}</h3>
-          <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
-          {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key]} section={active.key} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
-          {canSave ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #dce3ed', paddingTop: '1rem' }}>
-              <ButtonComponent
-                type="button"
-                disabled={saveState.status === 'saving'}
-                aria-busy={saveState.status === 'saving'}
-                aria-label={t('knowledgeEditor.buttons.save')}
-                onClick={handleSave}
-              >
-                {t('knowledgeEditor.buttons.save')}
-              </ButtonComponent>
-              {saveState.message ? (
-                <span role="status" aria-live="polite" style={{ color: saveState.status === 'error' ? '#b42318' : '#067647', fontWeight: 600 }}>{saveState.message}</span>
+          {/* Vue .settings-content */}
+          <section className="wkbs-content" aria-labelledby="knowledge-settings-section-title">
+            <div className="wkbs-content-wrapper">
+              {active ? (
+                <>
+                  <p className="wk-eyebrow">{active.label}</p>
+                  <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active.label}</h3>
+                  <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active.description}</p>
+                </>
+              ) : null}
+              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
+                // Vue renders this section fully; the React port has not migrated
+                // it yet — surface the shared notice instead of a fabricated editor.
+                <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
+              )}
+              {canSave ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #dce3ed', paddingTop: '1rem' }}>
+                  <ButtonComponent
+                    type="button"
+                    disabled={saveState.status === 'saving'}
+                    aria-busy={saveState.status === 'saving'}
+                    aria-label={t('knowledgeEditor.buttons.save')}
+                    onClick={handleSave}
+                  >
+                    {t('knowledgeEditor.buttons.save')}
+                  </ButtonComponent>
+                  {saveState.message ? (
+                    <span role="status" aria-live="polite" style={{ color: saveState.status === 'error' ? '#b42318' : '#067647', fontWeight: 600 }}>{saveState.message}</span>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
-        </section>
+          </section>
+        </div>
       </div>
     </CardComponent>
   );

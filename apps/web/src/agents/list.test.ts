@@ -20,6 +20,7 @@ import {
   isSharedAgentEditable,
   kbScope,
   mcpScope,
+  opensEditorOnCardClick,
   readAgentRecents,
   readFavoriteIds,
   recentsStorageKey,
@@ -122,6 +123,23 @@ test('space view puts my shared agents first, then editable-before-readonly', ()
   ]);
   assert.deepEqual(rows.map((row) => row.shareId), ['s-mine', 's-edit', 's-view']);
   assert.equal(agentSectionOf(rows[0]!, userId), 'sharedByMe');
+});
+
+test('space view sharedByMe cards follow the Vue click + menu contract', () => {
+  // AgentList.vue handleSpaceAgentCardClick (1286-1292): is_mine rows open the
+  // editor; only other people's shared rows open the readonly detail drawer.
+  const mineShared = buildSpaceViewRows([sharedRow({ share_id: 's-mine', is_mine: true, permission: 'editor' })])[0]!;
+  const otherShared = buildAllViewRows([], sharedAgentsFromRecords([sharedRow()]), { userId, disabledOwnIds: [] })[0]!;
+  const own = buildAllViewRows([ownAgent], [], { userId, disabledOwnIds: [] })[0]!;
+  assert.equal(opensEditorOnCardClick(mineShared), true);
+  assert.equal(opensEditorOnCardClick(own), true);
+  assert.equal(opensEditorOnCardClick(otherShared), false);
+  // AgentList.vue:572 gates the space-view popup on !shared.is_mine — my own
+  // shared rows carry no card menu, even for admins.
+  const admin = { userId, isAdmin: true, isContributor: true };
+  const contributor = { userId, isAdmin: false, isContributor: true };
+  assert.deepEqual(cardActions(mineShared, admin), []);
+  assert.deepEqual(cardActions(mineShared, contributor), []);
 });
 
 test('sharedAgentsFromRecords skips malformed rows and normalizes fields', () => {

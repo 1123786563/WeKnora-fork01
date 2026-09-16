@@ -66,3 +66,43 @@ test('localizes the create type step title instead of hardcoding Chinese', () =>
   assert.doesNotMatch(page, /选择类型/);
   assert.doesNotMatch(page, /选择要同步的外部数据源类型/);
 });
+
+// R438 A3: Vue DataSourceSettings.vue renders the list as a responsive card
+// grid (ds-grid, repeat(auto-fill,minmax(320px,1fr))) — not plain rows.
+test('renders sources as a Vue-style card grid with a connector icon badge', () => {
+  assert.match(page, /wk-data-source-grid grid grid-cols-\[repeat\(auto-fill,minmax\(320px,1fr\)\)\] gap-3/);
+  assert.match(page, /wk-data-source-badge flex h-9 w-9 flex-none items-center justify-center rounded-\[9px\]/);
+  assert.match(page, /bg-\[rgba\(7,192,95,0\.12\)\] text-\[15px\] font-semibold tracking-\[0\.02em\] text-\[#07c05f\]/);
+  assert.match(page, /rounded-\[10px\] border border-line-soft bg-white px-4 py-\[14px\]/);
+});
+
+// Vue ds-card__status dot: active→success, paused→warning, error→error.
+test('card subtitle carries the Vue status dot color semantics', () => {
+  assert.match(page, /active' \? 'text-success-text' : status === 'paused' \? 'text-warning-text' : status === 'error' \? 'text-danger'/);
+  assert.match(page, /h-1\.5 w-1.5 flex-none rounded-full bg-current/);
+});
+
+// Vue ds-card__detail: humanized schedule · relative last sync (full time on
+// hover) · colored sync result · tabular metric pills; error box below.
+test('card detail humanizes cron, relative time, sync result tone and metric pills', () => {
+  assert.match(page, /import \{ humanizeCron, relativeTime, syncResultPills \} from '\.\/card\.ts';/);
+  assert.match(page, /\{humanizeCron\(source\.sync_schedule, t\)\}/);
+  assert.match(page, /\{relativeTime\(source\.last_sync_at, t\)\}/);
+  assert.match(page, /title=\{fullTime \|\| undefined\}/);
+  assert.match(page, /success' \? 'text-success-text' : status === 'failed' \? 'text-danger' : status === 'running' \? 'text-primary' : status === 'partial' \? 'text-warning-text'/);
+  assert.match(page, /wk-data-source-metric font-mono text-\[11px\] tabular-nums/);
+  assert.match(page, /source\.error_message \? <div className="mt-2 flex items-start gap-1\.5 rounded-md bg-danger\/10 px-2\.5 py-2 text-xs leading-snug text-danger">/);
+});
+
+// R437 pending adjudication: the extra test-connection button stays; action
+// clicks must not bubble into the card-level openEdit.
+test('keeps the test-connection button and stops action click bubbling in the card header', () => {
+  assert.match(page, /\{t\('dataSource\.testConnection'\)\}/);
+  assert.match(page, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
+});
+
+// Vue appends the dashed add card to the grid for managers, even when sources exist.
+test('appends the dashed add card to the grid for managers alongside sources', () => {
+  const grid = page.slice(page.indexOf('wk-data-source-grid'));
+  assert.match(grid, /\{canManage \? <button type="button" className="wk-data-source-create/);
+});

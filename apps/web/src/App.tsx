@@ -29,6 +29,7 @@ import {
 } from './knowledge-bases/list.ts';
 import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
 import { KnowledgeBaseActivityPanel } from './knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { SharedKnowledgeBaseDrawer } from './knowledge-bases/SharedKnowledgeBaseDrawer.tsx';
 import { defaultKnowledgeEditorConfig, hydrateKnowledgeEditorConfig, knowledgeEditorConfigPayload, type KnowledgeEditorConfig } from './knowledge-bases/editor-config.ts';
 import { visibleKnowledgeEditorSections, type KnowledgeEditorSection } from './knowledge-bases/editor-sections.ts';
 import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
@@ -198,6 +199,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [editorActivity, setEditorActivity] = useState<Array<{ id: number; action: string; outcome: string; created_at: string }>>([]);
   const [editorActivityLoading, setEditorActivityLoading] = useState(false);
   const [sharingKb, setSharingKb] = useState<{ id: string; name: string } | null>(null);
+  // Vue sharedDetailPanelVisible + currentSharedKbForDetail
+  // (KnowledgeBaseList.vue:1489-1491): the drawer binds the raw share row.
+  const [sharedDetail, setSharedDetail] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Delete confirmation dialog state; DELETE fires only after confirm.
@@ -720,6 +724,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     openEdit(kb);
   }
 
+  // Vue openSharedDetailFromAll (KnowledgeBaseList.vue:1499-1512): re-find the
+  // raw share row (knowledge_base / source_from_agent / shared_at) by share_id
+  // so the drawer shows the share-entry fields the merged card flattens away.
+  function openSharedDetail(card: MergedKnowledgeBase) {
+    const rows = pageState.status === 'success' ? (pageState.shared as Array<Record<string, unknown>>) : [];
+    const raw = typeof card.share_id === 'string' ? rows.find((row) => row.share_id === card.share_id) : undefined;
+    setSharedDetail(raw ?? {
+      name: card.name,
+      permission: card.permission,
+      shared_at: card.shared_at,
+      org_name: typeof card.org_name === 'string' ? card.org_name : undefined,
+      knowledge_base: { id: card.id },
+    });
+  }
+
   function openCard(kb: Record<string, unknown>) {
     const id = String(kb.id);
     try {
@@ -957,6 +976,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                           {isWiki ? <span className="kb-list-card-wiki-chip shrink-0 text-[#646e74]" role="img" aria-label={t('knowledgeList.features.wiki')} title={t('knowledgeList.features.wiki')}><KbIcon name="wiki" size={15} /></span> : null}
                           <span className="kb-list-card-title-text">{String(card.name ?? '')}</span>
                         </span>
+                        {/* Vue shared-detail-trigger (KnowledgeBaseList.vue:305-315):
+                            info-circle 查看详情 entry on non-own shared cards,
+                            replacing the three-dot as the detail affordance.
+                            @click.stop keeps card navigation out of the way. */}
+                        {isSharedCard ? (
+                          <button
+                            type="button"
+                            className="kb-shared-detail-trigger flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#07c05f] transition-colors duration-200 hover:bg-[rgba(7,192,95,0.08)]"
+                            title={t('knowledgeList.menu.viewDetails')}
+                            aria-label={t('knowledgeList.menu.viewDetails')}
+                            onClick={(event) => { event.stopPropagation(); openSharedDetail(card); }}
+                          >
+                            <KbIcon name="info-circle" size={16} />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
@@ -1096,6 +1130,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       </Dialog>
 
       <KnowledgeBaseShareDialog client={client} knowledgeBaseId={sharingKb?.id ?? ''} knowledgeBaseName={sharingKb?.name ?? ''} open={sharingKb !== null} onClose={() => setSharingKb(null)} onChanged={() => setReloadToken((value) => value + 1)} />
+
+      {/* Vue right-side shared KB detail drawer (KnowledgeBaseList.vue:709-776) */}
+      <SharedKnowledgeBaseDrawer
+        open={sharedDetail !== null}
+        shared={sharedDetail}
+        onClose={() => setSharedDetail(null)}
+        onGoToKb={(kbId) => { navigate(knowledgeBaseDetailPath(kbId)); setSharedDetail(null); }}
+      />
     </main>
   );
 }

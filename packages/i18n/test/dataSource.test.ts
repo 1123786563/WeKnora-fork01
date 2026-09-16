@@ -84,7 +84,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 164);
+  assert.equal(keys.length, 169);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');

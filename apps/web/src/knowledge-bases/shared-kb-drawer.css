@@ -1,0 +1,41 @@
+/* R438 A1 — shared KB detail drawer chrome alignment.
+   The panel body is the project Sheet (@weknora/ui, Radix-backed); these
+   scoped rules align its header/body/footer to the Vue drawer
+   (frontend/src/views/knowledge/KnowledgeBaseList.vue:2938-3078):
+   360px panel, 18px/600 title, 32x32 close chip, 24px body padding with a
+   bottom-pinned footer. Visual-only: DOM hooks live in the component. */
+
+.kb-shared-detail-drawer > header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d2129;
+}
+
+.kb-shared-detail-drawer > header > button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: #f3f3f3;
+  color: #646e74;
+  font-size: 16px;
+}
+
+.kb-shared-detail-drawer > header > button:hover {
+  color: #1d2129;
+}
+
+/* Sheet wraps children in a padded flex-1 div; reset it so the rows body
+   scrolls and the footer pins to the drawer bottom like Vue's flex column. */
+.kb-shared-detail-drawer > div:last-child {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0;
+  padding: 0;
+}
+
+.kb-shared-detail-drawer > div:last-child > .kb-shared-detail-rows {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}

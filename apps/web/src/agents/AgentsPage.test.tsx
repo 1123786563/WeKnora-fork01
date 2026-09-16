@@ -26,6 +26,7 @@ const {
 } = await import('./AgentsPage.tsx');
 const {
   buildAllViewRows,
+  buildSpaceViewRows,
   cornerBadge,
   sectionize,
   sharedAgentsFromRecords,
@@ -374,4 +375,40 @@ test('favorites view renders pinned cards flat without section headers', () => {
   const cards = html.match(/data-agent-id="/g);
   assert.equal(cards?.length, 2);
   assert.match(html, /aria-pressed="true"/);
+});
+
+test('space view shows a loading spinner while shared agents fetch (Vue spaceAgentsLoading)', () => {  // AgentList.vue:498-500 — while listOrganizationSharedAgents is in flight the
+  // space tab renders a centered spinner instead of the "no shared agents"
+  // empty state, which only appears once loading settles (AgentList.vue:710).
+  const loading = renderToStaticMarkup(React.createElement(AgentsPageView, {
+    ...baseViewProps, space: 'org-1', sections: [], flatCards: [], spaceLoading: true,
+  }));
+  assert.match(loading, /animate-spin/);
+  assert.doesNotMatch(loading, /暂无共享智能体/);
+
+  const settled = renderToStaticMarkup(React.createElement(AgentsPageView, {
+    ...baseViewProps, space: 'org-1', sections: [], flatCards: [], spaceLoading: false,
+  }));
+  assert.doesNotMatch(settled, /animate-spin/);
+  assert.match(settled, /暂无共享智能体/);
+});
+
+test('space view cards show no org source pill (Vue card-bottom carries only badges)', () => {
+  // AgentList.vue space-tab card (546-635) ends with .feature-badges only —
+  // the org source pill is rendered exclusively on "all"-view shared cards.
+  const mineShared = buildSpaceViewRows([
+    { agent: { id: 'a-mine', name: '我的助手', is_builtin: false, config: {} }, share_id: 's-mine', organization_id: 'org-1', org_name: '空间一', permission: 'editor', source_tenant_id: 10001, disabled_by_me: false, is_mine: true },
+  ])[0]!;
+  const html = renderToStaticMarkup(React.createElement(AgentCard, {
+    agent: mineShared, t, viewer: admin, favorited: false, menuOpen: false,
+    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
+  }));
+  assert.doesNotMatch(html, /空间一/);
+
+  const otherShared = fixtureRows().find((row) => row.id === 'a-shared')!;
+  const otherHtml = renderToStaticMarkup(React.createElement(AgentCard, {
+    agent: otherShared, t, viewer: admin, favorited: false, menuOpen: false,
+    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
+  }));
+  assert.match(otherHtml, /空间一/);
 });

@@ -4412,3 +4412,31 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1370/1370, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r437-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R438 — Shared-KB drawer, settings grouped IA phase 1, datasource cards, agents sweep
+
+- Five parallel agents (A1 shared-KB drawer, A2 settings IA phase 1, A3 datasource card anatomy, A4 agents
+  sweep, A5 verifier), file-domain mutually exclusive (A1 exclusively owned App.tsx), TDD. A5 verdicts:
+  A1/A2/A4 PASS; A3's one gate regression (i18n key-count guard 164→169) fixed by the orchestrator before
+  commit.
+- A1: shared-KB detail drawer ported (KnowledgeBaseList.vue:305-315 entry on non-owned shared cards, :709-776
+  drawer) — SharedKnowledgeBaseDrawer with agentKbStrategyKey/formatSharedAt/permissionTone, App.tsx openShared
+  Detail re-resolves the share row by share_id (restoring source_from_agent lost in merge flattening), 进入知
+  识库 navigates knowledgeBaseDetailPath. 6 jsdom behavioral tests red→green; kb regression 37/37.
+- A2: legacy KB settings surface restructured to the Vue KnowledgeBaseEditorModal grouped IA (navGroups
+  L637-669): basic / processing(索引与解析) / data(存储与数据, datasource badge) / integration(发布集成) /
+  management(管理与审计, owner-admin gated), pickItems order, empty-group filter, 14 inline SVG t-icons,
+  default section basic, .wkbs-* shell with the Vue modal computed styles (1000×750, 208px sidebar, #07c05f
+  active). Unported sections show the existing notYetPorted placeholder — no invented editors; 39/39 directory
+  regression; 19 i18n keys pre-existing ×5 locale. Phase-2 backlog: basic/models, chunking/multimodal/asr/
+  advanced, faq editors, share !isLiteMode gate.
+- A3: cronHumanize ported (5 presets + raw fallback, relativeTime buckets, syncResultPills +N/~N/-N); Vue card
+  grid (320px auto-fill, icon badge, status dot, colored pills, dashed add-card); scheduleHuman keys ×5 locale
+  byte-identical to Vue. Fixed the 164→169 i18n guard. Deferred: jsdom render tests (page assertions remain
+  source-regex pins), connector image assets, ellipsis action grouping.
+- A4: agents space-view contract fixes — 我共享的 cards open the editor on click with no three-dot menu
+  (opensEditorOnCardClick), spaceAgentsLoading spinner suppresses the premature empty state, org pill excluded
+  on the space tab; agents domain 88/88. Deferred: DB-backed favorites, section=im/embed/integrations redirects.
+- Gates: `pnpm test:web` 1398/1398, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r438-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

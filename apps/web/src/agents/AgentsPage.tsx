@@ -29,6 +29,7 @@ import {
   kbScope,
   mcpScope,
   FEATURE_BADGE_TITLE_KEYS,
+  opensEditorOnCardClick,
   readAgentRecents,
   readFavoriteIds,
   SECTION_ICON_KEYS,
@@ -362,7 +363,9 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
             </span>
           ))}
         </div>
-        {!agent.isMine ? (
+        {!agent.isMine && !agent.sharedByMe ? (
+          // Org source pill only on "all"-view shared cards; the Vue space-tab
+          // card (AgentList.vue:546-635) ends with the feature badges alone.
           <span className="wk-agent-card-source inline-flex shrink-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium"><Icon name="usergroup" size={12} />{agent.orgName}</span>
         ) : badge ? (
           <span className="inline-flex shrink-0 items-center gap-[3px] rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium">
@@ -448,6 +451,8 @@ export interface AgentsPageViewProps {
   viewer: AgentViewer;
   loading: boolean;
   space: string;
+  /** Space tab fetch in flight (Vue AgentList.vue spaceAgentsLoading). */
+  spaceLoading?: boolean;
   rail: AgentRailItem[];
   sections: AgentSectionView[];
   flatCards: AgentCardModel[];
@@ -529,7 +534,7 @@ function AgentSection({ section, t, viewer, collapsed, onToggle, cardProps }: {
 }
 
 export function AgentsPageView(props: AgentsPageViewProps) {
-  const { t, editorT, viewer, loading, space, rail, sections, flatCards, isSectioned, favorites, openMenuId, error, notice, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
+  const { t, editorT, viewer, loading, space, spaceLoading, rail, sections, flatCards, isSectioned, favorites, openMenuId, error, notice, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
   const cardProps = (agent: AgentCardModel) => ({
     agent, t, viewer,
     favorited: favorites.has(agent.id),
@@ -557,7 +562,12 @@ export function AgentsPageView(props: AgentsPageViewProps) {
         </header>
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading ? <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="h-[136px] animate-[wk-agent-shimmer_1.2s_ease_infinite] rounded-lg border border-[rgba(127,127,127,0.18)] bg-[linear-gradient(90deg,rgba(127,127,127,0.06)_25%,rgba(127,127,127,0.12)_37%,rgba(127,127,127,0.06)_63%)] bg-[length:400%_100%]" key={index} />)}</div> : null}
-        {!loading && hasCards ? (
+        {spaceLoading ? (
+          <div className="flex min-w-0 flex-1 items-center justify-center" role="status" aria-label={t('common.loading')} data-agent-space-loading="true">
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(127,127,127,0.25)] border-t-[#07c05f]" aria-hidden="true" />
+          </div>
+        ) : null}
+        {!loading && !spaceLoading && hasCards ? (
           <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6">
             {isSectioned
               ? sections.map((section) => (
@@ -566,7 +576,7 @@ export function AgentsPageView(props: AgentsPageViewProps) {
               : flatCards.map((agent) => <AgentCard key={agent.id} {...cardProps(agent)} />)}
           </div>
         ) : null}
-        {!loading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
+        {!loading && !spaceLoading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
       </div>
       {drawer ? <AgentDetailDrawer kind={drawer.kind} agent={drawer.agent} t={t} onClose={props.onCloseDrawer} onUseInChat={props.onUseInChat} /> : null}
       {editor ? <AgentEditorModal open mode={editor.mode} agent={editor.agent} initialSection={editor.initialSection} initialHighlightField={editor.initialHighlight} readOnly={editor.readOnly} client={props.client} t={editorT} onClose={props.onCloseEditor} onSaved={props.onEditorSaved} /> : null}
@@ -641,6 +651,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const [modelsReady, setModelsReady] = useState<boolean | null>(null);
   const [data, setData] = useState<AgentsPageData | null>(null);
   const [spaceItems, setSpaceItems] = useState<Array<Record<string, unknown>>>([]);
+  const [spaceLoading, setSpaceLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -705,12 +716,17 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const effectiveSpace = space || (viewer.isContributor ? 'mine' : 'all');
 
   // Space view fetch (GET /organizations/:id/shared-agents — routes_agent.go:171).
+  // While in flight the space tab shows the Vue spaceAgentsLoading spinner
+  // instead of the "no shared agents" empty state (AgentList.vue:498-500,710).
   useEffect(() => {
-    if (!effectiveSpace || RESERVED_SCOPES.has(effectiveSpace)) { setSpaceItems([]); return; }
+    if (!effectiveSpace || RESERVED_SCOPES.has(effectiveSpace)) { setSpaceItems([]); setSpaceLoading(false); return; }
     let active = true;
+    setSpaceLoading(true);
     void client.identity.organizations.agentShares.listInOrganization(effectiveSpace).then((rows) => {
-      if (active) setSpaceItems(rows);
-    }).catch(() => { if (active) setSpaceItems([]); });
+      if (!active) return;
+      setSpaceItems(rows);
+      setSpaceLoading(false);
+    }).catch(() => { if (active) { setSpaceItems([]); setSpaceLoading(false); } });
     return () => { active = false; };
   }, [client, effectiveSpace]);
 
@@ -737,9 +753,9 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       writeAgentRecents(window.localStorage, viewer.userId, tenantKey, next);
       return next;
     });
-    // AgentList.vue handleCardClick: shared → detail drawer, own → editor.
-    // The full AgentEditorModal now owns own-agent editing (Vue parity).
-    if (agent.isMine) { setEditor({ mode: 'edit', agent }); return; }
+    // AgentList.vue handleCardClick / handleSpaceAgentCardClick: shared →
+    // detail drawer, own (and space-view "shared by me") → editor.
+    if (opensEditorOnCardClick(agent)) { setEditor({ mode: 'edit', agent }); return; }
     setDrawer({ kind: 'shared', agent });
   }, [tenantKey, viewer.userId]);
 
@@ -881,6 +897,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       viewer={viewer}
       loading={!data && !loadError}
       space={effectiveSpace}
+      spaceLoading={spaceLoading}
       rail={rail}
       sections={sections}
       flatCards={flatCards}
