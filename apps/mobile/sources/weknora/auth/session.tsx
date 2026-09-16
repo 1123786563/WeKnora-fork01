@@ -18,6 +18,7 @@ type ProductAuthContextValue = {
   loading: boolean;
   scope: ProductScope;
   login: (email: string, password: string) => Promise<void>;
+  replaceCredential: (credential: BearerCredential) => Promise<void>;
   logout: () => Promise<void>;
 };
 const ProductAuthContext = React.createContext<ProductAuthContextValue | null>(null);
@@ -86,7 +87,13 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     setCredential(null);
   }, [adapter, authSession, scope]);
 
-  return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout }}>{children}</ProductAuthContext.Provider>;
+  const replaceCredential = React.useCallback(async (next: BearerCredential) => {
+    if (!host || !authSession) throw new Error('SERVER_REQUIRED');
+    await authSession.refreshCoordinator.replace(next);
+    setCredential(next);
+  }, [authSession, host]);
+
+  return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout, replaceCredential }}>{children}</ProductAuthContext.Provider>;
 }
 
 export function useProductAuth(): ProductAuthContextValue {

@@ -366,7 +366,19 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
+	var resp *types.OIDCAuthURLResponse
+	var err error
+	if challenge := strings.TrimSpace(c.Query("code_challenge")); challenge != "" {
+		if pkce, ok := h.userService.(interface {
+			GetOIDCAuthorizationURLWithPKCE(context.Context, string, string) (*types.OIDCAuthURLResponse, error)
+		}); ok {
+			resp, err = pkce.GetOIDCAuthorizationURLWithPKCE(ctx, redirectURI, challenge)
+		} else {
+			err = fmt.Errorf("native OIDC PKCE is unavailable")
+		}
+	} else {
+		resp, err = h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
+	}
 	if err != nil {
 		logger.Errorf(ctx, "Failed to generate OIDC authorization URL: %v", err)
 		appErr := errors.NewForbiddenError("OIDC authorization unavailable").WithDetails(err.Error())
@@ -499,6 +511,21 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("login_failed")+"&oidc_error_description="+urlQueryEscape(resp.Message))
 		return
 	}
+	if strings.TrimSpace(decodedState.CodeChallenge) != "" && h.mobileExchange != nil && resp.User != nil {
+		rawCode := make([]byte, 32)
+		if _, randErr := rand.Read(rawCode); randErr != nil {
+			c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("exchange_unavailable"))
+			return
+		}
+		mobileCode := base64.RawURLEncoding.EncodeToString(rawCode)
+		if putErr := h.mobileExchange.Put(ctx, repository.MobileExchange{CodeHash: repository.HashMobileExchangeValue(mobileCode), StateHash: repository.HashMobileExchangeValue(state), RedirectURI: strings.TrimSpace(decodedState.RedirectURI), Challenge: strings.TrimSpace(decodedState.CodeChallenge), Subject: resp.User.ID, ExpiresAt: time.Now().UTC().Add(time.Minute)}); putErr != nil {
+			logger.Errorf(ctx, "Failed to persist native OIDC exchange: %v", putErr)
+			c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("exchange_unavailable"))
+			return
+		}
+		c.Redirect(http.StatusFound, strings.TrimSpace(decodedState.RedirectURI)+"?code="+urlQueryEscape(mobileCode)+"&state="+urlQueryEscape(state))
+		return
+	}
 
 	payload, err := encodeOIDCCallbackPayload(resp)
 	if err != nil {
@@ -519,8 +546,9 @@ func encodeOIDCCallbackPayload(resp *types.OIDCCallbackResponse) (string, error)
 }
 
 type oidcStatePayload struct {
-	Nonce       string
-	RedirectURI string
+	Nonce         string
+	RedirectURI   string
+	CodeChallenge string
 }
 
 func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
@@ -536,8 +564,9 @@ func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
 		return nil, errors.NewValidationError("oidc nonce mismatch")
 	}
 	return &oidcStatePayload{
-		Nonce:       payload.Nonce,
-		RedirectURI: strings.TrimSpace(payload.RedirectURI),
+		Nonce:         payload.Nonce,
+		RedirectURI:   strings.TrimSpace(payload.RedirectURI),
+		CodeChallenge: strings.TrimSpace(payload.CodeChallenge),
 	}, nil
 }
 

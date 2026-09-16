@@ -164,6 +164,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	must(container.Provide(repository.NewMobileExchangeStore))
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
@@ -509,6 +510,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEvaluationHandler))
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
+	must(container.Invoke(func(h *handler.AuthHandler, store *repository.MobileExchangeStore) {
+		h.SetMobileExchangeStore(store)
+	}))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(handler.NewMCPServiceHandler))
 	must(container.Provide(handler.NewMCPCredentialsHandler))

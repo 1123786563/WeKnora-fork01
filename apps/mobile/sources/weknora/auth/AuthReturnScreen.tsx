@@ -1,7 +1,13 @@
 import * as React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { AUTH_RETURN_REDIRECT, evaluateAuthReturn, type AuthReturnOutcome } from './auth-return-status';
+import * as SecureStore from 'expo-secure-store';
+import { AUTH_RETURN_REDIRECT, buildNativeExchangeInput, evaluateAuthReturn, type AuthReturnOutcome } from './auth-return-status';
+import { useProductAuth } from './session';
+import { useMobileHost } from '@/weknora/platform/host';
+import { createOIDCApi } from '@weknora/api-client';
+
+const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
 
 const COPY: Record<AuthReturnOutcome['status'], { title: string; body: string }> = {
   verified: {
@@ -29,6 +35,8 @@ const COPY: Record<AuthReturnOutcome['status'], { title: string; body: string }>
  */
 export default function AuthReturnScreen() {
   const router = useRouter();
+  const auth = useProductAuth();
+  const host = useMobileHost();
   const params: Record<string, string | string[] | undefined> = useLocalSearchParams();
   const evaluated = React.useRef<AuthReturnOutcome | null>(null);
   const [outcome, setOutcome] = React.useState<AuthReturnOutcome | null>(null);
@@ -37,7 +45,26 @@ export default function AuthReturnScreen() {
     if (evaluated.current) return;
     evaluated.current = evaluateAuthReturn(params, AUTH_RETURN_REDIRECT);
     setOutcome(evaluated.current);
-  }, [params]);
+    if (evaluated.current.status === 'verified' && host) {
+      void (async () => {
+        const verifier = await SecureStore.getItemAsync(NATIVE_PKCE_VERIFIER_KEY);
+        const input = buildNativeExchangeInput(params, AUTH_RETURN_REDIRECT, verifier ?? '');
+        if (!input) { setOutcome({ status: 'rejected' }); return; }
+        try {
+          const api = createOIDCApi(async (request) => {
+            const response = await fetch(`${host.origin}${request.path}`, { method: request.method, headers: { 'content-type': 'application/json' }, body: request.body ? JSON.stringify(request.body) : undefined });
+            if (!response.ok) throw new Error(`exchange_${response.status}`);
+            return await response.json();
+          });
+          const payload = await api.exchangeNative(input);
+          if (!payload.token) throw new Error('exchange_missing_token');
+          await auth.replaceCredential({ kind: 'bearer', accessToken: payload.token, ...(payload.refresh_token ? { refreshToken: payload.refresh_token } : {}) });
+          await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY);
+          router.replace('/(app)');
+        } catch { setOutcome({ status: 'rejected' }); }
+      })();
+    }
+  }, [auth, host, params, router]);
 
   const copy = outcome ? COPY[outcome.status] : null;
 

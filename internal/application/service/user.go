@@ -432,6 +432,17 @@ func synthFallbackMembership(user *types.User, activeTenant *types.Tenant) []typ
 
 // GetOIDCAuthorizationURL builds the OIDC authorization URL.
 func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
+	return s.getOIDCAuthorizationURL(ctx, redirectURI, "")
+}
+
+// GetOIDCAuthorizationURLWithPKCE is the native-client variant. The optional
+// method keeps the browser OIDC contract unchanged while binding the signed
+// callback state to the S256 verifier challenge.
+func (s *userService) GetOIDCAuthorizationURLWithPKCE(ctx context.Context, redirectURI, codeChallenge string) (*types.OIDCAuthURLResponse, error) {
+	return s.getOIDCAuthorizationURL(ctx, redirectURI, codeChallenge)
+}
+
+func (s *userService) getOIDCAuthorizationURL(ctx context.Context, redirectURI, codeChallenge string) (*types.OIDCAuthURLResponse, error) {
 	cfg, err := s.getOIDCConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -446,8 +457,9 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 	}
 
 	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
-		Nonce:       nonce,
-		RedirectURI: strings.TrimSpace(redirectURI),
+		Nonce:         nonce,
+		RedirectURI:   strings.TrimSpace(redirectURI),
+		CodeChallenge: strings.TrimSpace(codeChallenge),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode OIDC state: %w", err)
@@ -459,6 +471,10 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 	query.Set("redirect_uri", redirectURI)
 	query.Set("scope", strings.Join(cfg.Scopes, " "))
 	query.Set("state", state)
+	if strings.TrimSpace(codeChallenge) != "" {
+		query.Set("code_challenge", strings.TrimSpace(codeChallenge))
+		query.Set("code_challenge_method", "S256")
+	}
 
 	authURL := cfg.AuthorizationEndpoint
 	if strings.Contains(authURL, "?") {

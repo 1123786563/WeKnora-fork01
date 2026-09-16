@@ -46,6 +46,10 @@ export function createOIDCApi(request: AuthRequest) {
       const query = new URLSearchParams({ redirect_uri: redirectURI }).toString();
       return await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }) as OIDCAuthURLResponse;
     },
+    async startNative(redirectURI: string, codeChallenge: string): Promise<OIDCAuthURLResponse> {
+      const query = new URLSearchParams({ redirect_uri: redirectURI, code_challenge: requireNonEmpty(codeChallenge, 'code_challenge') }).toString();
+      return await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }) as OIDCAuthURLResponse;
+    },
     /**
      * The current Go server completes exchange only in its browser callback,
      * which redirects with a bearer token fragment. Keep that unsafe contract

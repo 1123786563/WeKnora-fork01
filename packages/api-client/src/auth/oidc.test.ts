@@ -27,6 +27,13 @@ test('native OIDC exchange posts one-time code and verifier without URL credenti
   assert.equal(calls[0].path.includes('access'), false);
 });
 
+test('native OIDC start binds the S256 challenge to the authorization request', async () => {
+  const calls: any[] = [];
+  const api = createOIDCApi(async (input) => { calls.push(input); return { success: true }; });
+  await api.startNative('weknora://auth', 'challenge');
+  assert.match(calls[0].path, /code_challenge=challenge/);
+});
+
 test('native OIDC exchange rejects missing values before network', async () => {
   const api = createOIDCApi(async () => ({}));
   await assert.rejects(api.exchangeNative({ code: '', state: 's', redirect_uri: 'weknora://auth', code_verifier: 'v' }), /code is required/);
