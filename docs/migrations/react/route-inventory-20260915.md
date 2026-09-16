@@ -63,11 +63,18 @@ Vue 入口可由 route query 或 `uiStore.openSettings(section, subSection)` 触
 ## 4. 审查发现与后续验收边界
 
 1. **P1：React dispatch 依赖启动时 route 快照。** `main.tsx:83` 只在模块初始化时调用一次 `resolveRoute`；`renderProtected` 后续仍使用该 `route`（`main.tsx:201-274`）。当前设计依赖 legacy route 通过 full navigation/reload 完成切换，并对 settings 的 `pushState` 由 SettingsPage 自己维护。若未来新增不 reload 的主页面 history transition，必须同步更新 route state，否则可能出现 URL 与渲染树不一致。本次不改代码，仅记录为验收约束。
-2. **P1：设置子项不是统一 URL contract。** `models` 的五类子项可通过 `?section=models&subsection=<type>` 深链进入，但 Vue 的 `uiStore.settingsInitialSubSection` 还承载非 URL 的打开语义；React 当前只把 query 初值传给 ModelSettingsPanel，未建立通用 `openSettings(section, subSection)` API。尤其 `knowledgeqa` 是 Vue 调用值，而 React `subsectionToFilter` 只接受五个模型类型，因此该值会被忽略并落在 all filter。需要后续单独决定兼容映射或明确弃用，不在本证据任务中修复。
+2. **已关闭（实现层）：`knowledgeqa` 设置子项语义。** `models` 的五类子项可通过 `?section=models&subsection=<type>` 深链进入；Vue 的 `uiStore.settingsInitialSubSection` 触发的已知 `openSettings('models', 'knowledgeqa')` 调用已在 React 映射到 conversation/chat 模型子项，并由 `apps/web/src/settings/model-settings.test.ts` 覆盖。若未来新增非 URL 的 `openSettings(section, subSection)` 调用，仍需逐个补充对应 contract；本条不再作为当前 P1 阻塞。
 3. **P2：`/platform/administration` 是 React 额外历史兼容入口。** 它不是当前 Vue Router 的显式 child，但 React 将其映射到 members。该行为已有测试（`apps/web/src/routes.test.ts:51-52`、`:158-162`），应在 parity ledger 中标为 compatibility，而不是要求 Vue 新增同名路由。
 4. **P2：Embed 是双入口契约。** `apps/web/src/main.tsx` 对 `/embed/*` 的提示页不能被视为 Embed 功能缺失；真实 Embed 必须从 `apps/embed` 的独立构建入口验证。主 SPA 路由审查只证明隔离边界。
 
-## 5. 静态检查记录
+## 5. 2026-09-16 路由参数安全复核
+
+- 对照 Vue 动态入口和 React `resolveRoute()` 时发现，Apps 授权与动作路径的非法 percent-encoding（例如 `/platform/apps/authorization/%E0%A4%A`）此前会返回 `apps` route，但 `id` 为 `undefined`，可能把坏参数交给页面层。
+- React 现已在 `apps/web/src/routes.tsx` 对授权和动作动态段复用解码失败的 `not-found` 分支；`apps/web/src/routes.test.ts` 增加两条回归断言。提交：`ab86e359`。
+- 验证：`pnpm exec tsx --test apps/web/src/routes.test.ts`（13/13）；`pnpm exec tsx --test frontend/src/config/settingsRoute.test.ts frontend/src/config/settingsAccess.test.ts`（7/7）；`pnpm typecheck:web`（exit 0）；`pnpm --filter @weknora/web test`（1172/1172）；`git diff --check`（exit 0）。
+- 本节是静态源码/单元/类型/完整 Web 回归证据；不等同于认证浏览器、真实后端权限/变更、Wails 原生运行或 Embed 宿主验收。
+
+## 6. 静态检查记录
 
 本文件提交前执行：
 
