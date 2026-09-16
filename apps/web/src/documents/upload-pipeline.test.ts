@@ -40,6 +40,7 @@ import {
   uploadUrlExtension,
   uploadProgressPercent,
   batchUploadProgress,
+  filterUploadFiles,
   type UploadConfirmUIState,
   type UploadEntry,
 } from './upload-pipeline.ts';
@@ -143,6 +144,22 @@ test('URL staging accepts HTTP(S), trims it, and rejects unsafe schemes', () => 
   assert.equal(normalizeUploadUrl('  https://example.com/docs?q=1  '), 'https://example.com/docs?q=1');
   assert.equal(normalizeUploadUrl('javascript:alert(1)'), null);
   assert.equal(normalizeUploadUrl(''), null);
+});
+
+test('filters upload sources like Vue before staging the confirmation batch', () => {
+  const hidden = new File(['x'], 'notes.md');
+  Object.defineProperty(hidden, 'webkitRelativePath', { value: 'docs/.private/notes.md' });
+  const result = filterUploadFiles([
+    new File(['x'], 'guide.pdf'),
+    new File(['x'], 'movie.mp4'),
+    new File(['x'], 'unknown.bin'),
+    hidden,
+  ], { supportedFileTypes: ['pdf', 'md'], fromFolder: true });
+
+  assert.deepEqual(result.validFiles.map((file) => file.name), ['guide.pdf']);
+  assert.equal(result.videoFilteredCount, 1);
+  assert.equal(result.skippedCount, 1);
+  assert.equal(result.hiddenFileCount, 1);
 });
 
 // --- Vue append/add-more parity ------------------------------------------------

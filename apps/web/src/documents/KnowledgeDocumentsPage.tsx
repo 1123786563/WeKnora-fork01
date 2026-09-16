@@ -27,6 +27,7 @@ import {
   destinationBreadcrumb,
   folderPickerRows,
   formatBytes,
+  filterUploadFiles,
   GRAPH_EXTRACT_DEFAULT_EXAMPLE,
   graphDatabaseEnabled,
   graphSectionAvailable,
@@ -922,7 +923,7 @@ export interface UploadSourceDropdownProps {
   /** Bubbled for the URL entry (which opens the import sub-dialog). */
   onSelect: (key: UploadSourceDropdownAction) => void;
   /** Picked files from the hidden multiple / webkitdirectory inputs. */
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[], fromFolder?: boolean) => void;
 }
 
 /**
@@ -953,7 +954,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
           event.target.value = "";
-          if (files.length > 0) props.onFiles(files);
+          if (files.length > 0) props.onFiles(files, event.currentTarget.dataset.uploadSourceInput === "folder");
         }}
       />
       <input
@@ -968,7 +969,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
           event.target.value = "";
-          if (files.length > 0) props.onFiles(files);
+          if (files.length > 0) props.onFiles(files, event.currentTarget.dataset.uploadSourceInput === "folder");
         }}
       />
       <button
@@ -2588,9 +2589,12 @@ export function KnowledgeDocumentsPage({
     return false;
   }
 
-  function stageFiles(files: Iterable<File>) {
+  function stageFiles(files: Iterable<File>, fromFolder = false) {
     if (!ensureDocumentKbReady()) return;
-    const entries = toUploadEntries(files);
+    const filtered = filterUploadFiles(files, { supportedFileTypes, fromFolder });
+    const entries = toUploadEntries(filtered.validFiles);
+    if (filtered.skippedCount > 0) showStageNotice(ct("knowledgeBase.filesSkippedNoEngine", { count: filtered.skippedCount }), "warning");
+    if (filtered.videoFilteredCount > 0) showStageNotice(ct("knowledgeBase.videosFilteredNoVLM", { count: filtered.videoFilteredCount }), "warning");
     if (entries.length === 0) return;
     if (pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
     // Vue appendFiles: dedupe by (relative path|name)+size and report counts.

@@ -52,6 +52,55 @@ export function toUploadEntries(files: Iterable<File>): UploadEntry[] {
   return Array.from(files).map((file) => ({ file, name: file.name, size: file.size }));
 }
 
+export const UPLOAD_VIDEO_EXTENSIONS = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv'];
+export const DEFAULT_UPLOAD_EXTENSIONS = [
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'epub', 'mhtml',
+  'txt', 'md', 'csv', 'json', 'xml', 'html', 'markdown', 'yaml', 'yml', 'log',
+  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp',
+  'mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac',
+];
+
+export interface FilterUploadFilesOptions {
+  supportedFileTypes?: Iterable<string>;
+  fromFolder?: boolean;
+}
+
+export interface FilterUploadFilesResult {
+  validFiles: File[];
+  skippedCount: number;
+  videoFilteredCount: number;
+  hiddenFileCount: number;
+}
+
+/** Vue KbUploadSourceDropdown filtering before files enter UploadConfirmDialog. */
+export function filterUploadFiles(files: Iterable<File>, options: FilterUploadFilesOptions = {}): FilterUploadFilesResult {
+  const supported = new Set(Array.from(options.supportedFileTypes ?? []).map((type) => type.replace(/^\./, '').toLowerCase()));
+  const accepted = supported.size > 0 ? supported : new Set(DEFAULT_UPLOAD_EXTENSIONS);
+  const validFiles: File[] = [];
+  let skippedCount = 0;
+  let videoFilteredCount = 0;
+  let hiddenFileCount = 0;
+
+  for (const file of files) {
+    const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    if (options.fromFolder && relativePath.split('/').some((part) => part.startsWith('.'))) {
+      hiddenFileCount += 1;
+      continue;
+    }
+    const extension = uploadFileExtension(file.name);
+    if (UPLOAD_VIDEO_EXTENSIONS.includes(extension)) {
+      videoFilteredCount += 1;
+      continue;
+    }
+    if (!accepted.has(extension)) {
+      skippedCount += 1;
+      continue;
+    }
+    validFiles.push(file);
+  }
+  return { validFiles, skippedCount, videoFilteredCount, hiddenFileCount };
+}
+
 export function formatBytes(size: number): string {
   if (!Number.isFinite(size) || size < 0) return '';
   if (size < 1024) return size + ' B';
