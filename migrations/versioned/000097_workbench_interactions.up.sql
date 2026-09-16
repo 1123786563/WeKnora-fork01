@@ -17,7 +17,7 @@ CREATE TABLE workbench_interactions (
     CONSTRAINT ck_workbench_interaction_kind CHECK (kind IN ('tool_approval','budget','recovery')),
     CONSTRAINT ck_workbench_interaction_args_hash CHECK (length(trim(args_hash)) > 0),
     CONSTRAINT ck_workbench_interaction_action CHECK (action = '' OR (kind = 'tool_approval' AND action IN ('approve','reject')) OR (kind = 'budget' AND action = 'extend') OR (kind = 'recovery' AND action IN ('retry','provide_result','terminate'))),
-    CONSTRAINT fk_workbench_interaction_run FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs (tenant_id, run_id) ON DELETE CASCADE
+    CONSTRAINT ck_workbench_interaction_run CHECK (length(trim(run_id)) > 0)
 );
 CREATE INDEX idx_workbench_interactions_owner ON workbench_interactions (tenant_id, owner_id, run_id, created_at);
 CREATE UNIQUE INDEX uq_workbench_interactions_decision ON workbench_interactions (tenant_id, id, decision_id) WHERE decision_id <> '';

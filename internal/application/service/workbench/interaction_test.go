@@ -120,6 +120,33 @@ func TestApprovalGateSuccessDenialAndRace(t *testing.T) {
 	require.True(t, (first == nil) != (second == nil), "exactly one decision must win: %v %v", first, second)
 }
 
+func TestGateRequestProjectsDurableInteraction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:w05_gate_projection?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&interactionRow{}))
+	store := NewGormInteractionStore(db)
+	gate := approval.NewGate(&config.Config{Agent: &config.AgentConfig{ToolApprovalTimeoutSeconds: 2}}, gateChecker{}, nil)
+	_ = NewInteractionServiceWithApproval(store, nil, nil, gate)
+	bus := event.NewEventBus()
+	pending := make(chan string, 1)
+	bus.On(event.EventToolApprovalRequired, func(_ context.Context, evt event.Event) error {
+		pending <- evt.Data.(event.ToolApprovalRequiredData).PendingID
+		return nil
+	})
+	result := make(chan approval.Decision, 1)
+	go func() {
+		decision, _ := gate.RequestAndWait(context.Background(), approval.PendingRequest{TenantID: 7, UserID: "u1", RequestID: "request-1", EventBus: bus, Args: []byte(`{"x":1}`)})
+		result <- decision
+	}()
+	id := <-pending
+	var row interactionRow
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 7, id).Take(&row).Error)
+	require.Equal(t, "tool_approval", row.Kind)
+	require.NotEmpty(t, row.ArgsHash)
+	require.NoError(t, gate.Resolve(7, "u1", id, approval.Decision{Approved: true}))
+	require.True(t, (<-result).Approved)
+}
+
 func (s *commandPortStub) Steer(context.Context, uint64, string, string, string, int64) error {
 	s.called = true
 	return nil

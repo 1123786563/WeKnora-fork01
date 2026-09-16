@@ -135,12 +135,25 @@ var _ MCPApproval = (*Gate)(nil)
 // (issue #1173 cross-instance support). Without redis, the gate degrades to
 // single-process behavior (deployments must use sticky sessions).
 type Gate struct {
-	mu        sync.Mutex
-	pending   map[string]*waiter
-	checker   Checker
-	timeout   time.Duration
-	rdb       *redis.Client // optional; nil disables cross-instance fan-out
-	failClose bool          // when true, NeedsApproval errors block (require approval) instead of skip
+	mu              sync.Mutex
+	pending         map[string]*waiter
+	checker         Checker
+	timeout         time.Duration
+	rdb             *redis.Client // optional; nil disables cross-instance fan-out
+	failClose       bool          // when true, NeedsApproval errors block (require approval) instead of skip
+	pendingObserver func(context.Context, PendingRequest, string) error
+}
+
+// SetPendingObserver installs the durable interaction projector used by the
+// mobile workbench. The observer runs before the approval-required event is
+// emitted; an error fails closed and removes the in-memory waiter.
+func (g *Gate) SetPendingObserver(observer func(context.Context, PendingRequest, string) error) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.pendingObserver = observer
+	g.mu.Unlock()
 }
 
 type waiter struct {
@@ -342,7 +355,16 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 
 	g.mu.Lock()
 	g.pending[pendingID] = w
+	observer := g.pendingObserver
 	g.mu.Unlock()
+	if observer != nil {
+		if err := observer(ctx, req, pendingID); err != nil {
+			g.mu.Lock()
+			delete(g.pending, pendingID)
+			g.mu.Unlock()
+			return Decision{}, fmt.Errorf("persist tool approval interaction: %w", err)
+		}
+	}
 
 	defer func() {
 		g.mu.Lock()

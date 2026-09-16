@@ -2,6 +2,8 @@ package workbench
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"github.com/google/uuid"
 	"strings"
@@ -65,6 +67,16 @@ func (s *GormInteractionStore) DB() *gorm.DB {
 		return nil
 	}
 	return s.db
+}
+
+func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.PendingRequest, pendingID string) error {
+	if s == nil || s.db == nil || req.TenantID == 0 || strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(pendingID) == "" {
+		return ErrCapabilityUnavailable
+	}
+	hash := sha256.Sum256(req.Args)
+	expires := time.Now().Add(10 * time.Minute)
+	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RequestID, OwnerID: req.UserID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), Status: "pending", ExpiresAt: &expires}
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 
 func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerID, runID string) ([]workbench.InteractionDecision, error) {
@@ -255,6 +267,13 @@ func NewInteractionService(store InteractionStore, steer SteerPort, cancel Cance
 }
 
 func NewInteractionServiceWithApproval(store InteractionStore, steer SteerPort, cancel CancelPort, gate *approval.Gate) *Service {
+	if gate != nil {
+		if durable, ok := store.(interface {
+			CreatePending(context.Context, approval.PendingRequest, string) error
+		}); ok {
+			gate.SetPendingObserver(durable.CreatePending)
+		}
+	}
 	return &Service{store: store, steer: steer, cancel: cancel, approval: gate}
 }
 
