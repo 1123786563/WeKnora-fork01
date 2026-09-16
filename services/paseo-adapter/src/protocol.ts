@@ -13,7 +13,7 @@ export interface StartCommand {
 }
 
 export interface PaseoPort {
-  create(input: { cwd: string; prompt: string; provider: string }): Promise<{ id: string }>;
+  create(input: { cwd: string; prompt: string; provider: string }, options?: { signal?: AbortSignal }): Promise<{ id: string }>;
   observe(id: string): Promise<{ state: string }>;
   cancel(id: string): Promise<void>;
 }
@@ -21,6 +21,8 @@ export interface PaseoPort {
 export interface BridgeOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** Trusted server-side admission; callers must not construct this from request JSON. */
+  admit?: (command: StartCommand) => Promise<void>;
 }
 
 export class BridgeError extends Error {
@@ -47,5 +49,8 @@ export function validateStartCommand(command: StartCommand): void {
   }
   if (command.prompt.length > 32_000 || command.provider.length > 256) {
     throw new BridgeError('INVALID_COMMAND', 'command exceeds size limit');
+  }
+  if ([command.commandID, command.runID, command.attemptID, command.targetID, command.workspaceRef].some(value => value.length > 512)) {
+    throw new BridgeError('INVALID_COMMAND', 'identifier exceeds size limit');
   }
 }

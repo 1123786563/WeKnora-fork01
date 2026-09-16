@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "operation": "start",
+  "payload": {
+    "commandID": "cmd-1",
+    "runID": "run-1",
+    "attemptID": "attempt-1",
+    "targetID": "target-1",
+    "workspaceRef": "workspace-1",
+    "prompt": "hello",
+    "provider": "openai/gpt-5",
+    "epoch": 3,
+    "expiresAt": 4102444800000
+  }
+}

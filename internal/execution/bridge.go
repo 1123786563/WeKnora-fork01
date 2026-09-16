@@ -15,26 +15,29 @@ import (
 var ErrBridgeUnavailable = errors.New("execution_bridge_unavailable")
 var ErrBridgeInvalidRequest = errors.New("execution_bridge_invalid_request")
 var ErrBridgeUnauthorized = errors.New("execution_bridge_unauthorized")
+var ErrBridgeProtocol = errors.New("execution_bridge_protocol")
 
 // StartCommand is the versioned, fixed wire contract shared with the TS bridge.
 type StartCommand struct {
-	Version      int    `json:"version"`
-	CommandID    string `json:"command_id"`
-	RunID        string `json:"run_id"`
-	AttemptID    string `json:"attempt_id"`
-	TargetID     string `json:"target_id"`
-	WorkspaceRef string `json:"workspace_ref"`
+	CommandID    string `json:"commandID"`
+	RunID        string `json:"runID"`
+	AttemptID    string `json:"attemptID"`
+	TargetID     string `json:"targetID"`
+	WorkspaceRef string `json:"workspaceRef"`
 	Prompt       string `json:"prompt"`
 	Provider     string `json:"provider"`
 	Epoch        int64  `json:"epoch"`
-	ExpiresAt    int64  `json:"expires_at"`
+	ExpiresAt    int64  `json:"expiresAt"`
 }
 
 type BridgeConfig struct {
-	BaseURL      string
-	ServiceToken string
-	HTTPClient   *http.Client
-	Timeout      time.Duration
+	BaseURL        string
+	ServiceToken   string
+	HTTPClient     *http.Client
+	Timeout        time.Duration
+	VerifyIdentity func(context.Context) error
+	VerifyCommand  func(context.Context, StartCommand) error
+	Authorize      func(context.Context, StartCommand) error
 }
 
 type BridgeClient struct{ config BridgeConfig }
@@ -42,6 +45,18 @@ type BridgeClient struct{ config BridgeConfig }
 type BridgeResponse struct {
 	ID    string `json:"id"`
 	State string `json:"state,omitempty"`
+}
+
+type bridgeEnvelope struct {
+	Version   int             `json:"version"`
+	Operation string          `json:"operation"`
+	Payload   json.RawMessage `json:"payload"`
+}
+
+type bridgeResponseEnvelope struct {
+	Version   int             `json:"version"`
+	Operation string          `json:"operation"`
+	Payload   json.RawMessage `json:"payload"`
 }
 
 func NewBridgeClient(config BridgeConfig) *BridgeClient {
@@ -66,6 +81,9 @@ func (c *BridgeClient) request(ctx context.Context, operation string, payload an
 	if err != nil {
 		return BridgeResponse{}, ErrBridgeInvalidRequest
 	}
+	if len(body) > 1<<20 {
+		return BridgeResponse{}, ErrBridgeInvalidRequest
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, c.config.BaseURL+"/v1/execution/bridge", bytes.NewReader(body))
@@ -85,15 +103,35 @@ func (c *BridgeClient) request(ctx context.Context, operation string, payload an
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return BridgeResponse{}, ErrBridgeUnavailable
 	}
+	var envelope bridgeResponseEnvelope
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil || envelope.Version != 1 || envelope.Operation != operation {
+		return BridgeResponse{}, ErrBridgeProtocol
+	}
 	var out BridgeResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil {
+	payloadDecoder := json.NewDecoder(bytes.NewReader(envelope.Payload))
+	payloadDecoder.DisallowUnknownFields()
+	if err := payloadDecoder.Decode(&out); err != nil {
+		return BridgeResponse{}, ErrBridgeProtocol
+	}
+	if operation == "start" && out.ID == "" {
+		return BridgeResponse{}, ErrBridgeProtocol
+	}
+	if operation == "observe" && out.State == "" {
+		return BridgeResponse{}, ErrBridgeProtocol
+	}
+	if operation == "cancel" {
+		return BridgeResponse{}, nil
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return BridgeResponse{}, ErrBridgeUnavailable
 	}
 	return out, nil
 }
 
 func validateStartCommand(c StartCommand) error {
-	if c.Version != 1 || c.Epoch < 1 || c.ExpiresAt <= time.Now().UnixMilli() || c.Prompt == "" || c.Provider == "" || c.CommandID == "" || c.RunID == "" || c.AttemptID == "" || c.TargetID == "" || c.WorkspaceRef == "" {
+	if c.Epoch < 1 || c.ExpiresAt <= time.Now().UnixMilli() || c.Prompt == "" || c.Provider == "" || c.CommandID == "" || c.RunID == "" || c.AttemptID == "" || c.TargetID == "" || c.WorkspaceRef == "" {
 		return ErrBridgeInvalidRequest
 	}
 	if len(c.Prompt) > 32000 || len(c.Provider) > 256 {
@@ -105,6 +143,21 @@ func validateStartCommand(c StartCommand) error {
 func (c *BridgeClient) Start(ctx context.Context, command StartCommand) (BridgeResponse, error) {
 	if err := validateStartCommand(command); err != nil {
 		return BridgeResponse{}, err
+	}
+	if c == nil || c.config.BaseURL == "" || c.config.ServiceToken == "" {
+		return BridgeResponse{}, ErrBridgeUnavailable
+	}
+	if c == nil || c.config.VerifyIdentity == nil || c.config.VerifyCommand == nil || c.config.Authorize == nil {
+		return BridgeResponse{}, ErrBridgeUnauthorized
+	}
+	if err := c.config.VerifyIdentity(ctx); err != nil {
+		return BridgeResponse{}, ErrBridgeUnauthorized
+	}
+	if err := c.config.VerifyCommand(ctx, command); err != nil {
+		return BridgeResponse{}, ErrBridgeUnauthorized
+	}
+	if err := c.config.Authorize(ctx, command); err != nil {
+		return BridgeResponse{}, ErrBridgeUnauthorized
 	}
 	result, err := c.request(ctx, "start", command)
 	if err == nil && result.ID == "" {
