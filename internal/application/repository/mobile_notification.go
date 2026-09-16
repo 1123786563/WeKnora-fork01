@@ -269,17 +269,34 @@ func (s *NotificationStore) Ack(ctx context.Context, id, worker string, fence in
 	return result.Error == nil && result.RowsAffected == 1
 }
 
-// Retry releases a leased intent for another attempt. The fence is checked so
-// a stale worker cannot resurrect an intent claimed by a newer worker.
-func (s *NotificationStore) Retry(ctx context.Context, id, worker string, fence int64) bool {
+// NotificationRetryResult distinguishes an expected stale-fence CAS miss from
+// a persistence failure. The worker may suppress only the former when a newer
+// worker has already completed the delivery.
+type NotificationRetryResult struct {
+	Applied bool
+	Err     error
+}
+
+// RetryResult releases a leased intent for another attempt. The fence is
+// checked so a stale worker cannot resurrect an intent claimed by a newer
+// worker. A zero-row update is an expected fence miss; a non-nil Err is a
+// database failure and must remain observable to the caller.
+func (s *NotificationStore) RetryResult(ctx context.Context, id, worker string, fence int64) NotificationRetryResult {
 	if s == nil || s.db == nil || id == "" || worker == "" || fence <= 0 {
-		return false
+		return NotificationRetryResult{Err: errors.New("invalid_notification_retry")}
 	}
 	now := time.Now().UTC()
 	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
 		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ?", id, worker, fence).
 		Updates(map[string]interface{}{"state": "pending", "lease_owner": "", "lease_until": nil, "updated_at": now})
-	return result.Error == nil && result.RowsAffected == 1
+	return NotificationRetryResult{Applied: result.Error == nil && result.RowsAffected == 1, Err: result.Error}
+}
+
+// Retry is retained as a convenience boolean API for callers that do not need
+// to distinguish a stale CAS miss from a database error.
+func (s *NotificationStore) Retry(ctx context.Context, id, worker string, fence int64) bool {
+	result := s.RetryResult(ctx, id, worker, fence)
+	return result.Err == nil && result.Applied
 }
 
 // IsSent reports whether another fenced worker already completed a delivery.
@@ -287,12 +304,20 @@ func (s *NotificationStore) Retry(ctx context.Context, id, worker string, fence 
 // that case the false result is an expected race outcome rather than a retry
 // failure that should poison the delivery loop.
 func (s *NotificationStore) IsSent(ctx context.Context, id string) bool {
+	sent, _ := s.IsSentResult(ctx, id)
+	return sent
+}
+
+// IsSentResult reports whether another fenced worker completed a delivery and
+// preserves query errors so they cannot be mistaken for a false observation.
+func (s *NotificationStore) IsSentResult(ctx context.Context, id string) (bool, error) {
 	if s == nil || s.db == nil || id == "" {
-		return false
+		return false, errors.New("invalid_notification_is_sent")
 	}
 	var n int64
-	return s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
-		Where("id = ? AND state = 'sent'", id).Count(&n).Error == nil && n == 1
+	err := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where("id = ? AND state = 'sent'", id).Count(&n).Error
+	return n == 1, err
 }
 
 // RevalidateDelivery is the mandatory final authorization seam for a

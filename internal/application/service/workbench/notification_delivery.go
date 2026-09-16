@@ -94,15 +94,11 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 			w.afterClaim(ctx, delivery)
 		}
 		if !w.store.RevalidateDelivery(ctx, delivery, w.worker) {
-			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && !w.store.IsSent(ctx, delivery.ID) && firstErr == nil {
-				firstErr = fmt.Errorf("notification_delivery_retry_fence_lost:%s", delivery.ID)
-			}
+			firstErr = firstNonNil(firstErr, w.releaseDelivery(ctx, delivery))
 			continue
 		}
 		if err := w.provider.Send(ctx, delivery); err != nil {
-			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
-				firstErr = fmt.Errorf("notification_delivery_retry_fence_lost:%s: %w", delivery.ID, err)
-			}
+			firstErr = firstNonNil(firstErr, w.releaseDeliveryWithCause(ctx, delivery, err))
 			continue
 		}
 		if !w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
@@ -110,6 +106,44 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 		}
 	}
 	return firstErr
+}
+
+func firstNonNil(existing, next error) error {
+	if existing != nil {
+		return existing
+	}
+	return next
+}
+
+// releaseDelivery reports persistence failures, while treating a zero-row
+// RetryResult as an expected stale-worker outcome only when IsSentResult
+// positively confirms that a newer worker already completed the row.
+func (w *NotificationDeliveryWorker) releaseDelivery(ctx context.Context, d repository.NotificationDelivery) error {
+	return w.releaseDeliveryWithCause(ctx, d, nil)
+}
+
+func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Context, d repository.NotificationDelivery, cause error) error {
+	result := w.store.RetryResult(ctx, d.ID, w.worker, d.Fence)
+	if result.Err != nil {
+		if cause != nil {
+			return fmt.Errorf("notification_delivery_retry_persist:%s: %w: %v", d.ID, result.Err, cause)
+		}
+		return fmt.Errorf("notification_delivery_retry_persist:%s: %w", d.ID, result.Err)
+	}
+	if result.Applied {
+		return nil
+	}
+	sent, err := w.store.IsSentResult(ctx, d.ID)
+	if err != nil {
+		return fmt.Errorf("notification_delivery_retry_observe:%s: %w", d.ID, err)
+	}
+	if sent {
+		return nil
+	}
+	if cause != nil {
+		return fmt.Errorf("notification_delivery_retry_fence_lost:%s: %w", d.ID, cause)
+	}
+	return fmt.Errorf("notification_delivery_retry_fence_lost:%s", d.ID)
 }
 
 // Start runs the delivery loop in the same lifecycle as projection. Provider

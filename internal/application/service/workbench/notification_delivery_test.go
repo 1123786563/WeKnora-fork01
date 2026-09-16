@@ -245,3 +245,20 @@ func TestNotificationDeliveryReportsLostRetryFence(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "retry_fence_lost")
 }
+
+func TestNotificationDeliveryDoesNotMaskRetryDatabaseError(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "retry-database-error-device")
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	provider := notificationProviderFunc(func(_ context.Context, _ repository.NotificationDelivery) error {
+		// The provider has already been called and the delivery is still leased.
+		// Closing the underlying connection makes the following Retry fail with a
+		// real persistence error, rather than an expected zero-row fence miss.
+		_ = sqlDB.Close()
+		return fmt.Errorf("provider_unavailable_after_close")
+	})
+	worker := NewNotificationDeliveryWorker(store, provider, "retry-database-error-worker")
+	err = worker.RunOnce(context.Background(), 1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "notification_delivery_retry_persist")
+}
