@@ -3,15 +3,18 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
@@ -37,7 +40,8 @@ type AuthHandler struct {
 	// (POST /auth/register-by-invite). When nil — e.g. legacy test
 	// fixtures — the share-link endpoints respond 503 rather than
 	// blocking the rest of the auth surface.
-	invitationSvc interfaces.TenantInvitationService
+	invitationSvc  interfaces.TenantInvitationService
+	mobileExchange *repository.MobileExchangeStore
 }
 
 // NewAuthHandler creates a new auth handler instance with the provided services
@@ -74,6 +78,52 @@ func NewAuthHandler(configInfo *config.Config,
 		systemSettingSvc: systemSettingSvc,
 		invitationSvc:    invitationSvc,
 	}
+}
+
+// SetMobileExchangeStore wires the native OIDC one-time exchange store.
+func (h *AuthHandler) SetMobileExchangeStore(store *repository.MobileExchangeStore) {
+	h.mobileExchange = store
+}
+
+// MobileOIDCExchange consumes a native callback code and mints normal product
+// credentials. Bearer tokens are returned only by this POST response.
+func (h *AuthHandler) MobileOIDCExchange(c *gin.Context) {
+	var req struct {
+		Code         string `json:"code"`
+		State        string `json:"state"`
+		RedirectURI  string `json:"redirect_uri"`
+		CodeVerifier string `json:"code_verifier"`
+	}
+	if h.mobileExchange == nil || h.userService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "native OIDC exchange unavailable"})
+		return
+	}
+	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Code) == "" || strings.TrimSpace(req.State) == "" || strings.TrimSpace(req.RedirectURI) == "" || strings.TrimSpace(req.CodeVerifier) == "" || c.Query("token") != "" || c.Query("access_token") != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid native OIDC exchange"})
+		return
+	}
+	challengeSum := sha256.Sum256([]byte(req.CodeVerifier))
+	challenge := base64.RawURLEncoding.EncodeToString(challengeSum[:])
+	subject, err := h.mobileExchange.ConsumeMobileExchange(c.Request.Context(), repository.HashMobileExchangeValue(req.Code), repository.HashMobileExchangeValue(req.State), strings.TrimSpace(req.RedirectURI), challenge, time.Now().UTC())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "invalid native OIDC exchange"})
+		return
+	}
+	user, err := h.userService.GetUserByID(c.Request.Context(), subject)
+	if err != nil || user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "invalid native OIDC exchange"})
+		return
+	}
+	access, refresh, err := h.userService.GenerateTokens(c.Request.Context(), user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to issue credentials"})
+		return
+	}
+	var tenant *types.Tenant
+	if h.tenantService != nil {
+		tenant, _ = h.tenantService.GetTenantByID(c.Request.Context(), user.TenantID)
+	}
+	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{Success: true, Message: "OIDC exchange successful", User: user, ActiveTenant: tenant, Memberships: h.userService.BuildLoginMemberships(c.Request.Context(), user, tenant), Token: access, RefreshToken: refresh}))
 }
 
 // resolveRegistrationMode returns the currently active registration mode.

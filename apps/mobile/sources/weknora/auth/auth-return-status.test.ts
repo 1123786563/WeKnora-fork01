@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import { createAuthState } from '@weknora/domain/mobile';
-import { AUTH_RETURN_REDIRECT, buildCallbackUrl, evaluateAuthReturn } from './auth-return-status';
+import { AUTH_RETURN_REDIRECT, buildCallbackUrl, buildNativeExchangeInput, evaluateAuthReturn } from './auth-return-status';
 
 describe('evaluateAuthReturn', () => {
+  test('builds a POST exchange payload and rejects URL credentials', () => {
+    expect(buildNativeExchangeInput({ code: 'c', state: 's' }, AUTH_RETURN_REDIRECT, 'v')).toEqual({ code: 'c', state: 's', redirect_uri: AUTH_RETURN_REDIRECT, code_verifier: 'v' });
+    expect(buildNativeExchangeInput({ code: 'c', state: 's', access_token: 'bearer' }, AUTH_RETURN_REDIRECT, 'v')).toBeNull();
+  });
   test('accepts a state this app started and consumes it exactly once', () => {
     const state = createAuthState();
     const outcome = evaluateAuthReturn({ state, code: 'c' }, AUTH_RETURN_REDIRECT);

@@ -14,6 +14,17 @@ export type AuthReturnOutcome =
   | { status: 'unknown_state' }
   | { status: 'rejected' };
 
+export interface NativeExchangeInput { code: string; state: string; redirect_uri: string; code_verifier: string }
+
+/** Build the POST-only exchange payload. Credentials in a deep-link URL are rejected. */
+export function buildNativeExchangeInput(params: AuthReturnParams, redirect: string, codeVerifier: string): NativeExchangeInput | null {
+  const code = firstParam(params.code)?.trim() ?? '';
+  const state = firstParam(params.state)?.trim() ?? '';
+  const verifier = codeVerifier.trim();
+  if (!code || !state || !verifier || firstParam(params.token) || firstParam(params.access_token) || firstParam(params.refresh_token)) return null;
+  return { code, state, redirect_uri: redirect, code_verifier: verifier };
+}
+
 function firstParam(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null;
   return typeof value === 'string' ? value : null;

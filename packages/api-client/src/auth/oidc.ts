@@ -29,6 +29,14 @@ export interface OIDCExchangeResponse {
 
 export type AuthRequest = (input: ClientRequest) => Promise<unknown>;
 
+export interface NativeOIDCExchangeRequest { code: string; state: string; redirect_uri: string; code_verifier: string }
+
+function requireNonEmpty(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${field} is required`);
+  return trimmed;
+}
+
 export function createOIDCApi(request: AuthRequest) {
   return {
     async config(): Promise<OIDCConfigResponse> {
@@ -45,6 +53,17 @@ export function createOIDCApi(request: AuthRequest) {
      */
     async exchange(_code: string, _state: string, _redirectURI: string): Promise<OIDCExchangeResponse> {
       throw new Error('OIDC_EXCHANGE_UNAVAILABLE');
+    },
+    async exchangeNative(input: NativeOIDCExchangeRequest): Promise<OIDCExchangeResponse> {
+      const body = {
+        code: requireNonEmpty(input.code, 'code'),
+        state: requireNonEmpty(input.state, 'state'),
+        redirect_uri: requireNonEmpty(input.redirect_uri, 'redirect_uri'),
+        code_verifier: requireNonEmpty(input.code_verifier, 'code_verifier'),
+      };
+      const response = await request({ method: 'POST', path: '/api/v1/auth/mobile/exchange', body });
+      if (!response || typeof response !== 'object') throw new Error('OIDC_EXCHANGE_INVALID_RESPONSE');
+      return response as OIDCExchangeResponse;
     },
   };
 }
