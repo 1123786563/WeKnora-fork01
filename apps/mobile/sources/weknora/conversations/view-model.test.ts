@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createConversationViewModel, createProductConversationViewModel, createSendController } from './view-model.ts';
+import { createProductAuthSession } from '@weknora/api-client';
+import { createConversationViewModel, createProductConversationViewModel, createProductExecutionApi, createSendController } from './view-model.ts';
 
 test('failed send keeps the draft and releases the busy lock', async () => {
   const vm = createSendController(async () => { throw new Error('offline'); });
@@ -107,4 +108,28 @@ test('cancel and steer fence late responses after a scope switch', async () => {
   resolve();
   await assert.rejects(pending, /SCOPE_CHANGED/);
   assert.equal(calls.length, 1);
+});
+
+test('product command and approval controls use the real authenticated API adapter', async () => {
+  const requests: any[] = [];
+  const credentials = { read: async () => ({ kind: 'bearer' as const, accessToken: 'access' }), write: async () => undefined, clear: async () => undefined };
+  const authSession = createProductAuthSession({ baseURL: 'https://api.example', credentials, transport: { send: async (request: any) => {
+    requests.push(request);
+    if (request.url.includes('/tool-approvals/')) return { status: 200, headers: {}, body: { success: true } };
+    return { status: 200, headers: {}, body: { success: true, data: { run_id: 'run-1', action: request.body.action } } };
+  } } });
+  const api = createProductExecutionApi({
+    origin: 'https://api.example',
+    credential: { kind: 'bearer', accessToken: 'access' },
+    scope: { capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any,
+    authSession,
+  });
+  await api.command('run-1', { action: 'cancel', expected_revision: 4 });
+  await api.command('run-1', { action: 'steer', text: 'continue', expected_revision: 5 });
+  await api.decide!('p-1', { action: 'approve', expected_revision: 6 });
+  assert.deepEqual(requests.map((request) => ({ path: new URL(request.url).pathname, body: request.body, authorization: request.headers.authorization })), [
+    { path: '/api/v1/workbench/executions/run-1/commands', body: { action: 'cancel', expected_revision: 4 }, authorization: 'Bearer access' },
+    { path: '/api/v1/workbench/executions/run-1/commands', body: { action: 'steer', text: 'continue', expected_revision: 5 }, authorization: 'Bearer access' },
+    { path: '/api/v1/agent/tool-approvals/p-1', body: { decision: 'approve', expected_revision: 6 }, authorization: 'Bearer access' },
+  ]);
 });
