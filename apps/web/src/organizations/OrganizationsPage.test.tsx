@@ -246,6 +246,24 @@ test('create header button opens a modal and the create API is called on submit'
   assert.equal((calls.create[0] as { description: string }).description, '描述');
 });
 
+test('blank create names show the Vue validation warning instead of failing silently', async () => {
+  const { client, calls } = clientWith([ownerOrg]);
+  const root = await mountPage(client);
+  await click(buttonWithLabel(root, '创建共享空间'));
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected create modal');
+  const form = dialog.querySelector('form');
+  assert.ok(form, 'expected create form');
+  await submitForm(form as HTMLFormElement);
+
+  assert.equal(calls.create.length, 0, 'blank names must not call the create API');
+  const validationToast = root.querySelector('[role="status"]');
+  assert.ok(validationToast, 'Vue shows a validation warning through MessagePlugin');
+  assert.match(validationToast?.textContent ?? '', /请输入共享空间名称/);
+  assert.match(validationToast?.className ?? '', /text-\[#faad14\]/, 'validation should use warning styling');
+});
+
 test('list failure renders an error state and retry recovers without the empty state', async () => {
   let attempts = 0;
   const { client } = clientWith([ownerOrg]);

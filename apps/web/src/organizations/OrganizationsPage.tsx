@@ -246,7 +246,7 @@ function skeletonCard(key: string) {
   );
 }
 
-type ToastState = { tone: 'success' | 'error'; text: string } | null;
+type ToastState = { tone: 'success' | 'error' | 'warning'; text: string } | null;
 type DetailFeedKey = 'members' | 'requests' | 'shares' | 'agents';
 type DetailFeedState = { status: 'idle' | 'loading' | 'ready' | 'error'; message?: string };
 const idleDetailFeeds: Record<DetailFeedKey, DetailFeedState> = {
@@ -307,7 +307,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const locale = currentLocale();
   const organizationsApi = client.identity.organizations;
 
-  function showToast(tone: 'success' | 'error', text: string) { setToast({ tone, text }); }
+  function showToast(tone: 'success' | 'error' | 'warning', text: string) { setToast({ tone, text }); }
 
   useEffect(() => {
     if (!toast) return;
@@ -528,7 +528,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function submitCreate(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (!canManageOrg || !formName.trim()) return;
+    if (!canManageOrg) return;
+    if (!formName.trim()) {
+      setSettingsSection('basic');
+      showToast('warning', t(locale, 'organization.nameRequired'));
+      return;
+    }
     setSaving(true);
     try {
       await organizationsApi.create({ name: formName.trim(), description: formDescription.trim(), ...(formAvatar ? { avatar: formAvatar } : {}) });
@@ -542,7 +547,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function submitBasic(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settingsOrg || !settingsCanManage || !formName.trim()) return;
+    if (!settingsOrg || !settingsCanManage) return;
+    if (!formName.trim()) {
+      setSettingsSection('basic');
+      showToast('warning', t(locale, 'organization.nameRequired'));
+      return;
+    }
     setSaving(true);
     try {
       await organizationsApi.update(settingsOrg.id, { name: formName.trim(), description: formDescription.trim() });
