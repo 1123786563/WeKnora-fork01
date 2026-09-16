@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -33,6 +34,12 @@ type WorkbenchReadHandler struct {
 	runs      OwnedRunReader
 	snapshots WorkbenchSnapshotReader
 }
+
+const (
+	workbenchEventPageSize = 256
+	workbenchPollInterval  = 250 * time.Millisecond
+	workbenchHeartbeat     = 15 * time.Second
+)
 
 func NewWorkbenchReadHandler(runs OwnedRunReader, snapshots WorkbenchSnapshotReader) *WorkbenchReadHandler {
 	return &WorkbenchReadHandler{runs: runs, snapshots: snapshots}
@@ -112,7 +119,9 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 		}
 		cursor = parsed
 	}
-	events, _, err := h.snapshots.ReadRunEvents(c.Request.Context(), key, cursor, 256)
+	// Perform the first read before committing the response. This preserves the
+	// HTTP 409 cursor-expired contract for reconnects whose history was trimmed.
+	events, _, err := h.snapshots.ReadRunEvents(c.Request.Context(), key, cursor, workbenchEventPageSize)
 	if err != nil {
 		if errors.Is(err, agentruntime.ErrCursorExpired) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -125,19 +134,98 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
+	if !flushWorkbenchEvents(c, events) {
+		return
+	}
 	for _, event := range events {
-		if err := writeWorkbenchSSE(c.Writer, event.Seq, event.Type, event.Payload); err != nil {
-			return
-		}
-		if f, ok := c.Writer.(http.Flusher); ok {
-			f.Flush()
+		if event.Seq > cursor {
+			cursor = event.Seq
 		}
 	}
-	// A short heartbeat keeps proxies from expiring a newly-opened stream;
-	// clients reconnect using Last-Event-ID. It is intentionally bounded so a
-	// request disconnect never owns a goroutine after this handler returns.
-	if len(events) == 0 {
-		_, _ = io.WriteString(c.Writer, ": heartbeat\n\n")
+
+	// The loop drains every retained page, then waits for live events while the
+	// run is non-terminal. Request cancellation exits the loop; it never calls
+	// a run mutation or cancels the durable worker.
+	poll := time.NewTicker(workbenchPollInterval)
+	defer poll.Stop()
+	heartbeat := time.NewTicker(workbenchHeartbeat)
+	defer heartbeat.Stop()
+	for {
+		snapshot, snapshotErr := h.snapshots.ReadRunSnapshot(c.Request.Context(), key)
+		if snapshotErr != nil {
+			writeWorkbenchStreamError(c, cursor, snapshotErr)
+			return
+		}
+		if isTerminalWorkbenchStatus(snapshot.Execution.RunStatus) && len(events) < workbenchEventPageSize {
+			return
+		}
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-heartbeat.C:
+			_, _ = io.WriteString(c.Writer, ": heartbeat\n\n")
+			flushWorkbenchWriter(c)
+		case <-poll.C:
+			next, _, readErr := h.snapshots.ReadRunEvents(c.Request.Context(), key, cursor, workbenchEventPageSize)
+			if readErr != nil {
+				writeWorkbenchStreamError(c, cursor, readErr)
+				return
+			}
+			if len(next) == 0 {
+				events = nil // the current cursor is fully drained
+				continue
+			}
+			if !flushWorkbenchEvents(c, next) {
+				return
+			}
+			for _, event := range next {
+				if event.Seq > cursor {
+					cursor = event.Seq
+				}
+			}
+			events = next
+		}
+	}
+}
+
+func isTerminalWorkbenchStatus(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+func flushWorkbenchEvents(c *gin.Context, events []workbench.ExecutionEvent) bool {
+	for _, event := range events {
+		if err := writeWorkbenchSSE(c.Writer, event.Seq, event.Type, event.Payload); err != nil {
+			return false
+		}
+		flushWorkbenchWriter(c)
+	}
+	return true
+}
+
+func flushWorkbenchWriter(c *gin.Context) {
+	if f, ok := c.Writer.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func writeWorkbenchStreamError(c *gin.Context, cursor int64, err error) {
+	seq := cursor
+	if seq < 1 {
+		seq = 1
+	}
+	code := "stream_error"
+	if errors.Is(err, agentruntime.ErrCursorExpired) {
+		code = "cursor_expired"
+	}
+	payload, marshalErr := json.Marshal(map[string]string{"code": code, "message": err.Error()})
+	if marshalErr == nil {
+		_ = writeWorkbenchSSE(c.Writer, seq, "error", payload)
+		flushWorkbenchWriter(c)
 	}
 }
 
