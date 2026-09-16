@@ -28,6 +28,48 @@ type NotificationReceiptProvider interface {
 	SendReceipt(context.Context, repository.NotificationDelivery) (pushnotification.PushReceipt, error)
 }
 
+// NotificationDeviceRevoker invalidates the device registration that produced
+// a permanent provider failure. Implementations must scope the operation to
+// the tenant, owner, and environment carried by the durable intent.
+type NotificationDeviceRevoker interface {
+	RevokeForTenant(context.Context, uint64, string, string, int64) error
+}
+
+// NotificationTokenResolver is used only by direct providers (for example
+// Expo). The gateway provider does not need token material because it resolves
+// the tenant/device tuple server-side.
+type NotificationTokenResolver interface {
+	GetActiveForTenant(context.Context, uint64, string, string) (repository.DeviceRegistration, error)
+}
+
+// PushNotificationProvider adapts the provider-neutral direct push API to the
+// durable delivery contract. Token decryption remains in the composition
+// root; notification intents and leases never contain plaintext tokens.
+type PushNotificationProvider struct {
+	provider pushnotification.PushProvider
+	resolve  func(context.Context, repository.NotificationDelivery) (string, error)
+}
+
+func NewPushNotificationProvider(provider pushnotification.PushProvider, resolve func(context.Context, repository.NotificationDelivery) (string, error)) *PushNotificationProvider {
+	return &PushNotificationProvider{provider: provider, resolve: resolve}
+}
+
+func (p *PushNotificationProvider) Send(ctx context.Context, d repository.NotificationDelivery) error {
+	_, err := p.SendReceipt(ctx, d)
+	return err
+}
+
+func (p *PushNotificationProvider) SendReceipt(ctx context.Context, d repository.NotificationDelivery) (pushnotification.PushReceipt, error) {
+	if p == nil || p.provider == nil || p.resolve == nil {
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Err: errors.New("direct push provider is not configured")}
+	}
+	token, err := p.resolve(ctx, d)
+	if err != nil {
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "InvalidRegistration", Revoke: true, Retry: false, Err: err}
+	}
+	return p.provider.Send(ctx, token, pushnotification.PushPayload{Title: d.Intent.Kind, Body: d.Intent.Kind, RunID: d.Intent.RunID, EventID: d.Intent.EventID})
+}
+
 // HTTPNotificationProvider is the server-side adapter for the mobile push
 // gateway. The gateway resolves the encrypted token from the tenant/device
 // tuple; token material never enters the notification intent or this process's
@@ -73,15 +115,21 @@ func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.Notifi
 		ID        string `json:"id"`
 		ReceiptID string `json:"receipt_id"`
 		Status    string `json:"status"`
+		Code      string `json:"code"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode}
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode, RetryAfter: pushnotification.ParseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		code := "UnknownTransport"
+		if body.Code != "" {
+			code = body.Code
+		}
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			code = "InvalidProviderToken"
+			if body.Code == "" {
+				code = "InvalidProviderToken"
+			}
 		}
 		revoke, retry := pushnotification.ClassifyPushFailure(code)
 		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: code, Revoke: revoke, Retry: retry, StatusCode: resp.StatusCode}
@@ -101,10 +149,11 @@ func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.Notifi
 // revoke/member-removal TOCTOU window; invalidated deliveries are retried
 // without invoking the provider.
 type NotificationDeliveryWorker struct {
-	store    *repository.NotificationStore
-	provider NotificationProvider
-	worker   string
-	lease    time.Duration
+	store         *repository.NotificationStore
+	provider      NotificationProvider
+	worker        string
+	lease         time.Duration
+	deviceRevoker NotificationDeviceRevoker
 	// afterClaim is an optional in-process seam used by deterministic
 	// concurrency tests. Production workers leave it nil; when set it runs
 	// after a durable lease is acquired and before final authorization.
@@ -113,6 +162,12 @@ type NotificationDeliveryWorker struct {
 
 func NewNotificationDeliveryWorker(store *repository.NotificationStore, provider NotificationProvider, worker string) *NotificationDeliveryWorker {
 	return &NotificationDeliveryWorker{store: store, provider: provider, worker: worker, lease: time.Minute}
+}
+
+func NewNotificationDeliveryWorkerWithRevoker(store *repository.NotificationStore, provider NotificationProvider, worker string, revoker NotificationDeviceRevoker) *NotificationDeliveryWorker {
+	w := NewNotificationDeliveryWorker(store, provider, worker)
+	w.deviceRevoker = revoker
+	return w
 }
 
 func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) error {
@@ -187,6 +242,11 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 			return fmt.Errorf("notification_delivery_expire_persist:%s: %w: %v", d.ID, result.Err, cause)
 		}
 		if result.Applied {
+			if w.deviceRevoker != nil {
+				if revokeErr := w.deviceRevoker.RevokeForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, 0); revokeErr != nil {
+					return fmt.Errorf("notification_device_revoke:%s: %w", d.ID, revokeErr)
+				}
+			}
 			return nil
 		}
 	}

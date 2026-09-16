@@ -12,6 +12,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -174,6 +175,43 @@ func TestHTTPNotificationProviderSendsScopedIdentityAndFailsClosed(t *testing.T)
 		t.Fatal("provider request was not observed")
 	}
 	require.Error(t, NewHTTPNotificationProvider("").Send(context.Background(), repository.NotificationDelivery{}))
+}
+
+func TestHTTPNotificationProviderPropagatesRetryAfter(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		header string
+		check  func(time.Duration) bool
+	}{
+		{name: "seconds", header: "7", check: func(got time.Duration) bool { return got == 7*time.Second }},
+		{name: "http-date", header: time.Now().Add(3 * time.Second).UTC().Format(http.TimeFormat), check: func(got time.Duration) bool { return got > 0 && got <= 3*time.Second }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Retry-After", tc.header)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer srv.Close()
+			_, err := NewHTTPNotificationProvider(srv.URL).SendReceipt(context.Background(), repository.NotificationDelivery{})
+			var providerErr *pushnotification.ProviderError
+			require.ErrorAs(t, err, &providerErr)
+			require.True(t, providerErr.Retry)
+			require.True(t, tc.check(providerErr.RetryAfter), "retry-after=%s", providerErr.RetryAfter)
+		})
+	}
+}
+
+func TestNotificationDeliveryPermanentProviderErrorRevokesDevice(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "permanent-device")
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithRevoker(store, &notificationProviderSpy{}, "permanent-worker", revoker)
+	deliveries, err := store.Claim(context.Background(), "permanent-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "DeviceNotRegistered", Revoke: true, Retry: false})
+	require.NoError(t, err)
+	_, getErr := revoker.GetActiveForTenant(context.Background(), 1, "u1", "permanent-device")
+	require.ErrorIs(t, getErr, repository.ErrMobileDeviceNotFound)
 }
 
 func deliveryTestAdmission(runID string) agentruntime.Admission {

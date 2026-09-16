@@ -136,6 +136,7 @@ func OpenConnectorRuntimeIDs() []string {
 // An empty endpoint keeps the durable outbox active while failing provider
 // sends closed; credentials are read from the environment and never logged.
 type MobileNotificationConfig struct {
+	Provider    string        `yaml:"provider" json:"provider"`
 	ProviderURL string        `yaml:"provider_url" json:"provider_url"`
 	AccessToken string        `yaml:"access_token" json:"-"`
 	RetryBase   time.Duration `yaml:"retry_base" json:"retry_base"`
@@ -837,6 +838,9 @@ func applyMobileNotificationEnvOverrides(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")); value != "" {
 		cfg.MobileNotification.ProviderURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER")); value != "" {
+		cfg.MobileNotification.Provider = value
 	}
 	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN")); value != "" {
 		cfg.MobileNotification.AccessToken = value

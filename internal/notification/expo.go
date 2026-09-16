@@ -84,7 +84,7 @@ func (p *ExpoProvider) Send(ctx context.Context, token string, payload PushPaylo
 		return PushReceipt{}, &ProviderError{Code: "UnknownTransport", Retry: true, StatusCode: resp.StatusCode, Err: readErr}
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return PushReceipt{}, &ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return PushReceipt{}, &ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		code := "UnknownTransport"
@@ -136,7 +136,10 @@ func firstTicket(raw json.RawMessage) (expoTicket, error) {
 	}
 	return many[0], nil
 }
-func parseRetryAfter(raw string) time.Duration {
+
+// ParseRetryAfter accepts the two HTTP Retry-After forms and returns zero for
+// invalid, expired, or negative values. Callers apply their own upper bound.
+func ParseRetryAfter(raw string) time.Duration {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0
