@@ -125,6 +125,19 @@ test('model debug clears thinking after selecting a model that does not support 
   assert.equal(container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute('aria-checked'), 'false');
 });
 
+test('model debug reselects an available type when refreshed models remove the active type', async () => {
+  const container = await mount(clientWithDebug(), [qwenModel, rerankModel]);
+  assert.match(container.textContent ?? '', /qwen3-8b/);
+
+  await act(async () => {
+    mountedRoot?.render(<ModelDebugPanel client={clientWithDebug()} models={[rerankModel]} onClose={() => undefined} />);
+  });
+
+  assert.match(container.textContent ?? '', /rank/);
+  assert.match(container.textContent ?? '', /候选文档/);
+  assert.equal(container.querySelector<HTMLButtonElement>('[role="combobox"]')?.disabled, false);
+});
+
 test('model debug rerank asks for documents and ranks only with both inputs', async () => {
   const container = await mount(clientWithDebug(), [rerankModel]);
   const text = container.textContent ?? '';

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, NumberInput, Status, Switch, Textarea } from "@weknora/ui";
@@ -122,6 +122,21 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
     setResult(null);
     setHistory([]);
   }
+  useEffect(() => {
+    if (availableTypes.length === 0) {
+      setSelectedId("");
+      return;
+    }
+
+    const nextType = availableTypes.includes(selectedType) ? selectedType : availableTypes[0];
+    if (nextType !== selectedType) setSelectedType(nextType);
+
+    const nextModels = models.filter((item) => modelType(item) === nextType);
+    if (!nextModels.some((item) => item.id === selectedId)) {
+      setSelectedId(nextModels[0]?.id ?? "");
+    }
+  }, [availableTypes, models, selectedId, selectedType]);
+
   function selectType(type: ModelType) {
     if (selectedType === type) return;
     setSelectedType(type);
