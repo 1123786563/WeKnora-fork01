@@ -1,5 +1,6 @@
 import type { KnowledgeDocument } from '@weknora/api-client';
 import { createElement, type ReactElement } from 'react';
+import * as XLSX from 'xlsx';
 import { previewKindForFile, previewStatus, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
 export interface KnowledgeDocumentPreviewModel {
@@ -14,11 +15,20 @@ export interface KnowledgeDocumentPreviewModel {
   fileName: string;
 }
 
-export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'audio' | 'video';
+export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'audio' | 'video' | 'spreadsheet';
 export type PreviewBody = string | Blob | ArrayBuffer;
 
+export interface SpreadsheetPreviewSheet {
+  name: string;
+  rows: string[][];
+}
+
+export interface SpreadsheetPreviewModel {
+  sheets: SpreadsheetPreviewSheet[];
+}
+
 export function isInlinePreviewKind(kind: KnowledgePreviewKind): kind is InlinePreviewKind {
-  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video';
+  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'spreadsheet';
 }
 
 export async function readPreviewText(body: PreviewBody): Promise<string> {
@@ -48,17 +58,53 @@ export function previewBodyAsBlob(body: PreviewBody, contentType?: string): Blob
   return new Blob([body], { type: contentType || 'application/octet-stream' });
 }
 
+export async function readSpreadsheetPreview(body: PreviewBody, fileName: string): Promise<SpreadsheetPreviewModel> {
+  let input: string | ArrayBuffer;
+  if (typeof body === 'string') input = body;
+  else if (body instanceof ArrayBuffer) input = body;
+  else input = await (body as Blob).arrayBuffer();
+
+  const workbook = typeof input === 'string'
+    ? XLSX.read(input, { type: 'string' })
+    : XLSX.read(input, { type: 'array' });
+  return {
+    sheets: workbook.SheetNames.map((name) => {
+      const sheet = workbook.Sheets[name];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: false })
+        .map((row) => row.map((cell) => cell == null ? '' : String(cell)));
+      return { name, rows };
+    }),
+  };
+}
+
 export function DocumentPreviewContent({
   kind,
   text,
   url,
   fileName,
+  spreadsheet,
 }: {
   kind: InlinePreviewKind;
   text?: string;
   url?: string;
   fileName?: string;
+  spreadsheet?: SpreadsheetPreviewModel;
 }): ReactElement {
+  if (kind === 'spreadsheet') {
+    return createElement('div', { className: 'wk-preview-spreadsheet', 'aria-label': `${fileName || 'Document'} content` },
+      ...(spreadsheet?.sheets || []).map((sheet) => createElement('section', { className: 'mb-4 last:mb-0', key: sheet.name },
+        createElement('h3', { className: 'mb-2 text-sm font-semibold text-ink' }, sheet.name),
+        createElement('div', { className: 'overflow-x-auto rounded-control border border-line-soft' },
+          createElement('table', { className: 'min-w-full border-collapse text-left text-[12px] text-ink' },
+            sheet.rows.length > 0 ? createElement('thead', { className: 'bg-surface-muted' }, createElement('tr', null,
+              ...sheet.rows[0].map((cell, index) => createElement('th', { className: 'border-b border-line-soft px-3 py-2 font-semibold', key: `${sheet.name}-head-${index}` }, cell)))) : null,
+            sheet.rows.length > 1 ? createElement('tbody', null, ...sheet.rows.slice(1).map((row, rowIndex) => createElement('tr', { className: 'border-b border-line-soft last:border-b-0', key: `${sheet.name}-row-${rowIndex}` },
+              ...row.map((cell, cellIndex) => createElement('td', { className: 'px-3 py-2 align-top', key: `${sheet.name}-${rowIndex}-${cellIndex}` }, cell))))) : null,
+          ),
+        ),
+      )),
+    );
+  }
   if (kind === 'text' || kind === 'markdown') {
     return createElement('pre', { className: 'wk-preview-text', 'aria-label': `${fileName || 'Document'} content` }, text || '');
   }

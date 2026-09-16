@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import * as React from 'react';
+import * as XLSX from 'xlsx';
 import { renderToStaticMarkup } from 'react-dom/server';
 import test, { afterEach } from 'node:test';
 import { act } from 'react';
@@ -320,6 +321,32 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
   assert.ok(mergedSurface?.querySelector('h1'), 'Vue renders merged Markdown headings instead of exposing raw markers');
   assert.ok(mergedSurface?.querySelector('ul'), 'Vue renders merged Markdown lists instead of plain text');
   assert.match(mergedSurface?.className ?? '', /bg-surface-muted/, 'merged code blocks use the project surface token');
+});
+
+test('completed Excel detail opens the Vue-style inline worksheet preview', async () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Name', 'Count'],
+    ['Alpha', 2],
+  ]), 'Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Status'],
+    ['Ready'],
+  ]), 'Details');
+  const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Report.xlsx', source: 'file', file_type: 'xlsx', parse_status: 'completed',
+  }));
+  (client as any).knowledgeBases.documents.preview = async () => ({ body: bytes, headers: {}, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  const container = await mountDetail(client);
+  const body = container.ownerDocument.body;
+  assert.ok(Array.from(body.querySelectorAll('button')).some((button) => button.textContent === '预览'));
+  assert.ok(body.querySelector('.wk-preview-spreadsheet table'));
+  assert.ok(body.textContent?.includes('Summary'));
+  assert.ok(body.textContent?.includes('Alpha'));
+  assert.ok(body.textContent?.includes('Details'));
+  assert.equal(body.querySelectorAll('.wk-preview-spreadsheet thead th').length, 3);
 });
 
 test('document preview ignores delayed text from a document that was replaced', async () => {
