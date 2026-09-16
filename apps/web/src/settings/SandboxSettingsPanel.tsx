@@ -1880,7 +1880,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
                 return (
                   <li key={id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
                     {onOpenSession ? (
-                      <button type="button" className="wk-sandbox-inventory-row" onClick={() => onOpenSession(id)}>
+                      <button type="button" className="wk-sandbox-inventory-row" onClick={() => { setInventory(null); onOpenSession(id); }}>
                         {label}
                         <span aria-hidden="true" className="font-mono text-[0.8rem] text-muted">›</span>
                       </button>

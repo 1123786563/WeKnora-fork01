@@ -3988,3 +3988,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   remain green. Authenticated paired visual evidence, real backend mutations,
   native Wails interaction, and real Embed streaming remain open or
   `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R417 — Sandbox inventory session navigation
+
+- Fixed a concrete Vue interaction gap in `SandboxSettingsPanel`: selecting an
+  inventory session now closes the right-side occupancy drawer before invoking
+  the host session-navigation callback, matching `SandboxSettings.vue`
+  `openSession` behavior.
+- SandboxSettingsPanel regression now completes `28/28`; this is focused
+  component evidence. Full authenticated browser, real sandbox backend, and
+  Wails interaction evidence remain open or `blocked-env`. No mobile code was
+  modified.
