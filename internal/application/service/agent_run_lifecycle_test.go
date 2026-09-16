@@ -57,6 +57,24 @@ func TestAgentRunLifecycleCancelIsDurable(t *testing.T) {
 		t.Fatalf("cancel calls=%d", len(f.cancelled))
 	}
 }
+
+func TestAgentRunLifecycleRemoteCancelSurvivesCallerDisconnect(t *testing.T) {
+	f := &lifecycleStoreFake{}
+	s := NewAgentRunService(f)
+	called := make(chan bool, 1)
+	s.SetCancelHook(func(ctx context.Context, _ agentruntime.RunKey) error {
+		called <- ctx.Err() == nil
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Cancel(ctx, agentruntime.RunKey{TenantID: 1, RunID: "r1"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok := <-called; !ok {
+		t.Fatal("remote cleanup inherited the disconnected request context")
+	}
+}
 func TestAgentRunLifecycleDeleteSessionRuns(t *testing.T) {
 	f := &lifecycleStoreFake{}
 	s := NewAgentRunService(f)

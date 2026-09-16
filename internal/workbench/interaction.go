@@ -23,12 +23,15 @@ var ErrCommandActionMismatch = errors.New("command_action_mismatch")
 // decision. The service fills identity and ownership from its durable record;
 // client supplied kind/args_hash are consistency hints only.
 type InteractionDecision struct {
-	ID               string `json:"id"`
-	DecisionID       string `json:"decision_id"`
-	Kind             string `json:"kind"`
-	Action           string `json:"action"`
-	ArgsHash         string `json:"args_hash"`
-	ExpectedRevision int64  `json:"expected_revision"`
+	ID                string `json:"id"`
+	RunID             string `json:"run_id,omitempty"`
+	DecisionID        string `json:"decision_id"`
+	Kind              string `json:"kind"`
+	Action            string `json:"action"`
+	ArgsHash          string `json:"args_hash"`
+	ExpectedRevision  int64  `json:"expected_revision"`
+	ExternalPendingID string `json:"external_pending_id,omitempty"`
+	CredentialVersion int64  `json:"credential_version,omitempty"`
 }
 
 func ValidateInteractionAction(kind, action string) error {
@@ -48,9 +51,11 @@ func ValidateInteractionAction(kind, action string) error {
 // ExecutionCommand is a closed union. cancel has no payload; steer carries a
 // text payload which is delivered through the existing steer queue.
 type ExecutionCommand struct {
-	Action           string `json:"action"`
-	Text             string `json:"text,omitempty"`
-	ExpectedRevision int64  `json:"expected_revision"`
+	Action            string `json:"action"`
+	Text              string `json:"text,omitempty"`
+	ExpectedRevision  int64  `json:"expected_revision"`
+	ExternalPendingID string `json:"external_pending_id,omitempty"`
+	CredentialVersion int64  `json:"credential_version,omitempty"`
 }
 
 func (c ExecutionCommand) Validate() error {

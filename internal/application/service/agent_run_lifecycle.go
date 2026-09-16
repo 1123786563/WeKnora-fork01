@@ -3,8 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"time"
 )
+
+var ErrRemoteStopUnknown = errors.New("remote_stop_unconfirmed")
 
 type agentRunLifecycleStore interface {
 	CancelRun(context.Context, agentruntime.RunKey, string) error
@@ -30,7 +34,14 @@ func (s *AgentRunService) Cancel(ctx context.Context, key agentruntime.RunKey) e
 		return err
 	}
 	if s.cancelHook != nil {
-		return s.cancelHook(ctx, key)
+		// A disconnected HTTP request must not cancel the durable cleanup. The
+		// product state is already canceled; remote process termination is a
+		// separate, bounded reconciliation step and may remain unknown.
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if hookErr := s.cancelHook(stopCtx, key); hookErr != nil {
+			return fmt.Errorf("%w: %v", ErrRemoteStopUnknown, hookErr)
+		}
 	}
 	return nil
 }

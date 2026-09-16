@@ -46,6 +46,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id"}, // 000057
 	"execution_target_identities": {"credential_version", "external_target_id"},       // 000057
 	"execution_workspaces":        {"target_id", "root_ref"},                          // 000057
+	"workbench_interactions":      {"external_pending_id", "credential_version"},      // 000058
 }
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
@@ -55,8 +56,8 @@ var versionedSQLiteColumns = map[string][]string{
 // continues through 000040 (open-connector 000041-000044) and the Craft
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
-// queue at 000056 and the execution target schema at 000057.
-const expectedSQLiteMigrationVersion = 57
+// queue at 000056 and the execution target schema at 000057 and Paseo control leases at 000058.
+const expectedSQLiteMigrationVersion = 58
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

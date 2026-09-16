@@ -25,7 +25,99 @@ var (
 	ErrInteractionRevoked     = errors.New("interaction_revoked")
 	ErrCapabilityUnavailable  = errors.New("capability_unavailable")
 	ErrCommandRecoveryUnknown = errors.New("command_recovery_unknown")
+	ErrWorkspaceLocked        = errors.New("workspace_locked")
+	ErrWorkspaceLeaseLost     = errors.New("workspace_lease_lost")
 )
+
+type WorkspaceLease struct {
+	TenantID     uint64
+	WorkspaceRef string
+	RunID        string
+	Owner        string
+	Epoch        int64
+	ExpiresAt    time.Time
+}
+
+type WorkspaceLeaseStore interface {
+	AcquireWorkspaceLease(context.Context, uint64, string, string, string, time.Duration) (WorkspaceLease, error)
+	RenewWorkspaceLease(context.Context, WorkspaceLease, string, time.Duration) error
+	ReleaseWorkspaceLease(context.Context, WorkspaceLease, string) error
+}
+
+type workspaceLeaseRow struct {
+	TenantID     uint64 `gorm:"primaryKey"`
+	WorkspaceRef string `gorm:"primaryKey;column:workspace_ref"`
+	RunID, Owner string
+	Epoch        int64
+	ExpiresAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (workspaceLeaseRow) TableName() string { return "execution_workspace_leases" }
+
+// GormWorkspaceLeaseStore persists one fenced lease per tenant/workspace. A
+// stale owner can never release a newer epoch, and expired leases are replaced
+// under a row lock in the same transaction that grants the new owner.
+type GormWorkspaceLeaseStore struct{ db *gorm.DB }
+
+func NewGormWorkspaceLeaseStore(db *gorm.DB) *GormWorkspaceLeaseStore {
+	return &GormWorkspaceLeaseStore{db: db}
+}
+func (s *GormWorkspaceLeaseStore) AcquireWorkspaceLease(ctx context.Context, tenantID uint64, workspaceRef, runID, owner string, ttl time.Duration) (WorkspaceLease, error) {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(workspaceRef) == "" || strings.TrimSpace(runID) == "" || strings.TrimSpace(owner) == "" || ttl <= 0 {
+		return WorkspaceLease{}, ErrWorkspaceLeaseLost
+	}
+	var lease WorkspaceLease
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row workspaceLeaseRow
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND workspace_ref = ?", tenantID, strings.TrimSpace(workspaceRef)).Take(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			row = workspaceLeaseRow{TenantID: tenantID, WorkspaceRef: strings.TrimSpace(workspaceRef), Epoch: 0}
+		} else if err != nil {
+			return err
+		}
+		if row.ExpiresAt.After(time.Now()) {
+			return ErrWorkspaceLocked
+		}
+		row.RunID, row.Owner, row.Epoch, row.ExpiresAt, row.UpdatedAt = strings.TrimSpace(runID), strings.TrimSpace(owner), row.Epoch+1, time.Now().Add(ttl), time.Now()
+		if err == nil {
+			if err := tx.Save(&row).Error; err != nil {
+				return err
+			}
+		} else if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+		lease = WorkspaceLease{TenantID: row.TenantID, WorkspaceRef: row.WorkspaceRef, RunID: row.RunID, Owner: row.Owner, Epoch: row.Epoch, ExpiresAt: row.ExpiresAt}
+		return nil
+	})
+	return lease, err
+}
+func (s *GormWorkspaceLeaseStore) RenewWorkspaceLease(ctx context.Context, lease WorkspaceLease, owner string, ttl time.Duration) error {
+	if s == nil || s.db == nil || ttl <= 0 {
+		return ErrWorkspaceLeaseLost
+	}
+	updated := s.db.WithContext(ctx).Model(&workspaceLeaseRow{}).Where("tenant_id = ? AND workspace_ref = ? AND run_id = ? AND owner = ? AND epoch = ? AND expires_at > CURRENT_TIMESTAMP", lease.TenantID, lease.WorkspaceRef, lease.RunID, strings.TrimSpace(owner), lease.Epoch).Updates(map[string]any{"expires_at": time.Now().Add(ttl), "updated_at": time.Now()})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return ErrWorkspaceLeaseLost
+	}
+	return nil
+}
+func (s *GormWorkspaceLeaseStore) ReleaseWorkspaceLease(ctx context.Context, lease WorkspaceLease, owner string) error {
+	if s == nil || s.db == nil {
+		return ErrWorkspaceLeaseLost
+	}
+	updated := s.db.WithContext(ctx).Model(&workspaceLeaseRow{}).Where("tenant_id = ? AND workspace_ref = ? AND run_id = ? AND owner = ? AND epoch = ?", lease.TenantID, lease.WorkspaceRef, lease.RunID, strings.TrimSpace(owner), lease.Epoch).Updates(map[string]any{"run_id": "", "owner": "", "expires_at": time.Now(), "updated_at": time.Now()})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return ErrWorkspaceLeaseLost
+	}
+	return nil
+}
 
 // InteractionStore is the durable boundary. Implementations must use a
 // tenant+owner predicate and an atomic decision_id/revision compare-and-swap.
@@ -41,6 +133,8 @@ type interactionRow struct {
 	TenantID                           uint64
 	ID, RunID, OwnerID, Kind, ArgsHash string
 	DecisionID, Action, Status         string
+	ExternalPendingID                  string
+	CredentialVersion                  int64
 	ExpectedRevision                   int64
 	ExpiresAt                          *time.Time
 	Revoked                            bool
@@ -51,7 +145,7 @@ type interactionRow struct {
 func (interactionRow) TableName() string { return "workbench_interactions" }
 
 func (r interactionRow) decision() workbench.InteractionDecision {
-	return workbench.InteractionDecision{ID: r.ID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision}
+	return workbench.InteractionDecision{ID: r.ID, RunID: r.RunID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision, ExternalPendingID: r.ExternalPendingID, CredentialVersion: r.CredentialVersion}
 }
 
 // GormInteractionStore is the production persistence adapter. All reads are
@@ -78,7 +172,7 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 	}
 	hash := sha256.Sum256(req.Args)
 	expires := time.Now().Add(10 * time.Minute)
-	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), Status: "pending", ExpiresAt: &expires}
+	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), ExternalPendingID: pendingID, Status: "pending", ExpiresAt: &expires}
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 
@@ -222,6 +316,14 @@ type CancelPort interface {
 	Cancel(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64) error
 }
 
+// RemoteInteractionPort is the narrow Paseo control seam. It is optional for
+// local providers, but when present it receives the durable W05 decision only
+// after the CAS succeeds. Implementations must use external_pending_id and
+// args_hash together; a changed tool payload can never reuse an old approval.
+type RemoteInteractionPort interface {
+	SubmitInteraction(context.Context, uint64, string, string, string, string, string, int64, int64) error
+}
+
 // GormCancelPort is the durable cancel command. It only transitions the
 // authenticated run and fences on its revision; unknown or already-terminal
 // runs are conflicts and never mutate a different run.
@@ -289,10 +391,17 @@ func (p *GormSteerPort) Steer(ctx context.Context, tenantID uint64, ownerID, run
 }
 
 type Service struct {
-	store    InteractionStore
-	steer    SteerPort
-	cancel   CancelPort
-	approval *approval.Gate
+	store             InteractionStore
+	steer             SteerPort
+	cancel            CancelPort
+	approval          *approval.Gate
+	remoteInteraction RemoteInteractionPort
+}
+
+func (s *Service) SetRemoteInteractionPort(port RemoteInteractionPort) {
+	if s != nil {
+		s.remoteInteraction = port
+	}
 }
 
 func NewInteractionService(store InteractionStore, steer SteerPort, cancel CancelPort) *Service {
@@ -377,8 +486,11 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
 	}
 	input.ID = current.ID
+	input.RunID = current.RunID
 	input.Kind = current.Kind
 	input.ArgsHash = current.ArgsHash
+	input.ExternalPendingID = current.ExternalPendingID
+	input.CredentialVersion = current.CredentialVersion
 	result, err := s.store.Decide(ctx, tenant, owner, current.ID, input)
 	if err != nil {
 		return workbench.InteractionDecision{}, err
@@ -390,6 +502,18 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 				_ = compensator.RollbackDecision(ctx, tenant, owner, current.ID, input.DecisionID, result.ExpectedRevision)
 			}
 			return workbench.InteractionDecision{}, err
+		}
+	}
+	if current.Kind == string(workbench.InteractionToolApproval) && s.remoteInteraction != nil && newDecision {
+		externalPendingID := current.ExternalPendingID
+		if externalPendingID == "" {
+			externalPendingID = current.ID
+		}
+		if err := s.remoteInteraction.SubmitInteraction(ctx, tenant, owner, current.RunID, externalPendingID, current.ArgsHash, input.Action, current.CredentialVersion, result.ExpectedRevision); err != nil {
+			if compensator, ok := s.store.(DecisionCompensator); ok {
+				_ = compensator.RollbackDecision(ctx, tenant, owner, current.ID, input.DecisionID, result.ExpectedRevision)
+			}
+			return workbench.InteractionDecision{}, fmt.Errorf("%w: remote interaction: %v", ErrCommandRecoveryUnknown, err)
 		}
 	}
 	return result, nil

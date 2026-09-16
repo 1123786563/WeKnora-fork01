@@ -55,17 +55,17 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 }
 
 // TestWorkbenchSQLiteURLAndLaterMigrationTransaction covers both public SQLite
-// entry forms and makes a synthetic v58 fail after a write. v55 must use its
+// entry forms and makes a synthetic v59 fail after a write. v55 must use its
 // explicit transaction, while v56 and later migrations regain the standard file transaction.
 func TestWorkbenchSQLiteURLAndLaterMigrationTransaction(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	legacyRoot := copySQLiteMigrationsBeforeWorkbench(t, repoRoot)
 	migrationRoot := copySQLiteMigrationsWithV58(t, repoRoot, `
-CREATE TABLE workbench_v58_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
-INSERT INTO workbench_v58_marker (id, value) VALUES (1, 'must-roll-back');
+CREATE TABLE workbench_v59_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO workbench_v59_marker (id, value) VALUES (1, 'must-roll-back');
 THIS IS NOT VALID SQL;
 `)
-	dbPath := filepath.Join(t.TempDir(), "transactional-v58.db")
+	dbPath := filepath.Join(t.TempDir(), "transactional-v59.db")
 
 	chdirAndRestore(t, legacyRoot)
 	require.NoError(t, RunMigrations("sqlite3://"+dbPath))
@@ -77,24 +77,24 @@ THIS IS NOT VALID SQL;
 	require.Error(t, err)
 	assertWorkbenchChildSummary(t, db)
 	var markerCount int
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_v58_marker'").Scan(&markerCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_v59_marker'").Scan(&markerCount))
 	require.Zero(t, markerCount, "v58 must regain the default transaction wrapper after v55")
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 58, version)
+	require.Equal(t, 59, version)
 	require.True(t, dirty)
 
-	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", "000058_workbench_v58.up.sql"), []byte(`
-CREATE TABLE workbench_v58_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
-INSERT INTO workbench_v58_marker (id, value) VALUES (1, 'recovered');
+	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", "000059_workbench_v59.up.sql"), []byte(`
+CREATE TABLE workbench_v59_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO workbench_v59_marker (id, value) VALUES (1, 'recovered');
 `), 0o600))
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://"+dbPath, MigrationOptions{
 		AutoRecoverDirty: true,
 		SQLiteDBPath:     dbPath,
 	}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 58, version)
+	require.Equal(t, 59, version)
 	require.False(t, dirty)
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v58_marker WHERE value = 'recovered'").Scan(&markerCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v59_marker WHERE value = 'recovered'").Scan(&markerCount))
 	require.Equal(t, 1, markerCount)
 }
 
@@ -285,7 +285,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000021_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000021_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") || strings.HasPrefix(entry.Name(), "000058_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
@@ -311,8 +311,8 @@ func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) string {
 		require.NoError(t, readErr)
 		require.NoError(t, os.WriteFile(filepath.Join(destDir, entry.Name()), contents, 0o600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000058_workbench_v58.up.sql"), []byte(v58up), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000058_workbench_v58.down.sql"), []byte("DROP TABLE workbench_v58_marker;\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000059_workbench_v59.up.sql"), []byte(v58up), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000059_workbench_v59.down.sql"), []byte("DROP TABLE workbench_v59_marker;\n"), 0o600))
 	return dest
 }
 
