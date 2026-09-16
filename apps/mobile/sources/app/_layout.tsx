@@ -25,6 +25,10 @@ function configuredProductHost() {
 function ProductHostGate() {
   const host = useMobileHost();
   const auth = useProductAuth();
+  // Route content is scoped to the product identity generation. A tenant or
+  // account switch tears down voice/remote subscriptions while server-side
+  // executions continue independently and can be looked up after remount.
+  const scopeGeneration = auth.scope.capture().generation;
   const segments = useSegments();
   const isServerEntry = segments.some((segment) => segment === 'server');
 
@@ -34,7 +38,7 @@ function ProductHostGate() {
     return <Redirect href="/(app)/server" />;
   }
   if (host && !auth.loading && !auth.credential && !isAuthEntry) return <Redirect href="/(app)/login" />;
-  return <Slot />;
+  return <Slot key={scopeGeneration} />;
 }
 
 function ProductHostBootstrap() {

@@ -97,6 +97,10 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
   return {
     refresh,
+    /** Advance the refresh generation without deleting the current credential. */
+    advanceGeneration() {
+      generation += 1;
+    },
     invalidate,
     logout: invalidate,
     getGeneration: () => generation,
