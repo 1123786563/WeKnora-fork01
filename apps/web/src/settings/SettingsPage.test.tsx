@@ -121,6 +121,16 @@ test('settings drawer is portalled to body like the Vue Teleport shell', async (
   assert.equal(drawer.parentElement, document.body, 'the drawer is a direct body child like Vue Teleport');
 });
 
+test('settings shell controls expose the shared visible-focus contract', async () => {
+  const container = await mountPage(makeClient(), '?section=general');
+  const closeButton = container.querySelector('[data-testid="settings-close"]');
+  const navigationButton = container.querySelector('.wks-nav-item');
+  assert.ok(closeButton?.classList.contains('focus-visible:outline-2'), 'close control uses the shared focus token');
+  assert.ok(closeButton?.classList.contains('focus-visible:outline-accent/35'), 'close control uses the shared focus color');
+  assert.ok(navigationButton?.classList.contains('focus-visible:outline-2'), 'navigation controls use the shared focus token');
+  assert.ok(navigationButton?.classList.contains('focus-visible:outline-accent/35'), 'navigation controls use the shared focus color');
+});
+
 test('settings navigation hides the Vue-unlisted retrieval deep-link section', () => {
   const groups = settingsNavGroups('zh-CN', ['general', 'retrieval', 'system']);
   const keys = groups.flatMap((group) => group.items.map((item) => item.key));

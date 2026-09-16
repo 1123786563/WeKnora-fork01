@@ -290,7 +290,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           <button
             ref={closeButtonRef}
             type="button"
-            className="wks-close"
+            className="wks-close focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35"
             aria-label={t('general.close')}
             data-testid="settings-close"
             onClick={closeSettings}
@@ -310,7 +310,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       <button
                         key={item.key}
                         type="button"
-                        className={`wks-nav-item${item.key === selectedKey ? ' is-active' : ''}`}
+                        className={`wks-nav-item focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35${item.key === selectedKey ? ' is-active' : ''}`}
                         aria-current={item.key === selectedKey ? 'page' : undefined}
                         onClick={() => select(item.key)}
                       >
