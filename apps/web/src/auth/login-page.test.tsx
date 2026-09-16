@@ -154,6 +154,14 @@ test('login password control keeps Vue visibility toggle affordance', async () =
   assert.equal(password.type, 'password');
 });
 
+test('login animated knowledge nodes preserve the Vue count and icon order', async () => {
+  await mountLogin(fakeClient());
+  const nodes = [...document.querySelectorAll('[aria-hidden="true"] > div')];
+  assert.equal(nodes.length, 12, 'Vue renders twelve animated knowledge nodes');
+  assert.ok(nodes[3]?.querySelector('ellipse'), 'Vue node 4 is the database icon');
+  assert.equal(nodes[4]?.querySelector('circle')?.getAttribute('cx'), '11', 'Vue node 5 is the search icon');
+});
+
 test('register form keeps Vue required markers on every required field', async () => {
   await mountLogin(fakeClient());
   const create = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('创建账户')) as HTMLButtonElement;

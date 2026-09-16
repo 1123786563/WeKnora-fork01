@@ -304,8 +304,8 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
   const container = await mountDetail(detailClient(async () => ({
     id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
   }), 'contributor', 'user-1', [
-    { id: 'chunk-2', chunk_index: 2, content: 'Second', content_revision: 1, is_enabled: true },
-    { id: 'chunk-1', chunk_index: 1, content: 'First', content_revision: 1, is_enabled: true },
+    { id: 'chunk-2', chunk_index: 2, content: '# Second', content_revision: 1, is_enabled: true },
+    { id: 'chunk-1', chunk_index: 1, content: '# First\n\n- one\n- two', content_revision: 1, is_enabled: true },
   ]));
 
   const buttons = () => Array.from(container.ownerDocument.body.querySelectorAll('button'));
@@ -316,6 +316,9 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
   await act(async () => { merged!.click(); });
   assert.ok(container.ownerDocument.body.textContent?.includes('First'));
   assert.ok(container.ownerDocument.body.textContent?.indexOf('First')! < container.ownerDocument.body.textContent?.indexOf('Second')!);
+  const mergedSurface = container.ownerDocument.body.querySelector('.wk-document-merged');
+  assert.ok(mergedSurface?.querySelector('h1'), 'Vue renders merged Markdown headings instead of exposing raw markers');
+  assert.ok(mergedSurface?.querySelector('ul'), 'Vue renders merged Markdown lists instead of plain text');
 });
 
 test('document preview ignores delayed text from a document that was replaced', async () => {
