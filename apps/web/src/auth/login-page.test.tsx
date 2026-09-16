@@ -40,6 +40,7 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: jsdo
 
 const { createRoot } = await import('react-dom/client');
 const { LoginPage } = await import('./LoginPage.tsx');
+const { JoinPage } = await import('./JoinPage.tsx');
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {
@@ -160,6 +161,24 @@ test('login animated knowledge nodes preserve the Vue count and icon order', asy
   assert.equal(nodes.length, 12, 'Vue renders twelve animated knowledge nodes');
   assert.ok(nodes[3]?.querySelector('ellipse'), 'Vue node 4 is the database icon');
   assert.equal(nodes[4]?.querySelector('circle')?.getAttribute('cx'), '11', 'Vue node 5 is the search icon');
+});
+
+test('invite registration uses the full Vue authentication shell', async () => {
+  const previousPath = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState({}, '', '/register?token=invite-token');
+  const client = fakeClient();
+  (client.auth as Record<string, unknown>).lookupInvitation = async () => ({ tenantId: 7, tenantName: '研发空间', role: 'member' });
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  try {
+    await act(async () => { mountedRoot?.render(React.createElement(JoinPage, { client: client as never })); });
+    await settle(20);
+    assert.ok(document.querySelector('form[aria-label="Register form"]'), 'invite registration should use the LoginPage register form');
+    assert.equal(document.querySelector('main.wk-page'), null, 'invite registration should not use the legacy compact card');
+  } finally {
+    window.history.replaceState({}, '', previousPath);
+  }
 });
 
 test('register form keeps Vue required markers on every required field', async () => {
