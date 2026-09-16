@@ -105,10 +105,40 @@ func TestMobileDeviceRebindAfterLogoutAllocatesServerRevision(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-a")))
 	require.NoError(t, s.RevokeForTenant(ctx, 1, "u1", "d", 1))
-	require.NoError(t, s.Bind(ctx, mobileRegistration(1, "u1", "d", "token-b")))
+	// Logout advances the durable scope epoch. A new login must carry that
+	// server-observed epoch before a revision-less registration can rebind.
+	rebind := mobileRegistration(1, "u1", "d", "token-b")
+	rebind.ScopeGeneration = 2
+	require.NoError(t, s.Bind(ctx, rebind))
 	row, err := s.GetActiveForTenant(ctx, 1, "u1", "d")
 	require.NoError(t, err)
 	require.EqualValues(t, 3, row.Revision)
+}
+
+func TestMobileDeviceRevisionlessReplayAfterLogoutCannotReopen(t *testing.T) {
+	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
+	ctx := context.Background()
+	first := mobileRegistration(1, "u1", "d", "token-a")
+	require.NoError(t, s.Bind(ctx, first))
+	require.NoError(t, s.RevokeForTenant(ctx, 1, "u1", "d", 1))
+
+	// This is the original request arriving after logout: no CAS revision and
+	// the pre-logout client generation. It must remain a conflict forever.
+	late := first
+	late.Revision = 0
+	require.ErrorIs(t, s.Bind(ctx, late), ErrMobileDeviceRevision)
+	active, err := s.ListActiveForTenant(ctx, 1, "u1", "dev")
+	require.NoError(t, err)
+	require.Empty(t, active)
+
+	newLogin := first
+	newLogin.TokenCiphertext = "enc:token-b"
+	newLogin.TokenHash = DeviceTokenHash("token-b")
+	newLogin.ScopeGeneration = 2
+	require.NoError(t, s.Bind(ctx, newLogin))
+	active, err = s.ListActiveForTenant(ctx, 1, "u1", "dev")
+	require.NoError(t, err)
+	require.Len(t, active, 1)
 }
 
 func TestMobileDeviceRejectsFutureRevisionAndLowerEpoch(t *testing.T) {

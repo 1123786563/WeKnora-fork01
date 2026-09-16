@@ -178,7 +178,7 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			}
 			if err := tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revision = ? AND revoked_at IS NULL",
 				row.TenantID, row.OwnerID, row.DeviceID, s.environment, row.Revision).
-				Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "updated_at": now}).Error; err != nil {
+				Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "scope_generation": row.ScopeGeneration + 1, "updated_at": now}).Error; err != nil {
 				return err
 			}
 		}
@@ -250,7 +250,7 @@ func (s *MobileDeviceStore) revoke(ctx context.Context, tenant uint64, owner, de
 		}
 		now := time.Now().UTC()
 		if updated := s.scoped(tx.Model(&mobileDeviceRow{}), tenant, owner, device).Where("revision = ? AND revoked_at IS NULL", row.Revision).
-			Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "updated_at": now}); updated.Error != nil {
+			Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "scope_generation": row.ScopeGeneration + 1, "updated_at": now}); updated.Error != nil {
 			return updated.Error
 		} else if updated.RowsAffected != 1 {
 			return ErrMobileDeviceRevision

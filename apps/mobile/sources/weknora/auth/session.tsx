@@ -36,6 +36,10 @@ async function nativeDeviceId(): Promise<string> {
   return generated;
 }
 
+function deviceEpochKey(origin: string, deviceId: string): string {
+  return `weknora:mobile-device-epoch:${encodeURIComponent(new URL(origin).origin)}:${encodeURIComponent(deviceId)}`;
+}
+
 type ProductAuthContextValue = {
   credential: BearerCredential | null;
   authSession: ProductAuthSession | null;
@@ -55,7 +59,10 @@ const defaultTeardown: ProductClientTeardown = {
 export function ProductAuthProvider({ children, teardown = defaultTeardown }: React.PropsWithChildren<{ teardown?: ProductClientTeardown }>) {
   const host = useMobileHost();
   const [credential, setCredential] = React.useState<BearerCredential | null>(null);
-  const mobileDevice = React.useRef<{ deviceId: string; revision?: number } | null>(null);
+  // scopeGeneration is the server-controlled epoch observed by the last
+  // registration/revocation. Keeping it with the device reference prevents a
+  // cold-start login from falling back to the process-local scope counter.
+  const mobileDevice = React.useRef<{ deviceId: string; revision?: number; scopeGeneration?: number } | null>(null);
   const [loading, setLoading] = React.useState(Boolean(host));
   const [, redrawForScope] = React.useReducer((version: number) => version + 1, 0);
   const adapter = React.useMemo(() => host ? createCredentials(store, productCredentialKey(host.origin)) : null, [host]);
@@ -108,13 +115,17 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     return () => { active = false; };
   }, [adapter, authSession, host?.origin, scope]);
 
-  async function syncMobileDevice(origin: string, next: BearerCredential, generation: number, ref: React.MutableRefObject<{ deviceId: string; revision?: number } | null>) {
+  async function syncMobileDevice(origin: string, next: BearerCredential, generation: number, ref: React.MutableRefObject<{ deviceId: string; revision?: number; scopeGeneration?: number } | null>) {
     const permission = await getPushPermissionInfo();
     if (!permission.granted || (Platform.OS !== 'ios' && Platform.OS !== 'android')) return;
     const token = await getCurrentExpoPushToken(); if (!token) return;
     const deviceId = await nativeDeviceId();
-    const result = await registerDevice({ origin, deviceId, platform: Platform.OS, token, scopeGeneration: generation, ...(ref.current?.revision === undefined ? {} : { revision: ref.current.revision }), credential: next });
-    ref.current = { deviceId, revision: result.revision };
+    const persisted = await SecureStore.getItemAsync(deviceEpochKey(origin, deviceId));
+    const persistedGeneration = persisted ? Number.parseInt(persisted, 10) : 0;
+    const serverGeneration = Math.max(generation, ref.current?.scopeGeneration ?? 0, Number.isSafeInteger(persistedGeneration) ? persistedGeneration : 0);
+    const result = await registerDevice({ origin, deviceId, platform: Platform.OS, token, scopeGeneration: serverGeneration, ...(ref.current?.revision === undefined ? {} : { revision: ref.current.revision }), credential: next });
+    ref.current = { deviceId, revision: result.revision, scopeGeneration: serverGeneration };
+    await SecureStore.setItemAsync(deviceEpochKey(origin, deviceId), String(serverGeneration));
   }
 
   const login = React.useCallback(async (email: string, password: string) => {
@@ -132,8 +143,14 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     if (currentCredential && current.origin && mobileDevice.current) {
       await revokeOnLogout({ origin: current.origin, deviceId: mobileDevice.current.deviceId, revision: mobileDevice.current.revision, credential: currentCredential, pending: pendingStore(current.origin) });
     }
-    mobileDevice.current = null;
     scope.logout();
+    // RevokeForTenant advances the durable server epoch by one. scope.logout
+    // advances the local generation by the same transition; retain that
+    // observed value for a subsequent login, including after auth replacement.
+    if (mobileDevice.current) {
+      mobileDevice.current = { ...mobileDevice.current, scopeGeneration: scope.capture().generation, revision: undefined };
+      await SecureStore.setItemAsync(deviceEpochKey(current.origin, mobileDevice.current.deviceId), String(scope.capture().generation));
+    }
     if (authSession) await authSession.refreshCoordinator.invalidate();
     else if (adapter) await adapter.clear();
     setCredential(null);
