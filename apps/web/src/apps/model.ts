@@ -37,3 +37,27 @@ export function appShort(value: unknown): string {
   const text = String(value ?? '').trim();
   return text.length > 18 ? `${text.slice(0, 18)}…` : text || '—';
 }
+
+export type AppBadgeTone = 'neutral' | 'success' | 'warning' | 'danger';
+
+/** Vue AppsView riskTheme/riskLabel parity for the reviewed action catalog. */
+export function appRisk(value: unknown): { label: string; tone: AppBadgeTone } {
+  const risk = String(value ?? '').trim();
+  const labels: Record<string, string> = { read: '只读', write: '写入', send: '发送', delete: '删除' };
+  const tones: Record<string, AppBadgeTone> = { read: 'success', write: 'warning', send: 'danger', delete: 'danger' };
+  return { label: labels[risk] ?? (risk || '—'), tone: tones[risk] ?? 'neutral' };
+}
+
+/** Vue shortDigest: a 12-character digest preview, not the generic ID preview. */
+export function appDigest(value: unknown): string {
+  const digest = String(value ?? '').trim();
+  return digest.length > 12 ? `${digest.slice(0, 12)}…` : digest || '—';
+}
+
+/** Vue installationStateLabel parity, including the explicit disabled state. */
+export function installationState(value: unknown): { label: string; tone: AppBadgeTone } {
+  const state = String(value ?? '').trim();
+  if (state === 'active') return { label: '活跃', tone: 'success' };
+  if (state === 'disabled') return { label: '已停用', tone: 'neutral' };
+  return { label: state ? `状态：${state}` : '—', tone: 'neutral' };
+}

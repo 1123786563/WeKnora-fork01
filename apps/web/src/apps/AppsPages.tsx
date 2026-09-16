@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
-import { actionControls, appErrorMessage, appRows, appShort, appStatus, authorizationStatus, type AppRow } from './model.ts';
+import { Badge, Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
+import { actionControls, appDigest, appErrorMessage, appRisk, appRows, appShort, appStatus, authorizationStatus, installationState, type AppRow } from './model.ts';
 
 type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
 type Props = { client: WeKnoraClient; mode: AppMode; id?: string; role?: string };
@@ -22,11 +22,11 @@ function PageFrame({ title, description, loading, onReload, children }: { title:
 
 function CatalogTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
   const fields = [['action_id', '动作'], ['app_id', '应用'], ['app_version', '版本'], ['provider', '提供方'], ['risk', '风险'], ['required_scopes', '权限'], ['schema_digest', '摘要'], ['published', '发布']] as const;
-  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const text = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'published' ? (value ? '已发布' : '未发布') : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{text}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = appRisk(value); return <Badge tone={risk.tone}>{risk.label}</Badge>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Badge tone={value ? 'success' : 'neutral'}>{value ? '已发布' : '未发布'}</Badge> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
 }
 function InstallationsTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
   const fields = [['app_key', '应用'], ['version', '版本'], ['state', '状态'], ['scopes', '权限']] as const;
-  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const text = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : appStatus(value); return <TableCell key={field}>{text}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'state' ? (() => { const state = installationState(value); return <Badge tone={state.tone}>{state.label}</Badge>; })() : appStatus(value); return <TableCell key={field}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
 }
 
 function CatalogPage({ client }: { client: WeKnoraClient }) {
