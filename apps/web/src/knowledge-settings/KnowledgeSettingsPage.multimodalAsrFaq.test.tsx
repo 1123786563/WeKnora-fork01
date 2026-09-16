@@ -237,8 +237,8 @@ test('multimodal section renders the Vue rows and saves the draft through the PU
   await setValue(instructions, 'alt text');
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
-  const body = calls.requests[0]!.body as { vlm_config?: Record<string, unknown> };
+  assert.equal(calls.requests.length, 2, 'R441: Vue doSubmit now also runs the base update for document bases');
+  const body = calls.requests[1]!.body as { vlm_config?: Record<string, unknown> };
   assert.deepEqual(body.vlm_config, { enabled: true, model_id: 'vlm-9', description_language: 'Korean', custom_instructions: 'alt text' });
 });
 
@@ -252,7 +252,7 @@ test('switching multimodal off hides the Vue conditional rows and clears model_i
 
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  const body = calls.requests[0]!.body as { vlm_config?: Record<string, unknown> };
+  const body = calls.requests[1]!.body as { vlm_config?: Record<string, unknown> };
   assert.deepEqual(body.vlm_config, { enabled: false, model_id: '', description_language: 'Chinese', custom_instructions: 'describe' });
 });
 
@@ -285,7 +285,7 @@ test('asr section renders the Vue toggle and ASR model selector', async () => {
   await setValue(model, 'asr-9');
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  const body = calls.requests[0]!.body as { asr_config?: Record<string, unknown> };
+  const body = calls.requests[1]!.body as { asr_config?: Record<string, unknown> };
   assert.deepEqual(body.asr_config, { enabled: true, model_id: 'asr-9', language: 'zh-CN' });
 });
 

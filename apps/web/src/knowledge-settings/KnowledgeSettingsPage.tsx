@@ -76,7 +76,7 @@ export type KnowledgeSettingsSectionKey =
 
 const PORTED_KNOWLEDGE_SETTINGS_SECTIONS = new Set<KnowledgeSettingsSectionKey>([
   'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
-  'models', 'chunking', 'advanced', 'multimodal', 'asr', 'faq',
+  'models', 'chunking', 'advanced', 'multimodal', 'asr', 'faq', 'basic',
 ]);
 
 export function isPortedKnowledgeSettingsSection(key: KnowledgeSettingsSectionKey): boolean {
@@ -114,6 +114,11 @@ export type KnowledgeSettingsInput = KnowledgeBase & {
   summary_model_id?: string;
   extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string };
   faq_config?: { index_mode?: string; question_index_mode?: string };
+  // R441: document-KB base-update round-trip state (Vue loadKBData reads the
+  // same rows off the GET /knowledge-bases/:id response).
+  wiki_config?: { synthesis_model_id?: string; max_pages_per_ingest?: number; extraction_granularity?: string; content_instructions?: string; extraction_instructions?: string };
+  indexing_strategy?: { vector_enabled?: boolean; keyword_enabled?: boolean; wiki_enabled?: boolean; graph_enabled?: boolean };
+  auto_tag_config?: { enabled?: boolean; model_id?: string; max_tags?: number; skip_if_tagged?: boolean };
 };
 
 export interface KnowledgeSettingsSection {
@@ -139,6 +144,7 @@ interface SettingSummary {
 }
 
 const sections: KnowledgeSettingsSection[] = [
+  { key: 'basic', label: 'Basics', description: 'Name, description and knowledge-base type' },
   { key: 'models', label: 'Models', description: 'Language and embedding models' },
   { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes' },
   { key: 'multimodal', label: 'Multimodal', description: 'Image description processing' },
@@ -418,6 +424,12 @@ export interface KnowledgeSettingsEditorOverrides {
   asr?: { enabled?: boolean; modelId?: string };
   // R440 faq section (Vue faqConfig draft, saved through the base KB update).
   faqConfig?: { indexMode?: string; questionIndexMode?: string };
+  // R441 basic section (Vue formData name/description, indexingStrategy and
+  // wikiConfig drafts, all persisted through the base KB update).
+  name?: string;
+  description?: string;
+  indexing?: { vectorEnabled?: boolean; keywordEnabled?: boolean; wikiEnabled?: boolean; graphEnabled?: boolean };
+  wiki?: { extractionGranularity?: 'focused' | 'standard' | 'exhaustive'; contentInstructions?: string; extractionInstructions?: string };
 }
 
 // Builds the exact KBModelConfigRequest body the Vue KnowledgeBaseEditorModal
@@ -467,8 +479,11 @@ export function buildKnowledgeSettingsConfigPayload(
     },
     documentSplitting: {
       chunkSize: typeof chunking.chunk_size === 'number' && chunking.chunk_size > 0 ? chunking.chunk_size : 512,
-      chunkOverlap: typeof chunking.chunk_overlap === 'number' ? chunking.chunk_overlap : 80,
-      separators: Array.isArray(chunking.separators) && chunking.separators.length > 0 ? chunking.separators.map(String) : ['\n\n', '\n', '。', '！', '？', ';', '；'],
+      // Vue loadKBData uses `||` fallbacks: a stored 0 (unset) reads as the
+      // backend DefaultChunkOverlap, matching chunker.DefaultChunkOverlap.
+      chunkOverlap: Number(chunking.chunk_overlap) || 80,
+      // Vue `separators || defaults` keeps an empty array (truthy) as-is.
+      separators: Array.isArray(chunking.separators) ? chunking.separators.map(String) : ['\n\n', '\n', '。', '！', '？', ';', '；'],
       parserEngineRules,
       enableParentChild: chunking.enable_parent_child === true,
       parentChunkSize: typeof chunking.parent_chunk_size === 'number' && chunking.parent_chunk_size > 0 ? chunking.parent_chunk_size : 4096,
@@ -533,22 +548,56 @@ export function buildKnowledgeSettingsConfigPayload(
 }
 
 // Vue doSubmit step 1 on edit: updateKnowledgeBase carries name/description and
-// the faq_config (FAQ bases only) through PUT /api/v1/knowledge-bases/:id,
-// before the KBModelConfigRequest PUT below.
+// the faq_config (FAQ bases) or wiki_config + auto_tag_config + indexing_strategy
+// (document bases) through PUT /api/v1/knowledge-bases/:id, before the
+// KBModelConfigRequest PUT below.
 export function getKnowledgeBaseUpdatePath(knowledgeBaseId: string): string {
   return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`;
+}
+
+// Vue wikiConfig.extractionGranularity normalization (loadKBData +
+// resolvedGranularity): unknown values fall back to 'standard', matching the
+// backend WikiExtractionGranularity.Normalize() contract.
+const WIKI_EXTRACTION_GRANULARITIES = ['focused', 'standard', 'exhaustive'] as const;
+export type KnowledgeSettingsWikiGranularity = (typeof WIKI_EXTRACTION_GRANULARITIES)[number];
+
+export function resolveKnowledgeSettingsGranularity(value: unknown): KnowledgeSettingsWikiGranularity {
+  return WIKI_EXTRACTION_GRANULARITIES.includes(value as KnowledgeSettingsWikiGranularity)
+    ? value as KnowledgeSettingsWikiGranularity
+    : 'standard';
+}
+
+// Vue indexingStrategy resolution (loadKBData): absent backend rows fall back
+// to vector+keyword on, wiki+graph off, with the live draft layered on top.
+export function resolveKnowledgeSettingsIndexing(
+  knowledgeBase: KnowledgeSettingsInput,
+  overrides?: KnowledgeSettingsEditorOverrides,
+): { vectorEnabled: boolean; keywordEnabled: boolean; wikiEnabled: boolean; graphEnabled: boolean } {
+  const draft = overrides?.indexing ?? {};
+  return {
+    vectorEnabled: draft.vectorEnabled ?? knowledgeBase.indexing_strategy?.vector_enabled ?? true,
+    keywordEnabled: draft.keywordEnabled ?? knowledgeBase.indexing_strategy?.keyword_enabled ?? true,
+    wikiEnabled: draft.wikiEnabled ?? knowledgeBase.indexing_strategy?.wiki_enabled ?? false,
+    graphEnabled: draft.graphEnabled ?? knowledgeBase.indexing_strategy?.graph_enabled ?? false,
+  };
 }
 
 export interface KnowledgeSettingsBaseUpdate {
   name: string;
   description: string;
-  config: { faq_config?: { index_mode: string; question_index_mode: string } };
+  config: {
+    faq_config?: { index_mode: string; question_index_mode: string };
+    wiki_config?: { synthesis_model_id: string; max_pages_per_ingest: number; extraction_granularity: KnowledgeSettingsWikiGranularity; content_instructions: string; extraction_instructions: string };
+    auto_tag_config?: { enabled: boolean; model_id: string; max_tags: number; skip_if_tagged: boolean };
+    indexing_strategy?: { vector_enabled: boolean; keyword_enabled: boolean; wiki_enabled: boolean; graph_enabled: boolean };
+  };
 }
 
 export function buildKnowledgeSettingsBaseUpdate(
   knowledgeBase: KnowledgeSettingsInput,
   overrides?: KnowledgeSettingsEditorOverrides,
 ): KnowledgeSettingsBaseUpdate {
+  const raw = (value: unknown): string => (typeof value === 'string' ? value : '');
   const config: KnowledgeSettingsBaseUpdate['config'] = {};
   if (knowledgeBase.type?.toLowerCase() === 'faq') {
     const kbFaq = knowledgeBase.faq_config ?? {};
@@ -557,10 +606,37 @@ export function buildKnowledgeSettingsBaseUpdate(
       index_mode: faq.indexMode ?? (typeof kbFaq.index_mode === 'string' && kbFaq.index_mode ? kbFaq.index_mode : 'question_only'),
       question_index_mode: faq.questionIndexMode ?? (typeof kbFaq.question_index_mode === 'string' && kbFaq.question_index_mode ? kbFaq.question_index_mode : 'separate'),
     };
+  } else {
+    // Vue doSubmit step 1 (document bases): wiki_config tunables, the
+    // auto_tag_config block and the indexing strategy all persist through the
+    // base update. Untouched fields round-trip the loaded KB row.
+    const kbWiki = knowledgeBase.wiki_config ?? {};
+    const wiki = overrides?.wiki ?? {};
+    config.wiki_config = {
+      synthesis_model_id: raw(kbWiki.synthesis_model_id),
+      max_pages_per_ingest: typeof kbWiki.max_pages_per_ingest === 'number' ? kbWiki.max_pages_per_ingest : 0,
+      extraction_granularity: wiki.extractionGranularity ?? resolveKnowledgeSettingsGranularity(kbWiki.extraction_granularity),
+      content_instructions: wiki.contentInstructions ?? raw(kbWiki.content_instructions),
+      extraction_instructions: wiki.extractionInstructions ?? raw(kbWiki.extraction_instructions),
+    };
+    const autoTag = knowledgeBase.auto_tag_config ?? {};
+    config.auto_tag_config = {
+      enabled: autoTag.enabled === true,
+      model_id: raw(autoTag.model_id),
+      max_tags: typeof autoTag.max_tags === 'number' && autoTag.max_tags > 0 ? autoTag.max_tags : 3,
+      skip_if_tagged: typeof autoTag.skip_if_tagged === 'boolean' ? autoTag.skip_if_tagged : true,
+    };
+    const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, overrides);
+    config.indexing_strategy = {
+      vector_enabled: indexing.vectorEnabled,
+      keyword_enabled: indexing.keywordEnabled,
+      wiki_enabled: indexing.wikiEnabled,
+      graph_enabled: indexing.graphEnabled,
+    };
   }
   return {
-    name: typeof knowledgeBase.name === 'string' ? knowledgeBase.name : '',
-    description: typeof knowledgeBase.description === 'string' ? knowledgeBase.description : '',
+    name: overrides?.name ?? (typeof knowledgeBase.name === 'string' ? knowledgeBase.name : ''),
+    description: overrides?.description ?? (typeof knowledgeBase.description === 'string' ? knowledgeBase.description : ''),
     config,
   };
 }
@@ -669,15 +745,31 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
       : parserRules(currentKnowledgeBase)) as Array<Record<string, unknown>>;
     const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract, editorDraft);
-    // Vue validateForm subset owned by these sections: an enabled multimodal
-    // toggle requires a VLLM model, a FAQ base requires an index mode. Each
-    // failure warns and jumps to the offending section before any request.
+    // Vue validateForm subset owned by these sections, in Vue order: the name
+    // is required, a document base keeps at least one indexing strategy, an
+    // enabled multimodal toggle requires a VLLM model, a FAQ base requires an
+    // index mode. Each failure warns and jumps to the offending section before
+    // any request.
+    const candidateName = editorDraft.name ?? currentKnowledgeBase.name ?? '';
+    if (!candidateName.trim()) {
+      setSaveState({ status: 'error', message: t('knowledgeEditor.messages.nameRequired') });
+      setActiveSection('basic');
+      return;
+    }
+    const isFaq = currentKnowledgeBase.type?.toLowerCase() === 'faq';
+    if (!isFaq) {
+      const indexing = resolveKnowledgeSettingsIndexing(currentKnowledgeBase, editorDraft);
+      if (!indexing.vectorEnabled && !indexing.keywordEnabled && !indexing.wikiEnabled && !indexing.graphEnabled) {
+        setSaveState({ status: 'error', message: t('knowledgeEditor.indexing.atLeastOne') });
+        setActiveSection('basic');
+        return;
+      }
+    }
     if (payload.vlm_config.enabled && !payload.vlm_config.model_id) {
       setSaveState({ status: 'error', message: t('knowledgeEditor.messages.multimodalInvalid') });
       setActiveSection('multimodal');
       return;
     }
-    const isFaq = currentKnowledgeBase.type?.toLowerCase() === 'faq';
     const baseUpdate = buildKnowledgeSettingsBaseUpdate(currentKnowledgeBase, editorDraft);
     if (isFaq && !baseUpdate.config.faq_config?.index_mode) {
       setSaveState({ status: 'error', message: t('knowledgeEditor.messages.indexModeRequired') });
@@ -685,18 +777,18 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       return;
     }
     setSaveState({ status: 'saving', message: '' });
-    // Vue doSubmit order on edit: base update (name/description/faq_config)
-    // first, then the full KBModelConfigRequest PUT.
-    const baseFirst = isFaq
-      ? saveKnowledgeSettingsBaseUpdate(client, currentKnowledgeBase.id, baseUpdate)
-      : Promise.resolve();
-    void baseFirst.then(() => saveKnowledgeSettings(client, currentKnowledgeBase.id, payload)).then(() => {
-      setSavedParserRules(rules);
-      setPendingParserEngine('');
-      setSaveState({ status: 'saved', message: t('knowledgeEditor.messages.updateSuccess') });
-    }).catch((error: unknown) => {
-      setSaveState({ status: 'error', message: error instanceof Error && error.message ? error.message : t('common.error') });
-    });
+    // Vue doSubmit order on edit: the base update (name/description plus the
+    // FAQ or wiki/auto-tag/indexing config blocks) always runs first, then the
+    // full KBModelConfigRequest PUT.
+    void saveKnowledgeSettingsBaseUpdate(client, currentKnowledgeBase.id, baseUpdate)
+      .then(() => saveKnowledgeSettings(client, currentKnowledgeBase.id, payload))
+      .then(() => {
+        setSavedParserRules(rules);
+        setPendingParserEngine('');
+        setSaveState({ status: 'saved', message: t('knowledgeEditor.messages.updateSuccess') });
+      }).catch((error: unknown) => {
+        setSaveState({ status: 'error', message: error instanceof Error && error.message ? error.message : t('common.error') });
+      });
   };
   const active = availableSections.find((section) => section.key === activeSection);
 
@@ -822,6 +914,9 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
           <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
         </div>
       ) : null}
+      {section === 'basic' ? (
+        <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+      ) : null}
       {section === 'models' ? (
         <ModelsSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
       ) : null}
@@ -924,6 +1019,179 @@ function EditorSettingRow({ label, description, required, control }: { label: st
         {description ? <p className="wk-muted" style={{ margin: '0.2rem 0 0', fontSize: '0.85rem' }}>{description}</p> : null}
       </div>
       <div style={{ flex: '0 1 55%', minWidth: '12rem' }}>{control}</div>
+    </div>
+  );
+}
+
+// Vue basic section (KnowledgeBaseEditorModal.vue `currentSection ===
+// 'basic'`): the committed KB id with copy, the immutable type radios, the
+// document-only indexing-strategy checks with the conditional wiki tunables,
+// and the required name plus description editors. All values persist through
+// the base KB update (Vue doSubmit step 1), not the config PUT.
+function BasicSettingsSection({ knowledgeBase, editorDraft, t, onDraftChange }: { knowledgeBase: KnowledgeSettingsInput; editorDraft: KnowledgeSettingsEditorOverrides; t: (key: string) => string; onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void }) {
+  const name = editorDraft.name ?? (typeof knowledgeBase.name === 'string' ? knowledgeBase.name : '');
+  const description = editorDraft.description ?? (typeof knowledgeBase.description === 'string' ? knowledgeBase.description : '');
+  const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, editorDraft);
+  const wiki = editorDraft.wiki ?? {};
+  const granularity = wiki.extractionGranularity ?? resolveKnowledgeSettingsGranularity(knowledgeBase.wiki_config?.extraction_granularity);
+  const contentInstructions = wiki.contentInstructions ?? (typeof knowledgeBase.wiki_config?.content_instructions === 'string' ? knowledgeBase.wiki_config.content_instructions : '');
+  const extractionInstructions = wiki.extractionInstructions ?? (typeof knowledgeBase.wiki_config?.extraction_instructions === 'string' ? knowledgeBase.wiki_config.extraction_instructions : '');
+  const setIndexing = (patch: NonNullable<KnowledgeSettingsEditorOverrides['indexing']>) => {
+    onDraftChange({ ...editorDraft, indexing: { ...editorDraft.indexing, ...patch } });
+  };
+  const setWiki = (patch: NonNullable<KnowledgeSettingsEditorOverrides['wiki']>) => {
+    onDraftChange({ ...editorDraft, wiki: { ...editorDraft.wiki, ...patch } });
+  };
+  const copyKbId = () => {
+    void navigator.clipboard?.writeText(knowledgeBase.id).catch(() => undefined);
+  };
+  const granularityHintKey = granularity === 'focused'
+    ? 'knowledgeEditor.wiki.granularityFocusedHint'
+    : granularity === 'exhaustive'
+      ? 'knowledgeEditor.wiki.granularityExhaustiveHint'
+      : 'knowledgeEditor.wiki.granularityStandardHint';
+  const radio = (groupKey: string, labelKey: string, checked: boolean, onChange: () => void, disabled?: boolean) => (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginRight: '1rem' }}>
+      <input type="radio" name={groupKey} aria-label={t(labelKey)} checked={checked} disabled={disabled} onChange={onChange} />
+      {t(labelKey)}
+    </label>
+  );
+  return (
+    <div>
+      {knowledgeBase.id ? (
+        <EditorSettingRow
+          label={t('knowledgeEditor.basic.kbId')}
+          description={t('knowledgeEditor.basic.kbIdDesc')}
+          control={(
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <code style={{ background: '#f3f5f9', borderRadius: 6, padding: '0.15rem 0.5rem' }}>{knowledgeBase.id}</code>
+              <button
+                type="button"
+                aria-label={t('common.copy')}
+                title={t('common.copy')}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.15rem', color: 'inherit' }}
+                onClick={copyKbId}
+              >
+                {navIcon(<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>)}
+              </button>
+            </span>
+          )}
+        />
+      ) : null}
+      <EditorSettingRow
+        label={t('knowledgeEditor.basic.typeLabel')}
+        required
+        description={t('knowledgeEditor.basic.typeDescription')}
+        control={(
+          <div role="radiogroup" aria-label={t('knowledgeEditor.basic.typeLabel')}>
+            {radio('kbType', 'knowledgeEditor.basic.typeDocument', knowledgeBase.type?.toLowerCase() !== 'faq', () => undefined, true)}
+            {radio('kbType', 'knowledgeEditor.basic.typeFAQ', knowledgeBase.type?.toLowerCase() === 'faq', () => undefined, true)}
+          </div>
+        )}
+      />
+      {knowledgeBase.type?.toLowerCase() !== 'faq' ? (
+        <>
+          <EditorSettingRow
+            label={t('knowledgeEditor.indexing.title')}
+            required
+            description={t('knowledgeEditor.indexing.description')}
+            control={(
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('knowledgeEditor.indexing.searchTitle')}
+                    checked={indexing.vectorEnabled}
+                    onChange={(event) => setIndexing({ vectorEnabled: event.target.checked, keywordEnabled: event.target.checked })}
+                  />
+                  {t('knowledgeEditor.indexing.searchTitle')}
+                </label>
+                <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.searchDesc')}</p>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('knowledgeEditor.indexing.wikiTitle')}
+                    checked={indexing.wikiEnabled}
+                    onChange={(event) => setIndexing({ wikiEnabled: event.target.checked })}
+                  />
+                  {t('knowledgeEditor.indexing.wikiTitle')}
+                </label>
+                <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.wikiDesc')}</p>
+              </div>
+            )}
+          />
+          {indexing.wikiEnabled ? (
+            <>
+              <EditorSettingRow
+                label={t('knowledgeEditor.wiki.extractionGranularityLabel')}
+                description={t('knowledgeEditor.wiki.extractionGranularityTip')}
+                control={(
+                  <div role="radiogroup" aria-label={t('knowledgeEditor.wiki.extractionGranularityLabel')}>
+                    {radio('kbWikiGranularity', 'knowledgeEditor.wiki.granularityFocused', granularity === 'focused', () => setWiki({ extractionGranularity: 'focused' }))}
+                    {radio('kbWikiGranularity', 'knowledgeEditor.wiki.granularityStandard', granularity === 'standard', () => setWiki({ extractionGranularity: 'standard' }))}
+                    {radio('kbWikiGranularity', 'knowledgeEditor.wiki.granularityExhaustive', granularity === 'exhaustive', () => setWiki({ extractionGranularity: 'exhaustive' }))}
+                  </div>
+                )}
+              />
+              <p className="wk-muted" style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>{t(granularityHintKey)}</p>
+              <EditorSettingRow
+                label={t('knowledgeEditor.wiki.contentInstructionsLabel')}
+                description={t('knowledgeEditor.wiki.contentInstructionsTip')}
+                control={(
+                  <textarea
+                    aria-label={t('knowledgeEditor.wiki.contentInstructionsLabel')}
+                    maxLength={4000}
+                    rows={3}
+                    placeholder={t('knowledgeEditor.wiki.contentInstructionsPlaceholder')}
+                    value={contentInstructions}
+                    onChange={(event) => setWiki({ contentInstructions: event.target.value })}
+                  />
+                )}
+              />
+              <EditorSettingRow
+                label={t('knowledgeEditor.wiki.extractionInstructionsLabel')}
+                description={t('knowledgeEditor.wiki.extractionInstructionsTip')}
+                control={(
+                  <textarea
+                    aria-label={t('knowledgeEditor.wiki.extractionInstructionsLabel')}
+                    maxLength={4000}
+                    rows={3}
+                    placeholder={t('knowledgeEditor.wiki.extractionInstructionsPlaceholder')}
+                    value={extractionInstructions}
+                    onChange={(event) => setWiki({ extractionInstructions: event.target.value })}
+                  />
+                )}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
+      <EditorSettingRow
+        label={t('knowledgeEditor.basic.nameLabel')}
+        required
+        control={(
+          <input
+            aria-label={t('knowledgeEditor.basic.nameLabel')}
+            maxLength={50}
+            placeholder={t('knowledgeEditor.basic.namePlaceholder')}
+            value={name}
+            onChange={(event) => onDraftChange({ ...editorDraft, name: event.target.value })}
+          />
+        )}
+      />
+      <EditorSettingRow
+        label={t('knowledgeEditor.basic.descriptionLabel')}
+        control={(
+          <textarea
+            aria-label={t('knowledgeEditor.basic.descriptionLabel')}
+            maxLength={200}
+            rows={3}
+            placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')}
+            value={description}
+            onChange={(event) => onDraftChange({ ...editorDraft, description: event.target.value })}
+          />
+        )}
+      />
     </div>
   );
 }

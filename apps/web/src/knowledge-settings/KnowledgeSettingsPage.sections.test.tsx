@@ -184,9 +184,9 @@ test('models section renders live llm/embedding selectors from the settings cata
   await act(async () => { setSelectValues(llmSelect, ['llm-2']); });
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
-  assert.equal(calls.requests[0]!.path, '/api/v1/initialization/config/kb-1');
-  const savedBody = calls.requests[0]!.body as Record<string, any>;
+  assert.equal(calls.requests.length, 2, 'R441: Vue doSubmit runs the base update before the config PUT for document bases');
+  assert.equal(calls.requests[1]!.path, '/api/v1/initialization/config/kb-1');
+  const savedBody = calls.requests[1]!.body as Record<string, any>;
   assert.equal(savedBody.llmModelId, 'llm-2', 'the pending LLM model must reach the PUT payload');
   assert.equal(savedBody.embeddingModelId, 'embed-1');
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);
@@ -240,8 +240,8 @@ test('chunking section renders the Vue sliders, strategy select and overlap warn
 
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
-  const splitting = (calls.requests[0]!.body as Record<string, any>).documentSplitting;
+  assert.equal(calls.requests.length, 2);
+  const splitting = (calls.requests[1]!.body as Record<string, any>).documentSplitting;
   assert.equal(splitting.chunkSize, 800);
   assert.equal(splitting.chunkOverlap, 400);
   assert.equal(splitting.strategy, 'auto');
@@ -286,8 +286,8 @@ test('advanced section renders the question generation switch and persists edite
 
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
-  assert.deepEqual((calls.requests[0]!.body as Record<string, any>).questionGeneration, { enabled: false, questionCount: 5, customInstructions: 'gen rules' }, 'the switch state must persist through the existing PUT pipeline');
+  assert.equal(calls.requests.length, 2);
+  assert.deepEqual((calls.requests[1]!.body as Record<string, any>).questionGeneration, { enabled: false, questionCount: 5, customInstructions: 'gen rules' }, 'the switch state must persist through the existing PUT pipeline');
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);
 
   // Re-enable and edit the count: the subsection re-opens with committed values.
@@ -298,8 +298,8 @@ test('advanced section renders the question generation switch and persists edite
   await act(async () => { setNativeValue(countAgain, '7'); });
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2);
-  const retriedBody = calls.requests[1]!.body as Record<string, any>;
+  assert.equal(calls.requests.length, 4, 'two doSubmit pairs: base update + config PUT each');
+  const retriedBody = calls.requests[3]!.body as Record<string, any>;
   assert.equal(retriedBody.questionGeneration.enabled, true);
   assert.equal(retriedBody.questionGeneration.questionCount, 7, 'the edited count must reach the PUT payload');
 });

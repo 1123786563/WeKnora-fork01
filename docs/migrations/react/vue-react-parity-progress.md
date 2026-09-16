@@ -4496,3 +4496,42 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:shared` 590/590, `pnpm test:web` 1437/1437, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r440-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R441 — Settings basic complete, wiki markdown, embed entry, per-user auth writes + browser sweep
+
+- Six parallel agents (A1 settings finish, A2 wiki markdown, A3 embed entry, A4 preference/auth writes, A5
+  browser-evidence only, A6 verifier), file-domain mutually exclusive (A3 alone owned the app entry files), TDD.
+  A6 verdict: A1-A5 all PASS, zero regressions; the orchestrator closed A5's live-data chunking defect in-round.
+- A1: `basic` section ported (id+copy, type radio, indexing-strategy checkboxes with vector→keyword coupling,
+  wiki granularity/instructions, name required/50, description/200; nameRequired joins the validateForm order
+  with a section jump). Document-KB base updates carry
+  `{name,description,config:{wiki_config,auto_tag_config,indexing_strategy}}` and now ALWAYS precede the config
+  PUT (Vue doSubmit order; FAQ sends only faq_config). A5's nav-order observation re-audited: R438 was already
+  correct — no change. Directory 68/68; zero new i18n keys. Deferred: isIndexingLocked, wiki NEW badge, models
+  required validation.
+- A2: wiki reader now renders Vue's chain (wiki-link pre-process → marked breaks → DOMPurify → click-delegated
+  navigation) at the SAME dependency versions as the Vue frontend (marked ^17.0.5, dompurify ^3.4.11); DOMPurify
+  3.4.11 USE_PROFILES behavior verified live (rel-only anchors, no target=_blank); slugs HTML-escaped pre-parse.
+  27/27. Deferred: image preview, index-view markdown, reader footer.
+- A3: `/embed/*` mounts a real embed entry (app-entry branch + index.html /embed/ light-theme injection as the
+  single-document equivalent of Vue's separate embed html): bootstrap handshake, primary_color theme injection,
+  viewport fill, minimal composer+SSE chat via the R440 bridge. 7 tests red→green; build emits the embed chunk.
+  Deferred: history backfill, references/suggestions, real-iframe e2e.
+- A4: panel font keys moved onto the per-user path (domain read/writeUserPreference, flat keys join the
+  migration sources); `weknora_user` now written/cleared like Vue stores/auth.ts — persistLogin (three login
+  paths), /auth/me hydrate, logout/401 clears, latch reset wired. Full u1/u2 localStorage-sequence regression
+  71/71. Note: pnpm file: deps copy-install — rerun pnpm install after domain edits.
+- A5 browser sweep (9 screenshots, r441-20260917/): settings grouped IA matches Vue (basic was placeholder at
+  capture, closed by A1 same round); datasource add-card matches (no rows to exercise cron/pills); no shared-KB
+  fixture so the drawer pair was not capturable. Recorded diffs: separators listbox vs tag chips, missing
+  测试分块效果/Embedding warning/200K badge, per-section save vs Vue single save-and-close, English eyebrow
+  duplication, Vue legacy /space/knowledgeBase blank page.
+- Orchestrator closure: A5's live defect — React showed chunk overlap 0 where Vue showed 80 on the same KB —
+  root-caused to Vue's `||` seed (chunk_overlap 0 → DefaultChunkOverlap 80, backend chunker.DefaultChunkOverlap)
+  vs React's typeof guard letting 0 through; fixed with `Number(chunk_overlap) || 80` plus the separators
+  empty-array-kept semantics; regression test pins stored 0→80 and []→kept. The "512 字符 vs aria 500" report
+  could not be reproduced in code (slider text renders the same value as aria-valuenow) — noted for the next
+  browser pass.
+- Gates: `pnpm test:web` 1473/1473, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r441-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

@@ -219,7 +219,7 @@ test('save button is gated to owner/admin and disabled while a save is in flight
     save.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await Promise.resolve();
   });
-  assert.equal(calls.requests.length, 1, 'first click must issue exactly one PUT');
+  assert.equal(calls.requests.length, 1, 'first click starts exactly one request pair (base update in flight)');
   assert.equal(save.disabled, true, 'save button must be disabled while saving (Vue :loading="saving")');
   await act(async () => {
     save.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -228,7 +228,7 @@ test('save button is gated to owner/admin and disabled while a save is in flight
   assert.equal(calls.requests.length, 1, 'repeat clicks while saving must be ignored');
   await act(async () => { releaseSave!(); await gate; });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
+  assert.equal(calls.requests.length, 2, 'the base update resolves first, then the config PUT follows');
   assert.equal(save.disabled, false, 'save button re-enables after the save settles');
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);
 });
@@ -248,8 +248,8 @@ test('a successful save persists the Vue update payload carrying the pending par
   });
   await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 1);
-  const request = calls.requests[0]!;
+  assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT');
+  const request = calls.requests[1]!;
   assert.equal(request.method, 'PUT');
   assert.equal(request.path, '/api/v1/initialization/config/kb-1');
   const splitting = (request.body as { documentSplitting?: { parserEngineRules?: Array<Record<string, unknown>> } }).documentSplitting;
@@ -289,4 +289,19 @@ test('viewers get no save button (Vue canManage gating)', async () => {
   const labels = [...document.body.querySelectorAll('button')].map((candidate) => (candidate.textContent ?? '').trim());
   assert.equal(labels.includes('Save Configuration'), false, 'viewer must not see the save button');
   assert.equal(calls.requests.length, 0);
+});
+
+// Vue loadKBData seeds chunking with `||` fallbacks: a stored chunk_overlap 0
+// (unset) reads as the 80 DefaultChunkOverlap, and an empty separators array
+// (truthy) is kept as-is — both observed live on the Parity KB Demo fixture
+// (R441 browser evidence: React showed overlap 0 where Vue showed 80).
+test('seeds chunking values with the Vue || fallbacks for zero and empty-array stored configs', () => {
+  const payload = buildKnowledgeSettingsConfigPayload({
+    id: 'kb-3',
+    name: 'Zeroed chunking',
+    type: 'document',
+    chunking_config: { chunk_overlap: 0, separators: [] },
+  }, [], undefined);
+  assert.equal(payload.documentSplitting.chunkOverlap, 80, 'stored 0 overlap reads as the Vue || fallback 80');
+  assert.deepEqual(payload.documentSplitting.separators, [], 'an empty separators array is truthy in Vue and must be kept');
 });

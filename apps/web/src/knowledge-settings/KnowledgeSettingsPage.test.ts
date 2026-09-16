@@ -34,21 +34,20 @@ const documentKnowledgeBase: KnowledgeSettingsInput = {
 };
 
 test('exposes Vue-aligned sections and gates document-only sections for FAQ bases', () => {
-  // R440: multimodal/asr join the ported sections after R439's
-  // models/chunking/advanced (Vue contract).
+  // R441: the basic section joins the ported sections (Vue basic group).
   assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
-    'models', 'multimodal', 'asr', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
+    'basic', 'models', 'multimodal', 'asr', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
   ]);
-  // Vue keeps models in the basic group for FAQ bases (plus the faq section);
-  // multimodal/asr and chunking/advanced stay document-only.
+  // Vue keeps basic and models in the basic group for FAQ bases (plus the faq
+  // section); multimodal/asr and chunking/advanced stay document-only.
   assert.deepEqual(getKnowledgeSettingsSections({ id: 'kb-2', name: 'FAQ', type: 'faq' }).map((section) => section.key), [
-    'models', 'faq', 'vectorStore', 'datasource', 'share', 'activity',
+    'basic', 'models', 'faq', 'vectorStore', 'datasource', 'share', 'activity',
   ]);
 });
 
 test('exposes every Vue knowledge-base detail section in the editor order', () => {
   assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
-    'models', 'multimodal', 'asr', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
+    'basic', 'models', 'multimodal', 'asr', 'vectorStore', 'parser', 'chunking', 'advanced', 'storage', 'datasource', 'share', 'activity', 'graph',
   ]);
 });
 

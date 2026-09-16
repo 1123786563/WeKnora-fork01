@@ -1,4 +1,5 @@
 import type { WeKnoraClient } from '@weknora/api-client';
+import { persistWeknoraUser } from '@weknora/domain/settings/local-preferences';
 
 export interface ParsedLogin {
   credential: { kind: 'bearer'; accessToken: string; refreshToken?: string };
@@ -59,4 +60,9 @@ export function persistLogin(session: ParsedLogin, storage: Pick<Storage, 'setIt
   if (session.credential.kind === 'bearer' && session.credential.refreshToken) storage.setItem('weknora_refresh_token', session.credential.refreshToken);
   else storage.removeItem('weknora_refresh_token');
   if (session.tenantId) storage.setItem('weknora_selected_tenant_id', session.tenantId);
+  // Vue stores/auth.ts setUser parity: persist the login response's user so
+  // per-user preference namespaces (WeKnora_${userId}_*) key off the account.
+  // persistWeknoraUser resets the migration latch so the new identity adopts
+  // legacy/anon preferences on its next preference read.
+  if (session.user) persistWeknoraUser(storage, session.user);
 }

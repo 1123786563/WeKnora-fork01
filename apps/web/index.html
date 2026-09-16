@@ -9,6 +9,18 @@
   <body>
     <div id="root"></div>
     <script src="/config.js"></script>
+    <script>
+      // Vue embed.html parity (frontend/embed.html L15-21): the isolated embed
+      // entry forces light mode and a white full-height canvas before the app
+      // boots. React serves /embed/* from this single document, so the same
+      // bootstrap runs conditionally on the embed path.
+      if (window.location.pathname.indexOf('/embed/') === 0) {
+        document.documentElement.setAttribute('theme-mode', 'light');
+        document.documentElement.style.background = '#fff';
+        document.documentElement.style.colorScheme = 'light';
+        document.body.style.background = '#fff';
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

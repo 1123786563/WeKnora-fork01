@@ -9,6 +9,8 @@ import type {
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
+import { handleWikiBodyClick, renderWikiMarkdown, stripDuplicateLeadingTitle, wikiSlugDisplayName } from "./markdown.ts";
+import "./wiki-reader.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
@@ -318,6 +320,18 @@ export function WikiPage({
     choose(selected);
   }
 
+  // Vue WikiBrowser.vue `navigateToSlug`: follow a [[wiki-link]] by loading
+  // the target page into the reader. A missing slug keeps the current page
+  // (the error is only logged), matching the Vue behavior.
+  function navigateToSlug(nextSlug: string) {
+    client.wiki
+      .get(knowledgeBaseId, nextSlug)
+      .then(choose)
+      .catch((error: unknown) => {
+        console.error(`Failed to navigate to ${nextSlug}:`, error);
+      });
+  }
+
   // Vue `overwriteSavePage`: resolve a 409 conflict by re-saving the local
   // draft on top of the server's latest version (last write wins; the losing
   // version stays in revision history).
@@ -570,7 +584,21 @@ export function WikiPage({
                 </div>
               </div>
               {saveState?.status === "error" ? <Status tone="error">{saveState.message}</Status> : null}
-              <pre className="wk-wiki-reader-content m-0 box-border min-h-[22rem] overflow-auto rounded-md border border-[#d8e0eb] bg-[#f8fafc] p-4 font-[inherit] leading-[1.65] whitespace-pre-wrap">{selected.content}</pre>
+              {(() => {
+                // Vue renderedContent computed: strip the duplicate leading
+                // H1, then run the same wiki-link → marked → DOMPurify chain.
+                const body = stripDuplicateLeadingTitle(selected.content || "", selected.title);
+                const rendered = renderWikiMarkdown(body, {
+                  resolveSlugName: (nextSlug) => wikiSlugDisplayName(nextSlug, pages),
+                });
+                return (
+                  <div
+                    className="wk-wiki-reader-content wiki-reader-body m-0 box-border min-h-[22rem]"
+                    onClick={(event) => handleWikiBodyClick(event, navigateToSlug)}
+                    dangerouslySetInnerHTML={{ __html: rendered }}
+                  />
+                );
+              })()}
             </article>
           ) : null}
           {canContribute ? <form

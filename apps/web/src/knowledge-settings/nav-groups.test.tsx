@@ -206,16 +206,19 @@ test('clicking a nav item activates it (Vue .nav-item.active) and swaps the cont
   assert.match(document.body.textContent ?? '', /MinerU/);
 });
 
-test('unported Vue sections render the shared placeholder instead of a fabricated editor', async () => {
+test('R441 ports the basic section: the name editor renders instead of the placeholder', async () => {
   await renderPage(clientFor({ dataSources: [], shareList: 0, activityCalls: [] }));
-  // R439 ported models/chunking/advanced; R440 ported multimodal/asr/faq.
-  // The Vue basic section (name/description/type) stays the only unported one.
+  // R439 ported models/chunking/advanced; R440 ported multimodal/asr/faq;
+  // R441 ports the Vue basic section (name/description/type/indexing), so no
+  // nav item renders the shared not-yet-ported notice anymore.
   const basicButton = navButtons().find((button) => button.getAttribute('data-section') === 'basic');
   assert.ok(basicButton, 'basic nav item must exist (Vue renders it)');
   await act(async () => { basicButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   const text = document.body.textContent ?? '';
-  assert.match(text, /not been ported/, 'placeholder must reuse the shared not-yet-ported notice');
-  assert.equal(document.body.querySelector('input'), null, 'no invented editing controls for unported sections');
+  assert.equal(text.includes('not been ported'), false, 'the basic section is fully ported');
+  const nameInput = [...document.body.querySelectorAll('input')].find((candidate) => candidate.getAttribute('aria-label') === 'Knowledge Base Name') as HTMLInputElement | undefined;
+  assert.ok(nameInput, 'the Vue name editor renders for the basic section');
+  assert.equal(nameInput!.value, 'Product docs');
 });
 
 test('surface chrome matches the Vue modal: 1000x750 modal frame and 208px sidebar', async () => {

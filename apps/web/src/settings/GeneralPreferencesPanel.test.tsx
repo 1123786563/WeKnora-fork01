@@ -193,3 +193,55 @@ test('font previews use semantic surface and neutral border tokens', async () =>
     assert.ok(preview.classList.contains('border-line-neutral'));
   }
 });
+
+// --- R441 A4: font selects read/write the per-user namespace (Vue
+// preferenceStorage parity), not the pre-namespacing flat keys. ---
+
+test('sans font change persists under WeKnora_{uid}_font_sans, never the flat key', async () => {
+  dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u1' }));
+  const container = await mountPanel();
+
+  // jsdom resolves to the linux platform set; pick a visible sans key.
+  await changeSelect(container, 2, 'noto-cjk');
+
+  assert.equal(dom.window.localStorage.getItem('WeKnora_u1_font_sans'), 'noto-cjk');
+  assert.equal(dom.window.localStorage.getItem('font_sans'), null);
+});
+
+test('mono font change persists under WeKnora_{uid}_font_mono, never the flat key', async () => {
+  dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u1' }));
+  const container = await mountPanel();
+
+  await changeSelect(container, 3, 'dejavu-mono');
+
+  assert.equal(dom.window.localStorage.getItem('WeKnora_u1_font_mono'), 'dejavu-mono');
+  assert.equal(dom.window.localStorage.getItem('font_mono'), null);
+});
+
+test('panel adopts legacy flat font keys at mount and never reads them back for user u2', async () => {
+  // u1 changed fonts while logged in; the flat keys are u1-era leftovers.
+  dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u1' }));
+  dom.window.localStorage.setItem('font_sans', 'georgia');
+  dom.window.localStorage.setItem('font_mono', 'monaco');
+  // Earlier tests in this process already consumed the module-level latch for
+  // u1; reset it so this mount performs the adoption like a fresh login would.
+  const { resetMigrationLatch } = await import('@weknora/domain/settings/local-preferences');
+  resetMigrationLatch();
+  await mountPanel();
+  assert.equal(dom.window.localStorage.getItem('WeKnora_u1_font_sans'), 'georgia');
+  if (mountedRoot) await act(async () => mountedRoot?.unmount());
+  mountedRoot = undefined;
+  document.body.replaceChildren();
+
+  // u2 logs in on the same browser: u1's font choices must not surface, and
+  // the flat leftovers must already have been consumed by the u1 migration.
+  dom.window.localStorage.clear();
+  dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u2' }));
+  dom.window.localStorage.setItem('font_sans', 'georgia');
+  dom.window.localStorage.setItem('font_mono', 'monaco');
+  const second = await mountPanel();
+
+  const selects = second.querySelectorAll('select');
+  assert.equal((selects[2] as HTMLSelectElement).value, 'system', 'u2 must not inherit u1 font_sans');
+  assert.equal((selects[3] as HTMLSelectElement).value, 'system', 'u2 must not inherit u1 font_mono');
+});

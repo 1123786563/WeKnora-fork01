@@ -1,4 +1,5 @@
 import type { BearerCredential, Credential, CredentialAdapter } from '@weknora/api-client';
+import { clearWeknoraUser } from '@weknora/domain/settings/local-preferences';
 import { persistReactPlatformState, readReactPlatformState } from './legacy-session.ts';
 
 const ACCESS_TOKEN_KEY = 'weknora_token';
@@ -22,6 +23,11 @@ export function persistBrowserCredential(storage: CredentialStorage, credential:
   } else {
     storage.removeItem(ACCESS_TOKEN_KEY);
     storage.removeItem(REFRESH_TOKEN_KEY);
+    // The anonymous write is the logout / session-invalidated path. Vue
+    // stores/auth.ts logout removes weknora_user so per-user preference
+    // namespaces (WeKnora_${userId}_*) resolve to "anon" afterwards and the
+    // next account never inherits the previous one's preferences.
+    clearWeknoraUser(storage);
   }
 
   const current = readReactPlatformState(storage) ?? {

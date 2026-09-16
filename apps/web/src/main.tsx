@@ -81,7 +81,9 @@ if (oidcCallback?.kind === 'success') {
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
 const loadingLocale: Locale = isLocale(navigator.language) ? navigator.language : 'en-US';
 const loadingText = loadingLabel(loadingLocale);
-const embedEntryError = ({ 'zh-CN': 'Embed 必须使用独立入口。', 'en-US': 'Embed must use its isolated entrypoint.', 'ja-JP': 'Embed は専用エントリーポイントを使用してください。', 'ko-KR': 'Embed는 전용 진입점을 사용해야 합니다.', 'ru-RU': 'Embed должен использовать изолированную точку входа.' } as Record<Locale, string>)[loadingLocale];
+// R441: /embed/* no longer dead-ends on the isolated-entry error — the isolated
+// entry itself is mounted (Vue frontend/embed.html + embed-main.ts parity).
+const EmbedEntryPage = lazy(() => import('./embed/EmbedEntryPage.tsx').then((module) => ({ default: module.EmbedEntryPage })));
 let currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
 const importedPlatformState = currentRoute.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = currentRoute.kind === 'embed'
@@ -138,7 +140,9 @@ client = createWeKnoraClient({
 const root = createRoot(document.getElementById('root')!);
 // Vue useTheme.initTheme parity: apply the stored theme on startup and
 // re-apply on weknora:theme-changed / OS scheme changes (theme.ts).
-initTheme();
+// The embed entry forces light mode instead (frontend/embed.html sets
+// theme-mode="light" before the app boots).
+if (currentRoute.kind !== 'embed') initTheme();
 const platformAdapters = createWebPlatformAdapters();
 
 // Route changes stay inside the mounted React tree. PlatformShell keeps its
@@ -288,7 +292,10 @@ function renderProtected() {
 
 async function bootstrap() {
   if (currentRoute.kind === 'embed') {
-    root.render(<main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Status tone="error">{embedEntryError}</Status></main>);
+    // Vue renders /embed/:channelId from the isolated embed.html document
+    // (embed-main.ts router). React keeps one bundle, so the isolated entry is
+    // this bare page: no platform shell, no bearer session, anonymous client.
+    root.render(<EmbedEntryPage apiBaseUrl={apiBaseUrl} />);
     return;
   }
   if (currentRoute.kind === 'login') {

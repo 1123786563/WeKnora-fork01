@@ -16,6 +16,8 @@
     "@weknora/i18n": "workspace:*",
     "@weknora/ui": "file:../../packages/ui",
     "@weknora/views": "workspace:*",
+    "dompurify": "^3.4.11",
+    "marked": "^17.0.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "xlsx": "file:./vendor/xlsx-0.20.2.tgz"

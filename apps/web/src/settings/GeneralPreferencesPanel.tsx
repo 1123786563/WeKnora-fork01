@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
-import { readLocalPreferences, writeLocalPreferences, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
+import { readLocalPreferences, writeLocalPreferences, readUserPreference, writeUserPreference, migratePreferencesIntoUser, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
 import { Select, Status, Switch } from '@weknora/ui';
 
 function readStoredLocale(): Locale {
@@ -118,8 +118,21 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
   const [fontSize, setFontSize] = useState<FontSize>(() => {
     try { return readLocalPreferences(window.localStorage).fontSize; } catch { return 'normal'; }
   });
-  const [sansFont, setSansFont] = useState<string>(() => window.localStorage.getItem('font_sans') ?? 'system');
-  const [monoFont, setMonoFont] = useState<string>(() => window.localStorage.getItem('font_mono') ?? 'system');
+  // Vue useFont() initialises from the per-user namespace
+  // (WeKnora_{uid}_font_sans / _font_mono). The mount-time migration adopts
+  // any pre-namespacing flat keys first (idempotent; latch-guarded per user)
+  // so an upgrade keeps the previous font choices.
+  const [sansFont, setSansFont] = useState<string>(() => {
+    try {
+      migratePreferencesIntoUser(window.localStorage);
+      return readUserPreference(window.localStorage, 'font_sans') ?? 'system';
+    } catch { return 'system'; }
+  });
+  const [monoFont, setMonoFont] = useState<string>(() => {
+    try {
+      return readUserPreference(window.localStorage, 'font_mono') ?? 'system';
+    } catch { return 'system'; }
+  });
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(readAutoCheckUpdate);
   // Vue GeneralSettings.vue closes each accepted preference change with a
   // MessagePlugin.success (language.languageSaved / common.success); the React
@@ -161,13 +174,13 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
   }
   function handleSansFontChange(next: string) {
     setSansFont(next);
-    window.localStorage.setItem('font_sans', next);
+    writeUserPreference(window.localStorage, 'font_sans', next);
     applyFontCssVariables(next, monoFont, fontSize);
     setNotice(formatMessage(locale, 'common.success'));
   }
   function handleMonoFontChange(next: string) {
     setMonoFont(next);
-    window.localStorage.setItem('font_mono', next);
+    writeUserPreference(window.localStorage, 'font_mono', next);
     applyFontCssVariables(sansFont, next, fontSize);
     setNotice(formatMessage(locale, 'common.success'));
   }

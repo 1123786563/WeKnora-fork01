@@ -8,6 +8,10 @@ import {
   migratePreferencesIntoUser,
   resetMigrationLatch,
   readUserIdFromStorage,
+  readUserPreference,
+  writeUserPreference,
+  persistWeknoraUser,
+  clearWeknoraUser,
 } from './local-preferences.ts';
 
 /** Minimal Storage double with removal support (port of Vue preferenceStorage). */
@@ -172,4 +176,72 @@ test('isValidTheme and isValidFontSize gate correctly', () => {
   assert.ok(!isValidTheme('bogus'));
   assert.ok(isValidFontSize('large'));
   assert.ok(!isValidFontSize('huge'));
+});
+
+// --- R441 A4: font keys move off the flat namespace onto the per-user path ---
+
+test('readUserPreference/writeUserPreference resolve WeKnora_{uid}_{suffix} keys', () => {
+  const s = mem();
+  asUser(s, 'u1');
+  assert.equal(readUserPreference(s, 'font_sans'), null);
+  writeUserPreference(s, 'font_sans', 'georgia');
+  assert.equal(s.getItem('WeKnora_u1_font_sans'), 'georgia');
+  assert.equal(readUserPreference(s, 'font_sans'), 'georgia');
+  // A different account must not read u1's value (no cross-user bleed).
+  asUser(s, 'u2');
+  assert.equal(readUserPreference(s, 'font_sans'), null);
+});
+
+test('React flat font keys (font_sans / font_mono) migrate into the user namespace', () => {
+  const s = mem({ font_sans: 'georgia', font_mono: 'monaco' });
+  asUser(s, 'u1');
+  migratePreferencesIntoUser(s);
+  assert.equal(readUserPreference(s, 'font_sans'), 'georgia');
+  assert.equal(readUserPreference(s, 'font_mono'), 'monaco');
+  // Flat sources are removed so later users cannot inherit them.
+  assert.equal(s.getItem('font_sans'), null);
+  assert.equal(s.getItem('font_mono'), null);
+});
+
+test('anon font namespace wins over React flat font keys during migration', () => {
+  const s = mem({ WeKnora_anon_font_sans: 'pingfang', font_sans: 'georgia' });
+  asUser(s, 'u1');
+  migratePreferencesIntoUser(s);
+  assert.equal(readUserPreference(s, 'font_sans'), 'pingfang');
+  assert.equal(s.getItem('font_sans'), null);
+  assert.equal(s.getItem('WeKnora_anon_font_sans'), null);
+});
+
+// --- R441 A4: platform-level weknora_user writes (Vue stores/auth.ts parity) ---
+
+test('persistWeknoraUser writes the full user JSON; clearWeknoraUser removes it', () => {
+  const s = mem();
+  persistWeknoraUser(s, { id: 'u1', email: 'a@b.c', nickname: 'A' });
+  assert.equal(s.getItem('weknora_user'), JSON.stringify({ id: 'u1', email: 'a@b.c', nickname: 'A' }));
+  assert.equal(readUserIdFromStorage(s), 'u1');
+  clearWeknoraUser(s);
+  assert.equal(s.getItem('weknora_user'), null);
+  assert.equal(readUserIdFromStorage(s), 'anon');
+});
+
+test('persistWeknoraUser without an id is a no-op (never writes an unusable identity)', () => {
+  const s = mem();
+  persistWeknoraUser(s, { email: 'a@b.c' });
+  assert.equal(s.getItem('weknora_user'), null);
+  persistWeknoraUser(s, undefined);
+  assert.equal(s.getItem('weknora_user'), null);
+});
+
+test('persistWeknoraUser resets the migration latch so the next user migrates', () => {
+  const s = mem({ 'weknora-theme': 'dark' });
+  asUser(s, 'u1');
+  migratePreferencesIntoUser(s);
+  assert.equal(readLocalPreferences(s).theme, 'dark');
+  // Login as u2: persistWeknoraUser must reset the latch so u2's migration
+  // (and the key resolution of every later read) sees the new identity.
+  persistWeknoraUser(s, { id: 'u2' });
+  s.setItem('weknora-font-size', 'large');
+  migratePreferencesIntoUser(s);
+  assert.equal(readLocalPreferences(s).fontSize, 'large');
+  assert.equal(s.getItem('weknora-font-size'), null);
 });

@@ -33,11 +33,11 @@ function safeGet(storage: Storage, key: string): string | null {
   try { return storage.getItem(key); } catch { return null; }
 }
 
-function safeSet(storage: Storage, key: string, value: string): void {
+function safeSet(storage: Pick<Storage, 'setItem'>, key: string, value: string): void {
   try { storage.setItem(key, value); } catch { /* quota / private mode: best-effort */ }
 }
 
-function safeRemove(storage: Storage, key: string): void {
+function safeRemove(storage: Pick<Storage, 'removeItem'>, key: string): void {
   try { storage.removeItem?.(key); } catch { /* best-effort */ }
 }
 
@@ -83,6 +83,41 @@ export function isValidTheme(v: string): v is ThemeMode { return ['light', 'dark
 /** Validate a font size value. */
 export function isValidFontSize(v: string): v is FontSize { return ['small', 'normal', 'large'].includes(v); }
 
+/**
+ * Per-user read/write for any namespaced preference suffix
+ * (`WeKnora_${userId}_${suffix}`, Vue preferenceStorage.userKey parity).
+ * Fonts (font_sans / font_mono) use these instead of the pre-R441 flat keys.
+ */
+export function readUserPreference(storage: Storage, suffix: string): string | null {
+  return safeGet(storage, userKey(storage, suffix));
+}
+
+export function writeUserPreference(storage: Storage, suffix: string, value: string): void {
+  safeSet(storage, userKey(storage, suffix), value);
+}
+
+/**
+ * Mirror of Vue stores/auth.ts setUser: persist the authenticated user as the
+ * `weknora_user` JSON entry that readUserIdFromStorage namespaces preferences
+ * with. A no-op when the payload carries no usable id. Resets the migration
+ * latch so preferences migrate for the NEW identity on the next read
+ * (Vue reloadUserPreferences parity). Only needs setItem so credential
+ * writers with narrow storage surfaces can call it.
+ */
+export function persistWeknoraUser(storage: Pick<Storage, 'setItem'>, user: Record<string, unknown> | undefined | null): void {
+  const id = (user as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string' && typeof id !== 'number') return;
+  if (typeof id === 'string' && !id.trim()) return;
+  safeSet(storage, USER_ID_KEY, JSON.stringify(user));
+  resetMigrationLatch();
+}
+
+/** Vue stores/auth.ts logout parity: drop the weknora_user identity entry. */
+export function clearWeknoraUser(storage: Pick<Storage, 'removeItem'>): void {
+  safeRemove(storage, USER_ID_KEY);
+  resetMigrationLatch();
+}
+
 let migratedForUser: string | null = null;
 
 /**
@@ -110,9 +145,13 @@ export function migratePreferencesIntoUser(storage: Storage): void {
 
     const anonKey = `WeKnora_anon_${suffix}`;
     const legacyKey = `WeKnora_${suffix}`;
-    // React's previous flat keys before per-user namespacing.
+    // React's previous flat keys before per-user namespacing. Fonts lived on
+    // bare `font_sans` / `font_mono` until R441 moved them onto the per-user
+    // path; theme / font size used the dash-prefixed keys.
     const reactFlatKey = suffix === 'theme' ? 'weknora-theme'
       : suffix === 'font_size' ? 'weknora-font-size'
+      : suffix === 'font_sans' ? 'font_sans'
+      : suffix === 'font_mono' ? 'font_mono'
       : null;
 
     if (!targetExists) {
