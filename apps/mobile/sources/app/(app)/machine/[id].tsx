@@ -15,7 +15,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { navigateToProductSession } from '@/hooks/useNavigateToSession';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 
 export default function MachineDetailScreen() {
@@ -24,7 +24,7 @@ export default function MachineDetailScreen() {
     const router = useRouter();
     const sessions = useSessions();
     const machine = useMachine(machineId!);
-    const navigateToSession = useNavigateToSession();
+
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
@@ -131,13 +131,13 @@ export default function MachineDetailScreen() {
                     ...machine.metadata!,
                     displayName: newDisplayName.trim() || undefined
                 };
-                
+
                 await machineUpdateMetadata(
                     machineId,
                     updatedMetadata,
                     machine.metadataVersion
                 );
-                
+
                 Modal.alert(t('common.success'), 'Machine renamed successfully');
             } catch (error) {
                 Modal.alert(
@@ -233,9 +233,9 @@ export default function MachineDetailScreen() {
                                 isStoppingDaemon ? (
                                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                 ) : (
-                                    <Ionicons 
-                                        name="stop-circle" 
-                                        size={20} 
+                                    <Ionicons
+                                        name="stop-circle"
+                                        size={20}
                                         color={machineOnline ? '#FF9500' : theme.colors.textSecondary}
                                     />
                                 )
@@ -344,7 +344,7 @@ export default function MachineDetailScreen() {
                                 key={session.id}
                                 title={getSessionName(session)}
                                 subtitle={getSessionSubtitle(session)}
-                                onPress={() => navigateToSession(session.id, createProductSessionNavigationFromSession(session))}
+                                onPress={() => navigateToProductSession(router, session)}
                                 rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
                             />
                         ))}

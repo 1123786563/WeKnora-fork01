@@ -10,10 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { navigateToProductSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Pressable } from 'react-native';
 import { t } from '@/text';
 import { MobileGlassSurface } from '@/components/MobileGlass';
+import { useRouter } from 'expo-router';
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';
@@ -173,6 +174,7 @@ export default function SessionHistory() {
     const allSessions = useAllSessions();
     const projects = useProjects();
     const navigateToSession = useNavigateToSession();
+    const router = useRouter();
     
     const groupedItems = React.useMemo(() => {
         return groupSessionsByDate(allSessions);
@@ -220,7 +222,7 @@ export default function SessionHistory() {
                 >
                 <Pressable
                     style={({ pressed }) => [styles.sessionPressable, Platform.OS !== 'web' && pressed && { opacity: 0.72 }]}
-                    onPress={() => navigateToSession(session.id, createProductSessionNavigationFromSession(session))}
+                    onPress={() => navigateToProductSession(router, session)}
                 >
                     <Avatar
                         id={avatarId}

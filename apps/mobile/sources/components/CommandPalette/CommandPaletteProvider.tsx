@@ -8,7 +8,7 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useAuth } from '@/auth/AuthContext';
 import { storage, useAllMachines } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
-import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { navigateToProductSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ShortcutHintsProvider } from '@/components/ShortcutHints';
 import {
     formatShortcut,
@@ -111,7 +111,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 icon: 'time-outline',
                 category: 'Recent Sessions',
                 action: () => {
-                    navigateToSession(session.id, createProductSessionNavigationFromSession(session));
+                    navigateToProductSession(router, session);
                 }
             });
         });
@@ -169,7 +169,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         if (!sessionId) {
             return false;
         }
-        navigateToSession(sessionId, createProductSessionNavigationFromSession(sessions[sessionId]));
+        navigateToProductSession(router, sessions[sessionId]);
         return true;
     }, [navigateToSession, visibleSessionShortcutIds]);
 

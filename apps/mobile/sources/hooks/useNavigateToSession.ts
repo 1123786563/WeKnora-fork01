@@ -72,6 +72,11 @@ export function navigateToProductSession(router: Router, session: any): boolean 
     return true;
 }
 
+export function useNavigateToProductSession() {
+    const router = useRouter();
+    return useCallback((session: any) => navigateToProductSession(router, session), [router]);
+}
+
 export function useNavigateToSession() {
     const router = useRouter();
     return useCallback((sessionId: string, product?: ProductSessionNavigation) => {
