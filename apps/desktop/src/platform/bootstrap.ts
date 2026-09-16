@@ -6,6 +6,7 @@ type DesktopAppBridge = WailsAppBridge & DesktopCredentialBridge & {
   GetPaseoURL?: () => string | Promise<string>;
   GetPaseoAllowedOrigins?: () => string[] | Promise<string[]>;
 };
+export type DesktopAppBridgeReader = () => DesktopAppBridge;
 
 /**
  * Resolve every Wails-owned value before constructing the connector. Wails
@@ -13,16 +14,23 @@ type DesktopAppBridge = WailsAppBridge & DesktopCredentialBridge & {
  * the runtime second loses the personal-node adapter on a normal launch.
  */
 export async function resolveDesktopPersonalNode(
-  app: DesktopAppBridge,
+  appOrReader: DesktopAppBridge | DesktopAppBridgeReader,
   readInjected: () => unknown = () => typeof window === 'undefined' ? undefined : (window as Window & { __WEKNORA_PASEO_CONFIG__?: Partial<DesktopPersonalNodeConfig> }).__WEKNORA_PASEO_CONFIG__,
   options: { attempts?: number; delayMs?: number } = {},
 ) {
+  const readBridge: DesktopAppBridgeReader = typeof appOrReader === 'function'
+    ? appOrReader as DesktopAppBridgeReader
+    : () => appOrReader;
   const apiBaseURL = await resolveDesktopApiBaseUrlWhenReady(
-    () => app,
+    readBridge,
     () => typeof window === 'undefined' ? undefined : (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__,
     options,
   );
   if (!apiBaseURL) return undefined;
+
+  // Read the bridge again after the retry. Wails may install window.go after
+  // module evaluation; credential and policy calls must use that late object.
+  const app = readBridge();
 
   const injected = readInjected() as Partial<DesktopPersonalNodeConfig> | undefined;
   const paseoURL = injected?.paseoURL?.trim() || await Promise.resolve(app.GetPaseoURL?.() ?? '');

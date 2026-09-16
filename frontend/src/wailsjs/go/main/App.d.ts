@@ -15,6 +15,16 @@ export function GetDesktopHTTPPortSetting():Promise<number>;
 
 export function GetDesktopListenPublicActive():Promise<boolean>;
 
+export function GetCredential(arg1:string):Promise<string>;
+
+export function SetCredential(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteCredential(arg1:string):Promise<void>;
+
+export function GetPaseoURL():Promise<string>;
+
+export function GetPaseoAllowedOrigins():Promise<string[]>;
+
 export function SetDesktopHTTPBindPublicSetting(arg1:boolean):Promise<void>;
 
 export function SetDesktopHTTPPortSetting(arg1:number):Promise<void>;

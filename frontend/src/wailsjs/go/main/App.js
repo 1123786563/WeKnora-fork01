@@ -30,6 +30,26 @@ export function GetDesktopListenPublicActive() {
   return window['go']['main']['App']['GetDesktopListenPublicActive']();
 }
 
+export function GetCredential(arg1) {
+  return window['go']['main']['App']['GetCredential'](arg1);
+}
+
+export function SetCredential(arg1, arg2) {
+  return window['go']['main']['App']['SetCredential'](arg1, arg2);
+}
+
+export function DeleteCredential(arg1) {
+  return window['go']['main']['App']['DeleteCredential'](arg1);
+}
+
+export function GetPaseoURL() {
+  return window['go']['main']['App']['GetPaseoURL']();
+}
+
+export function GetPaseoAllowedOrigins() {
+  return window['go']['main']['App']['GetPaseoAllowedOrigins']();
+}
+
 export function SetDesktopHTTPBindPublicSetting(arg1) {
   return window['go']['main']['App']['SetDesktopHTTPBindPublicSetting'](arg1);
 }

@@ -3,10 +3,14 @@ package main
 import (
 	"os"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
 func TestAppCredentialBridgeIsScopedAndIdempotent(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("keychain integration requires an isolated login keychain")
+	}
 	app := NewApp()
 	app.SetCredential("node", "secret")
 	if got := app.GetCredential("node"); got != "secret" {

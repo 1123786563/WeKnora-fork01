@@ -5,7 +5,7 @@ import { installDesktopRuntime } from './platform/runtime.ts';
 import { readWailsBridge } from './platform/wails.ts';
 import { resolveDesktopPersonalNode } from './platform/bootstrap.ts';
 
-const wailsApp = readWailsBridge(typeof window === 'undefined' ? undefined : (window as Window & { go?: { main?: { App?: unknown } } }).go?.main?.App);
-const personalNode = await resolveDesktopPersonalNode(wailsApp);
+const readWailsApp = () => readWailsBridge(typeof window === 'undefined' ? undefined : (window as Window & { go?: { main?: { App?: unknown } } }).go?.main?.App);
+const personalNode = await resolveDesktopPersonalNode(readWailsApp);
 await installDesktopRuntime({ personalNode });
 await import('../../web/src/main.tsx');

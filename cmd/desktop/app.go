@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 )
@@ -33,18 +32,7 @@ func NewApp() *App {
 // builds use the login keychain; keeping the store behind App means bearer
 // material never falls back to WebView storage.
 func (a *App) GetCredential(key string) string {
-	a.credentialMu.RLock()
-	value := a.credentials[key]
-	a.credentialMu.RUnlock()
-	if value != "" {
-		return value
-	}
-	// macOS Wails builds use the user login keychain. The in-memory map is a
-	// test/non-macOS fallback and is never copied into WebView storage.
-	if output, err := exec.Command("security", "find-generic-password", "-a", key, "-s", desktopCredentialService, "-w").Output(); err == nil {
-		return strings.TrimSpace(string(output))
-	}
-	return ""
+	return a.credentialGet(key)
 }
 
 // SetCredential is used by the desktop auth callback to hand an opaque
@@ -54,21 +42,13 @@ func (a *App) SetCredential(key, value string) {
 	if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
 		return
 	}
-	a.credentialMu.Lock()
-	a.credentials[key] = value
-	a.credentialMu.Unlock()
-	if err := exec.Command("security", "add-generic-password", "-U", "-a", key, "-s", desktopCredentialService, "-w", value).Run(); err != nil {
-		// Non-macOS/test environments retain the value for the current process.
-	}
+	a.credentialSet(key, value)
 }
 
 // DeleteCredential is idempotent and is called when the personal node is
 // revoked or the desktop session logs out.
 func (a *App) DeleteCredential(key string) {
-	_ = exec.Command("security", "delete-generic-password", "-a", key, "-s", desktopCredentialService).Run()
-	a.credentialMu.Lock()
-	delete(a.credentials, key)
-	a.credentialMu.Unlock()
+	a.credentialDelete(key)
 }
 
 // GetPaseoURL and GetPaseoAllowedOrigins are deployment-owned values. Empty
