@@ -4073,3 +4073,22 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   no module-resolution failure. This improves the reliability of the
   Tailwind/shadcn project-component evidence; it does not change runtime UI
   behavior or replace browser/backend acceptance. No mobile code was modified.
+
+## 2026-09-16 Round R423 — Parallel upload and settings parity
+
+- Four independent Vue-baseline fixes landed: knowledge uploads now filter
+  hidden folders, videos, and unsupported extensions before confirmation
+  (`c02a8b2f`); personal memory shows an accessible loading state matching
+  Vue `t-loading` (`e0753d9b5`); non-legacy Sandbox cards restore Vue click and
+  keyboard navigation into the editor (`9bce4e81`); and `system-admin` is
+  admitted to the Vue-equivalent Skill management branch (`959315db`).
+- Scoped tests passed: upload 79/79, memory 12/12, Sandbox 29/29, Skill
+  32/32. Integrated Web regression passed `1214/1214`; `pnpm typecheck:web`,
+  `git diff --check`, Web build, Embed build, Desktop 9/9 tests, Desktop
+  typecheck, and Desktop build all passed. Builds retain the known large-chunk
+  and desktop CSS `@import` advisories.
+- These are static/unit/component and build results. Authenticated paired
+  Vue/React screenshots, computed-style sweeps, real backend upload/memory/
+  sandbox/skill mutation and permission flows, and per-feature Wails/native
+  interaction remain open or `blocked-env`. No Vue, mobile, Go, or pre-existing
+  workbench migration changes were modified.
