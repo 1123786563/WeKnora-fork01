@@ -57,7 +57,7 @@ export function UploadConfirmDialog({ open, mode = 'file', files = [], urls = []
       </section>)}
     </div>
     {!validation.valid && !validation.firstIssueSection ? <Status tone="error">Select a file, URL, or manual content before continuing.</Status> : null}
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+    <div className="flex items-center justify-end gap-2">
       <Button type="button" variant="text" onClick={close} disabled={loading}>Cancel</Button>
       <Button type="button" variant="primary" loading={loading} disabled={!validation.valid} onClick={confirm}>Confirm</Button>
     </div>
