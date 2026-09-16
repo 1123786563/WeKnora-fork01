@@ -46,6 +46,9 @@ func newAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, dispat
 		return nil, err
 	}
 	r := cfg.Agent.Recovery
+	if r.Enabled && provider == nil {
+		return nil, errors.New("durable agent recovery requires a configured remote provider")
+	}
 	c := service.DefaultWorkerConfig()
 	c.Enabled = r.Enabled
 	if r.Lease > 0 {

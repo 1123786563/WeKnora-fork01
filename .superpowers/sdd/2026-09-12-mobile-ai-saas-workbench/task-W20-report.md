@@ -96,3 +96,20 @@ Fix-round-2 verification:
   this isolated W19 base because `repository.WorkbenchRequestRepository` and
   its constructor/model are not present; PostgreSQL DSN and live Paseo
   credentials remain unavailable and are not claimed as runtime acceptance.
+
+## Review fix round 3
+
+- `BuildContainer` now registers one `ExecutionDispatchStore` beside the
+  durable run repositories and resolves `AgentRuntime` through
+  `NewAgentRuntimeWithRemoteProvider`, so the production construction path
+  cannot silently select the legacy worker.
+- This isolated W19 base has no Go Paseo provider implementation or provider
+  factory to inject. The constructor passes a typed nil provider for
+  unconfigured deployments and fails closed when durable recovery is enabled;
+  it never reports a provider dispatch as successful. The concrete Paseo host
+  must supply the provider at this integration seam before enabling recovery.
+- Verification is limited by the inherited branch gaps documented above:
+  `go test ./internal/container` cannot compile because
+  `repository.WorkbenchRequestRepository` is absent, while recovery config
+  fields arrive only with the later config-chain commits. `git diff --check`
+  passes for this scoped fix.

@@ -156,11 +156,25 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	// The dispatch intent/receipt log is a first-class dependency of the
+	// durable worker. Keep it in the same database scope as AgentRunStore so
+	// provider starts can never bypass the W20 fence.
+	must(container.Provide(repository.NewExecutionDispatchStore))
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
 	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
 	must(container.Provide(NewWorkbenchReadHandler))
-	must(container.Provide(NewAgentRuntime))
+	// Resolve the runtime through the remote-dispatch constructor. A provider
+	// is supplied by the Paseo host integration; the nil value here is
+	// deliberate for installations that have not configured that integration
+	// and is rejected when durable recovery is enabled (see agent_runtime.go).
+	must(container.Provide(func(
+		cfg *config.Config,
+		store *repository.AgentRunStore,
+		dispatch *repository.ExecutionDispatchStore,
+	) (*AgentRuntime, error) {
+		return NewAgentRuntimeWithRemoteProvider(cfg, store, dispatch, nil)
+	}))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
