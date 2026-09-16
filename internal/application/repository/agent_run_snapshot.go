@@ -100,6 +100,26 @@ func executionFromRun(ctx context.Context, resolver CapabilityResolver, row snap
 	}
 }
 
+func projectExecutionEvents(execution workbench.ExecutionDTO, events []workbench.ExecutionEvent) workbench.ExecutionDTO {
+	// The durable run row remains authoritative for a terminal outcome. While a
+	// run is active, however, provider observations can advance the product
+	// projection before the worker updates agent_runs; expose that progress in
+	// the same DTO consumed by the mobile client.
+	if execution.RunStatus == "queued" || execution.RunStatus == "running" || execution.RunStatus == "reconciling" {
+		for _, event := range events {
+			switch event.Type {
+			case "run.completed", "execution.succeeded", "status.succeeded":
+				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "succeeded", "succeeded", "settled"
+			case "run.failed", "execution.failed", "status.failed":
+				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "failed", "failed", "settled"
+			case "run.canceled", "execution.canceled", "status.canceled":
+				execution.RunStatus, execution.ExecutionStatus, execution.SettlementStatus = "canceled", "canceled", "settled"
+			}
+		}
+	}
+	return execution
+}
+
 // ReadRunSnapshot reads the run row and all retained events in one database
 // transaction. The transaction gives callers a single watermark and prevents
 // a concurrent event append from producing a snapshot whose execution seq is
@@ -151,7 +171,9 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 		if resolver == nil {
 			resolver = environmentCapabilityResolver{}
 		}
-		result = workbench.ExecutionSnapshot{Execution: executionFromRun(ctx, resolver, run, watermark), Watermark: watermark, Events: events}
+		execution := projectExecutionEvents(executionFromRun(ctx, resolver, run, watermark), events)
+		incomplete := len(events) > 0 && events[0].Seq > 1
+		result = workbench.ExecutionSnapshot{Execution: execution, Watermark: watermark, Incomplete: incomplete, Events: events}
 		return result.Validate()
 	}, txOptions)
 	return result, err

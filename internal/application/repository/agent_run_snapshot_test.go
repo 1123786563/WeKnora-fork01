@@ -41,6 +41,19 @@ func TestReadRunSnapshotUsesAuthoritativeProjection(t *testing.T) {
 	require.Equal(t, "platform", snapshot.Execution.Driver)
 }
 
+func TestReadRunSnapshotProjectsProviderTerminalEventAndMarksMissingHistory(t *testing.T) {
+	db := openRunTestDB(t)
+	_, err := NewAgentRunStore(db).Admit(context.Background(), testAdmission())
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`INSERT INTO agent_run_events (tenant_id, run_id, seq, attempt_id, event_type, payload) VALUES (1, 'r1', 4, 'attempt-1', 'execution.succeeded', '{"ok":true}')`).Error)
+	snapshot, err := NewAgentRunSnapshotRepository(db).ReadRunSnapshot(context.Background(), agentruntime.RunKey{TenantID: 1, RunID: "r1"})
+	require.NoError(t, err)
+	require.True(t, snapshot.Incomplete)
+	require.Equal(t, "succeeded", snapshot.Execution.RunStatus)
+	require.Equal(t, "settled", snapshot.Execution.SettlementStatus)
+	require.Len(t, snapshot.Events, 1)
+}
+
 func TestReadRunSnapshotUsesConfiguredCapabilityResolver(t *testing.T) {
 	db := openRunTestDB(t)
 	store := NewAgentRunStore(db)

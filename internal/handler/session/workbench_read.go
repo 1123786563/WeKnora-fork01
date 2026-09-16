@@ -14,6 +14,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
@@ -28,12 +29,17 @@ type WorkbenchSnapshotReader interface {
 	ReadRunEvents(ctx context.Context, key agentruntime.RunKey, cursor int64, limit int) ([]workbench.ExecutionEvent, int64, error)
 }
 
+type WorkbenchSourceIngestor interface {
+	IngestSourceEvent(ctx context.Context, bindingID string, source repository.SourceObservation) (workbench.ExecutionEvent, error)
+}
+
 // WorkbenchReadHandler is the ownership boundary for the mobile workbench.
 // Every operation resolves the run through GetOwnedRun before reading a
 // snapshot or event projection.
 type WorkbenchReadHandler struct {
 	runs      OwnedRunReader
 	snapshots WorkbenchSnapshotReader
+	ingestor  WorkbenchSourceIngestor
 }
 
 const (
@@ -42,8 +48,51 @@ const (
 	workbenchHeartbeat     = 15 * time.Second
 )
 
-func NewWorkbenchReadHandler(runs OwnedRunReader, snapshots WorkbenchSnapshotReader) *WorkbenchReadHandler {
-	return &WorkbenchReadHandler{runs: runs, snapshots: snapshots}
+func NewWorkbenchReadHandler(runs OwnedRunReader, snapshots WorkbenchSnapshotReader, ingestor ...WorkbenchSourceIngestor) *WorkbenchReadHandler {
+	var source WorkbenchSourceIngestor
+	if len(ingestor) > 0 {
+		source = ingestor[0]
+	}
+	return &WorkbenchReadHandler{runs: runs, snapshots: snapshots, ingestor: source}
+}
+
+type sourceEventRequest struct {
+	BindingID   string          `json:"binding_id"`
+	Generation  string          `json:"generation"`
+	EventID     string          `json:"event_id"`
+	AttemptID   string          `json:"attempt_id"`
+	Type        string          `json:"type"`
+	Payload     json.RawMessage `json:"payload"`
+	PayloadHash string          `json:"payload_hash"`
+}
+
+// IngestWorkbenchSourceEvent is the authenticated callback boundary used by a
+// Paseo bridge. Ownership is checked before the source is persisted; the
+// repository then re-resolves binding tenant/run inside its write transaction.
+func (h *WorkbenchReadHandler) IngestWorkbenchSourceEvent(c *gin.Context) {
+	key, ok := h.owned(c)
+	if !ok || h.ingestor == nil {
+		return
+	}
+	var request sourceEventRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	event, err := h.ingestor.IngestSourceEvent(c.Request.Context(), request.BindingID, repository.SourceObservation{BindingID: request.BindingID, Generation: request.Generation, EventID: request.EventID, AttemptID: request.AttemptID, Type: request.Type, Payload: request.Payload, PayloadHash: request.PayloadHash})
+	if errors.Is(err, repository.ErrSourceBinding) || (err == nil && event.RunID != key.RunID) {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, repository.ErrSourceConflict) || errors.Is(err, agentruntime.ErrConflict) {
+		c.AbortWithStatus(http.StatusConflict)
+		return
+	}
+	if err != nil {
+		writeWorkbenchError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": event})
 }
 
 func (h *WorkbenchReadHandler) owned(c *gin.Context) (agentruntime.RunKey, bool) {

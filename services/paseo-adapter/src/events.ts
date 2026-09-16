@@ -19,6 +19,7 @@ export interface ProductSnapshot {
   watermark: number;
   executionStatus: 'queued' | 'running' | 'waiting_user' | 'reconciling' | 'succeeded' | 'failed' | 'canceled';
   settlementStatus: 'pending' | 'settled';
+  incomplete: boolean;
 }
 
 export function sourceKey(event: SourceEvent): string {
@@ -62,5 +63,6 @@ export function projectSnapshot(events: readonly ProductEvent[]): ProductSnapsho
     watermark: sorted.reduce((max, event) => Math.max(max, event.seq), 0),
     executionStatus: canceled ? 'canceled' : failed ? 'failed' : terminal ? 'succeeded' : sorted.length ? 'running' : 'queued',
     settlementStatus: terminal || failed || canceled ? 'settled' : 'pending',
+    incomplete: sorted.length > 0 && sorted[0].seq > 1,
   };
 }
