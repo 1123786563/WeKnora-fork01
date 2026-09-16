@@ -111,6 +111,14 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
 
   const ready = view.kind === 'ready';
   return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
+    <div data-testid="workspace-mark" aria-hidden="true" className="mx-auto mb-[22px] flex h-16 w-16 items-center justify-center rounded-[18px] bg-primary/10 text-primary">
+      <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+        <rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" />
+        <rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" />
+        <rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" />
+        <rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" />
+      </svg>
+    </div>
     <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
     <p className="wk-muted text-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
     {view.kind === 'loading-policy' || (ready && false) ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingPolicy')}</Status> : null}

@@ -201,3 +201,27 @@ test('my invitations renders in a modal dialog like Vue WorkspaceOnboarding', as
   assert.match(dialog.textContent || '', /研发空间/);
   assert.equal(document.querySelector('[role="dialog"]')?.closest('.wk-card') ?? null, null);
 });
+
+test('workspace onboarding keeps the Vue workspace mark before the heading', async () => {
+  const { client, scopeRuntime } = fakeDeps();
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, {
+      client: client as never,
+      scopeRuntime: scopeRuntime as never,
+      onLogout: async () => {},
+    }));
+  });
+  await settle(20);
+
+  const mark = document.querySelector('[data-testid="workspace-mark"]') as HTMLElement | null;
+  assert.ok(mark, 'Vue renders a workspace mark above the onboarding heading');
+  assert.equal(mark?.getAttribute('aria-hidden'), 'true');
+  assert.match(mark?.className ?? '', /h-16/);
+  assert.match(mark?.className ?? '', /w-16/);
+  assert.match(mark?.className ?? '', /rounded-\[18px\]/);
+  assert.equal(mark?.querySelector('svg')?.getAttribute('width'), '30');
+  assert.equal(mark?.nextElementSibling?.tagName, 'H1');
+});
