@@ -152,6 +152,10 @@ func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repositor
 		switch current.State {
 		case "admitted":
 			return a.runs.Get(ctx, agentruntime.RunKey{TenantID: current.TenantID, RunID: current.RunID})
+		case "dispatching":
+			// The durable run is the outbox. A worker scans queued platform
+			// runs, so an uncertain wake-up must never be published twice.
+			return a.runs.Get(ctx, agentruntime.RunKey{TenantID: current.TenantID, RunID: current.RunID})
 		case "rejected":
 			return agentruntime.Run{}, fmt.Errorf("%w: %s", ErrRequestRejected, current.Reason)
 		case "pending":
@@ -168,6 +172,7 @@ func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repositor
 func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.WorkbenchRequest, in StartInput, ids ...string) (run agentruntime.Run, err error) {
 	deadline := time.Now().Add(10 * time.Minute)
 	var runID, reservation string
+	ownedReservation := false
 	if len(ids) > 0 {
 		runID = ids[0]
 	}
@@ -176,6 +181,7 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	}
 	if reservation == "" {
 		reservation, err = a.budget.Ensure(ctx, req.TenantID, req.ActorID, req.RequestID, in.BudgetUpper, deadline)
+		ownedReservation = true
 		if err != nil {
 			_ = a.requests.UpdatePending(ctx, req, "rejected", "", "", err.Error())
 			return agentruntime.Run{}, err
@@ -185,8 +191,21 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		runID = uuid.NewString()
 	}
 	if err = a.requests.UpdatePending(ctx, req, "pending", reservation, runID, ""); err != nil {
-		_ = a.budget.ReleaseUnstarted(ctx, reservation)
-		return agentruntime.Run{}, err
+		current, getErr := a.requests.Get(ctx, req.TenantID, req.ActorID, req.RequestID)
+		if getErr == nil && (current.State == "dispatching" || current.State == "admitted") && current.RunID != "" {
+			return a.runs.Get(ctx, agentruntime.RunKey{TenantID: current.TenantID, RunID: current.RunID})
+		}
+		// A concurrent retry may have already written the same pending run
+		// identity. It is safe to continue into AgentRunStore.Admit, whose
+		// request hash check makes that operation idempotent.
+		if getErr == nil && current.State == "pending" && current.RunID == runID {
+			// continue
+		} else {
+			if ownedReservation {
+				_ = a.budget.ReleaseUnstarted(ctx, reservation)
+			}
+			return agentruntime.Run{}, err
+		}
 	}
 	assistantID := uuid.NewString()
 	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
@@ -198,11 +217,26 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)
 		return agentruntime.Run{}, err
 	}
-	if err = a.publish(ctx, run.Key); err != nil {
-		_ = a.requests.UpdatePending(ctx, req, "rejected", reservation, run.Key.RunID, err.Error())
+	// Mark the durable dispatch record before invoking the wake-up callback.
+	// If the callback succeeds but this request returns before its final CAS,
+	// retries observe dispatching and return the same run without republishing.
+	if err = a.requests.UpdateFromState(ctx, req, "pending", "dispatching", reservation, run.Key.RunID, ""); err != nil {
+		// Another concurrent admission may have completed this transition.
+		// The durable run is already idempotently present, so return it when
+		// the row says dispatching/admitted instead of creating a second wakeup.
+		current, getErr := a.requests.Get(ctx, req.TenantID, req.ActorID, req.RequestID)
+		if getErr == nil && (current.State == "dispatching" || current.State == "admitted") {
+			return a.runs.Get(ctx, agentruntime.RunKey{TenantID: current.TenantID, RunID: current.RunID})
+		}
 		return agentruntime.Run{}, err
 	}
-	if err = a.requests.UpdatePending(ctx, req, "admitted", reservation, run.Key.RunID, ""); err != nil {
+	if err = a.publish(ctx, run.Key); err != nil {
+		// A known callback failure is retryable. If this CAS itself fails, the
+		// dispatching state remains safe and the worker's durable scan recovers it.
+		_ = a.requests.UpdateFromState(ctx, req, "dispatching", "pending", reservation, run.Key.RunID, err.Error())
+		return agentruntime.Run{}, err
+	}
+	if err = a.requests.UpdateFromState(ctx, req, "dispatching", "admitted", reservation, run.Key.RunID, ""); err != nil {
 		return agentruntime.Run{}, err
 	}
 	run.BudgetRef = reservation

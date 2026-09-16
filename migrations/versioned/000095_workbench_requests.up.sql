@@ -16,7 +16,7 @@ CREATE TABLE workbench_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, actor_id, request_id),
-    CHECK (state IN ('pending', 'admitted', 'rejected')),
+    CHECK (state IN ('pending', 'dispatching', 'admitted', 'rejected')),
     CHECK (budget_upper >= 0)
 );
 CREATE INDEX idx_workbench_requests_lookup ON workbench_requests (tenant_id, actor_id, created_at);

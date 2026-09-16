@@ -98,11 +98,31 @@ func (r *WorkbenchRequestRepository) Get(ctx context.Context, tenantID uint64, a
 }
 
 func (r *WorkbenchRequestRepository) UpdatePending(ctx context.Context, request WorkbenchRequest, state, reservationRef, runID, reason string) error {
-	if state != "pending" && state != "admitted" && state != "rejected" {
+	if state != "pending" && state != "dispatching" && state != "admitted" && state != "rejected" {
 		return errors.New("invalid request state")
 	}
 	result := r.db.WithContext(ctx).Model(&workbenchRequestRow{}).
 		Where("tenant_id = ? AND actor_id = ? AND request_id = ? AND request_hash = ? AND state = 'pending'", request.TenantID, request.ActorID, request.RequestID, request.RequestHash).
+		Updates(map[string]any{"state": state, "reservation_ref": reservationRef, "run_id": runID, "reason": reason, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("workbench request state changed")
+	}
+	return nil
+}
+
+// UpdateFromState performs the state transition used by the dispatch outbox.
+// A dispatching row is intentionally recoverable: if the process disappears
+// after the durable transition, the run worker can discover the queued run
+// without a second wake-up publication.
+func (r *WorkbenchRequestRepository) UpdateFromState(ctx context.Context, request WorkbenchRequest, expected, state, reservationRef, runID, reason string) error {
+	if expected == "" || state == "" {
+		return errors.New("request states are required")
+	}
+	result := r.db.WithContext(ctx).Model(&workbenchRequestRow{}).
+		Where("tenant_id = ? AND actor_id = ? AND request_id = ? AND request_hash = ? AND state = ?", request.TenantID, request.ActorID, request.RequestID, request.RequestHash, expected).
 		Updates(map[string]any{"state": state, "reservation_ref": reservationRef, "run_id": runID, "reason": reason, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
 	if result.Error != nil {
 		return result.Error
