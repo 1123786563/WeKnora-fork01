@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -14,10 +17,45 @@ import (
 // AgentRunSnapshotRepository reads the durable run and event projection. It
 // deliberately does not reconstruct a snapshot from chat stream buffers:
 // those buffers are mutable and may already have been trimmed.
-type AgentRunSnapshotRepository struct{ db *gorm.DB }
+type AgentRunSnapshotRepository struct {
+	db           *gorm.DB
+	capabilities CapabilityResolver
+}
+
+// CapabilityResolver is the runtime/provider capability boundary. A
+// persisted driver is an intent and cannot by itself advertise availability.
+type CapabilityResolver interface {
+	ResolveExecutionCapabilities(ctx context.Context, selectedDriver string) map[string]workbench.Capability
+}
+
+type environmentCapabilityResolver struct{}
+
+func (environmentCapabilityResolver) ResolveExecutionCapabilities(_ context.Context, _ string) map[string]workbench.Capability {
+	capabilities := map[string]workbench.Capability{
+		"platform": {State: workbench.CapabilityUnavailable, Reason: "platform_not_configured"},
+		"paseo":    {State: workbench.CapabilityUnavailable, Reason: "PASEO_URL_not_configured"},
+	}
+	engine := strings.ToLower(strings.TrimSpace(os.Getenv("WEKNORA_AGENT_ENGINE")))
+	if engine == "" || engine == "trpc" {
+		capabilities["platform"] = workbench.Capability{State: workbench.CapabilitySupported}
+	} else {
+		capabilities["platform"] = workbench.Capability{State: workbench.CapabilityUnavailable, Reason: "unsupported_agent_engine"}
+	}
+	if strings.TrimSpace(os.Getenv("PASEO_URL")) != "" {
+		capabilities["paseo"] = workbench.Capability{State: workbench.CapabilitySupported}
+	}
+	return capabilities
+}
 
 func NewAgentRunSnapshotRepository(db *gorm.DB) *AgentRunSnapshotRepository {
-	return &AgentRunSnapshotRepository{db: db}
+	return NewAgentRunSnapshotRepositoryWithResolver(db, environmentCapabilityResolver{})
+}
+
+func NewAgentRunSnapshotRepositoryWithResolver(db *gorm.DB, resolver CapabilityResolver) *AgentRunSnapshotRepository {
+	if resolver == nil {
+		resolver = environmentCapabilityResolver{}
+	}
+	return &AgentRunSnapshotRepository{db: db, capabilities: resolver}
 }
 
 type snapshotRunRow struct {
@@ -40,7 +78,7 @@ type snapshotEventRow struct {
 
 func (snapshotEventRow) TableName() string { return "agent_run_events" }
 
-func executionFromRun(row snapshotRunRow, seq int64) workbench.ExecutionDTO {
+func executionFromRun(ctx context.Context, resolver CapabilityResolver, row snapshotRunRow, seq int64) workbench.ExecutionDTO {
 	settlement := "pending"
 	switch row.Status {
 	case "succeeded", "failed", "canceled":
@@ -50,11 +88,10 @@ func executionFromRun(row snapshotRunRow, seq int64) workbench.ExecutionDTO {
 	if driver == "" {
 		driver = "platform"
 	}
-	capabilities := map[string]workbench.Capability{
-		"platform": {State: workbench.CapabilityUnavailable, Reason: "not_selected"},
-		"paseo":    {State: workbench.CapabilityUnavailable, Reason: "not_selected"},
+	capabilities := resolver.ResolveExecutionCapabilities(ctx, driver)
+	if capabilities == nil {
+		capabilities = map[string]workbench.Capability{driver: {State: workbench.CapabilityUnavailable, Reason: "capability_probe_unavailable"}}
 	}
-	capabilities[driver] = workbench.Capability{State: workbench.CapabilitySupported}
 	return workbench.ExecutionDTO{
 		SchemaVersion: 1, RunID: row.RunID, SessionID: row.SessionID,
 		Revision: row.Revision, Driver: driver, RunStatus: row.Status,
@@ -72,6 +109,15 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 		return workbench.ExecutionSnapshot{}, agentruntime.ErrNotFound
 	}
 	var result workbench.ExecutionSnapshot
+	// PostgreSQL needs an explicit repeatable-read snapshot: READ COMMITTED
+	// could observe the run row and event projection at different commits. A
+	// SQLite transaction is already a consistent read snapshot; passing a
+	// PostgreSQL isolation level to SQLite is driver-dependent, so begin with
+	// the default there.
+	var txOptions *sql.TxOptions
+	if s.db.Name() != "sqlite" {
+		txOptions = &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var run snapshotRunRow
 		if err := tx.Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
@@ -101,9 +147,13 @@ func (s *AgentRunSnapshotRepository) ReadRunSnapshot(ctx context.Context, key ag
 			}
 			events = append(events, event)
 		}
-		result = workbench.ExecutionSnapshot{Execution: executionFromRun(run, watermark), Watermark: watermark, Events: events}
+		resolver := s.capabilities
+		if resolver == nil {
+			resolver = environmentCapabilityResolver{}
+		}
+		result = workbench.ExecutionSnapshot{Execution: executionFromRun(ctx, resolver, run, watermark), Watermark: watermark, Events: events}
 		return result.Validate()
-	})
+	}, txOptions)
 	return result, err
 }
 
@@ -130,7 +180,12 @@ func (s *AgentRunSnapshotRepository) ReadRunEvents(ctx context.Context, key agen
 		return nil, watermark, agentruntime.ErrCursorExpired
 	}
 	events := make([]workbench.ExecutionEvent, 0, len(rows))
+	expectedSeq := cursor + 1
 	for _, row := range rows {
+		if row.Seq != expectedSeq {
+			return nil, watermark, agentruntime.ErrCursorExpired
+		}
+		expectedSeq++
 		event := workbench.ExecutionEvent{SchemaVersion: 1, RunID: row.RunID, AttemptID: row.AttemptID, Seq: row.Seq, Type: row.EventType, OccurredAt: row.CreatedAt.UTC().Format(time.RFC3339Nano), Payload: append([]byte(nil), row.Payload...)}
 		if err := event.Validate(); err != nil {
 			return nil, watermark, err
