@@ -33,7 +33,19 @@ pnpm --filter @weknora/web test -- src/knowledge-bases/detail.test.ts src/knowle
 | 详情权限与写操作 | `canEdit/canManage/canMutateKnowledge/canDownload` 分层；共享 KB 优先采用 share grant，避免本地 admin 越权（`KnowledgeBase.vue:261-334`） | 文档列表使用 `canUploadKnowledgeDocuments`；上传、批量删除/重解析、标签、move、manual 等控件均以 `canContribute` 门控（`KnowledgeDocumentsPage.tsx:164-181, 3257-3261, 3514-3577, 4173-4244`） | 列表/KB 文档页大体对齐；必须单独核对独立文档详情页（F-02） |
 | 上传/编辑/删除/trace 弹层 | 上传确认、手工编辑、URL、删除、tag、trace 等由 Vue 对话框/抽屉控制，上传中不可关闭且失败保留 staged 状态（`KnowledgeBase.vue:1785-1816, 2064-2200`） | 对应 `Dialog`/`Sheet`；上传中禁止关闭，失败保留 dialog/error；删除、批量重解析、取消解析、标签弹层都有权限门控（`KnowledgeDocumentsPage.tsx:2600-2610, 2658-2701, 3789-4244`） | 状态契约对齐；focused upload/page-chrome tests 通过 |
 
-## Findings
+## Current-state amendment (2026-09-16)
+
+The two implementation findings below were rechecked against the current
+worktree after the audit was written. F-01 is now represented by
+`classifyKnowledgeBaseMetadataError` and the metadata error/forbidden retry
+branch in `KnowledgeDocumentsPage.tsx`; F-02 is addressed by the shared
+`computeKBPermissions` helper accepting tenant `admin`/`contributor`/`editor`
+memberships, with focused tests covering both tenant admin and contributor.
+The original finding text is retained as historical audit context. This
+amendment is source/unit evidence only; authenticated paired browser and real
+backend permission verification remain open.
+
+## Findings (historical audit context)
 
 ### F-01 — KB metadata 失败没有可见的 KB 级 error/403 状态
 

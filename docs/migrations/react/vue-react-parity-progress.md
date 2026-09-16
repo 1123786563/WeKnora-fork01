@@ -3816,3 +3816,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Visual/computed-style comparison, authenticated permissions and mutations,
   real Embed token/streaming, and Wails feature interaction remain open or
   `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R403 — Reconcile the knowledge permission audit with current code
+
+- Rechecked the historical KB audit against the current worktree. The
+  metadata failure classification/retry branch is present, and the shared
+  `computeKBPermissions` helper plus focused tests cover independently opened
+  home-tenant KBs for tenant `admin` and `contributor` memberships. The audit
+  artifact now labels F-01/F-02 as historical findings with a current-state
+  amendment instead of presenting stale source lines as active defects.
+- Evidence is source/focused-unit only; authenticated paired Vue/React
+  screenshots, real backend permission mutations, and Wails feature
+  interaction remain open. No mobile code was modified.
