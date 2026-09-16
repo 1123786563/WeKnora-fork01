@@ -42,6 +42,17 @@ func (d *RemoteDispatcher) DispatchFence(ctx context.Context, fence agentruntime
 	return d.dispatchRemote(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
 }
 
+// ReconcileLateUsage delivers a final provider observation after a dispatch
+// was durably recorded as unknown/reconciled. It uses the same server fence
+// and physical command identity, so a fresh worker cannot create a second
+// reservation or charge.
+func (d *RemoteDispatcher) ReconcileLateUsage(ctx context.Context, fence agentruntime.Fence, commandID string, observation *agentruntime.RemoteUsageObservation) error {
+	if d == nil || d.usage == nil {
+		return ErrProviderUnavailable
+	}
+	return d.usage.ReconcileRemoteObservation(ctx, fence, commandID, observation)
+}
+
 func (d *RemoteDispatcher) dispatchRemote(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
 	key := fence.RunKey
 	if provider == nil || d.store == nil || d.usage == nil {

@@ -309,3 +309,57 @@ func TestRemoteUsageRealGateLateFinalAfterNonBillableObservation(t *testing.T) {
 		t.Fatalf("usage facts=%d reservations=%d", usages, reservations)
 	}
 }
+
+type unknownUsageProvider struct{}
+
+func (unknownUsageProvider) Start(context.Context, agentruntime.RunKey, string) (string, error) {
+	return "", nil
+}
+func (unknownUsageProvider) StartCommand(context.Context, agentruntime.RemoteStartRequest) (string, error) {
+	return "external-unknown", nil
+}
+func (unknownUsageProvider) StartCommandWithUsage(_ context.Context, request agentruntime.RemoteStartRequest) (agentruntime.RemoteStartResult, error) {
+	return agentruntime.RemoteStartResult{ExternalID: "external-unknown", Usage: &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1, Status: commercial.UsageStatusUnknown}}, nil
+}
+
+func TestRemoteDispatcherUnknownThenFreshWorkerLateFinalIsSingleCharge(t *testing.T) {
+	db, gate := newRealUsageDispatch(t)
+	usage, err := NewRemoteUsageServiceWithDB(gate, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewRemoteDispatcherWithUsage(repository.NewExecutionDispatchStore(db), usage)
+	fence := integrationFence(commercial.FundingPlatform, commercial.ServiceConnector)
+	fence.UsageUpper = 1000
+	fence.UsageDimensions = map[string]int64{commercial.DimensionConnector: 1}
+	if _, err := d.DispatchFence(context.Background(), fence, "cmd-unknown", "hash-unknown", time.Minute, unknownUsageProvider{}); err == nil {
+		t.Fatal("unknown usage unexpectedly succeeded")
+	}
+	var observed string
+	if err := db.Raw(`SELECT observed_state FROM execution_dispatches WHERE tenant_id=1 AND command_id='cmd-unknown'`).Row().Scan(&observed); err != nil {
+		t.Fatal(err)
+	}
+	if observed != "usage_unknown" {
+		t.Fatalf("observed=%q", observed)
+	}
+	// A fresh dispatcher/service boundary reconciles the retained durable key.
+	freshUsage, err := NewRemoteUsageServiceWithDB(gate, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := NewRemoteDispatcherWithUsage(repository.NewExecutionDispatchStore(db), freshUsage)
+	final := &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1, Status: commercial.UsageStatusFinal, Dimensions: map[string]int64{commercial.DimensionConnector: 1}, OccurredAt: time.Now().UTC()}
+	if err := fresh.ReconcileLateUsage(context.Background(), fence, "cmd-unknown", final); err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.ReconcileLateUsage(context.Background(), fence, "cmd-unknown", final); err != nil {
+		t.Fatal(err)
+	}
+	var usages int64
+	if err := db.Model(&repocommercial.UsageRow{}).Where("call_id = ?", "cmd-unknown").Count(&usages).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usages != 1 {
+		t.Fatalf("usage facts=%d", usages)
+	}
+}

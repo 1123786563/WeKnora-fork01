@@ -23,8 +23,8 @@ func NewWorkbenchReadHandler(
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.
-func NewWorkbenchAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
-	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NoopTaskBudget{}, nil, workbenchservice.NewServerAdmissionBindingResolver())
+func NewWorkbenchAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore) *workbenchservice.AdmissionCoordinator {
+	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(targets))
 	if err != nil {
 		panic(err)
 	}

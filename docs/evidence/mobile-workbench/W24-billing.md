@@ -94,3 +94,24 @@ Unsupported `RemoteCommandProvider` capability now reconciles the claimed
 intent to durable `unknown` with an observed reason, so it cannot remain
 `claimed`/busy. PostgreSQL, live OpenMeter, and live Paseo evidence remain
 `blocked-env`.
+
+## Final re-review follow-up (2026-09-17)
+
+- `go test ./internal/application/service/workbench -count=1` — PASS.
+- `go test -race ./internal/application/service/workbench -run 'TestRemoteUsage|TestRemoteDispatcher|TestServerAdmissionBinding|TestProductionAdmission' -count=1` — PASS.
+- `go vet ./internal/application/service/workbench ./internal/application/repository ./internal/agent/runtime ./internal/container` — PASS.
+- `git diff --check` — PASS.
+
+The production container now uses `NewDatabaseAdmissionBindingResolver` with
+`ExecutionTargetStore` ownership checks and `DurableTaskBudget` backed by the
+commercial task-budget tables. Admission registers the actual run or attaches
+it to the trusted parent before durable run creation; remote call holds still
+use the same database-backed ExecutionGate. The legacy resolver is no longer
+in the production container path.
+
+A RemoteDispatcher integration test records provider usage as durable unknown,
+then a fresh dispatcher/service instance delivers a late final twice and
+asserts one persisted reservation and one usage fact. Production admission
+coverage persists platform and server-injected BYOK/parent/credential binding
+into run snapshots while client-named values are scrubbed at the repository
+boundary. PostgreSQL, live OpenMeter, and live Paseo remain `blocked-env`.
