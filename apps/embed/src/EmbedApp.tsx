@@ -7,7 +7,7 @@ import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/emb
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 import { Button } from '../../../packages/ui/src/button.tsx';
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, sourceListFromReferences, translate } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, shouldSubmitEmbedKey, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -377,7 +377,13 @@ export function EmbedApp() {
   const removeImage = (index: number) => setPickedImages((current) => current.filter((_file, item) => item !== index));
   const removeAttachment = (index: number) => setPickedAttachments((current) => current.filter((_file, item) => item !== index));
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.nativeEvent.isComposing) {
+    if (shouldSubmitEmbedKey({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      isComposing: event.nativeEvent.isComposing,
+    })) {
       event.preventDefault();
       void sendMessage();
     }

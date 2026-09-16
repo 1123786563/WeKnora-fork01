@@ -19,6 +19,16 @@ export interface EmbedFileIssue {
 
 export type EmbedLoadStatus = 'loading' | 'ready' | 'sending' | 'error';
 
+export function shouldSubmitEmbedKey(event: {
+  key: string;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  isComposing: boolean;
+}): boolean {
+  return event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.isComposing;
+}
+
 /** Vue mounts the header and composer only after the channel owns a session. */
 export function shouldRenderEmbedChatSurface(status: EmbedLoadStatus, hasSession: boolean): boolean {
   return hasSession && (status === 'ready' || status === 'sending');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, shouldSubmitEmbedKey, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -21,6 +21,13 @@ test('chat chrome appears only after the Vue embed has a session', () => {
   assert.equal(shouldRenderEmbedChatSurface('ready', false), false);
   assert.equal(shouldRenderEmbedChatSurface('ready', true), true);
   assert.equal(shouldRenderEmbedChatSurface('sending', true), true);
+});
+
+test('Meta+Enter submits like the Vue embed while Shift/Ctrl and composition insert a newline', () => {
+  assert.equal(shouldSubmitEmbedKey({ key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: true, isComposing: false }), true);
+  assert.equal(shouldSubmitEmbedKey({ key: 'Enter', shiftKey: true, ctrlKey: false, metaKey: true, isComposing: false }), false);
+  assert.equal(shouldSubmitEmbedKey({ key: 'Enter', shiftKey: false, ctrlKey: true, metaKey: false, isComposing: false }), false);
+  assert.equal(shouldSubmitEmbedKey({ key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: false, isComposing: true }), false);
 });
 
 test('upload labels follow the Vue embed locale table', () => {
