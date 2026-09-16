@@ -54,7 +54,7 @@ export class BridgeError extends Error {
 }
 
 export function canonicalCommand(command: StartCommand): string {
-  return JSON.stringify({ commandID: command.commandID, runID: command.runID, attemptID: command.attemptID, targetID: command.targetID, workspaceRef: command.workspaceRef, prompt: command.prompt, provider: command.provider, epoch: command.epoch, expiresAt: command.expiresAt });
+  return JSON.stringify({ commandID: command.commandID, runID: command.runID, attemptID: command.attemptID, targetID: command.targetID, workspaceRef: command.workspaceRef, prompt: command.prompt, provider: command.provider, epoch: command.epoch, payloadHash: command.payloadHash, expiresAt: command.expiresAt });
 }
 
 export function commandHash(command: StartCommand): string {

@@ -23,7 +23,7 @@ type WorkerConfig struct {
 // A nil provider is rejected by RemoteDispatcher and cannot silently fall
 // back to the legacy executor.
 type RemoteDispatchConfig struct {
-	Dispatcher RemoteDispatcher
+	Dispatcher FencedRemoteDispatcher
 	Provider   RemoteProvider
 	CommandID  func(agentruntime.Fence) (commandID, payloadHash string)
 }
@@ -249,13 +249,7 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}()
 	if w.remote != nil {
 		commandID, payloadHash := w.remote.CommandID(fence)
-		key := fence.RunKey
-		var dispatchErr error
-		if fenced, ok := w.remote.Dispatcher.(FencedRemoteDispatcher); ok {
-			_, dispatchErr = fenced.DispatchFence(renewCtx, fence, commandID, payloadHash, w.cfg.Lease, w.remote.Provider)
-		} else {
-			_, dispatchErr = w.remote.Dispatcher.Dispatch(renewCtx, key, commandID, payloadHash, fence.Owner, w.cfg.Lease, fence.Epoch, w.remote.Provider)
-		}
+		_, dispatchErr := w.remote.Dispatcher.DispatchFence(renewCtx, fence, commandID, payloadHash, w.cfg.Lease, w.remote.Provider)
 		if dispatchErr != nil {
 			return
 		}

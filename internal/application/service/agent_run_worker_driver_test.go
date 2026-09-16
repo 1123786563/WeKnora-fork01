@@ -104,7 +104,8 @@ type workerDispatchStub struct {
 	store *repository.ExecutionDispatchStore
 }
 
-func (d workerDispatchStub) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
+func (d workerDispatchStub) DispatchFence(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash string, lease time.Duration, provider RemoteProvider) (string, error) {
+	key, worker := fence.RunKey, fence.Owner
 	record, err := d.store.ClaimDispatchWithPayloadHash(ctx, key, commandID, payloadHash, worker, lease)
 	if err != nil || !record.New {
 		return record.ExternalID, err
