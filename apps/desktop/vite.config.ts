@@ -13,6 +13,11 @@ export default defineConfig({
       '@weknora/domain/chat/session-grouping': fileURLToPath(new URL('../../packages/domain/src/chat/session-grouping.ts', import.meta.url)),
       '@weknora/domain/chat/message-timestamps': fileURLToPath(new URL('../../packages/domain/src/chat/message-timestamps.ts', import.meta.url)),
       '@weknora/domain/auth/password-policy': fileURLToPath(new URL('../../packages/domain/src/auth/password-policy.ts', import.meta.url)),
+      // Craft aliases must precede the bare '@weknora/domain' prefix entry:
+      // object-order prefix matching would otherwise rewrite
+      // '@weknora/domain/craft/state' into '<query-key.ts>/craft/state'.
+      '@weknora/domain/craft/state': fileURLToPath(new URL('../../packages/domain/src/craft/state.ts', import.meta.url)),
+      '@weknora/domain/craft/reconnect': fileURLToPath(new URL('../../packages/domain/src/craft/reconnect.ts', import.meta.url)),
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/chat/draft': fileURLToPath(new URL('../../packages/domain/src/chat/draft.ts', import.meta.url)),
       '@weknora/domain/chat/reducer': fileURLToPath(new URL('../../packages/domain/src/chat/reducer.ts', import.meta.url)),
@@ -47,6 +52,19 @@ export default defineConfig({
       '@weknora/views/integrations/apiKeys': fileURLToPath(new URL('../../packages/views/src/integrations/apiKeys.ts', import.meta.url)),
       '@weknora/views/integrations/settings-route': fileURLToPath(new URL('../../packages/views/src/integrations/settings-route.ts', import.meta.url)),
       '@weknora/views/settings/registry': fileURLToPath(new URL('../../packages/views/src/settings/registry.ts', import.meta.url)),
+      // Craft routes mount from the shared web entry (d01): keep the desktop
+      // subpath aliases in lockstep with apps/web/vite.config.ts or rollup
+      // fails resolving '<views index>/craft/home' (ENOTDIR).
+      '@weknora/core/craft/controller': fileURLToPath(new URL('../../packages/core/src/craft/controller.ts', import.meta.url)),
+      '@weknora/views/craft/home': fileURLToPath(new URL('../../packages/views/src/craft/home.tsx', import.meta.url)),
+      '@weknora/views/craft/workbench': fileURLToPath(new URL('../../packages/views/src/craft/workbench.tsx', import.meta.url)),
+      '@weknora/views/craft/preview': fileURLToPath(new URL('../../packages/views/src/craft/preview.tsx', import.meta.url)),
+      '@weknora/views/craft/files': fileURLToPath(new URL('../../packages/views/src/craft/files.tsx', import.meta.url)),
+      '@weknora/views/craft/spreadsheet': fileURLToPath(new URL('../../packages/views/src/craft/spreadsheet.tsx', import.meta.url)),
+      '@weknora/views/craft/document': fileURLToPath(new URL('../../packages/views/src/craft/document.tsx', import.meta.url)),
+      '@weknora/views/craft/slides': fileURLToPath(new URL('../../packages/views/src/craft/slides.tsx', import.meta.url)),
+      '@weknora/views/craft/presentation': fileURLToPath(new URL('../../packages/views/src/craft/presentation.ts', import.meta.url)),
+      '@weknora/views/craft/interaction': fileURLToPath(new URL('../../packages/views/src/craft/interaction.tsx', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
     },
   },
