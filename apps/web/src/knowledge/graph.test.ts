@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -52,6 +52,31 @@ test('deduplicates reciprocal Vue graph links while preserving bidirectional arr
     { source: 'docs/start', target: 'docs/next', bidirectional: true },
     { source: 'docs/third', target: 'docs/next', bidirectional: false },
   ]);
+});
+
+test('shortens edge ends to the node boundary so Vue-style arrows stay outside the circles', () => {
+  const source = { slug: 'docs/start', x: 0, y: 0 };
+  const target = { slug: 'docs/next', x: 100, y: 0 };
+  const sourceRadius = graphNodeRadius(3);
+  const targetRadius = graphNodeRadius(2);
+  const ends = graphEdgeEndpoints(source, target, sourceRadius, targetRadius);
+  // Each end is pulled back by the node radius + the Vue 4px arrow margin.
+  assert.ok(Math.abs(ends.x1 - (sourceRadius + 4)) < 1e-9);
+  assert.equal(ends.y1, 0);
+  assert.ok(Math.abs(ends.x2 - (100 - targetRadius - 4)) < 1e-9);
+  assert.equal(ends.y2, 0);
+  // Endpoints must leave the node circles: arrows (~9.6px) stay visible.
+  assert.ok(ends.x1 > 0);
+  assert.ok(ends.x2 < 100);
+});
+
+test('keeps edge geometry stable for coincident nodes', () => {
+  const same = { slug: 'docs/start', x: 40, y: 40 };
+  const ends = graphEdgeEndpoints(same, { ...same }, 8, 8);
+  assert.equal(ends.x1, 40);
+  assert.equal(ends.y1, 40);
+  assert.equal(ends.x2, 40);
+  assert.equal(ends.y2, 40);
 });
 
 test('merges bloom results without duplicating nodes or edges and preserves familiar state', () => {

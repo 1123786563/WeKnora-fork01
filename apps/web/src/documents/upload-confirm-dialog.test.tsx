@@ -624,6 +624,27 @@ test('add-source control is a dropdown menu with file, folder and URL entries', 
   assert.doesNotMatch(closed, /上传文件夹/);
 });
 
+test('the page toolbar dropdown carries the kbDetail guide anchor like Vue data-guide', () => {
+  // Vue KbUploadSourceDropdown trigger (KnowledgeBase.vue:2613):
+  // data-guide="kb-detail-add-doc" marks the upload entry for the spotlight.
+  const dropdownProps = {
+    tooltip: '添加文档',
+    items: [{ key: 'file' as const, label: '上传文档' }],
+    onToggle: noop,
+    onSelect: noop,
+    onFiles: noop,
+  };
+  const anchored = renderToStaticMarkup(React.createElement(UploadSourceDropdown, { ...dropdownProps, open: false, guideTarget: 'kb-detail-add-doc' }));
+  assert.match(anchored, /data-guide="kb-detail-add-doc"/);
+  const anonymous = renderToStaticMarkup(React.createElement(UploadSourceDropdown, { ...dropdownProps, open: false }));
+  assert.doesNotMatch(anonymous, /data-guide=/, 'the dialog "continue add" instance stays unmarked');
+
+  // Wiring contract: exactly one instance (the page toolbar) passes guideTarget.
+  const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
+  assert.equal((source.match(/guideTarget=/g) ?? []).length, 1, 'only the toolbar instance is anchored');
+  assert.match(source, /guideTarget="kb-detail-add-doc"/);
+});
+
 // --- Nav graph item + section availability fallback ---------------------------------
 
 test('section nav renders the graph entry and availability falls back like Vue watch', () => {

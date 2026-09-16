@@ -13,6 +13,7 @@ import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowl
 import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
+import { navigate } from "../platform/navigation.ts";
 import {
   applyUploadOverrides,
   asrSectionIssue,
@@ -59,6 +60,7 @@ import {
   type UploadNodeExtractState,
 } from "./upload-pipeline.ts";
 import {
+  canUploadKnowledgeDocuments,
   classifyKnowledgeBaseMetadataError,
   kbTypeRedirectPath,
   resolveKBSurfaceTabs,
@@ -82,6 +84,7 @@ import {
 } from "./tags.ts";
 import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
 import { tagSurfaceT } from "./tags-locale.ts";
+import { useKbDetailGuideTrigger } from "../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts";
 import uploadMaskIllustration from "./upload-mask.svg";
 import "./documents-list.css";
 import {
@@ -92,6 +95,7 @@ import {
   computeSupportedFileTypes,
   computeUnsupportedFileTypes,
   dateRangeToTimeParams,
+  documentsKBDetailPath,
   documentsKBSettingsPath,
   isFilteringDocuments,
 } from "./page-chrome.ts";
@@ -163,23 +167,13 @@ export function canCloseUploadConfirmDialog(uploading: boolean): boolean {
   return !uploading;
 }
 
-/** Vue canEditKB parity for the upload surface, including shared editor grants. */
-export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
-  const userId = me?.user?.id;
-  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
-  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
-  // Vue checks ownership before the effective share projection. A stale
-  // my_permission=viewer on an owned KB must not hide the creator's upload
-  // controls (the share-first restriction is resolved by the KB context).
-  if (isCreator) return true;
-  const permission = kb.my_permission ?? kb.permission;
-  if (typeof permission === "string" && permission.trim()) {
-    return ["owner", "admin", "editor"].includes(permission.trim().toLowerCase());
-  }
-  const isAdmin = Boolean(me?.user?.is_superuser === true || me?.user?.role === "admin" || me?.user?.role === "system_admin"
-    || me?.memberships?.some((membership) => membership.role === "admin" || membership.role === "system_admin"));
-  return isAdmin;
-}
+/**
+ * Vue canEditKB parity for the upload surface, including shared editor grants.
+ * Implementation moved to ../knowledge/permissions.ts so the graph page and
+ * other KB surfaces gate management chrome with the identical signal; the
+ * re-export keeps the historical import path stable.
+ */
+export { canUploadKnowledgeDocuments } from "../knowledge/permissions.ts";
 
 function hasContributorRole(me: KBSurfaceMe | null | undefined): boolean {
   const roles = [me?.user?.role, ...(me?.memberships ?? []).map((membership) => membership.role)];
@@ -924,6 +918,10 @@ export interface UploadSourceDropdownProps {
   onSelect: (key: UploadSourceDropdownAction) => void;
   /** Picked files from the hidden multiple / webkitdirectory inputs. */
   onFiles: (files: File[], fromFolder?: boolean) => void;
+  /** Guide spotlight anchor — Vue KbUploadSourceDropdown trigger carries
+   * data-guide="kb-detail-add-doc" (KnowledgeBase.vue:2613). Only the
+   * page-level dropdown passes it; the dialog's "continue add" stays anonymous. */
+  guideTarget?: string;
 }
 
 /**
@@ -979,6 +977,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         title={props.tooltip}
         aria-haspopup="menu"
         aria-expanded={props.open}
+        data-guide={props.guideTarget}
         onClick={props.onToggle}
         style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer", fontSize: "14px" }}
       >
@@ -2308,7 +2307,7 @@ export function KnowledgeDocumentsPage({
           })),
         );
         const redirect = kbTypeRedirectPath(kb as KBSurfaceKB);
-        if (redirect) window.location.replace(redirect);
+        if (redirect) navigate(redirect, 'replace');
       })
       .catch((error: unknown) => {
         if (active) {
@@ -2329,6 +2328,18 @@ export function KnowledgeDocumentsPage({
     void client.knowledgeBases.settings.parserEngines().then((result) => { if (active) { setParserEngines(result.data); setParserEnginesLoading(false); } }).catch(() => { if (active) { setParserEngines([]); setParserEnginesLoading(false); } });
     return () => { active = false; };
   }, [client]);
+
+  // Vue KnowledgeBase.vue:2741 + 339-345 — the one-shot kbDetail welcome tour
+  // arms on detail-page entry (any tab, incl. deep links) for an editable,
+  // non-FAQ knowledge base whose document list finished loading empty. The
+  // shell guide host (PlatformShell) owns dismissal + welcome-tour gating.
+  useKbDetailGuideTrigger({
+    knowledgeBaseId,
+    kbType: typeof kbMeta?.type === "string" ? kbMeta.type : null,
+    canEdit: canContribute,
+    documentsLoading: state.status !== "success",
+    documentCount: state.status === "success" ? state.page.items.length : 0,
+  });
 
   useEffect(() => {
     let active = true;
@@ -3308,10 +3319,10 @@ export function KnowledgeDocumentsPage({
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
-            onConfigure={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
           {storageEngineMissing ? (
-            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}>
+            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}>
               <Icon size={12} className="warning-icon shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>
               <span>{t('knowledgeBase.missingStorageEngine')}</span>
               <span className="warning-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToStorageSettings')} →</span>
@@ -3332,10 +3343,13 @@ export function KnowledgeDocumentsPage({
               <a
                 key={tab}
                 className={tab === "documents" ? "is-active" : ""}
+                // Vue keeps all three surfaces on one KB page (activeKbTab
+                // state); the React routes express the same through ?tab=.
+                // A path suffix like /graph has no route and would 404.
                 href={
                   tab === "documents"
-                    ? `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`
-                    : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/${tab}`
+                    ? documentsKBDetailPath(knowledgeBaseId)
+                    : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}?tab=${tab}`
                 }
               >
                 {tab === "documents"
@@ -3560,6 +3574,7 @@ export function KnowledgeDocumentsPage({
                   <div className="doc-filter-actions">
                     <UploadSourceDropdown
                       tooltip={t("knowledgeBase.addDocument")}
+                      guideTarget="kb-detail-add-doc"
                       items={[
                         { key: "file", label: ct("upload.uploadDocument") },
                         { key: "folder", label: ct("upload.uploadFolder") },
@@ -3996,7 +4011,7 @@ export function KnowledgeDocumentsPage({
             asrIssue={asrIssue}
             parserEngines={parserEngines}
             parserLoading={parserEnginesLoading}
-            onConfigureParserSettings={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigureParserSettings={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
             vllmModels={vllmModels}
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}

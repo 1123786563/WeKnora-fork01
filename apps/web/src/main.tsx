@@ -13,7 +13,7 @@ import { createBrowserCredentialAdapter, persistBrowserCredential } from './plat
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { installNavigationObserver, subscribeNavigation } from './platform/navigation.ts';
+import { installNavigationObserver, navigate, subscribeNavigation } from './platform/navigation.ts';
 import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
 import { CraftRoutes } from './features/craft/routes.tsx';
@@ -54,7 +54,7 @@ function WikiEntry({ client, knowledgeBaseId, initialSlug, initialDocumentId, ca
   }, [client, knowledgeBaseId]);
   if (wikiEnabled === false) {
     window.history.replaceState({}, document.title, wikiEntryPath(knowledgeBaseId));
-    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
+    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
   }
   if (wikiEnabled === null) return <Status tone="neutral">加载中…</Status>;
   return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} />;
@@ -245,7 +245,7 @@ function renderProtected() {
   } else if (protectedPageForRoute(route) === 'markdown-test') {
     renderShell(<DevMarkdownPage />);
   } else if (route.kind === 'knowledge-document') {
-    renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
+    renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => navigate(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
     renderShell(<WikiEntry client={client} knowledgeBaseId={route.knowledgeBaseId} initialDocumentId={new URLSearchParams(window.location.search).get('knowledge_id')?.trim() || undefined} canContribute={scopeRuntime.role() !== 'viewer'} />);
   } else if (route.kind === 'knowledge-faq') {
@@ -273,7 +273,7 @@ function renderProtected() {
     const initialDocumentId = route.initialDocumentId;
     if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} initialDocumentId={initialDocumentId} canContribute={scopeRuntime.role() !== 'viewer'} />);
     else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
-    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
+    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
     renderShell(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
   } else if (route.path === '/platform/integrations') {

@@ -94,6 +94,28 @@ export function kbTypeRedirectPath(kb: KBSurfaceKB): string | undefined {
   return `/knowledgeBase/${encodeURIComponent(id)}/faq`;
 }
 
+/**
+ * Moved verbatim from KnowledgeDocumentsPage so every KB surface (documents,
+ * graph, …) gates management chrome (settings gear) with the same signal.
+ * Vue canEditKB parity for the upload surface, including shared editor grants.
+ */
+export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+  const userId = me?.user?.id;
+  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
+  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
+  // Vue checks ownership before the effective share projection. A stale
+  // my_permission=viewer on an owned KB must not hide the creator's upload
+  // controls (the share-first restriction is resolved by the KB context).
+  if (isCreator) return true;
+  const permission = kb.my_permission ?? kb.permission;
+  if (typeof permission === "string" && permission.trim()) {
+    return ["owner", "admin", "editor"].includes(permission.trim().toLowerCase());
+  }
+  const isAdmin = Boolean(me?.user?.is_superuser === true || me?.user?.role === "admin" || me?.user?.role === "system_admin"
+    || me?.memberships?.some((membership) => membership.role === "admin" || membership.role === "system_admin"));
+  return isAdmin;
+}
+
 export type KBSurfaceTab = 'documents' | 'wiki' | 'graph';
 
 /** Wiki/graph tabs only exist when the indexing strategy enables them. */

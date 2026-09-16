@@ -279,6 +279,29 @@ export function isGlobalUserGuideDone(storage: KeyValueStorage): boolean {
 }
 
 /**
+ * Vue KnowledgeBase.vue:339-345 showKbDetailContextualGuide — the kbDetail
+ * tour arms on detail-page entry for an editable, non-FAQ knowledge base
+ * whose document list finished loading empty. Tab-independent: the Vue
+ * computed never reads the active tab, so graph/wiki tab entries open it too.
+ * `documentsLoading` maps to Vue docListLoading; `documentCount` to
+ * cardList.length (first page items).
+ */
+export function shouldArmKbDetailGuideOnEntry(input: {
+  knowledgeBaseId: string;
+  kbType?: string | null;
+  canEdit: boolean;
+  documentsLoading: boolean;
+  documentCount: number;
+}): boolean {
+  const kbType = typeof input.kbType === 'string' ? input.kbType.trim().toLowerCase() : '';
+  return Boolean(input.knowledgeBaseId)
+    && kbType !== 'faq'
+    && input.canEdit
+    && !input.documentsLoading
+    && input.documentCount === 0;
+}
+
+/**
  * Vue ContextualGuide.vue tryOpen guard (lines 40-50): a contextual guide
  * opens only while the trigger condition holds, the tour was never finished,
  * and the global welcome tour has already ended (no stacked overlays).

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Input, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views';
-import { displayGraphEdges, filterGraphNodes, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { DocumentsBreadcrumb, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
+import { computeSupportedFileTypes } from '../documents/page-chrome.ts';
+import { canUploadKnowledgeDocuments, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
 
 /* Tailwind migration: static per-type classes replacing the former
    .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-* css rules.
@@ -33,6 +36,65 @@ const LEGEND_GRAPH_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'compar
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
   const t = createTranslator(useAppLocale());
 
+  // Vue KnowledgeBase.vue header inputs (kbInfo + me + KB switcher list +
+  // parser engines for the KBInfoPopover file types). The graph surface shares
+  // the documents page chrome, so it sources the same data as KnowledgeDocumentsPage.
+  const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
+  const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
+  const [canManage, setCanManage] = useState(false);
+  const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      client.knowledgeBases.settings.get(knowledgeBaseId),
+      client.auth.me().catch(() => null),
+      // Vue KBSwitcherDropdown input: the tenant KB list behind the crumb menu.
+      client.knowledgeBases.list().catch(() => []),
+      client.knowledgeBases.settings.parserEngines().catch(() => ({ data: [] })),
+    ] as const)
+      .then(([kb, me, list, engines]) => {
+        if (!active) return;
+        setKbMeta(kb as KBSurfaceKB);
+        setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+        setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
+        setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
+      })
+      .catch(() => {
+        if (active) setKbMeta(null);
+      });
+    return () => { active = false; };
+  }, [client, knowledgeBaseId]);
+
+  const supportedFileTypes = useMemo(() => {
+    const rules = (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? [];
+    return [...computeSupportedFileTypes(parserEngines, rules)];
+  }, [kbMeta, parserEngines]);
+
+  // Vue title row (KnowledgeBase.vue L2359-2380): wiki KBs render the third
+  // crumb level as the 文档 / Wiki / 图谱 breadcrumb-tab row; the active graph
+  // tab carries the tabGraphTip concept-clarification tooltip (Vue t-tooltip).
+  // The row exists only when the KB enables the wiki (Vue isWiki gate); its
+  // content comes from resolveKBSurfaceTabs — the same helper the documents
+  // page nav uses, so both surfaces agree on which tabs exist (permissions.ts).
+  // /knowledgeBase/<id>?tab=… is the canonical KB route form (routes.tsx
+  // knowledgeBaseView) — the same URLs the documents page nav links to.
+  const kbBasePath = `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`;
+  const resolvedTabs = kbMeta?.indexing_strategy?.wiki_enabled === true ? resolveKBSurfaceTabs(kbMeta) : undefined;
+  const kbTabs: DocumentsBreadcrumbTab[] | undefined = resolvedTabs
+    ? resolvedTabs.map((tab: KBSurfaceTab) => ({
+      key: tab,
+      label: tab === 'documents'
+        ? t('knowledgeEditor.wikiBrowser.tabDocuments')
+        : tab === 'wiki'
+          ? 'Wiki' /* Vue template renders the wiki tab as the literal "Wiki" (KnowledgeBase.vue L2365) */
+          : t('knowledgeEditor.wikiBrowser.tabGraph'),
+      href: tab === 'documents' ? kbBasePath : `${kbBasePath}?tab=${tab}`,
+      active: tab === 'graph',
+      title: tab === 'graph' ? t('knowledgeEditor.wikiBrowser.tabGraphTip') : undefined,
+    }))
+    : undefined;
+
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
   const [mode, setMode] = useState<'overview' | 'ego'>(() => slug ? 'ego' : 'overview');
@@ -44,6 +106,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [showArrows, setShowArrows] = useState(true);
   const [searchResults, setSearchResults] = useState<Array<{ title: string; slug: string }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  // Vue renders the search as a t-select (filterable) whose popup can be
+  // expanded/collapsed — the React port must track the same open/active state.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchActive, setSearchActive] = useState(-1);
   const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
   const [drawerPage, setDrawerPage] = useState<{ title: string; summary: string; content: string; version: number } | null>(null);
   const [drawerStatus, setDrawerStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -51,6 +117,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
   const gesture = useRef<{ kind: 'pan' | 'node'; pointerId: number; startX: number; startY: number; originX: number; originY: number; slug?: string } | null>(null);
   const dragged = useRef(false);
+  // Outside-pointerdown closes the expanded search popup, like the Vue t-select.
+  const searchShellRef = useRef<HTMLDivElement | null>(null);
 
   async function load(nextMode: 'overview' | 'ego', nextCenter?: string) {
     setStatus({ kind: 'loading' });
@@ -109,6 +177,37 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
+  // Single "jump to this slug" entry point for the search select, mirroring
+  // Vue handleGraphSearchSelect: open the drawer and pivot to the ego view,
+  // then clear the keyword (Vue resets graphSearchValue after ~300ms).
+  function selectSearchResult(result: { title: string; slug: string }) {
+    setSearchOpen(false);
+    setQuery('');
+    setSearchResults([]);
+    void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 });
+    void load('ego', result.slug);
+  }
+
+  // Vue t-select keyboard contract: arrows open + highlight, Enter commits the
+  // highlighted (or first) match, Escape collapses the popup.
+  function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSearchOpen(true);
+      const count = searchOptions.length;
+      if (count === 0) return;
+      setSearchActive((current) => event.key === 'ArrowDown' ? Math.min(current + 1, count - 1) : Math.max(current - 1, -1));
+    } else if (event.key === 'Enter') {
+      const active = searchActive >= 0 ? searchOptions[searchActive] : searchOptions[0];
+      if (active) {
+        event.preventDefault();
+        selectSearchResult(active);
+      }
+    } else if (event.key === 'Escape') {
+      setSearchOpen(false);
+    }
+  }
+
   useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes]);
   useEffect(() => {
     const keyword = query.trim();
@@ -124,6 +223,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [client, knowledgeBaseId, query]);
+
+  // With an empty keyword the Vue select falls back to the overview top-500
+  // snapshot (graphSearchEffectiveOptions, WikiBrowser.vue L4669) so the
+  // expanded popup is browsable without typing. Mirror it with the loaded
+  // graph nodes ranked by link_count.
+  const searchDefaultOptions = useMemo(() => graph ? [...graph.nodes].sort((a, b) => b.link_count - a.link_count).map((node) => ({ title: node.title, slug: node.slug })) : [], [graph]);
+  const searchOptions = query.trim().length > 0 ? searchResults : searchDefaultOptions;
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (searchShellRef.current && event.target instanceof Node && !searchShellRef.current.contains(event.target)) setSearchOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [searchOpen]);
+  useEffect(() => { setSearchActive(-1); }, [searchOpen, query]);
 
   useEffect(() => {
     if (!drawerNode) return;
@@ -142,6 +257,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
   const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);
   const displayEdges = useMemo(() => visible ? displayGraphEdges(visible.edges) : [], [visible]);
+  // Node radii per slug, needed to shorten edge ends like Vue setEdgePositions.
+  const linkCountBySlug = useMemo(() => new Map((visible?.nodes ?? []).map((node) => [node.slug, node.link_count])), [visible]);
   // Undirected adjacency within the current subgraph (Vue builds this once
   // per render to drive the dashed expansion hint rings).
   const adjacencyBySlug = useMemo(() => {
@@ -257,13 +374,30 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }
 
   return (
-    <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
-      <header className="wk-header mb-6 flex items-start justify-between gap-4">
-        <div>
-          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')} · {knowledgeBaseId}</p>
-          <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t('knowledgeBase.graph.title')}</h1>
-          <p className="wk-muted text-muted">{t('wikiBrowser.tabGraphTip')}</p>
-        </div>
+    /* Vue KnowledgeBase.vue renders the graph surface full-bleed (.wiki-graph
+       width/height 100%) and this page only ever mounts inside the platform
+       shell ([&_.wk-page]:max-w-none!). No auto margins: a flex-column child
+       with margin:auto opts out of align-items stretch and shrink-wraps to the
+       header's max-content width (the R431 narrow-centred-column regression). */
+    <main className="wk-page box-border w-full max-w-none px-[1.25rem] py-12">
+      <header className="wk-header mb-6">
+        <DocumentsBreadcrumb
+          t={t}
+          knowledgeBaseId={knowledgeBaseId}
+          kbName={typeof kbMeta?.name === 'string' ? kbMeta.name : null}
+          kbList={kbList}
+          kbMeta={{
+            type: typeof kbMeta?.type === 'string' ? kbMeta.type : undefined,
+            description: typeof kbMeta?.description === 'string' ? kbMeta.description : undefined,
+            createdAt: typeof kbMeta?.created_at === 'string' ? kbMeta.created_at.slice(0, 10) : undefined,
+          }}
+          supportedFileTypes={supportedFileTypes}
+          canManage={canManage}
+          tabs={kbTabs}
+        />
+        {/* Vue keeps the document upload subtitle under every tab — the
+            document-subtitle line is unconditional in KnowledgeBase.vue. */}
+        <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t('knowledgeEditor.document.subtitle')}</p>
       </header>
       <Card className="relative overflow-hidden p-0">
         <div data-testid="knowledge-graph-surface" className="relative min-h-[500px] overflow-hidden bg-white max-[720px]:min-h-[26rem]">
@@ -271,14 +405,26 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
             <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
               <defs>
                 <marker id="wk-graph-arrow-end" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-                  <path d="M0,0 L10,3 L0,6 L2,3 Z" className="fill-[#c0c4cc]" />
+                  <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#c0c4cc" />
                 </marker>
                 <marker id="wk-graph-arrow-start" viewBox="0 0 10 6" refX="0" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-                  <path d="M10,0 L0,3 L10,6 L8,3 Z" className="fill-[#c0c4cc]" />
+                  <path d="M10,0 L0,3 L10,6 L8,3 Z" fill="#c0c4cc" />
                 </marker>
               </defs>
               <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
-                {displayEdges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd={showArrows ? 'url(#wk-graph-arrow-end)' : undefined} markerStart={showArrows && edge.bidirectional ? 'url(#wk-graph-arrow-start)' : undefined} className="stroke-[#c0c4cc] [stroke-width:1.2] [stroke-opacity:0.4]" /> : null; })}
+                {displayEdges.map((edge) => {
+                  const source = positionBySlug.get(edge.source);
+                  const target = positionBySlug.get(edge.target);
+                  if (!source || !target) return null;
+                  // Vue setEdgePositions: stop each end at the node circle boundary so arrows stay visible.
+                  const ends = graphEdgeEndpoints(
+                    source,
+                    target,
+                    graphNodeRadius(linkCountBySlug.get(edge.source) ?? 0),
+                    graphNodeRadius(linkCountBySlug.get(edge.target) ?? 0),
+                  );
+                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? 'url(#wk-graph-arrow-end)' : undefined} markerStart={showArrows && edge.bidirectional ? 'url(#wk-graph-arrow-start)' : undefined} className="stroke-[#c0c4cc] [stroke-width:1.2] [stroke-opacity:0.4]" />;
+                })}
                 {visible.nodes.map((node, index) => {
                   const position = displayPositions[index]!;
                   const radius = graphNodeRadius(node.link_count);
@@ -305,7 +451,24 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           ) : null}
           {status.kind === 'success' ? <div role="search" className="absolute left-4 top-4 z-10 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3 max-[720px]:left-2 max-[720px]:top-2">
             <div className="flex items-center gap-2">
-              <label className="relative grid min-w-0 flex-1 gap-1">{t('wikiBrowser.page.search')} <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" className="rounded-[4px] border border-line-neutral bg-white/95 p-[0.55rem] shadow-[0_1px_10px_rgba(0,0,0,0.05)]" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="absolute z-[3] m-[.35rem_0_0] max-h-[14rem] list-none overflow-auto rounded-[6px] border border-[#d8e0eb] bg-white p-[.25rem] shadow-[0_8px_20px_rgba(31,52,84,.12)] w-[min(24rem,100%)]" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" className="flex w-full cursor-pointer flex-col items-start gap-[.15rem] rounded-[4px] border-0 bg-transparent p-[.5rem_.6rem] text-left text-[#27364d] hover:bg-[#eef5ff] hover:outline-none focus-visible:bg-[#eef5ff] focus-visible:outline-none" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span className="text-[.75rem] text-[#718096]">{result.slug}</span></button></li>)}</ul> : null}</label>
+              {/* Vue renders the graph search as a t-select (filterable):
+                  search prefix icon + suffix chevron that rotates when the
+                  popup expands, 32px control height, and an empty keyword
+                  falls back to the overview snapshot. WikiBrowser.vue L12-17. */}
+              <div ref={searchShellRef} className="relative min-w-0 flex-1">
+                <div className="flex h-8 items-center rounded-[4px] border border-line-input bg-white/95 pl-2 pr-1 shadow-[0_1px_10px_rgba(0,0,0,0.05)] transition-colors focus-within:border-accent">
+                  <svg viewBox="0 0 16 16" aria-hidden="true" className="size-4 shrink-0 text-faint"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M10.4 10.4 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+                  <Input value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder={t('wikiBrowser.searchPlaceholder')} role="combobox" aria-expanded={searchOpen} aria-controls="wk-graph-search-results" aria-autocomplete="list" aria-activedescendant={searchActive >= 0 ? `wk-graph-search-option-${searchActive}` : undefined} aria-label={t('wikiBrowser.page.search')} className="h-8 min-w-0 flex-1 rounded-[4px]! border-0! bg-transparent! px-1! shadow-none! outline-none! focus-visible:outline-none!" />
+                  <button type="button" tabIndex={-1} aria-hidden="true" data-testid="graph-search-chevron" className="flex size-6 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-faint" onClick={() => setSearchOpen((open) => !open)}>
+                    <svg viewBox="0 0 10 6" aria-hidden="true" className={`size-[10px] transition-transform duration-150 ${searchOpen ? 'rotate-180' : ''}`}><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                </div>
+                {searchOpen ? <ul id="wk-graph-search-results" role="listbox" aria-label={t('wikiBrowser.page.search')} className="absolute left-0 top-[calc(100%+4px)] z-[3] m-0 max-h-[16rem] w-full list-none overflow-auto rounded-[6px] border border-[#d8e0eb] bg-white p-1 shadow-[0_8px_20px_rgba(31,52,84,.12)]">
+                  {searchLoading ? <li className="flex h-8 items-center px-2 text-[13px] text-faint">{t('wikiBrowser.loading')}</li> : null}
+                  {!searchLoading && searchOptions.length === 0 ? <li className="flex h-8 items-center px-2 text-[13px] text-faint">{t('common.empty')}</li> : null}
+                  {searchOptions.map((option, index) => <li key={option.slug} id={`wk-graph-search-option-${index}`} role="option" aria-selected={index === searchActive}><button type="button" className={`flex h-8 w-full cursor-pointer items-center truncate rounded-[3px] border-0 bg-transparent px-2 text-left text-[13px] text-ink hover:bg-[#f3f3f3] focus-visible:bg-[#f3f3f3] focus-visible:outline-none ${index === searchActive ? 'bg-[#f3f3f3]' : ''}`} onMouseEnter={() => setSearchActive(index)} onClick={() => selectSearchResult(option)}>{option.title}</button></li>)}
+                </ul> : null}
+              </div>
               <details className="relative shrink-0">
                 <summary className="inline-flex size-8 cursor-pointer select-none items-center justify-center text-[18px] text-faint transition-colors hover:text-primary [&::-webkit-details-marker]:hidden" title={t('wikiBrowser.helpButtonTitle')} aria-label={t('wikiBrowser.helpButtonTitle')}>?</summary>
                 <dl className="absolute right-0 top-[calc(100%+8px)] z-20 m-0 min-w-[240px] max-w-[320px] rounded-[6px] border border-line-neutral bg-white p-[.65rem_.8rem] shadow-[0_8px_20px_rgba(31,52,84,.12)]">
@@ -344,7 +507,14 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                 <span>{t('wikiBrowser.fitView')}</span>
               </button>
               <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" onClick={() => setShowArrows((value) => !value)} aria-pressed={showArrows}>
-                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-[13px] text-faint" aria-hidden="true">{showArrows ? '⌀' : '→'}</span>
+                {/* Vue toggleArrows icon semantics: browse-off while arrows are shown, browse when hidden. */}
+                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-faint" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1.6 8s2.4-4.2 6.4-4.2S14.4 8 14.4 8 12 12.2 8 12.2 1.6 8 1.6 8Z" />
+                    <circle cx="8" cy="8" r="2.1" />
+                    {showArrows ? <line x1="3.2" y1="13" x2="12.8" y2="3" /> : null}
+                  </svg>
+                </span>
                 <span>{showArrows ? t('wikiBrowser.hideArrows') : t('wikiBrowser.showArrows')}</span>
               </button>
               {mode === 'ego' && frontier.length > 0 ? <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })} onClick={() => void growFrontier()}>

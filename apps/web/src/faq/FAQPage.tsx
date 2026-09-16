@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { Button, Checkbox, Dialog, Input, Radio, Range, Select, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { navigate as clientNavigate } from '../platform/navigation.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { normalizeFAQPayload, parseExcelFile, parseFAQImportText, serializeFAQEntries } from './import-export.ts';
 import './faq.css';
@@ -444,7 +445,7 @@ export function faqKBDetailPath(knowledgeBaseId: string): string {
   return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId);
 }
 
-function defaultNavigate(path: string): void { window.location.assign(path); }
+function defaultNavigate(path: string): void { clientNavigate(path); }
 
 /** Vue dropdowns close on outside click — mirror it via focusout. */
 function closeOnBlur(event: FocusEvent<HTMLElement>, close: () => void): void {
@@ -1668,7 +1669,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }, [importTask?.status]);
   const [canContribute, setCanContribute] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
-  const navigate = useCallback((path: string) => { window.location.assign(path); }, []);
+  const navigate = useCallback((path: string) => { clientNavigate(path); }, []);
   // B6: Vue closeImportResult (:2345-2356) — persist 'close' server-side, then
   // hide locally; on failure the strip stays (Vue only logs).
   const closeImportResult = useCallback(async () => {

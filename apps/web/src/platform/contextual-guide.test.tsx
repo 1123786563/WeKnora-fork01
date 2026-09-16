@@ -255,3 +255,113 @@ test('Escape dismisses and reports to the host like the Vue keydown handler', as
   });
   assert.equal(dismissed, 1, 'Escape reports dismissal (SpotlightGuide.vue:5)');
 });
+
+// --- kbDetail host flows (documents page trigger + Vue KnowledgeBase.vue:339-345) ---
+
+/** The toolbar upload anchor, laid out like a real button (jsdom boxes are zero). */
+function addUploadAnchor() {
+  const anchor = document.createElement('button');
+  anchor.setAttribute('data-guide', 'kb-detail-add-doc');
+  anchor.style.width = '28px';
+  anchor.style.height = '28px';
+  document.body.append(anchor);
+  anchor.getBoundingClientRect = () => ({ x: 900, y: 200, width: 28, height: 28, top: 200, left: 900, right: 928, bottom: 228, toJSON: () => ({}) }) as DOMRect;
+  return anchor;
+}
+
+test('(kbDetail) the tour opens after the 600ms catalog delay with the intro step centered', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost({ openDelayOverrideMs: undefined });
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+  assert.equal(overlay(), null, 'no overlay before the 600ms open delay (contextualGuides.ts:78)');
+  await settle(700);
+  assert.ok(overlay(), 'overlay appears after the catalog open delay');
+  assert.equal(overlay()?.getAttribute('data-guide-tour'), 'kbDetail');
+  assert.equal(stepTitle(), '知识库还是空的');
+  assert.equal(stepLabel(), '1 / 3');
+  assert.ok(card()?.className.includes('wk-guide__card--center'), 'intro step centers the card');
+});
+
+test('(kbDetail) next/prev walk the three steps and the upload anchor is spotlighted', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await settle(15);
+  assert.equal(stepLabel(), '1 / 3');
+
+  await click(buttonByText('下一步')!);
+  await settle(30);
+  assert.equal(stepTitle(), '添加文档');
+  assert.equal(stepLabel(), '2 / 3');
+  assert.ok(document.querySelector('.wk-guide__spot'), 'upload anchor gets the spotlight hole');
+  assert.ok(document.querySelector('.wk-guide__ring'), 'brand ring renders around the hole');
+
+  await click(buttonByText('上一步')!);
+  await settle(30);
+  assert.equal(stepTitle(), '知识库还是空的', 'prev returns to the intro step');
+  assert.equal(stepLabel(), '1 / 3');
+  assert.ok(card()?.className.includes('wk-guide__card--center'), 'centered again on the target-less step');
+});
+
+test('(kbDetail) skip, done and Escape each close the tour and persist the one-shot key', async () => {
+  for (const [label, walk, close] of [
+    ['skip', 0, '跳过'],
+    ['done', 2, '知道了'],
+  ] as const) {
+    dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+    addUploadAnchor();
+    await mountHost();
+    await act(async () => {
+      openContextualGuide('kbDetail');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await settle(15);
+    for (let i = 0; i < walk; i += 1) {
+      await click(buttonByText('下一步')!);
+      await settle(20);
+    }
+    await click(buttonByText(close)!);
+    assert.equal(overlay(), null, `${label} closes the tour`);
+    assert.equal(dom.window.localStorage.getItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail), '1', `${label} writes weknora:contextual-guide-kb-detail:v1`);
+    await act(async () => mountedRoot?.unmount());
+    mountedRoot = undefined;
+    document.body.replaceChildren();
+    dom.window.localStorage.clear();
+  }
+
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await settle(15);
+  await act(async () => {
+    overlay()?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+  assert.equal(overlay(), null, 'Escape closes the tour');
+  assert.equal(dom.window.localStorage.getItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail), '1', 'Escape persists like Vue onFinish');
+});
+
+test('(kbDetail) a finished tour never re-opens when the documents page re-triggers', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  dom.window.localStorage.setItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  });
+  await settle(30);
+  assert.equal(overlay(), null, 'the weknora:contextual-guide-kb-detail:v1 key blocks the trigger');
+});

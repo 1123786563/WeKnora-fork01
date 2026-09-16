@@ -12,6 +12,7 @@ import {
 } from '@weknora/domain';
 import { formatMessage, type MessageValues } from '@weknora/i18n';
 import { usePreferredLocale } from './locale.ts';
+import { navigate } from './platform/navigation.ts';
 import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
 import {
   isContextualGuideDone,
@@ -662,7 +663,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       // the guide arms (queue the intent for the next document).
       if (editingId === null && record?.id !== undefined && !isContextualGuideDone(window.localStorage, 'kbDetail')) {
         openContextualGuide('kbDetail');
-        window.location.assign(knowledgeBaseDetailPath(String(record.id)));
+        navigate(knowledgeBaseDetailPath(String(record.id)));
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t('knowledgeList.messages.deleteFailed'));
@@ -736,7 +737,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       if (kb.type !== 'faq' && count === 0 && canManageKBCard(kb, { userId: viewer.userId, isAdmin: viewer.isAdmin })) {
         openContextualGuide('kbDetail');
       }
-      window.location.assign(knowledgeBaseDetailPath(id));
+      navigate(knowledgeBaseDetailPath(id));
       return;
     }
     // Vue handleCardClick else-branch: uninitialized card click opens the

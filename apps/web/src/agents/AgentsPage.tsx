@@ -3,6 +3,7 @@ import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
+import { navigate } from '../platform/navigation.ts';
 import {
   contextualGuideMessage,
   markContextualGuideDone,
@@ -762,7 +763,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     if (modelsReady === false) {
       setNotice(contextualGuideMessage(locale, 'contextualGuide.tenantModels.needChatModelFirst'));
       openContextualGuide('tenantModels', { variant: 'agent' });
-      window.location.assign('/platform/settings?section=models');
+    navigate('/platform/settings?section=models');
       return;
     }
     // Vue AgentList.vue:1603 + AgentCreateContextualGuide :when="create" —
@@ -789,7 +790,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
 
   const onUseInChat = useCallback((agent: AgentCardModel) => {
     setDrawer(null);
-    window.location.assign(chatNavigationPath(agent));
+    navigate(chatNavigationPath(agent));
   }, []);
 
   const rows = useMemo<AgentCardModel[]>(() => {

@@ -5,6 +5,7 @@ import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { EmptyState } from './EmptyState.tsx';
+import { navigate } from '../platform/navigation.ts';
 import { observeUploadProgress } from '../platform/http.ts';
 import './skill-settings.css';
 import {
@@ -537,7 +538,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
         >
           <Button type="button" variant="primary" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
-            ? <Button type="button" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
+            ? <Button type="button" onClick={() => navigate('/platform/settings?section=sandbox')}>{t('settings.skills.goSandboxSettings')}</Button>
             : null}
         </EmptyState>
       </div>

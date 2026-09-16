@@ -9,6 +9,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
 import { Button, Status } from '@weknora/ui';
+import { navigate } from '../platform/navigation.ts';
 import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
 const MemoryWorkspacePanel = lazy(() => import('./PersonalMemoryPanel.tsx').then((m) => ({ default: m.MemoryWorkspacePanel })));
@@ -225,7 +226,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   function closeSettings() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     if (settingsCloseMode(window.location.search) === 'knowledge-bases') {
-      window.location.assign('/platform/knowledge-bases');
+      navigate('/platform/knowledge-bases');
     } else {
       window.history.back();
     }
@@ -238,7 +239,10 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const select = useCallback((key: string) => {
     const next = settingsSectionMeta(key) ? key : SETTINGS_SECTIONS[0]!.key;
     setSelectedKey(next);
-    window.history.pushState(null, '', '/platform/settings?' + selectSettingsQuery(next, window.location.search));
+    // Section changes are state within the settings drawer, not new pages.
+    // Keep one history entry for opening settings so Close returns to the
+    // route that opened it even after several section changes.
+    navigate('/platform/settings?' + selectSettingsQuery(next, window.location.search), 'replace');
   }, []);
 
   const generalPanel = selectedKey === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
@@ -281,7 +285,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
         dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
         // SandboxSettings.vue openSession (341-344): row click opens the chat
         // session; full-page assign mirrors PlatformShell.openShellSession (204).
-        onOpenSession={(sessionId) => { window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
+        onOpenSession={(sessionId) => { navigate(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
       />
     : null;
   const skillPanel = selectedKey === 'skills'

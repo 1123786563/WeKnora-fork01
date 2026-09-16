@@ -183,6 +183,44 @@ export function graphNodeRadius(linkCount: number): number {
   return Math.max(8, Math.min(24, 8 + Math.log(linkCount + 1) * 4));
 }
 
+/** Vue WikiBrowser setEdgePositions margin: keep end markers clear of node circles. */
+export const GRAPH_EDGE_ARROW_MARGIN = 4;
+
+export interface GraphEdgeEndpoints {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Mirrors Vue WikiBrowser setEdgePositions: shorten each edge end by the node
+ * radius plus a 4px margin so end markers (≈9.6px long at markerWidth 8 ×
+ * stroke-width 1.2) sit outside the node circles instead of being painted over
+ * by them — without this both arrows hide under the nodes and edges render as
+ * plain directionless lines.
+ */
+export function graphEdgeEndpoints(
+  source: GraphNodePosition,
+  target: GraphNodePosition,
+  sourceRadius: number,
+  targetRadius: number,
+): GraphEdgeEndpoints {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  const startRadius = sourceRadius + GRAPH_EDGE_ARROW_MARGIN;
+  const endRadius = targetRadius + GRAPH_EDGE_ARROW_MARGIN;
+  return {
+    x1: source.x + ux * startRadius,
+    y1: source.y + uy * startRadius,
+    x2: target.x - ux * endRadius,
+    y2: target.y - uy * endRadius,
+  };
+}
+
 export interface GraphViewport {
   x: number;
   y: number;

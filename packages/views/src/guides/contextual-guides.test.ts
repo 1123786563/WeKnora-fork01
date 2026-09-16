@@ -25,6 +25,7 @@ import {
   markContextualGuideDone,
   openContextualGuide,
   resolveContextualGuideSteps,
+  shouldArmKbDetailGuideOnEntry,
   shouldOpenContextualGuide,
 } from './contextual-guides.ts';
 import { CONTEXTUAL_GUIDE_MESSAGES } from './contextual-guide-messages.ts';
@@ -187,6 +188,20 @@ test('(gating) shouldOpenContextualGuide mirrors the Vue tryOpen guard', () => {
   assert.equal(shouldOpenContextualGuide(globalDone, 'kbList', false), false, 'when=false blocks the open');
   markContextualGuideDone(globalDone, 'kbList');
   assert.equal(shouldOpenContextualGuide(globalDone, 'kbList', true), false, 'dismissed tours never reopen');
+});
+
+// Vue KnowledgeBase.vue:339-345 showKbDetailContextualGuide — detail-entry
+// arm condition for the empty-KB welcome tour (tab-independent).
+test('(trigger) shouldArmKbDetailGuideOnEntry replays the Vue kbDetail when-condition', () => {
+  const base = { knowledgeBaseId: 'kb-1', kbType: 'document', canEdit: true, documentsLoading: false, documentCount: 0 };
+  assert.equal(shouldArmKbDetailGuideOnEntry(base), true, 'editable non-FAQ empty KB arms on entry');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, kbType: 'faq' }), false, 'FAQ libraries never see the tour');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, kbType: 'FAQ' }), false, 'type comparison is case-insensitive');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, kbType: null }), true, 'missing type behaves like the Vue || fallback');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, canEdit: false }), false, 'viewers never get the upload tour');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, documentsLoading: true }), false, 'loading lists do not arm');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, documentCount: 3 }), false, 'non-empty KBs do not arm');
+  assert.equal(shouldArmKbDetailGuideOnEntry({ ...base, knowledgeBaseId: '' }), false, 'falsy kbId never arms');
 });
 
 test('(routing) openContextualGuide records the pending intent and dispatches the event', () => {
