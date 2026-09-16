@@ -18,6 +18,17 @@ export interface StartExecutionInput {
   budget_upper: number;
 }
 
+export interface StartAck {
+  run_id: string;
+  request_id: string;
+  status: string;
+}
+
+export interface CommandAck {
+  run_id: string;
+  action: 'cancel' | 'steer';
+}
+
 /** Commands are intentionally a closed union: arbitrary method/body pairs are not exposed. */
 export type ExecutionCommandInput =
   | { action: 'cancel'; expected_revision: number }
@@ -99,6 +110,31 @@ function parseLookup(value: unknown): RequestLookup {
   };
 }
 
+function parseStartAck(value: unknown, requestID: string): StartAck {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('start response.data must be an object');
+  const row = value as Record<string, unknown>;
+  if (typeof row.run_id !== 'string' || row.run_id.trim() === '') throw new Error('start response.data.run_id is required');
+  if (row.request_id !== requestID) throw new ContractError('request_id', 'must match the submitted request_id');
+  if (typeof row.status !== 'string' || row.status.trim() === '') throw new Error('start response.data.status is required');
+  return { run_id: row.run_id, request_id: requestID, status: row.status };
+}
+
+function parseCommandAck(value: unknown, runID: string, action: ExecutionCommandInput['action']): CommandAck {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('command response.data must be an object');
+  const row = value as Record<string, unknown>;
+  if (row.run_id !== runID) throw new ContractError('run_id', 'must match the requested run_id');
+  if (row.action !== action) throw new ContractError('action', 'must match the submitted command');
+  return { run_id: runID, action };
+}
+
+function validateLastEventID(value: string): string {
+  const cursor = required(value, 'lastEventID');
+  if (!/^\d+$/.test(cursor) || !Number.isSafeInteger(Number(cursor))) {
+    throw new Error('lastEventID must be a non-negative decimal safe sequence');
+  }
+  return cursor;
+}
+
 function validateStart(input: StartExecutionInput): void {
   required(input.request_id, 'request_id');
   required(input.session_id, 'session_id');
@@ -121,7 +157,7 @@ function validateCommand(input: ExecutionCommandInput): void {
 
 export function executionEventsRequest(runID: string, lastEventID?: string): ClientRequest {
   const id = pathId(runID, 'runID');
-  const cursor = lastEventID === undefined ? undefined : required(lastEventID, 'lastEventID');
+  const cursor = lastEventID === undefined ? undefined : validateLastEventID(lastEventID);
   return {
     method: 'GET',
     path: `/api/v1/workbench/executions/${id}/events`,
@@ -142,10 +178,10 @@ export function createExecutionsApi(request: Request) {
     return parseSnapshotForRun(unwrap(response), requestedRunID);
   };
 
-  const start = async (input: StartExecutionInput, signal?: AbortSignal): Promise<ExecutionDTO> => {
+  const start = async (input: StartExecutionInput, signal?: AbortSignal): Promise<StartAck> => {
     validateStart(input);
     const response = await request({ method: 'POST', path: '/api/v1/workbench/executions', body: input, ...(signal === undefined ? {} : { signal }) });
-    return parseExecution(unwrap(response));
+    return parseStartAck(unwrap(response), input.request_id);
   };
 
   const lookup = async (requestID: string, signal?: AbortSignal): Promise<RequestLookup> => {
@@ -154,11 +190,11 @@ export function createExecutionsApi(request: Request) {
     return parseLookup(unwrap(response));
   };
 
-  const command = async (runID: string, input: ExecutionCommandInput, signal?: AbortSignal): Promise<ExecutionDTO> => {
+  const command = async (runID: string, input: ExecutionCommandInput, signal?: AbortSignal): Promise<CommandAck> => {
     validateCommand(input);
     const requestedRunID = required(runID, 'runID');
     const response = await request({ method: 'POST', path: `/api/v1/workbench/executions/${pathId(requestedRunID, 'runID')}/commands`, body: input, ...(signal === undefined ? {} : { signal }) });
-    return parseExecutionForRun(unwrap(response), requestedRunID);
+    return parseCommandAck(unwrap(response), requestedRunID, input.action);
   };
 
   return { get, snapshot, start, lookup, command };

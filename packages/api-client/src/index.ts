@@ -92,9 +92,11 @@ export type {
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export type {
   ExecutionsApi,
+  CommandAck,
   ExecutionCommandInput,
   RequestLookup,
   RequestLookupState,
+  StartAck,
   StartExecutionInput,
 } from './mobile/executions.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';

@@ -50,7 +50,18 @@ test('uses encoded paths, exact bodies, and forwards abort signals', async () =>
   const requests: ClientRequest[] = [];
   const api = createExecutionsApi(async (input) => {
     requests.push(input);
-    return { success: true, data: input.path.includes('/requests/') ? { state: 'pending' } : input.path.endsWith('/snapshot') ? snapshot : execution };
+    return {
+      success: true,
+      data: input.path.includes('/requests/')
+        ? { state: 'pending' }
+        : input.path.endsWith('/snapshot')
+          ? snapshot
+          : input.path.endsWith('/commands')
+            ? { run_id: 'run/1', action: 'steer' }
+            : input.method === 'POST'
+              ? { run_id: 'run/1', request_id: 'req-1', status: 'queued' }
+              : execution,
+    };
   });
   const signal = new AbortController().signal;
   await api.get('run/1', signal);
@@ -98,7 +109,7 @@ test('preserves typed HTTP errors and never turns malformed 200 into success', a
   const api = createExecutionsApi(async () => { throw error; });
   await assert.rejects(api.start({ request_id: 'q', session_id: 's', agent_id: 'a', target_id: 'platform', workspace_ref: '', text: 'x', budget_upper: 1 }), (actual: unknown) => actual === error);
   const invalid = createExecutionsApi(async () => ({ success: true, data: { nope: true } }));
-  await assert.rejects(invalid.command('run', { action: 'cancel', expected_revision: 0 }), /schema_version/);
+  await assert.rejects(invalid.command('run', { action: 'cancel', expected_revision: 0 }), /run_id/);
 });
 
 test('builds a resumable event request without inventing cursor semantics', () => {
@@ -109,4 +120,21 @@ test('builds a resumable event request without inventing cursor semantics', () =
     method: 'GET', path: '/api/v1/workbench/executions/run%2F1/events', headers: { 'Last-Event-ID': '4' },
   });
   assert.throws(() => executionEventsRequest('run/1', ' '), /lastEventID/);
+  assert.throws(() => executionEventsRequest('run/1', '-1'), /safe sequence/);
+  assert.throws(() => executionEventsRequest('run/1', 'abc'), /safe sequence/);
+  assert.throws(() => executionEventsRequest('run/1', '9007199254740992'), /safe sequence/);
+});
+
+test('parses the exact W04 start and W05 command acknowledgement fixtures', async () => {
+  const input: StartExecutionInput = {
+    request_id: 'req-1', session_id: 's-1', agent_id: 'a-1', target_id: 'platform', workspace_ref: '', text: 'hello', budget_upper: 10,
+  };
+  const api = createExecutionsApi(async ({ method, path }) => ({
+    success: true,
+    data: method === 'POST' && path.endsWith('/commands')
+      ? { run_id: 'run-1', action: 'cancel' }
+      : { run_id: 'run-1', request_id: 'req-1', status: 'queued' },
+  }));
+  assert.deepEqual(await api.start(input), { run_id: 'run-1', request_id: 'req-1', status: 'queued' });
+  assert.deepEqual(await api.command('run-1', { action: 'cancel', expected_revision: 0 }), { run_id: 'run-1', action: 'cancel' });
 });
