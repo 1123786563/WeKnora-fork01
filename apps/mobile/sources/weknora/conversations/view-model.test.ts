@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createProductAuthSession } from '@weknora/api-client';
+import type { ExecutionEvent } from '@weknora/contracts';
 import { createConversationViewModel, createProductConversationViewModel, createProductExecutionApi, createSendController } from './view-model.ts';
 
 test('failed send keeps the draft and releases the busy lock', async () => {
@@ -90,6 +91,30 @@ test('product VM approvals call typed decision and update the card state', async
   await model.commands.approve!('interaction-1', 3);
   assert.deepEqual(decisions, [['interaction-1', 'approve', 3]]);
   assert.equal(model.pendingInteractions[0]?.status, 'approved');
+});
+
+test('product VM consumes W09 online events from the projection watermark', async () => {
+  const requests: Array<{ runID: string; cursor: string | undefined }> = [];
+  let emit!: (event: ExecutionEvent) => void;
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'r1', status: 'running' }),
+    lookup: async () => ({ state: 'admitted' as const, run_id: 'run-1' }),
+    command: async () => ({}),
+    snapshot: async (_runID: string) => ({ execution: { schema_version: 1 as const, run_id: 'run-1', session_id: 's1', revision: 1, driver: 'platform' as const, run_status: 'running' as const, execution_status: 'running', settlement_status: 'reserved', seq: 1, capabilities: {} }, watermark: 1, events: [{ schema_version: 1 as const, run_id: 'run-1', attempt_id: 'a1', seq: 1, type: 'message.created', occurred_at: '2026-09-16T00:00:00Z', payload: { message: { id: 'm1', blocks: [{ id: 'b1', kind: 'text', text: 'hi' }] } } }] }),
+    stream: async (runID: string, cursor: string | undefined, onEvent: (event: ExecutionEvent) => void) => { requests.push({ runID, cursor }); emit = onEvent; },
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any;
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions, projection: { load: async (runID) => {
+    const snapshot = await executions.snapshot(runID);
+    const { projectExecutionSnapshot } = await import('./execution-projection.ts');
+    return projectExecutionSnapshot(snapshot);
+  } } });
+  await model.send!.submit('hello', 'r1');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(requests, [{ runID: 'run-1', cursor: '1' }]);
+  emit({ schema_version: 1, run_id: 'run-1', attempt_id: 'a1', seq: 2, type: 'text.delta', occurred_at: '2026-09-16T00:00:01Z', payload: { message_id: 'm1', delta: ' there' } });
+  assert.equal(model.messages.length, 1);
+  assert.equal(model.messages[0]?.text, 'hi there');
 });
 
 test('cancel and steer fence late responses after a scope switch', async () => {

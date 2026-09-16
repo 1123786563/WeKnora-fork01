@@ -42,7 +42,9 @@ function member(value: unknown, userID: string, path: string): void {
     if (!found) throw new Error(`${path} membership could not be verified`);
     return;
   }
-  if (value !== undefined && value !== userID) throw new Error(`${path} membership could not be verified`);
+  // Absence is not proof of membership. Product execution must never be
+  // admitted from an ID-only resource response.
+  throw new Error(`${path} membership could not be verified`);
 }
 
 async function get(session: ProductAuthSession, path: string, signal: AbortSignal): Promise<Row> {
@@ -74,15 +76,15 @@ export async function resolveProductSessionResources(
   exact(target.id, selection.targetId, 'target id');
   exact(workspace.id, selection.workspaceRef, 'workspace id');
   member(space.members ?? space.member_ids ?? space.memberships, identity.userId, 'space');
-  if (space.owner_id !== undefined && String(space.owner_id) !== identity.userId && space.members === undefined && space.member_ids === undefined && space.memberships === undefined) throw new Error('space owner/member could not be verified');
-  if (agent.owner_id !== undefined && String(agent.owner_id) !== identity.userId) throw new Error('agent owner could not be verified');
-  if (agent.space_id !== undefined) exact(agent.space_id, selection.spaceId, 'agent space');
-  if (target.space_id !== undefined) exact(target.space_id, selection.spaceId, 'target space');
-  if (target.workspace_ref !== undefined) exact(target.workspace_ref, selection.workspaceRef, 'target workspace');
-  if (workspace.space_id !== undefined) exact(workspace.space_id, selection.spaceId, 'workspace space');
-  if (workspace.owner_id !== undefined && String(workspace.owner_id) !== identity.userId) throw new Error('workspace owner could not be verified');
-  if (String(workspace.target_id) !== selection.targetId) throw new Error('workspace target ownership could not be verified');
-  if (target.owner_id !== identity.userId || target.state !== 'active') throw new Error('target owner is not active for this user');
+  if (String(space.owner_id ?? '') !== identity.userId) throw new Error('space owner could not be verified');
+  if (String(agent.owner_id ?? '') !== identity.userId) throw new Error('agent owner could not be verified');
+  exact(agent.space_id, selection.spaceId, 'agent space');
+  exact(target.space_id, selection.spaceId, 'target space');
+  exact(target.workspace_ref, selection.workspaceRef, 'target workspace');
+  exact(workspace.space_id, selection.spaceId, 'workspace space');
+  if (String(workspace.owner_id ?? '') !== identity.userId) throw new Error('workspace owner could not be verified');
+  exact(workspace.target_id, selection.targetId, 'workspace target ownership');
+  if (String(target.owner_id ?? '') !== identity.userId || target.state !== 'active') throw new Error('target owner is not active for this user');
   if (String(agent.id) !== selection.agentId || String(target.id) !== selection.targetId || String(workspace.id) !== selection.workspaceRef) throw new Error('resource identity mismatch');
   return { ...selection, agentName: id(agent.name, 'agent.name') };
 }

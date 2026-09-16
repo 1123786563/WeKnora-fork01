@@ -1,13 +1,16 @@
 import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput, type ProductAuthSession } from '@weknora/api-client';
-import type { ExecutionDTO, ExecutionSnapshot } from '@weknora/contracts';
+import type { ExecutionDTO, ExecutionEvent, ExecutionSnapshot } from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
-import type { ProductConversationProjection } from './execution-projection';
+import { projectExecutionEvent, type ProductConversationProjection } from './execution-projection';
+import { executionEventsRequest } from '@weknora/api-client';
+import { ExecutionSSEParser } from '../platform/stream-transport';
 
 export interface ExecutionApi {
   start(input: StartExecutionInput, signal?: AbortSignal): Promise<{ run_id: string; request_id: string; status: string }>;
   lookup(requestID: string, signal?: AbortSignal): Promise<{ state: 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown'; run_id?: string; reason?: string }>;
   command(runID: string, input: ExecutionCommandInput, signal?: AbortSignal): Promise<unknown>;
   snapshot?(runID: string, signal?: AbortSignal): Promise<ExecutionSnapshot>;
+  stream?(runID: string, lastEventID: string | undefined, onEvent: (event: ExecutionEvent) => void, signal?: AbortSignal): Promise<void>;
   decide?(interactionID: string, input: { action: 'approve' | 'reject'; expected_revision: number }, signal?: AbortSignal): Promise<void>;
 }
 
@@ -124,6 +127,8 @@ export function createProductConversationViewModel(input: {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
   const listeners = new Set<() => void>();
+  let projectionState: ProductConversationProjection | undefined;
+  const streamingRuns = new Set<string>();
   let model!: ConversationViewModel;
   const notify = () => listeners.forEach((listener) => listener());
   const updateExecution = (execution: ConversationExecution | null) => {
@@ -139,12 +144,26 @@ export function createProductConversationViewModel(input: {
     const captured = input.scope.capture();
     const projection = await input.projection.load(runID, signal ?? captured.signal);
     if (!input.scope.accept(captured.generation)) return;
+    projectionState = projection;
     model.messages = projection.messages;
     model.pendingInteractions = projection.pendingInteractions;
     if (projection.execution) {
       model.execution = { ...projection.execution, requestID: model.execution?.requestID ?? projection.execution.requestID };
     }
     notify();
+    if (input.executions.stream && !streamingRuns.has(runID)) {
+      streamingRuns.add(runID);
+      void input.executions.stream(runID, String(projection.watermark), (event) => {
+        if (!input.scope.accept(captured.generation)) return;
+        projectionState = projectExecutionEvent(projectionState ?? projection, event);
+        model.messages = projectionState.messages;
+        model.pendingInteractions = projectionState.pendingInteractions;
+        model.execution = projectionState.execution
+          ? { ...projectionState.execution, requestID: model.execution?.requestID ?? '' }
+          : model.execution;
+        notify();
+      }, captured.signal).catch(() => undefined).finally(() => streamingRuns.delete(runID));
+    }
   };
   const send = createSendController(async (text, requestID) => {
     latestRequestID = requestID;
@@ -290,6 +309,41 @@ export function createProductExecutionApi(input: {
     lookup: (requestID, signal) => scoped((activeSignal) => executions.lookup(requestID, activeSignal), signal),
     command: (runID, command, signal) => scoped((activeSignal) => executions.command(runID, command, activeSignal), signal),
     snapshot: (runID, signal) => scoped((activeSignal) => executions.snapshot(runID, activeSignal), signal),
+    stream: async (runID, lastEventID, onEvent, signal) => {
+      const request = executionEventsRequest(runID, lastEventID);
+      const captured = input.scope.capture();
+      const activeSignal = signal ?? captured.signal;
+      const result = input.authSession?.transport.sendStream
+        ? await input.authSession.transport.sendStream({
+          method: request.method,
+          url: `${input.origin}${request.path}`,
+          headers: { accept: 'text/event-stream', ...(request.headers ?? {}) },
+          signal: activeSignal,
+        })
+        : await (async () => {
+          const transport = new (await import('../platform/stream-transport')).ExecutionSSEParser();
+          const response = await fetch(`${input.origin}${request.path}`, { method: request.method, headers: { accept: 'text/event-stream', ...(request.headers ?? {}), authorization: `Bearer ${input.credential.accessToken}` }, signal: activeSignal });
+          if (!response.ok || !response.body) throw new Error(`execution stream HTTP ${response.status}`);
+          const reader = response.body.getReader();
+          try {
+            while (true) {
+              const chunk = await reader.read();
+              for (const frame of transport.push(chunk.value ?? new Uint8Array(), chunk.done)) onEvent(frame.data);
+              if (chunk.done) break;
+            }
+          } finally { reader.releaseLock(); }
+          return undefined;
+        })();
+      if (result) {
+        if (result.status < 200 || result.status >= 300) throw new Error(`execution stream HTTP ${result.status}`);
+        const parser = new ExecutionSSEParser();
+        for await (const chunk of result.chunks) {
+          for (const frame of parser.push(new TextEncoder().encode(chunk))) onEvent(frame.data);
+        }
+        for (const frame of parser.push(new Uint8Array(), true)) onEvent(frame.data);
+      }
+      if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
+    },
     decide: async (interactionID, decision, signal) => {
       await scoped((activeSignal) => client.chat.approvals.resolveTool(interactionID, { decision: decision.action, expected_revision: decision.expected_revision }, activeSignal), signal);
     },

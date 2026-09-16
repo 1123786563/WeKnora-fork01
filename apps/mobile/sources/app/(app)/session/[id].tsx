@@ -23,7 +23,12 @@ function ProductSessionRoute() {
   const selection = params?.spaceId && params.agentId && params.targetId && params.workspaceRef
     ? { spaceId: params.spaceId, agentId: params.agentId, targetId: params.targetId, workspaceRef: params.workspaceRef }
     : null;
-  const productRoute = selection !== null;
+  // Navigation metadata is only a hint. The identity pair is emitted by the
+  // server-owned ProductAuthSession and must match before any resource query
+  // can make this a product route; no URL can select another tenant/user.
+  const productRoute = selection !== null
+    && params?.resourceUserId === identity.userId
+    && params?.resourceTenantId === identity.tenantId;
   const [resources, setResources] = React.useState<VerifiedProductSessionResources | null>(null);
   const [resourceError, setResourceError] = React.useState<string | null>(null);
   React.useEffect(() => {
