@@ -156,6 +156,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	must(container.Provide(repository.NewAgentRunSnapshotRepository))
+	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(NewAgentRuntime))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
