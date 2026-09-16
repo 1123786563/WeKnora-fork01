@@ -85,6 +85,7 @@ type Decision struct {
 // PendingRequest carries everything needed to block and notify the UI.
 type PendingRequest struct {
 	TenantID           uint64
+	RunID              string // durable execution identity; distinct from RequestID
 	UserID             string // owner of the session that initiated the call (used for Resolve authorization); empty disables user check
 	SessionID          string
 	AssistantMessageID string
@@ -142,6 +143,7 @@ type Gate struct {
 	rdb             *redis.Client // optional; nil disables cross-instance fan-out
 	failClose       bool          // when true, NeedsApproval errors block (require approval) instead of skip
 	pendingObserver func(context.Context, PendingRequest, string) error
+	pendingRollback func(context.Context, PendingRequest, string) error
 }
 
 // SetPendingObserver installs the durable interaction projector used by the
@@ -153,6 +155,15 @@ func (g *Gate) SetPendingObserver(observer func(context.Context, PendingRequest,
 	}
 	g.mu.Lock()
 	g.pendingObserver = observer
+	g.mu.Unlock()
+}
+
+func (g *Gate) SetPendingRollback(rollback func(context.Context, PendingRequest, string) error) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.pendingRollback = rollback
 	g.mu.Unlock()
 }
 
@@ -356,6 +367,7 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 	g.mu.Lock()
 	g.pending[pendingID] = w
 	observer := g.pendingObserver
+	rollback := g.pendingRollback
 	g.mu.Unlock()
 	if observer != nil {
 		if err := observer(ctx, req, pendingID); err != nil {
@@ -411,6 +423,11 @@ func (g *Gate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision
 		},
 		RequestID: req.RequestID,
 	}); err != nil {
+		if rollback != nil {
+			if rollbackErr := rollback(ctx, req, pendingID); rollbackErr != nil {
+				return Decision{}, fmt.Errorf("emit tool approval required: %w (rollback pending interaction: %v)", err, rollbackErr)
+			}
+		}
 		return Decision{}, fmt.Errorf("emit tool approval required: %w", err)
 	}
 
