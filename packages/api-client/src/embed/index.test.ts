@@ -82,3 +82,25 @@ test('treats an empty (null) channel/im list as an empty list, not a parse error
   assert.deepEqual(await api.channels.listAll(), []);
   assert.deepEqual(await api.im.listAll(), []);
 });
+
+test('uses channel-scoped suggestion endpoints with embed session headers', async () => {
+  const requests: Array<{ method: string; path: string; headers?: Record<string, string>; body?: unknown }> = [];
+  const api = createEmbedApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'GET') return { success: true, data: { id: 'set-1', session_id: 's-1', assistant_message_id: 'm-1', status: 'ready', allow_regenerate: true, questions: [{ id: 'q-1', text: 'Next?', source: 'agent' }] } };
+    if (request.path.includes('suggestions')) return { success: true, data: { id: 'set-1', session_id: 's-1', assistant_message_id: 'm-1', status: 'ready', allow_regenerate: true, questions: [{ id: 'q-1', text: 'Next?', source: 'agent' }] } };
+    return undefined;
+  });
+
+  await api.public.ensureMessageSuggestions('channel/1', 'ems-1', 'session/1', 'message/1', 'sig-1', 'visitor-1');
+  await api.public.messageSuggestions('channel/1', 'ems-1', 'session/1', 'message/1', 'sig-1', 'visitor-1');
+  await api.public.recordMessageSuggestionEvent('channel/1', 'ems-1', 'session/1', 'sig-1', 'visitor-1', 'set-1', 'click', 'q-1');
+
+  assert.deepEqual(requests.map(({ method, path, body }) => ({ method, path, body })), [
+    { method: 'POST', path: '/api/v1/embed/channel%2F1/sessions/session%2F1/messages/message%2F1/suggestions', body: { regenerate: false } },
+    { method: 'GET', path: '/api/v1/embed/channel%2F1/sessions/session%2F1/messages/message%2F1/suggestions', body: undefined },
+    { method: 'POST', path: '/api/v1/embed/channel%2F1/sessions/session%2F1/suggestion-events', body: { suggestion_set_id: 'set-1', question_id: 'q-1', event_type: 'click' } },
+  ]);
+  assert.equal(requests[0]?.headers?.['X-Embed-Session'], 'sig-1');
+  assert.equal(requests[0]?.headers?.['X-Embed-Visitor'], 'visitor-1');
+});

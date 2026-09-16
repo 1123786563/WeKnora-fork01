@@ -1,4 +1,4 @@
-import { parseActionSuccessResponse, type ActionSuccessResponse, type ChatStreamEvent } from '@weknora/contracts';
+import { parseActionSuccessResponse, parseMessageSuggestionResponse, type ActionSuccessResponse, type ChatStreamEvent, type MessageSuggestionSet } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
 import { array, encoded, query, record, success, withSignal, type JsonRecord } from '../identity/common.ts';
 
@@ -126,6 +126,16 @@ export function createEmbedApi(request: EmbedRequest, stream?: EmbedStream) {
       const path = query(publicPath(channelId, '/suggested-questions'), [['limit', limit && limit > 0 ? limit : undefined]]);
       const data = successRecord(await request(withSignal({ method: 'GET', path, headers: embedHeaders(token) }, signal)), '/embed/suggested-questions');
       return array(data.questions, '/embed/suggested-questions.data.questions') as EmbedPayload[];
+    },
+    async ensureMessageSuggestions(channelId: string, token: string, sessionId: string, messageId: string, signature: string, visitorId: string, regenerate = false, signal?: AbortSignal): Promise<MessageSuggestionSet> {
+      return parseMessageSuggestionResponse(await request(withSignal({ method: 'POST', path: publicPath(channelId, `/sessions/${encoded(sessionId, 'sessionId')}/messages/${encoded(messageId, 'messageId')}/suggestions`), headers: embedHeaders(token, signature, visitorId), body: { regenerate } }, signal)));
+    },
+    async messageSuggestions(channelId: string, token: string, sessionId: string, messageId: string, signature: string, visitorId: string, signal?: AbortSignal): Promise<MessageSuggestionSet> {
+      return parseMessageSuggestionResponse(await request(withSignal({ method: 'GET', path: publicPath(channelId, `/sessions/${encoded(sessionId, 'sessionId')}/messages/${encoded(messageId, 'messageId')}/suggestions`), headers: embedHeaders(token, signature, visitorId) }, signal)));
+    },
+    async recordMessageSuggestionEvent(channelId: string, token: string, sessionId: string, signature: string, visitorId: string, suggestionSetId: string, eventType: 'impression' | 'click' | 'dismiss', questionId = '', signal?: AbortSignal): Promise<void> {
+      const response = await request(withSignal({ method: 'POST', path: publicPath(channelId, `/sessions/${encoded(sessionId, 'sessionId')}/suggestion-events`), headers: embedHeaders(token, signature, visitorId), body: { suggestion_set_id: suggestionSetId, question_id: questionId, event_type: eventType } }, signal));
+      if (response !== undefined) parseActionSuccessResponse(response);
     },
     async chunk(channelId: string, token: string, chunkId: string, signal?: AbortSignal): Promise<EmbedPayload> {
       return successRecord(await request(withSignal({ method: 'GET', path: publicPath(channelId, `/chunks/${encoded(chunkId, 'chunkId')}`), headers: embedHeaders(token) }, signal)), '/embed/chunks');
