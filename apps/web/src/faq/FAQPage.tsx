@@ -1088,8 +1088,20 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           {canContribute && selected.size > 0 ? (
             <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" aria-label="FAQ batch actions">
               <span className="mr-auto text-[0.85rem] text-muted">{t('common.itemCount', { count: selected.size })}</span>
-              <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button>
-              <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button>
+              {/* Vue FAQBatchBar.vue:53-63 (+ FAQEntryManager.vue:1046-1049):
+                  批量启用 only renders when the selection has disabled entries,
+                  批量禁用 only when it has enabled ones. */}
+              {(() => {
+                const selectedEntries = entries.filter((entry) => selected.has(entry.id));
+                const selectedEnabledCount = selectedEntries.filter((entry) => entry.is_enabled !== false).length;
+                const selectedDisabledCount = selectedEntries.length - selectedEnabledCount;
+                return (
+                  <>
+                    {selectedDisabledCount > 0 ? <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button> : null}
+                    {selectedEnabledCount > 0 ? <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button> : null}
+                  </>
+                );
+              })()}
               <Button type="button" onClick={onBatchRecommend}>{t('knowledgeEditor.faq.recommended')}</Button>
               <Select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
                 <option value="">{t('knowledgeBase.untagged')}</option>

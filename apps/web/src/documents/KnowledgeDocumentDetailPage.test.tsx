@@ -402,6 +402,80 @@ test('merged view keeps the Vue chunk pagination so multi-page documents merge p
   assert.deepEqual(pages, [1, 2]);
 });
 
+test('chunk page transitions follow the Vue form: pagination and header stay, content swaps to a small local loading row', async () => {
+  let releasePageTwo!: () => void;
+  const pageTwo = new Promise<Record<string, unknown>>((resolve) => { releasePageTwo = () => resolve({ data: [{ id: 'c2', chunk_index: 26, content: 'Page two chunk', content_revision: 1, is_enabled: true }], total: 30, page: 2, page_size: 25 }); });
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }));
+  (client as any).knowledgeBases.documents.chunks = async (_id: string, page = 1) => {
+    if (page === 1) return { data: [{ id: 'c1', chunk_index: 1, content: 'Page one chunk', content_revision: 1, is_enabled: true }], total: 30, page: 1, page_size: 25 };
+    return pageTwo;
+  };
+  const container = await mountDetail(client);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  assert.ok(body().textContent?.includes('Page one chunk'));
+  const nav = () => body().querySelector('nav[aria-label="查看分块"]');
+  assert.ok(nav());
+  await act(async () => { Array.from(nav()!.querySelectorAll('button')).at(-1)!.click(); });
+  assert.ok(body().querySelector('.wk-chunk-page-loading'), 'a small local loading row replaces the whole-block 加载中 during page transitions');
+  assert.ok(nav(), 'Vue keeps chunk-pagination mounted during the transition');
+  assert.ok(body().textContent?.includes('查看分块'), 'the section header stays mounted during the transition');
+  assert.equal(body().textContent?.includes('Page one chunk'), false, 'Vue v-else hides the stale page while the next page loads');
+  assert.equal(nav()!.textContent?.includes('2'), true, 'the pagination shows the requested page like the Vue v-model chunkPage');
+  releasePageTwo();
+  await act(async () => {});
+  assert.ok(body().textContent?.includes('Page two chunk'));
+  assert.equal(body().querySelector('.wk-chunk-page-loading'), null);
+  assert.ok(nav());
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
+  assert.ok(body().textContent?.includes('片段 26'), 'segment numbering follows the loaded page like Vue loadedChunkPage');
+});
+
+test('a failed page transition stays on the loaded page with the old content like the Vue chunkLoadError branch', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }));
+  (client as any).knowledgeBases.documents.chunks = async (_id: string, page = 1) => {
+    if (page === 1) return { data: [{ id: 'c1', chunk_index: 1, content: 'Page one chunk', content_revision: 1, is_enabled: true }], total: 30, page: 1, page_size: 25 };
+    throw new Error('page two unavailable');
+  };
+  const container = await mountDetail(client);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  const nav = () => body().querySelector('nav[aria-label="查看分块"]');
+  await act(async () => { Array.from(nav()!.querySelectorAll('button')).at(-1)!.click(); });
+  await act(async () => {});
+  assert.ok(body().textContent?.includes('Page one chunk'), 'the loaded page is restored after a failed page fetch');
+  assert.ok(body().textContent?.includes('page two unavailable'), 'the transition error is surfaced');
+  assert.ok(nav(), 'pagination stays available for a retry');
+});
+
+test('audio documents load the embedded player without a completed parse_status like Vue', async () => {
+  (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock-audio';
+  (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Interview.mp3', type: 'file', file_type: 'mp3', parse_status: 'pending',
+  }));
+  (client as any).knowledgeBases.documents.preview = async () => ({ body: 'audio-bytes', headers: {}, contentType: 'audio/mpeg' });
+  const container = await mountDetail(client);
+  const audio = container.ownerDocument.body.querySelector('audio');
+  assert.ok(audio, 'Vue embeds the audio player regardless of parse status');
+  assert.equal(audio?.getAttribute('src'), 'blob:mock-audio');
+});
+
+test('preview tab content loads without gating on parse_status like the Vue canPreview gate', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'notes.txt', type: 'file', file_type: 'txt', parse_status: 'pending',
+  }));
+  (client as any).knowledgeBases.documents.preview = async () => ({ body: 'pending-parse body text', headers: {}, contentType: 'text/plain' });
+  const container = await mountDetail(client);
+  const body = container.ownerDocument.body;
+  assert.ok(body.textContent?.includes('pending-parse body text'), 'Vue loads preview content without consulting parse_status');
+  assert.equal(body.textContent?.includes('处理完成后才能预览'), false, 'the parse_status unavailable notice is gone with the Vue-aligned gate');
+});
+
 test('audio documents follow the Vue default view: merged with an embedded player, no preview tab', async () => {
   (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock-audio';
   (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};

@@ -7,33 +7,22 @@ import * as XLSX from 'xlsx';
 import { DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview } from './preview.ts';
 
 test('builds an authenticated preview model without treating download URLs as public', () => {
-  assert.deepEqual(buildDocumentPreview({ id: 'doc/a', file_name: 'guide.pdf', parse_status: 'completed' }, '/api/v1/knowledge/doc%2Fa/preview'), {
+  assert.deepEqual(buildDocumentPreview({ id: 'doc/a', type: 'file', file_name: 'guide.pdf', parse_status: 'completed' }, '/api/v1/knowledge/doc%2Fa/preview'), {
     kind: 'pdf',
-    availability: { kind: 'ready', label: 'Ready' },
     ready: true,
-    downloadOnly: false,
     path: '/api/v1/knowledge/doc%2Fa/preview',
     fileName: 'guide.pdf',
   });
 });
 
-test('blocks preview while the latest processing attempt is not completed', () => {
-  assert.deepEqual(buildDocumentPreview({ id: 'doc-1', file_name: 'guide.pdf', parse_status: 'finalizing' }, '/preview').availability, {
-    kind: 'processing',
-    label: 'Finalizing',
-  });
-  assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'guide.pdf', parse_status: 'finalizing' }, '/preview').ready, false);
-});
-
-test('exposes failed and unsupported preview states without trying to fetch them', () => {
-  assert.deepEqual(buildDocumentPreview({ id: 'doc-1', file_name: 'guide.pdf', parse_status: 'failed' }, '/preview').availability, {
-    kind: 'error',
-    label: 'Failed',
-  });
-  assert.deepEqual(buildDocumentPreview({ id: 'doc-1', file_name: 'brief.docx', parse_status: 'completed' }, '/preview').availability, {
-    kind: 'unsupported',
-    label: 'Unsupported file type',
-  });
+test('preview readiness ignores parse_status exactly like the Vue canPreview gate', () => {
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'guide.pdf', parse_status: 'pending' }, '/preview').ready, true, 'Vue never consults parse_status before loading preview content');
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'guide.pdf', parse_status: 'finalizing' }, '/preview').ready, true);
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'guide.pdf', parse_status: 'failed' }, '/preview').ready, true);
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'Interview.mp3', parse_status: 'pending' }, '/preview').ready, true, 'audio stays fetchable for the embedded player regardless of processing state');
+  assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'guide.pdf', type: 'manual' }, '/preview').ready, false, 'Vue gates on details.type === "file"');
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'brief.docx', parse_status: 'completed' }, '/preview').ready, false, 'unresolvable inline extensions never fetch');
+  assert.equal(buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'guide.' }, '/preview').ready, false);
 });
 
 test('marks spreadsheet documents as inline previewable like the Vue document preview', () => {
@@ -44,7 +33,10 @@ test('marks spreadsheet documents as inline previewable like the Vue document pr
   assert.equal(isInlinePreviewKind('audio'), true);
   assert.equal(isInlinePreviewKind('video'), true);
   assert.equal(isInlinePreviewKind('spreadsheet'), true);
-  assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'brief.xlsx', parse_status: 'completed' }, '/preview').downloadOnly, false);
+  assert.equal(isInlinePreviewKind('mermaid'), true);
+  assert.equal(isInlinePreviewKind('docx'), false);
+  assert.equal(isInlinePreviewKind('pptx'), false);
+  assert.equal(isInlinePreviewKind('unsupported'), false);
 });
 
 test('canPreviewDocument mirrors the Vue canPreview gate: file type, resolvable extension, never audio', () => {
@@ -65,11 +57,10 @@ test('canPreviewDocument mirrors the Vue canPreview gate: file type, resolvable 
 });
 
 test('recognizes Mermaid files as inline previews like the Vue document preview', () => {
-  const preview = buildDocumentPreview({ id: 'doc-1', file_name: 'architecture.mmd', parse_status: 'completed' }, '/preview');
+  const preview = buildDocumentPreview({ id: 'doc-1', type: 'file', file_name: 'architecture.mmd', parse_status: 'completed' }, '/preview');
 
   assert.equal(preview.kind, 'mermaid');
   assert.equal(preview.ready, true);
-  assert.equal(preview.downloadOnly, false);
 });
 
 test('reads every Vue-supported spreadsheet sheet into safe table rows', async () => {

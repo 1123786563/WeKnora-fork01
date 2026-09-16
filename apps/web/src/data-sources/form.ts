@@ -60,3 +60,48 @@ export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
     resourceIds,
   };
 }
+
+export type CredentialField = { key: string; label: string; placeholder?: string; secret?: boolean; optional?: boolean };
+
+// Ported from the Vue DataSourceEditorDialog connectorDefs: per-connector
+// credential fields with required/optional flags drive the field-level
+// validation that runs before the connection test (validateStep1Fields).
+export const VUE_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
+  feishu: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
+  lark: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
+  feishu_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
+  lark_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
+  notion: [{ key: 'api_key', label: 'dataSource.field.integrationToken', placeholder: 'ntn_xxxx', secret: true }],
+  yuque: [{ key: 'api_token', label: 'dataSource.field.apiToken', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://www.yuque.com', optional: true }],
+  ima: [{ key: 'client_id', label: 'dataSource.field.imaClientId', secret: true }, { key: 'api_key', label: 'dataSource.field.imaApiKey', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://ima.qq.com', optional: true }],
+  gitlab: [{ key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.field.apiToken', secret: true }],
+};
+
+export function credentialValue(text: string, key: string): string {
+  const line = text.split(/\r?\n/).find((item) => item.trim().startsWith(`${key} =`) || item.trim().startsWith(`${key}=`));
+  return line ? line.slice(line.indexOf('=') + 1).trim() : '';
+}
+
+// Vue validateStep1Fields: walk the connector's credential fields in order and
+// report the label key of the first missing required one (optional fields are
+// skipped). Connectors without a field map (e.g. rss) never fail here. The
+// caller renders `${t(label)} ${t('dataSource.isRequired')}` as a blocking
+// warning before the connection test, matching MessagePlugin.warning in Vue.
+export function firstMissingRequiredCredential(type: string, credentialsText: string): string | null {
+  const fields = VUE_CREDENTIAL_FIELDS[type];
+  if (!fields) return null;
+  for (const field of fields) {
+    if (field.optional) continue;
+    if (!credentialValue(credentialsText, field.key)) return field.label;
+  }
+  return null;
+}
+
+// Vue DataSourceEditorDialog credentialsRequired: in edit mode a connector
+// with already-configured credentials keeps them unless the user typed a
+// replacement, so the per-field required walk must be skipped entirely.
+// `credentialsConfigured` mirrors the response flag the backend stores at
+// credentials.credentials.configured (datasource_credentials.go).
+export function credentialsRequiredForValidation(input: { isEdit: boolean; credentialsConfigured: boolean; replacementTyped: boolean }): boolean {
+  return !(input.isEdit && input.credentialsConfigured && !input.replacementTyped);
+}

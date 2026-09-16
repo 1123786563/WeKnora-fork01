@@ -4380,3 +4380,35 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   配置保存成功 `react-kb-settings-save-success.png`. Deferred to the next browser pass: Vue KB editor-modal pair
   (entry point behind the KB list card hover menu — not located in timebox), live approval countdown flow, org
   pending-upgrade live check. No Vue, mobile, or Go code was modified.
+
+## 2026-09-17 Round R437 — Doc pagination/preview gates, datasource lifecycle, FAQ batch bar + browser sweep
+
+- Five parallel agents (A1 doc-detail residuals, A2 datasource sweep, A3 FAQ+KB-list sweep, A4 browser-evidence
+  only, A5 verifier), file-domain mutually exclusive, TDD; orchestrator closed the verifier's A2 CONCERNS
+  in-round. A5 verdicts: A1 PASS, A3 PASS, A4 PASS, A2 PASS-after-closure.
+- A1: chunk pager transition mirrors doc-content.vue (header+pager stay mounted, `chunk-page-loading` row swap,
+  disabled-while-transition guard, failure keeps the loaded page with retry, `(page-1)*25+i+1` numbering;
+  ledger correction — Vue HIDES the old page during the turn rather than keeping it). parse-status gating
+  removed where Vue has none: preview readiness is `type==='file' && inline kind`, audio player loads
+  unconditionally; Vue-absent availability/downloadOnly model fields + dead 5-locale strings removed.
+- A2: create branch auto-triggers the first sync (createAndSyncSuccess / createButSyncFailed warning), edit
+  branch keeps the updateSuccessSyncHint warning; per-field `${label} ${isRequired}` validation blocks before
+  the connection test; type-step title localized. Closure: Vue credentialsRequired exemption added —
+  `credentialsRequiredForValidation` skips the required walk when editing a configured connector without typed
+  replacements (backend `credentials.credentials.configured` confirmed at datasource_credentials.go:85-91;
+  missing flag falls back to validation, matching Vue's optional chain). Deferred: render-level behavioral
+  tests for DataSourcesPage (current ones are source-regex pins), list-card anatomy, credential-step
+  Replace/Remove, React's Vue-absent per-row 测试连接 button.
+- A3: FAQ batch enable/disable buttons render conditionally per FAQBatchBar.vue:53-63 with `is_enabled !==
+  false` counting. KB list audit clean — the R436 entry question closed: Vue card menu 设置 has the React
+  counterpart openKbSettings → in-place edit dialog. Deferred: shared-KB detail drawer (Vue
+  KnowledgeBaseList.vue:710-776; data+i18n ready, mount in App.tsx), FAQ batch-delete canContribute vs Vue
+  canManage (backstopped by backend RBAC; permissions.ts externally occupied).
+- A4 browser sweep (11 paired screenshots, `screenshots/r437-20260917/`): Vue KB editor modal entry = card
+  `.more-wrap` → menu 设置 → Teleport overlay 1000×750 (5 groups/13 items, 保存并关闭) vs React legacy flat
+  7-section settings page — the largest known settings-surface gap, documented for future rounds; org route is
+  `/platform/organizations` and upgrade gating renders per contract (parity account is org admin, so no form
+  on either side — DOM-verified); approval countdown not witnessed (sandbox SSRF guard blocks the test model).
+- Gates: `pnpm test:web` 1370/1370, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r437-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

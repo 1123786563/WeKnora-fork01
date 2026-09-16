@@ -34,3 +34,35 @@ test('preserves credential replacement and deletion semantics on edit', () => {
   assert.match(page, /if \(editing && !form\.credentialsText\.trim\(\)\) input\.config = \{ \.\.\.config, credentials: undefined \};/);
   assert.match(page, /if \(form\.credentialsText\.trim\(\)\) \{[\s\S]*?if \(editing\) await dataSources\.putCredentials\(saved\.id, credentials\);/);
 });
+
+// Vue DataSourceEditorDialog.handleSubmit: the create branch calls
+// triggerSync(dataSourceId) right after creating the row and toasts
+// datasource.createAndSyncSuccess; a failed trigger degrades to a
+// MessagePlugin.warning with createButSyncFailed. The edit branch never
+// triggers a sync and warns with updateSuccessSyncHint instead.
+test('triggers the first sync right after creating a data source (Vue handleSubmit create branch)', () => {
+  assert.match(page, /await dataSources\.sync\(saved\.id\);/);
+  assert.match(page, /tone: 'success', text: t\('dataSource\.createAndSyncSuccess'\)/);
+  assert.match(page, /tone: 'warning', text: syncError instanceof Error \? syncError\.message : t\('dataSource\.createButSyncFailed'\)/);
+});
+
+test('keeps the Vue post-save tone: editing warns that no auto sync runs', () => {
+  assert.match(page, /setMessage\(\{ tone: 'warning', text: t\('dataSource\.updateSuccessSyncHint'\) \}\);/);
+  assert.doesNotMatch(page, /tone: 'success', text: t\('dataSource\.updateSuccessSyncHint'\)/);
+});
+
+// Vue nextStep(): before the connection test, required credential fields are
+// validated per field with `${label} ${datasource.isRequired}` warning that
+// blocks the submit — not a single generic saveFailed message.
+test('validates required credential fields per field before the connection test', () => {
+  assert.match(page, /firstMissingRequiredCredential\(form\.type, form\.credentialsText\)/);
+  assert.match(page, /tone: 'warning', text: `\$\{t\(missingCredential\)\} \$\{t\('dataSource\.isRequired'\)\}`/);
+});
+
+// Vue renders the create type step title via t('datasource.step.selectType');
+// the React port must not hardcode Chinese copy that breaks other locales.
+test('localizes the create type step title instead of hardcoding Chinese', () => {
+  assert.match(page, /editing === null && createStep === 'type' \? t\('dataSource\.step\.selectType'\)/);
+  assert.doesNotMatch(page, /选择类型/);
+  assert.doesNotMatch(page, /选择要同步的外部数据源类型/);
+});

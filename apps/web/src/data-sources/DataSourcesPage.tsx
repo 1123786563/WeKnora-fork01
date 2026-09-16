@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourceSyncLog, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Checkbox, Input, Select, Sheet, Status, Textarea } from '@weknora/ui';
-import { buildDataSourceInput, dataSourceFormFrom, type DataSourceFormValues } from './form.ts';
+import { buildDataSourceInput, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, VUE_CREDENTIAL_FIELDS, type CredentialField, type DataSourceFormValues } from './form.ts';
 import { resourceCheckStates, toggleResourceSelection } from './resource-selection.ts';
 import { classifyDataSourceError } from './error-state.ts';
 import { isSyncRunning, mergeSyncLogs } from './log-state.ts';
@@ -11,17 +11,6 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 const newForm: DataSourceFormValues = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '', resourceIds: [] };
 const LOG_PAGE_SIZE = 50;
 const VUE_CREATE_CONNECTOR_ORDER = ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab'];
-type CredentialField = { key: string; label: string; placeholder?: string; secret?: boolean; optional?: boolean };
-const VUE_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
-  feishu: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
-  feishu_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
-  notion: [{ key: 'api_key', label: 'dataSource.field.integrationToken', placeholder: 'ntn_xxxx', secret: true }],
-  yuque: [{ key: 'api_token', label: 'dataSource.field.apiToken', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://www.yuque.com', optional: true }],
-  ima: [{ key: 'client_id', label: 'dataSource.field.imaClientId', secret: true }, { key: 'api_key', label: 'dataSource.field.imaApiKey', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://ima.qq.com', optional: true }],
-  gitlab: [{ key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.field.apiToken', secret: true }],
-};
 const VUE_SETTINGS_FIELDS: Record<string, CredentialField[]> = {
   rss: [{ key: 'feed_urls', label: 'dataSource.field.feedUrls', placeholder: 'https://example.com/feed.xml' }],
 };
@@ -42,11 +31,6 @@ function connectionError(value: unknown, fallback = 'Connection test failed'): s
   const row = value as Record<string, unknown>;
   if (row.success === false) return typeof row.message === 'string' ? row.message : typeof row.error === 'string' ? row.error : fallback;
   return null;
-}
-
-function credentialValue(text: string, key: string): string {
-  const line = text.split(/\r?\n/).find((item) => item.trim().startsWith(`${key} =`) || item.trim().startsWith(`${key}=`));
-  return line ? line.slice(line.indexOf('=') + 1).trim() : '';
 }
 
 function setCredentialValue(text: string, key: string, value: string): string {
@@ -124,6 +108,17 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
       setMessage({ tone: 'error', text: t('dataSource.saveFailed') });
       return;
     }
+    // Vue validateStep1Fields runs the per-field required-credential walk only
+    // when credentials are required: an edit of an already-configured
+    // connector without typed replacements keeps its stored credentials.
+    const editCredentialsConfigured = (editing as { credentials?: { credentials?: { configured?: unknown } } } | null | undefined)?.credentials?.credentials?.configured === true;
+    if (credentialsRequiredForValidation({ isEdit: Boolean(editing), credentialsConfigured: editCredentialsConfigured, replacementTyped: Boolean(form.credentialsText.trim()) })) {
+      const missingCredential = firstMissingRequiredCredential(form.type, form.credentialsText);
+      if (missingCredential) {
+        setMessage({ tone: 'warning', text: `${t(missingCredential)} ${t('dataSource.isRequired')}` });
+        return;
+      }
+    }
     setSaving(true); setMessage(null);
     try {
       const input = buildDataSourceInput(form);
@@ -138,7 +133,21 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
       if (form.credentialsText.trim()) {
         if (editing) await dataSources.putCredentials(saved.id, credentials);
       }
-      setEditing(undefined); setMessage({ tone: 'success', text: t('dataSource.updateSuccessSyncHint') }); await load();
+      setEditing(undefined);
+      if (editing) {
+        // Vue edit branch: MessagePlugin.warning(updateSuccessSyncHint) — no auto sync.
+        setMessage({ tone: 'warning', text: t('dataSource.updateSuccessSyncHint') });
+      } else {
+        // Vue create branch: trigger the first sync immediately; a failed
+        // trigger still keeps the row and degrades to a warning toast.
+        try {
+          await dataSources.sync(saved.id);
+          setMessage({ tone: 'success', text: t('dataSource.createAndSyncSuccess') });
+        } catch (syncError) {
+          setMessage({ tone: 'warning', text: syncError instanceof Error ? syncError.message : t('dataSource.createButSyncFailed') });
+        }
+      }
+      await load();
     } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('dataSource.saveFailed') }); }
     finally { setSaving(false); }
   }
@@ -171,10 +180,9 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     const connector = types.find((item) => item.type === type);
     return connector ? [connector] : [];
   });
-  const editorTitle = editing === null && createStep === 'type' ? '选择类型' : editing ? t('dataSource.editTitle') : t('dataSource.createTitle');
+  const editorTitle = editing === null && createStep === 'type' ? t('dataSource.step.selectType') : editing ? t('dataSource.editTitle') : t('dataSource.createTitle');
   const editorSurface = editing === undefined ? null : <Sheet open title={editorTitle} onClose={() => setEditing(undefined)} closeLabel={t('dataSource.close')} width="640px" className="wk-data-source-drawer">
     {editing === null && createStep === 'type' ? <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-      <p className="wk-muted col-span-full m-0 text-muted">选择要同步的外部数据源类型</p>
       {createTypes.map((type) => <button key={type.type} type="button" className="flex min-h-[92px] flex-col items-start gap-1 rounded-[10px] border border-line-soft bg-white px-4 py-3 text-left transition-[border-color,box-shadow] duration-200 hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2" onClick={() => chooseCreateType(type.type)}><strong>{t(`dataSource.connector.${type.type}`)}</strong><span className="text-xs leading-5 text-muted">{t(`dataSource.connectorDesc.${type.type}`)}</span></button>)}
     </div> : <form className="wk-wiki-editor grid gap-3" onSubmit={(event) => void save(event)}>
       <p className="wk-muted m-0 text-muted">{t('dataSource.credentialsLabel')}</p>

@@ -2,16 +2,11 @@ import type { KnowledgeDocument } from '@weknora/api-client';
 import { createElement, useEffect, useRef, type ReactElement } from 'react';
 import * as XLSX from 'xlsx';
 import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
-import { previewKindForFile, previewStatus, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
+import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
 export interface KnowledgeDocumentPreviewModel {
   kind: DocumentPreviewKind;
-  availability: {
-    kind: 'ready' | 'processing' | 'error' | 'unsupported';
-    label: string;
-  };
   ready: boolean;
-  downloadOnly: boolean;
   path: string;
   fileName: string;
 }
@@ -169,17 +164,16 @@ export function canPreviewDocument(document: { type?: string; source?: string; f
   return isInlinePreviewKind(previewKindForDocument(`doc.${extension}`));
 }
 
+/**
+ * Vue doc-content#buildPreviewModel never consults parse_status: the preview
+ * tab is gated by canPreview() (file type + resolvable extension, never
+ * audio) and the embedded audio player loads for audio files regardless of
+ * processing state. `ready` therefore mirrors exactly those conditions —
+ * `type === 'file'` plus an inline-previewable extension — so a pending or
+ * failed parse never hides preview content or the audio player.
+ */
 export function buildDocumentPreview(document: KnowledgeDocument, previewPath: string): KnowledgeDocumentPreviewModel {
   const fileName = document.file_name || document.title || 'document';
-  const status = previewStatus(document);
   const kind = previewKindForDocument(fileName);
-  const inline = isInlinePreviewKind(kind);
-  const availability = status.kind === 'processing'
-    ? { kind: 'processing' as const, label: status.label }
-    : status.kind === 'unavailable'
-      ? { kind: 'error' as const, label: status.label }
-      : !inline
-        ? { kind: 'unsupported' as const, label: 'Unsupported file type' }
-        : { kind: 'ready' as const, label: status.label };
-  return { kind, availability, ready: status.kind === 'ready', downloadOnly: !inline, path: previewPath, fileName };
+  return { kind, ready: document.type === 'file' && isInlinePreviewKind(kind), path: previewPath, fileName };
 }

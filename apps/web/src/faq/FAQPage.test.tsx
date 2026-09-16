@@ -412,6 +412,26 @@ function renderCards(overrides: Partial<FAQViewProps> = {}): string {
   return renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: cardRows, total: 1, ...overrides })));
 }
 
+// R437: Vue FAQBatchBar.vue:53-63 — 批量启用 shows only when the selection has
+// disabled entries (disabledCount > 0), 批量禁用 only when it has enabled ones.
+test('FAQ batch enable/disable render conditionally on the selected entries status (Vue FAQBatchBar)', () => {
+  const rows = [
+    { id: 1, standard_question: 'q1', similar_questions: [], negative_questions: [], answers: [], is_enabled: true, is_recommended: false },
+    { id: 2, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: [], is_enabled: false, is_recommended: false },
+  ] as never;
+  const renderWith = (selected: Set<number>) => renderToStaticMarkup(
+    React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows, selected })),
+  );
+  const mixed = renderWith(new Set([1, 2]));
+  assert.ok(mixed.includes('批量启用') && mixed.includes('批量禁用'), 'mixed selection keeps both actions');
+  const allEnabled = renderWith(new Set([1]));
+  assert.ok(allEnabled.includes('批量禁用'), 'enabled-only selection keeps disable');
+  assert.ok(!allEnabled.includes('批量启用'), 'enabled-only selection hides enable (Vue disabledCount === 0)');
+  const allDisabled = renderWith(new Set([2]));
+  assert.ok(allDisabled.includes('批量启用'), 'disabled-only selection keeps enable');
+  assert.ok(!allDisabled.includes('批量禁用'), 'disabled-only selection hides disable (Vue enabledCount === 0)');
+});
+
 test('entries render as Vue faq-cards with a question header and more menu', () => {
   const html = renderCards();
   assert.ok(html.includes('faq-card-list'), 'Vue card list container');

@@ -41,12 +41,12 @@ function documentCanDownload(document: KnowledgeDocument): boolean {
   return document.source === 'file' || document.source === 'manual' || (!document.source && Boolean(document.file_name));
 }
 
-const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; unavailable: string; downloadOnly: string; loading: string; retry: string; download: string; downloadFailed: string }> = {
-  'zh-CN': { load: '文档加载失败', bytes: '文档内容读取失败', status: '状态', source: '来源', folder: '文件夹', type: '类型', root: '根目录', unavailable: '处理完成后才能预览文档。当前状态以服务端为准。', downloadOnly: '此文件类型不支持内嵌预览，请下载原文件。', loading: '正在加载预览…', retry: '重试预览', download: '下载', downloadFailed: '下载失败。' },
-  'en-US': { load: 'Unable to load document', bytes: 'Unable to load document bytes', status: 'Status', source: 'Source', folder: 'Folder', type: 'Type', root: 'Root', unavailable: 'Preview is unavailable until processing reaches completed. Current status is authoritative.', downloadOnly: 'Inline preview is unavailable for this file type. Download the original file instead.', loading: 'Loading preview…', retry: 'Retry preview', download: 'Download', downloadFailed: 'Download failed.' },
-  'ja-JP': { load: 'ドキュメントを読み込めません', bytes: 'ドキュメント内容を読み込めません', status: '状態', source: 'ソース', folder: 'フォルダー', type: '種類', root: 'ルート', unavailable: '処理が完了するまでプレビューできません。現在の状態はサーバーを正とします。', downloadOnly: 'このファイル形式はインラインプレビューに対応していません。元のファイルをダウンロードしてください。', loading: 'プレビューを読み込み中…', retry: 'プレビューを再試行', download: 'ダウンロード', downloadFailed: 'ダウンロードに失敗しました。' },
-  'ko-KR': { load: '문서를 불러오지 못했습니다', bytes: '문서 내용을 불러오지 못했습니다', status: '상태', source: '소스', folder: '폴더', type: '유형', root: '루트', unavailable: '처리가 완료될 때까지 미리보기를 사용할 수 없습니다. 현재 상태는 서버 기준입니다.', downloadOnly: '이 파일 형식은 인라인 미리보기를 지원하지 않습니다. 원본 파일을 다운로드하세요.', loading: '미리보기를 불러오는 중…', retry: '미리보기 다시 시도', download: '다운로드', downloadFailed: '다운로드하지 못했습니다.' },
-  'ru-RU': { load: 'Не удалось загрузить документ', bytes: 'Не удалось загрузить содержимое документа', status: 'Статус', source: 'Источник', folder: 'Папка', type: 'Тип', root: 'Корень', unavailable: 'Предпросмотр станет доступен после завершения обработки. Текущий статус определяется сервером.', downloadOnly: 'Для этого типа файла нет встроенного предпросмотра. Скачайте исходный файл.', loading: 'Загрузка предпросмотра…', retry: 'Повторить предпросмотр', download: 'Скачать', downloadFailed: 'Не удалось скачать файл.' },
+const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; loading: string; retry: string; download: string; downloadFailed: string }> = {
+  'zh-CN': { load: '文档加载失败', bytes: '文档内容读取失败', status: '状态', source: '来源', folder: '文件夹', type: '类型', root: '根目录', loading: '正在加载预览…', retry: '重试预览', download: '下载', downloadFailed: '下载失败。' },
+  'en-US': { load: 'Unable to load document', bytes: 'Unable to load document bytes', status: 'Status', source: 'Source', folder: 'Folder', type: 'Type', root: 'Root', loading: 'Loading preview…', retry: 'Retry preview', download: 'Download', downloadFailed: 'Download failed.' },
+  'ja-JP': { load: 'ドキュメントを読み込めません', bytes: 'ドキュメント内容を読み込めません', status: '状態', source: 'ソース', folder: 'フォルダー', type: '種類', root: 'ルート', loading: 'プレビューを読み込み中…', retry: 'プレビューを再試行', download: 'ダウンロード', downloadFailed: 'ダウンロードに失敗しました。' },
+  'ko-KR': { load: '문서를 불러오지 못했습니다', bytes: '문서 내용을 불러오지 못했습니다', status: '상태', source: '소스', folder: '폴더', type: '유형', root: '루트', loading: '미리보기를 불러오는 중…', retry: '미리보기 다시 시도', download: '다운로드', downloadFailed: '다운로드하지 못했습니다.' },
+  'ru-RU': { load: 'Не удалось загрузить документ', bytes: 'Не удалось загрузить содержимое документа', status: 'Статус', source: 'Источник', folder: 'Папка', type: 'Тип', root: 'Корень', loading: 'Загрузка предпросмотра…', retry: 'Повторить предпросмотр', download: 'Скачать', downloadFailed: 'Не удалось скачать файл.' },
 };
 
 type ContentView = 'preview' | 'merged' | 'chunks';
@@ -275,7 +275,14 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
 function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraClient; document: KnowledgeDocument; canEdit: boolean; view: ContentView }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
-  const [state, setState] = useState<{ status: 'loading' | 'success' | 'error'; chunks: KnowledgeChunk[]; total: number; page: number; message?: string }>({ status: 'loading', chunks: [], total: 0, page: 1 });
+  // Vue doc-content keeps loadedChunkPage (displayed page) separate from the
+  // pagination v-model chunkPage: `page` is the loaded page, `pendingPage` the
+  // requested one. While a page fetch is in flight the section header and
+  // pagination stay mounted and the content area shows the small
+  // chunk-page-loading row (Vue v-else hides the stale page); a failed fetch
+  // restores the loaded page with its content (Vue chunkLoadError branch).
+  const [state, setState] = useState<{ status: 'loading' | 'success' | 'error'; chunks: KnowledgeChunk[]; total: number; page: number; pendingPage?: number; message?: string }>({ status: 'loading', chunks: [], total: 0, page: 1 });
+  const [pageError, setPageError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [history, setHistory] = useState<{ id: string; rows: KnowledgeChunkRevision[] } | null>(null);
@@ -286,14 +293,29 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const load = (page = 1) => {
-    setState((current) => ({ ...current, status: 'loading', message: undefined }));
+    setPageError(null);
+    setState((current) => ({ ...current, status: 'loading', pendingPage: page, message: undefined }));
     void client.knowledgeBases.documents.chunks(document.id, page).then((result) => {
-      setState({ status: 'success', chunks: result.data, total: result.total, page: result.page });
+      setState({ status: 'success', chunks: result.data, total: result.total, page: result.page, pendingPage: undefined });
     }).catch((error: unknown) => {
-      setState((current) => ({ ...current, status: 'error', message: error instanceof Error ? error.message : t('common.error') }));
+      const message = error instanceof Error ? error.message : t('common.error');
+      setPageError(message);
+      setState((current) => current.chunks.length > 0
+        ? { ...current, status: 'success', pendingPage: undefined }
+        : { status: 'error', chunks: [], total: 0, page: current.pendingPage ?? current.page, pendingPage: undefined, message });
     });
   };
-  useEffect(load, [client, document.id]);
+  // A document switch must not leak the previous document's rows through the
+  // transition state, so reset before the initial load (Vue resets
+  // chunkPage/loadedChunkPage when details.id changes).
+  useEffect(() => {
+    setPageError(null);
+    setState({ status: 'loading', chunks: [], total: 0, page: 1, pendingPage: undefined, message: undefined });
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, document.id]);
+
+  const pageTransition = state.status === 'loading' && state.chunks.length > 0;
 
   const save = async (chunk: KnowledgeChunk) => {
     if (!draft.trim()) return;
@@ -346,8 +368,10 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
     <div className="mb-3 flex items-center justify-between gap-3"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.viewChunks')} {state.total ? `(${state.total})` : ''}</h3></div>
     {mutationError ? <Status tone="error">{mutationError}</Status> : null}
     {retryNotice ? <Status tone={retryNotice.tone}>{retryNotice.message}</Status> : null}
-    {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
+    {state.status === 'loading' && !pageTransition ? <Status>{t('common.loading')}</Status> : null}
+    {pageTransition ? <div className="wk-chunk-page-loading" role="status"><Status>{t('common.loading')}</Status></div> : null}
     {state.status === 'error' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
+    {state.status === 'success' && pageError ? <><Status tone="error">{pageError}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
     {state.status === 'success' && state.chunks.length === 0 ? <Status>{t('common.empty')}</Status> : null}
     {state.status === 'success' && view === 'merged'
       ? mergedContent
@@ -355,13 +379,15 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
         : <div className="wk-document-merged text-[13px] text-muted">—</div>
       : null}
     {state.status === 'success' && view !== 'merged' ? <><div className="flex flex-col gap-3">{state.chunks.map((chunk, index) => <article key={chunk.id} className="rounded-[8px] border border-line-soft bg-surface p-3" data-chunk-id={chunk.id}>
-      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</span> : null}</div>
+      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</span> : null}</div>
       {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[120px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <p className="m-0 whitespace-pre-wrap text-[13px] text-ink">{chunk.content || '—'}</p>}
       {history?.id === chunk.id ? <div className="mt-3 border-t border-line-soft pt-3"><strong className="text-[12px]">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="m-0 mt-2 list-decimal pl-5 text-[12px]">{history?.rows.map((row) => <li key={row.revision} className="mb-2"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="ml-2" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
     </article>)}</div></> : null}
     {/* Vue renders the chunk pagination for both merged and chunks views
-        (viewMode merged || chunks), so 全文 can advance past page one. */}
-    {state.status === 'success' && view !== 'preview' && state.total > 25 ? <nav className="mt-3 flex items-center justify-between" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.page}</span><Button type="button" disabled={state.page * 25 >= state.total} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}
+        (viewMode merged || chunks), so 全文 can advance past page one, and
+        keeps it mounted across a page transition with the requested page
+        shown (v-model chunkPage) while in-flight clicks are ignored. */}
+    {(state.status === 'success' || pageTransition) && view !== 'preview' && state.total > 25 ? <nav className="mt-3 flex items-center justify-between" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1 || pageTransition} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.pendingPage ?? state.page}</span><Button type="button" disabled={state.page * 25 >= state.total || pageTransition} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}
   </section>;
 }
 
@@ -389,7 +415,9 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
   const [detailsError, setDetailsError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!model.ready || !isInlinePreviewKind(model.kind)) {
+    // Vue fetches preview/audio content purely from type + extension
+    // (canPreview/model kind) — parse_status never gates the fetch here.
+    if (!model.ready) {
       setPreviewState({ status: 'idle' });
       return;
     }
@@ -468,7 +496,7 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
         files (audio-player-section), since canPreview() keeps them off the
         preview tab; the blob is already fetched by the preview effect. */}
     {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
-    {showPreview ? (!model.ready ? <Status tone="warning">{copy.unavailable}</Status> : model.downloadOnly ? <Status>{copy.downloadOnly}</Status> : previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
+    {showPreview ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
     {canDownload && downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}
   </Card>;
 }
