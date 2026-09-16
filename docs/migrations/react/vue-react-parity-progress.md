@@ -3853,6 +3853,24 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `blocked-env` classification for paired DOM/screenshots and interaction
   evidence; it is not a page-parity result. No mobile code was modified.
 
+## 2026-09-16 Round R407 — Integrate parallel Web/Desktop parity fixes
+
+- Eight parallel scopes were reviewed. Integrated commits align Apps catalog
+  risk/install/publish badges and schema digest (`3345fb22`), shared Button
+  control heights (`4d492637`), non-steer streaming stop behavior
+  (`bd1edf01`), session-row confirmation ownership (`277c175a`), integration
+  channel keyboard activation and checkbox geometry (`4d1dd75a`), and Vue
+  reciprocal graph-edge rendering with optional arrows (`cd59454f`). The
+  corresponding integration ledger update is `04cf515c`.
+- Focused evidence passed for UI, Chat, Integrations, Shell, and Graph. The
+  current Web suite is 1175/1175; Web typecheck/build pass; Desktop renderer
+  is 9/9 with typecheck passing; and `git diff --check` passes. Build output
+  contains only the existing large-chunk advisory.
+- These changes improve source/unit/DOM-host parity but do not prove
+  authenticated same-condition screenshots, real backend permissions or
+  mutations, Embed host streaming, or Wails feature interaction. No mobile
+  code was modified.
+
 ## 2026-09-16 Round R406 — Integrations form and channel-entry parity review
 
 - `4d1dd75a` fixes two confirmed Web integrations differences against the Vue
