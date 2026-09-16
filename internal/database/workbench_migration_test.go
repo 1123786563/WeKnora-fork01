@@ -34,7 +34,7 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 	chdirAndRestore(t, repoRoot)
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 17, version)
+	require.Equal(t, 19, version)
 	require.False(t, dirty)
 
 	assertWorkbenchChildSummary(t, db)
@@ -92,7 +92,7 @@ INSERT INTO workbench_v18_marker (id, value) VALUES (1, 'recovered');
 		SQLiteDBPath:     dbPath,
 	}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 18, version)
+	require.Equal(t, 19, version)
 	require.False(t, dirty)
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v18_marker WHERE value = 'recovered'").Scan(&markerCount))
 	require.Equal(t, 1, markerCount)
@@ -139,7 +139,7 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		require.NoError(t, RunMigrations("sqlite3://"+dbPath))
 		db := openSQLiteDB(t, dbPath)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 17, version)
+		require.Equal(t, 19, version)
 		require.False(t, dirty)
 	})
 
@@ -158,19 +158,19 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 17, version)
+		require.Equal(t, 19, version)
 		require.False(t, dirty)
 
 		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -1))
 		version, dirty = sqliteMigrationState(t, db)
-		require.Equal(t, 16, version)
+		require.Equal(t, 17, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
 		require.True(t, sqliteColumnExists(t, db, "agent_runs", "driver"), "W04 down must leave the accepted W02/W03 run schema intact")
 
 		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 1))
 		version, dirty = sqliteMigrationState(t, db)
-		require.Equal(t, 17, version)
+		require.Equal(t, 19, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
@@ -186,7 +186,7 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 	db := openSQLiteDB(t, dbPath)
 	var version, dirty int
 	require.NoError(t, db.QueryRow("SELECT version, dirty FROM custom_schema_migrations").Scan(&version, &dirty))
-	require.Equal(t, 17, version)
+	require.Equal(t, 19, version)
 	require.Zero(t, dirty)
 	var defaultTableCount int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").Scan(&defaultTableCount))
@@ -224,7 +224,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000016_") || strings.HasPrefix(entry.Name(), "000017_") {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000016_") || strings.HasPrefix(entry.Name(), "000017_") || strings.HasPrefix(entry.Name(), "000019_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))

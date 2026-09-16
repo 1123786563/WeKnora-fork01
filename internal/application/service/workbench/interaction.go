@@ -3,10 +3,17 @@ package workbench
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"strings"
+	"time"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	workbench "github.com/Tencent/WeKnora/internal/workbench"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -26,6 +33,122 @@ type InteractionStore interface {
 	Decide(ctx context.Context, tenantID uint64, ownerID, id string, decision workbench.InteractionDecision) (workbench.InteractionDecision, error)
 }
 
+type interactionRow struct {
+	TenantID                           uint64
+	ID, RunID, OwnerID, Kind, ArgsHash string
+	DecisionID, Action, Status         string
+	ExpectedRevision                   int64
+	ExpiresAt                          *time.Time
+	Revoked                            bool
+}
+
+func (interactionRow) TableName() string { return "workbench_interactions" }
+
+func (r interactionRow) decision() workbench.InteractionDecision {
+	return workbench.InteractionDecision{ID: r.ID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision}
+}
+
+// GormInteractionStore is the production persistence adapter. All reads are
+// scoped by tenant and owner, and Decide locks the row before checking the
+// revision and decision id, making retries idempotent across replicas.
+type GormInteractionStore struct{ db *gorm.DB }
+
+func NewGormInteractionStore(db *gorm.DB) *GormInteractionStore { return &GormInteractionStore{db: db} }
+func (s *GormInteractionStore) DB() *gorm.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerID, runID string) ([]workbench.InteractionDecision, error) {
+	var rows []interactionRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND run_id = ?", tenantID, ownerID, runID).Order("created_at ASC, id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]workbench.InteractionDecision, 0, len(rows))
+	for _, row := range rows {
+		if err := validateInteractionRow(row); err != nil {
+			return nil, err
+		}
+		out = append(out, row.decision())
+	}
+	return out, nil
+}
+
+func (s *GormInteractionStore) Get(ctx context.Context, tenantID uint64, ownerID, id string) (workbench.InteractionDecision, error) {
+	var row interactionRow
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND id = ?", tenantID, ownerID, id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return workbench.InteractionDecision{}, ErrInteractionNotFound
+	}
+	if err != nil {
+		return workbench.InteractionDecision{}, err
+	}
+	if err := validateInteractionRow(row); err != nil {
+		return workbench.InteractionDecision{}, err
+	}
+	return row.decision(), nil
+}
+
+func (s *GormInteractionStore) Decide(ctx context.Context, tenantID uint64, ownerID, id string, input workbench.InteractionDecision) (workbench.InteractionDecision, error) {
+	var result workbench.InteractionDecision
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row interactionRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND owner_id = ? AND id = ?", tenantID, ownerID, id).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInteractionNotFound
+			}
+			return err
+		}
+		if err := validateInteractionRow(row); err != nil {
+			return err
+		}
+		if input.DecisionID != "" && row.DecisionID == input.DecisionID {
+			if row.Action != input.Action {
+				return agentruntime.ErrConflict
+			}
+			result = row.decision()
+			return nil
+		}
+		if input.ExpectedRevision != row.ExpectedRevision || row.DecisionID != "" {
+			return agentruntime.ErrConflict
+		}
+		updated := tx.Model(&interactionRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND expected_revision = ? AND decision_id = ''", tenantID, ownerID, id, row.ExpectedRevision).Updates(map[string]any{
+			"decision_id": input.DecisionID, "action": input.Action, "status": "resolved", "expected_revision": gorm.Expr("expected_revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return agentruntime.ErrConflict
+		}
+		result = input
+		result.ID = row.ID
+		result.Kind = row.Kind
+		result.ArgsHash = row.ArgsHash
+		result.ExpectedRevision = row.ExpectedRevision + 1
+		return nil
+	})
+	return result, err
+}
+
+func validateInteractionRow(row interactionRow) error {
+	if row.Revoked {
+		return ErrInteractionRevoked
+	}
+	if row.ExpiresAt != nil && time.Now().After(*row.ExpiresAt) {
+		return ErrInteractionExpired
+	}
+	if row.Status == "resolved" {
+		return nil
+	}
+	if err := workbench.ValidateInteractionAction(row.Kind, row.Action); err != nil && row.Action != "" {
+		return err
+	}
+	return nil
+}
+
 type SteerPort interface {
 	Steer(ctx context.Context, tenantID uint64, ownerID, runID, text string, expectedRevision int64) error
 }
@@ -34,14 +157,70 @@ type CancelPort interface {
 	Cancel(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64) error
 }
 
+// GormCancelPort is the durable cancel command. It only transitions the
+// authenticated run and fences on its revision; unknown or already-terminal
+// runs are conflicts and never mutate a different run.
+type GormCancelPort struct{ db *gorm.DB }
+
+func NewGormCancelPort(db *gorm.DB) *GormCancelPort { return &GormCancelPort{db: db} }
+func (p *GormCancelPort) Cancel(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64) error {
+	if p == nil || p.db == nil {
+		return ErrCapabilityUnavailable
+	}
+	updated := p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", tenantID, ownerID, runID, expectedRevision).Updates(map[string]any{"status": "canceled", "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return agentruntime.ErrConflict
+	}
+	return nil
+}
+
+// GormSteerPort resolves the run owner and assistant message from the durable
+// run row before appending to the existing steer queue. It never marks a
+// queued message executed; the engine consumes it at its round boundary.
+type GormSteerPort struct {
+	db      *gorm.DB
+	streams interfaces.StreamManager
+}
+
+func NewGormSteerPort(db *gorm.DB, streams interfaces.StreamManager) *GormSteerPort {
+	return &GormSteerPort{db: db, streams: streams}
+}
+func (p *GormSteerPort) Steer(ctx context.Context, tenantID uint64, ownerID, runID, text string, expectedRevision int64) error {
+	if p == nil || p.db == nil || p.streams == nil {
+		return ErrCapabilityUnavailable
+	}
+	var row struct {
+		SessionID, AssistantMessageID string
+		Revision                      int64
+	}
+	if err := p.db.WithContext(ctx).Table("agent_runs").Select("session_id, assistant_message_id, revision").Where("tenant_id = ? AND owner_id = ? AND run_id = ?", tenantID, ownerID, runID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return agentruntime.ErrNotFound
+		}
+		return err
+	}
+	if row.Revision != expectedRevision {
+		return agentruntime.ErrConflict
+	}
+	return p.streams.AppendSteerEvents(ctx, row.SessionID, row.AssistantMessageID, []interfaces.StreamEvent{{ID: uuid.NewString(), Type: types.ResponseTypeSteer, Content: text, Data: map[string]interface{}{"delivery": "inject"}, Timestamp: time.Now()}})
+}
+
 type Service struct {
-	store  InteractionStore
-	steer  SteerPort
-	cancel CancelPort
+	store    InteractionStore
+	steer    SteerPort
+	cancel   CancelPort
+	approval *approval.Gate
 }
 
 func NewInteractionService(store InteractionStore, steer SteerPort, cancel CancelPort) *Service {
 	return &Service{store: store, steer: steer, cancel: cancel}
+}
+
+func NewInteractionServiceWithApproval(store InteractionStore, steer SteerPort, cancel CancelPort, gate *approval.Gate) *Service {
+	return &Service{store: store, steer: steer, cancel: cancel, approval: gate}
 }
 
 func identity(ctx context.Context) (uint64, string, error) {
@@ -87,6 +266,11 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	}
 	if input.ArgsHash != "" && current.ArgsHash != "" && input.ArgsHash != current.ArgsHash {
 		return workbench.InteractionDecision{}, workbench.ErrInteractionActionMismatch
+	}
+	if current.Kind == string(workbench.InteractionToolApproval) && s.approval != nil {
+		if err := s.approval.Resolve(tenant, owner, current.ID, approval.Decision{Approved: input.Action == "approve"}); err != nil {
+			return workbench.InteractionDecision{}, err
+		}
 	}
 	input.ID = current.ID
 	input.Kind = current.Kind

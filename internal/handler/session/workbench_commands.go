@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -94,6 +95,12 @@ func writeWorkbenchCommandError(c *gin.Context, err error) {
 		status = http.StatusGone
 	case errors.Is(err, workbenchservice.ErrInteractionRevoked):
 		status = http.StatusForbidden
+	case errors.Is(err, approval.ErrTenantMismatch), errors.Is(err, approval.ErrUserMismatch):
+		status = http.StatusForbidden
+	case errors.Is(err, approval.ErrPendingNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, approval.ErrAlreadyResolved):
+		status = http.StatusConflict
 	case errors.Is(err, workbenchservice.ErrInteractionNotFound), errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, agentruntime.ErrNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, agentruntime.ErrConflict):
