@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChatToolApprovalPrompt } from './page.tsx';
 import type { ChatCopyTable } from './chat-copy.ts';
 
@@ -51,18 +51,29 @@ export interface ToolApprovalCardProps {
 export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprovalCardProps) {
   const [draft, setDraft] = useState(() => initialApprovalArgsDraft(approval));
   const [argsError, setArgsError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const pending = approval.status === 'pending' && Boolean(onResolve);
 
   async function resolve(decision: 'approve' | 'reject') {
-    if (!onResolve) return;
+    if (!onResolve || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     const expanded = pending;
     const resolution = approvalResolution(decision, draft, expanded, copy);
     if (!resolution.ok) {
       setArgsError(resolution.error);
+      submittingRef.current = false;
+      setSubmitting(false);
       return;
     }
     setArgsError(null);
-    await onResolve(approval.pendingId, resolution.decision, resolution.modifiedArgs);
+    try {
+      await onResolve(approval.pendingId, resolution.decision, resolution.modifiedArgs);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   /* chat.css → utilities: .wk-chat-approval-* card family; the wk-* classes
@@ -85,8 +96,8 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
         {argsError ? <p role="alert" className="wk-chat-approval-error m-0 text-[0.75rem] text-[#b42318]">{argsError}</p> : null}
       </details>
       <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-        <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
-        <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('reject')}>{copy?.approvalReject ?? 'Reject'}</button>
+        <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
+        <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('reject')}>{copy?.approvalReject ?? 'Reject'}</button>
       </div>
     </div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.decision ? `${copy?.approvalResolved ?? 'Resolved'}: ${approval.decision}` : (copy?.approvalResolved ?? 'Resolved')}</small>}
   </div>;
