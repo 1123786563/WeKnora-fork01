@@ -821,7 +821,19 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
         const badgeText = platform ? imPlatformLabel(platform, locale).slice(0, 2) : '</>';
         const agentLine = typeof item.agent_name === 'string' && item.agent_name ? item.agent_name : typeof item.agent_id === 'string' && item.agent_id ? 'ID ' + item.agent_id : '';
         const name = editedNameOf(item) || item.name || copy.unnamedLabel;
-        return <article className={onOpenCard ? CHANNEL_CARD_CLICKABLE_CLASS : CHANNEL_CARD_STATIC_CLASS} key={item.id} onClick={onOpenCard ? () => onOpenCard(item) : undefined}>
+        return <article
+          className={onOpenCard ? CHANNEL_CARD_CLICKABLE_CLASS : CHANNEL_CARD_STATIC_CLASS}
+          key={item.id}
+          onClick={onOpenCard ? () => onOpenCard(item) : undefined}
+          onKeyDown={onOpenCard ? (event) => {
+            if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+            event.preventDefault();
+            onOpenCard(item);
+          } : undefined}
+          role={onOpenCard ? 'button' : undefined}
+          tabIndex={onOpenCard ? 0 : undefined}
+          aria-label={onOpenCard ? name : undefined}
+        >
           <span className={CHANNEL_BADGE_STATIC_CLASS} aria-hidden="true">{badgeText}</span>
           <div className={CHANNEL_CARD_BODY_CLASS}>
             <div className={CHANNEL_CARD_HEADER_CLASS}>
@@ -1424,7 +1436,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
       </div>
       {principalMode === 'direct_header' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
         <p className="wk-muted wk-muted--warn text-[#b45309]">{t('integrations.api.directWarning')}</p>
-        <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!"><input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
+        <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!"><input className="size-4 shrink-0 accent-primary" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
         <p className="wk-muted text-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
       {principalMode === 'signed_token' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">

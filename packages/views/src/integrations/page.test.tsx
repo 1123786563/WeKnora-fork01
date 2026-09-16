@@ -72,6 +72,14 @@ test('external landing pages keep the Vue landing layout contract', () => {
   assert.match(source, /aria-label=\{t\(key\)\}/);
 });
 
+test('channel cards preserve keyboard activation and a compact permission checkbox', () => {
+  const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /role=\{onOpenCard \? 'button' : undefined\}/);
+  assert.match(source, /event\.key !== 'Enter' && event\.key !== ' '/);
+  assert.match(source, /className="size-4 shrink-0 accent-primary" type="checkbox"/);
+  assert.doesNotMatch(source, /className="box-border w-full max-w-\[420px\].*type="checkbox"/);
+});
+
 test('im and embed section copy resolves for all five locales without leaking raw keys', () => {
   const locales = ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const;
   for (const locale of locales) {
