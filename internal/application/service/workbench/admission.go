@@ -146,7 +146,7 @@ func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget
 	if publish == nil {
 		publish = func(context.Context, agentruntime.RunKey) error { return nil }
 	}
-	return &AdmissionCoordinator{db: db, runs: runs, requests: repository.NewWorkbenchRequestRepository(db), budget: budget, binding: NewServerAdmissionBindingResolver(), publish: publish}
+	return &AdmissionCoordinator{db: db, runs: runs, requests: repository.NewWorkbenchRequestRepository(db), budget: budget, binding: NewDatabaseAdmissionBindingResolver(nil), publish: publish}
 }
 
 // NewAdmissionCoordinatorWithBinding is the production constructor. The
@@ -193,11 +193,9 @@ type databaseAdmissionBindingResolver struct {
 
 func (r databaseAdmissionBindingResolver) Resolve(ctx context.Context, tenant uint64, actor string, in StartInput) (TrustedAdmissionBinding, error) {
 	if in.Binding != nil {
-		b := *in.Binding
-		if b.CredentialVersion < 0 {
-			return TrustedAdmissionBinding{}, execution.ErrTargetForbidden
-		}
-		return b, nil
+		// This resolver is the production boundary; a request-scoped Binding
+		// is never trusted because it is not loaded from ExecutionTargetStore.
+		return TrustedAdmissionBinding{}, execution.ErrTargetUntrusted
 	}
 	if in.TargetID == "platform" {
 		b := r.platform
@@ -215,15 +213,15 @@ func (r databaseAdmissionBindingResolver) Resolve(ctx context.Context, tenant ui
 		return TrustedAdmissionBinding{}, err
 	}
 	b := r.platform
+	policy := target.UsageBinding
+	if policy.Source == "" || policy.Funding == "" || policy.Service == "" || policy.PriceVersion == "" || policy.Revision <= 0 || len(policy.Dimensions) == 0 {
+		return TrustedAdmissionBinding{}, execution.ErrTargetUntrusted
+	}
+	b.ParentRunID, b.Source, b.Funding, b.Service, b.PriceVersion = policy.ParentRunID, policy.Source, policy.Funding, policy.Service, policy.PriceVersion
+	b.Revision, b.Status, b.Dimensions = policy.Revision, policy.Status, policy.Dimensions
 	b.CredentialVersion = target.CredentialVersion
 	b.Upper = in.BudgetUpper
 	return b, nil
-}
-
-// NewServerAdmissionBindingResolver is retained for non-container legacy
-// callers; production composition uses NewDatabaseAdmissionBindingResolver.
-func NewServerAdmissionBindingResolver() AdmissionBindingResolver {
-	return databaseAdmissionBindingResolver{platform: PlatformAdmissionPolicy()}
 }
 
 func admitThenPublish(admit func() error, publish func() error) error {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -28,8 +29,8 @@ func TestRequestHashChangesWithImmutableInput(t *testing.T) {
 	}
 }
 
-func TestServerAdmissionBindingResolverPersistsTrustedPlatformAndBYOKParentBindings(t *testing.T) {
-	resolver := NewServerAdmissionBindingResolver()
+func TestServerAdmissionBindingResolverRejectsRequestScopedBinding(t *testing.T) {
+	resolver := NewDatabaseAdmissionBindingResolver(nil)
 	platform, err := resolver.Resolve(context.Background(), 1, "owner", StartInput{TargetID: "platform", BudgetUpper: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -37,13 +38,8 @@ func TestServerAdmissionBindingResolverPersistsTrustedPlatformAndBYOKParentBindi
 	if platform.Source != "platform_gateway" || platform.Funding != "platform" || platform.Service != "connector" || platform.Revision != 1 {
 		t.Fatalf("platform binding=%+v", platform)
 	}
-	binding := &TrustedAdmissionBinding{ParentRunID: "root", Source: "platform_gateway", Funding: "byok", Service: "model", PriceVersion: "pv-byok", CredentialVersion: 4, Upper: 100, Revision: 2, Status: "final", Dimensions: map[string]int64{"model": 8}}
-	byok, err := resolver.Resolve(context.Background(), 1, "owner", StartInput{TargetID: "paseo", Binding: binding})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if byok.ParentRunID != "root" || byok.Funding != "byok" || byok.CredentialVersion != 4 || byok.Dimensions["model"] != 8 {
-		t.Fatalf("trusted binding=%+v", byok)
+	if _, err := resolver.Resolve(context.Background(), 1, "owner", StartInput{TargetID: "paseo", Binding: &TrustedAdmissionBinding{Funding: "byok"}}); !errors.Is(err, execution.ErrTargetUntrusted) {
+		t.Fatalf("request binding err=%v", err)
 	}
 }
 
@@ -52,23 +48,20 @@ func TestProductionAdmissionPersistsPlatformBYOKParentBinding(t *testing.T) {
 	if err := db.Exec("INSERT INTO sessions (id,tenant_id,title,user_id,engine_type) VALUES ('s2',1,'s2','u1','trpc')").Error; err != nil {
 		t.Fatal(err)
 	}
-	resolver := AdmissionBindingResolverFunc(func(_ context.Context, _ uint64, _ string, in StartInput) (TrustedAdmissionBinding, error) {
-		if in.Binding == nil {
-			return TrustedAdmissionBinding{}, errors.New("trusted binding missing")
-		}
-		return *in.Binding, nil
-	})
+	targetStore := repository.NewExecutionTargetStore(db)
+	if err := targetStore.CreateTarget(context.Background(), execution.Target{ID: "paseo", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 7, RuntimeID: "runtime-1", ExternalTargetID: "external-1", UsageBinding: execution.UsageBinding{ParentRunID: "root-run", Source: "platform_gateway", Funding: "byok", Service: "model", PriceVersion: "pv-byok", Revision: 2, Status: "final", Dimensions: map[string]int64{"model": 8}}}, "root"); err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewDatabaseAdmissionBindingResolver(targetStore)
 	coordinator, err := NewAdmissionCoordinatorWithBinding(db, repository.NewAgentRunStore(db), &retrySafeBudget{}, nil, resolver)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
-	platform := &TrustedAdmissionBinding{Source: "platform_gateway", Funding: "platform", Service: "connector", PriceVersion: "pv-platform", CredentialVersion: 1, Upper: 10, Revision: 1, Status: "final", Dimensions: map[string]int64{"connector": 1}}
-	byok := &TrustedAdmissionBinding{ParentRunID: "root-run", Source: "platform_gateway", Funding: "byok", Service: "model", PriceVersion: "pv-byok", CredentialVersion: 7, Upper: 20, Revision: 2, Status: "final", Dimensions: map[string]int64{"model": 8}}
-	if _, err := coordinator.Start(ctx, StartInput{SessionID: "s1", TargetID: "platform", RequestID: "prod-platform", Text: "platform", BudgetUpper: 1, Binding: platform}); err != nil {
+	if _, err := coordinator.Start(ctx, StartInput{SessionID: "s1", TargetID: "platform", RequestID: "prod-platform", Text: "platform", BudgetUpper: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := coordinator.Start(ctx, StartInput{SessionID: "s2", TargetID: "paseo", RequestID: "prod-byok", Text: "byok", BudgetUpper: 1, Binding: byok}); err != nil {
+	if _, err := coordinator.Start(ctx, StartInput{SessionID: "s2", TargetID: "paseo", RequestID: "prod-byok", Text: "byok", BudgetUpper: 1}); err != nil {
 		t.Fatal(err)
 	}
 	var snapshots []string

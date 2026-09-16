@@ -20,18 +20,32 @@ type TargetIdentityProvider interface {
 	VerifyTarget(context.Context, uint64, string, Target) error
 }
 
+// UsageBinding is immutable server policy attached to a registered target.
+// It contains no secret material; credential version is the rotation fence.
+type UsageBinding struct {
+	ParentRunID  string           `json:"parent_run_id,omitempty"`
+	Source       string           `json:"source"`
+	Funding      string           `json:"funding"`
+	Service      string           `json:"service"`
+	PriceVersion string           `json:"price_version"`
+	Revision     int64            `json:"revision"`
+	Status       string           `json:"status"`
+	Dimensions   map[string]int64 `json:"dimensions"`
+}
+
 // Target is the public projection of a registered execution target. Secrets,
 // private network addresses, and node root paths are deliberately absent.
 type Target struct {
-	ID                string     `json:"id"`
-	TenantID          uint64     `json:"tenant_id"`
-	OwnerID           string     `json:"owner_id"`
-	Kind              string     `json:"kind"`
-	State             string     `json:"state"`
-	CredentialVersion int64      `json:"credential_version"`
-	RuntimeID         string     `json:"runtime_id,omitempty"`
-	ExternalTargetID  string     `json:"external_target_id,omitempty"`
-	RevokedAt         *time.Time `json:"revoked_at,omitempty"`
+	ID                string       `json:"id"`
+	TenantID          uint64       `json:"tenant_id"`
+	OwnerID           string       `json:"owner_id"`
+	Kind              string       `json:"kind"`
+	State             string       `json:"state"`
+	CredentialVersion int64        `json:"credential_version"`
+	RuntimeID         string       `json:"runtime_id,omitempty"`
+	ExternalTargetID  string       `json:"external_target_id,omitempty"`
+	RevokedAt         *time.Time   `json:"revoked_at,omitempty"`
+	UsageBinding      UsageBinding `json:"usage_binding,omitempty"`
 }
 
 // Workspace is an opaque workspace binding. RootRef is a server-resolved

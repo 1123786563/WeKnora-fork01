@@ -115,3 +115,25 @@ asserts one persisted reservation and one usage fact. Production admission
 coverage persists platform and server-injected BYOK/parent/credential binding
 into run snapshots while client-named values are scrubbed at the repository
 boundary. PostgreSQL, live OpenMeter, and live Paseo remain `blocked-env`.
+
+## Final2 production resolver follow-up (2026-09-17)
+
+- `go test ./internal/application/service/workbench -count=1` — PASS.
+- `go test -race ./internal/application/service/workbench -run 'TestRemoteUsage|TestRemoteDispatcher|TestServerAdmissionBinding|TestProductionAdmission' -count=1` — PASS.
+- `go vet ./internal/application/service/workbench ./internal/application/repository ./internal/agent/runtime ./internal/container` — PASS.
+- `go test ./internal/application/repository -run 'TestExecutionTargetStore|TestExecutionTargetIdentity|TestCreateTarget' -count=1` — PASS.
+- `git diff --check` — PASS.
+
+Execution targets now persist an immutable server usage policy in
+`usage_binding_json`, including BYOK/platform funding, model/connector service,
+ParentRunID, price version, revision, status, and dimensions. The production
+`NewDatabaseAdmissionBindingResolver` reads the tenant/owner-scoped target from
+`ExecutionTargetStore`, validates target ownership and credential rotation,
+and rejects request-scoped `StartInput.Binding`; platform policy is used only
+for the platform target. The production admission test creates a persisted
+BYOK target policy, starts platform and BYOK/parent runs through the database
+resolver, and verifies the resulting snapshots.
+
+Migration files are added for SQLite 000058 and versioned 000136. Existing
+migration-head/runtime failures outside this focused target path remain
+`blocked-env` and are retained as such.
