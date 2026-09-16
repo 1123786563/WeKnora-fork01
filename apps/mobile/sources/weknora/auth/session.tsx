@@ -194,11 +194,14 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
 
   const replaceCredential = React.useCallback(async (next: BearerCredential) => {
     if (!host || !authSession) throw new Error('SERVER_REQUIRED');
-    await authSession.refreshCoordinator.replace(next);
-    // Invalidate work captured under the previous bearer before resolving the
-    // replacement identity. The identity lookup itself may await the network.
+    // Retire the old bearer scope before the first await.  Replacing the
+    // refresh credential can wait on a provider/network operation; leaving
+    // the old generation live during that window lets an in-flight device
+    // registration pass its final fence and write the previous account's
+    // revision into the replacement account.
     scope.switchTo({ origin: host.origin, userId: null, tenantId: null });
     mobileDevice.current = null;
+    await authSession.refreshCoordinator.replace(next);
     const identity = await authSession.me();
     if (!identity) throw new Error('PRODUCT_IDENTITY_REQUIRED');
     // Resolve the new bearer before starting device work. This creates a new

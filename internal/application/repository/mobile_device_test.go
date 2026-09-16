@@ -16,7 +16,9 @@ import (
 
 func openMobileDeviceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	// Use a unique on-disk database per test. Shared in-memory names survive
+	// pooled connections and collide under -count or parallel race runs.
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "mobile-devices.db")), &gorm.Config{})
 	require.NoError(t, err)
 	up, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "sqlite", "000058_mobile_devices.up.sql"))
 	require.NoError(t, err)
@@ -165,7 +167,7 @@ func TestMobileDeviceRegistrationIntentIssuedBeforeConcurrentLogoutCannotReopen(
 	require.NoError(t, s.Bind(ctx, late))
 }
 
-func TestMobileDeviceConcurrentBindAndRevokePreserveLifecycleFence(t *testing.T) {
+func TestMobileDeviceDeterministicBindAndRevokeCommitOrderPreservesLifecycleFence(t *testing.T) {
 	for _, first := range []string{"bind", "revoke"} {
 		t.Run(first+"-first", func(t *testing.T) {
 			db := openMobileDeviceTestDB(t)
@@ -176,18 +178,30 @@ func TestMobileDeviceConcurrentBindAndRevokePreserveLifecycleFence(t *testing.T)
 
 			bind := initial
 			bind.TokenCiphertext, bind.TokenHash, bind.ScopeGeneration = "enc:token-b", DeviceTokenHash("token-b"), 2
-			start := make(chan struct{})
 			results := make(chan error, 2)
-			runBind := func() { <-start; results <- s.Bind(context.Background(), bind) }
-			runRevoke := func() { <-start; results <- s.RevokeForTenant(context.Background(), 1, "u1", "d", 1) }
+			// Explicitly wait for the first operation to return before starting
+			// the second. This is a deterministic transaction-commit barrier;
+			// the separate stress test below still exercises simultaneous writers.
+			bindDone := make(chan struct{})
+			revokeDone := make(chan struct{})
+			var bindErr, revokeErr error
+			runBind := func() { bindErr = s.Bind(context.Background(), bind); close(bindDone); results <- bindErr }
+			runRevoke := func() {
+				revokeErr = s.RevokeForTenant(context.Background(), 1, "u1", "d", 1)
+				close(revokeDone)
+				results <- revokeErr
+			}
 			if first == "bind" {
 				go runBind()
+				<-bindDone
 				go runRevoke()
+				<-revokeDone
 			} else {
 				go runRevoke()
+				<-revokeDone
 				go runBind()
+				<-bindDone
 			}
-			close(start)
 			for range 2 {
 				err := <-results
 				if err != nil {
@@ -197,11 +211,27 @@ func TestMobileDeviceConcurrentBindAndRevokePreserveLifecycleFence(t *testing.T)
 
 			var row mobileDeviceRow
 			require.NoError(t, db.Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ?", 1, "u1", "d", "dev").Take(&row).Error)
-			// Whichever transaction wins, the row remains fenced at epoch 2:
-			// Bind-first leaves a newer active revision, while revoke-first leaves
-			// the same revision revoked. A stale registration cannot resurrect it.
 			require.EqualValues(t, 2, row.Revision)
 			require.EqualValues(t, 2, row.ScopeGeneration)
+			active, err := s.ListActiveForTenant(ctx, 1, "u1", "dev")
+			require.NoError(t, err)
+			if first == "bind" {
+				require.NoError(t, bindErr)
+				require.ErrorIs(t, revokeErr, ErrMobileDeviceRevision)
+				require.Nil(t, row.RevokedAt)
+				require.Len(t, active, 1)
+				stale := bind
+				stale.Revision, stale.ScopeGeneration = 1, 1
+				require.ErrorIs(t, s.Bind(ctx, stale), ErrMobileDeviceRevision)
+			} else {
+				require.NoError(t, revokeErr)
+				require.ErrorIs(t, bindErr, ErrMobileDeviceRevision)
+				require.NotNil(t, row.RevokedAt)
+				require.Empty(t, active)
+				stale := bind
+				stale.Revision, stale.ScopeGeneration = 0, 2
+				require.ErrorIs(t, s.Bind(ctx, stale), ErrMobileDeviceRevision)
+			}
 		})
 	}
 }

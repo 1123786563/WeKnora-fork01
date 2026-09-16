@@ -108,6 +108,34 @@ describe('ProductAuthProvider device lifecycle', () => {
     expect(mocks.flush).toHaveBeenLastCalledWith(expect.anything(), { kind: 'bearer', accessToken: 'token-b' }, { tenantId: 'tenant-b', ownerId: 'user-b' });
   });
 
+  it('invalidates the old scope before a replacement refresh can await', async () => {
+    let resolveOldRegistration!: (value: { revision: number }) => void;
+    const oldRegistration = new Promise<{ revision: number }>((resolve) => { resolveOldRegistration = resolve; });
+    mocks.register.mockImplementationOnce(() => oldRegistration);
+    await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+
+    let resolveRefresh!: () => void;
+    mocks.session.refreshCoordinator.replace.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveRefresh = resolve; }));
+    mocks.session.me.mockResolvedValueOnce({ userId: 'user-b', tenantId: 'tenant-b' });
+    const replacing = auth?.replaceCredential({ kind: 'bearer', accessToken: 'token-b' });
+    await Promise.resolve();
+    expect(mocks.session.refreshCoordinator.replace).toHaveBeenCalled();
+
+    // The old request completes while refresh replacement is still paused.
+    // It must fail its captured lifecycle fence and never install revision 99.
+    resolveOldRegistration({ revision: 99 });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+
+    resolveRefresh();
+    await act(async () => { await replacing; await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(2));
+    const replacement = mocks.register.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(replacement.credential).toEqual({ kind: 'bearer', accessToken: 'token-b' });
+    expect(replacement).not.toHaveProperty('revision');
+  });
+
   it('does not commit a registration response captured before logout', async () => {
     let resolveRegistration!: (value: { revision: number }) => void;
     const pending = new Promise<{ revision: number }>((resolve) => { resolveRegistration = resolve; });

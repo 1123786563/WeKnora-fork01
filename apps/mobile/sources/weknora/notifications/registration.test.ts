@@ -63,6 +63,29 @@ describe('mobile device registration', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('retains account A offline work through account B and flushes it only for A', async () => {
+    let rows: PendingRevocation[] = [];
+    const pending = { read: async () => rows, write: async (next: PendingRevocation[]) => { rows = next; } };
+    const offline = vi.fn(async () => response(503));
+    await revokeOnLogout({ origin: 'https://api.example.test', deviceId: 'a-device', revision: 4,
+      tenantId: 'tenant-a', ownerId: 'user-a', credential, pending, fetchImpl: offline });
+    expect(rows).toEqual([{ origin: 'https://api.example.test', deviceId: 'a-device', tenantId: 'tenant-a', ownerId: 'user-a', revision: 4 }]);
+
+    const otherAccount = vi.fn(async () => response(204, null));
+    await expect(flushPendingRevocations(pending, { kind: 'bearer', accessToken: 'token-b' },
+      { tenantId: 'tenant-b', ownerId: 'user-b' }, otherAccount)).resolves.toBe(0);
+    expect(otherAccount).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(1);
+
+    const sameAccount = vi.fn(async () => response(204, null));
+    await expect(flushPendingRevocations(pending, { kind: 'bearer', accessToken: 'token-a' },
+      { tenantId: 'tenant-a', ownerId: 'user-a' }, sameAccount)).resolves.toBe(1);
+    expect(sameAccount).toHaveBeenCalledWith('https://api.example.test/api/v1/mobile/devices/a-device?revision=4', expect.objectContaining({
+      method: 'DELETE', headers: { Authorization: 'Bearer token-a' },
+    }));
+    expect(rows).toEqual([]);
+  });
+
   it('returns the server scope epoch from a successful revoke response', async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 204, headers: { 'X-Mobile-Scope-Generation': '9' } }));
     await expect(revokeDevice({ origin: 'https://api.example.test', deviceId: 'd', revision: 3, credential, fetchImpl: fetcher })).resolves.toEqual({ scopeGeneration: 9 });
