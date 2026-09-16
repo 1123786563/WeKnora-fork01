@@ -4,6 +4,10 @@ export interface WailsAppBridge {
   GetDesktopListenPublicActive?: () => boolean;
   CheckForUpdates?: () => void;
   AutoCheckForUpdates?: () => void;
+  GetPaseoURL?: () => string;
+  GetPaseoAllowedOrigins?: () => string[];
+  GetCredential?: (key: string) => string | null;
+  DeleteCredential?: (key: string) => void;
 }
 
 function globalBridge(value: unknown): WailsAppBridge {
