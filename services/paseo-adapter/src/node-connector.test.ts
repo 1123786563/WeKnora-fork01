@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { connectWithBackoff, PaseoPersonalNodeTransport, PersonalNodeConnector, validateNodeGrant } from './node-connector.ts';
+import { createPersonalNodeConnector } from './personal-node-composition.ts';
 
 test('old epoch and expired grants cannot operate a node', () => {
   const grant = { targetID: 'n', epoch: 1, expiresAt: 100, operations: ['start'] };
@@ -52,4 +53,32 @@ test('configured Paseo transport sends ack, heartbeat, logs, and rotates credent
   assert.equal(calls[3].auth, 'Bearer old');
   assert.throws(() => new PaseoPersonalNodeTransport({ baseURL: 'https://evil.example.test', allowedOrigins: ['https://bridge.example.test'] }), /PASEO_ENDPOINT_FORBIDDEN/);
   assert.throws(() => new PaseoPersonalNodeTransport({ baseURL: 'http://daemon.example.test', allowedOrigins: ['http://daemon.example.test'] }), /PASEO_ENDPOINT_FORBIDDEN/);
+});
+
+test('production composition binds secure credential and revoke lifecycle', async () => {
+  let cleared = 0;
+  let lifecycle = 0;
+  const calls: string[] = [];
+  const connector = createPersonalNodeConnector({
+    registrationClient: {
+      async createChallenge() { throw new Error('unused'); },
+      async complete() { throw new Error('unused'); },
+      async revoke() { calls.push('revoke'); },
+    },
+    transport: {
+      baseURL: 'https://bridge.example.test',
+      allowedOrigins: ['https://bridge.example.test'],
+      fetchImpl: async (input, init) => {
+        calls.push(`${init?.method ?? 'GET'} ${new URL(input.toString()).pathname}`);
+        return new Response(null, { status: 204 });
+      },
+    },
+    credentials: { read: () => 'secure-bearer', async clear() { cleared += 1; } },
+    lifecycle: { onRevoked() { lifecycle += 1; } },
+  });
+  (connector as any).registration = { id: 'n', runtime_id: 'r', external_target_id: 'x', public_key: 'fp', credential_version: 1, state: 'active' };
+  await connector.revoke();
+  assert.deepEqual(calls, ['revoke', 'POST /v1/close']);
+  assert.equal(cleared, 1);
+  assert.equal(lifecycle, 1);
 });
