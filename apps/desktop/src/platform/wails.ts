@@ -1,13 +1,21 @@
+type WailsResult<T> = T | Promise<T>;
+
+/**
+ * Wails' generated renderer bindings are asynchronous even when the Go
+ * method itself returns a scalar. Keep the late-bound bridge compatible with
+ * those generated methods while still accepting synchronous test/host
+ * adapters.
+ */
 export interface WailsAppBridge {
-  GetAPIBaseURL?: () => string | Promise<string>;
-  GetAPILanBaseURL?: () => string;
-  GetDesktopListenPublicActive?: () => boolean;
-  CheckForUpdates?: () => void;
-  AutoCheckForUpdates?: () => void;
-  GetPaseoURL?: () => string;
-  GetPaseoAllowedOrigins?: () => string[];
-  GetCredential?: (key: string) => string | null;
-  DeleteCredential?: (key: string) => void;
+  GetAPIBaseURL?: () => WailsResult<string>;
+  GetAPILanBaseURL?: () => WailsResult<string>;
+  GetDesktopListenPublicActive?: () => WailsResult<boolean>;
+  CheckForUpdates?: () => WailsResult<void>;
+  AutoCheckForUpdates?: () => WailsResult<void>;
+  GetPaseoURL?: () => WailsResult<string>;
+  GetPaseoAllowedOrigins?: () => WailsResult<string[]>;
+  GetCredential?: (key: string) => WailsResult<string | null>;
+  DeleteCredential?: (key: string) => WailsResult<void>;
 }
 
 function globalBridge(value: unknown): WailsAppBridge {

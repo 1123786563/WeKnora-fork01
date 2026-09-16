@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// Kept behind a narrow seam so Darwin tests can exercise command failures
+// without touching a user's login keychain. Production uses exec.Command.
+var securityCommand = exec.Command
+
 // macOS always uses the login keychain. There is deliberately no in-memory
 // fallback: an unavailable keychain must not turn a bearer into a process
 // memory credential.
@@ -14,7 +18,7 @@ func (a *App) credentialGet(key string) string {
 	if strings.TrimSpace(key) == "" {
 		return ""
 	}
-	output, err := exec.Command("security", "find-generic-password", "-a", key, "-s", desktopCredentialService, "-w").Output()
+	output, err := securityCommand("security", "find-generic-password", "-a", key, "-s", desktopCredentialService, "-w").Output()
 	if err != nil {
 		return ""
 	}
@@ -25,12 +29,12 @@ func (a *App) credentialSet(key, value string) {
 	if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
 		return
 	}
-	_ = exec.Command("security", "add-generic-password", "-U", "-a", key, "-s", desktopCredentialService, "-w", value).Run()
+	_ = securityCommand("security", "add-generic-password", "-U", "-a", key, "-s", desktopCredentialService, "-w", value).Run()
 }
 
 func (a *App) credentialDelete(key string) {
 	if strings.TrimSpace(key) == "" {
 		return
 	}
-	_ = exec.Command("security", "delete-generic-password", "-a", key, "-s", desktopCredentialService).Run()
+	_ = securityCommand("security", "delete-generic-password", "-a", key, "-s", desktopCredentialService).Run()
 }
