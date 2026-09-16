@@ -22,3 +22,12 @@ CREATE TABLE mobile_notification_intents (
 );
 CREATE INDEX idx_mobile_notification_claim ON mobile_notification_intents (state, lease_until, expires_at, created_at);
 CREATE INDEX idx_mobile_notification_owner ON mobile_notification_intents (tenant_id, owner_id, run_id, created_at);
+
+CREATE TABLE mobile_notification_checkpoints (
+    consumer TEXT NOT NULL,
+    tenant_id INTEGER NOT NULL,
+    run_id TEXT NOT NULL,
+    cursor INTEGER NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (consumer, tenant_id, run_id)
+);

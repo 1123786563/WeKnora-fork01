@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -56,6 +57,74 @@ type mobileNotificationRow struct {
 func (mobileNotificationRow) TableName() string { return "mobile_notification_intents" }
 
 type NotificationStore struct{ db *gorm.DB }
+
+type notificationCheckpointRow struct {
+	Consumer  string    `gorm:"column:consumer;primaryKey"`
+	TenantID  uint64    `gorm:"column:tenant_id;primaryKey"`
+	RunID     string    `gorm:"column:run_id;primaryKey"`
+	Cursor    int64     `gorm:"column:cursor"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+func (notificationCheckpointRow) TableName() string { return "mobile_notification_checkpoints" }
+
+// EventRunKeys returns the durable runs that have at least one event. It is
+// deliberately derived from agent_run_events so a restarted projector can
+// discover work without an in-memory registration callback.
+func (s *NotificationStore) EventRunKeys(ctx context.Context, limit int) ([]agentruntime.RunKey, error) {
+	if s == nil || s.db == nil || limit <= 0 {
+		return nil, errors.New("invalid_notification_event_keys")
+	}
+	var rows []struct {
+		TenantID uint64
+		RunID    string
+	}
+	err := s.db.WithContext(ctx).Table("agent_run_events").
+		Select("DISTINCT tenant_id, run_id").Order("tenant_id ASC, run_id ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agentruntime.RunKey, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, agentruntime.RunKey{TenantID: row.TenantID, RunID: row.RunID})
+	}
+	return out, nil
+}
+
+func (s *NotificationStore) LoadCheckpoint(ctx context.Context, consumer string, key agentruntime.RunKey) (int64, error) {
+	if s == nil || s.db == nil || consumer == "" || key.TenantID == 0 || key.RunID == "" {
+		return 0, errors.New("invalid_notification_checkpoint")
+	}
+	var row notificationCheckpointRow
+	err := s.db.WithContext(ctx).Where("consumer = ? AND tenant_id = ? AND run_id = ?", consumer, key.TenantID, key.RunID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	return row.Cursor, err
+}
+
+// SaveCheckpoint is monotonic. A stale/replayed worker can never move the
+// cursor backwards, and the checkpoint is committed only after projection.
+func (s *NotificationStore) SaveCheckpoint(ctx context.Context, consumer string, key agentruntime.RunKey, cursor int64) error {
+	if s == nil || s.db == nil || consumer == "" || key.TenantID == 0 || key.RunID == "" || cursor < 0 {
+		return errors.New("invalid_notification_checkpoint")
+	}
+	row := notificationCheckpointRow{Consumer: consumer, TenantID: key.TenantID, RunID: key.RunID, Cursor: cursor, UpdatedAt: time.Now().UTC()}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current notificationCheckpointRow
+		err := tx.Where("consumer = ? AND tenant_id = ? AND run_id = ?", consumer, key.TenantID, key.RunID).Take(&current).Error
+		if err == nil {
+			if cursor <= current.Cursor {
+				return nil
+			}
+			return tx.Model(&notificationCheckpointRow{}).Where("consumer = ? AND tenant_id = ? AND run_id = ? AND cursor < ?", consumer, key.TenantID, key.RunID, cursor).Updates(map[string]any{"cursor": cursor, "updated_at": row.UpdatedAt}).Error
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+	})
+}
 
 func NewNotificationStore(db *gorm.DB) *NotificationStore { return &NotificationStore{db: db} }
 
@@ -187,6 +256,24 @@ func (s *NotificationStore) Retry(ctx context.Context, id, worker string, fence 
 	return result.Error == nil && result.RowsAffected == 1
 }
 
+// RevalidateDelivery is the mandatory final authorization seam for a
+// delivery worker. It must be called immediately before provider Send: a
+// revoked device or no-longer-owned run invalidates the lease and prevents a
+// provider call. The conditional update makes revocation/reassignment win
+// over a stale worker even when both operations race.
+func (s *NotificationStore) RevalidateDelivery(ctx context.Context, d NotificationDelivery, worker string) bool {
+	if s == nil || s.db == nil || d.ID == "" || worker == "" || d.Fence <= 0 {
+		return false
+	}
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where(`id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ? AND expires_at > ? AND
+			EXISTS (SELECT 1 FROM mobile_devices md WHERE md.tenant_id = mobile_notification_intents.tenant_id AND md.owner_id = mobile_notification_intents.owner_id AND md.device_id = mobile_notification_intents.device_id AND md.environment = mobile_notification_intents.environment AND md.revoked_at IS NULL) AND
+			EXISTS (SELECT 1 FROM agent_runs ar WHERE ar.tenant_id = mobile_notification_intents.tenant_id AND ar.run_id = mobile_notification_intents.run_id AND ar.owner_id = mobile_notification_intents.owner_id)`, d.ID, worker, d.Fence, now).
+		UpdateColumn("updated_at", now)
+	return result.Error == nil && result.RowsAffected == 1
+}
+
 // RunNotificationEvent is the minimal authenticated event identity used by
 // the projector. Payloads stay in agent_run_events and are never copied into
 // a push intent.
@@ -205,24 +292,44 @@ func (s *NotificationStore) ProjectEvent(ctx context.Context, evt RunNotificatio
 	if s == nil || s.db == nil || evt.TenantID == 0 || evt.OwnerID == "" || evt.RunID == "" || evt.Seq <= 0 {
 		return errors.New("invalid_notification_event")
 	}
-	kind, ok := NotificationEventKind(evt.Type)
-	if !ok {
-		return nil
-	}
-	var devices []struct {
-		DeviceID    string
-		Environment string
-	}
-	if err := s.db.WithContext(ctx).Table("mobile_devices").Select("device_id, environment").
-		Where("tenant_id = ? AND owner_id = ? AND revoked_at IS NULL", evt.TenantID, evt.OwnerID).
-		Find(&devices).Error; err != nil {
-		return err
-	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Never trust producer supplied owner/type. Resolve both from the
+		// durable rows in this transaction; this closes cross-owner and fake
+		// sequence/type notification injection.
+		var run struct {
+			OwnerID string `gorm:"column:owner_id"`
+		}
+		if err := tx.Table("agent_runs").Select("owner_id").Where("tenant_id = ? AND run_id = ?", evt.TenantID, evt.RunID).Take(&run).Error; err != nil {
+			return err
+		}
+		if run.OwnerID != evt.OwnerID {
+			return gorm.ErrRecordNotFound
+		}
+		var event struct {
+			EventType string `gorm:"column:event_type"`
+		}
+		if err := tx.Table("agent_run_events").Select("event_type").Where("tenant_id = ? AND run_id = ? AND seq = ?", evt.TenantID, evt.RunID, evt.Seq).Take(&event).Error; err != nil {
+			return err
+		}
+		if evt.Type != "" && evt.Type != event.EventType {
+			return errors.New("notification_event_type_mismatch")
+		}
+		kind, ok := NotificationEventKind(event.EventType)
+		if !ok {
+			return nil
+		}
+		var devices []struct {
+			DeviceID    string
+			Environment string
+		}
+		if err := tx.Table("mobile_devices").Select("device_id, environment").
+			Where("tenant_id = ? AND owner_id = ? AND revoked_at IS NULL", evt.TenantID, run.OwnerID).Find(&devices).Error; err != nil {
+			return err
+		}
 		for _, device := range devices {
 			in := NotificationIntent{
 				TenantID: evt.TenantID, EventID: eventIdentity(evt.TenantID, evt.RunID, evt.Seq),
-				OwnerID: evt.OwnerID, DeviceID: device.DeviceID, Environment: device.Environment,
+				OwnerID: run.OwnerID, DeviceID: device.DeviceID, Environment: device.Environment,
 				Kind: kind, RunID: evt.RunID, ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 			}
 			if err := enqueueNotificationTx(tx, in); err != nil {

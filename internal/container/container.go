@@ -165,6 +165,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	must(container.Provide(repository.NewNotificationStore))
+	must(container.Provide(workbenchservice.NewNotificationProjector))
+	must(container.Provide(workbenchservice.NewNotificationWorker))
 	must(container.Provide(repository.NewMobileExchangeStore))
 	// The dispatch intent/receipt log is a first-class dependency of the
 	// durable worker. Keep it in the same database scope as AgentRunStore so
