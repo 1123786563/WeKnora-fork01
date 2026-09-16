@@ -157,6 +157,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
+	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(NewAgentRuntime))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
@@ -414,6 +415,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewMessageSuggestionHandler))
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
+	must(container.Provide(handler.NewExecutionTargetHandler))
 	must(container.Provide(func(
 		s *service.TenantSkillService, streams interfaces.StreamManager,
 	) *handler.SandboxSkillHandler {
