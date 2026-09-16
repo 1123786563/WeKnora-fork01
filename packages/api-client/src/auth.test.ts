@@ -149,3 +149,35 @@ test('replace advances generation before writing a new account credential', asyn
   await assert.rejects(oldRefresh, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
   assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
 });
+
+test('serialized credential writes leave the replacement account as the final value', async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  let firstWrite = true;
+  const writes: Credential[] = [];
+  const credentials: CredentialAdapter & { value: Credential } = {
+    value: { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' },
+    async read() { return this.value; },
+    async write(value) {
+      writes.push(value);
+      this.value = value;
+      if (firstWrite) { firstWrite = false; await blocked; }
+    },
+    async clear() { this.value = { kind: 'anonymous' }; },
+  };
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => ({ success: true, access_token: 'late-access', refresh_token: 'late-refresh' }),
+  });
+  const refreshing = coordinator.refresh();
+  while (writes.length === 0) await Promise.resolve();
+  const replacing = coordinator.replace({ kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  release();
+  await assert.rejects(refreshing, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  await replacing;
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  assert.deepEqual(writes, [
+    { kind: 'bearer', accessToken: 'late-access', refreshToken: 'late-refresh' },
+    { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' },
+  ]);
+});

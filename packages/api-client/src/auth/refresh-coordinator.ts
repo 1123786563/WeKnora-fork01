@@ -48,6 +48,14 @@ function isBearer(credential: Credential): credential is BearerCredential {
 export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   let generation = 0;
   let inFlight: Promise<BearerCredential> | undefined;
+  let writeQueue: Promise<void> = Promise.resolve();
+
+  function enqueueWrite(task: () => Promise<void>): Promise<void> {
+    const previous = writeQueue;
+    const next = previous.catch(() => undefined).then(task);
+    writeQueue = next;
+    return next;
+  }
 
   async function clearBearerIfCurrent(startGeneration: number): Promise<void> {
     if (generation !== startGeneration) return;
@@ -66,7 +74,15 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       if (generation !== startGeneration) {
         throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
       }
-      await options.credentials.write(refreshed);
+      await enqueueWrite(async () => {
+        if (generation !== startGeneration) {
+          throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
+        }
+        await options.credentials.write(refreshed);
+      });
+      if (generation !== startGeneration) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
+      }
       return refreshed;
     } catch (error: unknown) {
       if (generation !== startGeneration) {
@@ -92,7 +108,8 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
 
   async function invalidate(): Promise<void> {
     generation += 1;
-    await options.credentials.clear();
+    inFlight = undefined;
+    await enqueueWrite(() => options.credentials.clear());
   }
 
   return {
@@ -107,9 +124,14 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     },
     /** Replace credentials for a newly authenticated identity. */
     async replace(value: BearerCredential): Promise<void> {
-      generation += 1;
+      const startGeneration = ++generation;
       inFlight = undefined;
-      await options.credentials.write(value);
+      await enqueueWrite(async () => {
+        if (generation !== startGeneration) {
+          throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during replacement');
+        }
+        await options.credentials.write(value);
+      });
     },
     invalidate,
     logout: invalidate,
