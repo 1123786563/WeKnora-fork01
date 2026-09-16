@@ -40,7 +40,7 @@ function graphClient(): WeKnoraClient {
     wiki: {
       graph: async () => ({
         nodes: [
-          { slug: 'start', title: 'Start', page_type: 'summary', link_count: 1 },
+          { slug: 'start', title: 'Start', page_type: 'summary', link_count: 2, familiar: true },
           { slug: 'next', title: 'Next', page_type: 'entity', link_count: 1 },
           { slug: 'third', title: 'Third', page_type: 'concept', link_count: 1 },
         ],
@@ -52,7 +52,7 @@ function graphClient(): WeKnoraClient {
         meta: { mode: 'overview', total: 3, returned: 3, truncated: false },
       }),
       list: async () => ({ pages: [], total: 0, page: 1, page_size: 20, total_pages: 1 }),
-      get: async (knowledgeBaseId: string, slug: string) => ({ title: slug, summary: '', content: '', version: 1, slug, knowledgeBaseId }),
+      get: async (knowledgeBaseId: string, slug: string) => ({ title: slug, summary: '', content: '# Details\n\n**Markdown**', version: 1, slug, knowledgeBaseId }),
     },
   } as unknown as WeKnoraClient;
 }
@@ -106,4 +106,25 @@ test('graph help lists every canvas gesture documented by Vue', async () => {
     '拖拽空白平移画布',
     '滚轮缩放画布',
   ]);
+});
+
+test('graph keeps Vue canvas overlays and familiar-node ring semantics', async () => {
+  const container = await mount();
+  assert.ok(container.querySelector('[data-testid="knowledge-graph-surface"]'));
+  assert.ok(container.querySelector('[data-testid="knowledge-graph-legend"]'));
+  const familiarRing = container.querySelector('svg .wk-graph-familiar-ring');
+  assert.ok(familiarRing);
+  assert.match(familiarRing?.getAttribute('class') ?? '', /stroke:#0052d9/);
+  assert.ok(Number(familiarRing?.getAttribute('r')) > 10);
+});
+
+test('graph drawer renders page Markdown as reader content', async () => {
+  const container = await mount();
+  const node = container.querySelector<SVGGElement>('svg g[role="button"]');
+  assert.ok(node);
+  await act(async () => node.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  await act(async () => {});
+  assert.ok(container.querySelector('[data-testid="knowledge-graph-reader"] h1'));
+  assert.equal(container.querySelector('[data-testid="knowledge-graph-reader"] strong')?.textContent, 'Markdown');
+  assert.equal(container.querySelector('[data-testid="knowledge-graph-reader"] pre'), null);
 });
