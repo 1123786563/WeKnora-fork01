@@ -143,3 +143,10 @@ func TestClonedKeysAreExactlyTheOnesMarkedToSurvive(t *testing.T) {
 		}
 	}
 }
+
+func TestRunIDSurvivesContextDetach(t *testing.T) {
+	clone, declared := ContextCloneDecision(RunIDContextKey)
+	if !declared || !clone {
+		t.Fatalf("RunIDContextKey must survive logger.CloneContext: clone=%v declared=%v", clone, declared)
+	}
+}

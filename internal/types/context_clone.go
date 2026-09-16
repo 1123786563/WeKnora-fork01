@@ -64,8 +64,13 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// The Langfuse trace in particular must stay alive so the LLM / embedder /
 	// reranker / VLM / ASR wrappers attach their generations to the trace
 	// GinMiddleware opened, rather than each auto-creating an orphan.
-	LoggerContextKey:        true,
-	RequestIDContextKey:     true,
+	LoggerContextKey:    true,
+	RequestIDContextKey: true,
+	// The durable execution identity must survive a detached worker/tool
+	// context so MCP approval projection remains bound to the claimed run.
+	// It is intentionally distinct from RequestID, which is only an
+	// idempotency key.
+	RunIDContextKey:         true,
 	LanguageContextKey:      true,
 	LangfuseTraceContextKey: true,
 
