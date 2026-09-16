@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { storage, useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
@@ -10,7 +10,7 @@ import {
 } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigation, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { createWorktree } from '@/utils/worktree';
@@ -443,7 +443,15 @@ export function useStartSessionFromDraft() {
 
             draft.setInput('');
             draft.setAttachments([]);
-            navigateToSession(sessionId);
+            const created = storage.getState().sessions[sessionId];
+            const product = created?.metadata?.productSession as Record<string, unknown> | undefined;
+            const productNavigation = product && typeof product.spaceId === 'string' && typeof product.agentId === 'string'
+                && typeof product.targetId === 'string' && typeof product.workspaceRef === 'string'
+                && typeof product.resourceUserId === 'string' && typeof product.resourceTenantId === 'string'
+                && typeof product.runId === 'string'
+                ? createProductSessionNavigation({ sessionId, spaceId: product.spaceId, agentId: product.agentId, targetId: product.targetId, workspaceRef: product.workspaceRef, userId: product.resourceUserId, tenantId: product.resourceTenantId, runId: product.runId })
+                : undefined;
+            navigateToSession(sessionId, productNavigation);
             if (prompt || attachments.length > 0) {
                 // The session is ready at this point. Open it immediately and
                 // let the first message enqueue without keeping the user on Home

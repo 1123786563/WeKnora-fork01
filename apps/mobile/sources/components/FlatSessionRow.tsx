@@ -9,7 +9,7 @@ import { Avatar } from './Avatar';
 import { StatusDot } from './StatusDot';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { SessionShortcutHintBadge } from './ShortcutHints';
-import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigation, useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
@@ -57,7 +57,14 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     const { session, projectName, workspaceName } = row;
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const sessionPressHandlers = useSessionPressHandlers(session.id);
+    const productSession = (session as unknown as { metadata?: { productSession?: Record<string, unknown> } }).metadata?.productSession;
+    const productNavigation = productSession && typeof productSession.spaceId === 'string' && typeof productSession.agentId === 'string'
+        && typeof productSession.targetId === 'string' && typeof productSession.workspaceRef === 'string'
+        && typeof productSession.resourceUserId === 'string' && typeof productSession.resourceTenantId === 'string'
+        && typeof productSession.runId === 'string'
+        ? createProductSessionNavigation({ sessionId: session.id, spaceId: productSession.spaceId, agentId: productSession.agentId, targetId: productSession.targetId, workspaceRef: productSession.workspaceRef, userId: productSession.resourceUserId, tenantId: productSession.resourceTenantId, runId: productSession.runId })
+        : undefined;
+    const sessionPressHandlers = useSessionPressHandlers(session.id, productNavigation);
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);

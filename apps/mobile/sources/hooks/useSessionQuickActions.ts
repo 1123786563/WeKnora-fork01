@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigation, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
@@ -19,6 +19,12 @@ import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
 import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
 import { isRigMetadata } from '@/sync/rig';
+
+function productNavigationFor(session: Session) {
+    const product = session.metadata?.productSession as Record<string, unknown> | undefined;
+    if (!product || !Object.values(product).every((value) => typeof value === 'string' && value.trim() !== '')) return undefined;
+    return createProductSessionNavigation({ sessionId: session.id, spaceId: product.spaceId as string, agentId: product.agentId as string, targetId: product.targetId as string, workspaceRef: product.workspaceRef as string, userId: product.resourceUserId as string, tenantId: product.resourceTenantId as string, runId: product.runId as string });
+}
 
 export interface SessionActionItem {
     id: SessionActionShortcutId;
@@ -221,7 +227,7 @@ export function useSessionQuickActions(
                 // Model / effort picks survive resume on their own — they live
                 // in the session's synced metadata (#1492).
 
-                navigateToSession(result.sessionId);
+                navigateToSession(result.sessionId, productNavigationFor(storage.getState().sessions[result.sessionId] ?? session));
                 return;
             }
             case 'requestToApproveDirectoryCreation':
@@ -272,7 +278,7 @@ export function useSessionQuickActions(
         if (result.type !== 'success') {
             throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
         }
-        navigateToSession(result.sessionId);
+        navigateToSession(result.sessionId, productNavigationFor(storage.getState().sessions[result.sessionId] ?? session));
     });
 
     const forkSession = React.useCallback(() => {

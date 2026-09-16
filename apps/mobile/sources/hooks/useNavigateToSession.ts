@@ -77,9 +77,9 @@ export function useNavigateToSession() {
 }
 
 /** Pressable owns tap cancellation, scrolling and long-press recognition. */
-export function useSessionPressHandlers(sessionId: string) {
+export function useSessionPressHandlers(sessionId: string, product?: ProductSessionNavigation) {
     const router = useRouter();
     const onPressIn = useCallback(() => prefetchSession(router, sessionId), [router, sessionId]);
-    const onPress = useCallback(() => navigateToSession(router, sessionId), [router, sessionId]);
+    const onPress = useCallback(() => navigateToSession(router, sessionId, product), [router, sessionId, product]);
     return { onPressIn, onPress };
 }

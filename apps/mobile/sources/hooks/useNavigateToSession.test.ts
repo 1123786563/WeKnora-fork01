@@ -21,7 +21,7 @@ vi.mock('@/sync/sync', () => ({ sync: { preloadSession: mocks.preloadSession } }
 vi.mock('@/track', () => ({ trackSessionSwitched: mocks.trackSessionSwitched }));
 vi.mock('@/utils/perfLog', () => ({ perfMark: mocks.perfMark }));
 
-import { createProductSessionNavigation, useSessionPressHandlers } from './useNavigateToSession';
+import { createProductSessionNavigation, navigateToSession, useSessionPressHandlers } from './useNavigateToSession';
 
 let renderer: ReturnType<typeof create>;
 let handlers: ReturnType<typeof useSessionPressHandlers>;
@@ -50,6 +50,17 @@ describe('session row press contract', () => {
     });
     it('rejects an empty run identity', () => {
         expect(() => createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: '  ' })).toThrow('PRODUCT_SESSION_RUN_ID_REQUIRED');
+    });
+    it.each(['list', 'new', 'notification'])('carries full product metadata from the %s entry', () => {
+        const metadata = createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: 'run-1' });
+        navigateToSession(mocks.router as any, 's1', metadata);
+        const destination = mocks.router.push.mock.calls.at(-1)?.[0] as string;
+        expect(destination).toContain('resourceUserId=user-1');
+        expect(destination).toContain('resourceTenantId=tenant-1');
+        expect(destination).toContain('agentId=agent-1');
+        expect(destination).toContain('targetId=target-1');
+        expect(destination).toContain('workspaceRef=workspace-1');
+        expect(destination).toContain('runId=run-1');
     });
     it('prepares on touch-down without navigating or tracking a switch', () => {
         handlers.onPressIn();
