@@ -3,12 +3,29 @@ package workbench
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+type rejectTrackingBudget struct {
+	mu       sync.Mutex
+	released []string
+}
+
+func (b *rejectTrackingBudget) Ensure(_ context.Context, _ uint64, _ string, requestID string, _ int64, _ time.Time) (string, error) {
+	return "reservation/" + requestID, nil
+}
+func (b *rejectTrackingBudget) ReleaseUnstarted(_ context.Context, ref string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.released = append(b.released, ref)
+	return nil
+}
 
 type admissionTargetStub struct {
 	target           execution.Target
@@ -106,6 +123,42 @@ func TestPersonalTargetAdmissionReResolvesAfterPendingRequest(t *testing.T) {
 	}
 	if stub.lookups != 2 {
 		t.Fatalf("expected initial and final target lookups, got %d", stub.lookups)
+	}
+}
+
+func TestPersonalTargetAdmissionRevokeRejectsRequestAndReleasesOwnedReservation(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	stub := &admissionTargetStub{target: execution.Target{ID: "node-1", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 2}, workspace: execution.Workspace{ID: "ws-1", TenantID: 1, TargetID: "node-1"}}
+	stub.afterFirstLookup = func(s *admissionTargetStub) { s.target.State = "revoked" }
+	budget := &rejectTrackingBudget{}
+	coordinator := NewAdmissionCoordinatorWithTargets(db, repository.NewAgentRunStore(db), stub, budget, nil)
+	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+	in := StartInput{SessionID: "s1", AgentID: "agent-1", TargetID: "node-1", WorkspaceRef: "ws-1", RequestID: "revoke-rollback", Text: "hello", BudgetUpper: 10}
+	_, err := coordinator.Start(ctx, in)
+	if !errors.Is(err, execution.ErrTargetForbidden) {
+		t.Fatalf("got %v, want target forbidden", err)
+	}
+	state, err := coordinator.LookupRequest(ctx, in.RequestID)
+	if err != nil {
+		t.Fatalf("lookup rejected request: %v", err)
+	}
+	if state.State != "rejected" || state.Reason == "" {
+		t.Fatalf("request state = %+v, want rejected with reason", state)
+	}
+	budget.mu.Lock()
+	releases := append([]string(nil), budget.released...)
+	budget.mu.Unlock()
+	if len(releases) != 1 || releases[0] != "reservation/"+in.RequestID {
+		t.Fatalf("released reservations = %v, want one owned reservation", releases)
+	}
+	_, err = coordinator.Start(ctx, in)
+	if !errors.Is(err, execution.ErrTargetForbidden) {
+		t.Fatalf("retry got %v, want fail-closed target forbidden", err)
+	}
+	budget.mu.Lock()
+	defer budget.mu.Unlock()
+	if len(budget.released) != 1 {
+		t.Fatalf("retry released reservation again: %v", budget.released)
 	}
 }
 

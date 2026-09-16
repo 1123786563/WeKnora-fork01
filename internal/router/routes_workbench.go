@@ -39,7 +39,7 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 // RegisterExecutionRegistrationRoutes exposes only the authenticated personal
 // node control plane. The handler still rechecks tenant and owner predicates;
 // the route guard is not an ownership substitute.
-func RegisterExecutionRegistrationRoutes(r *gin.RouterGroup, h *handler.ExecutionRegistrationHandler, g *rbacGuards) {
+func RegisterExecutionRegistrationRoutes(r *gin.RouterGroup, h *handler.ExecutionRegistrationHandler, g *rbacGuards, targetHandlers ...*handler.ExecutionTargetHandler) {
 	if h == nil || g == nil {
 		return
 	}
@@ -53,7 +53,15 @@ func RegisterExecutionRegistrationRoutes(r *gin.RouterGroup, h *handler.Executio
 	targetRegistrations.POST("/challenges", h.CreateChallenge)
 	targetRegistrations.POST("", h.Complete)
 	targets := g.apiKeyGroup(r.Group("/execution-targets", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
-	targets.POST("/:id/revoke", h.Revoke)
+	if len(targetHandlers) > 0 && targetHandlers[0] != nil {
+		targets.POST("/:id/revoke", targetHandlers[0].Revoke)
+	} else {
+		// Keep the legacy registration handler as a compatibility fallback for
+		// callers that have not yet supplied the target facade. The production
+		// router always passes ExecutionTargetHandler so this route revokes all
+		// target projections in one transaction.
+		targets.POST("/:id/revoke", h.Revoke)
+	}
 }
 
 // RegisterWorkbenchStartRoutes adds the write and request-reconciliation

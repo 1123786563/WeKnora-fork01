@@ -208,7 +208,7 @@ func (s *executionTargetStore) RevokeTarget(ctx context.Context, tenantID uint64
 		if target.Kind != "personal_node" {
 			return nil
 		}
-		registration := tx.Model(&registrationProjectionRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND state = ?", tenantID, actor, targetID, "active").Updates(map[string]any{
+		registration := tx.Model(&registrationProjectionRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND state = ?", tenantID, actor, targetID, target.RuntimeID, target.ExternalTargetID, "active").Updates(map[string]any{
 			"state": "revoked", "revoked_at": now, "credential_version": gorm.Expr("credential_version + 1"),
 		})
 		if registration.Error != nil {
@@ -238,6 +238,8 @@ type registrationProjectionRow struct {
 	TenantID          uint64     `gorm:"column:tenant_id"`
 	OwnerID           string     `gorm:"column:owner_id"`
 	ID                string     `gorm:"column:registration_id"`
+	RuntimeID         string     `gorm:"column:runtime_id"`
+	ExternalTargetID  string     `gorm:"column:external_target_id"`
 	CredentialVersion int64      `gorm:"column:credential_version"`
 	State             string     `gorm:"column:state"`
 	RevokedAt         *time.Time `gorm:"column:revoked_at"`

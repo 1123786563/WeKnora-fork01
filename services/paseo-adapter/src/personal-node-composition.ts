@@ -36,17 +36,21 @@ export interface PersonalNodeComposition {
  * registration. Tests can inject fake fetch and stores through this same seam.
  */
 export function createPersonalNodeConnector(input: PersonalNodeComposition): PersonalNodeConnector {
+  if (!input.credentials) throw new Error('PASEO_CREDENTIAL_STORE_MISSING');
+  const bearer = input.credentials.read();
+  if (!bearer || !bearer.trim()) throw new Error('PASEO_CREDENTIAL_MISSING');
   const transport = new PaseoPersonalNodeTransport({
     ...input.transport,
-    bearer: input.credentials.read(),
+    bearer,
   });
   const connector = new PersonalNodeConnector(input.registrationClient, transport, input.connectorOptions);
-  if (!input.lifecycle && !input.credentials) return connector;
   const revoke = connector.revoke.bind(connector);
   connector.revoke = async () => {
-    await revoke();
-    await input.credentials.clear();
-    await input.lifecycle?.onRevoked?.();
+    let failure: unknown;
+    try { await revoke(); } catch (cause) { failure = cause; }
+    try { await input.credentials.clear(); } catch (cause) { if (!failure) failure = cause; }
+    try { await input.lifecycle?.onRevoked?.(); } catch (cause) { if (!failure) failure = cause; }
+    if (failure) throw failure;
   };
   return connector;
 }

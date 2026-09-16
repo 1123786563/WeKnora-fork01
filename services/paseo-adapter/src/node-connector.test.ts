@@ -82,3 +82,26 @@ test('production composition binds secure credential and revoke lifecycle', asyn
   assert.equal(cleared, 1);
   assert.equal(lifecycle, 1);
 });
+
+test('production composition scrubs secure credential when transport cleanup fails', async () => {
+  let cleared = 0;
+  let lifecycle = 0;
+  const connector = createPersonalNodeConnector({
+    registrationClient: { async createChallenge() { throw new Error('unused'); }, async complete() { throw new Error('unused'); }, async revoke() {} },
+    transport: { baseURL: 'https://bridge.example.test', allowedOrigins: ['https://bridge.example.test'], fetchImpl: async () => { throw new Error('close-failed'); } },
+    credentials: { read: () => 'secure-bearer', async clear() { cleared += 1; } },
+    lifecycle: { onRevoked() { lifecycle += 1; } },
+  });
+  (connector as any).registration = { id: 'n', runtime_id: 'r', external_target_id: 'x', public_key: 'fp', credential_version: 1, state: 'active' };
+  await assert.rejects(() => connector.revoke(), /close-failed/);
+  assert.equal(cleared, 1);
+  assert.equal(lifecycle, 1);
+});
+
+test('production composition fails closed without a secure bearer', () => {
+  assert.throws(() => createPersonalNodeConnector({
+    registrationClient: {} as any,
+    transport: { baseURL: 'https://bridge.example.test', allowedOrigins: ['https://bridge.example.test'] },
+    credentials: { read: () => ' ', async clear() {} },
+  }), /PASEO_CREDENTIAL_MISSING/);
+});

@@ -299,7 +299,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, rbacGuards, params.ExecutionTargetHandler)
-		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards)
+		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)

@@ -250,10 +250,10 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		// retry cannot reuse a stale target projection.
 		resolved, resolveErr := a.targets.GetOwnedTarget(ctx, req.TenantID, req.ActorID, in.TargetID)
 		if resolveErr != nil {
-			return agentruntime.Run{}, execution.ErrTargetForbidden
+			return agentruntime.Run{}, a.rejectUnadmitted(ctx, req, reservation, execution.ErrTargetForbidden)
 		}
 		if resolveErr = execution.AuthorizeTarget(resolved, req.TenantID, req.ActorID); resolveErr != nil {
-			return agentruntime.Run{}, resolveErr
+			return agentruntime.Run{}, a.rejectUnadmitted(ctx, req, reservation, resolveErr)
 		}
 		credentialVersion = resolved.CredentialVersion
 	}
@@ -290,6 +290,24 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	}
 	run.BudgetRef = reservation
 	return run, nil
+}
+
+// rejectUnadmitted closes the durable request before releasing the reservation
+// owned by this admission attempt. Once the request is rejected, retries take
+// the terminal path and cannot release the same reservation a second time.
+// Keeping the reservation reference on the rejected row also gives a durable
+// audit/recovery key if a budget provider reports an unknown release result.
+func (a *AdmissionCoordinator) rejectUnadmitted(ctx context.Context, req repository.WorkbenchRequest, reservation string, cause error) error {
+	reason := cause.Error()
+	if err := a.requests.UpdatePending(ctx, req, "rejected", reservation, "", reason); err != nil {
+		return fmt.Errorf("%w: reject request: %v", cause, err)
+	}
+	if reservation != "" {
+		if err := a.budget.ReleaseUnstarted(ctx, reservation); err != nil {
+			return fmt.Errorf("%w: release reservation: %v", cause, err)
+		}
+	}
+	return cause
 }
 
 func (a *AdmissionCoordinator) LookupRequest(ctx context.Context, requestID string) (RequestState, error) {

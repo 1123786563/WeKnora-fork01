@@ -54,7 +54,7 @@ func TestExecutionTargetFacadeRevokesPersonalRegistrationAndIdentityAtomically(t
 	ctx := context.Background()
 	target := execution.Target{ID: "node-1", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: "runtime-1", ExternalTargetID: "external-1"}
 	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, OwnerID: target.OwnerID, CredentialVersion: 1, State: "active"}).Error)
-	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: "u1", ID: target.ID, CredentialVersion: 1, State: "active"}).Error)
+	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: "u1", ID: target.ID, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, CredentialVersion: 1, State: "active"}).Error)
 	require.NoError(t, store.CreateTarget(ctx, target, "opaque"))
 
 	require.NoError(t, store.RevokeTarget(ctx, 1, "u1", target.ID))
@@ -80,12 +80,26 @@ func TestExecutionTargetFacadeRevokeRollsBackWhenProjectionIsMissing(t *testing.
 	db := openExecutionTargetTestDB(t)
 	store := NewExecutionTargetStore(db)
 	target := execution.Target{ID: "node-missing", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: "runtime-missing", ExternalTargetID: "external-missing"}
-	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: "u1", ID: target.ID, CredentialVersion: 1, State: "active"}).Error)
+	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: "u1", ID: target.ID, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, CredentialVersion: 1, State: "active"}).Error)
 	require.NoError(t, store.CreateTarget(context.Background(), target, "opaque"))
 	require.ErrorIs(t, store.RevokeTarget(context.Background(), 1, "u1", target.ID), ErrExecutionTargetNotFound)
 	var row executionTargetRow
 	require.NoError(t, db.First(&row, "tenant_id = ? AND id = ?", 1, target.ID).Error)
 	require.Equal(t, "active", row.State, "target update must roll back when identity projection is absent")
+	require.EqualValues(t, 1, row.CredentialVersion)
+}
+
+func TestExecutionTargetFacadeRejectsMismatchedRegistrationProjection(t *testing.T) {
+	db := openExecutionTargetTestDB(t)
+	store := NewExecutionTargetStore(db)
+	target := execution.Target{ID: "node-mismatch", TenantID: 1, OwnerID: "u1", Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: "runtime-1", ExternalTargetID: "external-1"}
+	require.NoError(t, db.Create(&executionTargetIdentityRow{TenantID: 1, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, OwnerID: target.OwnerID, CredentialVersion: 1, State: "active"}).Error)
+	require.NoError(t, db.Create(&registrationProjectionRow{TenantID: 1, OwnerID: target.OwnerID, ID: target.ID, RuntimeID: "runtime-other", ExternalTargetID: "external-other", CredentialVersion: 1, State: "active"}).Error)
+	require.NoError(t, store.CreateTarget(context.Background(), target, "opaque"))
+	require.ErrorIs(t, store.RevokeTarget(context.Background(), 1, target.OwnerID, target.ID), ErrExecutionTargetNotFound)
+	var row executionTargetRow
+	require.NoError(t, db.First(&row, "tenant_id = ? AND id = ?", 1, target.ID).Error)
+	require.Equal(t, "active", row.State)
 	require.EqualValues(t, 1, row.CredentialVersion)
 }
 
