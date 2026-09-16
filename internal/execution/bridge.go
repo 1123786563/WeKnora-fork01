@@ -122,6 +122,23 @@ func commandSignature(c StartCommand, secret string) string {
 	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// CommandHash and CommandSignature are exported for trusted server-side
+// adapters constructing an admission envelope; untrusted request handlers
+// must never use them as an authorization substitute.
+func CommandHash(c StartCommand) string                     { return commandHash(c) }
+func CommandSignature(c StartCommand, secret string) string { return commandSignature(c, secret) }
+
+// StartWithAdmission sends a command with a per-command trusted admission.
+// It preserves the same HMAC, identity, and authorization checks as Start.
+func (c *BridgeClient) StartWithAdmission(ctx context.Context, command StartCommand, admission AdmissionContext) (BridgeResponse, error) {
+	if c == nil {
+		return BridgeResponse{}, ErrBridgeUnavailable
+	}
+	clone := *c
+	clone.config.Admission = admission
+	return clone.Start(ctx, command)
+}
+
 func (v AdmissionVerifier) Verify(c StartCommand, a AdmissionContext) error {
 	if v.ServiceIdentity == "" || v.SigningSecret == "" || a.ServiceIdentity != v.ServiceIdentity || a.AuthorizationVersion != v.AuthorizationVersion || a.CommandHash != commandHash(c) || a.Signature != commandSignature(c, v.SigningSecret) || a.TargetID != c.TargetID || a.WorkspaceRef != c.WorkspaceRef || a.WorkspaceTargetID != c.TargetID || a.Epoch != c.Epoch {
 		return ErrBridgeUnauthorized

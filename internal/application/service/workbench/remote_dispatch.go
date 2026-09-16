@@ -44,11 +44,11 @@ func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey
 	}
 	var externalID string
 	request := agentruntime.RemoteStartRequest{Fence: agentruntime.Fence{RunKey: key, Epoch: epoch}, CommandID: commandID, PayloadHash: payloadHash, AttemptID: commandID}
-	if commandProvider, ok := provider.(agentruntime.RemoteCommandProvider); ok {
-		externalID, err = commandProvider.StartCommand(ctx, request)
-	} else {
-		externalID, err = provider.Start(ctx, key, commandID)
+	commandProvider, ok := provider.(agentruntime.RemoteCommandProvider)
+	if !ok {
+		return "", fmt.Errorf("%w: provider does not support fenced commands", ErrProviderUnavailable)
 	}
+	externalID, err = commandProvider.StartCommand(ctx, request)
 	if err != nil {
 		if reconcileErr := d.dispatch.ReconcileUnknown(ctx, record, "unknown", ""); reconcileErr != nil {
 			return "", fmt.Errorf("remote dispatch failed (%v); durable unknown recovery failed: %w", err, reconcileErr)
