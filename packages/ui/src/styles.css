@@ -85,7 +85,7 @@
 .wk-input:hover:not(:disabled) { border-color: var(--wk-color-text-secondary); }
 .wk-input:disabled { color: var(--wk-color-text-disabled); background: var(--wk-color-component-disabled); cursor: not-allowed; }
 .wk-input[aria-invalid=true] { border-color: var(--wk-color-error); }
-.wk-input:focus { z-index: 1; border-color: var(--wk-color-brand); box-shadow: 0 0 0 2px var(--wk-color-brand-focus); outline: none; }
+.wk-input:focus { z-index: 1; border-color: var(--wk-color-brand); box-shadow: none; outline: none; }
 .wk-input[aria-invalid=true]:focus { border-color: var(--wk-color-error); box-shadow: 0 0 0 2px var(--wk-color-error-focus); }
 
 .wk-card { border: 1px solid var(--wk-color-border); border-radius: var(--wk-radius-panel); background: var(--wk-color-surface); padding: 1rem; }

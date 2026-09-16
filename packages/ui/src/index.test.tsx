@@ -17,9 +17,8 @@ test('Button and Input expose Vue-sized semantic states', () => {
   assert.match(markup, /aria-invalid="true"/);
 });
 
-test('Input keeps Vue focus rings for normal and invalid keyboard focus', () => {
-  assert.match(compactStyles, /\.wk-input:focus\{[^}]*border-color:var\(--wk-color-brand\)[^}]*box-shadow:0 0 0 2px var\(--wk-color-brand-focus/);
-  assert.match(compactStyles, /\.wk-input\[aria-invalid=true\]:focus\{[^}]*border-color:var\(--wk-color-error\)[^}]*box-shadow:0 0 0 2px var\(--wk-color-error-focus/);
+test('Input keeps Vue border-only focus for normal keyboard focus', () => {
+  assert.match(compactStyles, /\.wk-input:focus\{[^}]*border-color:var\(--wk-color-brand\)[^}]*box-shadow:none/);
   assert.match(compactStyles, /\.wk-input:focus\{[^}]*outline:none/);
 });
 
