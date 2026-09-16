@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -119,7 +120,7 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 		err error
 	)
 	if isSQLite {
-		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), false)
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
 		if err != nil {
 			logger.Errorf(ctx, "Failed to create sqlite migrate instance: %v", err)
 			wrapped := fmt.Errorf("failed to create sqlite migrate instance: %w", err)
@@ -135,7 +136,11 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 			return wrapped
 		}
 	}
-	defer func() { _, _ = m.Close() }()
+	defer func() {
+		if m != nil {
+			_, _ = m.Close()
+		}
+	}()
 
 	// Check current version and dirty state before migration
 	oldVersion, oldDirty, versionErr := m.Version()
@@ -196,7 +201,7 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 		if _, err := m.Close(); err != nil {
 			return fmt.Errorf("failed to close SQLite migration driver before workbench rebuild: %w", err)
 		}
-		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), true)
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), true)
 		if err != nil {
 			return captureMigrationFailure(m, fmt.Errorf("failed to create SQLite workbench migrator: %w", err))
 		}
@@ -206,7 +211,7 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 		if _, err := m.Close(); err != nil {
 			return fmt.Errorf("failed to close SQLite workbench migration driver: %w", err)
 		}
-		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), false)
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
 		if err != nil {
 			return captureMigrationFailure(m, fmt.Errorf("failed to restore SQLite migration driver: %w", err))
 		}
@@ -283,15 +288,53 @@ func sqliteMigrationDSN(dsn string, opts MigrationOptions) string {
 	if opts.SQLiteDBPath != "" {
 		return opts.SQLiteDBPath
 	}
-	return strings.TrimPrefix(dsn, "sqlite3://")
+	// Keep the filesystem path byte-for-byte intact (including spaces), while
+	// removing migrate's x-* options that are consumed by the adapter rather
+	// than by mattn/go-sqlite3.
+	raw := strings.TrimPrefix(dsn, "sqlite3://")
+	queryStart := strings.IndexByte(raw, '?')
+	if queryStart < 0 {
+		return raw
+	}
+	path := raw[:queryStart]
+	query := raw[queryStart+1:]
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return path
+	}
+	for key := range values {
+		if strings.HasPrefix(key, "x-") {
+			values.Del(key)
+		}
+	}
+	if encoded := values.Encode(); encoded != "" {
+		return path + "?" + encoded
+	}
+	return path
 }
 
-func newSQLiteMigrator(migrationsPath, sqliteDSN string, noTxWrap bool) (*migrate.Migrate, error) {
+func sqliteMigrationTable(dsn string) string {
+	raw := strings.TrimPrefix(dsn, "sqlite3://")
+	queryStart := strings.IndexByte(raw, '?')
+	if queryStart < 0 {
+		return ""
+	}
+	values, err := url.ParseQuery(raw[queryStart+1:])
+	if err != nil {
+		return ""
+	}
+	return values.Get("x-migrations-table")
+}
+
+func newSQLiteMigrator(migrationsPath, sqliteDSN, migrationsTable string, noTxWrap bool) (*migrate.Migrate, error) {
 	sqlDB, err := sql.Open("sqlite3", sqliteDSN)
 	if err != nil {
 		return nil, err
 	}
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: noTxWrap})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{
+		MigrationsTable: migrationsTable,
+		NoTxWrap:        noTxWrap,
+	})
 	if err != nil {
 		_ = sqlDB.Close()
 		return nil, err

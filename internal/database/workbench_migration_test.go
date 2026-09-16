@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
 	db := openSQLiteDB(t, dbPath)
 	seedWorkbenchMigrationRows(t, db)
+	snapshotBefore := snapshotWorkbenchRows(t, db)
 	version, dirty := sqliteMigrationState(t, db)
 	require.Equal(t, 15, version)
 	require.False(t, dirty)
@@ -36,6 +38,7 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 	require.False(t, dirty)
 
 	assertWorkbenchChildSummary(t, db)
+	assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 	var driver, targetID, budgetRef string
 	require.NoError(t, db.QueryRow(
 		"SELECT driver, target_id, budget_ref FROM agent_runs WHERE tenant_id = 1 AND run_id = 'legacy-run'",
@@ -95,6 +98,39 @@ INSERT INTO workbench_v17_marker (id, value) VALUES (1, 'recovered');
 	require.Equal(t, 1, markerCount)
 }
 
+func TestWorkbenchSQLiteV16FailureRollsBackAndRecovers(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	legacyRoot := copySQLiteMigrationsBeforeWorkbench(t, repoRoot)
+	brokenRoot := copySQLiteMigrationsBeforeWorkbench(t, repoRoot)
+	brokenUpPath := filepath.Join(brokenRoot, "migrations", "sqlite", "000016_workbench_runs.up.sql")
+	validUp, err := os.ReadFile(filepath.Join(repoRoot, "migrations", "sqlite", "000016_workbench_runs.up.sql"))
+	require.NoError(t, err)
+	brokenUp := strings.Replace(string(validUp), "COMMIT;", "THIS IS NOT VALID SQL;\nCOMMIT;", 1)
+	require.NoError(t, os.WriteFile(brokenUpPath, []byte(brokenUp), 0o600))
+	dbPath := filepath.Join(t.TempDir(), "v16-failure.db")
+
+	chdirAndRestore(t, legacyRoot)
+	require.NoError(t, RunMigrations("sqlite3://"+dbPath))
+	db := openSQLiteDB(t, dbPath)
+	seedWorkbenchMigrationRows(t, db)
+	snapshotBefore := snapshotWorkbenchRows(t, db)
+
+	chdirAndRestore(t, brokenRoot)
+	require.Error(t, RunMigrations("sqlite3://"+dbPath))
+	assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
+	require.False(t, sqliteTableExists(t, db, "agent_runs_rebuilt"), "failed v16 must not leave the rebuild table behind")
+	version, dirty := sqliteMigrationState(t, db)
+	require.Equal(t, 16, version)
+	require.True(t, dirty)
+
+	require.NoError(t, os.WriteFile(brokenUpPath, validUp, 0o600))
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://"+dbPath, MigrationOptions{AutoRecoverDirty: true}))
+	version, dirty = sqliteMigrationState(t, db)
+	require.Equal(t, 16, version)
+	require.False(t, dirty)
+	assertWorkbenchChildSummary(t, db)
+}
+
 func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	t.Run("fresh", func(t *testing.T) {
@@ -115,10 +151,12 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		require.NoError(t, RunMigrations("sqlite3://"+dbPath))
 		db := openSQLiteDB(t, dbPath)
 		seedWorkbenchMigrationRows(t, db)
+		snapshotBefore := snapshotWorkbenchRows(t, db)
 
 		chdirAndRestore(t, repoRoot)
 		require.NoError(t, RunMigrations("sqlite3://"+dbPath))
 		assertWorkbenchChildSummary(t, db)
+		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 		version, dirty := sqliteMigrationState(t, db)
 		require.Equal(t, 16, version)
 		require.False(t, dirty)
@@ -135,7 +173,24 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		require.Equal(t, 16, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
+		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 	})
+}
+
+func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "custom-migrations-table.db")
+	dsn := "sqlite3://" + dbPath + "?x-migrations-table=custom_schema_migrations"
+	require.NoError(t, RunMigrations(dsn))
+	db := openSQLiteDB(t, dbPath)
+	var version, dirty int
+	require.NoError(t, db.QueryRow("SELECT version, dirty FROM custom_schema_migrations").Scan(&version, &dirty))
+	require.Equal(t, 16, version)
+	require.Zero(t, dirty)
+	var defaultTableCount int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").Scan(&defaultTableCount))
+	require.Zero(t, defaultTableCount, "x-migrations-table must select the configured table")
 }
 
 // TestWorkbenchSQLiteDownRefusesPaseo catches a rollback that would silently
@@ -245,6 +300,59 @@ func assertWorkbenchChildSummary(t *testing.T, db *sql.DB) {
 		require.Empty(t, targetID)
 		require.Empty(t, budgetRef)
 	}
+}
+
+// snapshotWorkbenchRows records every legacy parent column and every child
+// column. The migration adds only three parent columns, so the old parent
+// projection is used to compare the pre/post schema while children are
+// compared with their complete PRAGMA-derived projection.
+func snapshotWorkbenchRows(t *testing.T, db *sql.DB) map[string][]string {
+	t.Helper()
+	columns := map[string][]string{
+		"agent_runs": {
+			"tenant_id", "run_id", "session_id", "owner_id", "request_id", "assistant_message_id",
+			"request_hash", "engine_type", "status", "wait_reason", "snapshot", "graph_version",
+			"sdk_version", "schema_version", "lease_owner", "lease_until", "epoch", "revision",
+			"max_rounds", "max_tool_calls", "token_budget", "deadline", "created_at", "updated_at",
+		},
+		"agent_run_checkpoints": nil, "agent_tool_calls": nil, "agent_tool_attempts": nil,
+		"agent_run_events": nil, "agent_run_decisions": nil, "agent_run_inputs": nil,
+	}
+	result := make(map[string][]string, len(columns))
+	for table, selected := range columns {
+		if selected == nil {
+			rows, err := db.Query("PRAGMA table_info(" + table + ")")
+			require.NoError(t, err)
+			for rows.Next() {
+				var cid int
+				var name, typ string
+				var notNull, pk int
+				var defaultValue any
+				require.NoError(t, rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk))
+				selected = append(selected, name)
+			}
+			require.NoError(t, rows.Close())
+			require.NoError(t, rows.Err())
+		}
+		query := "SELECT " + strings.Join(selected, ", ") + " FROM " + table + " WHERE tenant_id = 1 AND run_id = 'legacy-run'"
+		row := db.QueryRow(query)
+		values := make([]any, len(selected))
+		pointers := make([]any, len(selected))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		require.NoError(t, row.Scan(pointers...))
+		for i, value := range values {
+			result[table+"."+selected[i]] = []string{fmt.Sprintf("%v", value)}
+		}
+	}
+	return result
+}
+
+func assertWorkbenchSnapshotsEqual(t *testing.T, db *sql.DB, expected map[string][]string) {
+	t.Helper()
+	actual := snapshotWorkbenchRows(t, db)
+	require.Equal(t, expected, actual, "all preserved parent and child row values must survive the rebuild")
 }
 
 func seedWorkbenchMigrationRows(t *testing.T, db *sql.DB) {
