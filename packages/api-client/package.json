@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./embed": "./src/embed/client.ts",
+    "./transport": "./src/transport/json.ts"
   },
   "dependencies": {
-    "@weknora/contracts": "workspace:*"
+    "@weknora/contracts": "workspace:*",
+    "@weknora/domain": "workspace:*"
   }
 }

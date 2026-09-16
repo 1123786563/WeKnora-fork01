@@ -1,0 +1,34 @@
+{
+  "R024": {
+    "status": "implementing",
+    "gap": "Service list/empty state, admin CRUD, enable/disable, credentials, metadata/tools/usage/OAuth, JSON import/custom headers/OAuth scopes/timeout-retry editor, structured test result and searchable paginated tools directory are wired and tested. 2026-09-13: live browser+real-backend evidence collected (evidence/vue-react-parity/2026-09-13-mcp-live-browser-evidence.md + screenshots/mcp-*) and the connection-step save was fixed to Vue buildPayload parity (omit description/usage_instructions; backend 400 on empty usage verified live; extra description field removed). Remaining: stdio option exposed in React editor but not Vue drawer (decision pending), step-2 usage counter/AI-generate help text vs Vue, React test-connection button absent from reachable Vue UI (McpTestResultBody.vue orphaned in Vue), Wails/native evidence."
+  },
+  "R027": {
+    "status": "implementing",
+    "gap": "Editor rewritten to Vue parity: signed-rerank LKEAP/Volcengine fields, WeKnoraCloud gate with configured/expired/unconfigured hints, dimension override + real embedding probe, provider URL autofill + per-type catalogue, thinking-control auto-sync/lock, exact validation copy/order + duplicate-submit protection, fresh-parameters payload, credential subresource editor on edit, localized list cards/chips/counts, per-type connection tests, Ollama status/inventory/download polling, debug panel gating/history/copy (36/36 tests; model-settings.ts). 228 formerly-missing i18n keys now migrated into packages/i18n settings bundle (5 locales, byte-exact). Remaining: combobox-style download option, in-app settings section switch, per-field blur validation, ESC draft preservation, settingsInitialSubSection tab deep-link, browser/native evidence."
+  },
+  "R031": {
+    "status": "implementing",
+    "gap": "Editor drawer wizard (step order/rail/jump gating/transitions), template catalog (query/refresh/rebuild/radio/status/autoselect/3s polling), deep check (POST /system/sandbox-check deep, confirm-first, shallow auto-run gating), Vue-exact per-backend validation with *** secret re-attachment, identity freeze + payload collection + save-conflict drawer retention, docker capability now wired from SettingsPage via isCapabilitySupported('settings.sandbox.docker') (24/24 tests). Remaining: inventory session titles need a sessions api-client method, savedRecord re-save flow unreachable in both impls, browser/native evidence."
+  },
+  "R033": {
+    "status": "implementing",
+    "gap": "Full admin-branch rewrite: catalog cards + install chips/panel, two-step add wizard (source/zip register with size clamp + error buckets, sandbox picks with session memory, installer model persist), install drawer, manage drawer (enable/retry/stop/uninstall + workspace env vars with 8KB cap), files browser (SKILL.md-first tree, utf-8/base64/binary/truncated states, frontmatter), delete confirm, 2.5s polling (23/23 tests). Web zip upload now functional end-to-end: api-client register accepts Blob via object-URL bridge and browser transport implements sendMultipartFile (FormData, backend field 'file'). 58 formerly-missing keys migrated to shared i18n. Remaining: install timeline/transcript SSE + guidance/steer (api-client gap), upload progress %, rendered markdown in file preview, drawer resize/persisted widths, skill-* card CSS, browser/native evidence."
+  },
+  "N005": {
+    "status": "implementing",
+    "gap": "Share dialog loads eligible organizations and existing shares, supports viewer/editor share and confirmed unshare through existing APIs. Web upload progress consumes Vue-compatible start/progress/complete events, aggregates per-KB progress, refreshes once after successful completion, preserves failures, and handles highlight URL cleanup plus cross-scope pagination. 2026-09-13: mobile counterpart landed (upload-progress.ts port + KB-list progress panel). Focused 4/4, Web 399/399, mobile 75/75, build and typechecks pass; authenticated browser/Vue screenshot, real-backend, Wails, iOS and Android evidence remain absent."
+  },
+  "N007": {
+    "status": "implementing",
+    "gap": "Dialog rebuilt to Vue structure: UploadDestinationPicker (FolderPickerMenu tree, per-row create-subfolder, duplicate warning, persistent pending folders), UploadFilesPanel (URL/file rows with relative dirs, per-file status, manual/reparse panels, dedup toasts), UploadSectionNav statuses, UploadConfirmSections (parser rules + batch-wide scanned-PDF switch, chunking more-options, multimodal, ASR, question generation), reparse seeded from stored process_overrides with cancel-restore (45/45 tests; uploadConfirm five-locale copy byte-exact, keys migrated to shared i18n). Remaining: graph section (needs GraphSettings + systemInfo endpoint), Vue URL-list vs single-URL slot, dropdown add-source affordance, TDesign icons, documents.css styling."
+  },
+  "N016": {
+    "status": "implementing",
+    "gap": "Editor advanced fields/import, structured test result, tool schema/resource display, search/pagination directory are wired and tested. 2026-09-13: live browser evidence on shared backend :8080 (list/add/edit/step2/failure states, both apps) plus the connection-save payload defect fixed (see R024). Open: stdio editor option absent in Vue, step-2 usage counter/help copy, test-connection reachability decision, Wails evidence."
+  },
+  "N031": {
+    "status": "implementing",
+    "gap": "List has role-gated create sheet, scopes, grouping, counts, empty states; locale restore/set + accept-language transport; 9-connector picker with unknown-row preservation; three-state resource selection; latest-sync status/counters with 3s silent refresh; 50-row paginated sync logs with expandable details and five-locale labels. 2026-09-13 tranche: data-source editor copy localized through shared dataSource i18n (149 keys/locale, byte-exact) incl. credential label/hint keys; upload mask ported (task reducer, per-KB summaries, event bus, 10s cleanup, debounced refresh) with uploader dispatching start/complete/uploaded; persistent pins (DB favorites + SecureStore recents, cap 30) with pin toggle and pinned-first regrouping; documents/reference/editor screens localized (75/75 tests, typecheck clean). Remaining: byte-level upload progress (api-client lacks onProgress), multi-file picker, user-scoped recents key, mobile-specific English fallbacks (role guard/load errors), faqManager block, graph visuals/capability gating, iOS/Android runtime evidence."
+  }
+}

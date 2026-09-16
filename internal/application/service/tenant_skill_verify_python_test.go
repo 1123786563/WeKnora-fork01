@@ -383,11 +383,29 @@ func pythonFiles(files map[string]string) []string {
 // note rather than a skip, which is the contract a bare venv relies on.
 func pythonCanEvaluateMarkers(t *testing.T) bool {
 	t.Helper()
-	python, err := exec.LookPath("python3")
-	if err != nil {
+	python, ok := supportedSkillPython()
+	if !ok {
 		return false
 	}
 	return exec.Command(python, "-c", "from packaging.markers import Marker").Run() == nil
+}
+
+// supportedSkillPython mirrors the sandbox contract: the verifier is shipped
+// in an image with Python 3.11, while macOS may expose Apple's Python 3.9 as
+// the unqualified `python3`. Running these tests with that host interpreter
+// silently skips tomllib and can also observe host-installed distributions,
+// which is not the environment the verifier is designed to inspect.
+func supportedSkillPython() (string, bool) {
+	for _, candidate := range []string{"python3.11", "python3"} {
+		python, err := exec.LookPath(candidate)
+		if err != nil {
+			continue
+		}
+		if exec.Command(python, "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)").Run() == nil {
+			return python, true
+		}
+	}
+	return "", false
 }
 
 // runSkillPythonVerifier feeds the embedded checker to a real interpreter the
@@ -397,9 +415,9 @@ func runSkillPythonVerifier(
 	t *testing.T, root string, scripts, optional []string,
 ) (string, string, error) {
 	t.Helper()
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 is not on PATH")
+	python, ok := supportedSkillPython()
+	if !ok {
+		t.Skip("Python 3.11+ is not on PATH")
 	}
 	argv := append([]string{"-", root}, scripts...)
 	if len(optional) > 0 {

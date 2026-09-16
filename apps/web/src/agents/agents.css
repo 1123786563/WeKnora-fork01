@@ -1,21 +1,62 @@
-.agents-page .wk-card { min-height: 320px; }
-.agents-filters { display: flex; gap: .45rem; border-bottom: 1px solid #e6eaf0; margin: -1rem -1rem 1rem; padding: .75rem 1rem; }
-.agents-filters button, .agent-editor-nav button { border: 0; background: transparent; color: #526070; cursor: pointer; padding: .45rem .7rem; border-radius: .45rem; }
-.agents-filters button[aria-pressed="true"], .agent-editor-nav button[aria-current="page"] { background: #edf3ff; color: #215ec9; font-weight: 700; }
-.agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
-.agent-card { border: 1px solid #e5e9f0; border-radius: .7rem; padding: 1rem; min-height: 150px; display: flex; flex-direction: column; gap: .65rem; }
-.agent-card > div:first-child { display: flex; align-items: center; gap: .65rem; }
-.agent-card h2 { font-size: 1rem; margin: 0; }
-.agent-card p { color: #657181; margin: 0; min-height: 2.5rem; }
-.agent-card small { color: #7a8594; text-transform: capitalize; }
-.agent-avatar { width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; background: #e8f4ed; color: #24734a; font-weight: 700; }
-.agent-actions { margin-top: auto; display: flex; justify-content: flex-end; }
-.agents-empty { padding: 2rem 0; text-align: center; }
-.agent-editor { display: grid; grid-template-columns: 9rem 1fr; gap: 1.25rem; min-width: min(680px, 80vw); }
-.agent-editor-nav { display: grid; align-content: start; gap: .25rem; }
-.agent-editor-nav button { text-align: left; text-transform: capitalize; }
-.agent-editor section { display: grid; gap: .55rem; }
-.agent-editor label { font-weight: 700; color: #344052; }
-.agent-editor textarea { min-height: 7rem; resize: vertical; border: 1px solid #ccd4df; border-radius: .45rem; padding: .6rem; font: inherit; }
-.agent-editor-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .75rem; }
-@media (max-width: 650px) { .agent-editor { grid-template-columns: 1fr; min-width: 0; } .agent-editor-nav { display: flex; overflow-x: auto; } }
+/*
+ * Agents list page - styles migrated to Tailwind utilities in AgentsPage.tsx.
+ *
+ * Retained on purpose (Tailwind migration):
+ * 1. .wk-agent-section-header / .wk-agent-section-count also serve
+ *    apps/web/src/configuration/ConfigurationPage.tsx (one rule, two consumer
+ *    files) - kept per docs/plans/tailwind-shadcn-migration.md "CSS retention
+ *    criteria"; to be folded away when the configuration domain migrates.
+ * 2. @keyframes cannot be expressed as utilities; kept and referenced via
+ *    animate-[name_...] arbitrary values:
+ *    wk-agent-twinkle -> header/empty-state create button sparkles icon,
+ *    wk-agent-shimmer -> loading skeleton cards.
+ * 3. var(--wk-bg,#fff) is a legacy Vue theme variable; the React client never
+ *    defines it (fallback #fff always applies). Preserved verbatim as
+ *    arbitrary values per the theme-variable retention rule.
+ */
+
+/* Section headers (AgentList.vue .agent-section-header, sticky like KB list) -
+   shared with configuration/ConfigurationPage.tsx */
+.wk-agent-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--wk-bg, #fff);
+  box-shadow: 0 -8px 0 0 var(--wk-bg, #fff), 0 4px 0 0 var(--wk-bg, #fff);
+  padding: 6px 4px 6px 0;
+  border: none;
+  color: #575e6b;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+}
+
+.wk-agent-section-header:hover { color: #1a2233; }
+
+.wk-agent-section-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+  color: #575e6b;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+@keyframes wk-agent-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(0.95); }
+}
+
+@keyframes wk-agent-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

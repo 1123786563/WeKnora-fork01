@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildIntegrationPath, parseIntegrationRoute } from './route.ts';
+import { restoreApiPlaygroundFocus, resolveIntegrationsTab } from './IntegrationsRoutePage.tsx';
 import { nextTab, visibleChannels } from './state.ts';
 
 test('maps the Vue integrations history URL to the canonical settings section', () => {
@@ -13,6 +14,21 @@ test('maps the Vue integrations history URL to the canonical settings section', 
     tab: 'api',
     agentId: null,
   });
+});
+
+test('restores focus to the API playground trigger after the drawer closes', () => {
+  let focusCalls = 0;
+  const trigger = { focus: () => { focusCalls += 1; } } as unknown as HTMLElement;
+
+  restoreApiPlaygroundFocus(trigger, true);
+  assert.equal(focusCalls, 0, 'focus remains in the drawer while it is open');
+  restoreApiPlaygroundFocus(trigger, false);
+  assert.equal(focusCalls, 1, 'Vue SettingDrawer returns focus to its trigger on close');
+});
+
+test('keeps a clicked integration tab when the route is embedded with an active tab', () => {
+  assert.equal(resolveIntegrationsTab({ activeTab: 'api', localTab: 'api', requestedTab: 'im' }), 'im');
+  assert.equal(resolveIntegrationsTab({ activeTab: 'api', localTab: 'api' }), 'api');
 });
 
 test('preserves the optional agent filter and rejects unrelated routes', () => {

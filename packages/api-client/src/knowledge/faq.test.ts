@@ -13,6 +13,18 @@ test('parses the nested FAQ list envelope and preserves explicit enabled filteri
   assert.equal(path, '/api/v1/knowledge-bases/kb%2Fa/faq/entries?keyword=how&is_enabled=false');
 });
 
+test('normalizes nullable FAQ negative questions from the backend', async () => {
+  const api = createKnowledgeFaqApi(async () => ({
+    success: true,
+    data: { total: 1, page: 1, page_size: 20, data: [{ ...entry, similar_questions: null, negative_questions: null }] },
+  }));
+
+  const result = await api.list('kb-1');
+
+  assert.deepEqual(result.data[0]?.similar_questions, []);
+  assert.deepEqual(result.data[0]?.negative_questions, []);
+});
+
 test('keeps FAQ writes typed and reports import task identity', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createKnowledgeFaqApi(async (request) => {
@@ -35,4 +47,38 @@ test('keeps FAQ writes typed and reports import task identity', async () => {
     'PUT /api/v1/knowledge-bases/kb-1/faq/entries/tags',
     'DELETE /api/v1/knowledge-bases/kb-1/faq/entries',
   ]);
+});
+
+test('uses the server search and export endpoints without changing their payloads', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeFaqApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return request.path.includes('/export') ? 'standard_question,answers\n"How?","This."\n' : { success: true, data: { results: [] } };
+  });
+  await api.search('kb-1', { query_text: 'How?', vector_threshold: 0.7, match_count: 5 });
+  assert.equal(await api.exportEntries('kb-1'), 'standard_question,answers\n"How?","This."\n');
+  assert.equal(await api.exportEntries('kb-1', 'json'), 'standard_question,answers\n"How?","This."\n');
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/knowledge-bases/kb-1/faq/search', body: { query_text: 'How?', vector_threshold: 0.7, match_count: 5 } },
+    { method: 'GET', path: '/api/v1/knowledge-bases/kb-1/faq/entries/export', body: undefined },
+    { method: 'GET', path: '/api/v1/knowledge-bases/kb-1/faq/entries/export?format=json', body: undefined },
+  ]);
+});
+
+test('importProgress fetches the backend task progress envelope', async () => {
+  let path = '';
+  const api = createKnowledgeFaqApi(async (request) => {
+    path = request.path;
+    return { success: true, data: { task_id: 'task-9', kb_id: 'kb-1', knowledge_id: 'k-1', status: 'processing', progress: 40, total: 5, processed: 2 } };
+  });
+  const progress = await api.importProgress('task-9');
+  assert.equal(path, '/api/v1/faq/import/progress/task-9');
+  assert.equal(progress.status, 'processing');
+  assert.equal(progress.processed, 2);
+  assert.equal(progress.total, 5);
+});
+
+test('importProgress rejects an empty task id', async () => {
+  const api = createKnowledgeFaqApi(async () => ({ success: true, data: {} }));
+  await assert.rejects(() => api.importProgress(''), /Invalid FAQ task id/);
 });

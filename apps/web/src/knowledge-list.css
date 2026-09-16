@@ -1,0 +1,11 @@
+/* 保留说明（Tailwind 迁移）：知识库列表页其余样式已全部迁移为 App.tsx 内的
+   Tailwind utilities；.kb-list-* 类名保留为 DOM/测试解剖钩子（无样式规则）。
+   仅以下复杂动画 keyframes 无法用 utilities 表达，按约定保留：
+   kbListFadeIn — 卡片网格入场；kbListFlash — 新卡片高亮闪烁；kbListShimmer — 骨架屏。 */
+@keyframes kbListFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes kbListFlash {
+  0% { border-color: #07c05f; box-shadow: 0 0 0 0 rgba(7, 192, 95, 0.4); transform: scale(1); }
+  50% { border-color: #07c05f; box-shadow: 0 0 0 8px rgba(7, 192, 95, 0); transform: scale(1.02); }
+  100% { border-color: #07c05f; box-shadow: 0 0 0 0 rgba(7, 192, 95, 0); transform: scale(1); }
+}
+@keyframes kbListShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }

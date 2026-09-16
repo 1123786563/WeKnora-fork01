@@ -31,6 +31,10 @@ logs/
 WeKnora
 WeKnora-lite
 cmd/desktop/build/bin/
+apps/embed/dist/
+apps/desktop/dist/
+apps/desktop/package.json.md5
+apps/desktop/src/wailsjs/
 /models/
 test/data/mswag.txt
 data/files/
@@ -40,8 +44,14 @@ data/weknora.db-shm
 skills-lock.json
 
 /web/
+*.tsbuildinfo
+
+# React apps build output (previously swallowed by the bare web/ rule)
 apps/web/dist/
-apps/web/tsconfig.tsbuildinfo
+apps/embed/dist/
+apps/desktop/dist/
+apps/mobile/dist-ios/
+apps/mobile/dist-android/
 
 **/__pycache__
 /scripts/scale_dev_jobs.sh

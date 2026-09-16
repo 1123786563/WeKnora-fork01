@@ -1,0 +1,11 @@
+/* 保留说明（Tailwind 迁移）：FAQ 页面其余样式已全部迁移为 FAQPage.tsx 内的
+   Tailwind utilities；faq-* 类名保留为 DOM/测试解剖钩子（无样式规则）。与
+   documents.css 同名的钩子类已改为 faq- 前缀（faq-breadcrumb-separator、
+   faq-kb-info-button、faq-kb-settings-button、faq-tag-filter-trigger、
+   faq-tag-filter-panel、faq-tag-filter-chip 等），避免跨域全局规则再次覆盖。
+   仅以下复杂动画 keyframes 无法用 utilities 表达，按约定保留：
+   faq-shimmer — 骨架屏卡片渐变扫光；faq-import-spin — 导入进度图标旋转；
+   faq-tooltip-fade — FAQTagTooltip 气泡淡入。 */
+@keyframes faq-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes faq-import-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes faq-tooltip-fade { from { opacity: 0; } to { opacity: 1; } }

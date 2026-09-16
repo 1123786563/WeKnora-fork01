@@ -1,7 +1,8 @@
 export { createWeKnoraClient } from './client.ts';
-export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
-export { ApiError } from './errors.ts';
-export type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
+export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput, KnowledgeChunkSearchParams, KnowledgeChunkSearchHit } from './client.ts';
+export { ApiError, createAbortError, isNamedError } from './errors.ts';
+export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource, NativeMultipartFileRequest, UploadProgressEvent } from './ports.ts';
+export type { ClientBinaryResponse } from './client.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';
 export { createCommercialApi } from './commercial.ts';
 export { createAppConnectorApi } from './appconnector.ts';
@@ -11,23 +12,29 @@ export type { CraftSessionCreatedView, CraftSessionSummaryView, CraftSessionPage
 export type { ConnectionView, InstallationView, SyncStatusView, SyncBindingView, SyncPauseReason, CreateInstallationInput, UpgradeInstallationInput, CreateConnectionInput } from '@weknora/contracts';
 export type { OrderView, CommercialSummary, QuoteView, QuoteInput, CreateOrderInput, RefundInput, RefundView } from '@weknora/contracts';
 export { createJsonTransport } from './transport/json.ts';
+export type { FetchLike, FetchResponseLike } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
-export { createProductAuth, createProductAuthSession, parseLogin } from './auth/login.ts';
-export type { ParsedLogin, ProductAuthOptions } from './auth/login.ts';
-export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';
-export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
-export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
-export type { DataSource, DataSourceResource } from './datasource.ts';
-export { buildChatStreamRequest, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
-export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
-<<<<<<< HEAD
-
+export { createProductAuth, createProductAuthSession } from './auth/login.ts';
+export type { ProductAuthOptions } from './auth/login.ts';
 export { createOIDCApi } from './auth/oidc.ts';
 export type { OIDCAuthURLResponse, OIDCConfigResponse, OIDCExchangeResponse, AuthRequest } from './auth/oidc.ts';
 export { createInvitationsApi } from './auth/invitations.ts';
-export type { TenantInvitation, TenantInvitationStatus, InvitationListResponse, InvitationActionResponse, InvitationLookupResponse, RegisterByInviteRequest } from './auth/invitations.ts';
-=======
+export type { TenantInvitationStatus, InvitationListResponse, InvitationActionResponse, InvitationLookupResponse, RegisterByInviteRequest } from './auth/invitations.ts';
+export { createAuthApi } from './auth/endpoints.ts';
+export { parseLogin } from './auth/endpoints.ts';
+export type { AuthApi, AuthMe, AuthSession, ParsedLogin, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams, KnowledgeChunk, KnowledgeChunkPage, KnowledgeChunkRevision, KnowledgeChunkUpdateInput, KnowledgeDocumentDetailsUpdateInput } from './knowledge/documents.ts';
+export { createKnowledgeSettingsApi } from './knowledge/settings.ts';
+export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivityEntry, KnowledgeBaseActivityQuery, KnowledgeBaseActivityResult, KnowledgeBaseConfigInput, KnowledgeBaseUpdateInput, ParserEngineInfo, ParserEnginesResult, StorageBackendView, VectorStoreView } from './knowledge/settings.ts';
+export { createKnowledgeFaqApi } from './knowledge/faq.ts';
+export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput, FAQImportProgress } from './knowledge/faq.ts';
+export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
+export { createWikiPagesApi } from './wiki/pages.ts';
+export type { WikiPage, WikiPageListResponse, WikiFolder, WikiFolderNode, WikiFolderListResponse, WikiIndexEntry, WikiIndexGroup, WikiIndexResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput, WikiGraphData, WikiGraphEdge, WikiGraphMeta, WikiGraphNode, WikiGraphQueryParams } from './wiki/pages.ts';
+export type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourceSyncLog } from './datasource.ts';
+export { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
+export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
 export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionUpdateInput, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
@@ -129,4 +136,3 @@ export type {
   SteerMutationResponse,
   SteerQueueItem,
 } from '@weknora/contracts';
->>>>>>> 1edb056f9 (fix(sdk): align execution acknowledgements and cursors)

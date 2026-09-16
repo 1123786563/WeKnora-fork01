@@ -22,11 +22,18 @@
 **/*.pyc
 
 # Node / 前端
-# 注意:build-ui 用的 context 是 ./frontend,根 .dockerignore 对它无效,
-# 其它镜像(app/docreader/sandbox)的 Dockerfile 都不引用 frontend/,
-# 所以这里可以直接排除整个 frontend/ 目录。
+# UI Dockerfiles are intentionally built with the repository root as their
+# context so the React workspace and shared packages remain available during
+# the migration. The current Vue image and the React candidate each copy only
+# the inputs they need, while other image Dockerfiles continue to use this
+# root ignore file.
+node_modules/
 **/node_modules/
-frontend/
+apps/mobile/android/
+apps/mobile/ios/
+**/dist/
+**/build/
+**/*.tsbuildinfo
 WeKnora-Chrome-Extension/
 
 # 日志 / 临时文件
@@ -39,6 +46,8 @@ temp/
 # 本地构建产物 / 二进制
 WeKnora
 WeKnora-lite
+/WeKnora
+/WeKnora-lite
 /server
 /dist/
 /build/

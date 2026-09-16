@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/getpaseo/paseo",
+    "ref": "v0.7.2",
+    "commit": "c4e97d5cfbef62934e0915d58a72ddeae5c4caea",
+    "sdk_package": "@getpaseo/client",
+    "sdk_version": "0.7.2",
+    "node_version": "v26.7.0",
+    "checked_at": "2026-09-15"
+  },
+  "provider": {
+    "name": null,
+    "model": null,
+    "status": "blocked-env",
+    "reason": "No controlled daemon/provider credentials were available during W17 execution."
+  },
+  "public_sdk_methods": {
+    "create": "PaseoApi.agents.create",
+    "observe": "PaseoAgentHandle.waitForFinish",
+    "events": "PaseoAgentHandle.subscribe"
+  },
+  "capabilities": {
+    "create": {
+      "state": "supported",
+      "method": "PaseoApi.agents.create",
+      "evidence": "@getpaseo/client@0.7.2/dist/index.d.ts"
+    },
+    "observe": {
+      "state": "supported",
+      "method": "PaseoAgentHandle.waitForFinish",
+      "evidence": "@getpaseo/client@0.7.2/dist/index.d.ts"
+    },
+    "events": {
+      "state": "supported",
+      "method": "PaseoAgentHandle.subscribe",
+      "evidence": "@getpaseo/client@0.7.2/dist/index.d.ts"
+    },
+    "cancel": {
+      "state": "unavailable",
+      "reason": "The public PaseoApi has no cancel method; DaemonClient.cancelAgent is an internal surface and is not imported by this adapter."
+    },
+    "approval": {
+      "state": "unavailable",
+      "reason": "The pinned public SDK exposes pending permission state but no approval operation."
+    },
+    "steer": {
+      "state": "unavailable",
+      "reason": "No public steer operation is exposed by the pinned SDK."
+    },
+    "exportArtifact": {
+      "state": "unavailable",
+      "reason": "Artifact export belongs to the WeKnora product boundary and is not a Paseo SDK capability."
+    },
+    "lookupByRequest": {
+      "state": "unavailable",
+      "reason": "No public request-id lookup operation is exposed by the pinned SDK."
+    }
+  },
+  "live_probe": {
+    "state": "blocked-env",
+    "reason": "PASEO_URL/provider credentials were not supplied; no create, event, finish, cancel, replay, or permission probe was claimed as live evidence.",
+    "next_step": "Provision one isolated Paseo v0.7.2 daemon and one provider credential, then run the W17 controlled create/observe/events/cancel probe before enabling W20 dispatch."
+  }
+}

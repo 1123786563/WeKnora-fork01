@@ -1,0 +1,130 @@
+[
+  {
+    "tag": "react",
+    "label": "kb-list",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/knowledge-bases",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "agents",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/agents",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "organizations",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/organizations",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "settings-models",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/settings?section=models",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "settings-members",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/settings?section=members",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "creatChat",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/creatChat",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "integrations",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/settings?section=integration-im",
+    "ok": true
+  },
+  {
+    "tag": "react",
+    "label": "kb-search-legacy",
+    "deepAnchor": "我的对话",
+    "reloadAnchor": "我的对话",
+    "deepUrl": "http://localhost:5181/platform/knowledge-bases",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "kb-list",
+    "deepAnchor": "知识库",
+    "reloadAnchor": "知识库",
+    "deepUrl": "http://localhost:5180/platform/knowledge-bases",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "agents",
+    "deepAnchor": "智能体",
+    "reloadAnchor": "智能体",
+    "deepUrl": "http://localhost:5180/platform/agents",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "organizations",
+    "deepAnchor": "共享空间",
+    "reloadAnchor": "共享空间",
+    "deepUrl": "http://localhost:5180/platform/organizations",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "settings-models",
+    "deepAnchor": "搜索设置",
+    "reloadAnchor": "搜索设置",
+    "deepUrl": "http://localhost:5180/platform/settings?section=models",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "settings-members",
+    "deepAnchor": "搜索设置",
+    "reloadAnchor": "搜索设置",
+    "deepUrl": "http://localhost:5180/platform/settings?section=members",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "creatChat",
+    "deepAnchor": "搜索设置",
+    "reloadAnchor": "搜索设置",
+    "deepUrl": "http://localhost:5180/platform/creatChat",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "integrations",
+    "deepAnchor": "搜索设置",
+    "reloadAnchor": "搜索设置",
+    "deepUrl": "http://localhost:5180/platform/settings?section=integration-im",
+    "ok": true
+  },
+  {
+    "tag": "vue",
+    "label": "kb-search-legacy",
+    "deepAnchor": "知识库",
+    "reloadAnchor": "知识库",
+    "deepUrl": "http://localhost:5180/platform/knowledge-bases",
+    "ok": true
+  }
+]

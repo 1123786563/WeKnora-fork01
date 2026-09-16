@@ -1,352 +1,109 @@
-export type KnowledgeBaseType = 'document' | 'faq'
-export type ExtractionGranularity = 'focused' | 'standard' | 'exhaustive'
+import './editor-layout.ts';
 
-export interface ParserEngineRule {
-  parser: string
-  fileTypes: string[]
-  [key: string]: unknown
-}
+export type KnowledgeEditorConfig = {
+  faqConfig: { indexMode: 'question_only' | 'question_answer'; questionIndexMode: 'combined' | 'separate' };
+  indexingStrategy: { vectorEnabled: boolean; keywordEnabled: boolean; wikiEnabled: boolean; graphEnabled: boolean };
+  chunkingConfig: {
+    chunkSize: number; chunkOverlap: number; strategy: string; separators: string[];
+    enableParentChild: boolean; parentChunkSize: number; childChunkSize: number;
+    tokenLimit: number; languages: string[]; tableMetadataInstructions: string;
+    parserEngineRules: Array<{ file_types: string[]; engine: string; xlsx_first_row_as_header?: boolean }>;
+  };
+  storageBackendId: string;
+  /** Legacy Vue compatibility projection used by rolling backend upgrades. */
+  storageProvider: string;
+  vectorStoreId: string;
+  multimodalConfig: { enabled: boolean; vllmModelId: string; descriptionLanguage: string; customInstructions: string };
+  asrConfig: { enabled: boolean; modelId: string; language: string };
+  nodeExtractConfig: { enabled: boolean; text: string; tags: string[]; nodes: unknown[]; relations: unknown[]; customInstructions: string };
+  questionGenerationConfig: { enabled: boolean; questionCount: number; customInstructions: string };
+  autoTagConfig: { enabled: boolean; modelId: string; maxTags: number; skipIfTagged: boolean };
+  wikiConfig: { synthesisModelId: string; maxPagesPerIngest: number; extractionGranularity: 'focused' | 'standard' | 'exhaustive'; contentInstructions: string; extractionInstructions: string };
+};
 
-export interface KnowledgeBaseEditorConfig {
-  type: KnowledgeBaseType
-  name: string
-  description: string
-  model: {
-    embeddingModelId: string
-    llmModelId: string
-    wikiSynthesisModelId: string
-  }
-  faq: {
-    indexMode: string
-    questionIndexMode: string
-  }
-  chunking: {
-    chunkSize: number
-    chunkOverlap: number
-    separators: string[]
-    parserEngineRules?: ParserEngineRule[]
-    enableParentChild: boolean
-    parentChunkSize: number
-    childChunkSize: number
-    strategy: string
-    tokenLimit: number
-    languages: string[]
-    tableMetadataInstructions: string
-  }
-  processing: {
-    languages: string[]
-    multimodal: {
-      enabled: boolean
-      modelId: string
-      descriptionLanguage: string
-      customInstructions: string
-    }
-    asr: {
-      enabled: boolean
-      modelId: string
-      language: string
-    }
-    graph: {
-      enabled: boolean
-      text: string
-      tags: string[]
-      nodes: Array<{ name: string; attributes: string[] }>
-      relations: Array<{ node1: string; node2: string; type: string }>
-      customInstructions: string
-    }
-    questionGeneration: {
-      enabled: boolean
-      questionCount: number
-      customInstructions: string
-    }
-    autoTag: {
-      enabled: boolean
-      modelId: string
-      maxTags: number
-      skipIfTagged: boolean
-    }
-    wiki: {
-      enabled: boolean
-      synthesisModelId: string
-      maxPagesPerIngest: number
-      extractionGranularity: ExtractionGranularity
-      contentInstructions: string
-      extractionInstructions: string
-    }
-  }
-  indexing: {
-    vectorEnabled: boolean
-    keywordEnabled: boolean
-    wikiEnabled: boolean
-    graphEnabled: boolean
-  }
-  storage: {
-    backendId: string
-    provider: string
-  }
-  vectorStoreId: string
-}
+const record = (value: unknown): Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const stringValue = (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback;
+const numberValue = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+const boolValue = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
 
-type ApiRecord = Record<string, any>
-
-const defaultSeparators = () => ['\n\n', '\n', '。', '！', '？', ';', '；']
-
-export function defaultKnowledgeBaseEditorConfig(type: KnowledgeBaseType = 'document'): KnowledgeBaseEditorConfig {
+export function defaultKnowledgeEditorConfig(): KnowledgeEditorConfig {
   return {
-    type,
-    name: '',
-    description: '',
-    model: { embeddingModelId: '', llmModelId: '', wikiSynthesisModelId: '' },
-    faq: { indexMode: 'question_only', questionIndexMode: 'separate' },
-    chunking: {
-      chunkSize: 512,
-      chunkOverlap: 80,
-      separators: defaultSeparators(),
-      parserEngineRules: undefined,
-      enableParentChild: true,
-      parentChunkSize: 4096,
-      childChunkSize: 384,
-      strategy: 'auto',
-      tokenLimit: 0,
-      languages: [],
-      tableMetadataInstructions: '',
-    },
-    processing: {
-      languages: [],
-      multimodal: { enabled: false, modelId: '', descriptionLanguage: '', customInstructions: '' },
-      asr: { enabled: false, modelId: '', language: '' },
-      graph: { enabled: false, text: '', tags: [], nodes: [], relations: [], customInstructions: '' },
-      questionGeneration: { enabled: true, questionCount: 3, customInstructions: '' },
-      autoTag: { enabled: false, modelId: '', maxTags: 3, skipIfTagged: true },
-      wiki: {
-        enabled: false,
-        synthesisModelId: '',
-        maxPagesPerIngest: 0,
-        extractionGranularity: 'standard',
-        contentInstructions: '',
-        extractionInstructions: '',
-      },
-    },
-    indexing: { vectorEnabled: true, keywordEnabled: true, wikiEnabled: false, graphEnabled: false },
-    storage: { backendId: '', provider: 'local' },
-    vectorStoreId: '',
-  }
+    faqConfig: { indexMode: 'question_only', questionIndexMode: 'separate' },
+    indexingStrategy: { vectorEnabled: true, keywordEnabled: true, wikiEnabled: false, graphEnabled: false },
+    chunkingConfig: { chunkSize: 512, chunkOverlap: 80, strategy: 'auto', separators: ['\n\n', '\n', '。', '！', '？', ';', '；'], enableParentChild: true, parentChunkSize: 4096, childChunkSize: 384, tokenLimit: 0, languages: [], tableMetadataInstructions: '', parserEngineRules: [] },
+    storageBackendId: '', storageProvider: '', vectorStoreId: '',
+    multimodalConfig: { enabled: false, vllmModelId: '', descriptionLanguage: '', customInstructions: '' },
+    asrConfig: { enabled: false, modelId: '', language: '' },
+    nodeExtractConfig: { enabled: false, text: '', tags: [], nodes: [], relations: [], customInstructions: '' },
+    questionGenerationConfig: { enabled: true, questionCount: 3, customInstructions: '' },
+    autoTagConfig: { enabled: false, modelId: '', maxTags: 3, skipIfTagged: true },
+    wikiConfig: { synthesisModelId: '', maxPagesPerIngest: 0, extractionGranularity: 'standard', contentInstructions: '', extractionInstructions: '' },
+  };
 }
 
-const valueOr = <T>(value: T | null | undefined, fallback: T): T => value == null ? fallback : value
-
-function cloneNodes(value: unknown): Array<{ name: string; attributes: string[] }> {
-  return Array.isArray(value)
-    ? value.map((node) => ({ name: valueOr(node?.name, ''), attributes: [...valueOr(node?.attributes, [])] }))
-    : []
-}
-
-function cloneRelations(value: unknown): Array<{ node1: string; node2: string; type: string }> {
-  return Array.isArray(value)
-    ? value.map((relation) => ({
-      node1: valueOr(relation?.node1, ''), node2: valueOr(relation?.node2, ''), type: valueOr(relation?.type, ''),
-    }))
-    : []
-}
-
-export function hydrateKnowledgeBaseEditorConfig(record: ApiRecord = {}): KnowledgeBaseEditorConfig {
-  const state = defaultKnowledgeBaseEditorConfig(record.type === 'faq' ? 'faq' : 'document')
-  const chunking = record.chunking_config ?? {}
-  const vlm = record.vlm_config ?? {}
-  const asr = record.asr_config ?? {}
-  const extract = record.extract_config ?? {}
-  const questions = record.question_generation_config ?? {}
-  const autoTag = record.auto_tag_config ?? {}
-  const wiki = record.wiki_config ?? {}
-  const indexing = record.indexing_strategy ?? {}
-
-  state.name = valueOr(record.name, state.name)
-  state.description = valueOr(record.description, state.description)
-  state.model.embeddingModelId = valueOr(record.embedding_model_id, state.model.embeddingModelId)
-  state.model.llmModelId = valueOr(record.summary_model_id, state.model.llmModelId)
-  state.model.wikiSynthesisModelId = valueOr(wiki.synthesis_model_id, state.model.wikiSynthesisModelId)
-  state.faq.indexMode = valueOr(record.faq_config?.index_mode, state.faq.indexMode)
-  state.faq.questionIndexMode = valueOr(record.faq_config?.question_index_mode, state.faq.questionIndexMode)
-
-  state.chunking = {
-    chunkSize: valueOr(chunking.chunk_size, state.chunking.chunkSize),
-    chunkOverlap: valueOr(chunking.chunk_overlap, state.chunking.chunkOverlap),
-    separators: Array.isArray(chunking.separators) ? [...chunking.separators] : state.chunking.separators,
-    parserEngineRules: Array.isArray(chunking.parser_engine_rules) ? structuredClone(chunking.parser_engine_rules) : undefined,
-    enableParentChild: valueOr(chunking.enable_parent_child, state.chunking.enableParentChild),
-    parentChunkSize: valueOr(chunking.parent_chunk_size, state.chunking.parentChunkSize),
-    childChunkSize: valueOr(chunking.child_chunk_size, state.chunking.childChunkSize),
-    strategy: valueOr(chunking.strategy, state.chunking.strategy),
-    tokenLimit: valueOr(chunking.token_limit, state.chunking.tokenLimit),
-    languages: Array.isArray(chunking.languages) ? [...chunking.languages] : state.chunking.languages,
-    tableMetadataInstructions: valueOr(chunking.table_metadata_instructions, state.chunking.tableMetadataInstructions),
-  }
-  state.processing.languages = [...state.chunking.languages]
-  state.processing.multimodal = {
-    enabled: valueOr(vlm.enabled, false),
-    modelId: valueOr(vlm.enabled, false) ? valueOr(vlm.model_id, '') : '',
-    descriptionLanguage: valueOr(vlm.description_language, ''),
-    customInstructions: valueOr(vlm.custom_instructions, ''),
-  }
-  state.processing.asr = {
-    enabled: valueOr(asr.enabled, false),
-    modelId: valueOr(asr.model_id, ''),
-    language: valueOr(asr.language, ''),
-  }
-  state.processing.graph = {
-    enabled: valueOr(extract.enabled, false),
-    text: valueOr(extract.text, ''),
-    tags: Array.isArray(extract.tags) ? [...extract.tags] : [],
-    nodes: cloneNodes(extract.nodes),
-    relations: cloneRelations(extract.relations),
-    customInstructions: valueOr(extract.custom_instructions, ''),
-  }
-  state.processing.questionGeneration = {
-    enabled: valueOr(questions.enabled, false),
-    questionCount: valueOr(questions.question_count, 3),
-    customInstructions: valueOr(questions.custom_instructions, ''),
-  }
-  state.processing.autoTag = {
-    enabled: valueOr(autoTag.enabled, false),
-    modelId: valueOr(autoTag.model_id, ''),
-    maxTags: valueOr(autoTag.max_tags, 3),
-    skipIfTagged: valueOr(autoTag.skip_if_tagged, true),
-  }
-  const granularity = wiki.extraction_granularity
-  state.processing.wiki = {
-    enabled: valueOr(indexing.wiki_enabled, false),
-    synthesisModelId: valueOr(wiki.synthesis_model_id, ''),
-    maxPagesPerIngest: valueOr(wiki.max_pages_per_ingest, 0),
-    extractionGranularity: granularity === 'focused' || granularity === 'exhaustive' ? granularity : 'standard',
-    contentInstructions: valueOr(wiki.content_instructions, ''),
-    extractionInstructions: valueOr(wiki.extraction_instructions, ''),
-  }
-  state.indexing = {
-    vectorEnabled: valueOr(indexing.vector_enabled, true),
-    keywordEnabled: valueOr(indexing.keyword_enabled, true),
-    wikiEnabled: valueOr(indexing.wiki_enabled, false),
-    graphEnabled: valueOr(indexing.graph_enabled, false),
-  }
-  state.storage = {
-    backendId: valueOr(record.storage_backend_id, ''),
-    provider: valueOr(record.storage_provider_config?.provider, valueOr(record.storage_config?.provider, 'local')),
-  }
-  state.vectorStoreId = valueOr(record.vector_store_id, '')
-  return state
-}
-
-function buildCommonPayload(state: KnowledgeBaseEditorConfig): ApiRecord {
+export function hydrateKnowledgeEditorConfig(source: Record<string, unknown>): KnowledgeEditorConfig {
+  const defaults = defaultKnowledgeEditorConfig();
+  const chunk = record(source.chunking_config);
+  const faq = record(source.faq_config);
+  const indexing = record(source.indexing_strategy);
+  const image = record(source.vlm_config ?? source.image_processing_config);
+  const asr = record(source.asr_config);
+  const extract = record(source.extract_config);
+  const questions = record(source.question_generation_config);
+  const autoTag = record(source.auto_tag_config);
+  const wiki = record(source.wiki_config);
+  const rules = Array.isArray(chunk.parser_engine_rules) ? chunk.parser_engine_rules.flatMap((item) => {
+    const row = record(item);
+    return typeof row.engine === 'string' && Array.isArray(row.file_types) ? [{ file_types: row.file_types.filter((v): v is string => typeof v === 'string'), engine: row.engine, ...(typeof row.xlsx_first_row_as_header === 'boolean' ? { xlsx_first_row_as_header: row.xlsx_first_row_as_header } : {}) }] : [];
+  }) : defaults.chunkingConfig.parserEngineRules;
   return {
-    name: state.name,
-    description: state.description,
-    type: state.type,
-    chunking_config: {
-      chunk_size: state.chunking.chunkSize,
-      chunk_overlap: state.chunking.chunkOverlap,
-      separators: [...state.chunking.separators],
-      ...(state.chunking.parserEngineRules?.length
-        ? { parser_engine_rules: structuredClone(state.chunking.parserEngineRules) }
-        : {}),
-      enable_parent_child: state.chunking.enableParentChild,
-      parent_chunk_size: state.chunking.parentChunkSize,
-      child_chunk_size: state.chunking.childChunkSize,
-      strategy: state.chunking.strategy,
-      token_limit: state.chunking.tokenLimit,
-      languages: [...state.chunking.languages],
-      table_metadata_instructions: state.chunking.tableMetadataInstructions,
+    faqConfig: { indexMode: faq.index_mode === 'question_answer' ? 'question_answer' : defaults.faqConfig.indexMode, questionIndexMode: faq.question_index_mode === 'combined' ? 'combined' : defaults.faqConfig.questionIndexMode },
+    indexingStrategy: {
+      vectorEnabled: boolValue(indexing.vector_enabled, defaults.indexingStrategy.vectorEnabled),
+      keywordEnabled: boolValue(indexing.keyword_enabled, defaults.indexingStrategy.keywordEnabled),
+      wikiEnabled: boolValue(indexing.wiki_enabled, defaults.indexingStrategy.wikiEnabled),
+      graphEnabled: boolValue(indexing.graph_enabled, defaults.indexingStrategy.graphEnabled),
     },
-    embedding_model_id: state.model.embeddingModelId,
-    summary_model_id: state.model.llmModelId,
-    ...(state.storage.backendId ? { storage_backend_id: state.storage.backendId } : {}),
-    storage_provider_config: { provider: state.storage.provider },
-    storage_config: { provider: state.storage.provider },
-    vlm_config: {
-      enabled: state.processing.multimodal.enabled,
-      model_id: state.processing.multimodal.enabled ? state.processing.multimodal.modelId : '',
-      description_language: state.processing.multimodal.descriptionLanguage,
-      custom_instructions: state.processing.multimodal.customInstructions,
-    },
-    asr_config: {
-      enabled: state.processing.asr.enabled,
-      model_id: state.processing.asr.modelId,
-      language: state.processing.asr.language,
-    },
+    // Vue initializes create-mode values separately. Existing KBs are hydrated
+    // with its edit-mode fallbacks: an absent strategy stays legacy-empty,
+    // parent/child chunking is off, and question generation is off.
+    chunkingConfig: { chunkSize: numberValue(chunk.chunk_size, defaults.chunkingConfig.chunkSize) || defaults.chunkingConfig.chunkSize, chunkOverlap: numberValue(chunk.chunk_overlap, defaults.chunkingConfig.chunkOverlap) || defaults.chunkingConfig.chunkOverlap, strategy: stringValue(chunk.strategy), separators: Array.isArray(chunk.separators) ? chunk.separators.filter((v): v is string => typeof v === 'string') : defaults.chunkingConfig.separators, enableParentChild: boolValue(chunk.enable_parent_child, false), parentChunkSize: numberValue(chunk.parent_chunk_size, defaults.chunkingConfig.parentChunkSize) || defaults.chunkingConfig.parentChunkSize, childChunkSize: numberValue(chunk.child_chunk_size, defaults.chunkingConfig.childChunkSize) || defaults.chunkingConfig.childChunkSize, tokenLimit: numberValue(chunk.token_limit, defaults.chunkingConfig.tokenLimit), languages: Array.isArray(chunk.languages) ? chunk.languages.filter((v): v is string => typeof v === 'string') : [], tableMetadataInstructions: stringValue(chunk.table_metadata_instructions), parserEngineRules: rules },
+    storageBackendId: stringValue(source.storage_backend_id),
+    storageProvider: stringValue(record(source.storage_provider_config).provider, stringValue(record(source.storage_config).provider, 'local')),
+    vectorStoreId: stringValue(source.vector_store_id),
+    multimodalConfig: { enabled: boolValue(image.enabled, false), vllmModelId: stringValue(image.model_id), descriptionLanguage: stringValue(image.description_language), customInstructions: stringValue(image.custom_instructions) },
+    asrConfig: { enabled: boolValue(asr.enabled, false), modelId: stringValue(asr.model_id), language: stringValue(asr.language) },
+    nodeExtractConfig: { enabled: boolValue(extract.enabled, false), text: stringValue(extract.text), tags: Array.isArray(extract.tags) ? extract.tags.filter((v): v is string => typeof v === 'string') : [], nodes: Array.isArray(extract.nodes) ? extract.nodes : [], relations: Array.isArray(extract.relations) ? extract.relations : [], customInstructions: stringValue(extract.custom_instructions) },
+    questionGenerationConfig: { enabled: boolValue(questions.enabled, false), questionCount: numberValue(questions.question_count, defaults.questionGenerationConfig.questionCount) || defaults.questionGenerationConfig.questionCount, customInstructions: stringValue(questions.custom_instructions) },
+    autoTagConfig: { enabled: boolValue(autoTag.enabled, false), modelId: stringValue(autoTag.model_id), maxTags: numberValue(autoTag.max_tags, 3) || 3, skipIfTagged: boolValue(autoTag.skip_if_tagged, true) },
+    wikiConfig: { synthesisModelId: stringValue(wiki.synthesis_model_id), maxPagesPerIngest: numberValue(wiki.max_pages_per_ingest, 0), extractionGranularity: wiki.extraction_granularity === 'focused' || wiki.extraction_granularity === 'exhaustive' ? wiki.extraction_granularity : 'standard', contentInstructions: stringValue(wiki.content_instructions), extractionInstructions: stringValue(wiki.extraction_instructions) },
+  };
+}
+
+export function knowledgeEditorConfigPayload(config: KnowledgeEditorConfig, type: 'document' | 'faq'): Record<string, unknown> {
+  const chunk = config.chunkingConfig;
+  const payload: Record<string, unknown> = {
+    chunking_config: { chunk_size: Math.max(1, Math.trunc(chunk.chunkSize)), chunk_overlap: Math.max(0, Math.trunc(chunk.chunkOverlap)), strategy: chunk.strategy, separators: chunk.separators, enable_parent_child: chunk.enableParentChild, parent_chunk_size: Math.max(1, Math.trunc(chunk.parentChunkSize)), child_chunk_size: Math.max(1, Math.trunc(chunk.childChunkSize)), token_limit: Math.max(0, Math.trunc(chunk.tokenLimit)), languages: chunk.languages, table_metadata_instructions: chunk.tableMetadataInstructions, ...(chunk.parserEngineRules.length ? { parser_engine_rules: chunk.parserEngineRules } : {}) },
+    vlm_config: { enabled: config.multimodalConfig.enabled, model_id: config.multimodalConfig.enabled ? config.multimodalConfig.vllmModelId : '', description_language: config.multimodalConfig.descriptionLanguage, custom_instructions: config.multimodalConfig.customInstructions },
+    asr_config: { enabled: config.asrConfig.enabled, model_id: config.asrConfig.enabled ? config.asrConfig.modelId : '', language: config.asrConfig.language },
+    // Vue sends this block for both enabled and disabled states. Only the
+    // numeric control falls back when the input is cleared or zero.
     question_generation_config: {
-      enabled: state.processing.questionGeneration.enabled,
-      question_count: state.processing.questionGeneration.questionCount,
-      custom_instructions: state.processing.questionGeneration.customInstructions,
+      enabled: config.questionGenerationConfig.enabled,
+      question_count: config.questionGenerationConfig.questionCount || 3,
+      custom_instructions: config.questionGenerationConfig.customInstructions,
     },
-    auto_tag_config: {
-      enabled: state.processing.autoTag.enabled,
-      model_id: state.processing.autoTag.modelId,
-      max_tags: state.processing.autoTag.maxTags,
-      skip_if_tagged: state.processing.autoTag.skipIfTagged,
-    },
-    extract_config: {
-      enabled: state.processing.graph.enabled,
-      text: state.processing.graph.text,
-      tags: [...state.processing.graph.tags],
-      nodes: structuredClone(state.processing.graph.nodes),
-      relations: structuredClone(state.processing.graph.relations),
-      custom_instructions: state.processing.graph.customInstructions,
-    },
+    auto_tag_config: { enabled: config.autoTagConfig.enabled, model_id: config.autoTagConfig.modelId, max_tags: config.autoTagConfig.maxTags || 3, skip_if_tagged: config.autoTagConfig.skipIfTagged },
+    extract_config: { enabled: config.nodeExtractConfig.enabled, text: config.nodeExtractConfig.text, tags: config.nodeExtractConfig.tags, nodes: config.nodeExtractConfig.nodes, relations: config.nodeExtractConfig.relations, custom_instructions: config.nodeExtractConfig.customInstructions },
+    ...(config.storageBackendId ? { storage_backend_id: config.storageBackendId } : {}),
+    storage_provider_config: { provider: config.storageProvider || 'local' },
+    storage_config: { provider: config.storageProvider || 'local' },
+    ...(config.vectorStoreId ? { vector_store_id: config.vectorStoreId } : {}),
+  };
+  if (type === 'faq') payload.faq_config = { index_mode: config.faqConfig.indexMode, question_index_mode: config.faqConfig.questionIndexMode };
+  else {
+    payload.indexing_strategy = { vector_enabled: config.indexingStrategy.vectorEnabled, keyword_enabled: config.indexingStrategy.keywordEnabled, wiki_enabled: config.indexingStrategy.wikiEnabled, graph_enabled: config.indexingStrategy.graphEnabled };
+    payload.wiki_config = { synthesis_model_id: config.wikiConfig.synthesisModelId, max_pages_per_ingest: config.wikiConfig.maxPagesPerIngest, extraction_granularity: config.wikiConfig.extractionGranularity, content_instructions: config.wikiConfig.contentInstructions, extraction_instructions: config.wikiConfig.extractionInstructions };
   }
+  return payload;
 }
-
-export function buildKnowledgeBaseEditorPayload(
-  state: KnowledgeBaseEditorConfig,
-  mode: 'create' | 'update' = 'create',
-): ApiRecord {
-  const common = buildCommonPayload(state)
-  const indexing_strategy = {
-    vector_enabled: state.indexing.vectorEnabled,
-    keyword_enabled: state.indexing.keywordEnabled,
-    wiki_enabled: state.indexing.wikiEnabled,
-    graph_enabled: state.indexing.graphEnabled,
-  }
-  const faq_config = {
-    index_mode: state.faq.indexMode,
-    question_index_mode: state.faq.questionIndexMode,
-  }
-  const wiki_config = {
-    synthesis_model_id: state.processing.wiki.synthesisModelId,
-    max_pages_per_ingest: state.processing.wiki.maxPagesPerIngest,
-    extraction_granularity: state.processing.wiki.extractionGranularity,
-    content_instructions: state.processing.wiki.contentInstructions,
-    extraction_instructions: state.processing.wiki.extractionInstructions,
-  }
-
-  if (mode === 'create') {
-    return {
-      ...common,
-      ...(state.type === 'faq' ? { faq_config } : { wiki_config, indexing_strategy }),
-    }
-  }
-
-  return {
-    base: {
-      name: state.name,
-      description: state.description,
-      config: state.type === 'faq' ? { faq_config } : { wiki_config, indexing_strategy, auto_tag_config: common.auto_tag_config },
-    },
-    config: {
-      embedding_model_id: common.embedding_model_id,
-      summary_model_id: common.summary_model_id,
-      chunking_config: common.chunking_config,
-      vlm_config: common.vlm_config,
-      asr_config: common.asr_config,
-      storage_provider_config: common.storage_provider_config,
-      storage_config: common.storage_config,
-      question_generation_config: common.question_generation_config,
-      auto_tag_config: common.auto_tag_config,
-      extract_config: common.extract_config,
-    },
-  }
-}
-
-// Short aliases make the pure seam convenient for callers that call the object a state.
-export const defaultKnowledgeBaseEditorState = defaultKnowledgeBaseEditorConfig
-export const normalizeKnowledgeBaseEditorState = hydrateKnowledgeBaseEditorConfig
-export const buildKnowledgeBasePayload = buildKnowledgeBaseEditorPayload
-
-export type KnowledgeBaseEditorState = KnowledgeBaseEditorConfig

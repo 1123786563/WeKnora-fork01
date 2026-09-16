@@ -1,0 +1,111 @@
+/*
+ * 语义化设计令牌（Tailwind v4 @theme）— Web UI 唯一颜色/圆角/字体事实来源。
+ * 色值 1:1 继承自既有 wk-* CSS 与 Vue parity 主题（tdesign 系绿色控件主色 +
+ * WeKnora 蓝品牌色），迁移期逐批以令牌 utilities 替换散落的硬编码色值。
+ * 暗色主题：现网仅 theme-mode 属性 + color-scheme（React CSS 无 dark 变体，
+ * 与 vue-react-parity 账本一致）；此处预留 --color-* 变量便于后续追加覆盖。
+ */
+@theme {
+  /* 字体 */
+  /* Vue useFont.ts is authoritative for the default and user-selected stack.
+     Keep the runtime preference hook so every shared shadcn primitive follows
+     the same font as the application shell. */
+  --font-sans: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  --font-mono: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /* 圆角（wk 控件 6px / 卡片 8px） */
+  --radius-control: 6px;
+  --radius-field: 3px;
+  --radius-card: 8px;
+  --radius-dialog: 10px;
+  --radius-large: 12px;
+  --radius-pill: 999px;
+
+  /*
+   * Vue/TDesign-compatible aliases. The generated design-token stylesheet is
+   * the runtime light/dark source for these values; keeping the aliases in
+   * @theme makes the same values available to Tailwind utilities and to
+   * arbitrary-value consumers such as var(--color-brand).
+   */
+  --color-brand: var(--wk-color-brand, #07c05f);
+  --color-brand-hover: var(--wk-color-brand-hover, #08dd6e);
+  --color-brand-active: var(--wk-color-brand-active, #06b04d);
+  --color-brand-light: var(--wk-color-brand-light, #e9f8ec);
+  --color-text: var(--wk-color-text, #000000e6);
+  --color-text-secondary: var(--wk-color-text-secondary, #00000099);
+  --color-text-placeholder: var(--wk-color-text-placeholder, #00000066);
+  --color-text-disabled: var(--wk-color-text-disabled, #00000042);
+  --color-page: var(--wk-color-page, #eeeeee);
+  --color-surface-hover: var(--wk-color-surface-hover, #f3f3f3);
+  --color-surface-active: var(--wk-color-surface-active, #e7e7e7);
+  --color-settings-panel: var(--wk-color-settings-panel, #f9f9f9);
+  --color-border: var(--wk-color-border, #dcdcdc);
+  --color-component: var(--wk-color-component, #e7e7e7);
+  --color-error: var(--wk-color-error, #e34d59);
+  --color-error-light: var(--wk-color-error-light, #fdecee);
+  --color-warning-vue: var(--wk-color-warning, #ed7b2f);
+  --color-success-vue: var(--wk-color-success, #00a870);
+
+  /* 表面 */
+  --color-canvas: #f7f9fc;        /* 应用底色 */
+  --color-surface: #ffffff;       /* 卡片/面板 */
+  --color-surface-alt: #f2f4f8;   /* 次级填充 #f3f3f3/#eef1f5/#f4f6fa */
+  --color-surface-muted: #f3f3f3; /* Vue td-bg-color-secondarycontainer */
+  --color-surface-wash: #eff4ff;  /* 蓝色浅底（选中/提示） */
+
+  /* 文本 */
+  --color-ink: #172033;           /* 主文本 */
+  --color-ink-strong: #101828;    /* 强标题 */
+  --color-muted: #66758b;         /* 次文本 */
+  --color-muted-strong: #506078;  /* 状态文本 */
+  --color-faint: #98a2b8;         /* 占位/三级 */
+
+  /* 线与描边 */
+  --color-line: #dce3ed;          /* 通用边框 */
+  --color-line-soft: #edf0f5;     /* 细分隔线 */
+  --color-line-strong: #b8c5d6;   /* 输入描边（蓝灰系） */
+  --color-line-input: #dcdcdc;    /* 输入描边（中性系，Vue 控件） */
+  --color-line-neutral: #e7e7e7;  /* 中性发丝线 */
+  --color-line-subtle: #e4e7ec;   /* 浅描边 */
+  --color-line-control: #cbd5e1;  /* 按钮描边（slate 系） */
+  --color-hover-wash: #f2f5fa;    /* 控件悬停浅底 */
+  --color-track-off: rgb(120 135 155 / 0.35); /* switch 未选中轨道 */
+  --color-track-on-disabled: #8ce0af; /* switch 选中态禁用轨道 */
+  --color-placeholder: #8a8a8a;   /* 输入占位文本 */
+  --color-disabled-bg: #eeeeee;   /* 输入禁用底色 */
+
+  /* 品牌（WeKnora 蓝系） */
+  --color-primary: #2e6de6;
+  --color-primary-strong: #0052d9;
+  --color-primary-deep: #1849a9;
+  --color-primary-soft: #245a9b;
+
+  /* 控件强调（Vue tdesign 绿） */
+  --color-accent: #07c05f;
+  --color-accent-strong: #0a8f4c;
+  --color-accent-hover: #08dd6e;
+  --color-accent-active: #06b04d;
+  --color-accent-deep: #00a870;
+  --color-accent-soft: rgba(7, 192, 95, 0.12);
+  --color-accent-wash: rgba(7, 192, 95, 0.08);
+
+  /* 语义状态 */
+  --color-success: #00a870;
+  --color-warning: #e37318;
+  --color-warning-strong: #b54708;
+  --color-danger: #b42318;
+  --color-success-text: #137333;  /* wk 族成功文本 */
+  --color-warning-text: #9a6700;  /* wk 族警告文本 */
+  --color-danger-strong: #d54941;
+  --color-info-line: #b3ccf5;
+  --color-success-line: #8ce0af;
+  --color-warning-line: #fedf89;
+  --color-warning-wash: #fffaeb;
+  --color-danger-line: #f1b8b3;
+  --color-danger-wash: #fdecea;
+
+  /* Shared primitive effects, matching Vue TDesign defaults. */
+  --color-overlay: rgb(23 32 51 / 45%);
+  --shadow-panel: 0 20px 60px rgb(23 32 51 / 20%);
+  --shadow-popover: 0 8px 24px rgb(15 23 42 / 12%);
+}

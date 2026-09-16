@@ -1,15 +1,22 @@
 packages:
+  - services/paseo-adapter
   - packages/contracts
   - packages/api-client
   - packages/domain
   - packages/core
   - packages/ui
+  - packages/design-tokens
+  - packages/i18n
   - packages/views
   - apps/web
+  - apps/embed
+  - apps/desktop
   - apps/mobile
   - packages/happy-wire
 
 onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
   - '@shopify/react-native-skia'
   - '@more-tech/react-native-libsodium'
 

@@ -24,7 +24,7 @@ export function parseIntegrationRoute(input: string): IntegrationRoute | null {
   const url = new URL(input, 'http://weknora.local');
   if (url.pathname !== '/platform/integrations' && url.pathname !== '/platform/settings') return null;
   const tab = tabFromSection(url.searchParams.get('section'), url.searchParams.get('tab'));
-  return tab === null ? null : { tab, agentId: url.searchParams.get('agentId') };
+  return tab === null ? null : { tab, agentId: url.searchParams.get('agentId') ?? url.searchParams.get('agent_id') };
 }
 
 export function buildIntegrationPath(tab: IntegrationTab, agentId?: string): string {

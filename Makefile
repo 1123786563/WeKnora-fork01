@@ -132,9 +132,9 @@ docker-build-docreader:
 # Build frontend Docker image (multi-stage: npm runs inside the builder stage)
 docker-build-frontend:
 	@eval $$(./scripts/get_version.sh env); \
-	docker build --platform $(PLATFORM) \
+		docker build --platform $(PLATFORM) \
 		--build-arg VITE_FRONTEND_COMMIT="$$COMMIT_ID" \
-		-f frontend/Dockerfile -t wechatopenai/weknora-ui:latest frontend/
+		-f frontend/Dockerfile -t wechatopenai/weknora-ui:latest .
 
 # Build all Docker images
 docker-build-all: docker-build-app docker-build-docreader docker-build-frontend
@@ -265,7 +265,11 @@ build-prod:
 # Build Lite version (single binary, SQLite + in-memory queue)
 # 会先构建前端到 web/，再构建 Go 二进制；SKIP_FRONTEND=1 可跳过前端
 build-lite:
-	@if [ -f frontend/package.json ] && [ "$${SKIP_FRONTEND:-}" != "1" ]; then \
+	@if [ "$${REACT_FRONTEND:-0}" = "1" ]; then \
+			echo ">> Building React Web/Embed renderer for Lite..."; \
+			pnpm install --frozen-lockfile && bash ./scripts/build_react_web_bundle.sh && \
+			rm -rf web && cp -r dist/react-web/web web; \
+	elif [ -f frontend/package.json ] && [ "$${SKIP_FRONTEND:-}" != "1" ]; then \
 		echo ">> Building frontend for Lite..."; \
 		(cd frontend && npm ci --prefer-offline && npm run build) && \
 		rm -rf web && cp -r frontend/dist web; \
@@ -348,5 +352,3 @@ dev-app:
 
 dev-frontend:
 	./scripts/dev.sh frontend
-
-

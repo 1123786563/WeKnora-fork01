@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import * as nodeModule from 'node:module';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Alert, Button, Dialog, Input, Menu, Select, Sheet, Status, Tabs } from './index.tsx';
 
 const styles = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
 const compactStyles = styles.replace(/\s*([{}:;])\s*/g, '$1');
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+const { Alert, Button, Dialog, Input, Menu, MenuContent, MenuItem, Select, Sheet, Status, Tabs, TabsContent, TabsList, TabsTrigger } = await import('./index.tsx');
 
 test('Button and Input expose Vue-sized semantic states', () => {
   const markup = renderToStaticMarkup(<><Button variant="primary" size="small" loading>Save</Button><Input invalid aria-label="Name" /></>);
@@ -47,23 +50,24 @@ test('shared controls expose Vue hover, active, disabled, and status surfaces', 
   assert.match(compactStyles, /\.wk-button-danger:hover:not\(:disabled\)\{[^}]*background:var\(--wk-color-error-light/);
   assert.match(compactStyles, /\.wk-input:hover:not\(:disabled\)\{[^}]*border-color:var\(--wk-color-text-secondary/);
   assert.match(compactStyles, /\.wk-input:disabled\{[^}]*color:var\(--wk-color-text-disabled/);
-  assert.match(compactStyles, /\.wk-status-error\{[^}]*background:var\(--wk-color-error-light/);
-  assert.match(compactStyles, /\.wk-status-success\{[^}]*background:var\(--wk-color-success-light/);
 });
 
 test('overlay and menu primitives render portal-ready accessible contracts', () => {
   const markup = renderToStaticMarkup(<>
     <Dialog open title="Confirm"><p>Body</p></Dialog>
     <Sheet open side="right" title="Settings"><p>Body</p></Sheet>
-    <Menu open label="More"><Menu.Item>Rename</Menu.Item></Menu>
-    <Select value="a" aria-label="Choice"><Select.Option value="a">A</Select.Option></Select>
-    <Tabs value="one"><Tabs.List><Tabs.Trigger value="one">One</Tabs.Trigger></Tabs.List><Tabs.Content value="one">Content</Tabs.Content></Tabs>
+    <Menu open><MenuContent><MenuItem>Rename</MenuItem></MenuContent></Menu>
+    <Select value="a" aria-label="Choice"><option value="a">A</option></Select>
+    <Tabs value="one"><TabsList><TabsTrigger value="one">One</TabsTrigger></TabsList><TabsContent value="one">Content</TabsContent></Tabs>
     <Alert tone="error">Problem</Alert>
   </>);
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /aria-modal="true"/);
   assert.match(markup, /data-side="right"/);
-  assert.match(markup, /role="menu"/);
+  assert.match(markup, /z-\[var\(--wk-overlay-settings-z\)\]/);
+  assert.match(markup, /z-\[calc\(var\(--wk-overlay-settings-z\)\+1\)\]/);
+  // Radix menu content is intentionally portalled and therefore omitted by
+  // React's static SSR renderer; its DOM contract is covered by interaction.test.tsx.
   assert.match(markup, /role="combobox"/);
   assert.match(markup, /role="tablist"/);
   assert.match(markup, /role="tab" aria-selected="true"/);
@@ -76,7 +80,7 @@ test('Dialog gives each SSR instance a unique labelled title', () => {
     <Dialog open title="Second">Two</Dialog>
   </>);
   const labelledBy = [...markup.matchAll(/aria-labelledby="([^"]+)"/g)].map(match => match[1]);
-  const titleIds = [...markup.matchAll(/<h2 id="([^"]+)">/g)].map(match => match[1]);
+  const titleIds = [...markup.matchAll(/<h2 id="([^"]+)"/g)].map(match => match[1]);
 
   assert.equal(labelledBy.length, 2);
   assert.equal(titleIds.length, 2);
@@ -87,14 +91,24 @@ test('Dialog gives each SSR instance a unique labelled title', () => {
 test('Sheet gives its title an accessible labelled relationship', () => {
   const markup = renderToStaticMarkup(<Sheet open title="Settings">Body</Sheet>);
   const labelledBy = markup.match(/aria-labelledby="([^"]+)"/u)?.[1];
-  const titleId = markup.match(/<h2 id="([^"]+)">Settings<\/h2>/u)?.[1];
+  const titleId = markup.match(/<h2 id="([^"]+)"[^>]*>Settings<\/h2>/u)?.[1];
   assert.ok(labelledBy);
   assert.equal(labelledBy, titleId);
 });
 
 test('Status renders the semantic live-region contract for each tone', () => {
   const markup = renderToStaticMarkup(<><Status>Loading</Status><Status tone="success">Saved</Status><Status tone="error">Failed</Status></>);
-  assert.match(markup, /class="wk-status wk-status-neutral" role="status"/);
-  assert.match(markup, /class="wk-status wk-status-success" role="status"/);
-  assert.match(markup, /class="wk-status wk-status-error" role="alert"/);
+  assert.match(markup, /Loading.{0,200}role="status"/s);
+  assert.match(markup, /Saved.{0,200}role="status"/s);
+  assert.match(markup, /Failed.{0,200}role="alert"/s);
+});
+
+test('shared overlay primitives retain Vue-derived style hooks', () => {
+  const markup = renderToStaticMarkup(<>
+    <Dialog open title="Confirm">Body</Dialog>
+    <Sheet open side="right">Body</Sheet>
+  </>);
+  assert.match(markup, /class="wk-dialog/);
+  assert.match(markup, /data-side="right"/);
+  assert.match(markup, /shadow-\[0_20px_60px_rgba\(23,32,51,0\.2\)\]/);
 });

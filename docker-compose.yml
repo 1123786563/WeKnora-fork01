@@ -6,7 +6,8 @@ services:
     # VITE_FRONTEND_COMMIT: start_all.sh / make docker-build-frontend inject git;
     # otherwise pass it explicitly or the system-info page shows "unknown".
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_FRONTEND_COMMIT: ${VITE_FRONTEND_COMMIT:-unknown}
         NPM_REGISTRY: ${NPM_REGISTRY:-}

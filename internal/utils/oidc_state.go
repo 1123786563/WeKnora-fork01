@@ -19,10 +19,11 @@ const oidcStateMaxAge = 10 * time.Minute
 // OIDCStatePayload is the signed OIDC authorization state carried in the
 // redirect URL and validated on callback.
 type OIDCStatePayload struct {
-	Nonce         string `json:"nonce"`
-	RedirectURI   string `json:"redirect_uri,omitempty"`
-	CodeChallenge string `json:"code_challenge,omitempty"`
-	IssuedAt      int64  `json:"iat"`
+	Nonce               string `json:"nonce"`
+	RedirectURI         string `json:"redirect_uri,omitempty"`
+	FrontendRedirectURI string `json:"frontend_redirect_uri,omitempty"`
+	CodeChallenge       string `json:"code_challenge,omitempty"`
+	IssuedAt            int64  `json:"iat"`
 }
 
 var (
@@ -104,4 +105,27 @@ func VerifyOIDCState(raw string) (*OIDCStatePayload, error) {
 		return nil, errors.New("oidc state expired or invalid timestamp")
 	}
 	return &payload, nil
+}
+
+// OIDCCodeChallenge returns the RFC 7636 S256 challenge for a PKCE verifier.
+func OIDCCodeChallenge(verifier string) (string, error) {
+	verifier = strings.TrimSpace(verifier)
+	if len(verifier) < 43 || len(verifier) > 128 {
+		return "", errors.New("oidc code_verifier must be between 43 and 128 characters")
+	}
+	digest := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(digest[:]), nil
+}
+
+// VerifyOIDCCodeChallenge confirms that a native callback owns the PKCE
+// verifier bound to its signed authorization state.
+func VerifyOIDCCodeChallenge(verifier, challenge string) error {
+	expected, err := OIDCCodeChallenge(verifier)
+	if err != nil {
+		return err
+	}
+	if !hmac.Equal([]byte(expected), []byte(strings.TrimSpace(challenge))) {
+		return errors.New("oidc code_verifier does not match code_challenge")
+	}
+	return nil
 }

@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as nodeModule from 'node:module';
 
-import {
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+
+const {
   getKnowledgeSettingsSections,
   getKnowledgeBaseDataSourcesPath,
   getKnowledgeBaseActivityPath,
   getKnowledgeBaseSharesPath,
   summarizeKnowledgeSettings,
-  type KnowledgeSettingsInput,
-} from './KnowledgeSettingsPage.tsx';
+  knowledgeSettingsCanEdit,
+} = await import('./KnowledgeSettingsPage.tsx');
+type KnowledgeSettingsInput = import('./KnowledgeSettingsPage.tsx').KnowledgeSettingsInput;
 
 const documentKnowledgeBase: KnowledgeSettingsInput = {
   id: 'kb-1',
@@ -84,4 +89,11 @@ test('surfaces unavailable vector bindings and uses the existing activity endpoi
     label: 'Search vectors',
     detail: 'Check the global vector-store settings',
   });
+});
+
+test('knowledge settings editing follows Vue owner/admin capability', () => {
+  assert.equal(knowledgeSettingsCanEdit('owner'), true);
+  assert.equal(knowledgeSettingsCanEdit('admin'), true);
+  assert.equal(knowledgeSettingsCanEdit('viewer'), false);
+  assert.equal(knowledgeSettingsCanEdit(undefined), false);
 });

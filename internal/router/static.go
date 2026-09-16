@@ -22,6 +22,7 @@ func serveFrontendStatic(r *gin.Engine) {
 	}
 	absDir, _ := filepath.Abs(webDir)
 	indexPath := filepath.Join(absDir, "index.html")
+	embedIndexPath := filepath.Join(absDir, "embed.html")
 	if _, err := os.Stat(indexPath); err != nil {
 		return
 	}
@@ -41,6 +42,17 @@ func serveFrontendStatic(r *gin.Engine) {
 			strings.HasPrefix(path, "/r/") || path == "/files" {
 			c.Next()
 			return
+		}
+		// React's isolated Embed entry is published as web/embed.html. Keep
+		// channel deep links separate from the main SPA fallback so Lite has
+		// the same entrypoint boundary as the nginx frontend image.
+		if strings.HasPrefix(path, "/embed/") {
+			if _, err := os.Stat(embedIndexPath); err == nil {
+				setFrontendCacheHeaders(c.Writer, "/embed.html")
+				c.File(embedIndexPath)
+				c.Abort()
+				return
+			}
 		}
 		fullPath := filepath.Join(absDir, path)
 		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {

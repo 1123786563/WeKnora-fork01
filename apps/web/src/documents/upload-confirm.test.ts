@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getUploadConfirmButtonOrder, getUploadConfirmDefaultSection, getUploadConfirmSections, getUploadConfirmSourceItems, isUploadConfirmDismissible, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
+import { getUploadConfirmButtonOrder, getUploadConfirmDefaultSection, getUploadConfirmSections, getUploadConfirmSourceItems, isUploadConfirmDismissible, requestUploadConfirmClose, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
 
 const validBase = {
   mode: 'file' as const,
@@ -13,12 +13,7 @@ const validBase = {
 };
 
 test('routes an image validation failure to multimodal section', () => {
-  const result = validateUploadConfirm({
-    ...validBase,
-    files: [{ name: 'diagram.png' }],
-    multimodalEnabled: false,
-  });
-
+  const result = validateUploadConfirm({ ...validBase, files: [{ name: 'diagram.png' }] });
   assert.equal(result.valid, false);
   assert.deepEqual(result.issues, ['multimodal']);
   assert.equal(result.firstIssueSection, 'multimodal');
@@ -30,12 +25,7 @@ test('keeps parser as the initial section for reparse mode', () => {
 });
 
 test('does not treat an enabled media option without matching media as a blocking issue', () => {
-  const result = validateUploadConfirm({
-    ...validBase,
-    multimodalEnabled: true,
-    multimodalModelId: '',
-  });
-
+  const result = validateUploadConfirm({ ...validBase, multimodalEnabled: true });
   assert.equal(result.valid, true);
   assert.deepEqual(result.issues, [] satisfies UploadConfirmSection[]);
 });
@@ -52,22 +42,13 @@ test('keeps the Vue section set and omits tags while reparsing', () => {
 });
 
 test('reports every media setup issue in Vue navigation order', () => {
-  const result = validateUploadConfirm({
-    ...validBase,
-    files: [{ name: 'scan.png' }, { name: 'meeting.m4a' }],
-  });
-
+  const result = validateUploadConfirm({ ...validBase, files: [{ name: 'scan.png' }, { name: 'meeting.m4a' }] });
   assert.deepEqual(result.issues, ['multimodal', 'asr']);
   assert.equal(result.firstIssueSection, 'multimodal');
 });
 
 test('detects media in URL paths without treating query strings as extensions', () => {
-  const result = validateUploadConfirm({
-    ...validBase,
-    files: [],
-    urls: ['https://example.test/recording.M4A?download=1'],
-  });
-
+  const result = validateUploadConfirm({ ...validBase, files: [], urls: ['https://example.test/recording.M4A?download=1'] });
   assert.deepEqual(result.issues, ['asr']);
   assert.equal(result.valid, false);
 });
@@ -94,4 +75,14 @@ test('keeps Vue source preview order and exposes removable source items', () => 
 
 test('keeps cancel before confirm in every Vue dialog mode', () => {
   assert.deepEqual(getUploadConfirmButtonOrder(), ['cancel', 'confirm']);
+});
+
+test('keeps every close entry point closed while submission is in flight', () => {
+  let cancellations = 0;
+  requestUploadConfirmClose(true, () => { cancellations += 1; });
+  assert.equal(cancellations, 0);
+  requestUploadConfirmClose(false, () => { cancellations += 1; });
+  assert.equal(cancellations, 1);
+  assert.equal(isUploadConfirmDismissible(false), true);
+  assert.equal(isUploadConfirmDismissible(true), false);
 });

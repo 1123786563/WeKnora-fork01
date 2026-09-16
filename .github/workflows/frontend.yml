@@ -5,12 +5,28 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "apps/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - "scripts/build_frontend_dist.sh"
+      - "scripts/build_react_web_bundle.sh"
+      - "scripts/check-react-boundaries.mjs"
+      - ".dockerignore"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
       - "frontend/**"
+      - "apps/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - "scripts/build_frontend_dist.sh"
+      - "scripts/build_react_web_bundle.sh"
+      - "scripts/check-react-boundaries.mjs"
+      - ".dockerignore"
       - ".github/workflows/frontend.yml"
   workflow_dispatch:
 
@@ -67,4 +83,41 @@ jobs:
             -f frontend/Dockerfile \
             --build-arg VITE_FRONTEND_COMMIT="${GITHUB_SHA::7}" \
             -t weknora-ui:ci \
-            frontend/
+            .
+
+  react-workspace:
+    name: React shared, Web, Embed, and Desktop checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install React workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check React boundaries
+        run: node scripts/check-react-boundaries.mjs
+
+      - name: Test shared packages
+        run: pnpm test:shared
+
+      - name: Type-check shared packages
+        run: pnpm typecheck:shared
+
+      - name: Test and build Web
+        run: pnpm test:web && pnpm typecheck:web && pnpm build:web
+
+      - name: Test, type-check, and build Embed
+        run: pnpm test:embed && pnpm typecheck:embed && pnpm build:embed
+
+      - name: Test, type-check, and build Desktop renderer
+        run: pnpm test:desktop && pnpm typecheck:desktop && pnpm build:desktop-renderer

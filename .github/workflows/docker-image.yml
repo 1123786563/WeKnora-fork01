@@ -47,7 +47,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           file: frontend/Dockerfile
-          context: ./frontend
+          context: .
           build-args: |
             VITE_FRONTEND_COMMIT=${{ steps.version.outputs.commit_id }}
           labels: ${{ steps.meta.outputs.labels }}

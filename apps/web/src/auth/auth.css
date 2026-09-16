@@ -1,1 +1,18 @@
-.auth-page,.onboarding-page{box-sizing:border-box;min-height:100vh;background:linear-gradient(135deg,#022c22,#047857 45%,#34d399);display:grid;place-items:center;padding:2rem 1.25rem;position:relative;overflow:hidden}.auth-page{grid-template-columns:minmax(0,1fr) minmax(320px,440px);gap:clamp(2rem,8vw,8rem);padding-inline:clamp(1.25rem,7vw,7rem)}.auth-glow{position:absolute;inset:0;background:radial-gradient(circle at 18% 50%,#fff2 0,transparent 38%),radial-gradient(circle at 85% 20%,#fff1,transparent 30%);pointer-events:none}.auth-showcase{color:#fff;position:relative;z-index:1;max-width:35rem}.auth-showcase p:first-child{font-size:1.5rem;font-weight:700;letter-spacing:.08em}.auth-showcase h2{font-size:clamp(2.5rem,6vw,5rem);line-height:1.05;margin:1rem 0}.auth-card,.workspace-card{box-sizing:border-box;width:min(440px,100%);padding:clamp(1.5rem,5vw,2.75rem);border-radius:20px;background:#fffffff2;box-shadow:0 24px 70px #022c2244;position:relative;z-index:1}.auth-header{text-align:center}.auth-header h1,.workspace-card h1{margin:.25rem 0;font-size:1.7rem}.auth-header p,.auth-description{color:#66758b}.auth-eyebrow{color:#047857;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.auth-hint{font-size:.85rem}.auth-card form{display:grid;gap:1rem}.auth-field{display:grid;gap:.35rem;color:#172033;font-size:.9rem;font-weight:650}.auth-field input{box-sizing:border-box;width:100%;border:1px solid #b8c5d6;border-radius:8px;padding:.75rem .8rem;font:inherit;font-weight:400;background:#fff}.auth-field input:focus{outline:2px solid #34d399;outline-offset:1px}.auth-field small{color:#b42318;font-weight:500}.auth-card .wk-button,.workspace-card .wk-button{width:100%;min-height:2.75rem}.auth-links{display:flex;justify-content:center;margin-top:1rem}.auth-links .wk-button,.workspace-card> .wk-button:last-child{border:0;background:transparent;color:#047857}.workspace-card{text-align:center}.workspace-mark{width:64px;height:64px;margin:0 auto 1.25rem;display:grid;place-items:center;border-radius:18px;color:#047857;background:#d1fae5;font-size:2rem;font-weight:800}.workspace-actions{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin:1.25rem 0}.auth-error{display:grid;gap:.5rem;margin-bottom:1rem}.onboarding-page{background:radial-gradient(circle at 20% 10%,#34d39933,transparent 38%),#f7f9fc}.onboarding-page .workspace-card{background:#fff}.onboarding-page .auth-description{line-height:1.7}.wk-status{line-height:1.5}.auth-card .wk-status{margin:0 0 1rem}@media(max-width:760px){.auth-page{grid-template-columns:1fr;padding-block:1.5rem}.auth-showcase{text-align:center}.auth-showcase h2{font-size:2.5rem;margin:.5rem 0}.workspace-actions{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+/* 保留说明（Tailwind 迁移）：登录页其余样式已全部迁移为 LoginPage.tsx 内的
+   Tailwind utilities；仅以下复杂动画 keyframes 无法用 utilities 表达，按约定保留。
+   nodePulse — 装饰背景知识节点呼吸动画；lineFlow — 装饰背景连线流动动画。 */
+@keyframes nodePulse { 0%, 100% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.08); opacity: .9; } }
+@keyframes lineFlow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 18; } }
+
+/* Vue's t-input exposes a 24px inner input inside a 40px bordered shell. */
+.auth-input-shell { box-sizing: border-box; }
+
+/* Keep the project Input wrapper's native control identical to Vue's t-input__inner. */
+.auth-input-shell > input.auth-input {
+  box-sizing: border-box;
+  padding: 0;
+  border: 0 none;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.auth-language-control .link-text { line-height: 1; }

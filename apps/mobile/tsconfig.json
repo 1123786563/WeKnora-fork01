@@ -2,9 +2,13 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["./sources/*"] }
+    "paths": {
+      "@/*": ["./sources/*", "./src/*"],
+      "esbuild": ["../web/node_modules/esbuild"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

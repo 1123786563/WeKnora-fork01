@@ -36,3 +36,29 @@ test('deletes a knowledge base and preserves non-success responses as errors', a
   assert.equal(requests[0]?.method, 'DELETE');
   await assert.rejects(client.knowledgeBases.remove('kb-1'), (error: unknown) => error instanceof Error && error.message.includes('in use'));
 });
+
+test('toggles the pin state through PUT /knowledge-bases/:id/pin', async () => {
+  const requests: Request[] = [];
+  const transport = createJsonTransport(async (input, init) => {
+    requests.push(new Request(input, init));
+    return response(200, { success: true, data: { id: 'kb-1', is_pinned: true } });
+  });
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+  const result = await client.knowledgeBases.togglePin('kb-1');
+  assert.equal(requests[0]?.method, 'PUT');
+  assert.equal(requests[0]?.url, 'https://api.example.test/api/v1/knowledge-bases/kb-1/pin');
+  assert.equal(result.is_pinned, true);
+});
+
+test('duplicates a knowledge base through POST /knowledge-bases/:id/duplicate', async () => {
+  const requests: Request[] = [];
+  const transport = createJsonTransport(async (input, init) => {
+    requests.push(new Request(input, init));
+    return response(200, { success: true, data: { target_id: 'kb-copy' } });
+  });
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+  const result = await client.knowledgeBases.duplicate('kb-1');
+  assert.equal(requests[0]?.method, 'POST');
+  assert.equal(requests[0]?.url, 'https://api.example.test/api/v1/knowledge-bases/kb-1/duplicate');
+  assert.equal(result.target_id, 'kb-copy');
+});

@@ -1,0 +1,42 @@
+/* SandboxSettings panel styles ported from frontend/src/views/settings/SandboxSettings.vue.
+   Everything else now lives as Tailwind utilities in SandboxSettingsPanel.tsx. Only the rules
+   Tailwind cannot express 1:1 stay here:
+
+   1. details/summary sub-selector rules (.wk-sandbox-hint > summary, ::-webkit-details-marker,
+      [open] > div): child/state selectors of the native disclosure element, including the
+      webkit marker reset — kept as scoped CSS instead of fragile arbitrary variants.
+   2. @keyframes wk-sandbox-inventory-enter + the prefers-reduced-motion kill switch: the
+      drawer element references the keyframes via animate-[wk-sandbox-inventory-enter_.18s_ease-out];
+      the reduced-motion override stays unlayered so it beats the layered utility.
+
+   .wk-sandbox-settings/.wk-sandbox-hint remain on the elements as the scope for rule 1, and
+   .wk-sandbox-inventory-overlay/.wk-sandbox-inventory-drawer remain as DOM hooks for the
+   querySelector assertions in SandboxSettingsPanel.test.tsx (unstyled). */
+
+/* Page hint (SandboxSettings.vue:8-19): Vue shows an inline info icon with a
+   hover/click popover — never a native disclosure triangle. */
+.wk-sandbox-settings .wk-sandbox-hint > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--wks-text-secondary, #6b7280);
+  line-height: 1;
+  user-select: none;
+}
+.wk-sandbox-settings .wk-sandbox-hint > summary::-webkit-details-marker { display: none; }
+.wk-sandbox-settings .wk-sandbox-hint[open] > div {
+  position: absolute;
+  z-index: 30;
+  top: 20px;
+  left: -8px;
+  width: 320px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--wks-border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+.wk-sandbox-settings .wk-sandbox-hint[open] > div p { margin: 4px 0; font-size: 12px; }
+
+/* Vue SandboxSettings uses SettingDrawer for live inventory (SandboxSettings.vue:140-206). */
+@keyframes wk-sandbox-inventory-enter { from { transform: translateX(18px); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wk-sandbox-inventory-drawer { animation: none; } }

@@ -199,7 +199,7 @@ build_frontend_image() {
         ${NODE_MAX_OLD_SPACE_SIZE:+--build-arg NODE_MAX_OLD_SPACE_SIZE="$NODE_MAX_OLD_SPACE_SIZE"} \
         -f frontend/Dockerfile \
         -t wechatopenai/weknora-ui:latest \
-        frontend/
+        .
     
     if [ $? -eq 0 ]; then
         log_success "前端镜像构建成功"

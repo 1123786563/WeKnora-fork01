@@ -1,0 +1,18 @@
+{
+  "R043": {
+    "status": "implementing",
+    "gap": "Metadata load/refresh, stale display, generation guard and stale write protection are wired. 2026-09-13: live browser evidence collected (refresh-failure state renders Vue-parity inline error on both apps; evidence/2026-09-13-mcp-live-browser-evidence.md). Remaining: server documentation/tools pagination live evidence, Wails."
+  },
+  "R044": {
+    "status": "implementing",
+    "gap": "Two-step save lifecycle preserves Vue connection-to-tools/usage transition, previous navigation, required final usage instructions, code import, advanced config and custom headers. 2026-09-13: connection-step payload fixed to Vue buildPayload parity (omit description/usage_instructions — live 400 regression verified then fixed) and the extra description field removed. Remaining: exact drawer visuals, step-2 0/16000 counter + AI-generate help copy, browser-native/Wails evidence."
+  },
+  "R045": {
+    "status": "implementing",
+    "gap": "Connection result, tool/resource details, expandable schemas, empty state and per-tool enabled/approval controls render and reuse the shared MCP policy mutation callback. 2026-09-13 live finding: Vue's reachable UI has NO test-connection surface — McpTestResultBody.vue and testMCPService() are orphaned in the Vue baseline; React exposes 测试连接 in the drawer. Deviation decision pending (match Vue reachable surface vs keep extra capability). Failure-state evidence captured on both apps (React result body + Vue inline refresh error)."
+  },
+  "R046": {
+    "status": "implementing",
+    "gap": "Tool policy mutation UI, missing-policy default insertion, stale fail-closed behavior and metadata refresh are wired; paginated directory/search implemented. 2026-09-13: live evidence of unsynced/notSynced states on both apps (shared invalid-host service). Remaining: synced-tools live evidence (needs reachable MCP server), exact Vue presentation, Wails."
+  }
+}

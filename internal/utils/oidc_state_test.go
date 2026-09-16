@@ -48,3 +48,22 @@ func TestVerifyOIDCStateRejectsTamperedPayload(t *testing.T) {
 		t.Fatal("expected tampered state to be rejected")
 	}
 }
+
+func TestOIDCCodeChallengeUsesS256(t *testing.T) {
+	const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+	got, err := OIDCCodeChallenge(verifier)
+	if err != nil {
+		t.Fatalf("OIDCCodeChallenge: %v", err)
+	}
+	if got != challenge {
+		t.Fatalf("challenge = %q, want %q", got, challenge)
+	}
+	if err := VerifyOIDCCodeChallenge(verifier, challenge); err != nil {
+		t.Fatalf("VerifyOIDCCodeChallenge: %v", err)
+	}
+	if err := VerifyOIDCCodeChallenge("wrong-verifier", challenge); err == nil {
+		t.Fatal("wrong verifier was accepted")
+	}
+}

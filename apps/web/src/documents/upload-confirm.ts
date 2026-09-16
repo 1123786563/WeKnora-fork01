@@ -30,9 +30,7 @@ export interface UploadConfirmSourceItem {
   meta: 'File' | 'URL';
 }
 
-
 const uploadConfirmSections: UploadConfirmSection[] = ['tags', 'parser', 'chunking', 'multimodal', 'asr', 'question'];
-
 const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']);
 const audioExtensions = new Set(['mp3', 'wav', 'm4a', 'flac', 'ogg']);
 
@@ -77,6 +75,9 @@ export function getUploadConfirmButtonOrder(): ['cancel', 'confirm'] {
   return ['cancel', 'confirm'];
 }
 
+export function requestUploadConfirmClose(loading: boolean, onCancel: () => void): void {
+  if (isUploadConfirmDismissible(loading)) onCancel();
+}
 
 export function getUploadConfirmDefaultSection(input: UploadConfirmInput): UploadConfirmSection {
   if (input.mode === 'reparse') return 'parser';

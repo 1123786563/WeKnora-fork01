@@ -12,13 +12,17 @@ import (
 // versionedSQLiteTables is the set of tables that SQLite migrations must
 // create to stay in sync with the versioned (PostgreSQL) migrations:
 // 000041 task queue, 000053 system settings, 000055 processing spans,
-// 000063 knowledge multi-tags.
+// 000063 knowledge multi-tags, and 000086-000090 skill storage/catalog.
 var versionedSQLiteTables = []string{
 	"task_pending_ops",
 	"task_dead_letters",
 	"system_settings",
 	"knowledge_processing_spans",
 	"knowledge_tag_relations",
+	"tenant_skills",
+	"tenant_skill_snapshots",
+	"tenant_user_env_vars",
+	"tenant_skill_catalog",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -32,6 +36,10 @@ var versionedSQLiteColumns = map[string][]string{
 	"embed_channels":     {"allow_memory"},                   // 000060
 	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
 	"mcp_tool_approvals": {"enabled"},                        // 000091
+	"tenant_skills": {
+		"catalog_id", "install_session_id", "install_message_id", "envs",
+	}, // 000086-000090
+	"tenant_skill_snapshots": {"planned_name"}, // 000086, 000088
 }
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
@@ -71,6 +79,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 	assertSQLiteShareLinkInvitationsWork(t, db)
 	assertSQLiteMCPOAuthPrincipalUpsertWorks(t, db)
+	assertSQLiteSkillStorageWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
 }
@@ -245,6 +254,46 @@ func assertSQLiteMCPOAuthPrincipalUpsertWorks(t *testing.T, db *sql.DB) {
 		"SELECT COUNT(*) FROM mcp_oauth_tokens WHERE tenant_id = 1 AND service_id = 'svc-migration-1'",
 	).Scan(&rowCount))
 	require.Equal(t, 1, rowCount)
+}
+
+func assertSQLiteSkillStorageWorks(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec(
+		"INSERT INTO tenant_skill_catalog (id, tenant_id, name, version, description) VALUES (?, 1, ?, ?, ?)",
+		"catalog-migration-1", "csv-tool", "1.0.0", "CSV helper",
+	)
+	require.NoError(t, err)
+	_, err = db.Exec(
+		"INSERT INTO tenant_skills (id, tenant_id, sandbox_config_id, catalog_id, name, status) VALUES (?, 1, ?, ?, ?, ?)",
+		"skill-migration-1", "config-migration-1", "catalog-migration-1", "csv-tool", "ready",
+	)
+	require.NoError(t, err)
+	_, err = db.Exec(
+		"INSERT INTO tenant_skill_snapshots (id, tenant_id, sandbox_config_id, skill_id, trigger, state) VALUES (?, 1, ?, ?, ?, ?)",
+		"snapshot-migration-1", "config-migration-1", "skill-migration-1", "install", "active",
+	)
+	require.NoError(t, err)
+	_, err = db.Exec(
+		"INSERT INTO tenant_user_env_vars (id, tenant_id, principal_type, principal_id, sandbox_config_id, name, value) VALUES (?, 1, ?, ?, ?, ?, ?)",
+		"env-migration-1", "web_user", "user-migration-1", "config-migration-1", "API_KEY", "encrypted-value",
+	)
+	require.NoError(t, err)
+
+	var count int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM tenant_skill_catalog WHERE id = ?", "catalog-migration-1").Scan(&count))
+	require.Equal(t, 1, count)
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM tenant_skills WHERE catalog_id = ?", "catalog-migration-1").Scan(&count))
+	require.Equal(t, 1, count)
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM tenant_skill_snapshots WHERE skill_id = ?", "skill-migration-1").Scan(&count))
+	require.Equal(t, 1, count)
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM tenant_user_env_vars WHERE name = ?", "API_KEY").Scan(&count))
+	require.Equal(t, 1, count)
+
+	_, err = db.Exec(
+		"INSERT INTO tenant_skills (id, tenant_id, sandbox_config_id, catalog_id, name, status) VALUES (?, 1, ?, ?, ?, ?)",
+		"skill-migration-duplicate", "config-migration-1", "catalog-migration-1", "csv-tool", "ready",
+	)
+	require.Error(t, err, "active skill names must remain unique within a sandbox config")
 }
 
 func copySQLiteMigrationsV4(t *testing.T, repoRoot string) string {

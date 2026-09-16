@@ -1,10 +1,320 @@
-body { margin: 0; min-width: 320px; }
-.wk-page { box-sizing: border-box; margin: 0 auto; max-width: 960px; padding: 3rem 1.25rem; }
-.wk-header { align-items: flex-start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
-.wk-eyebrow { color: #2e6de6; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; margin: 0; text-transform: uppercase; }
-h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
-.wk-muted, .wk-debug { color: #66758b; }
-.wk-debug { border-bottom: 1px solid #edf0f5; font-family: ui-monospace, monospace; font-size: 0.75rem; overflow-wrap: anywhere; padding-bottom: 0.8rem; }
-.wk-list { list-style: none; margin: 0; padding: 0; }
-.wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
-.wk-list li span { color: #66758b; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+/* Tailwind v4 composition (mirrors tailwindcss/index.css minus preflight —
+   see docs/plans/tailwind-shadcn-migration.md for the preflight decision). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "../../../packages/design-tokens/src/styles.css" layer(theme);
+
+/* Vue datasource permissions: viewers retain inspection actions only. */
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-create,
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-actions > button:nth-child(-n + 4),
+.wk-data-source-root[data-can-manage="false"] .wk-data-source-actions > button:last-child {
+  display: none;
+}
+/* 语义令牌与跨包扫描：packages/ui 令牌事实来源 + ui/views 源码类名扫描
+   （修复包内 utilities 从未生成的问题，见迁移计划"基线-既有问题"）。 */
+@import "../../../packages/ui/src/theme.css" layer(theme);
+@source "../../../packages/ui/src";
+@source "../../../packages/views/src";
+
+body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee); }
+/* .wk-muted deleted: every consumer carries the text-muted utility (or an
+   overriding variant) since the family migrated off this file. */
+/* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
+   .wk-list-item-copy/.wk-list-item-actions/.wk-list-actions ± span/select/.wk-form ± label/input/select/
+   .wk-form-grid(±--two/--three)/.wk-form-label/.wk-toolbar ± label/select/input) moved to Tailwind
+   utilities on their consumers (按生效值编码: layered utilities that competed with these unlayered
+   rules were re-encoded with ! so the effective cascade is preserved). Class names remain on the
+   DOM as hooks: tests query them and PlatformShell's outlet override ([&_.wk-page]:max-w-none! /
+   h-full / overflow-y-auto) depends on .wk-page existing. */
+/* .wk-settings-tabs/-tab(.is-active)/.wk-settings-section family (incl. its
+   h2/label/input/textarea/select descendants and :read-only/:disabled states)/
+   .wk-settings-table(± label) deleted: every consumer now carries the effective
+   values as element or container utilities (KnowledgeSettingsPage cards, the
+   SettingsPage drawer panels, ResourceSettingsPanel). The .wk-settings-section
+   class stays on the SettingsPage drawer wrapper as a cascade-scope hook for
+   settings-wrapper.css's retained rules; drawer select chrome still lives
+   there too. */
+/* .wk-settings-page/.wk-settings-layout/.wk-settings-nav/.wk-settings-save deleted:
+   dead rules (zero source consumers) — the inline settings page was replaced by
+   the .wks-* drawer shell. */
+/* .wk-settings-panel-heading family deleted: all consumers (settings drawer
+   panels, ResourceSettingsPanel, configuration ModelUsageNotice/
+   ConfigurationEditor/ConfigurationOperations, chat sandbox drawer) carry the
+   base and the h2/p margins as element utilities; the chat.css drawer-scoped
+   guard was deleted with it (its values were already on the element). */
+/* .wk-settings-operation-list deleted (dead). .wk-settings-read-note deleted:
+   its two consumers (EnvVarSettingsPanel/PortedSectionsPanel) carry
+   text-muted-strong text-[.9rem] utilities. */
+/* .wk-settings-editor family deleted: settings-domain editors carry equivalent
+   utilities; configuration editors (ConfigurationEditor/ConfigurationOperations/
+   ModelDebugPanel) now encode the base and the label/input rules as container
+   variants; McpSettingsPanel's max-w-none! stays correct against them. */
+/* .wk-model-tabs family kept: SandboxSettingsPanel.tsx (out of model-wave scope) still
+   consumes it; delete once the sandbox panel migrates to utilities. */
+.wks-overlay.wks-mcp-overlay { align-items: stretch; justify-content: flex-end; padding: 0; backdrop-filter: none; }
+.wks-modal.wks-mcp-drawer { box-sizing: border-box; width: min(var(--mcp-drawer-width, 680px), 100%); height: 100vh; max-height: 100vh; overflow-y: auto; padding: 0 18px; border-radius: 0; }
+/* The .wks-mcp-drawer .wk-settings-* overrides (heading sticky chrome, editor
+   max-width/fieldset/select layout) moved to element utilities on
+   McpSettingsPanel's drawer heading/form/fieldsets/selects. Select chrome
+   (border/radius/height/chevron) still comes from the drawer-wide promoted rule
+   in settings-wrapper.css (.wks-modal ancestor is shared with this drawer). */
+@media (max-width: 720px) { .wks-modal.wks-mcp-drawer { width: 100%; height: 100vh; max-height: 100vh; padding: 0 16px; } }
+/* .wk-visually-hidden deleted: consumers carry sr-only; class name stays as a
+   hook. */
+/* .wk-settings-values family deleted: its four consumers (CloudSettingsPanel,
+   OllamaSettingsPanel ×2, PortedSectionsPanel) carry exact dl/div/dt/dd
+   utilities incl. max-[720px]: variants. The ≤720px fragments of the dead
+   .wk-settings-layout/.wk-settings-operation-list went with them; the
+   panel-heading fragment went with its family. */
+
+/* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
+   (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*
+   families moved to Tailwind utilities in packages/views/src/integrations/page.tsx. */
+/* The .wk-button (base/disabled/--text/--danger), .wk-tag/.wk-tag--warning,
+   .wk-switch/.wk-switch-knob, .wk-status(-error/-ok) and .wk-mono-input families
+   moved to Tailwind utilities on their consumers (packages/views/src/integrations/
+   page.tsx, apps/web/src/integrations/*, apps/web/src/settings/*). Class names
+   stay in the DOM as querySelector/test/variant hooks; .wk-switch checked states
+   are encoded with peer-checked utilities, and the drawer's [&_input]:! variants
+   keep owning the .wk-mono-input padding/border/radius they already outranked. */
+/* The .wk-option-chips/.wk-option-chip(--active) and .wk-check-row families moved
+   to Tailwind utilities on their consumer (packages/views/src/integrations/page.tsx
+   CHIP_BASE/chip and the wizard/API label rows). .wk-check-row stays on the labels
+   as a :not() selector hook for the integration drawer's font-medium! variant. */
+/* .wk-muted--warn deleted: the three consumers carry text-[#b45309] (the
+   INTEGRATION_FORM_CLASS [&_.wk-muted]:text-[#98a2b3]! variant still overrides
+   it inside the form, exactly as this unlayered rule was overridden). */
+
+/* S00 N-2: Vue CreateTenantDialog.vue renders a centered t-dialog at 480px;
+   narrow the shared wk-dialog panel for the tenant-create modal only. */
+
+/* Integration drawer animations: the .wk-integration-drawer family moved to
+   Tailwind utilities (packages/views/src/integrations/page.tsx
+   INTEGRATION_DRAWER_* classes, referenced via animate-[...]); reduced motion
+   is carried by motion-reduce:animate-none on the overlay/aside. */
+@keyframes wk-integration-drawer-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wk-integration-drawer-slide-in { from { transform: translateX(24px); } to { transform: translateX(0); } }
+
+/* The .wk-embed-preview-* family moved to Tailwind utilities on its two
+   consumers (packages/views/src/integrations/page.tsx preview panel and
+   apps/web/src/integrations/EmbedPreviewModal.tsx); the ≤720px tweaks became
+   max-[720px]: variants and iframe .is-loading became a static 'invisible'
+   condition. */
+/* The .wk-capability-grid/.wk-capability-card family moved to Tailwind utilities
+   on its consumer (packages/views/src/integrations/page.tsx chrome/claw tabs). */
+
+
+
+/* ==== Settings drawer visual form (ported from frontend/src/views/settings/Settings.vue
+   .settings-overlay/.settings-modal/.settings-sidebar/.nav-*). wks- prefix avoids any
+   collision with the legacy inline .wk-settings-* page layout above. ==== */
+/*
+ * Settings drawer visual form — ported from frontend/src/views/settings/Settings.vue
+ * (.settings-overlay / .settings-modal / .settings-sidebar / .nav-* styles).
+ * All classes use the wks- prefix so nothing collides with the shared
+ * styles.css rules for the old inline .wk-settings-* page layout.
+ */
+.wks-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-overlay-settings-z, 1100);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.wks-modal {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  height: 780px;
+  max-height: calc(100vh - 40px);
+  background: var(--wk-color-surface, #fff);
+  border-radius: 12px;
+  box-shadow: var(--wk-shadow-panel, 0 6px 30px rgba(0, 0, 0, 0.12));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wks-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--wk-color-text-secondary, #66758b);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.wks-close:hover { background: var(--wk-color-surface-hover, #f0f2f7); color: var(--wk-color-text, #172033); }
+
+.wks-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Left navigation column */
+.wks-sidebar {
+  width: 208px;
+  /* Settings.vue .settings-sidebar: --td-bg-color-settings-modal #f9f9f9,
+     border --td-component-stroke #e7e7e7 (theme.css light tokens). */
+  background-color: var(--wk-color-settings-panel, #f9f9f9);
+  border-right: 1px solid var(--wk-color-component, #e7e7e7);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wks-sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--wk-color-component, #e7e7e7);
+  flex-shrink: 0;
+}
+
+.wks-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  margin: 0;
+}
+
+.wks-nav {
+  padding: 8px 8px 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wks-nav-group-title {
+  padding: 9px 14px 4px;
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wks-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+/* Settings.vue .nav-item:hover / &.active: hover = --td-bg-color-container-hover
+   (gray-1 #f3f3f3) + --td-text-color-primary rgba(0,0,0,.9); active =
+   --td-bg-color-secondarycontainer (#f3f3f3) + --td-brand-color #07c05f. */
+.wks-nav-item:hover { background-color: var(--wk-color-surface-hover, #f3f3f3); color: var(--wk-color-text, rgba(0, 0, 0, 0.9)); }
+
+.wks-nav-item.is-active {
+  background-color: var(--wk-color-surface-hover, #f3f3f3);
+  color: var(--wk-color-brand, #07c05f);
+  font-weight: 500;
+}
+
+.wks-nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.wks-nav-label { flex: 1; }
+
+/* Right content column */
+.wks-content { flex: 1; overflow-y: auto; background-color: var(--wk-color-surface, #fff); }
+
+.wks-content-wrapper { max-width: 760px; padding: 40px 48px; }
+.wks-content-wrapper--wide,
+.wks-content-wrapper--full {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wks-content-wrapper--wide { padding: 32px 36px 40px; }
+.wks-content-wrapper--full { padding: 30px 34px 40px; }
+
+@media (max-width: 1100px) {
+  .wks-content-wrapper { padding: 28px 24px 40px; }
+  .wks-content-wrapper--wide { padding: 32px 36px 40px; }
+  .wks-content-wrapper--full { padding: 30px 34px 40px; }
+}
+
+.wks-section { animation: wks-fade-in 0.3s ease; }
+
+@keyframes wks-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wks-reload {
+  border: 1px solid #dce3ed;
+  border-radius: 999px;
+  background: #fff;
+  color: #506078;
+  cursor: pointer;
+  padding: 0.35rem 0.8rem;
+  font: inherit;
+  font-size: 13px;
+}
+
+.wks-reload:disabled { opacity: 0.6; cursor: default; }
+
+/* Scrollbars */
+.wks-nav::-webkit-scrollbar,
+.wks-content::-webkit-scrollbar { width: 6px; }
+.wks-nav::-webkit-scrollbar-track { background: #eef1f6; }
+.wks-nav::-webkit-scrollbar-thumb { background: #aab4c4; border-radius: 3px; }
+.wks-content::-webkit-scrollbar-track { background: #fff; }
+.wks-content::-webkit-scrollbar-thumb { background: #aab4c4; border-radius: 3px; }
+
+/* Role-denied empty state (Vue .role-denied) */
+.wks-role-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 64px 24px;
+  gap: 12px;
+  min-height: 240px;
+}
+
+/* highlightKbId flash animation (Vue KnowledgeBaseList.vue highlight-flash) */
+
+/* Knowledge documents: match Vue's thin horizontal filter scrollbar. */
+.doc-filter-bar__filters {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.doc-filter-bar__filters::-webkit-scrollbar { height: 4px; }
+.doc-filter-bar__filters::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.15); border-radius: 2px; }

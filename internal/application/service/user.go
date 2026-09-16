@@ -439,6 +439,9 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 // method keeps the browser OIDC contract unchanged while binding the signed
 // callback state to the S256 verifier challenge.
 func (s *userService) GetOIDCAuthorizationURLWithPKCE(ctx context.Context, redirectURI, codeChallenge string) (*types.OIDCAuthURLResponse, error) {
+	if strings.TrimSpace(codeChallenge) == "" {
+		return nil, errors.New("code_challenge is required")
+	}
 	return s.getOIDCAuthorizationURL(ctx, redirectURI, codeChallenge)
 }
 

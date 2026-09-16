@@ -1,9 +1,15 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('node:path');
 
-const config = getDefaultConfig(__dirname, { isCSSEnabled: true });
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../..');
+const config = getDefaultConfig(projectRoot, { isCSSEnabled: true });
+config.watchFolders = [workspaceRoot];
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+];
 config.resolver.assetExts.push('wasm');
-const workspaceRoot = path.resolve(__dirname, '../..');
 const happyWireSource = path.join(workspaceRoot, 'packages/happy-wire/src/index.ts');
 const preactCjsPath = require.resolve('preact');
 const preactHooksCjsPath = require.resolve('preact/hooks');

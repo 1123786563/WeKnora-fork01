@@ -1,33 +1,71 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import * as nodeModule from 'node:module';
 import test from 'node:test';
-const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'McpToolsDirectory.tsx'), 'utf8');
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
-test('MCP tools directory exposes Vue-aligned search, policy controls, details, and pagination', () => {
-  assert.match(source, /tools\.length > pageSize/);
-  assert.match(source, /'mcpMetadata\.searchTools': 'Search tool names or descriptions'/);
-  assert.match(source, /aria-label=\{t\('mcpMetadata\.searchTools'\)\}/);
-  assert.match(source, /aria-controls=\{detailId\}/);
-  assert.match(source, /aria-live="polite"/);
-  assert.match(source, /filtered\.length > pageSize/);
+type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
+  ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
+  : nextResolve(specifier, context);
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
+else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
+  export async function resolve(specifier, context, nextResolve) {
+    if (specifier.endsWith('.css')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
+    return nextResolve(specifier, context);
+  }
+`)}`, import.meta.url);
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
+const { McpToolsDirectory } = await import('./McpToolsDirectory.tsx');
+const source = readFileSync(new URL('./McpToolsDirectory.tsx', import.meta.url), 'utf8');
+
+test('MCP tools directory preserves Vue detail tabs, policy controls, and pagination entry', () => {
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, {
+    serviceId: 'svc-1', busy: false, policyError: null, onRetryPolicies: () => undefined, onPolicyChange: () => undefined,
+    approvals: [], tools: Array.from({ length: 21 }, (_, index) => ({ name: `tool-${index}`, description: index === 0 ? 'Search docs' : undefined, inputSchema: index === 0 ? { properties: { query: { type: 'string' } }, required: ['query'] } : undefined })),
+  }));
+  // Vue McpToolsList.vue copy (zh-CN): searchTools/启用工具/上一步-style pager.
+  assert.match(html, /搜索工具名称或描述/);
+  assert.match(html, /tool-0/);
+  assert.match(html, /启用工具/);
+  assert.match(html, /调用需审批/);
+  assert.match(html, /详情/);
+  assert.match(html, /上一步/);
+  assert.match(html, /下一页/);
+  assert.match(html, /1 \/ 2/);
 });
 
 test('MCP tools directory fails closed and offers policy retry', () => {
-  assert.match(source, /policyError \?/);
-  assert.match(source, /onRetryPolicies/);
-  assert.match(source, /Status tone="error"/);
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, { serviceId: 'svc-1', busy: false, policyError: 'policy unavailable', onRetryPolicies: () => undefined, onPolicyChange: () => undefined, approvals: [], tools: [] }));
+  assert.match(html, /policy unavailable/);
+  assert.match(html, /重试/);
 });
 
-test('MCP policy errors keep the Vue tool directory visible while disabling policy controls', () => {
-  assert.match(source, /policyError[\s\S]*?visible\.map/);
-  assert.match(source, /disabled=\{busy \|\| busyTools\?\.has\(tool\.name\) === true \|\| Boolean\(policyError\)\}/);
+test('MCP policy errors keep the Vue tool directory visible and disable its controls', () => {
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, {
+    serviceId: 'svc-1',
+    busy: false,
+    policyError: 'policy unavailable',
+    onRetryPolicies: () => undefined,
+    onPolicyChange: () => undefined,
+    approvals: [],
+    tools: [{ name: 'search', description: 'Search docs' }],
+  }));
+  assert.match(html, /search/);
+  assert.match(html, /详情/);
+  assert.match(html, /policy unavailable/);
+  const switches = html.match(/role="switch"/g) ?? [];
+  assert.equal(switches.length, 2);
+  assert.equal((html.match(/disabled=""/g) ?? []).length, 2, 'Vue policy error disables both switches');
 });
 
 test('MCP stale metadata keeps the Vue read-only directory without policy switches', () => {
-  assert.match(source, /serviceId \? /);
-  assert.match(source, /t\('mcpMetadata\.noTools'\)/);
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, { serviceId: undefined, busy: true, policyError: null, onRetryPolicies: () => undefined, onPolicyChange: () => undefined, approvals: [], tools: [{ name: 'search' }] }));
+  assert.match(html, /search/);
+  assert.doesNotMatch(html, /启用工具/);
+  assert.doesNotMatch(html, /调用需审批/);
 });
 
 test('MCP tool details expose a modal tab keyboard contract', () => {
@@ -45,4 +83,12 @@ test('MCP tool details restore focus and keep detail ids unique per rendered too
   assert.match(source, /activeTab\?\.focus\(\)/);
   assert.match(source, /trigger\.focus\(\)/);
   assert.match(source, /mcp-tool-detail-\$\{index\}/);
+});
+
+test('MCP tool detail trigger keeps the Vue open-state brand color', () => {
+  assert.match(source, /className=\{`[^`]*\$\{isOpen \? 'text-\[#07c05f\]' : 'text-\[#66758b\]'\}`\}/);
+});
+
+test('MCP policy controls preserve the Vue inline control layout', () => {
+  assert.match(source, /className="items-center cursor-pointer leading-5 inline-flex gap-2 text-\[12px\]/);
 });

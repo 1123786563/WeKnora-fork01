@@ -32,7 +32,35 @@ test('encodes resource ids and keeps sync controls as explicit writes', async ()
   ]);
 });
 
+test('loads resource ancestors through the explicit restoration route', async () => {
+  const api = createDataSourcesApi(async (request) => {
+    assert.equal(request.method, 'POST');
+    assert.equal(request.path, '/api/v1/datasource/ds%2Fa/resource-ancestors');
+    assert.deepEqual(request.body, { resource_ids: ['page/1'] });
+    return { ancestors: ['root', 'folder/1'] };
+  });
+  assert.deepEqual(await api.resourceAncestors('ds/a', ['page/1']), ['root', 'folder/1']);
+});
+
 test('rejects malformed data source responses', async () => {
   const api = createDataSourcesApi(async () => [{ ...source, id: '' }]);
   await assert.rejects(api.list('kb-1'), /Invalid data source field: id/);
+});
+
+test('exposes connector types, credential writes, and sync logs as separate routes', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createDataSourcesApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    if (request.path.endsWith('/types')) return [{ type: 'notion', name: 'Notion', description: 'Notion', priority: 1, auth_type: 'token', capabilities: ['incremental'] }, { type: 'rss', name: 'RSS', description: 'RSS', priority: 2, auth_type: 'none', capabilities: [] }];
+    if (request.path.endsWith('/logs?limit=20&offset=0')) return { data: [{ id: 'log-1', status: 'success' }] };
+    return { credentials: { configured: true } };
+  });
+  assert.deepEqual((await api.types()).map((type) => type.type), ['notion', 'rss']);
+  await api.putCredentials('ds/a', { token: 'secret' });
+  assert.deepEqual(await api.logs('ds/a'), [{ id: 'log-1', status: 'success' }]);
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/datasource/types', body: undefined },
+    { method: 'PUT', path: '/api/v1/datasource/ds%2Fa/credentials', body: { credentials: { token: 'secret' } } },
+    { method: 'GET', path: '/api/v1/datasource/ds%2Fa/logs?limit=20&offset=0', body: undefined },
+  ]);
 });

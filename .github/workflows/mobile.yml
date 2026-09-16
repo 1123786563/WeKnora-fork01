@@ -1,0 +1,67 @@
+name: React Native Mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  verify:
+    name: Test, type-check, and export
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install React workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check mobile boundary and capabilities
+        run: node scripts/check-react-boundaries.mjs
+
+      - name: Test mobile
+        run: pnpm test:mobile
+
+      - name: Type-check mobile
+        run: pnpm typecheck:mobile
+
+      - name: Export iOS JavaScript bundle
+        run: pnpm --filter @weknora/mobile exec expo export --platform ios --output-dir "$RUNNER_TEMP/weknora-mobile-ios"
+
+      - name: Export Android JavaScript bundle
+        run: pnpm --filter @weknora/mobile exec expo export --platform android --output-dir "$RUNNER_TEMP/weknora-mobile-android"

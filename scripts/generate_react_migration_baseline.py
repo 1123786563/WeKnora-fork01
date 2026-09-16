@@ -221,11 +221,12 @@ def api_rows() -> list[list[str]]:
             if raw_method.upper() not in HTTP_METHODS:
                 continue
             method = raw_method.upper()
-            domain = next((v for k, v in domain_map.items() if current.startswith(k)), "other")
+            normalized_current = normalize_path(current)
+            domain = next((v for k, v in domain_map.items() if normalized_current.startswith(k)), "other")
             kind = "mutation" if method in {"POST", "PUT", "PATCH", "DELETE"} else "read"
-            if any(token in current for token in ("chat", "stream", "events")):
+            if any(token in normalized_current for token in ("chat", "stream", "events")):
                 kind = "sse-or-event" if method in {"GET", "POST"} else kind
-            if any(token in current for token in ("download", "preview", "export", "files")):
+            if any(token in normalized_current for token in ("download", "preview", "export", "files")):
                 kind = "blob-or-file"
             task = {"identity": "T03", "tenant": "T04/T16", "organization": "T16", "knowledge": "T06-T09", "chat": "T10-T13", "configuration": "T15/T17", "sandbox": "T14", "system": "T16/T17", "embed": "T18", "integration": "T18", "file": "T07/T13"}.get(domain, "T01 follow-up")
             key = (method, canonical_path(current))
@@ -233,7 +234,7 @@ def api_rows() -> list[list[str]]:
             source_status = (
                 route["source_status"]
                 if route
-                else ("client-used" if current in used_paths else "swagger")
+                else ("client-used" if normalized_current in used_paths else "swagger")
             )
             comparison = "registered-route" if route else "swagger-only"
             current_source = route["source"] if route else "docs/swagger.json"
@@ -289,8 +290,16 @@ def main() -> None:
         ["reference-pattern", "/Users/wuyongjun/trea/multica/apps/mobile", run("git", "-C", "/Users/wuyongjun/trea/multica", "rev-parse", "HEAD"), "Multica License + additional conditions", "version/reference only", "apps/mobile", "verify independently", "Expo/RN versions are an input, not a source implementation"],
     ])
     version = f"""# React 多端迁移版本与兼容矩阵\n\n## Frozen repository inputs\n\n- WeKnora: `{run('git', 'rev-parse', 'HEAD')}`\n- Multica (read-only): `{run('git', '-C', '/Users/wuyongjun/trea/multica', 'rev-parse', 'HEAD')}`\n- WeKnora Go module: `{(ROOT / 'go.mod').read_text(encoding='utf-8').splitlines()[0]}`; Wails requirement is `v2.12.0` (`go.mod`), while `cmd/desktop/wails.json` uses schema v2.\n- Existing frontend: Vue 3.5, Vite 7, TypeScript 6, Pinia 3, npm lockfile; no React workspace exists yet.\n- Existing API description: Swagger/OpenAPI 2.0, 282 paths and 361 operations.\n\n## Reference-only mobile input\n\n- Multica manifest: Expo `~55.0.23`, React `19.2.0`, React Native `0.83.6`.\n- `apps/mobile/CLAUDE.md` is stale (describes RN 0.82/React 19.1); manifest/lockfile wins.\n- WeKnora must independently lock an Expo-compatible set during T20; no dependency is installed or accepted by this T01 artifact.\n\n## Swagger 2.0 generation trial\n\n- Candidate input: `docs/swagger.yaml`; authority remains `internal/router/routes_*.go`, handler DTOs, middleware and tests.\n- Required trial: pin OpenAPI Generator `typescript-fetch` and record Java/runtime versions before T02.\n- Current result: not executed in T01 because no generator/toolchain was present in the checkout; therefore generated-client compatibility is **unverified**, not passed.\n- Required fixtures: knowledge-base list/create and login, including `null`, omitted fields, unknown enum, `uint64` string precision, 204, 413, non-JSON error and mutation failure.\n\n## Compatibility decisions\n\n| Area | Frozen boundary | Evidence status | Follow-up |\n|---|---|---|---|\n| Web | React + TypeScript + Vite SPA | decision approved; implementation absent | T02 |\n| Desktop | Existing Wails + Go/Lite lifecycle; React renderer later | current Wails path verified | T06/T19 |\n| Mobile | Expo + React Native, native UI | no host exists | T20 |\n| Backend | Gin REST + SSE + terminal WS unchanged | route registration exists; behavior matrix pending | T01/T02 |\n| Embed | separate entry and credential profile | Vue entry exists; React entry absent | T18 |\n| Vue retirement | only after T24 acceptance | not eligible | T25 |\n"""
+    version = version.replace(
+        "- Required trial: pin OpenAPI Generator `typescript-fetch` and record Java/runtime versions before T02.\\n- Current result: not executed in T01 because no generator/toolchain was present in the checkout; therefore generated-client compatibility is **unverified**, not passed.",
+        "- Generator trial: `@openapitools/openapi-generator-cli@2.20.0` selected OpenAPI Generator `7.14.0`; Java runtime was Temurin OpenJDK `17.0.19`.\\n- Strict validation result: exit `1` with 9 specification errors and 1 warning (missing responses and undeclared path parameters in organization search-users and session artifact routes). `--skip-validate-spec` generated a `typescript-fetch` client with exit `0`, but emitted the same spec warnings, auto-generated operation IDs, and a duplicate case-sensitive API file path; generated output was kept outside the repository and was not adopted as the shared client.\\n- Evidence: `docs/migrations/react/evidence/t01-openapi-generator-2026-09-11.md`."
+    )
     (OUT / "version-matrix.md").write_text(version, encoding="utf-8")
     baseline = f"""# T01 运行基线\n\n- Captured at: 2026-09-10\n- WeKnora HEAD: `{run('git', 'rev-parse', 'HEAD')}`\n- Multica HEAD (read-only): `{run('git', '-C', '/Users/wuyongjun/trea/multica', 'rev-parse', 'HEAD')}`\n- Vue SFC count: `{len(list((ROOT / 'frontend/src').rglob('*.vue')))}` (plan/inventory said 199; current is 200)\n- API TS count under `frontend/src/api`: `{len(list((ROOT / 'frontend/src/api').rglob('*.ts')))}`\n- Locales: `zh-CN`, `en-US`, `ja-JP`, `ko-KR`, `ru-RU`, plus embed locale resources\n- Legacy URL sources: `frontend/src/router/index.ts`; route matrix records the retained entries\n- Desktop data/runtime sources: `cmd/desktop/main.go`, `cmd/desktop/prefs.go`, `cmd/desktop/update.go`; Wails frontend is currently `../../frontend`\n- API description: Swagger 2.0, 282 paths/361 operations\n\n## Evidence status\n\n| Layer | Result | Evidence |\n|---|---|---|\n| Static inventory | collected | route/API/reuse/version matrices in this directory |\n| Mock transport | not applicable to T01 | T02 |\n| Existing frontend build/test | not run in T01 | dependency installation and baseline command are still pending |\n| Real backend smoke | not run | requires a safe isolated backend and credentials; no production data used |\n| Wails installed package | not run | T19; browser/WebView preview is not package evidence |\n| iOS/Android native | not run | T20-T23; no Expo host exists yet |\n| Core screenshots/performance | not collected | requires running frontend and a stable fixture/backend |\n\n## Known baseline blockers\n\n1. `frontend/node_modules` and root React workspace are absent; no build claim is made.\n2. The three authoritative input documents are currently untracked user files; this ledger must not overwrite or clean them.\n3. Swagger is a 2.0 document inventory, not proof of handler behavior; every generated row remains explicitly marked for handler/DTO/permission review.\n4. Real smoke and native/Wails package evidence require environment inputs not present in this T01 run.\n"""
+    baseline = baseline.replace(
+        "4. Real smoke and native/Wails package evidence require environment inputs not present in this T01 run.",
+        "4. OpenAPI Generator 7.14.0 strict validation still reports 9 errors/1 warning; generated-client output is not adopted. Real smoke and native/Wails package evidence require additional environment inputs.",
+    )
     (OUT / "runtime-baseline.md").write_text(baseline, encoding="utf-8")
 
 

@@ -1,5 +1,6 @@
 import type { ChatStreamEvent } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
+import type { HttpStreamResult } from '../ports.ts';
 
 export interface ParsedServerSentEvent {
   id?: string;
@@ -59,6 +60,7 @@ export interface ChatStreamRequestOptions {
   mode?: 'knowledge' | 'agent';
   body: Record<string, unknown>;
   lastEventId?: string;
+  signal?: AbortSignal;
 }
 
 export function buildChatStreamRequest(options: ChatStreamRequestOptions): ClientRequest {
@@ -72,6 +74,7 @@ export function buildChatStreamRequest(options: ChatStreamRequestOptions): Clien
       ...(options.lastEventId ? { 'Last-Event-ID': options.lastEventId } : {}),
     },
     body: options.body,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
 }
 
@@ -83,4 +86,25 @@ export function parseChatEvent(event: ParsedServerSentEvent): ChatStreamEvent {
     ...(event.id ? { event_id: event.id } : {}),
     ...(event.event && !(value as ChatStreamEvent).type ? { type: event.event } : {}),
   };
+}
+
+export async function consumeChatStream(
+  request: (input: ClientRequest) => Promise<unknown>,
+  options: ChatStreamRequestOptions,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  const body = await request(buildChatStreamRequest(options));
+  if (typeof body !== 'string') throw new Error('Chat stream returned a non-text body');
+  const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+  parser.push(body);
+  parser.finish();
+}
+
+export function consumeStreamResult(result: HttpStreamResult, onEvent: (event: ChatStreamEvent) => void): Promise<void> {
+  if (result.status < 200 || result.status >= 300) throw new Error(`Chat stream failed with HTTP ${result.status}`);
+  return (async () => {
+    const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+    for await (const chunk of result.chunks) parser.push(chunk);
+    parser.finish();
+  })();
 }

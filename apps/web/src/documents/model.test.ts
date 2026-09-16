@@ -86,3 +86,4 @@ test('summarizes upload progress with completed count and failure state', () => 
     { uploadId: '3', fileName: 'c.pdf', progress: 20, status: 'error', error: 'network' },
   ]), { total: 3, completed: 2, progress: 53, hasError: true });
 });
+

@@ -4,21 +4,38 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./craft/home": "./src/craft/home.tsx",
-    "./craft/workbench": "./src/craft/workbench.tsx",
-    "./craft/preview": "./src/craft/preview.tsx",
+    ".": "./src/index.ts",
+    "./chat/chat-copy": "./src/chat/chat-copy.ts",
+    "./chat/composer": "./src/chat/composer.tsx",
+    "./chat/markdown": "./src/chat/markdown.ts",
+    "./chat/mermaid": "./src/chat/mermaid.ts",
+    "./chat/page": "./src/chat/page.tsx",
+    "./craft/document": "./src/craft/document.tsx",
     "./craft/files": "./src/craft/files.tsx",
-    "./craft/presentation": "./src/craft/presentation.ts",
+    "./craft/home": "./src/craft/home.tsx",
     "./craft/interaction": "./src/craft/interaction.tsx",
-    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
+    "./craft/presentation": "./src/craft/presentation.ts",
+    "./craft/preview": "./src/craft/preview.tsx",
     "./craft/slides": "./src/craft/slides.tsx",
-    "./craft/document": "./src/craft/document.tsx"
+    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
+    "./craft/workbench": "./src/craft/workbench.tsx",
+    "./embed/bridge": "./src/embed/bridge.ts",
+    "./guides/contextual-guides": "./src/guides/contextual-guides.ts",
+    "./integrations/apiKeys": "./src/integrations/apiKeys.ts",
+    "./integrations/page": "./src/integrations/page.tsx",
+    "./integrations/registry": "./src/integrations/registry.ts",
+    "./integrations/settings-route": "./src/integrations/settings-route.ts",
+    "./settings/registry": "./src/settings/registry.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*",
     "@weknora/core": "workspace:*",
     "@weknora/domain": "workspace:*",
-    "@weknora/ui": "workspace:*"
+    "@weknora/ui": "workspace:*",
+    "dompurify": "3.4.11",
+    "katex": "^0.16.25",
+    "marked": "^17.0.5",
+    "mermaid": "11.15.0"
   },
   "peerDependencies": {
     "react": ">=19"

@@ -1,0 +1,243 @@
+/*
+ * Welcome-tour styles ported from the Vue SpotlightGuide scoped styles
+ * (frontend/src/components/SpotlightGuide.vue lines 400-599).
+ * Class prefix .guide -> .wk-guide to avoid global collisions in the React
+ * bundle; every declaration otherwise mirrors the Vue source.
+ * TDesign variables are consumed with light-theme fallbacks matching the
+ * Vue app's effective palette (brand green #07c05f, like the Vue code).
+ */
+
+.wk-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  outline: none;
+  pointer-events: none;
+  /* Vue wraps the guide in <Transition name="guide-fade">; an entry
+     animation reproduces the 0.2s opacity fade. */
+  animation: wk-guide-fade 0.2s ease;
+}
+
+@keyframes wk-guide-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.wk-guide__backdrop {
+  position: fixed;
+  pointer-events: auto;
+  background: rgba(15, 18, 22, 0.58);
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wk-guide__backdrop--full {
+  inset: 0;
+}
+
+.wk-guide__backdrop--hit {
+  background: transparent;
+}
+
+.wk-guide__spot {
+  position: fixed;
+  box-sizing: border-box;
+  pointer-events: none;
+  background: transparent;
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    border-radius 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wk-guide__ring {
+  position: fixed;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: 2px solid var(--td-brand-color, #07c05f);
+  box-shadow: 0 0 0 4px rgba(7, 192, 95, 0.18);
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wk-guide__card {
+  position: fixed;
+  z-index: 1;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 18px 14px;
+  border-radius: 14px;
+  background: var(--td-bg-color-container, #fff);
+  border: 1px solid var(--td-component-stroke, #e7ebf0);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18);
+  color: var(--td-text-color-primary, rgba(0, 0, 0, 0.9));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wk-guide__card--center {
+  max-width: calc(100vw - 32px);
+}
+
+.wk-guide__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
+  cursor: pointer;
+}
+
+.wk-guide__close:hover {
+  background: var(--td-bg-color-container-hover, #f3f3f3);
+  color: var(--td-text-color-primary, rgba(0, 0, 0, 0.9));
+}
+
+.wk-guide__progress {
+  display: flex;
+  gap: 5px;
+}
+
+.wk-guide__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--td-bg-color-component, #f0f2f5);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.wk-guide__dot.is-active {
+  width: 16px;
+  border-radius: 999px;
+  background: var(--td-brand-color, #07c05f);
+}
+
+.wk-guide__dot.is-done {
+  background: rgba(7, 192, 95, 0.4);
+}
+
+.wk-guide__step-label {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4));
+}
+
+.wk-guide__title {
+  margin: 0;
+  padding-right: 24px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.wk-guide__desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
+}
+
+/* SpotlightGuide.vue interact steps (lines 544-550): guides whose step is
+   completed by clicking the highlighted area show this hint instead of the
+   next/done buttons. */
+.wk-guide__interact-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--td-brand-color, #07c05f);
+  font-weight: 500;
+}
+
+.wk-guide__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--td-component-stroke, #e7ebf0);
+}
+
+.wk-guide__skip {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4));
+  cursor: pointer;
+}
+
+.wk-guide__skip:hover {
+  color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
+}
+
+.wk-guide__actions-main {
+  display: flex;
+  gap: 8px;
+}
+
+/* Vue renders prev/next/done with t-button size="small" (primary theme /
+   outline variant); approximated with TDesign small-button metrics. */
+.wk-guide__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wk-guide__btn--primary {
+  border: none;
+  background: var(--td-brand-color, #07c05f);
+  color: #fff;
+}
+
+.wk-guide__btn--primary:hover {
+  background: #06ad54;
+}
+
+.wk-guide__btn--outline {
+  background: transparent;
+  border: 1px solid var(--td-brand-color, #07c05f);
+  color: var(--td-brand-color, #07c05f);
+}
+
+.wk-guide__btn--outline:hover {
+  background: rgba(7, 192, 95, 0.06);
+}
+
+@media (max-width: 720px) {
+  .wk-guide__card {
+    left: 16px !important;
+    right: 16px;
+    width: auto !important;
+    top: auto !important;
+    bottom: 16px;
+    max-height: 56vh;
+  }
+}

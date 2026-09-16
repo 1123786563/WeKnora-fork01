@@ -1,0 +1,10 @@
+builtin_models:
+  - id: builtin-llm-mock
+    type: KnowledgeQA
+    source: remote
+    is_default: true
+    name: mock-stream-model
+    parameters:
+      base_url: http://192.168.3.30:18090/v1
+      api_key: mock-key
+      provider: openai

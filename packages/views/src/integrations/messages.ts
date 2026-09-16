@@ -1,0 +1,276 @@
+// The shared i18n package is not a runtime dependency of @weknora/views
+// (packages/views/package.json lists no @weknora/i18n), so the helper and
+// types are imported relatively from the workspace package source; formatMessage
+// stays the single source of truth for migrated keys.
+
+import { formatMessage, isLocale, type Locale, type MessageValues } from '../../../i18n/src/index.ts';
+import { EMBED_WIZARD_FALLBACK_STRINGS } from './embedWizardMessages.ts';
+import { IM_WIZARD_FALLBACK_STRINGS } from './imWizardMessages.ts';
+
+// Layered translator for the integrations surface, following the pattern of
+// apps/web/src/settings/model-settings.ts: keys already migrated into
+// @weknora/i18n resolve there first (formatMessage wins), everything else
+// falls back to the verbatim Vue locale tables below (all five locales,
+// byte-exact from frontend/src/i18n/locales/*.ts). The agentEditor.im.* /
+// agentEditor.embed.* / embedPublish.* subtrees are not in the shared
+// package yet; adding a key upstream automatically localizes this surface.
+
+type FallbackTable = Record<Locale, Record<string, string>>;
+
+const FALLBACK_STRINGS: FallbackTable = {
+  'zh-CN': {
+    'common.close': '关闭',
+    'integrations.selectAgentHint': '请先选择一个智能体',
+    'agentEditor.im.sectionCredentials': "平台凭证",
+    'embedPublish.allowedOrigins': "域名白名单",
+    'embedPublish.originsPlaceholder': 'https://shop.example.com',
+    'embedPublish.created': "嵌入渠道已创建",
+    'embedPublish.resetKeyTitle': "重置渠道密钥",
+    'agentEditor.im.title': 'IM 集成',
+    'agentEditor.im.description': '将智能体接入即时通讯平台，支持企业微信、飞书、Slack、Telegram、钉钉、Mattermost、微信、QQBot 和云之家',
+    'agentEditor.im.docLink': '查看接入文档',
+    'agentEditor.im.channelsTitle': 'IM 渠道',
+    'agentEditor.im.addChannel': '添加渠道',
+    'agentEditor.im.empty': '暂无 IM 渠道',
+    'agentEditor.im.disabled': '已停用',
+    'agentEditor.im.unnamed': '未命名渠道',
+    'agentEditor.im.deleteConfirm': '确定删除该渠道？删除后无法恢复。',
+    'agentEditor.im.enabled': '启用渠道',
+    'agentEditor.im.platform': '平台',
+    'agentEditor.im.channelName': '渠道名称',
+    'agentEditor.im.channelNamePlaceholder': '输入渠道名称，方便辨识',
+    'agentEditor.im.channelNameDefaultHint': '默认为平台名称，可自行修改；留空保存时也会使用平台名称',
+    'agentEditor.im.feishu': '飞书',
+    'agentEditor.im.lark': 'Lark（飞书国际版）',
+    'agentEditor.im.slack': 'Slack',
+    'agentEditor.im.telegram': 'Telegram',
+    'agentEditor.im.dingtalk': '钉钉',
+    'agentEditor.im.mattermost': 'Mattermost',
+    'agentEditor.im.wecom': '企业微信',
+    'agentEditor.im.wechat': '微信',
+    'agentEditor.im.wechatQrFailed': '微信二维码生成失败',
+    'agentEditor.im.qqbot': 'QQBot',
+    'agentEditor.im.yunzhijia': '云之家',
+    'agentEditor.embed.title': '网页嵌入',
+    'agentEditor.embed.description': '将智能体嵌入到您的网页，访客可通过页面内聊天窗口或右下角浮窗发起对话，知识库范围跟随本智能体配置。',
+    'embedPublish.create': '新建嵌入渠道',
+    'embedPublish.channelsTitle': '嵌入渠道',
+    'embedPublish.disabled': '已停用',
+    'embedPublish.empty': '暂无嵌入渠道',
+    'embedPublish.deleteConfirm': '确定删除该嵌入渠道？已部署的网站代码将失效。',
+    'embedPublish.name': '名称',
+    'embedPublish.namePlaceholder': '例如：官网客服',
+    'embedPublish.nameDefaultHint': '默认为「智能体名 · 网页嵌入」，可自行修改；留空保存时也会使用该名称',
+    'embedPublish.defaultChannelName': '网页嵌入',
+  },
+  'en-US': {
+    'common.close': 'Close',
+    'integrations.selectAgentHint': 'Please select an agent first',
+    'agentEditor.im.sectionCredentials': "Platform credentials",
+    'embedPublish.allowedOrigins': "Allowed origins",
+    'embedPublish.originsPlaceholder': 'https://shop.example.com',
+    'embedPublish.created': "Embed channel created",
+    'embedPublish.resetKeyTitle': "Reset channel key",
+    'agentEditor.im.title': 'IM Integration',
+    'agentEditor.im.description': 'Connect agent to instant messaging platforms like WeCom, Feishu, Lark, Slack, Telegram, DingTalk, Mattermost, WeChat, QQBot and Yunzhijia',
+    'agentEditor.im.docLink': 'Integration Guide',
+    'agentEditor.im.channelsTitle': 'IM Channels',
+    'agentEditor.im.addChannel': 'Add Channel',
+    'agentEditor.im.empty': 'No IM channels yet',
+    'agentEditor.im.disabled': 'Disabled',
+    'agentEditor.im.unnamed': 'Unnamed Channel',
+    'agentEditor.im.deleteConfirm': 'Are you sure you want to delete this channel? This action cannot be undone.',
+    'agentEditor.im.enabled': 'Enable channel',
+    'agentEditor.im.platform': 'Platform',
+    'agentEditor.im.channelName': 'Channel Name',
+    'agentEditor.im.channelNamePlaceholder': 'Enter a name for easy identification',
+    'agentEditor.im.channelNameDefaultHint': 'Defaults to the platform name; you can customize it, or leave blank to use the platform name on save',
+    'agentEditor.im.feishu': 'Feishu',
+    'agentEditor.im.lark': 'Lark',
+    'agentEditor.im.slack': 'Slack',
+    'agentEditor.im.telegram': 'Telegram',
+    'agentEditor.im.dingtalk': 'DingTalk',
+    'agentEditor.im.mattermost': 'Mattermost',
+    'agentEditor.im.wecom': 'WeCom',
+    'agentEditor.im.wechat': 'WeChat',
+    'agentEditor.im.wechatQrFailed': 'Failed to generate WeChat QR code',
+    'agentEditor.im.qqbot': 'QQBot',
+    'agentEditor.im.yunzhijia': 'Yunzhijia',
+    'agentEditor.embed.title': 'Web Page Embed',
+    'agentEditor.embed.description': 'Embed this agent on your website so visitors can chat via an in-page window or floating launcher. Knowledge scope follows this agent.',
+    'embedPublish.create': 'New embed channel',
+    'embedPublish.channelsTitle': 'Embed channels',
+    'embedPublish.disabled': 'Disabled',
+    'embedPublish.empty': 'No embed channels yet',
+    'embedPublish.deleteConfirm': 'Delete this embed channel? Deployed snippets will stop working.',
+    'embedPublish.name': 'Name',
+    'embedPublish.namePlaceholder': 'e.g. Website support',
+    'embedPublish.nameDefaultHint': 'Defaults to "{agent} · Web Embed" when an agent is selected. Leave blank on save to use the default name.',
+    'embedPublish.defaultChannelName': 'Web Embed',
+  },
+  'ja-JP': {
+    'common.close': '閉じる',
+    'integrations.selectAgentHint': '先にエージェントを選択してください',
+    'agentEditor.im.sectionCredentials': "プラットフォームの認証情報",
+    'embedPublish.allowedOrigins': "許可オリジン",
+    'embedPublish.originsPlaceholder': 'https://shop.example.com',
+    'embedPublish.created': "埋め込みチャネルを作成しました",
+    'embedPublish.resetKeyTitle': "チャネルキーをリセット",
+    'agentEditor.im.title': 'IM連携',
+    'agentEditor.im.description': 'WeCom、Feishu、Lark、Slack、Telegram、DingTalk、Mattermost、WeChat、QQBot、Yunzhijiaなどのインスタントメッセージングプラットフォームにエージェントを接続します',
+    'agentEditor.im.docLink': '連携ガイド',
+    'agentEditor.im.channelsTitle': 'IMチャネル',
+    'agentEditor.im.addChannel': 'チャネルを追加',
+    'agentEditor.im.empty': 'IMチャネルはまだありません',
+    'agentEditor.im.disabled': '無効',
+    'agentEditor.im.unnamed': '名称未設定のチャネル',
+    'agentEditor.im.deleteConfirm': 'このチャネルを削除してもよろしいですか？この操作は取り消せません。',
+    'agentEditor.im.enabled': 'チャネルを有効化',
+    'agentEditor.im.platform': 'プラットフォーム',
+    'agentEditor.im.channelName': 'チャネル名',
+    'agentEditor.im.channelNamePlaceholder': '識別しやすい名前を入力してください',
+    'agentEditor.im.channelNameDefaultHint': 'デフォルトはプラットフォーム名です。任意の名前に変更できます。空欄のまま保存するとプラットフォーム名が使用されます',
+    'agentEditor.im.feishu': 'Feishu',
+    'agentEditor.im.lark': 'Lark',
+    'agentEditor.im.slack': 'Slack',
+    'agentEditor.im.telegram': 'Telegram',
+    'agentEditor.im.dingtalk': 'DingTalk',
+    'agentEditor.im.mattermost': 'Mattermost',
+    'agentEditor.im.wecom': 'WeCom',
+    'agentEditor.im.wechat': 'WeChat',
+    'agentEditor.im.wechatQrFailed': 'WeChat QRコードの生成に失敗しました',
+    'agentEditor.im.qqbot': 'QQBot',
+    'agentEditor.im.yunzhijia': 'Yunzhijia',
+    'agentEditor.embed.title': 'Webページ埋め込み',
+    'agentEditor.embed.description': 'このエージェントをお使いのWebサイトに埋め込み、ページ内ウィンドウやフローティングランチャから訪問者がチャットできるようにします。ナレッジベースの範囲はこのエージェントの設定に従います。',
+    'embedPublish.create': '埋め込みチャネルを作成',
+    'embedPublish.channelsTitle': '埋め込みチャネル',
+    'embedPublish.disabled': '無効',
+    'embedPublish.empty': '埋め込みチャネルはまだありません',
+    'embedPublish.deleteConfirm': 'この埋め込みチャネルを削除しますか？設置済みのスニペットは動作しなくなります。',
+    'embedPublish.name': '名前',
+    'embedPublish.namePlaceholder': '例: Webサイトサポート',
+    'embedPublish.nameDefaultHint': 'エージェントを選択すると「{agent} · Web埋め込み」がデフォルトになります。保存時に空欄のままにするとデフォルトの名前が使用されます。',
+    'embedPublish.defaultChannelName': 'Web埋め込み',
+  },
+  'ko-KR': {
+    'common.close': '닫기',
+    'integrations.selectAgentHint': '먼저 에이전트를 선택하세요',
+    'agentEditor.im.sectionCredentials': "플랫폼 자격 증명",
+    'embedPublish.allowedOrigins': "허용 도메인",
+    'embedPublish.originsPlaceholder': 'https://shop.example.com',
+    'embedPublish.created': "임베드 채널이 생성되었습니다",
+    'embedPublish.resetKeyTitle': "채널 키 재설정",
+    'agentEditor.im.title': 'IM 통합',
+    'agentEditor.im.description': '에이전트를 Feishu, Slack, Telegram, DingTalk, Mattermost, QQBot, Yunzhijia 등 인스턴트 메시징 플랫폼에 연결',
+    'agentEditor.im.docLink': '통합 가이드 보기',
+    'agentEditor.im.channelsTitle': 'IM 채널',
+    'agentEditor.im.addChannel': '채널 추가',
+    'agentEditor.im.empty': 'IM 채널이 없습니다',
+    'agentEditor.im.disabled': '비활성',
+    'agentEditor.im.unnamed': '이름 없는 채널',
+    'agentEditor.im.deleteConfirm': '이 채널을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+    'agentEditor.im.enabled': '채널 활성화',
+    'agentEditor.im.platform': '플랫폼',
+    'agentEditor.im.channelName': '채널 이름',
+    'agentEditor.im.channelNamePlaceholder': '식별하기 쉬운 이름을 입력하세요',
+    'agentEditor.im.channelNameDefaultHint': '기본값은 플랫폼 이름이며, 직접 수정할 수 있습니다. 비워 두면 저장 시 플랫폼 이름이 사용됩니다',
+    'agentEditor.im.feishu': 'Feishu',
+    'agentEditor.im.lark': 'Lark',
+    'agentEditor.im.slack': 'Slack',
+    'agentEditor.im.telegram': 'Telegram',
+    'agentEditor.im.dingtalk': 'DingTalk',
+    'agentEditor.im.mattermost': 'Mattermost',
+    'agentEditor.im.wecom': 'WeCom',
+    'agentEditor.im.wechat': 'WeChat',
+    'agentEditor.im.wechatQrFailed': 'WeChat QR 코드 생성 실패',
+    'agentEditor.im.qqbot': 'QQBot',
+    'agentEditor.im.yunzhijia': 'Yunzhijia',
+    'agentEditor.embed.title': '웹 페이지 임베드',
+    'agentEditor.embed.description': '에이전트를 웹 페이지에 임베드하여 방문자가 페이지 내 채팅창 또는 플로팅 버튼으로 대화할 수 있게 합니다. 지식베이스 범위는 이 에이전트 설정을 따릅니다.',
+    'embedPublish.create': '새 임베드 채널',
+    'embedPublish.channelsTitle': '임베드 채널',
+    'embedPublish.disabled': '비활성화',
+    'embedPublish.empty': '임베드 채널 없음',
+    'embedPublish.deleteConfirm': '이 임베드 채널을 삭제하시겠습니까? 배포된 코드가 작동하지 않습니다.',
+    'embedPublish.name': '이름',
+    'embedPublish.namePlaceholder': '예: 웹사이트 고객센터',
+    'embedPublish.nameDefaultHint': '기본값은 「에이전트명 · 웹 페이지 임베드」입니다. 직접 수정할 수 있으며, 비워 두고 저장해도 기본 이름이 사용됩니다.',
+    'embedPublish.defaultChannelName': '웹 페이지 임베드',
+  },
+  'ru-RU': {
+    'common.close': 'Закрыть',
+    'integrations.selectAgentHint': 'Сначала выберите агента',
+    'agentEditor.im.sectionCredentials': "Учётные данные платформы",
+    'embedPublish.allowedOrigins': "Разрешённые домены",
+    'embedPublish.originsPlaceholder': 'https://shop.example.com',
+    'embedPublish.created': "Канал встраивания создан",
+    'embedPublish.resetKeyTitle': "Сбросить ключ канала",
+    'agentEditor.im.title': 'Интеграция IM',
+    'agentEditor.im.description': 'Подключите агента к платформам мгновенных сообщений, таким как Feishu, Slack, Telegram, DingTalk, Mattermost, QQBot и Yunzhijia',
+    'agentEditor.im.docLink': 'Руководство по интеграции',
+    'agentEditor.im.channelsTitle': 'IM-каналы',
+    'agentEditor.im.addChannel': 'Добавить канал',
+    'agentEditor.im.empty': 'Нет IM-каналов',
+    'agentEditor.im.disabled': 'Отключено',
+    'agentEditor.im.unnamed': 'Неименованный канал',
+    'agentEditor.im.deleteConfirm': 'Вы уверены, что хотите удалить этот канал? Это действие не может быть отменено.',
+    'agentEditor.im.enabled': 'Включить канал',
+    'agentEditor.im.platform': 'Платформа',
+    'agentEditor.im.channelName': 'Имя канала',
+    'agentEditor.im.channelNamePlaceholder': 'Введите имя для легкой идентификации',
+    'agentEditor.im.channelNameDefaultHint': 'По умолчанию используется название платформы; можно изменить. Если оставить пустым, при сохранении подставится название платформы',
+    'agentEditor.im.feishu': 'Feishu',
+    'agentEditor.im.lark': 'Lark',
+    'agentEditor.im.slack': 'Slack',
+    'agentEditor.im.telegram': 'Telegram',
+    'agentEditor.im.dingtalk': 'DingTalk',
+    'agentEditor.im.mattermost': 'Mattermost',
+    'agentEditor.im.wecom': 'WeCom',
+    'agentEditor.im.wechat': 'WeChat',
+    'agentEditor.im.wechatQrFailed': 'Не удалось создать QR-код WeChat',
+    'agentEditor.im.qqbot': 'QQBot',
+    'agentEditor.im.yunzhijia': 'Yunzhijia',
+    'agentEditor.embed.title': 'Встраивание на веб-страницу',
+    'agentEditor.embed.description': 'Встройте агента на свою веб-страницу: посетители смогут общаться через встроенное окно чата или плавающую кнопку. Область баз знаний следует настройкам этого агента.',
+    'embedPublish.create': 'Новый канал встраивания',
+    'embedPublish.channelsTitle': 'Каналы встраивания',
+    'embedPublish.disabled': 'Отключено',
+    'embedPublish.empty': 'Каналов встраивания пока нет',
+    'embedPublish.deleteConfirm': 'Удалить этот канал? Развёрнутые фрагменты перестанут работать.',
+    'embedPublish.name': 'Название',
+    'embedPublish.namePlaceholder': 'напр. Поддержка на сайте',
+    'embedPublish.nameDefaultHint': 'По умолчанию «{agent} · Встраивание на сайт». Можно изменить; при пустом поле при сохранении используется имя по умолчанию.',
+    'embedPublish.defaultChannelName': 'Встраивание на сайт',
+  },
+};
+
+/** Vue IM 集成 doc link: frontend/src/views/integrations/IntegrationSettingsSection.vue */
+export const IM_DOC_URL = 'https://github.com/Tencent/WeKnora/blob/main/docs/IM%E9%9B%86%E6%88%90%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md';
+
+export function integrationsLocale(value: string | null | undefined): Locale {
+  return value && isLocale(value) ? value : 'zh-CN';
+}
+
+export function integrationsT(locale: Locale, key: string, values?: MessageValues): string {
+  const shared = formatMessage(locale, key);
+  if (shared !== key) return values === undefined ? shared : formatMessage(locale, key, values);
+  const table = FALLBACK_STRINGS[locale] ?? FALLBACK_STRINGS['zh-CN'];
+  // IM wizard copy (imWizardMessages.ts) is a second verbatim fallback layer:
+  // generated from the same Vue locale sources, kept separate so this table
+  // stays reviewable. The embed wizard (embedWizardMessages.ts) is the third
+  // layer, generated from the Vue embedPublish subtree the same way.
+  const wizardTable = IM_WIZARD_FALLBACK_STRINGS[locale] ?? IM_WIZARD_FALLBACK_STRINGS['zh-CN'];
+  const embedTable = EMBED_WIZARD_FALLBACK_STRINGS[locale] ?? EMBED_WIZARD_FALLBACK_STRINGS['zh-CN'];
+  const template = table[key] ?? wizardTable[key] ?? embedTable[key];
+  if (template === undefined) return key;
+  if (values === undefined) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => (
+    values[name] === undefined ? match : String(values[name])
+  ));
+}
+
+/** True when neither the shared package nor the fallback table knows the key. */
+export function isUnresolvedMessage(locale: Locale, key: string): boolean {
+  return integrationsT(locale, key) === key;
+}

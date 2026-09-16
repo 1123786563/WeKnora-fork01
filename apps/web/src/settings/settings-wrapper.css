@@ -1,0 +1,146 @@
+/* Settings wrapper slice (R027 items A/B/C/D) — Vue parity styles ported from
+ * frontend/src/views/settings/{GeneralSettings,TenantInfo,UserProfile,ModelSettings,SystemInfo,EnvVarSettings}.vue
+ * and frontend/src/components/ModelEditorDialog.vue. Scoped under the settings
+ * drawer so the rest of the shell is untouched. */
+
+/* 保留规则索引（Tailwind 迁移后本文件仅剩以下保留段，其余规则已收编为消费方
+ * 元素 utilities）：
+ * 1. @keyframes wk-audit-spin — SystemAuditLogPanel 刷新按钮的
+ *    animate-[wk-audit-spin_0.8s_linear_infinite] 任意值引用（keyframes 无法用
+ *    utilities 表达）。
+ * 2. .wk-audit-detail pre — 长报文滚动容器（max-height/overflow）。
+ * 3. 抽屉级 select chrome（.wks-modal .wks-content-wrapper select:not([multiple])
+ *    的 base/hover/focus/disabled 四条 + 720px 媒体查询内的宽度覆盖）— 本轮保留。
+ *    逐面板收编需改 9 个文件 20+ 处裸 <select>，消费方清单交 Orchestrator 决策。
+ *    已核实消费方（grep '<select' apps/web/src/settings/*.tsx，均经 SettingsPage
+ *    渲染于 .wks-modal .wks-content-wrapper 子树内，Dialog 为原位渲染）：
+ *    - GeneralPreferencesPanel.tsx ×4（语言/主题/sans/mono 字体；280px 宽度已由该
+ *      面板元素 utilities 承接，原 .general-settings 规则已删除）
+ *    - ConfigSettingsPanel.tsx ×1（modelSelect：retrieval rerank + chathistory
+ *      embedding；280px 宽度由下方保留的 .setting-control--model 规则提供）
+ *    - EnvVarSettingsPanel.tsx ×1、SystemGlobalSettingsPanel.tsx ×1、
+ *      McpSettingsPanel.tsx ×2、PersonalMemorySettingsPanel.tsx ×1、
+ *      SandboxSettingsPanel.tsx ×5、TenantMembersPanel.tsx ×4（pageSize/成员角色/
+ *      邀请角色/分享链接角色）、SkillSettingsPanel.tsx ×1（安装抽屉内的
+ *      InstallerModelSelect）
+ *    以及今后落入抽屉的任何裸 <select>。 */
+@keyframes wk-audit-spin { to { transform: rotate(360deg); } }
+
+/* Vue McpSettings.service-card anatomy. */
+.wk-mcp-service-card { display: flex; height: 100%; flex-direction: column; }
+.wk-mcp-service-card-body { gap: 8px; }
+.wk-mcp-service-card-header { gap: 10px; }
+.wk-mcp-service-card-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; margin: 0; overflow: hidden; font-size: 12px; line-height: 1.5; color: var(--color-muted, #66758b); }
+.wk-mcp-service-card-footer { margin-top: auto; padding-top: 0; }
+.wk-mcp-group { display: flex; min-width: 0; flex-direction: column; gap: 12px; border: 0; border-bottom: 1px solid var(--color-line, #dce3ed); border-radius: 0; padding: 12px 0 16px; }
+.wk-mcp-group:first-of-type { padding-top: 0; }
+.wk-mcp-group:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.wk-mcp-group-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; border: 0; color: var(--color-ink, #172033); font-size: 13px; font-weight: 600; line-height: 18px; }
+.wk-mcp-group-title::before { width: 3px; height: 14px; flex-shrink: 0; border-radius: 2px; background: var(--color-primary, #07c05f); content: ""; }
+.wk-mcp-form label:not(.wk-checkbox) { display: grid; gap: 6px; color: var(--color-ink, #172033); font-size: 13px; font-weight: 500; line-height: 1.4; }
+.wk-mcp-required .wk-mcp-label-text::before { margin-right: 4px; color: var(--color-danger, #e34d59); content: "*"; font-weight: 500; }
+.wk-mcp-form input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.wk-mcp-form input[type="number"]::-webkit-outer-spin-button,
+.wk-mcp-form input[type="number"]::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; appearance: none; }
+
+/* Vue .section (Settings.vue:892-894) carries no top margin inside
+   .content-wrapper. The styles.css .wk-settings-section { margin-top: 1rem }
+   base was deleted (its consumers carry utilities; a div has no default top
+   margin), so the reset that neutralized it inside the drawer went too. The
+   .wk-settings-section descendant rules below still hang off the class name
+   kept on the SettingsPage drawer wrapper div. */
+/* wk-audit-* rules removed: SystemAuditLogPanel.tsx carries the equivalent
+   utilities. Class names stay in the DOM as querySelector hooks for
+   SettingsPage.test.tsx (.wk-audit-table tbody tr / .wk-audit-detail);
+   .wk-audit-tag--* variant classes are fully dead (tones live in the
+   AUDIT_TAG_TONES utility map). */
+/* Retained (utilities gap): .wk-audit-detail pre keeps max-height:50vh /
+   overflow:auto so long payloads scroll instead of stretching the drawer. */
+.wk-audit-detail pre { background: #f7f9fb; border: 1px solid rgba(120,135,155,.18); border-radius: 8px; font-size: 12px; line-height: 1.55; margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; white-space: pre-wrap; }
+.wk-settings-section .section-header { margin-bottom: 32px; }
+.wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+.wk-settings-section .section-description { font-size: 14px; line-height: 1.5; margin: 0; opacity: 0.75; }
+
+/* setting-row list shared by TenantInfo.vue / UserProfile.vue /
+   SystemInfo.vue / GeneralSettings.vue */
+.wk-settings-section .settings-group { display: flex; flex-direction: column; }
+.wk-settings-section .setting-row { align-items: flex-start; border-bottom: 1px solid rgba(120, 135, 155, 0.18); display: flex; gap: 24px; justify-content: space-between; padding: 20px 0; }
+.wk-settings-section .setting-row:last-child { border-bottom: 0; }
+.wk-settings-section .setting-info { flex: 1; max-width: 65%; padding-right: 16px; }
+.wk-settings-section .setting-info label { color: inherit; display: block; font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.wk-settings-section .setting-info .desc { font-size: 13px; line-height: 1.5; margin: 0; opacity: 0.7; }
+.wk-settings-section .setting-control { align-items: center; display: flex; flex-shrink: 0; justify-content: flex-end; min-width: 220px; }
+.wk-settings-section .setting-control--stacked { align-items: flex-end; flex-direction: column; gap: 8px; }
+.wk-settings-section .info-value { font-size: 14px; overflow-wrap: anywhere; }
+.wk-settings-section .info-value.password-mask { letter-spacing: 2px; }
+.wk-settings-section .commit-info { font-family: ui-monospace, monospace; font-size: 12px; opacity: 0.7; }
+.wk-settings-section .edit-btn { background: transparent; border: 0; cursor: pointer; font-size: 14px; opacity: 0.6; padding: 2px 6px; }
+.wk-settings-section .edit-btn:hover { opacity: 1; }
+.wk-settings-section .inline-edit { align-items: center; display: flex; gap: 8px; }
+.wk-settings-section .inline-edit input { max-width: 280px; width: 280px; }
+.wk-settings-section .inline-edit-description { align-items: flex-end; flex-direction: column; }
+.wk-settings-section .inline-edit-description textarea { width: 320px; max-width: 320px; }
+.wk-settings-section .inline-edit-actions { display: flex; gap: 8px; }
+
+.wk-tag { border-radius: 999px; font-size: 12px; padding: 1px 10px; }
+.wk-tag--success { background: rgba(7, 192, 95, 0.12); color: #0a8f4c; }
+.wk-tag--warning { background: rgba(236, 149, 27, 0.14); color: #b26a08; }
+.wk-tag--danger { background: rgba(220, 38, 38, 0.12); color: #c23434; }
+.wk-tag--default { background: rgba(100, 116, 139, 0.14); color: #52607a; }
+
+/* RETAINED select chrome (consumers listed in the file-head index above).
+   Source: t-input chrome (tdesign.css .t-input / .t-input:hover /
+   .t-input--focused) with the WeKnora light brand: --td-brand-color #07c05f
+   (theme.css brand-color-4), --td-brand-color-focus = 20% brand mix.
+   Selector carries .wks-modal + .wks-content-wrapper so it outranks panel-local
+   selectors such as ".wk-tenant-members .wk-field select" and any layered
+   utilities regardless of CSS injection order. (It also outranked the legacy
+   ".wk-settings-section select" page rule, deleted with its styles.css
+   family.) Native multi-selects keep browser chrome; width stays
+   per-context (.setting-control--model narrows to 280px below; the deleted
+   .general-settings 280px width now lives on the GeneralPreferencesPanel
+   selects as element utilities). */
+.wks-modal .wks-content-wrapper select:not([multiple]) {
+  -webkit-appearance: none; appearance: none;
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-opacity='.4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 5.75 8 10.25l4.5-4.5'/%3E%3C/svg%3E") no-repeat right 8px center / 16px 16px;
+  border: 1px solid #dcdcdc; border-radius: 3px; box-sizing: border-box;
+  color: rgba(0, 0, 0, 0.9); cursor: pointer; font-size: 14px; height: 32px; line-height: 22px;
+  padding: 0 26px 0 8px;
+}
+.wks-modal .wks-content-wrapper select:not([multiple]):hover { border-color: #07c05f; }
+.wks-modal .wks-content-wrapper select:not([multiple]):focus { border-color: #07c05f; box-shadow: 0 0 0 2px rgba(7, 192, 95, 0.2); outline: none; }
+/* disabled t-select tokens: --td-bg-color-component-disabled (gray-2 #eee),
+   --td-text-color-disabled rgba(0,0,0,.26), border --td-component-border
+   #dcdcdc; the chevron image from the shorthand above stays on top. */
+.wks-modal .wks-content-wrapper select:not([multiple]):disabled { background-color: #eee; border-color: #dcdcdc; color: rgba(0, 0, 0, 0.26); cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .wk-settings-section .setting-row { flex-direction: column; gap: 8px; }
+  .wk-settings-section .setting-control { justify-content: flex-start; min-width: 0; }
+  .wk-settings-section .setting-control select { max-width: 100%; width: 100%; }
+  .wk-settings-section .setting-info { max-width: 100%; padding-right: 0; }
+  .wk-settings-section .inline-edit { flex-wrap: wrap; width: 100%; }
+  .wk-settings-section .inline-edit input,
+  .wk-settings-section .inline-edit-description textarea { box-sizing: border-box; max-width: 100%; width: 100%; }
+  .wk-settings-section .inline-edit-actions { flex-wrap: wrap; width: 100%; }
+}
+
+/* Item F3 remainder: model select width in aligned config rows
+   (ConfigSettingsPanel modelSelect — retrieval rerank + chathistory embedding
+   model). The E3 .wk-switch family and .desc.warning-text were absorbed into
+   ConfigSettingsPanel.tsx / SkillSettingsPanel.tsx element utilities
+   (peer-checked / peer-disabled encode the checked/disabled states); the
+   .general-settings select width and .font-preview rules moved into
+   GeneralPreferencesPanel.tsx utilities. */
+.wk-settings-section .setting-control--model select { max-width: 280px; width: 280px; }
+
+/* Item F4: chathistory stats section (ChathistorySettings.vue lines 35-55) */
+.stats-section { margin-top: 20px; }
+.stats-title { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+.stats-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.stat-card { background: #fff; border: 1px solid rgba(120, 135, 155, 0.3); border-radius: 10px; padding: 16px; text-align: center; }
+.stat-value { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.stat-label { color: #5c6b83; font-size: 12px; margin-top: 4px; }
+.stats-empty { background: rgba(127, 142, 166, 0.06); border: 1px dashed rgba(120, 135, 155, 0.35); border-radius: 10px; padding: 28px 16px; text-align: center; }
+.stats-empty-title { font-weight: 600; margin: 0 0 6px; }
+.stats-empty-desc { color: #5c6b83; font-size: 13px; margin: 0; }

@@ -22,7 +22,14 @@ echo "  Output: dist/${APP_BUNDLE}"
 echo ""
 
 # ── Step 1: Build frontend (if not skipped) ──
-if [ "${SKIP_FRONTEND:-}" != "1" ]; then
+if [ "${REACT_FRONTEND:-0}" = "1" ]; then
+    echo ">> Building React Web/Embed renderer..."
+    pnpm install --frozen-lockfile
+    bash ./scripts/build_react_web_bundle.sh
+    echo ">> Sync dist/react-web/web -> web/"
+    rm -rf web
+    cp -r dist/react-web/web web
+elif [ "${SKIP_FRONTEND:-}" != "1" ]; then
     if [ -f frontend/package.json ]; then
         echo ">> Building frontend..."
         (cd frontend && npm ci --prefer-offline && npm run build)
@@ -91,6 +98,15 @@ if [ -d config ]; then
 fi
 if [ -d web ]; then
     cp -r web "${RESOURCES_DIR}/"
+fi
+
+# Wails self-signs before this step, but the runtime resources above are part
+# of the app bundle and therefore invalidate that seal. Re-sign the assembled
+# artifact so the package we hand to macOS has a verifiable bundle signature.
+if command -v codesign >/dev/null 2>&1; then
+    echo ">> Re-signing assembled macOS app bundle..."
+    codesign --force --deep --sign - "${DIST_DIR}"
+    codesign --verify --deep --strict "${DIST_DIR}"
 fi
 
 # 注意：Wails build 生成的二进制文件工作目录默认是 app 的 Contents/MacOS 目录

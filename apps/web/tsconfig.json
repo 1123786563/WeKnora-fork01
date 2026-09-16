@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,16 +21,92 @@
     "ignoreDeprecations": "6.0",
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@weknora/api-client": ["../../packages/api-client/src/index.ts"],
-      "@weknora/contracts": ["../../packages/contracts/src/index.ts"],
-      "@weknora/core/craft/controller": ["../../packages/core/src/craft/controller.ts"],
-      "@weknora/domain": ["../../packages/domain/src/query-key.ts"],
-      "@weknora/domain/scope": ["../../packages/domain/src/scope.ts"],
-      "@weknora/domain/craft/state": ["../../packages/domain/src/craft/state.ts"],
-      "@weknora/domain/craft/reconnect": ["../../packages/domain/src/craft/reconnect.ts"],
+      "@weknora/api-client": [
+        "../../packages/api-client/src/index.ts"
+      ],
+      "@weknora/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@weknora/core/craft/controller": [
+        "../../packages/core/src/craft/controller.ts"
+      ],
+      "@weknora/domain": [
+        "../../packages/domain/src/query-key.ts"
+      ],
+      "@weknora/domain/scope": [
+        "../../packages/domain/src/scope.ts"
+      ],
+      "@weknora/domain/craft/state": [
+        "../../packages/domain/src/craft/state.ts"
+      ],
+      "@weknora/domain/craft/reconnect": [
+        "../../packages/domain/src/craft/reconnect.ts"
+      ],
+      "@weknora/domain/chat/reducer": [
+        "../../packages/domain/src/chat/reducer.ts"
+      ],
+      "@weknora/domain/chat/session-state": [
+        "../../packages/domain/src/chat/session-state.ts"
+      ],
+      "@weknora/domain/chat/message-timestamps": [
+        "../../packages/domain/src/chat/message-timestamps.ts"
+      ],
+      "@weknora/domain/chat/copy-answer": [
+        "../../packages/domain/src/chat/copy-answer.ts"
+      ],
+      "@weknora/domain/chat/session-grouping": [
+        "../../packages/domain/src/chat/session-grouping.ts"
+      ],
+      "@weknora/domain/knowledge/folders": [
+        "../../packages/domain/src/knowledge/folders.ts"
+      ],
+      "@weknora/domain/knowledge/processing": [
+        "../../packages/domain/src/knowledge/processing.ts"
+      ],
+      "@weknora/domain/knowledge/preview": [
+        "../../packages/domain/src/knowledge/preview.ts"
+      ],
+      "@weknora/domain/sandbox/terminal": [
+        "../../packages/domain/src/sandbox/terminal.ts"
+      ],
+      "@weknora/domain/wiki/diff": [
+        "../../packages/domain/src/wiki/diff.ts"
+      ],
+      "@weknora/domain/settings/local-preferences": [
+        "../../packages/domain/src/settings/local-preferences.ts"
+      ],
+      "@weknora/domain/settings/theme": [
+        "../../packages/domain/src/settings/theme.ts"
+      ],
+      "@weknora/domain/auth/onboarding": [
+        "../../packages/domain/src/auth/onboarding.ts"
+      ],
+      "@weknora/ui": [
+        "../../packages/ui/src/index.tsx"
+      ],
+      "@weknora/ui/*": [
+        "../../packages/ui/src/*.tsx"
+      ],
+      "@weknora/views": [
+        "../../packages/views/src/index.ts"
+      ],
+      "@weknora/views/chat/page": ["../../packages/views/src/chat/page.tsx"],
+      "@weknora/views/chat/chat-copy": ["../../packages/views/src/chat/chat-copy.ts"],
+      "@weknora/views/chat/composer": ["../../packages/views/src/chat/composer.tsx"],
+      "@weknora/views/chat/markdown": ["../../packages/views/src/chat/markdown.ts"],
+      "@weknora/views/chat/mermaid": ["../../packages/views/src/chat/mermaid.ts"],
+      "@weknora/views/embed/bridge": ["../../packages/views/src/embed/bridge.ts"],
+      "@weknora/views/guides/contextual-guides": ["../../packages/views/src/guides/contextual-guides.ts"],
+      "@weknora/views/integrations/registry": ["../../packages/views/src/integrations/registry.ts"],
+      "@weknora/views/integrations/page": ["../../packages/views/src/integrations/page.tsx"],
+      "@weknora/views/integrations/apiKeys": ["../../packages/views/src/integrations/apiKeys.ts"],
+      "@weknora/views/integrations/settings-route": ["../../packages/views/src/integrations/settings-route.ts"],
+      "@weknora/views/settings/registry": ["../../packages/views/src/settings/registry.ts"],
       "@weknora/views/craft/home": ["../../packages/views/src/craft/home.tsx"],
       "@weknora/views/craft/workbench": ["../../packages/views/src/craft/workbench.tsx"],
       "@weknora/views/craft/preview": ["../../packages/views/src/craft/preview.tsx"],
@@ -35,8 +115,11 @@
       "@weknora/views/craft/document": ["../../packages/views/src/craft/document.tsx"],
       "@weknora/views/craft/slides": ["../../packages/views/src/craft/slides.tsx"],
       "@weknora/views/craft/presentation": ["../../packages/views/src/craft/presentation.ts"],
-      "@weknora/ui": ["../../packages/ui/src/index.tsx"]
+      "@weknora/i18n/runtime": ["../../packages/i18n/src/runtime.ts"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
 }

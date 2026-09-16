@@ -1,5 +1,28 @@
 import type { WeKnoraClient } from '@weknora/api-client';
-import { parseLogin, type ParsedLogin } from '@weknora/api-client';
+
+export interface ParsedLogin {
+  credential: { kind: 'bearer'; accessToken: string; refreshToken?: string };
+  tenantId?: string | null;
+  user?: Record<string, unknown>;
+}
+
+function parseLogin(value: unknown): ParsedLogin {
+  if (!value || typeof value !== 'object') throw new Error('Authentication request failed');
+  const root = value as Record<string, unknown>;
+  if (root.success !== true) throw new Error(typeof root.message === 'string' ? root.message : 'Authentication request failed');
+  const data = root.data && typeof root.data === 'object' ? root.data as Record<string, unknown> : root;
+  const accessToken = data.token ?? data.access_token;
+  const refreshToken = data.refresh_token ?? data.refreshToken;
+  if (typeof accessToken !== 'string' || accessToken.trim() === '') throw new Error('access token is required');
+  if (typeof refreshToken !== 'string' || refreshToken.trim() === '') throw new Error('refresh token is required');
+  const tenant = data.tenant && typeof data.tenant === 'object' ? data.tenant as Record<string, unknown> : null;
+  const tenantRaw = tenant?.id ?? data.tenant_id;
+  return {
+    credential: { kind: 'bearer', accessToken, refreshToken },
+    tenantId: tenantRaw === undefined || tenantRaw === null ? null : String(tenantRaw),
+    user: data.user && typeof data.user === 'object' ? data.user as Record<string, unknown> : undefined,
+  };
+}
 
 export interface AuthApi {
   login(email: string, password: string): Promise<ParsedLogin>;

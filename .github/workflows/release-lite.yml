@@ -47,6 +47,52 @@ jobs:
           path: frontend/dist/
           retention-days: 1
 
+  # Keep the React Web/Embed candidate separate from the current Vue Lite
+  # artifact until T25 accepts the migration and authorizes the switch.
+  build-react-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install React workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check React boundaries
+        run: node scripts/check-react-boundaries.mjs
+
+      - name: Build React Web and Embed candidate
+        env:
+          REACT_BUILD_VERSION: ${{ inputs.tag || github.sha }}
+          VITE_FRONTEND_COMMIT: ${{ github.sha }}
+        run: pnpm run build:react-bundle
+
+      - name: Package React candidate artifact
+        shell: bash
+        run: |
+          VERSION="${{ inputs.tag || github.sha }}"
+          ARCHIVE="WeKnora-react-web_${VERSION}"
+          mkdir -p "${ARCHIVE}"
+          cp -R dist/react-web/web "${ARCHIVE}/web"
+          tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}"
+          shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: react-web-dist
+          path: |
+            WeKnora-react-web_*.tar.gz
+            WeKnora-react-web_*.tar.gz.sha256
+          retention-days: 3
+
   # ── 2a. Build Web CLI binary per platform (native CGO) ──
   build-binary:
     needs: build-frontend
@@ -179,6 +225,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Install pnpm for the React Wails renderer
+        run: npm install --global pnpm@10.28.2
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
@@ -212,9 +261,19 @@ jobs:
       - name: Prepare React static runtime resources
         shell: bash
         run: |
-          ARCHIVE="react-artifact/WeKnora-react-web${{ steps.ver.outputs.version }}.tar.gz"
-          ROOT="WeKnora-react-web${{ steps.ver.outputs.version }}"
+          ARCHIVE="react-artifact/WeKnora-react-web_${{ steps.ver.outputs.version }}.tar.gz"
+          CHECKSUM="${ARCHIVE}.sha256"
+          ROOT="WeKnora-react-web_${{ steps.ver.outputs.version }}"
           test -f "${ARCHIVE}"
+          test -f "${CHECKSUM}"
+          (
+            cd react-artifact
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 -c "$(basename "${CHECKSUM}")"
+            else
+              sha256sum -c "$(basename "${CHECKSUM}")"
+            fi
+          )
           tar xzf "${ARCHIVE}"
           test -s "${ROOT}/web/index.html"
           test -s "${ROOT}/web/embed.html"
@@ -348,7 +407,7 @@ jobs:
 
   # ── 3. Create GitHub Release ──
   release:
-    needs: [build-binary, build-desktop-app]
+    needs: [build-binary, build-desktop-app, build-react-artifact]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -362,6 +421,11 @@ jobs:
         with:
           pattern: desktop-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: react-web-dist
+          path: .
 
       - name: Resolve version
         id: ver
@@ -427,6 +491,9 @@ jobs:
           详细文档见 [LITE.md](docs/LITE.md)。
           NOTES
 
+      - name: Validate release artifacts before publishing
+        run: ./scripts/validate-release-lite-artifacts.sh .
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -436,7 +503,9 @@ jobs:
             --notes-file notes.md \
             WeKnora-lite_*.tar.gz \
             WeKnora-lite_*.tar.gz.sha256 \
-            WeKnora-Lite-App_* || true
+            WeKnora-react-web_*.tar.gz \
+            WeKnora-react-web_*.tar.gz.sha256 \
+            WeKnora-Lite-App_*
 
   # ── 4. Update Homebrew Formula ──
   update-homebrew:

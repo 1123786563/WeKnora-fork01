@@ -28,6 +28,111 @@ export interface KnowledgeBaseListResponse {
   data: KnowledgeBase[];
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  description?: string;
+  is_pinned: boolean;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface ChatSessionListResponse {
+  data: ChatSession[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+  is_completed?: boolean;
+  [key: string]: unknown;
+}
+
+export type MessageSuggestionStatus = 'generating' | 'ready' | 'suppressed' | 'failed';
+
+export interface MessageSuggestionItem {
+  id: string;
+  text: string;
+  category?: 'clarify' | 'deepen' | 'action' | string;
+  source: string;
+  knowledge_base_ids?: string[];
+}
+
+export interface MessageSuggestionSet {
+  id: string;
+  session_id: string;
+  assistant_message_id: string;
+  status: MessageSuggestionStatus;
+  allow_regenerate: boolean;
+  suppression_reason?: string;
+  questions: MessageSuggestionItem[];
+  generated_at?: string;
+}
+
+export type TemporaryAttachmentStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+
+export interface TemporaryAttachment {
+  id: string;
+  session_id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  mime_type?: string;
+  status: TemporaryAttachmentStatus;
+  token_count?: number;
+  chunk_count?: number;
+  image_refs?: unknown[];
+  error_message?: string;
+  expires_at?: string;
+  [key: string]: unknown;
+}
+
+export interface TemporaryAttachmentListResponse {
+  success: true;
+  data: TemporaryAttachment[];
+}
+
+export interface ActionSuccessResponse {
+  success: true;
+}
+
+export type SteerDelivery = 'inject' | 'after';
+
+export interface SteerQueueItem {
+  steer_id: string;
+  content: string;
+  delivery: SteerDelivery;
+  mentioned_items?: unknown[];
+}
+
+export interface SteerListResponse extends ActionSuccessResponse {
+  assistant_message_id?: string;
+  items: SteerQueueItem[];
+}
+
+export type SteerMutationResponse =
+  | (ActionSuccessResponse & { status: 'new_run' })
+  | (ActionSuccessResponse & {
+    status: 'queued';
+    steer_id: string;
+    assistant_message_id: string;
+    delivery: SteerDelivery;
+  })
+  | (ActionSuccessResponse & { status: 'already_injected'; steer_id: string });
+
+export type SteerDeleteResponse =
+  | (ActionSuccessResponse & { status: 'gone' })
+  | (ActionSuccessResponse & { status: 'deleted'; steer_id: string; removed: boolean })
+  | (ActionSuccessResponse & { status: 'already_injected'; steer_id: string; removed: false });
+
 export type { ChatResponseType, ChatStreamEvent } from './chat/events.ts';
 export { responseType } from './chat/events.ts';
 
@@ -70,11 +175,153 @@ export { ACTION_STATES, isActionState, parseActionView, parseActionDetail, parse
 export type { CraftSessionKind, CraftRunStatus, CraftTerminalRunStatus, CraftCheckStatus, CraftEventKind, CraftSessionCreatedView, CraftSessionSummaryView, CraftSessionPageView, CraftRunView, CraftFileVersionView, CraftVersionCheckView, CraftVersionView, CraftVersionsPageView, CraftWorkspaceRefView, CraftWorkspaceView, CraftInputView, CraftPreviewTicketView, CraftRunEventView, CraftEventPayloadView } from './craft/index.ts';
 export { CRAFT_SESSION_KINDS, CRAFT_RUN_STATUSES, CRAFT_TERMINAL_RUN_STATUSES, CRAFT_CHECK_STATUSES, CRAFT_EVENT_KINDS, parseCraftSessionCreated, parseCraftSessionPage, parseCraftRunView, parseCraftVersionView, parseCraftVersionsPage, parseCraftWorkspaceView, parseCraftInputView, parseCraftPreviewTicket, parseCraftRunEvent, parseCraftEventPayload } from './craft/index.ts';
 
+export interface KnowledgeFolderNode {
+  path: string;
+  name: string;
+  document_count: number;
+  total_count: number;
+  children?: KnowledgeFolderNode[];
+}
+
+export interface KnowledgeFolderTree {
+  root_document_count: number;
+  total_document_count: number;
+  folders: KnowledgeFolderNode[];
+}
+
+export interface KnowledgeTag {
+  id: string;
+  seq_id?: number;
+  knowledge_base_id?: string;
+  name: string;
+  color?: string;
+  sort_order?: number;
+  knowledge_count?: number;
+  chunk_count?: number;
+  [key: string]: unknown;
+}
+
+export interface KnowledgeTagListResponse {
+  success: true;
+  data: KnowledgeTag[];
+  total?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface KnowledgeSearchResponse {
+  success: true;
+  data: KnowledgeDocument[];
+  has_more: boolean;
+  total: number;
+}
+
 function requireNonEmptyString(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ContractError(path, 'expected a non-empty string');
   }
   return value;
+}
+
+function requiredString(value: unknown, path: string): string {
+  if (typeof value !== 'string') throw new ContractError(path, 'expected a string');
+  return value;
+}
+
+function actionEnvelope(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) throw new ContractError('success', 'expected true');
+  return result;
+}
+
+function parseSteerDelivery(value: unknown, path: string): SteerDelivery {
+  if (value !== 'inject' && value !== 'after') {
+    throw new ContractError(path, 'expected inject or after');
+  }
+  return value;
+}
+
+export function parseActionSuccessResponse(value: unknown): ActionSuccessResponse {
+  actionEnvelope(value);
+  return { success: true };
+}
+
+export function parseSteerMutationResponse(value: unknown): SteerMutationResponse {
+  const result = actionEnvelope(value);
+  if (result.status === 'new_run') return { success: true, status: 'new_run' };
+  if (result.status === 'already_injected') {
+    return {
+      success: true,
+      status: 'already_injected',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+    };
+  }
+  if (result.status === 'queued') {
+    return {
+      success: true,
+      status: 'queued',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      assistant_message_id: requireNonEmptyString(result.assistant_message_id, 'assistant_message_id'),
+      delivery: parseSteerDelivery(result.delivery, 'delivery'),
+    };
+  }
+  throw new ContractError('status', 'expected queued, new_run, or already_injected');
+}
+
+export function parseSteerListResponse(value: unknown): SteerListResponse {
+  const result = actionEnvelope(value);
+  if (!Array.isArray(result.items)) throw new ContractError('items', 'expected an array');
+  const assistantMessageId = result.assistant_message_id === undefined
+    ? undefined
+    : requireNonEmptyString(result.assistant_message_id, 'assistant_message_id');
+  const items = result.items.map((value, index) => {
+    const path = `items[${index}]`;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new ContractError(path, 'expected an object');
+    }
+    const item = value as Record<string, unknown>;
+    if (item.mentioned_items !== undefined && !Array.isArray(item.mentioned_items)) {
+      throw new ContractError(`${path}.mentioned_items`, 'expected an array');
+    }
+    return {
+      steer_id: requireNonEmptyString(item.steer_id, `${path}.steer_id`),
+      content: requireNonEmptyString(item.content, `${path}.content`),
+      delivery: parseSteerDelivery(item.delivery, `${path}.delivery`),
+      ...(item.mentioned_items === undefined ? {} : { mentioned_items: item.mentioned_items }),
+    };
+  });
+  return {
+    success: true,
+    ...(assistantMessageId === undefined ? {} : { assistant_message_id: assistantMessageId }),
+    items,
+  };
+}
+
+export function parseSteerDeleteResponse(value: unknown): SteerDeleteResponse {
+  const result = actionEnvelope(value);
+  if (result.status === 'gone') return { success: true, status: 'gone' };
+  if (result.status === 'already_injected') {
+    if (result.removed !== false) throw new ContractError('removed', 'expected false');
+    return {
+      success: true,
+      status: 'already_injected',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      removed: false,
+    };
+  }
+  if (result.status === 'deleted') {
+    if (typeof result.removed !== 'boolean') throw new ContractError('removed', 'expected a boolean');
+    return {
+      success: true,
+      status: 'deleted',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      removed: result.removed,
+    };
+  }
+  throw new ContractError('status', 'expected deleted, gone, or already_injected');
 }
 
 export function parseApiErrorPayload(value: unknown): ApiErrorPayload {
@@ -148,6 +395,166 @@ function validatePageNumber(value: unknown, path: string): number {
   return value;
 }
 
+function optionalString(value: unknown, path: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new ContractError(path, 'expected a string');
+  return value;
+}
+
+function envelope(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) throw new ContractError('success', 'expected true');
+  if (!Array.isArray(result.data)) throw new ContractError('data', 'expected an array');
+  return result;
+}
+
+function parseChatSession(value: unknown, path: string): ChatSession {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError(path, 'expected an object');
+  }
+  const row = value as Record<string, unknown>;
+  if (typeof row.is_pinned !== 'boolean') throw new ContractError(`${path}.is_pinned`, 'expected a boolean');
+  const description = optionalString(row.description, `${path}.description`);
+  const createdAt = optionalString(row.created_at, `${path}.created_at`);
+  const updatedAt = optionalString(row.updated_at, `${path}.updated_at`);
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    title: requiredString(row.title, `${path}.title`),
+    is_pinned: row.is_pinned,
+    ...(description === undefined ? {} : { description }),
+    ...(createdAt === undefined ? {} : { created_at: createdAt }),
+    ...(updatedAt === undefined ? {} : { updated_at: updatedAt }),
+  } as ChatSession;
+}
+
+export function parseChatSessionListResponse(value: unknown): ChatSessionListResponse {
+  const result = envelope(value);
+  const data = (result.data as unknown[]).map((item, index) => parseChatSession(item, `data[${index}]`));
+  return {
+    data,
+    total: validatePageNumber(result.total, 'total'),
+    page: validatePageNumber(result.page, 'page'),
+    page_size: validatePageNumber(result.page_size, 'page_size'),
+  };
+}
+
+export function parseChatSessionResponse(value: unknown): ChatSession {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) throw new ContractError('success', 'expected true');
+  return parseChatSession(result.data, 'data');
+}
+
+export function parseChatMessageListResponse(value: unknown): ChatMessage[] {
+  const result = envelope(value);
+  return (result.data as unknown[]).map((item, index) => {
+    const path = `data[${index}]`;
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new ContractError(path, 'expected an object');
+    }
+    const row = item as Record<string, unknown>;
+    const role = requiredString(row.role, `${path}.role`);
+    if (role !== 'user' && role !== 'assistant' && role !== 'system') {
+      throw new ContractError(`${path}.role`, 'expected user, assistant, or system');
+    }
+    if (row.is_completed !== undefined && typeof row.is_completed !== 'boolean') {
+      throw new ContractError(`${path}.is_completed`, 'expected a boolean');
+    }
+    const createdAt = optionalString(row.created_at, `${path}.created_at`);
+    const updatedAt = optionalString(row.updated_at, `${path}.updated_at`);
+    return {
+      ...row,
+      id: requireNonEmptyString(row.id, `${path}.id`),
+      session_id: requireNonEmptyString(row.session_id, `${path}.session_id`),
+      role,
+      content: requiredString(row.content, `${path}.content`),
+      ...(createdAt === undefined ? {} : { created_at: createdAt }),
+      ...(updatedAt === undefined ? {} : { updated_at: updatedAt }),
+    } as ChatMessage;
+  });
+}
+
+function parseMessageSuggestionItem(value: unknown, path: string): MessageSuggestionItem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const category = optionalString(row.category, `${path}.category`);
+  const knowledgeBaseIds = row.knowledge_base_ids === undefined || row.knowledge_base_ids === null
+    ? undefined
+    : (() => {
+      if (!Array.isArray(row.knowledge_base_ids)) throw new ContractError(`${path}.knowledge_base_ids`, 'expected an array');
+      return row.knowledge_base_ids.map((id, index) => requireNonEmptyString(id, `${path}.knowledge_base_ids[${index}]`));
+    })();
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    text: requiredString(row.text, `${path}.text`),
+    source: requiredString(row.source, `${path}.source`),
+    ...(category === undefined ? {} : { category }),
+    ...(knowledgeBaseIds === undefined ? {} : { knowledge_base_ids: knowledgeBaseIds }),
+  } as MessageSuggestionItem;
+}
+
+function parseMessageSuggestionSet(value: unknown, path: string): MessageSuggestionSet {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const status = requiredString(row.status, `${path}.status`);
+  if (!['generating', 'ready', 'suppressed', 'failed'].includes(status)) throw new ContractError(`${path}.status`, 'unknown suggestion status');
+  if (typeof row.allow_regenerate !== 'boolean') throw new ContractError(`${path}.allow_regenerate`, 'expected a boolean');
+  if (!Array.isArray(row.questions)) throw new ContractError(`${path}.questions`, 'expected an array');
+  const suppressionReason = optionalString(row.suppression_reason, `${path}.suppression_reason`);
+  const generatedAt = optionalString(row.generated_at, `${path}.generated_at`);
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    session_id: requireNonEmptyString(row.session_id, `${path}.session_id`),
+    assistant_message_id: requireNonEmptyString(row.assistant_message_id, `${path}.assistant_message_id`),
+    status: status as MessageSuggestionStatus,
+    allow_regenerate: row.allow_regenerate,
+    questions: row.questions.map((item, index) => parseMessageSuggestionItem(item, `${path}.questions[${index}]`)),
+    ...(suppressionReason === undefined ? {} : { suppression_reason: suppressionReason }),
+    ...(generatedAt === undefined ? {} : { generated_at: generatedAt }),
+  };
+}
+
+export function parseMessageSuggestionResponse(value: unknown): MessageSuggestionSet {
+  const result = actionEnvelope(value);
+  return parseMessageSuggestionSet(result.data, 'data');
+}
+
+function parseTemporaryAttachment(value: unknown, path: string): TemporaryAttachment {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const status = requiredString(row.status, `${path}.status`);
+  if (!['uploaded', 'processing', 'ready', 'failed'].includes(status)) throw new ContractError(`${path}.status`, 'unknown attachment status');
+  if (typeof row.file_size !== 'number' || !Number.isFinite(row.file_size) || row.file_size < 0) throw new ContractError(`${path}.file_size`, 'expected a non-negative number');
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    session_id: requireNonEmptyString(row.session_id, `${path}.session_id`),
+    file_name: requireNonEmptyString(row.file_name, `${path}.file_name`),
+    file_type: requiredString(row.file_type, `${path}.file_type`),
+    file_size: row.file_size,
+    status: status as TemporaryAttachmentStatus,
+  } as TemporaryAttachment;
+}
+
+export function parseTemporaryAttachmentResponse(value: unknown): TemporaryAttachment {
+  const envelope = actionEnvelope(value);
+  return parseTemporaryAttachment(envelope.data, 'data');
+}
+
+export function parseTemporaryAttachmentListResponse(value: unknown): TemporaryAttachmentListResponse {
+  const envelope = actionEnvelope(value);
+  if (!Array.isArray(envelope.data)) throw new ContractError('data', 'expected an array');
+  return { success: true, data: envelope.data.map((item, index) => parseTemporaryAttachment(item, `data[${index}]`)) };
+}
+
 export function parseKnowledgeDocumentListResponse(value: unknown): KnowledgeDocumentListResponse {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new ContractError('', 'expected an object envelope');
@@ -175,8 +582,6 @@ export function parseKnowledgeDocumentListResponse(value: unknown): KnowledgeDoc
     page_size: validatePageNumber(envelope.page_size, 'page_size'),
   };
 }
-<<<<<<< HEAD
-=======
 
 export function parseKnowledgeDocumentResponse(value: unknown): KnowledgeDocument {
   const envelope = actionEnvelope(value);
@@ -278,4 +683,3 @@ export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchRes
   if (typeof envelope.has_more !== 'boolean') throw new ContractError('has_more', 'expected a boolean');
   return { success: true, data, has_more: envelope.has_more, total: validatePageNumber(envelope.total, 'total') };
 }
->>>>>>> 7e34e3b03 (feat(workbench): define versioned execution contracts)
