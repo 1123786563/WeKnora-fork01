@@ -4110,3 +4110,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Vue/React screenshots and computed-style sweeps, real MCP/model/graph/
   integrations backend mutation and permission flows, and per-feature Wails
   interaction remain open or `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R425 — Parallel platform, chat, wiki, and preview parity
+
+- Four independent Vue-baseline fixes landed: Platform hydration now keeps a
+  persisted same-user tenant override (`11ae9c1d`); Chat artifact lists remain
+  downloadable when preview is unavailable (`727ab2ee`); Wiki readers now
+  provide Vue-gated page deletion with confirmation, busy, failure, refresh,
+  and selection-reset behavior (`8b517591`); and Mermaid document previews
+  now render safely in the detail surface (`d05e314a`).
+- Scoped tests passed: Platform 8/8, Chat 99/99 plus views 68/68, Wiki/editor
+  15/15, Preview 8/8 plus detail 17/17. Integrated Web regression passed
+  `1224/1224`; Web typecheck, `git diff --check`, Web build, Embed build,
+  Desktop 9/9 tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real backend tenant/chat/
+  wiki/file permission and mutation flows, and per-feature Wails interaction
+  remain open or `blocked-env`. DOCX/PPTX previews remain download-only because
+  the renderer dependencies are not present; no mobile code was modified.
