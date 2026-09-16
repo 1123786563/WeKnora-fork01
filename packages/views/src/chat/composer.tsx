@@ -40,6 +40,15 @@ export function createChatSubmission(draft: string): ChatSubmission {
   return { content, status: 'pending' };
 }
 
+type ChatKeyboardEvent = Pick<KeyboardEvent, 'key' | 'keyCode' | 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'> & { isComposing?: boolean };
+
+export function shouldSubmitFromKeyboard(event: ChatKeyboardEvent, canSteer: boolean): boolean {
+  if (event.isComposing || event.keyCode === 229 || (event.key !== 'Enter' && event.keyCode !== 13)) return false;
+  if (event.shiftKey || event.ctrlKey) return false;
+  if (event.altKey && !event.metaKey && !canSteer) return false;
+  return true;
+}
+
 export interface ChatComposerProps {
   draft: string;
   disabled?: boolean;
@@ -94,9 +103,18 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  function submitDraft(): void {
+    if (!draft.trim()) return;
+    onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
+    submitDraft();
+  }
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (disabled || !shouldSubmitFromKeyboard(event, canSteer)) return;
+    event.preventDefault();
+    submitDraft();
   }
 
   const showStop = streaming && (!canSteer || !draft.trim());
@@ -173,6 +191,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
         id="wk-chat-draft"
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={handleDraftKeyDown}
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
