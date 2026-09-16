@@ -48,6 +48,9 @@ describe('session row press contract', () => {
             spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', resourceUserId: 'user-1', resourceTenantId: 'tenant-1', resourceSessionId: 's1', runId: 'run-1',
         });
     });
+    it('rejects an empty run identity', () => {
+        expect(() => createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: '  ' })).toThrow('PRODUCT_SESSION_RUN_ID_REQUIRED');
+    });
     it('prepares on touch-down without navigating or tracking a switch', () => {
         handlers.onPressIn();
         expect(mocks.preloadSession).toHaveBeenCalledWith('a');

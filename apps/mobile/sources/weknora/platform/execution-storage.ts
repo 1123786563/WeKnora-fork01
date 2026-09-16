@@ -219,6 +219,9 @@ export function registerExecutionStorageFactory(factory: ExecutionStorageFactory
 export function getExecutionStorage(scope: ExecutionScope): ExecutionStorage | null {
   return executionStorageFactory?.(scope) ?? null;
 }
+export function hasExecutionStorageFactory(): boolean {
+  return executionStorageFactory !== null;
+}
 
 /** Small durable request index used before a native SQLite driver is injected.
  * The value contains no prompt or credential; only the opaque request identity
