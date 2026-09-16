@@ -45,6 +45,17 @@ export type KnowledgeSettingsInput = KnowledgeBase & {
   type?: string;
   chunking_config?: {
     parser_engine_rules?: Array<Record<string, unknown>>;
+    chunk_size?: number;
+    chunk_overlap?: number;
+    separators?: string[];
+    enable_parent_child?: boolean;
+    parent_chunk_size?: number;
+    child_chunk_size?: number;
+    strategy?: string;
+    token_limit?: number;
+    languages?: string[];
+    table_metadata_instructions?: string;
+    [key: string]: unknown;
   };
   vector_store_id?: string | null;
   vector_store_source?: string;
@@ -196,6 +207,130 @@ export function getKnowledgeBaseSharesPath(knowledgeBaseId: string): string {
   return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/shares`;
 }
 
+// Vue editor contract: config updates go through PUT /initialization/config/:kbId
+// (frontend updateKBConfig), which persists parser rules, chunking, storage and
+// the extraction/question-generation blocks in one authoritative call.
+export function getKnowledgeBaseConfigPath(knowledgeBaseId: string): string {
+  return `/api/v1/initialization/config/${encodeURIComponent(knowledgeBaseId)}`;
+}
+
+export interface KnowledgeSettingsSavePayload {
+  llmModelId: string;
+  embeddingModelId: string;
+  vlm_config: { enabled: boolean; model_id: string; description_language: string; custom_instructions: string };
+  asr_config: { enabled: boolean; model_id: string; language: string };
+  documentSplitting: {
+    chunkSize: number;
+    chunkOverlap: number;
+    separators: string[];
+    parserEngineRules: Array<Record<string, unknown>>;
+    enableParentChild: boolean;
+    parentChunkSize: number;
+    childChunkSize: number;
+    strategy: string;
+    tokenLimit: number;
+    languages: string[];
+    tableMetadataInstructions: string;
+  };
+  multimodal: { enabled: boolean };
+  storageBackendId: string;
+  storageProvider: string;
+  nodeExtract: { enabled: boolean; text: string; tags: string[]; nodes: unknown[]; relations: unknown[]; customInstructions: string };
+  questionGeneration: { enabled: boolean; questionCount: number; customInstructions: string };
+}
+
+interface GraphExtractInput {
+  enabled: boolean;
+  text?: string;
+  tags?: string[];
+  nodes?: unknown[];
+  relations?: unknown[];
+  customInstructions?: string;
+}
+
+// Builds the exact KBModelConfigRequest body the Vue KnowledgeBaseEditorModal
+// sends on update: the loaded KB config round-trips unchanged while the given
+// parser-engine rules (the only editable control on this surface) replace
+// chunking_config.parser_engine_rules. The vector-store binding is intentionally
+// absent — Vue only ever sends vector_store_id on create, the binding is
+// immutable afterwards.
+export function buildKnowledgeSettingsConfigPayload(
+  knowledgeBase: KnowledgeSettingsInput,
+  parserEngineRules: Array<Record<string, unknown>>,
+  nodeExtract?: GraphExtractInput,
+): KnowledgeSettingsSavePayload {
+  const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+  const record = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
+  const chunking = record(knowledgeBase.chunking_config);
+  const vlm = record(knowledgeBase.vlm_config);
+  const asr = record(knowledgeBase.asr_config);
+  const questionGeneration = record(knowledgeBase.question_generation_config);
+  const extract = record(knowledgeBase.extract_config);
+  const vlmEnabled = vlm.enabled === true;
+  const extractSource = nodeExtract ?? {
+    enabled: extract.enabled === true,
+    text: text(extract.text),
+    tags: Array.isArray(extract.tags) ? extract.tags : [],
+    nodes: Array.isArray(extract.nodes) ? extract.nodes : [],
+    relations: Array.isArray(extract.relations) ? extract.relations : [],
+    customInstructions: text(extract.custom_instructions ?? extract.customInstructions),
+  };
+  const storageProvider = text(knowledgeBase.storage_provider_config && record(knowledgeBase.storage_provider_config).provider)
+    || text(knowledgeBase.storage_config && record(knowledgeBase.storage_config).provider)
+    || 'local';
+  return {
+    llmModelId: text(knowledgeBase.summary_model_id),
+    embeddingModelId: text(knowledgeBase.embedding_model_id),
+    vlm_config: {
+      enabled: vlmEnabled,
+      model_id: vlmEnabled ? text(vlm.model_id) : '',
+      description_language: text(vlm.description_language),
+      custom_instructions: text(vlm.custom_instructions),
+    },
+    asr_config: {
+      enabled: asr.enabled === true,
+      model_id: asr.enabled === true ? text(asr.model_id) : '',
+      language: text(asr.language),
+    },
+    documentSplitting: {
+      chunkSize: typeof chunking.chunk_size === 'number' && chunking.chunk_size > 0 ? chunking.chunk_size : 512,
+      chunkOverlap: typeof chunking.chunk_overlap === 'number' ? chunking.chunk_overlap : 80,
+      separators: Array.isArray(chunking.separators) && chunking.separators.length > 0 ? chunking.separators.map(String) : ['\n\n', '\n', '。', '！', '？', ';', '；'],
+      parserEngineRules,
+      enableParentChild: chunking.enable_parent_child === true,
+      parentChunkSize: typeof chunking.parent_chunk_size === 'number' && chunking.parent_chunk_size > 0 ? chunking.parent_chunk_size : 4096,
+      childChunkSize: typeof chunking.child_chunk_size === 'number' && chunking.child_chunk_size > 0 ? chunking.child_chunk_size : 384,
+      strategy: text(chunking.strategy),
+      tokenLimit: typeof chunking.token_limit === 'number' ? chunking.token_limit : 0,
+      languages: Array.isArray(chunking.languages) ? chunking.languages.map(String) : [],
+      tableMetadataInstructions: text(chunking.table_metadata_instructions),
+    },
+    multimodal: { enabled: vlmEnabled },
+    storageBackendId: text(knowledgeBase.storage_backend_id),
+    storageProvider,
+    nodeExtract: {
+      enabled: extractSource.enabled === true,
+      text: text(extractSource.text),
+      tags: Array.isArray(extractSource.tags) ? extractSource.tags : [],
+      nodes: Array.isArray(extractSource.nodes) ? extractSource.nodes : [],
+      relations: Array.isArray(extractSource.relations) ? extractSource.relations : [],
+      customInstructions: text(extractSource.customInstructions),
+    },
+    questionGeneration: {
+      enabled: questionGeneration.enabled === true,
+      questionCount: typeof questionGeneration.question_count === 'number' && questionGeneration.question_count > 0 ? questionGeneration.question_count : 3,
+      customInstructions: text(questionGeneration.custom_instructions),
+    },
+  };
+}
+
+// Sends the update through the authenticated client transport. The
+// /initialization/config endpoint lives behind client.request because the
+// shared api-client does not expose it yet (see report: api-client contract).
+export async function saveKnowledgeSettings(client: WeKnoraClient, knowledgeBaseId: string, payload: KnowledgeSettingsSavePayload): Promise<void> {
+  await client.request({ method: 'PUT', path: getKnowledgeBaseConfigPath(knowledgeBaseId), body: payload });
+}
+
 function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
   if (summary.kind === 'unavailable') return 'error';
   if (summary.kind === 'ready' || summary.kind === 'configured' || summary.kind === 'available') return 'success';
@@ -258,7 +393,31 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   const parserRulesForSummary = pendingParserEngine
     ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
     : currentKnowledgeBase.chunking_config?.parser_engine_rules;
-  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, chunking_config: { parser_engine_rules: parserRulesForSummary } });
+  // Committed rules come back from the last successful save so the summary
+  // reflects persisted state instead of the pre-save KB payload.
+  const [savedParserRules, setSavedParserRules] = useState<Array<Record<string, unknown>> | null>(null);
+  const effectiveParserRules = savedParserRules ?? parserRulesForSummary;
+  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, chunking_config: { parser_engine_rules: effectiveParserRules } });
+  // Vue editor save semantics: one in-flight save at a time (button :loading),
+  // success toast, failure keeps the form intact and surfaces the message.
+  const [saveState, setSaveState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'error'; message: string }>({ status: 'idle', message: '' });
+  const canManage = knowledgeSettingsCanEdit(role);
+  const canSave = canManage && Boolean(client) && Boolean(currentKnowledgeBase.id);
+  const handleSave = () => {
+    if (!client || !currentKnowledgeBase.id || saveState.status === 'saving' || !canSave) return;
+    const rules = (pendingParserEngine
+      ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
+      : parserRules(currentKnowledgeBase)) as Array<Record<string, unknown>>;
+    const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract);
+    setSaveState({ status: 'saving', message: '' });
+    void saveKnowledgeSettings(client, currentKnowledgeBase.id, payload).then(() => {
+      setSavedParserRules(rules);
+      setPendingParserEngine('');
+      setSaveState({ status: 'saved', message: t('knowledgeEditor.messages.updateSuccess') });
+    }).catch((error: unknown) => {
+      setSaveState({ status: 'error', message: error instanceof Error && error.message ? error.message : t('common.error') });
+    });
+  };
   const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
 
   useEffect(() => {
@@ -306,6 +465,22 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
           <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active?.label}</h3>
           <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
           {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key]} section={active.key} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
+          {canSave ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #dce3ed', paddingTop: '1rem' }}>
+              <ButtonComponent
+                type="button"
+                disabled={saveState.status === 'saving'}
+                aria-busy={saveState.status === 'saving'}
+                aria-label={t('knowledgeEditor.buttons.save')}
+                onClick={handleSave}
+              >
+                {t('knowledgeEditor.buttons.save')}
+              </ButtonComponent>
+              {saveState.message ? (
+                <span role="status" aria-live="polite" style={{ color: saveState.status === 'error' ? '#b42318' : '#067647', fontWeight: 600 }}>{saveState.message}</span>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       </div>
     </CardComponent>

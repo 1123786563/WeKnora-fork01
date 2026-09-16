@@ -104,7 +104,7 @@ test('metadata validation rejects empty or duplicate keys and invalid numbers', 
 test('metadata editor submits structured values and keeps the draft after a failed save', async () => {
   let updateInput: unknown;
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.pdf', source: 'file', file_type: 'pdf', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.pdf', type: 'file', file_type: 'pdf', parse_status: 'completed',
     custom_metadata: { owner: 'docs' },
   }));
   (client as any).knowledgeBases.documents.updateDetails = async (_id: string, input: unknown) => {
@@ -140,7 +140,7 @@ test('metadata editor submits structured values and keeps the draft after a fail
 test('failed chunk retry follows the Vue retryIndex contract: copy, payload, and success feedback', async () => {
   const updateCalls: Array<Record<string, unknown>> = [];
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
   }), 'contributor', 'user-1', [
     { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
   ]);
@@ -166,7 +166,7 @@ test('failed chunk retry follows the Vue retryIndex contract: copy, payload, and
 
 test('a retry that stays failed surfaces the Vue indexFailed error and keeps the retry control', async () => {
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
   }), 'contributor', 'user-1', [
     { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
   ]);
@@ -185,7 +185,7 @@ test('a retry that stays failed surfaces the Vue indexFailed error and keeps the
 test('retry isolates its loading state from the enable/disable control and viewers see no retry action', async () => {
   let release: ((value: Record<string, unknown>) => void) | undefined;
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
   }), 'contributor', 'user-1', [
     { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
   ]);
@@ -203,7 +203,7 @@ test('retry isolates its loading state from the enable/disable control and viewe
   assert.ok(!retry(), 'retry clears after completion');
 
   const viewer = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
   }), 'viewer', 'owner-1', [
     { id: 'chunk-1', content: 'Broken chunk', content_revision: 3, is_enabled: true, index_status: 'failed' },
   ]);
@@ -251,7 +251,7 @@ test('loaded file detail matches the Vue drawer title and metadata anatomy', asy
     id: 'doc-1',
     knowledge_base_id: 'kb-1',
     file_name: 'Deployment Guide.pdf',
-    source: 'file',
+    type: 'file',
     file_type: 'pdf',
     parse_status: 'pending',
     folder_path: 'Guides',
@@ -287,7 +287,7 @@ test('viewer detail keeps Vue download affordances hidden until permission grant
     id: 'doc-1',
     knowledge_base_id: 'kb-1',
     file_name: 'Viewer Guide.pdf',
-    source: 'file',
+    type: 'file',
     file_type: 'pdf',
     parse_status: 'pending',
   }), 'viewer', 'owner-1'));
@@ -298,7 +298,7 @@ test('viewer detail keeps Vue download affordances hidden until permission grant
 test('independent document detail grants tenant admin and contributor mutation affordances', async () => {
   for (const role of ['admin', 'contributor']) {
     const container = await mountDetail(detailClient(async () => ({
-      id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Tenant Guide.pdf', source: 'file', file_type: 'pdf', parse_status: 'completed',
+      id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Tenant Guide.pdf', type: 'file', file_type: 'pdf', parse_status: 'completed',
     }), role, 'another-user'));
     await act(async () => {});
     await act(async () => {});
@@ -316,7 +316,7 @@ test('detail route renders the Vue right drawer and real chunk/history controls 
     id: 'doc-1',
     knowledge_base_id: 'kb-1',
     file_name: 'Guide.pdf',
-    source: 'file',
+    type: 'file',
     file_type: 'pdf',
     parse_status: 'completed',
   })));
@@ -337,7 +337,7 @@ test('detail route renders the Vue right drawer and real chunk/history controls 
 test('detail drawer exposes Vue header download and conditional document metadata', async () => {
   const downloads: string[] = [];
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.pdf', source: 'file', file_type: 'pdf', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.pdf', type: 'file', file_type: 'pdf', parse_status: 'completed',
     time: '2026-09-15T13:36:00Z', channel: 'feishu', tags: [{ id: 'tag-1', name: '重要' }],
   }));
   (client as any).knowledgeBases.documents.download = async () => {
@@ -356,7 +356,7 @@ test('detail drawer exposes Vue header download and conditional document metadat
 
 test('summary editor follows Vue permission and retains its draft after a failed save', async () => {
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed', description: 'Original summary',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed', description: 'Original summary',
   }));
   (client as any).knowledgeBases.documents.updateDetails = async () => { throw new Error('summary save unavailable'); };
   const container = await mountDetail(client);
@@ -377,9 +377,48 @@ test('summary editor follows Vue permission and retains its draft after a failed
   assert.ok(container.ownerDocument.body.textContent?.includes('summary save unavailable'));
 });
 
+test('merged view keeps the Vue chunk pagination so multi-page documents merge past page one', async () => {
+  const pages: Array<number> = [];
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }));
+  const rowsByPage: Record<number, Array<Record<string, unknown>>> = {
+    1: [{ id: 'c1', chunk_index: 1, content: 'Page one chunk', content_revision: 1, is_enabled: true }],
+    2: [{ id: 'c2', chunk_index: 26, content: 'Page two chunk', content_revision: 1, is_enabled: true }],
+  };
+  (client as any).knowledgeBases.documents.chunks = async (_id: string, page = 1) => {
+    pages.push(page);
+    return { data: rowsByPage[page] ?? [], total: 30, page, page_size: 25 };
+  };
+  const container = await mountDetail(client);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  assert.ok(body().textContent?.includes('Page one chunk'));
+  const nav = () => body().querySelector('nav[aria-label="查看分块"]');
+  assert.ok(nav(), 'Vue renders the chunk pagination for the merged view too (viewMode merged || chunks)');
+  await act(async () => { Array.from(nav()!.querySelectorAll('button')).at(-1)!.click(); });
+  await act(async () => {});
+  assert.ok(body().textContent?.includes('Page two chunk'), 'the merged view advances to the next chunk page');
+  assert.deepEqual(pages, [1, 2]);
+});
+
+test('audio documents follow the Vue default view: merged with an embedded player, no preview tab', async () => {
+  (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock-audio';
+  (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Interview.mp3', type: 'file', file_type: 'mp3', parse_status: 'completed',
+  }));
+  (client as any).knowledgeBases.documents.preview = async () => ({ body: 'audio-bytes', headers: {}, contentType: 'audio/mpeg' });
+  const container = await mountDetail(client);
+  const body = container.ownerDocument.body;
+  assert.equal(Array.from(body.querySelectorAll('button')).some((button) => button.textContent === '预览'), false, 'Vue canPreview() excludes audio so the preview tab is hidden');
+  assert.ok(body.querySelector('.wk-document-merged'), 'audio documents open on the merged (全文) view like Vue');
+  assert.equal((body.querySelector('audio') as HTMLAudioElement | null)?.getAttribute('src'), 'blob:mock-audio', 'the audio player stays embedded like the Vue audio-player-section');
+});
+
 test('document content exposes Vue preview, merged and chunks tabs and merges chunks in index order', async () => {
   const container = await mountDetail(detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', source: 'file', file_type: 'md', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
   }), 'contributor', 'user-1', [
     { id: 'chunk-2', chunk_index: 2, content: '# Second', content_revision: 1, is_enabled: true },
     { id: 'chunk-1', chunk_index: 1, content: '# First\n\n- one\n- two', content_revision: 1, is_enabled: true },
@@ -411,7 +450,7 @@ test('completed Excel detail opens the Vue-style inline worksheet preview', asyn
   ]), 'Details');
   const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Report.xlsx', source: 'file', file_type: 'xlsx', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Report.xlsx', type: 'file', file_type: 'xlsx', parse_status: 'completed',
   }));
   (client as any).knowledgeBases.documents.preview = async () => ({ body: bytes, headers: {}, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
@@ -427,7 +466,7 @@ test('completed Excel detail opens the Vue-style inline worksheet preview', asyn
 
 test('completed Mermaid detail loads the source into the Vue-style inline preview', async () => {
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'architecture.mmd', source: 'file', file_type: 'mmd', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'architecture.mmd', type: 'file', file_type: 'mmd', parse_status: 'completed',
   }));
   (client as any).knowledgeBases.documents.preview = async () => ({ body: 'graph TD\n  A[Start] --> B[Finish]', headers: {}, contentType: 'text/plain' });
 
@@ -449,7 +488,7 @@ test('document preview ignores delayed text from a document that was replaced', 
     knowledgeBases: {
       documents: {
         get: async (id: string) => ({
-          id, knowledge_base_id: 'kb-1', file_name: `${id}.txt`, source: 'file', file_type: 'txt', parse_status: 'completed',
+          id, knowledge_base_id: 'kb-1', file_name: `${id}.txt`, type: 'file', file_type: 'txt', parse_status: 'completed',
         }),
         previewPath: (id: string) => `/api/v1/knowledge/${id}/preview`,
         downloadPath: (id: string) => `/api/v1/knowledge/${id}/download`,
@@ -479,7 +518,7 @@ test('document preview ignores delayed text from a document that was replaced', 
 test('chunk enabled state can be toggled and failed indexing can be retried', async () => {
   const updates: unknown[] = [];
   const client = detailClient(async () => ({
-    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.txt', source: 'file', file_type: 'txt', parse_status: 'completed',
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.txt', type: 'file', file_type: 'txt', parse_status: 'completed',
   }), 'contributor', 'user-1', [{ id: 'chunk-1', content: 'Disabled chunk', content_revision: 3, is_enabled: false, index_status: 'failed' }]);
   const documents = (client as any).knowledgeBases.documents;
   documents.updateChunk = async (_id: string, _chunkId: string, input: { is_enabled?: boolean }) => {

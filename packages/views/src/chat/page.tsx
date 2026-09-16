@@ -33,6 +33,10 @@ export interface ChatToolApprovalPrompt {
   decision?: string;
   /** Original tool call arguments, rendered editable in the approval card. */
   arguments?: Record<string, unknown>;
+  /** Unix seconds the approval was requested (SSE tool_approval_required). */
+  requestedAt?: number;
+  /** Approval timeout in seconds; Vue ToolApprovalCard defaults to 600. */
+  timeoutSeconds?: number;
 }
 
 export interface ChatOAuthApprovalPrompt {

@@ -151,6 +151,7 @@ export interface KnowledgeDocument {
   title?: string;
   file_name?: string;
   file_type?: string;
+  type?: string;
   source?: string;
   parse_status?: KnowledgeProcessingStatus;
   summary_status?: string;

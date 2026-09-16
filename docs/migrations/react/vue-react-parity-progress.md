@@ -4351,3 +4351,32 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Code-contract round — no browser pairing; live capture for the touched surfaces (KB settings dialog, doc
   retry, org settings, chat approval) deferred to the next browser round. Evidence:
   `evidence/vue-react-parity/2026-09-16-r435-code-parity-round.md`. No Vue, mobile, or Go code was modified.
+
+## 2026-09-17 Round R436 — Code-parity TDD round: approval countdown, settings save pipeline, doc preview gates, org pending-upgrade
+
+- Five parallel agents (A1 chat countdown, A2 settings save pipeline, A3 doc preview/merge, A4 org
+  hasPendingUpgrade, A5 verifier), file-domain mutually exclusive, all red→green TDD. A5 verdict: A1/A2/A4 PASS;
+  A3 CONCERNS resolved by an orchestrator follow-up verified against live backend data (see below).
+- A1: tool-approval countdown matches Vue ToolApprovalCard.vue — deadline from requested_at+timeout_seconds
+  (SSE events confirmed in internal/event/event_data.go, bridged in approval-state.ts/ChatRoutePage), m:ss vs
+  {seconds}s below 60s, 30s/120s critical/warning classes, expiry parks at 0 without disabling, resolved hides
+  the timer, 5-locale `approvalCountdownShort`.
+- A2: legacy `/knowledgeBase/:id/settings` save pipeline — `PUT /initialization/config/:kbId` with the Vue
+  KBModelConfigRequest payload (KB round-trip, pending parser rules, vector_store_id immutable-excluded),
+  aria-busy + duplicate-click guard, failure keeps the form, owner/admin gating, zero new i18n keys.
+- A3: merged-content assembly now ports Vue mergeChunks/appendChunkContent (MIN_OVERLAP=12, start_at order) with
+  pagination in BOTH 全文 and 分块 views; `canPreviewDocument` ported (audio excluded, 全文 default). Orchestrator
+  follow-up on verifier CONCERNS: the gate and the detail-title extension strip were re-keyed from `source` to
+  `type === 'file'` — real payloads carry `type: "manual"/"file"` and `source: ""` for file uploads (verified
+  live on KB 22d38cb7 doc a35e5ca0: old fixtures used a nonexistent `source: 'file'` shape); file_type now wins
+  over the filename suffix per Vue resolveFilePreviewExt; `type?: string` added to the shared KnowledgeDocument
+  contract.
+- A4: org upgrade request now reflects `has_pending_upgrade` from the detail endpoint (api-client field +
+  normalization, stale-guarded modal fetch, submit disabled + 审核 title/aria, current-role tag bar, local pending
+  set after submit).
+- Gates: `pnpm test:web` 1359/1359, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+- Browser evidence: paired manual-doc detail (no preview tab / 全文 default / `.md` title kept) on both sides
+  `screenshots/r436-20260917/react|vue-doc-detail-manual-type-gate.png`; React settings save round-trip with
+  配置保存成功 `react-kb-settings-save-success.png`. Deferred to the next browser pass: Vue KB editor-modal pair
+  (entry point behind the KB list card hover menu — not located in timebox), live approval countdown flow, org
+  pending-upgrade live check. No Vue, mobile, or Go code was modified.

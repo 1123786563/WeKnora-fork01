@@ -110,6 +110,8 @@ approvalArgsObject: '参数必须是 JSON 对象',
 approvalArgsModified: '已修改',
 /** agentStream.toolApproval.userRejected */
 approvalRejectedReason: '用户拒绝',
+/** agentStream.toolApproval.countdownShort */
+approvalCountdownShort: '{seconds}s',
 oauthTitle: 'MCP 授权',
 oauthTool: '工具',
 oauthAuthorize: '去授权',
@@ -398,6 +400,8 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   approvalArgsModified: 'Modified',
   /** agentStream.toolApproval.userRejected */
   approvalRejectedReason: 'User rejected',
+  /** agentStream.toolApproval.countdownShort */
+  approvalCountdownShort: '{seconds}s',
   oauthTitle: 'MCP authorization',
   oauthTool: 'Tool',
   oauthAuthorize: 'Authorize',
@@ -609,6 +613,8 @@ operationFailed: 'Operation failed',
   approvalArgsModified: '変更あり',
   /** agentStream.toolApproval.userRejected */
   approvalRejectedReason: 'ユーザが拒否しました',
+  /** agentStream.toolApproval.countdownShort */
+  approvalCountdownShort: '{seconds}秒',
   oauthTitle: 'MCP 認証',
   oauthTool: 'ツール',
   oauthAuthorize: '認証する',
@@ -820,6 +826,8 @@ operationFailed: '操作に失敗しました',
   approvalArgsModified: '수정됨',
   /** agentStream.toolApproval.userRejected */
   approvalRejectedReason: '사용자 거부',
+  /** agentStream.toolApproval.countdownShort */
+  approvalCountdownShort: '{seconds}초',
   oauthTitle: 'MCP 인증',
   oauthTool: '도구',
   oauthAuthorize: '승인하기',
@@ -1031,6 +1039,8 @@ operationFailed: '작업에 실패했습니다',
   approvalArgsModified: 'Изменено',
   /** agentStream.toolApproval.userRejected */
   approvalRejectedReason: 'Отклонено пользователем',
+  /** agentStream.toolApproval.countdownShort */
+  approvalCountdownShort: '{seconds} с',
   oauthTitle: 'Авторизация MCP',
   oauthTool: 'Инструмент',
   oauthAuthorize: 'Авторизовать',

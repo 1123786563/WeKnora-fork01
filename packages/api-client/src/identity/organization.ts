@@ -3,7 +3,7 @@ import { array, dataArray, dataRecord, encoded, numberValue, optionalNumber, opt
 
 export type OrganizationRole = 'admin' | 'editor' | 'viewer';
 export type OrganizationPermission = 'admin' | 'editor' | 'viewer';
-export interface Organization { id: string; name: string; description: string; owner_id: string; owner_tenant_id: number; [key: string]: unknown }
+export interface Organization { id: string; name: string; description: string; owner_id: string; owner_tenant_id: number; /** Whether the current tenant already has a pending role-upgrade request (org detail endpoint, Vue OrganizationSettingsModal.vue). */ has_pending_upgrade?: boolean; [key: string]: unknown }
 export interface OrganizationPage { items: Organization[]; total: number; resourceCounts?: JsonRecord }
 export interface OrganizationMember { id: string; user_id: string; username: string; email: string; role: OrganizationRole; tenant_id: number; tenant_name?: string; joined_at: string; [key: string]: unknown }
 export interface OrganizationMemberPage { items: OrganizationMember[]; total: number }
@@ -15,7 +15,8 @@ export interface TenantInviteCandidate { tenant_id: number; tenant_name: string;
 
 function organization(value: unknown, path: string): Organization {
   const row = record(value, path);
-  return { ...row, id: stringValue(row.id, `${path}.id`), name: stringValue(row.name, `${path}.name`), description: typeof row.description === 'string' ? row.description : '', owner_id: stringValue(row.owner_id, `${path}.owner_id`), owner_tenant_id: numberValue(row.owner_tenant_id, `${path}.owner_tenant_id`) };
+  // has_pending_upgrade normalizes like the Vue modal's `|| false` read.
+  return { ...row, id: stringValue(row.id, `${path}.id`), name: stringValue(row.name, `${path}.name`), description: typeof row.description === 'string' ? row.description : '', owner_id: stringValue(row.owner_id, `${path}.owner_id`), owner_tenant_id: numberValue(row.owner_tenant_id, `${path}.owner_tenant_id`), has_pending_upgrade: row.has_pending_upgrade === true };
 }
 function member(value: unknown, path: string): OrganizationMember {
   const row = record(value, path);

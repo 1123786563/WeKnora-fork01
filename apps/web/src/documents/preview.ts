@@ -147,6 +147,28 @@ function MermaidPreview({ text, fileName }: { text: string; fileName?: string })
   return createElement('div', { ref: root, className: 'wk-preview-mermaid min-h-16 overflow-auto', 'aria-label': `${fileName || 'Document'} Mermaid diagram` });
 }
 
+const AUDIO_PREVIEW_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac']);
+
+/**
+ * Vue doc-content#canPreview: only `type === 'file'` knowledge entries with a
+ * resolvable preview extension, and never audio — Vue hides the preview tab
+ * for audio and embeds the player above the content views instead. The
+ * extension resolution mirrors Vue resolveFilePreviewExt: an explicit
+ * file_type wins over the filename suffix. `source` is present on real
+ * payloads but deliberately ignored — Vue gates on `type`, and backend file
+ * knowledge carries `source: ""`.
+ */
+export function canPreviewDocument(document: { type?: string; source?: string; file_name?: string; title?: string; file_type?: string }): boolean {
+  if (document.type !== 'file') return false;
+  const normalizedType = (document.file_type || '').trim().replace(/^\./, '').toLowerCase();
+  const fileName = document.file_name || document.title || '';
+  const dot = fileName.lastIndexOf('.');
+  const fromName = dot < 0 || dot === fileName.length - 1 ? '' : fileName.slice(dot + 1).toLowerCase();
+  const extension = normalizedType || fromName;
+  if (!extension || AUDIO_PREVIEW_EXTENSIONS.has(extension)) return false;
+  return isInlinePreviewKind(previewKindForDocument(`doc.${extension}`));
+}
+
 export function buildDocumentPreview(document: KnowledgeDocument, previewPath: string): KnowledgeDocumentPreviewModel {
   const fileName = document.file_name || document.title || 'document';
   const status = previewStatus(document);

@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as XLSX from 'xlsx';
 
-import { DocumentPreviewContent, buildDocumentPreview, isInlinePreviewKind, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview } from './preview.ts';
+import { DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview } from './preview.ts';
 
 test('builds an authenticated preview model without treating download URLs as public', () => {
   assert.deepEqual(buildDocumentPreview({ id: 'doc/a', file_name: 'guide.pdf', parse_status: 'completed' }, '/api/v1/knowledge/doc%2Fa/preview'), {
@@ -45,6 +45,23 @@ test('marks spreadsheet documents as inline previewable like the Vue document pr
   assert.equal(isInlinePreviewKind('video'), true);
   assert.equal(isInlinePreviewKind('spreadsheet'), true);
   assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'brief.xlsx', parse_status: 'completed' }, '/preview').downloadOnly, false);
+});
+
+test('canPreviewDocument mirrors the Vue canPreview gate: file type, resolvable extension, never audio', () => {
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'Guide.pdf', source: '' }), true, 'real backend payloads carry source:"" for file knowledge — the gate keys off type');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'Guide.pdf' }), true, 'absent source must not matter; Vue checks type');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'architecture.mmd' }), true);
+  assert.equal(canPreviewDocument({ type: 'file', file_type: 'pdf' }), true, 'Vue resolveFilePreviewExt falls back to file_type when the title has no extension');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'Interview.mp3' }), false, 'Vue keeps audio out of the preview tab; the player is embedded instead');
+  assert.equal(canPreviewDocument({ type: 'url', file_name: 'Guide.pdf' }), false);
+  assert.equal(canPreviewDocument({ type: 'manual', file_name: 'Guide.pdf' }), false);
+  assert.equal(canPreviewDocument({ file_name: 'Guide.pdf', source: '' }), false, 'missing type never previews, matching Vue details?.type !== "file"');
+  assert.equal(canPreviewDocument({ type: '', file_name: 'Guide.pdf' }), false, 'empty-string type is not file');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'notes.txt', file_type: 'pdf' }), true, 'Vue prefers an explicit file_type over the filename suffix');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'guide.pdf', file_type: 'txt' }), true, 'an explicit file_type wins even when the filename suffix differs — txt is text-previewable');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'clip.mp4', file_type: 'exe' }), false, 'an explicit unpreviewable file_type wins over the filename suffix');
+  assert.equal(canPreviewDocument({ type: 'file', file_name: 'Guide.' }), false, 'trailing dot resolves to no extension');
+  assert.equal(canPreviewDocument({ type: 'file' }), false);
 });
 
 test('recognizes Mermaid files as inline previews like the Vue document preview', () => {

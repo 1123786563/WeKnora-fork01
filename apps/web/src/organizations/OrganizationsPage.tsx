@@ -320,6 +320,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [activeInviteCode, setActiveInviteCode] = useState(inviteCode);
   const [confirmState, setConfirmState] = useState<{ kind: 'leave' | 'delete'; org: Organization } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards the settings modal's org-detail refresh: a late response for a
+  // closed (or switched) modal must not resurrect stale settingsOrg state.
+  const settingsRequestId = useRef('');
   const locale = currentLocale();
   const organizationsApi = client.identity.organizations;
 
@@ -452,9 +455,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     setMemberSearchQuery(''); setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
     setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
+    // Vue OrganizationSettingsModal fetchOrgDetail: the org detail endpoint
+    // (GET /organizations/:id) carries has_pending_upgrade and the
+    // authoritative my_role; the list row alone cannot gate the upgrade form.
+    settingsRequestId.current = org.id;
+    void organizationsApi.get(org.id).then((detail) => {
+      if (settingsRequestId.current === org.id) setSettingsOrg(detail);
+    }).catch(() => { /* keep the list row, like Vue's caught fetchOrgDetail */ });
   }
 
-  function closeSettings() { setSettingsOpen(false); setSettingsOrg(null); }
+  function closeSettings() { settingsRequestId.current = ''; setSettingsOpen(false); setSettingsOrg(null); }
 
   function openJoinModal() {
     setJoinOpen(true); setJoinStep('invite'); setJoinInputCode(''); setJoinPreview(null);
@@ -691,9 +701,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   async function submitUpgradeRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!settingsOrg) return;
+    // Vue disables the upgrade entry while hasPendingUpgrade; the inline form
+    // mirrors that by refusing to submit a second request.
+    if (settingsOrg.has_pending_upgrade === true) return;
     try {
       await organizationsApi.requestRoleUpgrade(settingsOrg.id, { requested_role: upgradeRole, ...(upgradeNote.trim() ? { message: clampApplicationNote(upgradeNote) } : {}) });
       setUpgradeNote('');
+      // Vue handleSubmitUpgrade: hasPendingUpgrade.value = true (plus the
+      // store patch) so the entry stays disabled without a refetch.
+      setSettingsOrg((current) => (current ? { ...current, has_pending_upgrade: true } : current));
       showToast('success', t(locale, 'organization.upgrade.submitSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.upgrade.submitFailed'))); }
   }
@@ -836,6 +852,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // upgrade, and only roles above their current space role are selectable.
   const canRequestUpgrade = canRequestUpgradeForOrg({ mode: settingsMode, myRole: strOf(settingsOrg?.my_role), tenantAdmin: canManageOrg });
   const upgradeChoices = upgradeRoleOptionsForRole(strOf(settingsOrg?.my_role));
+  // Vue OrganizationSettingsModal hasPendingUpgrade/current-role bar: the org
+  // detail endpoint reports an in-flight upgrade request (entry disabled,
+  // organization.upgrade.pending title) and the popup always tags the current
+  // space role (organization.upgrade.currentRole + organization.role.{my_role},
+  // falling back to viewer like Vue's `orgInfo?.my_role || 'viewer'`).
+  const upgradeCurrentRole = strOf(settingsOrg?.my_role) || 'viewer';
+  const hasPendingUpgrade = boolOf(settingsOrg?.has_pending_upgrade);
   const settingsNavLabels: Record<string, string> = {
     basic: 'organization.editor.navBasic',
     permissions: 'organization.editor.navPermissions',
@@ -996,6 +1019,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       </form>
                       {canRequestUpgrade ? <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
+                        <div className="mb-[16px] flex items-center gap-[8px]">
+                          <span className="text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.upgrade.currentRole')}</span>
+                          <span className={RELATION_ROLE_TAG + ' ' + (RELATION_ROLE_TAG_TONES[upgradeCurrentRole] ?? 'bg-[rgba(107,114,128,0.08)] text-[rgba(23,26,29,0.6)]')}>{t(locale, 'organization.role.' + upgradeCurrentRole)}</span>
+                        </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
                           <Select id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
@@ -1006,7 +1033,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
                           <Textarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
-                        <button type="submit" className={ORG_BTN_OUTLINE}>{t(locale, 'organization.upgrade.submitBtn')}</button>
+                        <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form> : null}
                     </>
                   ) : settingsSection === 'members' ? (

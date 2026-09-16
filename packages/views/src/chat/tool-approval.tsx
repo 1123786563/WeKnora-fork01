@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatToolApprovalPrompt } from './page.tsx';
 import type { ChatCopyTable } from './chat-copy.ts';
 
@@ -66,6 +66,43 @@ export function approvalResolution(decision: 'approve' | 'reject', draft: string
   return { ok: true, decision: 'approve', modifiedArgs: parsed.args };
 }
 
+/** Vue countdown default: agentStream.toolApproval uses a 10 minute window. */
+export const APPROVAL_DEFAULT_TIMEOUT_SECONDS = 600;
+
+/**
+ * Vue ToolApprovalCard deadline math: (requestedAt || 0) * 1000 +
+ * (timeoutSeconds || 600) * 1000, floor to whole seconds and clamp at 0 so an
+ * expired request pins the timer at 0 instead of going negative.
+ */
+export function approvalCountdownSeconds(nowMs: number, requestedAt?: number, timeoutSeconds?: number): number {
+  const deadline = (requestedAt || 0) * 1000 + (timeoutSeconds || APPROVAL_DEFAULT_TIMEOUT_SECONDS) * 1000;
+  return Math.max(0, Math.floor((deadline - nowMs) / 1000));
+}
+
+/**
+ * Vue timerClass thresholds: critical at <= 30s, warning at <= 120s,
+ * unstyled otherwise. The wk-timer-* classes are the DOM/test hooks.
+ */
+export function approvalTimerClass(secondsLeft: number): '' | 'wk-timer-warning' | 'wk-timer-critical' {
+  if (secondsLeft <= 30) return 'wk-timer-critical';
+  if (secondsLeft <= 120) return 'wk-timer-warning';
+  return '';
+}
+
+/**
+ * Vue formatCountdown: below 60s renders the localized countdownShort copy
+ * ({seconds} placeholder), otherwise m:ss with zero-padded seconds.
+ */
+export function formatApprovalCountdown(secondsLeft: number, copy?: Pick<ChatCopyTable, 'approvalCountdownShort'>): string {
+  if (secondsLeft < 60) {
+    const template = copy?.approvalCountdownShort ?? '{seconds}s';
+    return template.replace('{seconds}', String(secondsLeft));
+  }
+  const minutes = Math.floor(secondsLeft / 60);
+  const rest = secondsLeft % 60;
+  return `${minutes}:${rest.toString().padStart(2, '0')}`;
+}
+
 export interface ToolApprovalCardProps {
   approval: ChatToolApprovalPrompt;
   busy: boolean;
@@ -79,12 +116,23 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
   const [draft, setDraft] = useState(initialDraft);
   const [argsError, setArgsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const submittingRef = useRef(false);
   const pending = approval.status === 'pending' && Boolean(onResolve);
+  // Vue ToolApprovalCard ticks a 1s interval while unresolved to advance its
+  // countdown; expiry never auto-rejects nor disables the actions.
+  useEffect(() => {
+    if (!pending) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
   // Vue ToolApprovalCard validates on every keystroke: invalid JSON disables
   // the approve action, edits away from the original args show the
   // argsModified hint.
   const argsStatus = approvalArgsStatus(draft, initialDraft);
+  const secondsLeft = approvalCountdownSeconds(now, approval.requestedAt, approval.timeoutSeconds);
+  const timerClass = approvalTimerClass(secondsLeft);
 
   async function resolve(decision: 'approve' | 'reject') {
     if (!onResolve || submittingRef.current) return;
@@ -133,6 +181,14 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
       <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
         <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('reject')}>{copy?.approvalReject ?? 'Reject'}</button>
         <button type="button" disabled={busy || submitting || !argsStatus.valid} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
+        {/* Vue inline layout: "reject · approve · <timer>"; the timer stays
+            visible pinned at 0 after expiry and disappears once resolved. */}
+        <span aria-hidden="true" className="text-[12px] text-[rgba(0,0,0,0.4)]">·</span>
+        <span
+          className={`wk-chat-approval-timer whitespace-nowrap text-[12px] leading-[1.55] tabular-nums ${timerClass === 'wk-timer-warning' ? 'wk-timer-warning text-[#e37318]' : timerClass === 'wk-timer-critical' ? 'wk-timer-critical text-[#d54941]' : 'text-[rgba(0,0,0,0.4)]'}`}
+        >
+          {formatApprovalCountdown(secondsLeft, copy)}
+        </span>
       </div>
     </div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.decision ? `${copy?.approvalResolved ?? 'Resolved'}: ${approval.decision}` : (copy?.approvalResolved ?? 'Resolved')}</small>}
   </div>;

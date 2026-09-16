@@ -24,7 +24,7 @@ import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
 import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
-import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution } from './approval-state.ts';
+import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
 import './chat.css';
 
@@ -94,6 +94,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Per-assistant-message approval snapshots so pending/resolved cards survive
   // the post-turn history refresh and revisiting a session.
   const approvalMemoryRef = useRef<Map<string, ChatApproval[]>>(new Map());
+  // Vue ToolApprovalCard countdown inputs (SSE requested_at/timeout_seconds);
+  // the domain reducer drops them, so remember them per pendingId here.
+  const approvalTimingRef = useRef<Map<string, ApprovalTiming>>(new Map());
   // continue-stream is started at most once per persisted incomplete message.
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
@@ -942,6 +945,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const injectedId = (steerId: string, userMessageId?: string) => userMessageId ?? `injected-${steerId}`;
     return (event: ChatStreamEvent) => {
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
+      // Remember the countdown window before the reducer drops those fields.
+      const timing = extractApprovalTiming(event);
+      if (timing) {
+        const payload = typeof event.data === 'object' && event.data !== null ? event.data as Record<string, unknown> : {};
+        const pendingId = typeof payload.pending_id === 'string' ? payload.pending_id : '';
+        if (pendingId) approvalTimingRef.current.set(pendingId, timing);
+      }
       runState = reduceChatStream(runState, event);
       setStreamState(runState);
       rememberApprovalSnapshot(runState.assistantMessageId, Object.values(runState.approvals));
@@ -1102,11 +1112,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}
     toolApprovals={(() => {
-      const live = Object.values(streamState.approvals);
+      const live = withApprovalTiming(Object.values(streamState.approvals), approvalTimingRef.current);
       if (live.length > 0) return live;
       const latestAssistantId = streamState.assistantMessageId
         ?? messages.filter((message) => message.role === 'assistant').at(-1)?.id;
-      return latestAssistantId ? approvalMemoryRef.current.get(latestAssistantId) ?? [] : [];
+      const remembered = latestAssistantId ? approvalMemoryRef.current.get(latestAssistantId) ?? [] : [];
+      return withApprovalTiming(remembered, approvalTimingRef.current);
     })()}
     oauthApprovals={Object.values(streamState.oauthApprovals)}
     onResolveToolApproval={resolveToolApproval}

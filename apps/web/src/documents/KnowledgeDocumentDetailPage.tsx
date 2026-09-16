@@ -3,10 +3,11 @@ import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, WeKnora
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Sheet, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
-import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
+import { buildDocumentPreview, canPreviewDocument, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
 import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
+import { mergeChunkContents } from './model.ts';
 import type { KnowledgeTimelineStep } from '@weknora/domain/knowledge/processing';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 
@@ -31,7 +32,7 @@ export function documentDetailTitle(document: KnowledgeDocument | undefined, fal
   if (!document) return fallback;
   const title = document.file_name || document.title || '';
   if (!title) return fallback;
-  if (document.source !== 'file') return title;
+  if (document.type !== 'file') return title;
   const extensionAt = title.lastIndexOf('.');
   return extensionAt > 0 ? title.slice(0, extensionAt) : title;
 }
@@ -133,8 +134,9 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
 
   useEffect(() => {
     if (state.status !== 'success') return;
-    const model = buildDocumentPreview(state.document, client.knowledgeBases.documents.previewPath(state.document.id));
-    setContentView(model.ready && isInlinePreviewKind(model.kind) ? 'preview' : 'merged');
+    // Vue defaults file types to 「预览」 only when canPreview() holds; audio
+    // and non-file documents open on the merged (全文) view instead.
+    setContentView(canPreviewDocument(state.document) ? 'preview' : 'merged');
   }, [client, state.status === 'success' ? state.document.id : undefined]);
 
   // Vue receives KB-level permissions from KnowledgeBase.vue. The route only
@@ -235,8 +237,8 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     {state.status === 'error' ? <div className="flex flex-wrap items-center gap-3"><Status tone="error">{state.message}</Status><Button type="button" variant="text" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</Button></div> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
   {state.status === 'success' ? <><div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label={t('knowledgeBase.documentContent')}>
-    {(() => { const tabs = CONTENT_TABS[locale]; const model = buildDocumentPreview(state.document, client.knowledgeBases.documents.previewPath(documentId)); return <>
-      {model.ready && isInlinePreviewKind(model.kind) ? <Button type="button" role="tab" aria-selected={contentView === 'preview'} onClick={() => setContentView('preview')}>{tabs.preview}</Button> : null}
+    {(() => { const tabs = CONTENT_TABS[locale]; return <>
+      {canPreviewDocument(state.document) ? <Button type="button" role="tab" aria-selected={contentView === 'preview'} onClick={() => setContentView('preview')}>{tabs.preview}</Button> : null}
       <Button type="button" role="tab" aria-selected={contentView === 'merged'} onClick={() => setContentView('merged')}>{tabs.merged}</Button>
       <Button type="button" role="tab" aria-selected={contentView === 'chunks'} onClick={() => setContentView('chunks')}>{tabs.chunks}</Button>
     </>; })()}
@@ -339,7 +341,7 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
     void client.knowledgeBases.documents.chunkRevisions(document.id, chunk.id).then((rows) => setHistory({ id: chunk.id, rows })).catch((error: unknown) => setState((current) => ({ ...current, message: error instanceof Error ? error.message : t('common.error') }))).finally(() => setHistoryLoading(null));
   };
 
-  const mergedContent = state.chunks.slice().sort((left, right) => Number(left.chunk_index ?? 0) - Number(right.chunk_index ?? 0)).map((chunk) => chunk.content || '').filter(Boolean).join('\n\n');
+  const mergedContent = mergeChunkContents(state.chunks);
   return <section className="wk-document-chunks mt-4" aria-label={t('knowledgeBase.viewChunks')} hidden={view === 'preview'}>
     <div className="mb-3 flex items-center justify-between gap-3"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.viewChunks')} {state.total ? `(${state.total})` : ''}</h3></div>
     {mutationError ? <Status tone="error">{mutationError}</Status> : null}
@@ -356,7 +358,10 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
       <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</span> : null}</div>
       {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[120px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <p className="m-0 whitespace-pre-wrap text-[13px] text-ink">{chunk.content || '—'}</p>}
       {history?.id === chunk.id ? <div className="mt-3 border-t border-line-soft pt-3"><strong className="text-[12px]">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="m-0 mt-2 list-decimal pl-5 text-[12px]">{history?.rows.map((row) => <li key={row.revision} className="mb-2"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="ml-2" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
-    </article>)}</div>{state.total > 25 ? <nav className="mt-3 flex items-center justify-between" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.page}</span><Button type="button" disabled={state.page * 25 >= state.total} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}</> : null}
+    </article>)}</div></> : null}
+    {/* Vue renders the chunk pagination for both merged and chunks views
+        (viewMode merged || chunks), so 全文 can advance past page one. */}
+    {state.status === 'success' && view !== 'preview' && state.total > 25 ? <nav className="mt-3 flex items-center justify-between" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.page}</span><Button type="button" disabled={state.page * 25 >= state.total} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}
   </section>;
 }
 
@@ -459,6 +464,10 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
     {detailsError ? <Status tone="error">{detailsError}</Status> : null}<section className="wk-document-metadata-section border-b border-line-soft pb-4"><h3 className="m-0 mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:rounded-[2px] before:bg-primary before:content-['']">{createTranslator(useAppLocale())('knowledgeBase.detailSectionMeta')}</h3><dl className="wk-document-metadata m-0 flex flex-col gap-2.5 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[13px] [&_dt]:text-muted"><div className="flex items-start gap-3"><dt>{copy.status}</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div className="flex items-start gap-3"><dt>{copy.source}</dt><dd>{String(document.source || 'file')}</dd></div>{documentTime ? <div className="flex items-start gap-3"><dt>{copy.status}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}{document.channel && document.channel !== 'web' ? <div className="flex items-start gap-3"><dt>{copy.source}</dt><dd>{String(document.channel)}</dd></div> : null}<div className="flex items-start gap-3"><dt>{copy.folder}</dt><dd>{String(document.folder_path || copy.root)}</dd></div><div className="flex items-start gap-3"><dt>{copy.type}</dt><dd>{String(document.file_type || model.kind).toUpperCase()}</dd></div>{rawTags.length > 0 ? <div className="flex items-start gap-3"><dt>{t('knowledgeBase.tagLabel')}</dt><dd className="flex flex-wrap gap-1">{rawTags.map((tag) => <span key={String(tag.id ?? tag.name)} className="rounded-full border border-line-soft px-2 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</dd></div> : null}</dl></section>
     <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.documentSummary')}><div className="mb-2 flex items-center justify-between gap-2"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.documentSummary')}</h3>{canEdit && !summaryEditing ? <Button type="button" onClick={() => setSummaryEditing(true)}>{t('common.edit')}</Button> : null}</div>{summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="min-h-[100px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</Button><Button type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</Button></div></> : <p className="m-0 whitespace-pre-wrap text-[13px] text-muted">{summaryDraft || '—'}</p>}</section>
     <MetadataEditor editing={metadataEditing} rows={metadataDraft} saving={detailsSaving} canEdit={canEdit} onStart={() => { setDetailsError(null); const rows = metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined); setMetadataDraft(rows.length ? rows : [metadataRow()]); setMetadataEditing(true); }} onChange={setMetadataDraft} onCancel={() => { setMetadataEditing(false); setDetailsError(null); }} onSave={(value) => void saveDetails({ custom_metadata: value })} />
+    {/* Vue pins an embedded audio player above the content views for audio
+        files (audio-player-section), since canPreview() keeps them off the
+        preview tab; the blob is already fetched by the preview effect. */}
+    {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
     {showPreview ? (!model.ready ? <Status tone="warning">{copy.unavailable}</Status> : model.downloadOnly ? <Status>{copy.downloadOnly}</Status> : previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
     {canDownload && downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}
   </Card>;
