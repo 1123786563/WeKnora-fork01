@@ -4062,3 +4062,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   authenticated paired Vue/React browser screenshots, real backend
   permission/mutation flows, real Embed streaming, and Wails native
   interaction remain open or `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R422 — Shared UI test dependency gate
+
+- `packages/ui/src/interaction.test.tsx` was previously included in
+  `test:shared` but resolved `jsdom` only through the workspace root. The
+  package now declares `jsdom` directly in its development dependencies and
+  the lockfile is synchronized (`2cebab6a`).
+- After recreating workspace links, the shared suite completed `500/500` with
+  no module-resolution failure. This improves the reliability of the
+  Tailwind/shadcn project-component evidence; it does not change runtime UI
+  behavior or replace browser/backend acceptance. No mobile code was modified.
