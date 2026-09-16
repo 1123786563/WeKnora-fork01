@@ -167,6 +167,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
 	must(container.Provide(repository.NewNotificationStore))
+	must(container.Provide(repository.NewNotificationProviderStateStore))
 	must(container.Provide(workbenchservice.NewNotificationProjector))
 	must(container.Provide(workbenchservice.NewNotificationWorker))
 	must(container.Provide(newMobileNotificationProvider))
@@ -748,8 +749,8 @@ func newMobileNotificationProvider(cfg *config.Config, devices *repository.Mobil
 	return workbenchservice.NewHTTPNotificationProvider(endpoint)
 }
 
-func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, provider workbenchservice.NotificationProvider, devices *repository.MobileDeviceStore) *workbenchservice.NotificationDeliveryWorker {
-	return workbenchservice.NewNotificationDeliveryWorkerWithRevoker(store, provider, "mobile-notification-delivery", devices)
+func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, provider workbenchservice.NotificationProvider, devices *repository.MobileDeviceStore, health *repository.NotificationProviderStateStore) *workbenchservice.NotificationDeliveryWorker {
+	return workbenchservice.NewNotificationDeliveryWorkerWithHealth(store, provider, "mobile-notification-delivery", devices, health, "mobile")
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver

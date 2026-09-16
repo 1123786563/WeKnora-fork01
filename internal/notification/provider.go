@@ -13,6 +13,19 @@ type PushReceipt struct{ ID, Status string }
 type PushProvider interface {
 	Send(context.Context, string, PushPayload) (PushReceipt, error)
 }
+type PushBatchItem struct {
+	ID      string
+	Token   string
+	Payload PushPayload
+}
+type PushBatchResult struct {
+	ID      string
+	Receipt PushReceipt
+	Err     error
+}
+type PushBatchProvider interface {
+	SendBatch(context.Context, []PushBatchItem) ([]PushBatchResult, error)
+}
 type ProviderError struct {
 	Code       string
 	StatusCode int

@@ -2,11 +2,15 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExpoProviderReceiptAndNoTokenLeak(t *testing.T) {
@@ -58,4 +62,26 @@ func TestExpoProviderRejectsMissingReceipt(t *testing.T) {
 	if !errors.Is(err, ErrMissingReceiptID) {
 		t.Fatalf("err=%v", err)
 	}
+}
+
+func TestExpoProviderBatchReturnsPerItemPartialResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var messages []map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&messages))
+		require.Len(t, messages, 2)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"status":"ok","id":"ticket-1"},{"status":"error","message":"gone","details":{"error":"DeviceNotRegistered"}}]}`)
+	}))
+	defer srv.Close()
+	results, err := NewExpoProviderWithClient(srv.URL, "", srv.Client()).SendBatch(context.Background(), []PushBatchItem{
+		{ID: "delivery-1", Token: "token-1", Payload: PushPayload{Body: "one"}},
+		{ID: "delivery-2", Token: "token-2", Payload: PushPayload{Body: "two"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Equal(t, "ticket-1", results[0].Receipt.ID)
+	var providerErr *ProviderError
+	require.ErrorAs(t, results[1].Err, &providerErr)
+	require.Equal(t, "DeviceNotRegistered", providerErr.Code)
+	require.False(t, providerErr.Retry)
 }

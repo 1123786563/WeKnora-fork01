@@ -28,6 +28,32 @@ type NotificationReceiptProvider interface {
 	SendReceipt(context.Context, repository.NotificationDelivery) (pushnotification.PushReceipt, error)
 }
 
+// NotificationBatchResult is the per-item outcome returned by a batch push
+// provider. A result must retain the stable durable delivery ID so a partial
+// response can acknowledge successful rows and retry only failed rows.
+type NotificationBatchResult struct {
+	DeliveryID string
+	Receipt    pushnotification.PushReceipt
+	Err        error
+}
+
+// NotificationBatchProvider is optional. Existing single-item providers keep
+// their contract; providers implementing this seam are called once for a
+// claimed batch and must return one result per accepted item.
+type NotificationBatchProvider interface {
+	SendBatch(context.Context, []repository.NotificationDelivery) ([]NotificationBatchResult, error)
+}
+
+// NotificationProviderConfiguration lets a paused provider recover after a
+// restart once its configuration is fixed, without sending a request first.
+type NotificationProviderConfiguration interface{ Configured() bool }
+
+type NotificationProviderHealth interface {
+	IsPaused(context.Context, string) (bool, error)
+	Pause(context.Context, string, string) error
+	Recover(context.Context, string) error
+}
+
 // NotificationDeviceRevoker invalidates the device registration that produced
 // a permanent provider failure. Implementations must scope the operation to
 // the tenant, owner, and environment carried by the durable intent.
@@ -50,6 +76,10 @@ type PushNotificationProvider struct {
 	resolve  func(context.Context, repository.NotificationDelivery) (string, error)
 }
 
+func (p *PushNotificationProvider) Configured() bool {
+	return p != nil && p.provider != nil && p.resolve != nil
+}
+
 func NewPushNotificationProvider(provider pushnotification.PushProvider, resolve func(context.Context, repository.NotificationDelivery) (string, error)) *PushNotificationProvider {
 	return &PushNotificationProvider{provider: provider, resolve: resolve}
 }
@@ -70,6 +100,31 @@ func (p *PushNotificationProvider) SendReceipt(ctx context.Context, d repository
 	return p.provider.Send(ctx, token, pushnotification.PushPayload{Title: d.Intent.Kind, Body: d.Intent.Kind, RunID: d.Intent.RunID, EventID: d.Intent.EventID})
 }
 
+func (p *PushNotificationProvider) SendBatch(ctx context.Context, deliveries []repository.NotificationDelivery) ([]NotificationBatchResult, error) {
+	batch, ok := p.provider.(pushnotification.PushBatchProvider)
+	if !ok {
+		return nil, errors.New("push provider does not support batch delivery")
+	}
+	items := make([]pushnotification.PushBatchItem, 0, len(deliveries))
+	for _, d := range deliveries {
+		token, err := p.resolve(ctx, d)
+		if err != nil {
+			items = append(items, pushnotification.PushBatchItem{ID: d.ID, Token: ""})
+			continue
+		}
+		items = append(items, pushnotification.PushBatchItem{ID: d.ID, Token: token, Payload: pushnotification.PushPayload{Title: d.Intent.Kind, Body: d.Intent.Kind, RunID: d.Intent.RunID, EventID: d.Intent.EventID}})
+	}
+	results, err := batch.SendBatch(ctx, items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]NotificationBatchResult, 0, len(results))
+	for _, result := range results {
+		out = append(out, NotificationBatchResult{DeliveryID: result.ID, Receipt: result.Receipt, Err: result.Err})
+	}
+	return out, nil
+}
+
 // HTTPNotificationProvider is the server-side adapter for the mobile push
 // gateway. The gateway resolves the encrypted token from the tenant/device
 // tuple; token material never enters the notification intent or this process's
@@ -79,6 +134,8 @@ type HTTPNotificationProvider struct {
 	endpoint string
 	client   *http.Client
 }
+
+func (p *HTTPNotificationProvider) Configured() bool { return p != nil && p.endpoint != "" }
 
 func NewHTTPNotificationProvider(endpoint string) *HTTPNotificationProvider {
 	return &HTTPNotificationProvider{endpoint: endpoint, client: &http.Client{Timeout: 10 * time.Second}}
@@ -95,7 +152,7 @@ func (p *HTTPNotificationProvider) SendReceipt(ctx context.Context, d repository
 
 func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.NotificationDelivery, requireReceipt bool) (pushnotification.PushReceipt, error) {
 	if p == nil || p.endpoint == "" {
-		return pushnotification.PushReceipt{}, fmt.Errorf("mobile_notification_provider_unconfigured")
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "mobile_notification_provider_unconfigured", Retry: false, Err: errors.New("mobile notification provider is not configured")}
 	}
 	payload, err := json.Marshal(map[string]any{"tenant_id": d.Intent.TenantID, "owner_id": d.Intent.OwnerID, "device_id": d.Intent.DeviceID, "environment": d.Intent.Environment, "event_id": d.Intent.EventID, "run_id": d.Intent.RunID, "kind": d.Intent.Kind, "attempt": d.Attempt})
 	if err != nil {
@@ -149,11 +206,13 @@ func (p *HTTPNotificationProvider) send(ctx context.Context, d repository.Notifi
 // revoke/member-removal TOCTOU window; invalidated deliveries are retried
 // without invoking the provider.
 type NotificationDeliveryWorker struct {
-	store         *repository.NotificationStore
-	provider      NotificationProvider
-	worker        string
-	lease         time.Duration
-	deviceRevoker NotificationDeviceRevoker
+	store          *repository.NotificationStore
+	provider       NotificationProvider
+	worker         string
+	lease          time.Duration
+	deviceRevoker  NotificationDeviceRevoker
+	providerHealth NotificationProviderHealth
+	providerKey    string
 	// afterClaim is an optional in-process seam used by deterministic
 	// concurrency tests. Production workers leave it nil; when set it runs
 	// after a durable lease is acquired and before final authorization.
@@ -170,15 +229,39 @@ func NewNotificationDeliveryWorkerWithRevoker(store *repository.NotificationStor
 	return w
 }
 
+func NewNotificationDeliveryWorkerWithHealth(store *repository.NotificationStore, provider NotificationProvider, worker string, revoker NotificationDeviceRevoker, health NotificationProviderHealth, providerKey string) *NotificationDeliveryWorker {
+	w := NewNotificationDeliveryWorkerWithRevoker(store, provider, worker, revoker)
+	w.providerHealth = health
+	w.providerKey = providerKey
+	return w
+}
+
 func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) error {
 	if w == nil || w.store == nil || w.provider == nil || w.worker == "" {
 		return context.Canceled
+	}
+	if w.providerHealth != nil && w.providerKey != "" {
+		paused, healthErr := w.providerHealth.IsPaused(ctx, w.providerKey)
+		if healthErr != nil {
+			return healthErr
+		}
+		if paused {
+			if configured, ok := w.provider.(NotificationProviderConfiguration); !ok || !configured.Configured() {
+				return nil
+			}
+			if err := w.providerHealth.Recover(ctx, w.providerKey); err != nil {
+				return err
+			}
+		}
 	}
 	deliveries, err := w.store.Claim(ctx, w.worker, limit, w.lease)
 	if err != nil {
 		return err
 	}
 	var firstErr error
+	if batchProvider, ok := w.provider.(NotificationBatchProvider); ok && len(deliveries) > 1 {
+		return w.runBatch(ctx, batchProvider, deliveries)
+	}
 	for _, delivery := range deliveries {
 		if w.afterClaim != nil {
 			w.afterClaim(ctx, delivery)
@@ -217,6 +300,57 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 	return firstErr
 }
 
+func (w *NotificationDeliveryWorker) runBatch(ctx context.Context, provider NotificationBatchProvider, deliveries []repository.NotificationDelivery) error {
+	eligible := make([]repository.NotificationDelivery, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		if w.afterClaim != nil {
+			w.afterClaim(ctx, delivery)
+		}
+		if w.store.RevalidateDelivery(ctx, delivery, w.worker) {
+			eligible = append(eligible, delivery)
+		} else if err := w.releaseDelivery(ctx, delivery); err != nil {
+			return err
+		}
+	}
+	if len(eligible) == 0 {
+		return nil
+	}
+	results, batchErr := provider.SendBatch(ctx, eligible)
+	byID := make(map[string]NotificationBatchResult, len(results))
+	for _, result := range results {
+		if result.DeliveryID != "" {
+			byID[result.DeliveryID] = result
+		}
+	}
+	var firstErr error
+	for _, delivery := range eligible {
+		result, found := byID[delivery.ID]
+		if batchErr != nil {
+			result.Err = batchErr
+		} else if !found {
+			result.Err = &pushnotification.ProviderError{Code: "MissingBatchResult", Retry: true, Err: errors.New("batch provider omitted delivery result")}
+		} else if result.Err == nil && result.Receipt.ID == "" {
+			result.Err = &pushnotification.ProviderError{Code: "MissingReceipt", Retry: true, Err: pushnotification.ErrMissingReceiptID}
+		}
+		if result.Err != nil {
+			firstErr = firstNonNil(firstErr, w.releaseDeliveryWithCause(ctx, delivery, result.Err))
+			continue
+		}
+		var ack repository.NotificationRetryResult
+		if result.Receipt.ID != "" {
+			ack = w.store.AckReceipt(ctx, delivery.ID, w.worker, delivery.Fence, result.Receipt.ID)
+		} else {
+			ack = repository.NotificationRetryResult{Applied: w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence)}
+		}
+		if ack.Err != nil {
+			firstErr = firstNonNil(firstErr, ack.Err)
+		} else if !ack.Applied {
+			firstErr = firstNonNil(firstErr, fmt.Errorf("notification_delivery_ack_fence_lost:%s", delivery.ID))
+		}
+	}
+	return firstErr
+}
+
 func firstNonNil(existing, next error) error {
 	if existing != nil {
 		return existing
@@ -237,20 +371,36 @@ func (w *NotificationDeliveryWorker) releaseDeliveryWithCause(ctx context.Contex
 	// available for audit and the device registration can be revoked separately.
 	var providerErr *pushnotification.ProviderError
 	if cause != nil && errors.As(cause, &providerErr) && !providerErr.Retry {
-		result := w.store.Expire(ctx, d.ID, w.worker, d.Fence, providerErr.Code)
-		if result.Err != nil {
-			return fmt.Errorf("notification_delivery_expire_persist:%s: %w: %v", d.ID, result.Err, cause)
-		}
-		if result.Applied {
-			if w.deviceRevoker != nil {
-				if d.DeviceRevision <= 0 {
-					return fmt.Errorf("notification_device_revoke:%s: missing registration revision", d.ID)
+		providerPaused := false
+		if providerErr.Code == "InvalidProviderConfig" || providerErr.Code == "mobile_notification_provider_unconfigured" {
+			if w.providerHealth != nil && w.providerKey != "" {
+				if err := w.providerHealth.Pause(ctx, w.providerKey, notificationErrorText(cause)); err != nil {
+					return fmt.Errorf("notification_provider_pause_persist:%s: %w", w.providerKey, err)
 				}
-				if revokeErr := w.deviceRevoker.RevokeForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, d.DeviceRevision); revokeErr != nil {
-					return fmt.Errorf("notification_device_revoke:%s: %w", d.ID, revokeErr)
-				}
+				// The row is released so it remains durable for recovery, while
+				// the claim gate prevents a retry storm during the pause.
+				providerPaused = true
 			}
-			return nil
+		}
+		if providerPaused {
+			// Keep the intent pending for recovery after configuration is fixed.
+			providerErr.Retry = true
+		} else {
+			result := w.store.Expire(ctx, d.ID, w.worker, d.Fence, providerErr.Code)
+			if result.Err != nil {
+				return fmt.Errorf("notification_delivery_expire_persist:%s: %w: %v", d.ID, result.Err, cause)
+			}
+			if result.Applied {
+				if w.deviceRevoker != nil {
+					if d.DeviceRevision <= 0 {
+						return fmt.Errorf("notification_device_revoke:%s: missing registration revision", d.ID)
+					}
+					if revokeErr := w.deviceRevoker.RevokeForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, d.DeviceRevision); revokeErr != nil {
+						return fmt.Errorf("notification_device_revoke:%s: %w", d.ID, revokeErr)
+					}
+				}
+				return nil
+			}
 		}
 	}
 	next := time.Now().UTC()
