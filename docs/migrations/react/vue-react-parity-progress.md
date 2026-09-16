@@ -3784,3 +3784,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Route inventory still lacks an explicit stable `row_id`, and the combined
   `embed.html` field still needs splitting. These remain documentation-quality
   follow-ups. No mobile code was modified.
+
+## 2026-09-16 Round R401 — Enable the shared Tailwind/shadcn token pipeline for Embed
+
+- `d34ee440` enables Tailwind v4 processing in the isolated `apps/embed` Vite
+  entry, scans the project UI and Embed sources for utilities, and loads the
+  shared design-token and shadcn theme layers once from `styles.css`. The
+  duplicate direct theme import was removed from `EmbedApp.tsx`; the existing
+  Vue-derived Embed behavior and project `Button` wrapper remain unchanged.
+- Post-change evidence: `pnpm --filter @weknora/embed build` passes with the
+  generated Tailwind/theme CSS; the Embed focused suite is 16/16; Web and
+  Desktop typechecks pass; `git diff --check` passes. These are build, focused
+  unit, typecheck, and static evidence only.
+- The Embed stylesheet still contains legacy standalone selectors, so this
+  round establishes the shared processing/token substrate but does not claim
+  complete pixel parity. Authenticated paired screenshots, computed-style
+  comparison, real Embed streaming, protected preview/reference behavior, and
+  native Wails interaction remain `blocked-env` or open per R397-R398. No
+  mobile code was modified.
