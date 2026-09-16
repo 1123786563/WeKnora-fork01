@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -288,10 +289,20 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 	var workspaceLease workbenchservice.WorkspaceLease
 	leaseOwner := runSnapshot.UserID
-	if w.remote != nil && w.remote.TargetStore != nil && runSnapshot.TargetID != "" && runSnapshot.UserID != "" {
-		if target, targetErr := w.remote.TargetStore.GetOwnedTarget(ctx, fence.TenantID, runSnapshot.UserID, runSnapshot.TargetID); targetErr == nil && target.CredentialVersion > 0 {
-			fence.CredentialVersion = target.CredentialVersion
+	if w.remote != nil && runSnapshot.TargetID != "" {
+		// Remote execution is authorized against the trusted target row. A
+		// missing, revoked, rotated, or otherwise unreadable target must stop
+		// before dispatch; zero is never promoted to a synthetic version 1.
+		if w.remote.TargetStore == nil || runSnapshot.UserID == "" {
+			_ = w.store.SetStatus(context.WithoutCancel(ctx), fence, "failed", "target_authorization_failed")
+			return
 		}
+		target, targetErr := w.remote.TargetStore.GetOwnedTarget(ctx, fence.TenantID, runSnapshot.UserID, runSnapshot.TargetID)
+		if targetErr != nil || target.State != "active" || target.CredentialVersion < 1 || target.TenantID != fence.TenantID || target.OwnerID != runSnapshot.UserID || target.ID != runSnapshot.TargetID {
+			_ = w.store.SetStatus(context.WithoutCancel(ctx), fence, "failed", "target_authorization_failed")
+			return
+		}
+		fence.CredentialVersion = target.CredentialVersion
 	}
 	if fence.CredentialVersion > 0 {
 		executionCtx = context.WithValue(executionCtx, types.CredentialVersionContextKey, fence.CredentialVersion)
@@ -444,6 +455,39 @@ func (w *AgentRunWorker) snapshotActive(id string) *activeExecution {
 	return &copy
 }
 
+// releaseRecoveredWorkspaceLease reconstructs the lease identity from the
+// durable run admission after a process restart. The receipt epoch is the
+// same fencing epoch used by the provider stop; any mismatch is rejected so a
+// late receipt can never release a newer worker's lease.
+func (w *AgentRunWorker) releaseRecoveredWorkspaceLease(ctx context.Context, key agentruntime.RunKey, receipt repository.DispatchRecord) error {
+	if w == nil || w.remote == nil || w.remote.LeaseStore == nil {
+		return nil
+	}
+	run, err := w.store.Get(ctx, key)
+	if err != nil {
+		return fmt.Errorf("recover run for workspace lease: %w", err)
+	}
+	if receipt.Epoch < 1 || run.Epoch != receipt.Epoch || run.UserID == "" {
+		return agentruntime.ErrLeaseLost
+	}
+	var snapshot struct {
+		WorkspaceRef string `json:"workspaceRef"`
+	}
+	_ = json.Unmarshal(run.Snapshot, &snapshot)
+	workspaceRef := snapshot.WorkspaceRef
+	if workspaceRef == "" {
+		workspaceRef = run.TargetID
+	}
+	if workspaceRef == "" {
+		return agentruntime.ErrLeaseLost
+	}
+	lease := workbenchservice.WorkspaceLease{
+		TenantID: key.TenantID, WorkspaceRef: workspaceRef, RunID: key.RunID,
+		Owner: run.UserID, Epoch: receipt.Epoch,
+	}
+	return w.remote.LeaseStore.ReleaseWorkspaceLease(ctx, lease, run.UserID)
+}
+
 // Cancel requests best-effort cancellation of an active worker for a durable run.
 func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
 	if w == nil || key.TenantID == 0 || key.RunID == "" {
@@ -460,6 +504,9 @@ func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
 			}
 			if result.State != "confirmed" {
 				return agentruntime.ErrLeaseLost
+			}
+			if err := w.releaseRecoveredWorkspaceLease(context.Background(), key, receipt); err != nil {
+				return err
 			}
 		}
 		return nil

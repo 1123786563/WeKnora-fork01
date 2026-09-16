@@ -158,3 +158,14 @@ func TestBridgeControlAndObservationEpochFixture(t *testing.T) {
 		t.Fatalf("observation=%+v err=%v", observation, err)
 	}
 }
+
+func TestBridgeControlRejectsProviderNegativeAcknowledgement(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": 1, "operation": "control", "payload": map[string]any{"accepted": false}})
+	}))
+	defer server.Close()
+	client := NewBridgeClient(BridgeConfig{BaseURL: server.URL, ServiceToken: "secret"})
+	if err := client.Control(context.Background(), map[string]any{"action": "submitInteraction"}); !errors.Is(err, ErrBridgeControlRejected) {
+		t.Fatalf("control error=%v", err)
+	}
+}

@@ -173,11 +173,10 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 	hash := sha256.Sum256(req.Args)
 	expires := time.Now().Add(10 * time.Minute)
 	credentialVersion := req.CredentialVersion
-	// Platform approvals use the initial trusted credential snapshot. Remote
-	// target callers must provide their positive rotated version explicitly.
-	if credentialVersion <= 0 {
-		credentialVersion = 1
-	}
+	// Keep an unresolved version visible in the durable projection. The
+	// decision path rejects non-positive snapshots; persisting zero here lets
+	// recovery inspect and repair the missing authorization rather than
+	// silently fabricating an initial credential version.
 	row := interactionRow{TenantID: req.TenantID, ID: pendingID, RunID: req.RunID, OwnerID: ownerID, Kind: string(workbench.InteractionToolApproval), ArgsHash: hex.EncodeToString(hash[:]), ExternalPendingID: pendingID, CredentialVersion: credentialVersion, Status: "pending", ExpiresAt: &expires}
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
@@ -504,7 +503,11 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	if err != nil {
 		return workbench.InteractionDecision{}, err
 	}
-	newDecision := result.ExpectedRevision == input.ExpectedRevision+1
+	// The store returns the same incremented revision for an idempotent retry;
+	// revision arithmetic alone therefore cannot distinguish a fresh CAS from
+	// an already-resolved decision. The pre-read decision id is the durable
+	// linearization marker.
+	newDecision := current.DecisionID == ""
 	if current.Kind == string(workbench.InteractionToolApproval) && s.approval != nil && newDecision {
 		if err := s.approval.Resolve(tenant, owner, current.ID, approval.Decision{Approved: input.Action == "approve"}); err != nil {
 			if compensator, ok := s.store.(DecisionCompensator); ok {
@@ -513,7 +516,11 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 			return workbench.InteractionDecision{}, err
 		}
 	}
-	if current.Kind == string(workbench.InteractionToolApproval) && s.remoteInteraction != nil && newDecision {
+	// A durable decision may have been committed while the remote provider was
+	// unavailable.  Replaying the same decision id/revision is the recovery
+	// operation: the provider command is idempotent, so retry it even when the
+	// local CAS returned the already-resolved row.
+	if current.Kind == string(workbench.InteractionToolApproval) && s.remoteInteraction != nil && result.DecisionID == input.DecisionID {
 		externalPendingID := current.ExternalPendingID
 		if externalPendingID == "" {
 			externalPendingID = current.ID

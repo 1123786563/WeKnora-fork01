@@ -26,6 +26,57 @@ type interactionStoreStub struct {
 	calls   int
 }
 
+type retryInteractionStore struct {
+	current contract.InteractionDecision
+}
+
+func (s *retryInteractionStore) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {
+	return []contract.InteractionDecision{s.current}, nil
+}
+func (s *retryInteractionStore) Get(context.Context, uint64, string, string) (contract.InteractionDecision, error) {
+	return s.current, nil
+}
+func (s *retryInteractionStore) Decide(_ context.Context, _ uint64, _ string, _ string, input contract.InteractionDecision) (contract.InteractionDecision, error) {
+	if s.current.DecisionID != "" {
+		if s.current.DecisionID != input.DecisionID || s.current.Action != input.Action {
+			return contract.InteractionDecision{}, agentruntime.ErrConflict
+		}
+		return s.current, nil
+	}
+	input.ID, input.Kind, input.ArgsHash = s.current.ID, s.current.Kind, s.current.ArgsHash
+	input.ExpectedRevision = s.current.ExpectedRevision + 1
+	s.current = input
+	return input, nil
+}
+
+type retryRemoteInteraction struct {
+	calls int
+}
+
+func (r *retryRemoteInteraction) SubmitInteraction(context.Context, uint64, string, string, string, string, string, string, int64, int64) error {
+	r.calls++
+	if r.calls == 1 {
+		return errors.New("provider unavailable")
+	}
+	return nil
+}
+
+func TestInteractionServiceRetriesDurableRemoteApproval(t *testing.T) {
+	store := &retryInteractionStore{current: contract.InteractionDecision{ID: "pending-1", RunID: "run-1", Kind: string(contract.InteractionToolApproval), ArgsHash: "a", CredentialVersion: 2, DecisionID: "decision-1", Action: "approve", ExpectedRevision: 1}}
+	gate := approval.NewGate(&config.Config{Agent: &config.AgentConfig{ToolApprovalTimeoutSeconds: 2}}, gateChecker{}, nil)
+	svc := NewInteractionServiceWithApproval(store, nil, nil, gate)
+	remote := &retryRemoteInteraction{}
+	svc.SetRemoteInteractionPort(remote)
+	ctx := interactionContext()
+	input := contract.InteractionDecision{Action: "approve", ArgsHash: "a", DecisionID: "decision-1", ExpectedRevision: 0}
+	_, err := svc.Decide(ctx, store.current.ID, input)
+	require.ErrorIs(t, err, ErrCommandRecoveryUnknown)
+	require.Equal(t, 1, remote.calls)
+	_, err = svc.Decide(ctx, store.current.ID, input)
+	require.NoError(t, err)
+	require.Equal(t, 2, remote.calls, "retry must resubmit the same durable decision")
+}
+
 type runProjection struct {
 	TenantID                  uint64
 	RunID, OwnerID, RequestID string

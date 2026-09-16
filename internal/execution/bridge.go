@@ -19,6 +19,7 @@ var ErrBridgeUnavailable = errors.New("execution_bridge_unavailable")
 var ErrBridgeInvalidRequest = errors.New("execution_bridge_invalid_request")
 var ErrBridgeUnauthorized = errors.New("execution_bridge_unauthorized")
 var ErrBridgeProtocol = errors.New("execution_bridge_protocol")
+var ErrBridgeControlRejected = errors.New("execution_bridge_control_rejected")
 
 // StartCommand is the versioned, fixed wire contract shared with the TS bridge.
 type StartCommand struct {
@@ -269,8 +270,14 @@ func (c *BridgeClient) Control(ctx context.Context, payload any) error {
 	if c == nil {
 		return ErrBridgeUnavailable
 	}
-	_, err := c.request(ctx, "control", payload)
-	return err
+	response, err := c.request(ctx, "control", payload)
+	if err != nil {
+		return err
+	}
+	if response.Accepted == nil || !*response.Accepted {
+		return ErrBridgeControlRejected
+	}
+	return nil
 }
 
 func (c *BridgeClient) Observe(ctx context.Context, id string) (BridgeResponse, error) {
