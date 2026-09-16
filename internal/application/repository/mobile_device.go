@@ -82,6 +82,25 @@ type MobileDeviceStore struct {
 	environment string
 }
 
+// CurrentScopeGeneration returns the durable high-water epoch for one
+// authenticated device identity. Revoked rows are deliberately included: a
+// caller must obtain a fresh server-signed registration intent before it can
+// bind that identity again.
+func (s *MobileDeviceStore) CurrentScopeGeneration(ctx context.Context, tenant uint64, owner, device string) (int64, error) {
+	if s == nil || s.db == nil || tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
+		return 0, ErrMobileDeviceInvalid
+	}
+	var row mobileDeviceRow
+	err := s.scoped(s.db.WithContext(ctx), tenant, owner, device).Order("scope_generation DESC").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return row.ScopeGeneration, nil
+}
+
 func NewMobileDeviceStore(db *gorm.DB, environment string) *MobileDeviceStore {
 	return &MobileDeviceStore{db: db, environment: strings.TrimSpace(environment)}
 }

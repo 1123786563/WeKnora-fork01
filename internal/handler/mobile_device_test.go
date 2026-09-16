@@ -36,9 +36,12 @@ func mobileRequest(method, path string, tenant uint64, owner string, body string
 }
 
 func TestMobileDeviceHandlerRequiresAuthAndScopesOwner(t *testing.T) {
+	t.Setenv("SYSTEM_AES_KEY", "12345678901234567890123456789012")
 	store := repository.NewMobileDeviceStore(openMobileHandlerDB(t), "dev")
 	h := NewMobileDeviceHandlerWithSealer(store, "dev", func(value string) (string, error) { return "enc:" + value, nil })
-	ctx := mobileRequest(http.MethodPut, "/api/v1/mobile/devices/d", 1, "u1", `{"token":"push-a","platform":"ios","scope_generation":1}`)
+	intent, err := encodeRegistrationIntent(mobileRegistrationIntent{Tenant: 1, Owner: "u1", Device: "d", Epoch: 1, Nonce: "test", Expiry: 9999999999})
+	require.NoError(t, err)
+	ctx := mobileRequest(http.MethodPut, "/api/v1/mobile/devices/d", 1, "u1", `{"token":"push-a","platform":"ios","registration_intent":"`+intent+`"}`)
 	ctx.Params = gin.Params{{Key: "id", Value: "d"}}
 	h.Register(ctx)
 	require.Equal(t, http.StatusOK, ctx.Writer.Status())
@@ -52,4 +55,26 @@ func TestMobileDeviceHandlerRequiresAuthAndScopesOwner(t *testing.T) {
 	stale.Params = gin.Params{{Key: "id", Value: "d"}}
 	h.Revoke(stale)
 	require.Equal(t, http.StatusConflict, stale.Writer.Status())
+}
+
+func TestMobileDeviceHandlerRejectsGuessedFutureEpoch(t *testing.T) {
+	t.Setenv("SYSTEM_AES_KEY", "12345678901234567890123456789012")
+	store := repository.NewMobileDeviceStore(openMobileHandlerDB(t), "dev")
+	h := NewMobileDeviceHandlerWithSealer(store, "dev", func(value string) (string, error) { return "enc:" + value, nil })
+	intent, err := encodeRegistrationIntent(mobileRegistrationIntent{Tenant: 1, Owner: "u1", Device: "d", Epoch: 1, Nonce: "test", Expiry: 9999999999})
+	require.NoError(t, err)
+	ctx := mobileRequest(http.MethodPut, "/api/v1/mobile/devices/d", 1, "u1", `{"token":"push-a","platform":"ios","registration_intent":"`+intent+`"}`)
+	ctx.Params = gin.Params{{Key: "id", Value: "d"}}
+	h.Register(ctx)
+	require.Equal(t, http.StatusOK, ctx.Writer.Status())
+	require.NoError(t, store.RevokeForTenant(context.Background(), 1, "u1", "d", 1))
+	// A client cannot sign an epoch 999 intent; an opaque guessed value must
+	// be rejected before the repository can reopen the revoked row.
+	late := mobileRequest(http.MethodPut, "/api/v1/mobile/devices/d", 1, "u1", `{"token":"push-b","platform":"ios","scope_generation":999,"registration_intent":"epoch-999"}`)
+	late.Params = gin.Params{{Key: "id", Value: "d"}}
+	h.Register(late)
+	require.Equal(t, http.StatusConflict, late.Writer.Status())
+	rows, err := store.ListActiveForTenant(context.Background(), 1, "u1", "dev")
+	require.NoError(t, err)
+	require.Empty(t, rows)
 }

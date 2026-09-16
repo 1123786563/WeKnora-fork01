@@ -8,11 +8,23 @@ export interface DeviceRegistrationInput {
   platform: DevicePlatform;
   token: string;
   scopeGeneration: number;
+  registrationIntent?: string;
   revision?: number;
   spaceId?: string;
   credential: Credential;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+}
+
+export async function issueRegistrationIntent(input: Pick<DeviceRegistrationInput, 'origin' | 'deviceId' | 'credential' | 'signal' | 'fetchImpl'>): Promise<{ registrationIntent: string; scopeGeneration: number }> {
+  const token = accessToken(input.credential);
+  const response = await (input.fetchImpl ?? fetch)(`${endpoint(input.origin, input.deviceId)}/registration-intent`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: input.signal,
+  });
+  if (!response.ok) throw await responseError(response);
+  const payload = (await response.json()) as { success?: unknown; data?: { registration_intent?: unknown; scope_generation?: unknown } };
+  if (payload.success !== true || typeof payload.data?.registration_intent !== 'string' || typeof payload.data.scope_generation !== 'number') throw new Error('INVALID_DEVICE_RESPONSE');
+  return { registrationIntent: payload.data.registration_intent, scopeGeneration: payload.data.scope_generation };
 }
 
 export interface PendingRevocation {
@@ -59,6 +71,7 @@ export async function registerDevice(input: DeviceRegistrationInput): Promise<{ 
       token: input.token,
       platform: input.platform,
       scope_generation: input.scopeGeneration,
+      ...(input.registrationIntent ? { registration_intent: input.registrationIntent } : {}),
       ...(input.revision === undefined ? {} : { revision: input.revision }),
       ...(input.spaceId ? { space_id: input.spaceId } : {}),
     }),
