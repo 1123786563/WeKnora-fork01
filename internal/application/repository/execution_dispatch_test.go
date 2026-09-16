@@ -39,17 +39,20 @@ func TestExecutionDispatchPayloadHashAndUnknownRequireExplicitRecovery(t *testin
 	require.NoError(t, err)
 	dispatch := NewExecutionDispatchStore(db)
 	ctx := context.Background()
-	record, err := dispatch.ClaimDispatchWithPayloadHash(ctx, in.Key, "cmd-hash", "hash-a", "worker-a", time.Millisecond)
+	record, err := dispatch.ClaimDispatchWithPayloadHash(ctx, in.Key, "cmd-hash", "hash-a", "worker-a", time.Minute)
 	require.NoError(t, err)
 	_, err = dispatch.ClaimDispatchWithPayloadHash(ctx, in.Key, "cmd-hash", "hash-b", "worker-a", time.Minute)
 	require.ErrorIs(t, err, ErrDispatchConflict)
-	time.Sleep(5 * time.Millisecond)
+	require.NoError(t, dispatch.ReconcileUnknown(ctx, record, "not_started", ""))
 	_, err = dispatch.ClaimDispatchWithPayloadHash(ctx, in.Key, "cmd-hash", "hash-a", "worker-b", time.Minute)
 	require.ErrorIs(t, err, ErrDispatchUnknown)
-	require.NoError(t, dispatch.ReconcileUnknown(ctx, record, "not_started", ""))
 	recovered, err := dispatch.RecoverUnknown(ctx, record, "worker-b", time.Minute)
 	require.NoError(t, err)
 	require.True(t, recovered.New)
+	// The old claimant cannot overwrite the newer lease after recovery. This
+	// is deliberately checked before SaveReceipt so reconciliation cannot
+	// clear the replacement worker's lease either.
+	require.ErrorIs(t, dispatch.ReconcileUnknown(ctx, record, "late_observation", "late-external"), ErrDispatchLeaseLost)
 	require.ErrorIs(t, dispatch.SaveReceipt(ctx, record, "stale-external"), ErrDispatchLeaseLost)
 	require.NoError(t, dispatch.SaveReceipt(ctx, recovered, "external"))
 }

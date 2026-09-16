@@ -22,9 +22,7 @@ var ErrProviderUnavailable = fmt.Errorf("remote provider unavailable")
 // RemoteProvider is implemented by the real Paseo bridge adapter. There is no
 // callback fallback: a missing provider fails closed before the dispatch
 // intent can be sent to an external process.
-type RemoteProvider interface {
-	Start(context.Context, agentruntime.RunKey, string) (string, error)
-}
+type RemoteProvider = agentruntime.RemoteProvider
 
 func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDispatcher {
 	return &RemoteDispatcher{dispatch: dispatch}

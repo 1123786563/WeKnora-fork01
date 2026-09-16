@@ -10,6 +10,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 )
 
@@ -21,6 +22,23 @@ type AgentRuntime struct {
 }
 
 func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore) (*AgentRuntime, error) {
+	return newAgentRuntime(cfg, store, nil, nil)
+}
+
+// NewAgentRuntimeWithRemoteProvider is the production assembly point for a
+// Paseo-backed worker. The provider and durable dispatch store are explicit
+// dependencies so an enabled runtime cannot accidentally invoke a provider
+// outside the W20 intent/receipt fence.
+func NewAgentRuntimeWithRemoteProvider(
+	cfg *config.Config,
+	store *repository.AgentRunStore,
+	dispatch *repository.ExecutionDispatchStore,
+	provider workbenchservice.RemoteProvider,
+) (*AgentRuntime, error) {
+	return newAgentRuntime(cfg, store, dispatch, provider)
+}
+
+func newAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider) (*AgentRuntime, error) {
 	if store == nil {
 		return nil, errors.New("agent run store is required")
 	}
@@ -45,7 +63,21 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore) (*Agen
 	// Graph construction is injected by the tRPC graph task. Keeping this
 	// executor explicit makes an enabled but unwired deployment fail runs
 	// durably instead of pretending they completed.
-	worker, err := service.NewAgentRunWorker(store, func(context.Context, agentruntime.Fence) error { return errors.New("trpc graph executor is not wired") }, c)
+	execute := func(context.Context, agentruntime.Fence) error { return errors.New("trpc graph executor is not wired") }
+	var worker *service.AgentRunWorker
+	if provider != nil {
+		if dispatch == nil {
+			return nil, errors.New("remote dispatch store is required when a provider is configured")
+		}
+		worker, err = service.NewAgentRunWorkerWithRemoteDispatch(store, execute, service.RemoteDispatchConfig{
+			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider,
+			CommandID: func(fence agentruntime.Fence) (string, string) {
+				return fence.RunID + "/" + fmt.Sprint(fence.Epoch), ""
+			},
+		}, c)
+	} else {
+		worker, err = service.NewAgentRunWorker(store, execute, c)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -287,6 +287,13 @@ func (s *ExecutionDispatchStore) ReconcileUnknown(ctx context.Context, record Di
 		if row.RunID != record.RunID || row.AttemptID != record.AttemptID || row.Epoch != record.Epoch {
 			return ErrDispatchConflict
 		}
+		// Reconciliation is a fenced write just like receipt persistence. A
+		// claimant that has lost its lease must never clear or rewrite a newer
+		// claimant's lease after reclaim. Epoch alone is insufficient because
+		// lease turnover intentionally does not advance the run epoch.
+		if row.Worker != record.Worker || (row.State != "claimed" && row.State != "unknown") || row.LeaseUntil == nil || !row.LeaseUntil.After(time.Now().UTC()) {
+			return ErrDispatchLeaseLost
+		}
 		if row.ExternalID != "" && externalID != "" && row.ExternalID != externalID {
 			return ErrDispatchConflict
 		}
@@ -295,7 +302,15 @@ func (s *ExecutionDispatchStore) ReconcileUnknown(ctx context.Context, record Di
 			state = "reconciled"
 		}
 		now := time.Now().UTC()
-		return tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", record.TenantID, record.CommandID).Updates(map[string]any{"state": state, "external_id": externalID, "observed_state": observedState, "lease_until": nil, "updated_at": now}).Error
+		updates := map[string]any{"state": state, "external_id": externalID, "observed_state": observedState, "updated_at": now}
+		// Keep the current claimant's lease while the provider observation is
+		// still inconclusive. This permits the same claimant to complete a
+		// lookup, while an identified receipt or an expired lease closes the
+		// fence and forces a deliberate recovery path.
+		if strings.TrimSpace(externalID) != "" {
+			updates["lease_until"] = nil
+		}
+		return tx.WithContext(ctx).Model(&executionDispatchRow{}).Where("tenant_id = ? AND command_id = ?", record.TenantID, record.CommandID).Updates(updates).Error
 	})
 }
 

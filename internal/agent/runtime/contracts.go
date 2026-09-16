@@ -29,6 +29,14 @@ type RunKey struct {
 	RunID    string
 }
 
+// RemoteProvider is the minimal provider capability required by a durable
+// dispatch worker. It lives in the dependency-free runtime package so the
+// worker, workbench service, and concrete Paseo adapter share one structural
+// contract without introducing an import cycle.
+type RemoteProvider interface {
+	Start(context.Context, RunKey, string) (string, error)
+}
+
 // Fence identifies a worker's exclusive, expiring claim on a run.
 type Fence struct {
 	RunKey
