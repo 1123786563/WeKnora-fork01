@@ -68,12 +68,12 @@ func (p *paseoRemoteProvider) SubmitInteraction(ctx context.Context, tenantID ui
 	if tenantID == 0 || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(runID) == "" || strings.TrimSpace(externalPendingID) == "" || !strings.EqualFold(action, "approve") && !strings.EqualFold(action, "reject") || credentialVersion < 1 || expectedRevision < 1 || len(argsHash) != 64 {
 		return errors.New("invalid remote interaction")
 	}
-	return p.client.Control(ctx, map[string]any{"version": 1, "operation": "control", "payload": map[string]any{
+	return p.client.Control(ctx, map[string]any{
 		"action": "submitInteraction", "actionValue": action, "argsHash": argsHash,
 		"commandID": uuid.NewString(), "credentialVersion": credentialVersion,
 		"expectedRevision": expectedRevision, "externalPendingID": externalPendingID, "runID": runID,
 		"tenantID": tenantID, "ownerID": ownerID,
-	}})
+	})
 }
 
 func (p *paseoRemoteProvider) StartCommand(ctx context.Context, request agentruntime.RemoteStartRequest) (string, error) {
