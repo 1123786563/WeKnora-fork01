@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -184,4 +185,63 @@ func deliveryTestAdmission(runID string) agentruntime.Admission {
 		AssistantMessage: json.RawMessage(`{"role":"assistant","content":""}`),
 		Deadline:         time.Now().Add(time.Hour),
 	}
+}
+
+type notificationProviderFunc func(context.Context, repository.NotificationDelivery) error
+
+func (f notificationProviderFunc) Send(ctx context.Context, d repository.NotificationDelivery) error {
+	return f(ctx, d)
+}
+
+func TestNotificationDeliveryRejectsResolvedInteractionAfterClaim(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "interaction-device")
+	ctx := context.Background()
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS workbench_interactions (
+		tenant_id INTEGER NOT NULL, id TEXT NOT NULL, run_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+		kind TEXT NOT NULL, args_hash TEXT NOT NULL DEFAULT '', decision_id TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', expected_revision INTEGER NOT NULL DEFAULT 0,
+		expires_at DATETIME, revoked BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME, updated_at DATETIME,
+		PRIMARY KEY (tenant_id, id))`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO workbench_interactions
+		(tenant_id,id,run_id,owner_id,kind,args_hash,status,expires_at)
+		VALUES (1,'interaction-1','delivery-run','u1','tool_approval','hash','pending',?)`, time.Now().Add(time.Hour)).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_run_events
+		(tenant_id,run_id,seq,attempt_id,event_type,payload) VALUES (1,'delivery-run',1,'a','interaction_requested','{"pending_id":"interaction-1"}')`).Error)
+	res := db.Exec(`UPDATE mobile_notification_intents SET event_id = ?, kind = 'interaction_requested' WHERE id = ?`, "1:delivery-run:1", "1:delivery-event-interaction-device:u1:interaction-device:dev")
+	require.NoError(t, res.Error)
+	require.EqualValues(t, 1, res.RowsAffected)
+	spy := &notificationProviderSpy{}
+	worker := NewNotificationDeliveryWorker(store, spy, "interaction-worker")
+	worker.afterClaim = func(_ context.Context, _ repository.NotificationDelivery) {
+		require.NoError(t, db.Exec(`UPDATE workbench_interactions SET status='resolved', decision_id='decision-1', action='approve', expected_revision=1 WHERE tenant_id=1 AND id='interaction-1'`).Error)
+	}
+	require.NoError(t, worker.RunOnce(ctx, 1))
+	require.Zero(t, spy.count())
+	var state struct{ State, LeaseOwner string }
+	require.NoError(t, db.Table("mobile_notification_intents").Select("state, lease_owner").Where("kind = ?", "interaction_requested").Take(&state).Error)
+	require.Equal(t, "pending", state.State)
+	require.Empty(t, state.LeaseOwner)
+}
+
+func TestNotificationDeliveryReportsLostAckFence(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "ack-fence-device")
+	provider := notificationProviderFunc(func(_ context.Context, d repository.NotificationDelivery) error {
+		return db.Exec(`UPDATE mobile_notification_intents SET fence = fence + 1 WHERE id = ?`, d.ID).Error
+	})
+	worker := NewNotificationDeliveryWorker(store, provider, "ack-fence-worker")
+	err := worker.RunOnce(context.Background(), 1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "ack_fence_lost")
+}
+
+func TestNotificationDeliveryReportsLostRetryFence(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "retry-fence-device")
+	provider := notificationProviderFunc(func(_ context.Context, d repository.NotificationDelivery) error {
+		require.NoError(t, db.Exec(`UPDATE mobile_notification_intents SET fence = fence + 1 WHERE id = ?`, d.ID).Error)
+		return fmt.Errorf("provider_unavailable")
+	})
+	worker := NewNotificationDeliveryWorker(store, provider, "retry-fence-worker")
+	err := worker.RunOnce(context.Background(), 1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "retry_fence_lost")
 }

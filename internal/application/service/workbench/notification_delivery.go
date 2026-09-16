@@ -88,21 +88,28 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 	if err != nil {
 		return err
 	}
+	var firstErr error
 	for _, delivery := range deliveries {
 		if w.afterClaim != nil {
 			w.afterClaim(ctx, delivery)
 		}
 		if !w.store.RevalidateDelivery(ctx, delivery, w.worker) {
-			w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence)
+			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
+				firstErr = fmt.Errorf("notification_delivery_retry_fence_lost:%s", delivery.ID)
+			}
 			continue
 		}
 		if err := w.provider.Send(ctx, delivery); err != nil {
-			w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence)
+			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
+				firstErr = fmt.Errorf("notification_delivery_retry_fence_lost:%s: %w", delivery.ID, err)
+			}
 			continue
 		}
-		w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence)
+		if !w.store.Ack(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
+			firstErr = fmt.Errorf("notification_delivery_ack_fence_lost:%s", delivery.ID)
+		}
 	}
-	return nil
+	return firstErr
 }
 
 // Start runs the delivery loop in the same lifecycle as projection. Provider

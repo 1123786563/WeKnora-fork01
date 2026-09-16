@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -277,12 +280,57 @@ func (s *NotificationStore) RevalidateDelivery(ctx context.Context, d Notificati
 		return false
 	}
 	now := time.Now().UTC()
-	result := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+	q := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
 		Where(`id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ? AND expires_at > ? AND
 			EXISTS (SELECT 1 FROM mobile_devices md WHERE md.tenant_id = mobile_notification_intents.tenant_id AND md.owner_id = mobile_notification_intents.owner_id AND md.device_id = mobile_notification_intents.device_id AND md.environment = mobile_notification_intents.environment AND md.revoked_at IS NULL) AND
-			EXISTS (SELECT 1 FROM agent_runs ar WHERE ar.tenant_id = mobile_notification_intents.tenant_id AND ar.run_id = mobile_notification_intents.run_id AND ar.owner_id = mobile_notification_intents.owner_id)`, d.ID, worker, d.Fence, now).
-		UpdateColumn("updated_at", now)
+			EXISTS (SELECT 1 FROM agent_runs ar WHERE ar.tenant_id = mobile_notification_intents.tenant_id AND ar.run_id = mobile_notification_intents.run_id AND ar.owner_id = mobile_notification_intents.owner_id)`, d.ID, worker, d.Fence, now)
+	if d.Intent.Kind == "interaction_requested" {
+		interactionID, ok := s.interactionIDForDelivery(ctx, d)
+		if !ok || interactionID == "" {
+			return false // interaction notifications fail closed when identity is unavailable
+		}
+		q = q.Where(`EXISTS (SELECT 1 FROM workbench_interactions wi
+			WHERE wi.tenant_id = mobile_notification_intents.tenant_id
+			  AND wi.run_id = mobile_notification_intents.run_id
+			  AND wi.owner_id = mobile_notification_intents.owner_id
+			  AND wi.id = ? AND wi.status = 'pending' AND wi.revoked = FALSE
+			  AND (wi.expires_at IS NULL OR wi.expires_at > ?))`, interactionID, now)
+	}
+	result := q.UpdateColumn("updated_at", now)
 	return result.Error == nil && result.RowsAffected == 1
+}
+
+// interactionIDForDelivery resolves the immutable event payload before the
+// final conditional update. The subsequent EXISTS predicate is evaluated in
+// the same UPDATE, so a concurrent decision cannot race a provider send.
+func (s *NotificationStore) interactionIDForDelivery(ctx context.Context, d NotificationDelivery) (string, bool) {
+	parts := strings.Split(d.Intent.EventID, ":")
+	if len(parts) < 3 {
+		return "", false
+	}
+	seq, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil || seq <= 0 || parts[0] == "" {
+		return "", false
+	}
+	runID := strings.Join(parts[1:len(parts)-1], ":")
+	var payload string
+	if err := s.db.WithContext(ctx).Table("agent_run_events").Select("payload").Where("tenant_id = ? AND run_id = ? AND seq = ?", d.Intent.TenantID, runID, seq).Take(&payload).Error; err != nil {
+		return "", false
+	}
+	var ref struct {
+		PendingID     string `json:"pending_id"`
+		InteractionID string `json:"interaction_id"`
+		ID            string `json:"id"`
+	}
+	if json.Unmarshal([]byte(payload), &ref) != nil {
+		return "", false
+	}
+	for _, id := range []string{ref.InteractionID, ref.PendingID, ref.ID} {
+		if strings.TrimSpace(id) != "" {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // RunNotificationEvent is the minimal authenticated event identity used by
