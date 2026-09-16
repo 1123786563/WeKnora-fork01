@@ -87,7 +87,8 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
     // Product state is optional so legacy Happy routes retain their behavior.
     // ConversationScreen supplies it through context; raw Happy state remains
     // inside the existing renderer and is never exposed as a product contract.
-    const conversationViewModel = props.viewModel ?? useConversationViewModel();
+    const contextViewModel = useConversationViewModel();
+    const conversationViewModel = props.viewModel ?? contextViewModel;
     const router = useRouter();
     const isFocused = useIsFocused();
     const session = useSession(sessionId);
@@ -439,6 +440,9 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
                         sessionId={sessionId}
                         session={session}
                         viewModel={conversationViewModel ?? undefined}
+                        onProductSend={conversationViewModel?.send
+                            ? (text) => conversationViewModel.send!.submit(text, `${sessionId}:${text}`)
+                            : undefined}
                         active={isFocused}
                         onHeaderBackdropVisibilityChange={contentRunsUnderHeader
                             ? setHeaderBackdropVisible
@@ -580,6 +584,7 @@ type ChatComposerProps = Omit<
 > & {
     sessionId: string;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
+    onProductSend?: (text: string) => Promise<void>;
 };
 
 // Owns the chat-message draft autosave. The textarea itself is uncontrolled:
@@ -589,7 +594,7 @@ type ChatComposerProps = Omit<
 // only used to feed useDraft's debounced autosave. Reads/clears on send go
 // through the MultiTextInput handle imperatively.
 const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) {
-    const { sessionId, composerHandleRef, ...rest } = props;
+    const { sessionId, composerHandleRef, onProductSend, ...rest } = props;
     // Synchronously hydrate the textarea with any saved draft so the user sees
     // their work-in-progress on session open without an extra round-trip.
     const initialDraft = React.useMemo(() => {
@@ -638,6 +643,7 @@ export function SessionViewLoaded({
     embedded = false,
     onHeaderBackdropVisibilityChange,
     viewModel,
+    onProductSend,
 }: {
     sessionId: string;
     session: Session;
@@ -645,6 +651,7 @@ export function SessionViewLoaded({
     embedded?: boolean;
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
     viewModel?: ConversationViewModel;
+    onProductSend?: (text: string) => Promise<void>;
 }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -846,6 +853,13 @@ export function SessionViewLoaded({
     const handleSend = React.useCallback(() => {
         const liveMessage = composerHandleRef.current?.getMessage() ?? '';
         if (liveMessage.trim() || selectedImages.length > 0) {
+            if (onProductSend && selectedImages.length === 0) {
+                void onProductSend(liveMessage).then(
+                    () => composerHandleRef.current?.clearMessage(),
+                    (error) => console.error('Failed to send product execution:', error),
+                );
+                return;
+            }
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             const communicationsToDismiss = [...pendingCommunications];
             composerHandleRef.current?.clearMessage();
@@ -875,7 +889,7 @@ export function SessionViewLoaded({
                 }
             })();
         }
-    }, [sessionId, selectedImages, clearImages, pendingCommunications]);
+    }, [sessionId, selectedImages, clearImages, pendingCommunications, onProductSend]);
 
     const handleAbort = React.useCallback(() => {
         // Stop cancels only the active turn. Permission, model, and effort are
@@ -1022,8 +1036,9 @@ export function SessionViewLoaded({
 
     const composer = (
         <View onLayout={usesFloatingMobileDock ? handleComposerLayout : undefined}>
-            <ChatComposer
+                <ChatComposer
                 composerHandleRef={composerHandleRef}
+                onProductSend={onProductSend}
                 placeholder={t('session.inputPlaceholder')}
                 sessionId={sessionId}
                 permissionMode={permissionMode}
@@ -1038,7 +1053,7 @@ export function SessionViewLoaded({
                 metadata={session.metadata}
                 connectionStatus={connectionStatus}
                 blockSend={isRig && session.thinking && session.metadata?.capabilities?.steering !== true}
-                onSend={handleSend}
+                    onSend={handleSend}
                 onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
                 isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
                 onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}

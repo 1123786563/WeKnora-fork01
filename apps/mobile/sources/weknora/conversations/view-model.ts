@@ -1,4 +1,11 @@
 import type { ExecutionDTO } from '@weknora/contracts';
+import type { ProductScope } from '../platform/product-session';
+
+export interface ExecutionApi {
+  start(input: { request_id: string; session_id: string; agent_id: string; target_id: string; workspace_ref: string; text: string; budget_upper: number }): Promise<unknown>;
+  lookup(requestID: string): Promise<unknown>;
+  command(runID: string, input: { action: 'cancel'; expected_revision: number } | { action: 'steer'; text: string; expected_revision: number }): Promise<unknown>;
+}
 
 export interface ConversationScope {
   origin: string;
@@ -55,6 +62,7 @@ export interface ConversationViewModel {
   capabilities: ConversationCapabilities;
   execution: ConversationExecution | null;
   commands: ConversationCommands;
+  send?: SendController;
 }
 
 
@@ -65,6 +73,46 @@ export interface ConversationViewModelInput {
   capabilities?: Partial<ConversationCapabilities>;
   execution?: ExecutionDTO | { run_id: string; request_id: string; status: string; revision?: number; reason?: string } | null;
   commands: ConversationCommands;
+  send?: SendController;
+}
+
+export interface ProductAgentOption { id: string; name: string; }
+
+/** Builds the product conversation from W07 scope and the W06 execution SDK. */
+export function createProductConversationViewModel(input: {
+  scope: ProductScope;
+  spaceId: string | null;
+  sessionId: string;
+  agent: ProductAgentOption;
+  targetId: string;
+  workspaceRef: string;
+  budgetUpper: number;
+  executions: ExecutionApi;
+}): ConversationViewModel {
+  const identity = input.scope.identity();
+  let latestRequestID: string | undefined;
+  const send = createSendController(async (text, requestID) => {
+    latestRequestID = requestID;
+    await input.executions.start({
+      request_id: requestID,
+      session_id: input.sessionId,
+      agent_id: input.agent.id,
+      target_id: input.targetId,
+      workspace_ref: input.workspaceRef,
+      text,
+      budget_upper: input.budgetUpper,
+    });
+  });
+  return createConversationViewModel({
+    scope: { ...identity, spaceId: input.spaceId },
+    capabilities: { canCancel: true, canSteer: true },
+    commands: {
+      cancel: async (runID, expectedRevision = 0) => { await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }); },
+      steer: async (runID, text, expectedRevision = 0) => { await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }); },
+      refreshPending: async (interactionID) => { await input.executions.lookup(latestRequestID ?? interactionID); },
+    },
+    send,
+  });
 }
 
 /**
@@ -73,12 +121,16 @@ export interface ConversationViewModelInput {
  * raw protocol messages, and product scope remains explicit in every model.
  */
 export function createConversationViewModel(input: ConversationViewModelInput): ConversationViewModel {
-  const execution = input.execution == null ? null : {
-    runID: input.execution.run_id,
-    requestID: input.execution.request_id,
-    status: input.execution.status,
-    ...('revision' in input.execution && input.execution.revision !== undefined ? { revision: input.execution.revision } : {}),
-    ...('reason' in input.execution && input.execution.reason !== undefined ? { reason: input.execution.reason } : {}),
+  // ExecutionDTO carries run_status/execution_status instead of the legacy
+  // wire fields, so normalize per branch: the DTO path keeps its statuses and
+  // an empty request id (the DTO does not carry one).
+  const raw = input.execution;
+  const execution = raw == null ? null : {
+    runID: raw.run_id,
+    requestID: 'request_id' in raw ? raw.request_id : '',
+    status: 'status' in raw ? raw.status : raw.execution_status,
+    ...('revision' in raw && raw.revision !== undefined ? { revision: raw.revision } : {}),
+    ...('reason' in raw && raw.reason !== undefined ? { reason: raw.reason } : {}),
   };
   return {
     scope: { ...input.scope },
@@ -93,6 +145,7 @@ export function createConversationViewModel(input: ConversationViewModelInput): 
     },
     execution,
     commands: input.commands,
+    send: input.send,
   };
 }
 

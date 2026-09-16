@@ -34,7 +34,7 @@ test('view model maps execution and keeps pending/unknown states visible', () =>
     pendingInteractions: [{ id: 'p1', kind: 'approval', status: 'pending', label: 'Approve' }],
     capabilities: { canCancel: true, canSteer: false },
     execution: { run_id: 'run-1', request_id: 'q1', status: 'unknown' },
-    commands: { cancel: async () => undefined },
+    commands: { cancel: async () => undefined, steer: async () => undefined },
   });
   assert.deepEqual(model.scope, { origin: 'https://api.example', userId: 'u1', tenantId: 't1', spaceId: 's1' });
   assert.equal(model.messages[0]?.id, 'm1');

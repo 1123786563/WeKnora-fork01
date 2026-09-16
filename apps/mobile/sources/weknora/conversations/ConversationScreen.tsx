@@ -1,11 +1,40 @@
 import * as React from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { SessionView } from '@/-session/SessionView';
-import { ConversationViewModelContext, type ConversationViewModel } from './context';
+import { ConversationViewModelContext } from './context';
+import type { ConversationViewModel } from './view-model';
 
 export interface ConversationScreenProps {
   sessionId: string;
   viewModel: ConversationViewModel;
+}
+
+export function ConversationControlPanel({ viewModel }: { viewModel: ConversationViewModel }) {
+  const [draft, setDraft] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const submit = async () => {
+    if (!viewModel.send || !draft.trim() || busy) return;
+    setBusy(true);
+    try {
+      await viewModel.send.submit(draft, `mobile:${viewModel.scope.userId ?? 'anonymous'}:${draft}`);
+      setDraft('');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View accessibilityLabel="conversation-controls">
+      <TextInput accessibilityLabel="conversation-draft" value={draft} onChangeText={setDraft} />
+      <Pressable accessibilityRole="button" accessibilityLabel="发送" disabled={busy} onPress={() => void submit()}>
+        <Text>{busy ? '发送中' : '发送'}</Text>
+      </Pressable>
+      {viewModel.pendingInteractions.filter((item) => item.status === 'pending').map((item) => (
+        <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`审批 ${item.label}`} onPress={() => void viewModel.commands.refreshPending?.(item.id)}>
+          <Text>{item.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
 }
 
 /** Product-owned seam around the retained Happy renderer. */
@@ -23,6 +52,7 @@ export function ConversationScreen({ sessionId, viewModel }: ConversationScreenP
             <Text>{executionNotice}</Text>
           </View>
         )}
+        <ConversationControlPanel viewModel={viewModel} />
         <SessionView id={sessionId} />
       </View>
     </ConversationViewModelContext.Provider>
