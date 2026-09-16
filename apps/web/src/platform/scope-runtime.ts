@@ -54,12 +54,24 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     const nextUserId = typeof authMe.user.id === 'string' && authMe.user.id.trim() ? authMe.user.id : null;
     const rawTenant = authMe.tenant;
     const nextTenantId = rawTenant && (typeof rawTenant.id === 'string' || typeof rawTenant.id === 'number') ? String(rawTenant.id) : null;
+    const currentScope = controller.current().scope;
+    // Vue's TenantSelector/UserMenu keeps the selected-tenant override in
+    // local storage and sends it as X-Tenant-ID. During a reload, /auth/me
+    // can still describe the JWT home tenant before that override is reflected
+    // in the response. Keep the override for the same user (or the initial
+    // pre-hydration scope), but never carry it into a tenantless response or a
+    // different user session.
+    const tenantId = nextTenantId !== null
+      && currentScope.tenantId !== null
+      && (currentScope.userId === null || currentScope.userId === nextUserId)
+      ? currentScope.tenantId
+      : nextTenantId;
     capabilitySnapshot = normalizeCapabilityMap(authMe.capabilities);
     systemAdmin = authMe.user.is_system_admin === true || authMe.user.isSystemAdmin === true;
     const maybeEdition = authMe.user.edition;
     if (typeof maybeEdition === 'string' && maybeEdition.trim()) edition = maybeEdition;
-    activeRole = membershipRole(authMe.memberships, nextTenantId);
-    return commitScope(nextUserId, nextTenantId);
+    activeRole = membershipRole(authMe.memberships, tenantId);
+    return commitScope(nextUserId, tenantId);
   };
   const switchTenant = async (
     tenantId: string,

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createWebScopeRuntime } from './scope-runtime.ts';
 
 test('hydrates auth/me into the active user, tenant, and capability snapshot', () => {
-  const runtime = createWebScopeRuntime('https://api.test', null, 'legacy-tenant');
+  const runtime = createWebScopeRuntime('https://api.test', null, null);
   const next = runtime.hydrate({
     user: { id: 'user-2' },
     tenant: { id: 7 },
@@ -30,6 +30,14 @@ test('auth/me with no active tenant clears the old tenant and exposes onboarding
   assert.equal(runtime.current().scope.tenantId, null);
   assert.equal(runtime.current().scope.userId, 'user-1');
   assert.equal(runtime.requiresWorkspace(), true);
+});
+
+test('hydrate preserves the same user\'s persisted tenant override over the home tenant', () => {
+  const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-2');
+
+  runtime.hydrate({ user: { id: 'user-1' }, tenant: { id: 1 }, tenant_required: false });
+
+  assert.equal(runtime.current().scope.tenantId, 'tenant-2');
 });
 
 test('exposes channel-session visibility only for active-tenant admins', () => {
