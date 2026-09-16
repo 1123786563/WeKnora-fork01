@@ -50,6 +50,48 @@ export interface PersonalNodeTransport {
   close(): Promise<void>;
 }
 
+export interface PersonalNodeTransportConfig {
+  /** Server-provided, pinned Paseo bridge URL. It is never accepted from a command payload. */
+  baseURL: string;
+  fetchImpl?: typeof fetch;
+  bearer?: string;
+}
+
+export interface PaseoNodeHeartbeat { nodeID: string; credentialVersion: number; at: number }
+export interface PaseoNodeLog { level: 'debug' | 'info' | 'warn' | 'error'; message: string; at: number }
+
+/**
+ * Concrete configured-platform transport. The bridge protocol is intentionally
+ * small and explicit: commands have an acknowledgement, heartbeats prove the
+ * credential version, logs are sent to the platform sink, and rotation replaces
+ * the short-lived credential. No caller can redirect it to an arbitrary daemon.
+ */
+export class PaseoPersonalNodeTransport implements PersonalNodeTransport {
+  private readonly baseURL: URL;
+  private readonly fetchImpl: typeof fetch;
+  constructor(config: PersonalNodeTransportConfig) {
+    this.baseURL = new URL(config.baseURL);
+    if (this.baseURL.protocol !== 'https:' && this.baseURL.hostname !== 'localhost' && this.baseURL.hostname !== '127.0.0.1') throw new Error('PASEO_ENDPOINT_FORBIDDEN');
+    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.bearer = config.bearer;
+  }
+  private bearer?: string;
+  private async request(path: string, body?: unknown, method = 'POST'): Promise<any> {
+    const response = await this.fetchImpl(new URL(path, this.baseURL), { method, headers: { 'content-type': 'application/json', ...(this.bearer ? { authorization: `Bearer ${this.bearer}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!response.ok) throw new Error(`PASEO_HTTP_${response.status}`);
+    return response.status === 204 ? undefined : response.json();
+  }
+  async send(command: PersonalNodeCommand, grant: NodeGrant): Promise<{ accepted: boolean; commandID?: string }> {
+    const response = await this.request('/v1/commands', { operation: command.operation, payload: command.payload, grant });
+    if (typeof response?.accepted !== 'boolean') throw new Error('PASEO_ACK_INVALID');
+    return { accepted: response.accepted, commandID: typeof response.commandID === 'string' ? response.commandID : undefined };
+  }
+  async heartbeat(input: PaseoNodeHeartbeat): Promise<void> { await this.request('/v1/heartbeat', input); }
+  async appendLog(log: PaseoNodeLog): Promise<void> { await this.request('/v1/logs', log); }
+  async rotateCredential(credential: string): Promise<void> { await this.request('/v1/credentials/rotate', { credential }); this.bearer = credential; }
+  async close(): Promise<void> { await this.request('/v1/close', undefined); }
+}
+
 export interface NodeConnectorOptions {
   now?: () => number;
   backoffMs?: number[];

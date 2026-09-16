@@ -47,6 +47,13 @@ func RegisterExecutionRegistrationRoutes(r *gin.RouterGroup, h *handler.Executio
 	registrations.POST("/challenges", h.CreateChallenge)
 	registrations.POST("", h.Complete)
 	registrations.DELETE("/:id", h.Revoke)
+	// W23 contract routes. The legacy aliases above remain during the published
+	// compatibility window; all new clients use the execution-target facade.
+	targetRegistrations := g.apiKeyGroup(r.Group("/execution-targets/registrations", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	targetRegistrations.POST("/challenges", h.CreateChallenge)
+	targetRegistrations.POST("", h.Complete)
+	targets := g.apiKeyGroup(r.Group("/execution-targets", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	targets.POST("/:id/revoke", h.Revoke)
 }
 
 // RegisterWorkbenchStartRoutes adds the write and request-reconciliation

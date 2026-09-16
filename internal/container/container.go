@@ -523,6 +523,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
 	must(container.Provide(handler.NewExecutionTargetHandler))
+	must(container.Provide(repository.NewPersonalTargetProvisioner))
 	must(container.Provide(execution.NewRegistrationService))
 	must(container.Provide(handler.NewExecutionRegistrationHandler))
 	must(container.Provide(func(

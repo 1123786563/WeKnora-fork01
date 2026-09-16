@@ -136,9 +136,23 @@ type registrationRow struct {
 
 func (registrationRow) TableName() string { return "execution_registrations" }
 
-type RegistrationService struct{ db *gorm.DB }
+// TargetProvisioner is the single identity seam between personal-node
+// registration and W18/W20 target admission. Implementations must use the
+// supplied transaction so registration, identity, and credential state commit
+// atomically.
+type TargetProvisioner interface {
+	ProvisionPersonalTarget(context.Context, *gorm.DB, Target) error
+	RevokePersonalTarget(context.Context, *gorm.DB, uint64, string, string, time.Time) error
+}
 
-func NewRegistrationService(db *gorm.DB) *RegistrationService { return &RegistrationService{db: db} }
+type RegistrationService struct {
+	db          *gorm.DB
+	provisioner TargetProvisioner
+}
+
+func NewRegistrationService(db *gorm.DB, provisioner TargetProvisioner) *RegistrationService {
+	return &RegistrationService{db: db, provisioner: provisioner}
+}
 
 func fingerprint(publicKey []byte) string {
 	sum := sha256.Sum256(publicKey)
@@ -206,6 +220,9 @@ func (s *RegistrationService) Complete(ctx context.Context, tenant uint64, owner
 			if existing.RequestHash != hash {
 				return ErrRegistrationReplay
 			}
+			if existing.State != "active" {
+				return ErrRegistrationRevoked
+			}
 			result = toRegistration(existing)
 			return nil
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -234,6 +251,11 @@ func (s *RegistrationService) Complete(ctx context.Context, tenant uint64, owner
 		if err := tx.Create(&row).Error; err != nil {
 			return err
 		}
+		if s.provisioner != nil {
+			if err := s.provisioner.ProvisionPersonalTarget(ctx, tx, Target{ID: id, TenantID: tenant, OwnerID: owner, Kind: "personal_node", State: "active", CredentialVersion: 1, RuntimeID: req.RuntimeID, ExternalTargetID: req.ExternalTargetID}); err != nil {
+				return err
+			}
+		}
 		consumed := now.UTC()
 		if err := tx.Model(&registrationChallengeRow{}).Where("tenant_id = ? AND owner_id = ? AND challenge_id = ? AND consumed_at IS NULL", tenant, owner, req.ChallengeID).Updates(map[string]any{"consumed_at": consumed}).Error; err != nil {
 			return err
@@ -251,14 +273,21 @@ func (s *RegistrationService) Revoke(ctx context.Context, tenant uint64, owner, 
 	if s == nil || s.db == nil || tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(id) == "" {
 		return ErrRegistrationInvalid
 	}
-	result := s.db.WithContext(ctx).Model(&registrationRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND state = ?", tenant, owner, id, "active").Updates(map[string]any{"state": "revoked", "revoked_at": now.UTC(), "credential_version": gorm.Expr("credential_version + 1")})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrRegistrationNotFound
-	}
-	return nil
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row registrationRow
+		if err := tx.Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND state = ?", tenant, owner, id, "active").First(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrRegistrationNotFound
+			}
+			return err
+		}
+		if s.provisioner != nil {
+			if err := s.provisioner.RevokePersonalTarget(ctx, tx, tenant, owner, id, now.UTC()); err != nil {
+				return err
+			}
+		}
+		return tx.Model(&registrationRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND state = ?", tenant, owner, id, "active").Updates(map[string]any{"state": "revoked", "revoked_at": now.UTC(), "credential_version": gorm.Expr("credential_version + 1")}).Error
+	})
 }
 
 func toRegistration(row registrationRow) NodeRegistration {

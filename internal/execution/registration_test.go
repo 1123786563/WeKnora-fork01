@@ -49,7 +49,7 @@ func TestValidateNodeGrantRejectsOldEpochAndExpired(t *testing.T) {
 
 func TestRegistrationProofConsumesChallengeAndIsIdempotent(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t))
+	svc := NewRegistrationService(openRegistrationDB(t), nil)
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	registration, grant, err := svc.Complete(context.Background(), 1, "u1", req, now)
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestRegistrationProofConsumesChallengeAndIsIdempotent(t *testing.T) {
 
 func TestRegistrationRejectsReplayAndCrossTargetProof(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t))
+	svc := NewRegistrationService(openRegistrationDB(t), nil)
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	req.ExternalTargetID = "other"
 	_, _, err := svc.Complete(context.Background(), 1, "u1", req, now)
@@ -83,7 +83,7 @@ func TestRegistrationRejectsReplayAndCrossTargetProof(t *testing.T) {
 
 func TestRegistrationRevocationBumpsCredentialVersionAndScopesOwner(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	svc := NewRegistrationService(openRegistrationDB(t))
+	svc := NewRegistrationService(openRegistrationDB(t), nil)
 	req := makeRegistrationRequest(t, svc, now, "req-1")
 	registration, _, err := svc.Complete(context.Background(), 1, "u1", req, now)
 	require.NoError(t, err)
@@ -93,4 +93,18 @@ func TestRegistrationRevocationBumpsCredentialVersionAndScopesOwner(t *testing.T
 	require.NoError(t, svc.db.First(&row, "registration_id = ?", registration.ID).Error)
 	require.Equal(t, int64(2), row.CredentialVersion)
 	require.Equal(t, "revoked", row.State)
+}
+
+func TestRegistrationReplayAfterRevocationReturnsNoGrant(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	svc := NewRegistrationService(openRegistrationDB(t), nil)
+	req := makeRegistrationRequest(t, svc, now, "revoked-replay")
+	registration, grant, err := svc.Complete(context.Background(), 1, "u1", req, now)
+	require.NoError(t, err)
+	require.NotEmpty(t, grant.TargetID)
+	require.NoError(t, svc.Revoke(context.Background(), 1, "u1", registration.ID, now.Add(time.Second)))
+	_, replayGrant, err := svc.Complete(context.Background(), 1, "u1", req, now.Add(2*time.Second))
+	require.ErrorIs(t, err, ErrRegistrationRevoked)
+	require.Empty(t, replayGrant.TargetID)
+	require.Empty(t, replayGrant.Operations)
 }
