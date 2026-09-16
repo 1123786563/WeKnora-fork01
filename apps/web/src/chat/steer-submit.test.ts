@@ -69,3 +69,9 @@ test('conflict detection recognises the 409 status for re-base', () => {
   assert.equal(isSteerConflict({ status: 500 }), false);
   assert.equal(isSteerConflict(new Error('x')), false);
 });
+
+test('conflict detection recognises transport-wrapped 409 errors', () => {
+  assert.equal(isSteerConflict({ response: { status: 409 } }), true);
+  assert.equal(isSteerConflict({ cause: { status: 409 } }), true);
+  assert.equal(isSteerConflict({ response: { status: 500 }, cause: { status: 409 } }), true);
+});

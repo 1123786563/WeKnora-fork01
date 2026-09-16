@@ -57,6 +57,13 @@ export function buildSteerAction(options: {
 
 /** A 409 means the run moved on; the caller re-bases onto the fresh id and retries once. */
 export function isSteerConflict(error: unknown): boolean {
-  return typeof error === 'object' && error !== null
-    && (error as { status?: unknown }).status === STEER_CONFLICT_STATUS;
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+    cause?: { status?: unknown };
+  };
+  return candidate.status === STEER_CONFLICT_STATUS
+    || candidate.response?.status === STEER_CONFLICT_STATUS
+    || candidate.cause?.status === STEER_CONFLICT_STATUS;
 }
