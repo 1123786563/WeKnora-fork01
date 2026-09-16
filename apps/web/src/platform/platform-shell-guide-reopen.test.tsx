@@ -126,6 +126,8 @@ test('admin user menu exposes the Vue management shortcuts for members, models a
     '/platform/settings?section=members',
     '/platform/settings?section=models',
     '/platform/settings?section=skills',
+    'https://github.com/Tencent/WeKnora/tree/main/docs',
+    'https://github.com/Tencent/WeKnora',
   ]);
 });
 
@@ -245,4 +247,22 @@ test('(c) the entry label follows the shared bundle in all five locales', async 
     document.body.replaceChildren();
     window.localStorage.clear();
   }
+});
+
+test('(d) the user menu keeps Vue help and GitHub external entries', async () => {
+  await mountShell();
+  await openUserMenu();
+
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[role="menu"] a')];
+  const docs = links.find((link) => link.getAttribute('href') === 'https://github.com/Tencent/WeKnora/tree/main/docs');
+  const github = links.find((link) => link.getAttribute('href') === 'https://github.com/Tencent/WeKnora');
+
+  assert.ok(docs, 'Vue UserMenu exposes a help/docs external entry');
+  assert.equal(docs?.getAttribute('target'), '_blank');
+  assert.equal(docs?.getAttribute('rel'), 'noreferrer');
+  assert.ok(github, 'Vue UserMenu exposes a GitHub external entry');
+  assert.equal(github?.getAttribute('target'), '_blank');
+  assert.equal(github?.getAttribute('rel'), 'noreferrer');
+  await act(async () => { docs?.click(); });
+  assert.equal(dropdown(), null, 'external navigation closes the account menu like Vue');
 });
