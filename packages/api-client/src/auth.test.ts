@@ -109,3 +109,43 @@ test('malformed refresh responses fail strictly and clear the bearer profile', a
     assert.deepEqual(credentials.value, { kind: 'anonymous' });
   }
 });
+
+test('advanceGeneration does not reuse a refresh from the retired scope', async () => {
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  let calls = 0;
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async (refreshToken) => {
+      calls += 1;
+      if (calls === 1) await pending;
+      return { success: true, access_token: `access-${calls}`, refresh_token: `refresh-${calls}` };
+    },
+  });
+  const oldRefresh = coordinator.refresh();
+  await Promise.resolve();
+  coordinator.advanceGeneration();
+  const newRefresh = coordinator.refresh();
+  await Promise.resolve();
+  assert.equal(calls, 2);
+  release();
+  await assert.rejects(oldRefresh, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.deepEqual(await newRefresh, { kind: 'bearer', accessToken: 'access-2', refreshToken: 'refresh-2' });
+});
+
+test('replace advances generation before writing a new account credential', async () => {
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => { await pending; return { success: true, access_token: 'late', refresh_token: 'late' }; },
+  });
+  const oldRefresh = coordinator.refresh();
+  await Promise.resolve();
+  await coordinator.replace({ kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  release();
+  await assert.rejects(oldRefresh, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+});

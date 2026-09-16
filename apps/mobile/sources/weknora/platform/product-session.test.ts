@@ -26,3 +26,12 @@ test('a refresh write can be accepted only by the generation that started it', (
   assert.equal(scope.accept(refresh.generation), false);
   assert.equal(scope.accept(scope.capture().generation), true);
 });
+
+test('scope transitions close client subscriptions without cancelling server work', async () => {
+  const scope = createProductScope({ origin: 'https://a.test', userId: 'u', tenantId: 'a' });
+  let closed = 0;
+  scope.registerLifecycle(() => { closed += 1; });
+  scope.switchTo({ origin: 'https://a.test', userId: 'u', tenantId: 'b' });
+  await Promise.resolve();
+  assert.equal(closed, 1);
+});

@@ -3,6 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import * as React from 'react';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createProductScope, type ProductScope } from '@/weknora/platform/product-session';
+import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { apiSocket } from '@/sync/apiSocket';
 import { createCredentials, productCredentialKey } from './credentials';
 
 const store = {
@@ -44,8 +46,13 @@ export function ProductAuthProvider({ children }: React.PropsWithChildren) {
       authSession.refreshCoordinator.advanceGeneration();
       redrawForScope();
     });
+    const unregisterLifecycle = scope.registerLifecycle(() => {
+      void stopRealtimeSession();
+      apiSocket.disconnect();
+    });
     return () => {
       unsubscribe();
+      unregisterLifecycle();
       // A host change retires the old credential store as well as its refresh.
       void authSession.refreshCoordinator.invalidate();
     };
@@ -64,15 +71,16 @@ export function ProductAuthProvider({ children }: React.PropsWithChildren) {
   const login = React.useCallback(async (email: string, password: string) => {
     if (!host || !adapter || !authSession) throw new Error('SERVER_REQUIRED');
     const result = await authSession.login(email, password);
-    await adapter.write(result.credential);
+    await authSession.refreshCoordinator.replace(result.credential);
     scope.switchTo({ origin: host.origin, userId: result.userId, tenantId: result.tenantId });
     setCredential(result.credential);
   }, [adapter, authSession, host, scope]);
   const logout = React.useCallback(async () => {
     scope.logout();
-    if (adapter) await adapter.clear();
+    if (authSession) await authSession.refreshCoordinator.invalidate();
+    else if (adapter) await adapter.clear();
     setCredential(null);
-  }, [adapter, scope]);
+  }, [adapter, authSession, scope]);
 
   return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout }}>{children}</ProductAuthContext.Provider>;
 }

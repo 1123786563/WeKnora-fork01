@@ -100,6 +100,16 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     /** Advance the refresh generation without deleting the current credential. */
     advanceGeneration() {
       generation += 1;
+      // Do not let a subsequent request join a refresh started by the retired
+      // identity. The old promise still observes the generation mismatch and
+      // cannot write its result.
+      inFlight = undefined;
+    },
+    /** Replace credentials for a newly authenticated identity. */
+    async replace(value: BearerCredential): Promise<void> {
+      generation += 1;
+      inFlight = undefined;
+      await options.credentials.write(value);
     },
     invalidate,
     logout: invalidate,
