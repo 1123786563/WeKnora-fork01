@@ -498,6 +498,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
+	// W33 cleanup worker uses the repository-owned observation source. It
+	// remains fail-closed for W26 file/blob/backup deletion until that adapter
+	// is registered.
+	must(container.Invoke(func(store *repository.AgentRunStore, cleaner interfaces.ResourceCleaner) {
+		StartExecutionCleanupSweep(store, cleaner)
+	}))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs

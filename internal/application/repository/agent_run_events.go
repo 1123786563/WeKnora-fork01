@@ -154,17 +154,24 @@ func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, 
 		}
 		if count == 0 {
 			payload := string(answer)
-			if err := tx.Create(&agentRunEventRow{TenantID: fence.TenantID, RunID: fence.RunID, Seq: nextEventSeq(tx, fence), EventType: "run_completed", Payload: payload}).Error; err != nil {
+			if err := appendRunEventLocked(tx, fence, "run_completed", payload); err != nil {
 				return err
 			}
 		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", fence.TenantID, run.SessionID, fence.RunID).Update("active_agent_run_id", nil).Error
 	})
 }
-func nextEventSeq(tx *gorm.DB, f agentruntime.Fence) int64 {
-	var r agentRunEventRow
-	if tx.Where("tenant_id=? AND run_id=?", f.TenantID, f.RunID).Order("seq DESC").Take(&r).Error != nil {
-		return 1
+
+// appendRunEventLocked serializes event sequence allocation behind the run
+// row lock. All callers invoke it inside the same transaction that fenced or
+// updated the run, so cancellation and completion cannot allocate one seq.
+func appendRunEventLocked(tx *gorm.DB, f agentruntime.Fence, eventType, payload string) error {
+	if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", f.TenantID, f.RunID).UpdateColumn("revision", gorm.Expr("revision")).Error; err != nil {
+		return err
 	}
-	return r.Seq + 1
+	var r agentRunEventRow
+	if err := tx.Where("tenant_id=? AND run_id=?", f.TenantID, f.RunID).Order("seq DESC").Take(&r).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(&agentRunEventRow{TenantID: f.TenantID, RunID: f.RunID, Seq: r.Seq + 1, EventType: eventType, Payload: payload}).Error
 }

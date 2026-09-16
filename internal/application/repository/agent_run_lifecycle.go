@@ -34,7 +34,7 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 		if err != nil {
 			return err
 		}
-		if err := tx.Create(&agentRunEventRow{TenantID: key.TenantID, RunID: key.RunID, Seq: nextEventSeq(tx, agentruntime.Fence{RunKey: key}), EventType: "cancellation_requested", Payload: string(payloadBytes)}).Error; err != nil {
+		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
 			return err
 		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
@@ -72,7 +72,7 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 			if err != nil {
 				return err
 			}
-			if err := tx.Create(&agentRunEventRow{TenantID: tenantID, RunID: id, Seq: nextEventSeq(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: id}}), EventType: "cancellation_requested", Payload: string(payload)}).Error; err != nil {
+			if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: id}}, "cancellation_requested", string(payload)); err != nil {
 				return err
 			}
 		}

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -137,7 +138,19 @@ func (s *AgentRunStore) CompleteCleanup(ctx context.Context, claim CleanupClaim,
 		}
 		stopped, settled, retained := row.Stopped || facts.Stopped, row.Settled || facts.Settled, row.RetentionElapsed || facts.RetentionElapsed
 		state := "cleanup_pending"
-		if execution.CanPurge(execution.CleanupFacts{Stopped: stopped, Settled: settled, RetentionElapsed: retained}) {
+		canPurge := execution.CanPurge(execution.CleanupFacts{Stopped: stopped, Settled: settled, RetentionElapsed: retained})
+		if canPurge {
+			if s.cleanupFiles == nil {
+				return ErrCleanupFilesUnavailable
+			}
+			// The W26 adapter is idempotent and tenant-scoped. It runs before
+			// durable row deletion so a file failure leaves the claim retryable.
+			if err := s.cleanupFiles.PurgeSessionFiles(ctx, claim); err != nil {
+				return err
+			}
+			if err := purgeExecutionRecords(tx, claim); err != nil {
+				return err
+			}
 			state = "purged"
 		}
 		updated := tx.Model(&executionCleanupRow{}).
@@ -153,6 +166,26 @@ func (s *AgentRunStore) CompleteCleanup(ctx context.Context, claim CleanupClaim,
 	})
 }
 
+func purgeExecutionRecords(tx *gorm.DB, claim CleanupClaim) error {
+	var runIDs []string
+	if err := tx.Table("agent_runs").Where("tenant_id=? AND session_id=?", claim.TenantID, claim.SessionID).Pluck("run_id", &runIDs).Error; err != nil {
+		return err
+	}
+	for _, runID := range runIDs {
+		for _, table := range []string{"agent_run_inputs", "agent_run_decisions", "agent_run_events", "agent_tool_attempts", "agent_tool_calls", "agent_run_checkpoints"} {
+			if !tx.Migrator().HasTable(table) {
+				continue
+			}
+			if err := tx.Exec("DELETE FROM "+table+" WHERE tenant_id=? AND run_id=?", claim.TenantID, runID).Error; err != nil {
+				return err
+			}
+		}
+	}
+	// Keep execution_cleanup as the tombstone/audit reference. All run-owned
+	// control/event rows are disposable only after the evidence fence passes.
+	return tx.Exec("DELETE FROM agent_runs WHERE tenant_id=? AND session_id=?", claim.TenantID, claim.SessionID).Error
+}
+
 // CleanupObservationSource is the production adapter boundary. Each method
 // must query the authoritative stop, usage, replay and restore systems for
 // this deletion revision; absence or uncertainty is false.
@@ -164,12 +197,30 @@ type CleanupObservationSource interface {
 	ObserveRetention(context.Context, CleanupClaim) (bool, error)
 }
 
+// CleanupFilePurger is the W26 adapter boundary. Production must provide the
+// tenant-scoped object/blob/backup deleter before a tombstone can be purged.
+// A nil adapter is intentionally fail-closed.
+type CleanupFilePurger interface {
+	PurgeSessionFiles(context.Context, CleanupClaim) error
+}
+
+var ErrCleanupFilesUnavailable = errors.New("execution cleanup file purger unavailable")
+
+// SetCleanupFilePurger installs the W26-owned file/blob/backup adapter. The
+// default container leaves it unset while that dependency is blocked.
+func (s *AgentRunStore) SetCleanupFilePurger(purger CleanupFilePurger) {
+	if s != nil {
+		s.cleanupFiles = purger
+	}
+}
+
 // RunCleanupOnce executes one leased observation cycle. It intentionally does
 // not fake provider/file evidence; callers must supply real adapters.
-func (s *AgentRunStore) RunCleanupOnce(ctx context.Context, worker string, lease time.Duration, source CleanupObservationSource) error {
-	if source == nil {
+func (s *AgentRunStore) RunCleanupOnce(ctx context.Context, worker string, lease time.Duration) error {
+	if s == nil || s.cleanupSource == nil {
 		return runtime.ErrConflict
 	}
+	source := s.cleanupSource
 	claim, err := s.ClaimCleanup(ctx, worker, lease)
 	if err != nil {
 		return err
@@ -195,6 +246,52 @@ func (s *AgentRunStore) RunCleanupOnce(ctx context.Context, worker string, lease
 		return err
 	}
 	return s.CompleteCleanup(ctx, claim, execution.CleanupFacts{Stopped: stop && replay, Settled: usage, RetentionElapsed: retention && restore})
+}
+
+// NewDurableCleanupObservationSource builds the default fail-closed source.
+// It reads product run/event/observation state only; remote provider, backup,
+// and object-store adapters must be added through their owning tasks.
+func NewDurableCleanupObservationSource(db *gorm.DB) CleanupObservationSource {
+	return &durableCleanupObservationSource{db: db}
+}
+
+type durableCleanupObservationSource struct{ db *gorm.DB }
+
+func (o *durableCleanupObservationSource) ObserveStop(ctx context.Context, claim CleanupClaim) (bool, error) {
+	var active int64
+	err := o.db.WithContext(ctx).Table("agent_runs").Where("tenant_id=? AND session_id=? AND status NOT IN ?", claim.TenantID, claim.SessionID, []string{"canceled", "succeeded", "failed"}).Count(&active).Error
+	return active == 0, err
+}
+
+func (o *durableCleanupObservationSource) ObserveUsage(ctx context.Context, claim CleanupClaim) (bool, error) {
+	var runs int64
+	if err := o.db.WithContext(ctx).Table("agent_runs").Where("tenant_id=? AND session_id=?", claim.TenantID, claim.SessionID).Count(&runs).Error; err != nil {
+		return false, err
+	}
+	if runs == 0 {
+		return false, nil
+	}
+	var usage int64
+	err := o.db.WithContext(ctx).Table("agent_run_events e").Joins("JOIN agent_runs r ON r.tenant_id=e.tenant_id AND r.run_id=e.run_id").Where("e.tenant_id=? AND r.session_id=? AND e.event_type LIKE 'usage.%'", claim.TenantID, claim.SessionID).Count(&usage).Error
+	return usage > 0, err
+}
+
+func (o *durableCleanupObservationSource) ObserveReplay(ctx context.Context, claim CleanupClaim) (bool, error) {
+	var incomplete int64
+	err := o.db.WithContext(ctx).Table("execution_observations o").Joins("JOIN agent_runs r ON r.tenant_id=o.tenant_id AND r.run_id=o.run_id").Where("o.tenant_id=? AND r.session_id=? AND o.history_incomplete = ?", claim.TenantID, claim.SessionID, true).Count(&incomplete).Error
+	if err != nil && !strings.Contains(err.Error(), "no such table") {
+		return false, err
+	}
+	return incomplete == 0, nil
+}
+
+func (o *durableCleanupObservationSource) ObserveBackupRestore(context.Context, CleanupClaim) (bool, error) {
+	// W26 backup/object receipt is not available in this checkout.
+	return false, nil
+}
+
+func (o *durableCleanupObservationSource) ObserveRetention(context.Context, CleanupClaim) (bool, error) {
+	return false, nil
 }
 
 func (s *AgentRunStore) cleanupNowExpr() any {

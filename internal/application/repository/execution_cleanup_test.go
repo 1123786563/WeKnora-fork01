@@ -10,9 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type noopCleanupFilePurger struct{}
+
+func (noopCleanupFilePurger) PurgeSessionFiles(context.Context, CleanupClaim) error { return nil }
+
 func TestExecutionCleanupTombstoneClaimAndSettlement(t *testing.T) {
 	db := openRunTestDB(t)
 	s := NewAgentRunStore(db)
+	s.SetCleanupFilePurger(noopCleanupFilePurger{})
 	ctx := context.Background()
 	require.NoError(t, s.TombstoneSession(ctx, 1, "u1", "s1"))
 	require.ErrorIs(t, s.TombstoneSession(ctx, 1, "other", "s1"), runtime.ErrNotFound)
