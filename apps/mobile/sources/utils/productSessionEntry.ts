@@ -14,7 +14,7 @@ export function resolveCreatedProductSessionNavigation(session: unknown): Produc
 export function navigateCreatedProductSession(input: {
     sessionId: string;
     session: unknown;
-    navigate: (sessionId: string, product: ProductSessionNavigation) => void;
+    navigateProduct: (session: unknown) => boolean;
     onUnavailable: () => void;
 }): boolean {
     const product = resolveCreatedProductSessionNavigation(input.session);
@@ -22,6 +22,5 @@ export function navigateCreatedProductSession(input: {
         input.onUnavailable();
         return false;
     }
-    input.navigate(input.sessionId, product);
-    return true;
+    return input.navigateProduct({ ...(input.session as object), id: input.sessionId, metadata: { productSession: product } });
 }

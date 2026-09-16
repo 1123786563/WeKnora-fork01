@@ -41,7 +41,7 @@ import { machineSpawnNewSession, sessionSetAgentModes } from '@/sync/ops';
 import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNavigateToProductSession } from '@/hooks/useNavigateToSession';
 import { navigateCreatedProductSession } from '@/utils/productSessionEntry';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useWorktrees } from '@/hooks/useWorktrees';
@@ -742,7 +742,7 @@ function NewSessionScreen() {
     const router = useRouter();
     const { autoSubmit } = useLocalSearchParams<{ autoSubmit?: string }>();
     const navigation = useNavigation();
-    const navigateToSession = useNavigateToSession();
+    const navigateToProduct = useNavigateToProductSession();
 
     // Real data sources
     const allMachines = useAllMachines({ includeOffline: true });
@@ -1560,13 +1560,12 @@ function NewSessionScreen() {
                     const navigated = navigateCreatedProductSession({
                         sessionId: result.sessionId,
                         session: createdSession,
-                        navigate: navigateToSession,
+                        navigateProduct: navigateToProduct,
                         onUnavailable: () => Modal.alert(t('common.error'), 'The new product session is not ready yet. Please retry after synchronization.'),
                     });
                     if (!navigated) {
                         break;
                     }
-                    router.back();
                     break;
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(
@@ -1599,7 +1598,7 @@ function NewSessionScreen() {
         } finally {
             if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [agentWorkspaces, allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, selectedProjectId, worktreeKey]);
+    }, [agentWorkspaces, allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToProduct, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, selectedProjectId, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {
