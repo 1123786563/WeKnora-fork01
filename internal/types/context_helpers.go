@@ -56,6 +56,12 @@ func RunIDFromContext(ctx context.Context) (string, bool) {
 	return v, ok && strings.TrimSpace(v) != ""
 }
 
+// CredentialVersionFromContext returns the trusted target credential snapshot.
+func CredentialVersionFromContext(ctx context.Context) (int64, bool) {
+	v, ok := ctx.Value(CredentialVersionContextKey).(int64)
+	return v, ok && v > 0
+}
+
 // UserIDFromContext extracts the user ID string from ctx.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(UserIDContextKey).(string)

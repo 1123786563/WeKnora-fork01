@@ -2,6 +2,9 @@ package container
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -45,7 +48,7 @@ func newAgentRuntime(
 	var r *AgentRuntime
 	var err error
 	if provider != nil {
-		r, err = newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+		r, err = newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, db)
 	} else {
 		r, err = NewAgentRuntime(cfg, store, executor)
 	}
@@ -193,7 +196,7 @@ func (r *AgentRuntime) SetRecoveryHook(hook func(context.Context, agentruntime.F
 }
 
 func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
-	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, executors...)
+	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, nil, executors...)
 }
 
 // NewAgentRuntimeWithRemoteProvider is the production assembly point for a
@@ -206,10 +209,10 @@ func NewAgentRuntimeWithRemoteProvider(
 	dispatch *repository.ExecutionDispatchStore,
 	provider workbenchservice.RemoteProvider,
 ) (*AgentRuntime, error) {
-	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider, nil)
 }
 
-func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
+func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, db *gorm.DB, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
 	if store == nil {
 		return nil, errors.New("agent run store is required")
 	}
@@ -257,9 +260,25 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 			return errors.New("trpc graph executor is not wired")
 		}
 		worker, err = service.NewAgentRunWorkerWithRemoteDispatch(store, remoteExecute, service.RemoteDispatchConfig{
-			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider, Controller: remoteController(provider),
+			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider, Controller: remoteController(provider), LeaseStore: func() workbenchservice.WorkspaceLeaseStore {
+				if db == nil {
+					return nil
+				}
+				return workbenchservice.NewGormWorkspaceLeaseStore(db)
+			}(), LeaseTTL: c.Lease, ReceiptStore: dispatch, TargetStore: func() service.RemoteTargetStore {
+				if db == nil {
+					return nil
+				}
+				return repository.NewExecutionTargetStore(db)
+			}(),
 			CommandID: func(fence agentruntime.Fence) (string, string) {
-				return fence.RunID + "/" + fmt.Sprint(fence.Epoch), ""
+				commandID := fence.RunID + "/" + fmt.Sprint(fence.Epoch)
+				payload, _ := json.Marshal(struct {
+					RunID, TargetID, WorkspaceRef, Prompt, Provider string
+					Epoch                                           int64
+				}{fence.RunID, fence.TargetID, fence.WorkspaceRef, fence.Prompt, fence.Provider, fence.Epoch})
+				sum := sha256.Sum256(payload)
+				return commandID, hex.EncodeToString(sum[:])
 			},
 		}, c)
 	} else {

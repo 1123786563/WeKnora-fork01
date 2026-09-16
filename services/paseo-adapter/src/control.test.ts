@@ -11,13 +11,13 @@ test('control envelope is canonical and rejects unknown or incomplete fields', (
 });
 test('cancel is accepted separately from confirmed remote exit', async () => {
   let commands = 0; let observations = 0;
-  const port: ControlPort = { command: async () => { commands++; return { accepted: true }; }, observe: async () => { observations++; return observations < 2 ? { processState: 'running', fresh: true } : { processState: 'exited', fresh: true }; } };
+  const port: ControlPort = { command: async () => { commands++; return { accepted: true }; }, observe: async () => { observations++; return observations < 2 ? { processState: 'running', fresh: true, epoch: 2 } : { processState: 'exited', fresh: true, epoch: 2 }; } };
   const result = await cancelAndObserve(port, cancel, 500);
   assert.equal(result.state, 'confirmed'); assert.equal(commands, 1); assert.equal(observations, 2);
 });
 test('unknown observation keeps the workspace fenced and does not retry command', async () => {
   let commands = 0;
-  const port: ControlPort = { command: async () => { commands++; return { accepted: true }; }, observe: async () => ({ processState: 'unknown', fresh: true }) };
+  const port: ControlPort = { command: async () => { commands++; return { accepted: true }; }, observe: async () => ({ processState: 'unknown', fresh: true, epoch: 2 }) };
   const result = await cancelAndObserve(port, cancel, 500);
   assert.equal(result.state, 'unknown'); assert.equal(commands, 1);
 });

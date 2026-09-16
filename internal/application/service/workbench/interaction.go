@@ -327,7 +327,7 @@ type CancelPort interface {
 // after the CAS succeeds. Implementations must use external_pending_id and
 // args_hash together; a changed tool payload can never reuse an old approval.
 type RemoteInteractionPort interface {
-	SubmitInteraction(context.Context, uint64, string, string, string, string, string, int64, int64) error
+	SubmitInteraction(context.Context, uint64, string, string, string, string, string, string, int64, int64) error
 }
 
 // GormCancelPort is the durable cancel command. It only transitions the
@@ -518,7 +518,7 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 		if externalPendingID == "" {
 			externalPendingID = current.ID
 		}
-		if err := s.remoteInteraction.SubmitInteraction(ctx, tenant, owner, current.RunID, externalPendingID, current.ArgsHash, input.Action, current.CredentialVersion, result.ExpectedRevision); err != nil {
+		if err := s.remoteInteraction.SubmitInteraction(ctx, tenant, owner, current.RunID, input.DecisionID, externalPendingID, current.ArgsHash, input.Action, current.CredentialVersion, result.ExpectedRevision); err != nil {
 			// The in-memory gate has already delivered this decision. Reopening the
 			// W05 CAS would make a retry race able to resolve a second approval.
 			// Keep the durable decision resolved and let remote reconciliation retry

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/execution"
@@ -58,21 +56,24 @@ func (c paseoControl) Observe(ctx context.Context, id string) (execution.Executi
 	if err != nil {
 		return execution.ExecutionObservation{}, err
 	}
-	return execution.ExecutionObservation{ProcessState: response.State, Fresh: true, Epoch: c.epoch, ObservedAt: time.Now()}, nil
+	if response.Epoch < 1 || response.Epoch != c.epoch {
+		return execution.ExecutionObservation{}, fmt.Errorf("paseo observation epoch mismatch: got %d want %d", response.Epoch, c.epoch)
+	}
+	return execution.ExecutionObservation{ProcessState: response.State, Fresh: true, Epoch: response.Epoch, ObservedAt: time.Now()}, nil
 }
 
-func (p *paseoRemoteProvider) SubmitInteraction(ctx context.Context, tenantID uint64, ownerID, runID, externalPendingID, argsHash, action string, credentialVersion, expectedRevision int64) error {
+func (p *paseoRemoteProvider) SubmitInteraction(ctx context.Context, tenantID uint64, ownerID, runID, decisionID, externalPendingID, argsHash, action string, credentialVersion, expectedRevision int64) error {
 	if p == nil || p.client == nil {
 		return errors.New("paseo remote provider is unavailable")
 	}
-	if tenantID == 0 || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(runID) == "" || strings.TrimSpace(externalPendingID) == "" || !strings.EqualFold(action, "approve") && !strings.EqualFold(action, "reject") || credentialVersion < 1 || expectedRevision < 1 || len(argsHash) != 64 {
+	if tenantID == 0 || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(runID) == "" || strings.TrimSpace(decisionID) == "" || strings.TrimSpace(externalPendingID) == "" || !strings.EqualFold(action, "approve") && !strings.EqualFold(action, "reject") || credentialVersion < 1 || expectedRevision < 1 || len(argsHash) != 64 {
 		return errors.New("invalid remote interaction")
 	}
+	commandID := fmt.Sprintf("interaction/%d/%s", tenantID, decisionID)
 	return p.client.Control(ctx, map[string]any{
 		"action": "submitInteraction", "actionValue": action, "argsHash": argsHash,
-		"commandID": uuid.NewString(), "credentialVersion": credentialVersion,
+		"commandID": commandID, "credentialVersion": credentialVersion,
 		"expectedRevision": expectedRevision, "externalPendingID": externalPendingID, "runID": runID,
-		"tenantID": tenantID, "ownerID": ownerID,
 	})
 }
 

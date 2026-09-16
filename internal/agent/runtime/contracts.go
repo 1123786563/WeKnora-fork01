@@ -75,6 +75,7 @@ type Fence struct {
 	Owner                                    string
 	Epoch                                    int64
 	TargetID, WorkspaceRef, Prompt, Provider string
+	CredentialVersion                        int64
 }
 
 // RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.

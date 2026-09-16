@@ -8,6 +8,9 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/application/repository"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -23,11 +26,22 @@ type WorkerConfig struct {
 // persists the provider intent and receipt around exactly one provider start.
 // A nil provider is rejected by RemoteDispatcher and cannot silently fall
 // back to the legacy executor.
+type RemoteTargetStore interface {
+	GetOwnedTarget(context.Context, uint64, string, string) (execution.Target, error)
+}
+type RemoteDispatchReceiptStore interface {
+	LatestReceipt(context.Context, agentruntime.RunKey) (repository.DispatchRecord, error)
+}
+
 type RemoteDispatchConfig struct {
-	Dispatcher FencedRemoteDispatcher
-	Provider   RemoteProvider
-	Controller agentruntime.RemoteExecutionStopper
-	CommandID  func(agentruntime.Fence) (commandID, payloadHash string)
+	Dispatcher   FencedRemoteDispatcher
+	Provider     RemoteProvider
+	Controller   agentruntime.RemoteExecutionStopper
+	LeaseStore   workbenchservice.WorkspaceLeaseStore
+	LeaseTTL     time.Duration
+	TargetStore  RemoteTargetStore
+	ReceiptStore RemoteDispatchReceiptStore
+	CommandID    func(agentruntime.Fence) (commandID, payloadHash string)
 }
 
 // RemoteProvider and RemoteDispatcher are local structural ports. Keeping
@@ -67,6 +81,9 @@ type activeExecution struct {
 	fence      agentruntime.Fence
 	externalID string
 	controller agentruntime.RemoteExecutionStopper
+	lease      workbenchservice.WorkspaceLease
+	leaseOwner string
+	leaseStore workbenchservice.WorkspaceLeaseStore
 }
 
 type AgentRunWorker struct {
@@ -265,6 +282,31 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	executionCtx := workerCtx
+	var runSnapshot agentruntime.Run
+	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil {
+		runSnapshot = run
+	}
+	var workspaceLease workbenchservice.WorkspaceLease
+	leaseOwner := runSnapshot.UserID
+	if w.remote != nil && w.remote.TargetStore != nil && runSnapshot.TargetID != "" && runSnapshot.UserID != "" {
+		if target, targetErr := w.remote.TargetStore.GetOwnedTarget(ctx, fence.TenantID, runSnapshot.UserID, runSnapshot.TargetID); targetErr == nil && target.CredentialVersion > 0 {
+			fence.CredentialVersion = target.CredentialVersion
+		}
+	}
+	if fence.CredentialVersion > 0 {
+		executionCtx = context.WithValue(executionCtx, types.CredentialVersionContextKey, fence.CredentialVersion)
+	}
+	if w.remote != nil && w.remote.LeaseStore != nil && fence.WorkspaceRef != "" && leaseOwner != "" {
+		workspaceLease = workbenchservice.WorkspaceLease{TenantID: fence.TenantID, WorkspaceRef: fence.WorkspaceRef, RunID: fence.RunID, Owner: leaseOwner, Epoch: fence.Epoch}
+		activeLease := func() {
+			w.mu.Lock()
+			if active := w.active[id]; active != nil {
+				active.lease, active.leaseOwner, active.leaseStore = workspaceLease, leaseOwner, w.remote.LeaseStore
+			}
+			w.mu.Unlock()
+		}
+		activeLease()
+	}
 	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil && !run.Deadline.IsZero() {
 		if until := time.Until(run.Deadline); until > 0 {
 			var deadlineCancel context.CancelFunc
@@ -285,6 +327,16 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 				if err := w.store.Renew(workerCtx, fence, w.cfg.Lease); err != nil {
 					cancel()
 					return
+				}
+				if w.remote != nil && w.remote.LeaseStore != nil && workspaceLease.RunID != "" {
+					ttl := w.remote.LeaseTTL
+					if ttl <= 0 {
+						ttl = w.cfg.Lease
+					}
+					if err := w.remote.LeaseStore.RenewWorkspaceLease(workerCtx, workspaceLease, leaseOwner, ttl); err != nil {
+						cancel()
+						return
+					}
 				}
 			}
 		}
@@ -350,6 +402,17 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	if err := w.store.SetStatus(context.Background(), fence, status, reason); err != nil {
 		return
 	}
+	// A workspace lease is released only after the provider confirms exit.
+	if w.remote != nil && w.remote.LeaseStore != nil && workspaceLease.RunID != "" {
+		confirmed := false
+		if active := w.snapshotActive(id); active != nil && active.controller != nil && active.externalID != "" {
+			result, stopErr := active.controller.StopRemoteExecution(context.Background(), active.externalID, fence.Epoch, 10*time.Second)
+			confirmed = stopErr == nil && result.State == "confirmed"
+		}
+		if confirmed {
+			_ = w.remote.LeaseStore.ReleaseWorkspaceLease(context.Background(), workspaceLease, leaseOwner)
+		}
+	}
 }
 
 // durableWaitReason classifies executor failures that must park a run at
@@ -370,24 +433,50 @@ func durableWaitReason(err error) (string, bool) {
 }
 
 // Cancel requests best-effort cancellation of an active worker for a durable run.
+func (w *AgentRunWorker) snapshotActive(id string) *activeExecution {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	active := w.active[id]
+	if active == nil {
+		return nil
+	}
+	copy := *active
+	return &copy
+}
+
+// Cancel requests best-effort cancellation of an active worker for a durable run.
 func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
 	if w == nil || key.TenantID == 0 || key.RunID == "" {
 		return agentruntime.ErrConflict
 	}
 	id := fmt.Sprintf("%d/%s", key.TenantID, key.RunID)
-	w.mu.Lock()
-	active, ok := w.active[id]
-	if ok && active != nil {
-		active.cancel()
-	}
-	w.mu.Unlock()
-	if !ok || active == nil {
+	active := w.snapshotActive(id)
+	if active == nil && w.remote != nil && w.remote.ReceiptStore != nil && w.remote.Controller != nil {
+		receipt, receiptErr := w.remote.ReceiptStore.LatestReceipt(context.Background(), key)
+		if receiptErr == nil && receipt.ExternalID != "" {
+			result, stopErr := w.remote.Controller.StopRemoteExecution(context.WithoutCancel(context.Background()), receipt.ExternalID, receipt.Epoch, 10*time.Second)
+			if stopErr != nil {
+				return stopErr
+			}
+			if result.State != "confirmed" {
+				return agentruntime.ErrLeaseLost
+			}
+		}
 		return nil
 	}
+	if active == nil {
+		return nil
+	}
+	if active.cancel != nil {
+		active.cancel()
+	}
 	if active.controller != nil && active.externalID != "" {
-		_, err := active.controller.StopRemoteExecution(context.WithoutCancel(context.Background()), active.externalID, active.fence.Epoch, 10*time.Second)
+		result, err := active.controller.StopRemoteExecution(context.WithoutCancel(context.Background()), active.externalID, active.fence.Epoch, 10*time.Second)
 		if err != nil {
 			return err
+		}
+		if result.State == "confirmed" && active.leaseStore != nil && active.lease.RunID != "" {
+			return active.leaseStore.ReleaseWorkspaceLease(context.Background(), active.lease, active.leaseOwner)
 		}
 	}
 	return nil
@@ -395,12 +484,13 @@ func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
 
 func (w *AgentRunWorker) drain() {
 	w.mu.Lock()
-	executions := make([]*activeExecution, 0, len(w.active))
-	for _, active := range w.active {
-		executions = append(executions, active)
+	ids := make([]string, 0, len(w.active))
+	for id := range w.active {
+		ids = append(ids, id)
 	}
 	w.mu.Unlock()
-	for _, active := range executions {
+	for _, id := range ids {
+		active := w.snapshotActive(id)
 		if active != nil && active.cancel != nil {
 			active.cancel()
 		}

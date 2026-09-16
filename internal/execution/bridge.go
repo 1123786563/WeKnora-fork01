@@ -66,8 +66,10 @@ type AdmissionVerifier struct {
 type BridgeClient struct{ config BridgeConfig }
 
 type BridgeResponse struct {
-	ID    string `json:"id"`
-	State string `json:"state,omitempty"`
+	ID       string `json:"id,omitempty"`
+	State    string `json:"state,omitempty"`
+	Epoch    int64  `json:"epoch,omitempty"`
+	Accepted *bool  `json:"accepted,omitempty"`
 }
 
 type bridgeEnvelope struct {
@@ -206,7 +208,10 @@ func (c *BridgeClient) request(ctx context.Context, operation string, payload an
 	if operation == "start" && out.ID == "" {
 		return BridgeResponse{}, ErrBridgeProtocol
 	}
-	if operation == "observe" && out.State == "" {
+	if operation == "observe" && (out.State == "" || out.Epoch < 1) {
+		return BridgeResponse{}, ErrBridgeProtocol
+	}
+	if operation == "control" && out.Accepted == nil {
 		return BridgeResponse{}, ErrBridgeProtocol
 	}
 	if operation == "cancel" {

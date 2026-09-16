@@ -5,7 +5,7 @@ export type ControlCommand =
   | { action: 'steer'; commandID: string; runID: string; text: string; epoch: number }
   | { action: 'submitInteraction'; commandID: string; runID: string; externalPendingID: string; actionValue: 'approve' | 'reject'; argsHash: string; credentialVersion: number; expectedRevision: number };
 
-export type ControlObservation = { processState: string; fresh: boolean; epoch?: number };
+export type ControlObservation = { processState: string; fresh: boolean; epoch: number };
 
 export interface ControlPort {
   command(command: ControlCommand, options?: { signal?: AbortSignal }): Promise<{ accepted: boolean }>;
@@ -44,7 +44,7 @@ export async function cancelAndObserve(
     if (signal?.aborted) throw new BridgeError('BRIDGE_CANCELLED');
     const observation = await port.observe(command.externalID, { signal });
     const state = observation.processState.toLowerCase();
-    if (observation.fresh && (observation.epoch === undefined || observation.epoch === command.epoch) && (state === 'exited' || state === 'destroyed')) return { state: 'confirmed', observation };
+    if (observation.fresh && (observation.epoch === command.epoch) && (state === 'exited' || state === 'destroyed')) return { state: 'confirmed', observation };
     if (state === 'unknown' || state === 'not_found') return { state: 'unknown', observation };
     await new Promise(resolve => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))));
   }

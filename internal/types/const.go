@@ -21,6 +21,8 @@ const (
 	// RunIDContextKey carries the trusted durable execution identity through
 	// the worker/agent boundary. It must never be inferred from RequestID.
 	RunIDContextKey ContextKey = "RunID"
+	// CredentialVersionContextKey carries the trusted target authorization snapshot.
+	CredentialVersionContextKey ContextKey = "CredentialVersion"
 	// LoggerContextKey is the context key for logger
 	LoggerContextKey ContextKey = "Logger"
 	// UserContextKey is the context key for user information
