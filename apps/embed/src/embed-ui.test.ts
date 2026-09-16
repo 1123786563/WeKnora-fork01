@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldShowEmbedTimestamp, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -13,6 +13,14 @@ test('channel default_locale wins, then URL locale, then en-US', () => {
   assert.equal(resolveEmbedLocale({}, 'xx-YY'), 'en-US');
   assert.equal(resolveEmbedLocale({ default_locale: 'ko-KR' }, ''), 'ko-KR');
   assert.equal(resolveEmbedLocale(undefined, ''), 'en-US');
+});
+
+test('chat chrome appears only after the Vue embed has a session', () => {
+  assert.equal(shouldRenderEmbedChatSurface('loading', false), false);
+  assert.equal(shouldRenderEmbedChatSurface('error', false), false);
+  assert.equal(shouldRenderEmbedChatSurface('ready', false), false);
+  assert.equal(shouldRenderEmbedChatSurface('ready', true), true);
+  assert.equal(shouldRenderEmbedChatSurface('sending', true), true);
 });
 
 test('upload labels follow the Vue embed locale table', () => {

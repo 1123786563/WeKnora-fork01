@@ -17,6 +17,13 @@ export interface EmbedFileIssue {
   reason: 'type' | 'size' | 'count';
 }
 
+export type EmbedLoadStatus = 'loading' | 'ready' | 'sending' | 'error';
+
+/** Vue mounts the header and composer only after the channel owns a session. */
+export function shouldRenderEmbedChatSurface(status: EmbedLoadStatus, hasSession: boolean): boolean {
+  return hasSession && (status === 'ready' || status === 'sending');
+}
+
 export const EMBED_MAX_IMAGES = 5;
 export const EMBED_MAX_ATTACHMENTS = 5;
 export const EMBED_MAX_IMAGE_BYTES = 10 * 1024 * 1024;

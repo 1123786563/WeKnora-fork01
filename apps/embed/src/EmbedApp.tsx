@@ -7,7 +7,7 @@ import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/emb
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 import { Button } from '../../../packages/ui/src/button.tsx';
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldShowEmbedTimestamp, sourceListFromReferences, translate } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -368,6 +368,7 @@ export function EmbedApp() {
   const title = useSessionHeaderTitle && sessionTitle.trim() ? sessionTitle.trim() : channelTitle;
   const subtitle = runtime?.config.agent_name && (!useSessionHeaderTitle || !sessionTitle.trim() || runtime.config.agent_name !== title)
     ? textOf(runtime.config.agent_name) : '';
+  const showChatSurface = shouldRenderEmbedChatSurface(status, runtime !== null);
   const addFiles = (files: FileList | null) => {
     const result = partitionUploadFiles(Array.from(files ?? []), pickedImages.length, pickedAttachments.length);
     setPickedImages((current) => [...current, ...result.images]);
@@ -384,11 +385,11 @@ export function EmbedApp() {
 
   return (
     <main className="embed-shell" style={{ '--embed-primary': primaryColor } as CSSProperties} data-locale={locale}>
-      <header className="embed-header">
+      {showChatSurface ? <header className="embed-header">
         <div className="embed-mark" aria-hidden="true">{textOf(runtime?.config.agent_avatar) || '✦'}</div>
-        <div className="embed-heading"><strong>{title}</strong><span>{subtitle || (runtime ? embedAssistantLabel(effectiveLocale) : embedAssistantLabel(effectiveLocale))}</span></div>
+        <div className="embed-heading"><strong>{title}</strong><span>{subtitle || embedAssistantLabel(effectiveLocale)}</span></div>
         <Button variant="text" size="small" className="embed-icon-button" type="button" onClick={() => void startNewSession()} disabled={!runtime || status === 'sending' || messages.length === 0} aria-label={t('embed.newChat', 'New conversation')}>＋</Button>
-      </header>
+      </header> : null}
       <section className="embed-content" ref={contentRef} aria-live="polite" onScroll={(event) => { const node = event.currentTarget; setUserHasScrolledUp(node.scrollHeight - node.scrollTop - node.clientHeight > 48); }}>
         {status === 'loading' ? <p className="embed-state">{t('embed.loading', 'Loading…')}</p> : null}
         {status === 'error' ? <div className="embed-state embed-error"><strong>{t('embed.sessionFailed', 'Unable to start chat')}</strong><span>{error}</span></div> : null}
@@ -413,11 +414,11 @@ export function EmbedApp() {
         </div>
         {userHasScrolledUp ? <button type="button" className="embed-scroll-bottom" onClick={() => { setUserHasScrolledUp(false); const node = contentRef.current; if (node) node.scrollTop = node.scrollHeight; }} aria-label="Scroll to bottom">⌄</button> : null}
       </section>
-      <form className="embed-composer" onSubmit={(event) => void sendMessage(event)}>
+      {showChatSurface ? <form className="embed-composer" onSubmit={(event) => void sendMessage(event)}>
         {(pickedAttachments.length > 0 || pickedImages.length > 0) ? <div className="embed-picked"><div className="embed-picked-files">{pickedAttachments.map((file, index) => <div className="embed-file-chip" key={`${file.name}-${index}`}><span>◫</span><span className="embed-file-chip-name">{file.name}</span><button type="button" onClick={() => removeAttachment(index)} aria-label={`Remove ${file.name}`}>×</button></div>)}</div><div className="embed-picked-images">{pickedImages.map((file, index) => <div className="embed-image-thumb" key={`${file.name}-${index}`}><img src={pickedImagePreviews[index]} alt={file.name} /><button type="button" onClick={() => removeImage(index)} aria-label={`Remove ${file.name}`}>×</button></div>)}</div></div> : null}
         <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={t('embed.inputPlaceholder', 'Ask a question…')} rows={2} disabled={!runtime || status === 'loading' || status === 'error'} />
         <div className="embed-composer-bar"><div className="embed-composer-controls">{allowFileUpload ? <><label className={`embed-control ${pickedImages.length > 0 ? 'active' : ''}`} aria-label={embedUploadLabel(effectiveLocale, 'image')}>▧<input type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden onChange={(event) => addFiles(event.target.files)} /></label><label className={`embed-control ${pickedAttachments.length > 0 ? 'active' : ''}`} aria-label={embedUploadLabel(effectiveLocale, 'file')}>⌕<input type="file" multiple hidden onChange={(event) => addFiles(event.target.files)} /></label></> : null}{runtime?.config.allow_web_search === true && runtime.config.agent_web_search_enabled === true ? <button type="button" className={`embed-control ${webSearchEnabled ? 'active' : ''}`} onClick={() => { const next = !webSearchEnabled; setWebSearchEnabled(next); hostContextRef.current = { ...hostContextRef.current, web_search_enabled: next }; }} aria-pressed={webSearchEnabled} aria-label={t('embed.webSearch', 'Web search')}>◎</button> : null}</div>{status === 'sending' ? <Button variant="text" type="button" className="embed-send embed-stop" onClick={() => void stopMessage()}>{t('embed.stop', 'Stop')}</Button> : <Button variant="primary" type="submit" className="embed-send" disabled={!runtime || (!input.trim() && pickedImages.length === 0 && pickedAttachments.length === 0)}>{t('embed.send', 'Send')}</Button>}</div>
-      </form>
+      </form> : null}
     </main>
   );
 }
