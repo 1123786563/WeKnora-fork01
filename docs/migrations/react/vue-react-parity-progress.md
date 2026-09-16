@@ -4028,6 +4028,22 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   permission/mutation flows, real Embed streaming, and native Wails feature
   interaction remain open or `blocked-env`. No mobile code was modified.
 
+## 2026-09-16 Round R429 — Parallel embed, settings, approval, and terminal parity
+
+- Four independent Vue-baseline fixes landed: Embed `Meta+Enter` now submits
+  like the Vue composer (`fbecd2d3`); Settings section switches ignore stale
+  responses from prior loads (`adce7bce`); wrapped 409 responses are recognized
+  as steer conflicts for re-base retry (`03105f15`); and Sandbox terminal
+  provisioning is enabled only when explicitly requested, with
+  `SANDBOX_NOT_BOUND` mapped to the Vue needs-provision state (`291ac8db`).
+- Shared regression passed `501/501`; integrated Web regression passed
+  `1238/1238`; Web typecheck, `git diff --check`, Web build, Embed build,
+  Desktop 9/9 tests, Desktop typecheck, and Desktop build all passed.
+- Evidence remains static/unit/component/build only. Authenticated paired
+  Vue/React screenshots and computed-style sweeps, real backend Embed/OAuth/
+  steer/terminal/settings flows, and per-feature Wails interaction remain open
+  or `blocked-env`. No mobile code was modified.
+
 ## 2026-09-16 Round R428 — Parallel organization, composer, approval, and agent parity
 
 - Four independent Vue-baseline fixes landed: organization settings now hide
