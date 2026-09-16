@@ -35,6 +35,39 @@ export async function resolveDesktopApiBaseUrlFromBridge(app: WailsAppBridge): P
   }
 }
 
+export interface DesktopApiBaseUrlRetryOptions {
+  attempts?: number;
+  delayMs?: number;
+}
+
+/**
+ * Vue's desktop integration waits for Wails' generated binding because the
+ * WebView can expose `window.go` after the document starts evaluating. The
+ * React renderer must resolve the same boundary before importing its client.
+ */
+export async function resolveDesktopApiBaseUrlWhenReady(
+  readBridge: () => WailsAppBridge,
+  readInjected: () => unknown,
+  options: DesktopApiBaseUrlRetryOptions = {},
+): Promise<string> {
+  const attempts = Math.max(1, options.attempts ?? 40);
+  const delayMs = Math.max(0, options.delayMs ?? 50);
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const injected = resolveDesktopApiBaseUrl(readInjected());
+    if (injected) return injected;
+
+    const bridged = await resolveDesktopApiBaseUrlFromBridge(readBridge());
+    if (bridged) return bridged;
+
+    if (attempt + 1 < attempts && delayMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return '';
+}
+
 export function isWailsWebView(value: unknown = typeof window === 'undefined' ? undefined : (window as Window & { runtime?: unknown }).runtime): boolean {
   return Boolean(value && typeof value === 'object');
 }

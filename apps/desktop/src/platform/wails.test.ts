@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation, normalizeLegacyPath } from './navigation.ts';
-import { resolveDesktopApiBaseUrl, resolveDesktopApiBaseUrlFromBridge, readWailsBridge, isWailsWebView } from './wails.ts';
+import { resolveDesktopApiBaseUrl, resolveDesktopApiBaseUrlFromBridge, resolveDesktopApiBaseUrlWhenReady, readWailsBridge, isWailsWebView } from './wails.ts';
 import { applyDesktopWindowDefaults, createDesktopRuntimeAdapters, DESKTOP_WINDOW_DEFAULTS, installDesktopExternalUrlBridge } from './runtime.ts';
 import { createDesktopCredentialStorage } from './credentials.ts';
 
@@ -16,6 +16,21 @@ test('resolves the async Wails API bridge before the shared renderer imports', a
   assert.equal(await resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => Promise.resolve('javascript:alert(1)') }), '');
   assert.equal(await resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => Promise.reject(new Error('bridge unavailable')) }), '');
   assert.equal(await resolveDesktopApiBaseUrlFromBridge({}), '');
+});
+
+test('waits for a late Wails binding before the renderer boots', async () => {
+  let reads = 0;
+  const baseUrl = await resolveDesktopApiBaseUrlWhenReady(
+    () => {
+      reads += 1;
+      return reads < 3 ? {} : { GetAPIBaseURL: () => Promise.resolve('http://127.0.0.1:4321/api/v1') };
+    },
+    () => '',
+    { attempts: 3, delayMs: 0 },
+  );
+
+  assert.equal(baseUrl, 'http://127.0.0.1:4321/api/v1');
+  assert.equal(reads, 3);
 });
 
 test('keeps Wails bridge state explicit and maps old deep links', () => {

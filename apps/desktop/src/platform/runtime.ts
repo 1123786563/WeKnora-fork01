@@ -1,6 +1,6 @@
 import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation } from './navigation.ts';
 import { hasDesktopFileBridge, type DesktopFileBridge } from './files.ts';
-import { readWailsBridge, resolveDesktopApiBaseUrlFromBridge, type WailsAppBridge } from './wails.ts';
+import { readWailsBridge, resolveDesktopApiBaseUrlWhenReady, type WailsAppBridge } from './wails.ts';
 
 export const DESKTOP_WINDOW_DEFAULTS = {
   width: 1440,
@@ -70,15 +70,19 @@ export async function installDesktopRuntime(): Promise<DesktopRuntimeAdapters> {
     __WEKNORA_API_BASE__?: string;
     __WEKNORA_DESKTOP__?: DesktopRuntimeAdapters;
   };
-  const app = readWailsBridge(browserWindow?.go?.main?.App);
+  const initialApp = readWailsBridge(browserWindow?.go?.main?.App);
   const runtime = browserWindow?.runtime ?? {};
-  const fileBridge = hasDesktopFileBridge(app) ? app : {};
   applyDesktopWindowDefaults(runtime);
   if (browserWindow) {
-    const apiBaseUrl = await resolveDesktopApiBaseUrlFromBridge(app);
+    const apiBaseUrl = await resolveDesktopApiBaseUrlWhenReady(
+      () => readWailsBridge(browserWindow.go?.main?.App ?? initialApp),
+      () => browserWindow.__WEKNORA_API_BASE__,
+    );
     if (apiBaseUrl) browserWindow.__WEKNORA_API_BASE__ = apiBaseUrl;
     installDesktopExternalUrlBridge(browserWindow, runtime);
   }
+  const app = readWailsBridge(browserWindow?.go?.main?.App ?? initialApp);
+  const fileBridge = hasDesktopFileBridge(app) ? app : {};
   const adapters = createDesktopRuntimeAdapters(app, runtime, fileBridge, browserWindow?.location);
   if (browserWindow) {
     browserWindow.__WEKNORA_DESKTOP__ = adapters;
