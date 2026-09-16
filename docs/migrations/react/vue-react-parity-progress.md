@@ -4010,3 +4010,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   same-condition Vue/React screenshots, real backend permission and mutation
   flows, real Embed streaming, and native Wails interaction remain open or
   `blocked-env`. No mobile code was modified.
+
+## 2026-09-16 Round R419 — Parallel organization/document/integration/settings parity
+
+- Four independent implementation/review slices landed concrete Vue-derived
+  fixes: organization member search and empty-name warning validation
+  (`828f1271`, `696b332d`, `64351594`), document download-versus-mutation
+  permission gates (`0beb1378`), non-admin Embed integration edit lockdown
+  (`511a3f47`), and Settings shell focus-visible states (`9f3cd728`).
+- The post-integration Web regression passed `1202/1202`; Web typecheck and
+  build passed. Focused evidence also passed: Organizations `33/33`,
+  Documents `182/182`, Integrations `120/120`, Settings `217/217`, Desktop
+  renderer `9/9` plus typecheck/build, and Embed `17/17` plus typecheck.
+- The Desktop build still emits the existing CSS `@import` ordering warning and
+  large-chunk advisories. These checks remain static/unit/component evidence;
+  authenticated paired Vue/React browser screenshots, real backend
+  permission/mutation flows, real Embed streaming, and native Wails feature
+  interaction remain open or `blocked-env`. No mobile code was modified.
