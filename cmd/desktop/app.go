@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"strings"
+	"sync"
 )
 
 // App holds Wails-bound state for the desktop shell.
@@ -12,13 +15,75 @@ type App struct {
 	apiLanBaseURL string
 	listenPublic  bool
 	shutdownCh    chan struct{}
+	credentialMu  sync.RWMutex
+	credentials   map[string]string
 }
+
+const desktopCredentialService = "com.tencent.weknora.desktop"
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
 	return &App{
-		shutdownCh: make(chan struct{}, 1),
+		shutdownCh:  make(chan struct{}, 1),
+		credentials: make(map[string]string),
 	}
+}
+
+// GetCredential reads a desktop credential through the Wails bridge. macOS
+// builds use the login keychain; keeping the store behind App means bearer
+// material never falls back to WebView storage.
+func (a *App) GetCredential(key string) string {
+	a.credentialMu.RLock()
+	value := a.credentials[key]
+	a.credentialMu.RUnlock()
+	if value != "" {
+		return value
+	}
+	// macOS Wails builds use the user login keychain. The in-memory map is a
+	// test/non-macOS fallback and is never copied into WebView storage.
+	if output, err := exec.Command("security", "find-generic-password", "-a", key, "-s", desktopCredentialService, "-w").Output(); err == nil {
+		return strings.TrimSpace(string(output))
+	}
+	return ""
+}
+
+// SetCredential is used by the desktop auth callback to hand an opaque
+// credential to the native shell. It is deliberately not exposed to the
+// renderer as localStorage.
+func (a *App) SetCredential(key, value string) {
+	if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+		return
+	}
+	a.credentialMu.Lock()
+	a.credentials[key] = value
+	a.credentialMu.Unlock()
+	if err := exec.Command("security", "add-generic-password", "-U", "-a", key, "-s", desktopCredentialService, "-w", value).Run(); err != nil {
+		// Non-macOS/test environments retain the value for the current process.
+	}
+}
+
+// DeleteCredential is idempotent and is called when the personal node is
+// revoked or the desktop session logs out.
+func (a *App) DeleteCredential(key string) {
+	_ = exec.Command("security", "delete-generic-password", "-a", key, "-s", desktopCredentialService).Run()
+	a.credentialMu.Lock()
+	delete(a.credentials, key)
+	a.credentialMu.Unlock()
+}
+
+// GetPaseoURL and GetPaseoAllowedOrigins are deployment-owned values. Empty
+// values intentionally fail closed in the renderer composition.
+func (a *App) GetPaseoURL() string { return strings.TrimSpace(os.Getenv("PASEO_URL")) }
+
+func (a *App) GetPaseoAllowedOrigins() []string {
+	raw := strings.Split(os.Getenv("PASEO_ALLOWED_ORIGINS"), ",")
+	result := make([]string, 0, len(raw))
+	for _, origin := range raw {
+		if value := strings.TrimSpace(origin); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 // startup is called when the application starts.

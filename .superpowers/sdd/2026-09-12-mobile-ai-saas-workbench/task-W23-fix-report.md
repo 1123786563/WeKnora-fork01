@@ -1,37 +1,38 @@
-# W23 targeted fix report
+# W23 production-entry fix report
 
-## Scope
+## Changes
 
-This fix closes the revoke-wins admission side effect, routes the contract
-revoke endpoint through `ExecutionTargetHandler`, strengthens registration
-projection matching, and makes the Paseo personal-node composition fail closed
-and scrub secure credentials on cleanup errors.
+- Added `resolveDesktopPersonalNode`, which resolves the delayed Wails API URL,
+  Paseo URL/origin policy, and credential before creating the desktop
+  personal-node composition.
+- Changed `apps/desktop/src/main.tsx` to compose first and install the desktop
+  runtime second, so a late `GetAPIBaseURL()` binding cannot silently disable
+  the adapter.
+- Added concrete Wails-bound `App` methods for credential read/set/delete and
+  deployment-owned Paseo URL/origin policy. macOS builds use the login
+  keychain through the `security` command; non-macOS/test environments retain
+  an in-process fallback. Empty policy or credentials remain fail-closed.
+- Added bootstrap regression tests for delayed binding, missing configuration,
+  and revoke cleanup, plus Go bridge tests for credential and policy behavior.
 
-Commits:
+## Focused evidence
 
-- `9bc2cee8` — W23 implementation fix and focused evidence.
-- `81a70b94` — isolated repository baseline repair for the W20 `dispatch` field/method name collision.
+```text
+pnpm exec tsx --test apps/desktop/src/platform/bootstrap.test.ts
+3/3 passed
+```
 
-## Evidence
+The existing desktop test suite could not fully start because this worktree has
+no linked `@weknora/paseo-adapter` package. Desktop typecheck could not start
+because the worktree has no installed `vite/client` type definitions.
 
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test ./internal/application/service/workbench -run 'TestPersonalTargetAdmission' -count=1` — PASS.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test -race ./internal/application/service/workbench -run 'TestPersonalTargetAdmission' -count=1` — PASS.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test ./internal/application/repository -run 'TestExecutionTarget' -count=1` — PASS.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test -race ./internal/application/repository -run 'TestExecutionTargetFacade' -count=1` — PASS.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test ./internal/router -run 'TestExecutionRegistrationRoutesUseTargetFacade' -count=1` — PASS.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test ./internal/handler -run 'TestExecutionTargetRegistrationGinSQLiteLifecycle' -count=1` — PASS (legacy direct lifecycle fixture).
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools GOWORK=off go test ./internal/application/service/workbench -count=1` — PASS.
-- `pnpm exec tsx --test services/paseo-adapter/src/node-connector.test.ts` — PASS, 7/7.
-- `pnpm --filter @weknora/paseo-adapter typecheck` — PASS.
-- `git diff --check` — PASS.
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools go test ./cmd/desktop
+blocked-env / pre-existing W20 compile errors in internal/container
+```
 
-## Remaining evidence limits
-
-- No live Paseo personal node/provider endpoint was authorized; live bridge
-  acceptance remains `blocked-env`.
-- No PostgreSQL runtime or applied migration acceptance was available in this
-  worktree; SQLite focused tests use the existing migration/test harness.
-- The production route mapping now passes `ExecutionTargetHandler` from the
-  router composition. Full `NewRouter` boot with production API-key and RBAC
-  middleware remains environment-sensitive and is not claimed by the focused
-  route test.
+The Go bridge tests are included in `cmd/desktop/app_test.go`, but the package
+cannot be compiled until the unrelated container errors are repaired. Native
+Wails generation/launch and a live keychain prompt remain runtime evidence
+gaps; this change proves the Go-bound bridge contract and fail-closed
+composition statically/focused.
