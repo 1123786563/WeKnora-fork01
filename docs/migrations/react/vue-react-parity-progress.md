@@ -3754,15 +3754,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `8122e7b0`, `26cc0893`, and `fb62960d` record the current route inventory
   audit and make its checks reproducible. The CSV has 59 data
   rows, no explicit stable row ID, and four Apps rows whose referenced Vue
-  `frontend/src/views/apps/*.vue` authority files are not present in this
-  checkout. It also identifies combined `embed.html` path fields and
+  `frontend/src/views/apps/*.vue` files are absent from this checkout but are
+  resolved to historical commit `9b0c11c4` by R400. It also identifies combined `embed.html` path fields and
   wildcard/missing artifact references that cannot serve as direct evidence
   links.
 - Historical 53/56-row counts are now explicitly marked as historical; the
   current matrix, baseline, acceptance inventory, and route inventory point to
   `artifacts/route-inventory-parity-ledger-audit-20260916.md`. Apps authority
-  resolution and stable route-to-row mapping remain review/open, so no blanket
-  page acceptance is inferred from route reachability.
+  resolution is closed at the static source-trace level, while stable
+  route-to-row mapping and visual/permission/runtime acceptance remain
+  review/open, so no blanket page acceptance is inferred from route reachability.
 - This is static-document evidence only. It does not replace Vue runtime
   screenshots, computed-style comparison, authenticated permissions/mutations,
   real Embed streaming, or native Wails interaction. No mobile code was
