@@ -3678,3 +3678,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   --check` pass. This is static/unit/build evidence. Authenticated real-backend
   mutation/permission flows, full Embed runtime, and native Wails interaction
   remain open; no mobile files were modified.
+
+## 2026-09-16 Round R396 — Knowledge permissions, Apps lifecycle, and bridge seam
+
+- `9b6a0846` closes the two knowledge-base audit findings at the implementation
+  level: metadata load failures and forbidden responses remain visible with a
+  retry path, and independent document detail grants the Vue-compatible tenant
+  admin/contributor capability while retaining shared-viewer restrictions.
+  Focused document permission tests and the full Web suite pass.
+- `40f9a850` aligns the React Apps lifecycle pages with the Vue state model for
+  connection, authorization, and action/endpoint views, including terminal
+  states and permission-sensitive controls.
+- `6cff26d3` adds a Vue-aligned Embed bridge contract for pinned origins, token
+  parsing, error mapping, and image/file handling. This is only a reusable
+  bridge seam: the isolated React Embed entry, attachment UI, and full host
+  integration are not present in the current checkout and remain open.
+- Browser evidence continues to verify anonymous login/register/protected-route
+  behavior only. Authenticated same-condition screenshots, real backend
+  permission/mutation flows, and native Wails launch/feature interaction remain
+  `blocked-env`; no mobile code was modified.
+- Final verification for this round: Web tests 1172/1172, Web typecheck, Web
+  build, desktop renderer tests 8/8, desktop typecheck, and `git diff --check`
+  pass. The build emits only existing chunk-size and test-only `import.meta`
+  warnings. These results are static/unit/build evidence and do not complete
+  runtime parity acceptance.
