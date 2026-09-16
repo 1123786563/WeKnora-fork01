@@ -61,6 +61,17 @@ func (mobileNotificationRow) TableName() string { return "mobile_notification_in
 
 type NotificationStore struct{ db *gorm.DB }
 
+// notificationLeaseExpiredSQL keeps lease comparisons instant based across
+// SQLite's RFC3339 timestamp storage (which may include a local offset) and
+// PostgreSQL's native timestamp comparison. A lexical SQLite comparison can
+// incorrectly treat a past +08:00 value as newer than a UTC bound.
+func notificationLeaseExpiredSQL(dialect string) string {
+	if dialect == "sqlite" {
+		return "datetime(lease_until) <= datetime(?)"
+	}
+	return "lease_until <= ?"
+}
+
 type notificationCheckpointRow struct {
 	Consumer  string    `gorm:"column:consumer;primaryKey"`
 	TenantID  uint64    `gorm:"column:tenant_id;primaryKey"`
@@ -203,8 +214,9 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 	var out []NotificationDelivery
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var candidates []mobileNotificationRow
+		leaseExpired := notificationLeaseExpiredSQL(tx.Dialector.Name())
 		q := tx.Where(`expires_at > ? AND
-			(state = 'pending' OR (state = 'in_flight' AND (lease_until IS NULL OR lease_until <= ?))) AND
+			(state = 'pending' OR (state = 'in_flight' AND (lease_until IS NULL OR `+leaseExpired+`))) AND
 			EXISTS (SELECT 1 FROM mobile_devices d
 				WHERE d.tenant_id = mobile_notification_intents.tenant_id
 				  AND d.owner_id = mobile_notification_intents.owner_id
@@ -222,7 +234,7 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 		for _, candidate := range candidates {
 			newFence := candidate.Fence + 1
 			update := tx.Model(&mobileNotificationRow{}).
-				Where("id = ? AND expires_at > ? AND (state = 'pending' OR (state = 'in_flight' AND (lease_until IS NULL OR lease_until <= ?)))", candidate.ID, now, now).
+				Where("id = ? AND expires_at > ? AND (state = 'pending' OR (state = 'in_flight' AND (lease_until IS NULL OR "+leaseExpired+")))", candidate.ID, now, now).
 				Updates(map[string]interface{}{
 					"state": "in_flight", "attempt": gorm.Expr("attempt + 1"),
 					"lease_owner": worker, "lease_until": until, "fence": newFence,
@@ -268,6 +280,19 @@ func (s *NotificationStore) Retry(ctx context.Context, id, worker string, fence 
 		Where("id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ?", id, worker, fence).
 		Updates(map[string]interface{}{"state": "pending", "lease_owner": "", "lease_until": nil, "updated_at": now})
 	return result.Error == nil && result.RowsAffected == 1
+}
+
+// IsSent reports whether another fenced worker already completed a delivery.
+// A losing worker can observe a false Retry after the winner acknowledged; in
+// that case the false result is an expected race outcome rather than a retry
+// failure that should poison the delivery loop.
+func (s *NotificationStore) IsSent(ctx context.Context, id string) bool {
+	if s == nil || s.db == nil || id == "" {
+		return false
+	}
+	var n int64
+	return s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
+		Where("id = ? AND state = 'sent'", id).Count(&n).Error == nil && n == 1
 }
 
 // RevalidateDelivery is the mandatory final authorization seam for a

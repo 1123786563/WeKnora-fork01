@@ -94,7 +94,7 @@ func (w *NotificationDeliveryWorker) RunOnce(ctx context.Context, limit int) err
 			w.afterClaim(ctx, delivery)
 		}
 		if !w.store.RevalidateDelivery(ctx, delivery, w.worker) {
-			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && firstErr == nil {
+			if !w.store.Retry(ctx, delivery.ID, w.worker, delivery.Fence) && !w.store.IsSent(ctx, delivery.ID) && firstErr == nil {
 				firstErr = fmt.Errorf("notification_delivery_retry_fence_lost:%s", delivery.ID)
 			}
 			continue
