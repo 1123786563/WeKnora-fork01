@@ -3631,3 +3631,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   These are static/unit/build evidence. Authenticated same-condition browser
   screenshots, real backend permission/mutation flows, and full Wails runtime
   interaction remain open, so the overall parity goal is not yet complete.
+
+## 2026-09-16 Round R394 — Focus containment and current acceptance audit
+
+- `0f015561` adds Vue-compatible settings drawer focus containment and opener
+  restoration. `4157b975` and `4ef6ffef` are included in the current branch and
+  keep datasource and chat terminal-state behavior explicit.
+- The current route inventory identifies the remaining non-URL
+  `openSettings('models', 'knowledgeqa')` semantic gap. It is not mapped to an
+  arbitrary model filter; this remains an explicit P1 follow-up until the
+  corresponding Vue trigger and React destination are verified together.
+- Re-run after all current Web/Desktop commits: Web 1163/1163, Web typecheck,
+  Web build, desktop renderer 8/8, desktop typecheck, and `git diff --check`.
+- Runtime acceptance is still incomplete: the Vue service was not listening at
+  `127.0.0.1:5180` before the local service was started, authentication-backed
+  same-condition page/state screenshots and real backend permissions/mutations
+  are unavailable, and native Wails launch/OS integration remains
+  `blocked-env`. No mobile code was touched.
