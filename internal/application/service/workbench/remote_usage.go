@@ -56,8 +56,31 @@ type RemoteUsageHandle struct {
 // fence. A provider payload cannot supply Source/Funding/PriceVersion; those
 // values are selected here after the durable dispatch claim has succeeded.
 func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime.Fence, commandID string) (RemoteUsageHandle, error) {
+	req, err := remoteRequestFromFence(fence, commandID)
+	if err != nil {
+		return RemoteUsageHandle{}, err
+	}
+	res, err := s.beginBound(ctx, req)
+	if err != nil {
+		return RemoteUsageHandle{}, err
+	}
+	return RemoteUsageHandle{reservation: res, request: req}, nil
+}
+
+// ReconcileRemoteObservation reconstructs the durable reservation identity
+// from the server-owned fence after an unknown/partial/display_only provider
+// result. It never reserves a second hold; Finish is the only transition.
+func (s *RemoteUsageService) ReconcileRemoteObservation(ctx context.Context, fence agentruntime.Fence, commandID string, observation *agentruntime.RemoteUsageObservation) error {
+	req, err := remoteRequestFromFence(fence, commandID)
+	if err != nil {
+		return err
+	}
+	return s.FinishRemoteObservation(ctx, RemoteUsageHandle{reservation: commercial.Reservation{ID: stableUsageKey(req)}, request: req}, observation)
+}
+
+func remoteRequestFromFence(fence agentruntime.Fence, commandID string) (RemoteUsageRequest, error) {
 	if fence.TenantID == 0 || fence.RunID == "" || commandID == "" {
-		return RemoteUsageHandle{}, ErrRemoteUsageInvalidRequest
+		return RemoteUsageRequest{}, ErrRemoteUsageInvalidRequest
 	}
 	service := fence.UsageService
 	if service == "" {
@@ -69,9 +92,6 @@ func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime
 	}
 	source := fence.UsageSource
 	if source == "" {
-		// This is a server-side default for legacy platform admissions. A
-		// remote provider can never set it because it is read from the worker
-		// fence before the provider call.
 		source = "platform_gateway"
 	}
 	price := fence.UsagePriceVersion
@@ -98,17 +118,8 @@ func (s *RemoteUsageService) BeginRemote(ctx context.Context, fence agentruntime
 	if upper <= 0 {
 		upper = 1
 	}
-	req := RemoteUsageRequest{
-		TenantID: fence.TenantID, RunID: fence.RunID, CallID: commandID,
-		AttemptID: commandID, ParentRunID: fence.ParentRunID, Upper: upper, Deadline: time.Now().UTC().Add(10 * time.Minute),
-		Source: source, Funding: funding, Service: service, PriceVersion: price, Revision: revision,
-		OccurredAt: time.Now().UTC(), Dimensions: dimensions, Status: status,
-	}
-	res, err := s.beginBound(ctx, req)
-	if err != nil {
-		return RemoteUsageHandle{}, err
-	}
-	return RemoteUsageHandle{reservation: res, request: req}, nil
+	now := time.Now().UTC()
+	return RemoteUsageRequest{TenantID: fence.TenantID, RunID: fence.RunID, CallID: commandID, AttemptID: commandID, ParentRunID: fence.ParentRunID, Upper: upper, Deadline: now.Add(10 * time.Minute), Source: source, Funding: funding, Service: service, PriceVersion: price, Revision: revision, OccurredAt: now, Dimensions: dimensions, Status: status}, nil
 }
 
 func (s *RemoteUsageService) FinishRemote(ctx context.Context, handle RemoteUsageHandle) error {

@@ -89,6 +89,7 @@ type Fence struct {
 	// are restored from the immutable admission snapshot, never accepted from
 	// a remote provider response.
 	ParentRunID, UsageSource, UsageFunding, UsageService, UsagePriceVersion string
+	UsageCredentialVersion                                                  int64
 	UsageUpper, UsageRevision                                               int64
 	UsageStatus                                                             string
 	UsageDimensions                                                         map[string]int64
@@ -136,17 +137,18 @@ type Admission struct {
 	// Usage binding is server-owned admission metadata. It is persisted in
 	// the immutable run snapshot and copied into every worker Fence; clients
 	// and provider observations never populate these fields.
-	ParentRunID       string
-	UsageSource       string
-	UsageFunding      string
-	UsageService      string
-	UsagePriceVersion string
-	UsageUpper        int64
-	UsageRevision     int64
-	UsageStatus       string
-	UsageDimensions   map[string]int64
-	UserID            string
-	RequestID         string
+	ParentRunID            string
+	UsageCredentialVersion int64
+	UsageSource            string
+	UsageFunding           string
+	UsageService           string
+	UsagePriceVersion      string
+	UsageUpper             int64
+	UsageRevision          int64
+	UsageStatus            string
+	UsageDimensions        map[string]int64
+	UserID                 string
+	RequestID              string
 	// UserMessageID optionally reuses the handler-persisted user message row
 	// instead of creating a second one; empty generates a fresh id.
 	UserMessageID      string

@@ -231,11 +231,14 @@ func persistUsageBinding(raw json.RawMessage, in agentruntime.Admission) (json.R
 	// Remove any client-supplied copies first, then write only the values
 	// carried by this trusted admission object. Empty values are intentionally
 	// absent so Fence construction applies its fail-closed defaults.
-	for _, key := range []string{"parent_run_id", "usage_source", "usage_funding", "usage_service", "price_version", "usage_upper", "usage_revision", "usage_status", "usage_dimensions"} {
+	for _, key := range []string{"parent_run_id", "credential_version", "usage_source", "usage_funding", "usage_service", "price_version", "usage_upper", "usage_revision", "usage_status", "usage_dimensions"} {
 		delete(snapshot, key)
 	}
 	if in.ParentRunID != "" {
 		snapshot["parent_run_id"] = in.ParentRunID
+	}
+	if in.UsageCredentialVersion > 0 {
+		snapshot["credential_version"] = in.UsageCredentialVersion
 	}
 	if in.UsageSource != "" {
 		snapshot["usage_source"] = in.UsageSource
@@ -348,19 +351,20 @@ func (s *AgentRunStore) ClaimDriver(
 			return e
 		}
 		var snapshot struct {
-			Prompt          string           `json:"prompt"`
-			Text            string           `json:"text"`
-			WorkspaceRef    string           `json:"workspaceRef"`
-			Provider        string           `json:"provider"`
-			ParentRunID     string           `json:"parent_run_id"`
-			UsageSource     string           `json:"usage_source"`
-			UsageFunding    string           `json:"usage_funding"`
-			UsageService    string           `json:"usage_service"`
-			PriceVersion    string           `json:"price_version"`
-			UsageUpper      int64            `json:"usage_upper"`
-			UsageRevision   int64            `json:"usage_revision"`
-			UsageStatus     string           `json:"usage_status"`
-			UsageDimensions map[string]int64 `json:"usage_dimensions"`
+			Prompt            string           `json:"prompt"`
+			Text              string           `json:"text"`
+			WorkspaceRef      string           `json:"workspaceRef"`
+			Provider          string           `json:"provider"`
+			ParentRunID       string           `json:"parent_run_id"`
+			UsageSource       string           `json:"usage_source"`
+			CredentialVersion int64            `json:"credential_version"`
+			UsageFunding      string           `json:"usage_funding"`
+			UsageService      string           `json:"usage_service"`
+			PriceVersion      string           `json:"price_version"`
+			UsageUpper        int64            `json:"usage_upper"`
+			UsageRevision     int64            `json:"usage_revision"`
+			UsageStatus       string           `json:"usage_status"`
+			UsageDimensions   map[string]int64 `json:"usage_dimensions"`
 		}
 		_ = json.Unmarshal([]byte(row.Snapshot), &snapshot)
 		prompt := snapshot.Prompt
@@ -376,7 +380,7 @@ func (s *AgentRunStore) ClaimDriver(
 			provider = driver
 		}
 		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider,
-			ParentRunID: snapshot.ParentRunID, UsageSource: snapshot.UsageSource, UsageFunding: snapshot.UsageFunding,
+			ParentRunID: snapshot.ParentRunID, UsageCredentialVersion: snapshot.CredentialVersion, UsageSource: snapshot.UsageSource, UsageFunding: snapshot.UsageFunding,
 			UsageService: snapshot.UsageService, UsagePriceVersion: snapshot.PriceVersion, UsageUpper: snapshot.UsageUpper,
 			UsageRevision: snapshot.UsageRevision, UsageStatus: snapshot.UsageStatus, UsageDimensions: snapshot.UsageDimensions}
 		return nil

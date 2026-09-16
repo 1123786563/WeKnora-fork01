@@ -64,7 +64,7 @@ func (d *RemoteDispatcher) dispatchRemote(ctx context.Context, fence agentruntim
 	request := agentruntime.RemoteStartRequest{Fence: fence, CommandID: commandID, PayloadHash: payloadHash, AttemptID: commandID, TargetID: fence.TargetID, WorkspaceRef: fence.WorkspaceRef, Prompt: fence.Prompt, Provider: fence.Provider}
 	commandProvider, ok := provider.(agentruntime.RemoteCommandProvider)
 	if !ok {
-		return "", fmt.Errorf("%w: provider does not support fenced commands", ErrProviderUnavailable)
+		return d.reconcileClaimed(ctx, record, "provider_capability_missing", fmt.Errorf("%w: provider does not support fenced commands", ErrProviderUnavailable))
 	}
 	usageHandle, err := d.usage.BeginRemote(ctx, fence, commandID)
 	if err != nil {

@@ -71,3 +71,26 @@ Unknown, partial, and display-only observations remain non-billable; a later
 final observation can settle the retained reservation and an identical final
 replay is idempotent at the service seam. PostgreSQL migrations, live
 OpenMeter/Paseo execution, and provider runtime evidence remain `blocked-env`.
+
+## Final review follow-up (2026-09-17)
+
+- `go test ./internal/application/service/workbench -count=1` — PASS.
+- `go test -race ./internal/application/service/workbench -run 'TestRemoteUsage|TestRemoteDispatcher|TestServerAdmissionBinding' -count=1` — PASS.
+- `go vet ./internal/application/service/workbench ./internal/application/repository ./internal/agent/runtime ./internal/container` — PASS.
+- `go test ./internal/application/repository ./internal/agent/runtime ./internal/container -run '^$' -count=1` — PASS (compile-only; container runtime migration remains separately blocked).
+- `git diff --check` — PASS.
+
+Production admission now consumes an explicit server-side binding resolver. The
+resolver can carry BYOK/model, parent run, credential version, source, price,
+revision, and dimensions through the immutable admission snapshot into Fence;
+client JSON copies are removed. The container uses the explicit binding
+constructor, while legacy tests retain a named server platform policy adapter.
+
+Late final reconciliation reconstructs the durable physical-attempt key and
+uses `ReconcileRemoteObservation` without creating a second reservation. The
+real SQLite `ExecutionGateService` test covers unknown/partial/display_only,
+late final, replayed final, one reservation, and one persisted usage fact.
+Unsupported `RemoteCommandProvider` capability now reconciles the claimed
+intent to durable `unknown` with an observed reason, so it cannot remain
+`claimed`/busy. PostgreSQL, live OpenMeter, and live Paseo evidence remain
+`blocked-env`.

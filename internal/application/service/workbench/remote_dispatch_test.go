@@ -245,3 +245,67 @@ func TestRemoteDispatcherUsesRealExecutionGateAndLateFinalReplayIsIdempotent(t *
 		t.Fatalf("usage rows=%d provider starts=%d", usages, provider.starts)
 	}
 }
+
+type unsupportedRemoteProvider struct{}
+
+func (unsupportedRemoteProvider) Start(context.Context, agentruntime.RunKey, string) (string, error) {
+	return "", nil
+}
+
+func TestRemoteDispatcherReconcilesUnsupportedProviderAfterClaim(t *testing.T) {
+	db := newDispatchIntegrationDB(t)
+	dispatch := repository.NewExecutionDispatchStore(db)
+	usage, err := NewRemoteUsageService(&integrationUsageGate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewRemoteDispatcherWithUsage(dispatch, usage)
+	fence := integrationFence(commercial.FundingPlatform, commercial.ServiceConnector)
+	if _, err := d.DispatchFence(context.Background(), fence, "cmd-unsupported", "hash-unsupported", time.Minute, unsupportedRemoteProvider{}); err == nil {
+		t.Fatal("unsupported provider unexpectedly succeeded")
+	}
+	var state, observed string
+	if err := db.Raw(`SELECT state, observed_state FROM execution_dispatches WHERE tenant_id=1 AND command_id='cmd-unsupported'`).Row().Scan(&state, &observed); err != nil {
+		t.Fatal(err)
+	}
+	if state != "unknown" || observed != "provider_capability_missing" {
+		t.Fatalf("state=%q observed=%q", state, observed)
+	}
+}
+
+func TestRemoteUsageRealGateLateFinalAfterNonBillableObservation(t *testing.T) {
+	db, gate := newRealUsageDispatch(t)
+	usage, err := NewRemoteUsageServiceWithDB(gate, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fence := integrationFence(commercial.FundingPlatform, commercial.ServiceConnector)
+	fence.UsageUpper = 1000
+	fence.UsageDimensions = map[string]int64{commercial.DimensionConnector: 1}
+	handle, err := usage.BeginRemote(context.Background(), fence, "late-real")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{commercial.UsageStatusUnknown, commercial.UsageStatusPartial, commercial.UsageStatusDisplayOnly} {
+		if err := usage.FinishRemoteObservation(context.Background(), handle, &agentruntime.RemoteUsageObservation{Status: status}); err == nil {
+			t.Fatalf("status %q settled", status)
+		}
+	}
+	final := &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1, Status: commercial.UsageStatusFinal, Dimensions: map[string]int64{commercial.DimensionConnector: 1}, OccurredAt: time.Now().UTC()}
+	if err := usage.ReconcileRemoteObservation(context.Background(), fence, "late-real", final); err != nil {
+		t.Fatal(err)
+	}
+	if err := usage.ReconcileRemoteObservation(context.Background(), fence, "late-real", final); err != nil {
+		t.Fatal(err)
+	}
+	var usages, reservations int64
+	if err := db.Model(&repocommercial.UsageRow{}).Where("call_id = ?", "late-real").Count(&usages).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&repocommercial.ReservationRow{}).Where("tenant_id = ? AND key = ?", 1, "late-real:late-real:1").Count(&reservations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if usages != 1 || reservations != 1 {
+		t.Fatalf("usage facts=%d reservations=%d", usages, reservations)
+	}
+}
