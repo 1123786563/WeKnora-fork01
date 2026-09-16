@@ -28,7 +28,7 @@ vi.mock('@/weknora/platform/product-session', async () => {
       let identity = { origin: mocks.host.origin, userId: null as string | null, tenantId: null as string | null };
       let generation = 0;
       const listeners = new Set<() => void>();
-      return { capture: () => ({ generation, signal: new AbortController().signal }), identity: () => identity, switchTo(next: typeof identity) { identity = next; generation += 1; listeners.forEach((listener) => listener()); }, logout() { identity = { origin: mocks.host.origin, userId: null, tenantId: null }; generation += 1; listeners.forEach((listener) => listener()); }, subscribe(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, registerLifecycle: () => () => undefined };
+      return { capture: () => ({ generation, signal: new AbortController().signal }), accept: (captured: number) => captured === generation, identity: () => identity, switchTo(next: typeof identity) { identity = next; generation += 1; listeners.forEach((listener) => listener()); }, logout() { identity = { origin: mocks.host.origin, userId: null, tenantId: null }; generation += 1; listeners.forEach((listener) => listener()); }, subscribe(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, registerLifecycle: () => () => undefined };
     },
     // Keep React imported in this mock so bundlers do not elide the module as
     // a side-effect-free replacement of the real platform seam.
@@ -85,8 +85,50 @@ describe('ProductAuthProvider device lifecycle', () => {
     renderer?.unmount();
   });
 
+  it('keeps the product session usable when notification permission is denied', async () => {
+    mocks.permission.mockResolvedValueOnce({ granted: false });
+    await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(auth?.credential?.accessToken).toBe('stored-token'));
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
   it('does not replay a pending revoke for another owner during login', async () => {
     await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
     expect(mocks.flush).toHaveBeenCalledWith(expect.anything(), expect.anything(), { tenantId: 'tenant-a', ownerId: 'user-a' });
+  });
+
+  it('resolves the replacement identity and drops the previous owner revision', async () => {
+    await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalled());
+    mocks.session.me.mockResolvedValueOnce({ userId: 'user-b', tenantId: 'tenant-b' });
+    await act(async () => { await auth?.replaceCredential({ kind: 'bearer', accessToken: 'token-b' }); });
+    const last = mocks.register.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(last.credential).toEqual({ kind: 'bearer', accessToken: 'token-b' });
+    expect(last).not.toHaveProperty('revision');
+    expect(mocks.flush).toHaveBeenLastCalledWith(expect.anything(), { kind: 'bearer', accessToken: 'token-b' }, { tenantId: 'tenant-b', ownerId: 'user-b' });
+  });
+
+  it('does not commit a registration response captured before logout', async () => {
+    let resolveRegistration!: (value: { revision: number }) => void;
+    const pending = new Promise<{ revision: number }>((resolve) => { resolveRegistration = resolve; });
+    mocks.register.mockImplementationOnce(() => pending);
+    await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalled());
+    await act(async () => { await auth?.logout(); });
+    resolveRegistration({ revision: 99 });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await auth?.login('user-a@example.test', 'secret'); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(2));
+    const afterLogin = mocks.register.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(afterLogin).not.toHaveProperty('revision');
+  });
+
+  it('flushes an offline logout intent after the same account logs in again', async () => {
+    await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalled());
+    mocks.revoke.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { await auth?.logout(); });
+    await act(async () => { await auth?.login('user-a@example.test', 'secret'); });
+    expect(mocks.flush).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ accessToken: 'new-token' }), { tenantId: 'tenant-a', ownerId: 'user-a' });
   });
 });

@@ -165,6 +165,47 @@ func TestMobileDeviceRegistrationIntentIssuedBeforeConcurrentLogoutCannotReopen(
 	require.NoError(t, s.Bind(ctx, late))
 }
 
+func TestMobileDeviceConcurrentBindAndRevokePreserveLifecycleFence(t *testing.T) {
+	for _, first := range []string{"bind", "revoke"} {
+		t.Run(first+"-first", func(t *testing.T) {
+			db := openMobileDeviceTestDB(t)
+			s := NewMobileDeviceStore(db, "dev")
+			ctx := context.Background()
+			initial := mobileRegistration(1, "u1", "d", "token-a")
+			require.NoError(t, s.Bind(ctx, initial))
+
+			bind := initial
+			bind.TokenCiphertext, bind.TokenHash, bind.ScopeGeneration = "enc:token-b", DeviceTokenHash("token-b"), 2
+			start := make(chan struct{})
+			results := make(chan error, 2)
+			runBind := func() { <-start; results <- s.Bind(context.Background(), bind) }
+			runRevoke := func() { <-start; results <- s.RevokeForTenant(context.Background(), 1, "u1", "d", 1) }
+			if first == "bind" {
+				go runBind()
+				go runRevoke()
+			} else {
+				go runRevoke()
+				go runBind()
+			}
+			close(start)
+			for range 2 {
+				err := <-results
+				if err != nil {
+					require.True(t, errors.Is(err, ErrMobileDeviceRevision) || stringsContains(err.Error(), "locked") || stringsContains(err.Error(), "busy"), err)
+				}
+			}
+
+			var row mobileDeviceRow
+			require.NoError(t, db.Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ?", 1, "u1", "d", "dev").Take(&row).Error)
+			// Whichever transaction wins, the row remains fenced at epoch 2:
+			// Bind-first leaves a newer active revision, while revoke-first leaves
+			// the same revision revoked. A stale registration cannot resurrect it.
+			require.EqualValues(t, 2, row.Revision)
+			require.EqualValues(t, 2, row.ScopeGeneration)
+		})
+	}
+}
+
 func TestMobileDeviceRejectsFutureRevisionAndLowerEpoch(t *testing.T) {
 	s := NewMobileDeviceStore(openMobileDeviceTestDB(t), "dev")
 	ctx := context.Background()
