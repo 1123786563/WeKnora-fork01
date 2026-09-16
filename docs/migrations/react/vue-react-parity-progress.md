@@ -3975,3 +3975,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   screenshots and real backend mutation states; the existing R412 evidence is
   explicitly unpaired. Wails native interaction and real Embed streaming remain
   unverified. No mobile code was modified.
+
+## 2026-09-16 Round R416 — Serial Web regression isolation
+
+- Re-running the Web suite with `--test-concurrency=1` removed cross-file
+  assertion interference: the run reached `1068` passing tests before the
+  SandboxSettingsPanel process remained pending. The same Sandbox suite passes
+  its 26 assertions but does not terminate because of an unresolved jsdom
+  lifecycle/promise; this is recorded as a test-harness blocker rather than a
+  product-parity pass.
+- Typecheck/build, focused page suites, Desktop `9/9`, and Embed `17/17`
+  remain green. Authenticated paired visual evidence, real backend mutations,
+  native Wails interaction, and real Embed streaming remain open or
+  `blocked-env`. No mobile code was modified.
