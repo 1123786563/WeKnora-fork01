@@ -141,12 +141,28 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 	if len(items) == 0 {
 		return []PushBatchResult{}, nil
 	}
-	messages := make([]expoMessage, 0, len(items))
-	for _, item := range items {
+	// Filter invalid items before serialization. An empty token must never be
+	// encoded as an empty Expo message; retain a per-item configuration error so
+	// callers can retry/record only that item while valid siblings proceed.
+	validItems := make([]PushBatchItem, 0, len(items))
+	validIndexes := make([]int, 0, len(items))
+	results := make([]PushBatchResult, len(items))
+	for index, item := range items {
 		if strings.TrimSpace(item.Token) == "" {
-			messages = append(messages, expoMessage{})
+			results[index] = PushBatchResult{ID: item.ID, Err: &ProviderError{
+				Code: "InvalidProviderConfig", Retry: false, Revoke: false,
+				Err: fmt.Errorf("push token for item %s is empty", item.ID),
+			}}
 			continue
 		}
+		validItems = append(validItems, item)
+		validIndexes = append(validIndexes, index)
+	}
+	if len(validItems) == 0 {
+		return results, nil
+	}
+	messages := make([]expoMessage, 0, len(validItems))
+	for _, item := range validItems {
 		messages = append(messages, expoMessage{To: item.Token, Title: item.Payload.Title, Body: item.Payload.Body, Data: map[string]string{"run_id": item.Payload.RunID, "event_id": item.Payload.EventID}})
 	}
 	body, err := json.Marshal(messages)
@@ -183,15 +199,14 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 		return nil, &ProviderError{Code: "UnknownTransport", Retry: true, StatusCode: resp.StatusCode, Err: err}
 	}
 	var tickets []expoTicket
-	if err := json.Unmarshal(envelope.Data, &tickets); err != nil || len(tickets) != len(items) {
+	if err := json.Unmarshal(envelope.Data, &tickets); err != nil || len(tickets) != len(validItems) {
 		if err == nil {
 			err = ErrMissingReceiptID
 		}
 		return nil, &ProviderError{Code: "MissingBatchResult", Retry: true, StatusCode: resp.StatusCode, Err: err}
 	}
-	results := make([]PushBatchResult, 0, len(items))
 	for i, ticket := range tickets {
-		result := PushBatchResult{ID: items[i].ID}
+		result := PushBatchResult{ID: validItems[i].ID}
 		if strings.EqualFold(ticket.Status, "ok") && strings.TrimSpace(ticket.ID) != "" {
 			result.Receipt = PushReceipt{ID: ticket.ID, Status: ticket.Status}
 		} else {
@@ -202,7 +217,7 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 			revoke, retry := ClassifyPushFailure(code)
 			result.Err = &ProviderError{Code: code, Revoke: revoke, Retry: retry, StatusCode: resp.StatusCode, Err: fmt.Errorf("%s", strings.TrimSpace(ticket.Message))}
 		}
-		results = append(results, result)
+		results[validIndexes[i]] = result
 	}
 	return results, nil
 }

@@ -105,6 +105,9 @@ func (p *PushNotificationProvider) SendReceipt(ctx context.Context, d repository
 	if err != nil {
 		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "InvalidRegistration", Revoke: true, Retry: false, Err: err}
 	}
+	if strings.TrimSpace(token) == "" {
+		return pushnotification.PushReceipt{}, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Revoke: false, Err: errors.New("resolved push token is empty")}
+	}
 	return p.provider.Send(ctx, token, pushnotification.PushPayload{Title: d.Intent.Kind, Body: d.Intent.Kind, RunID: d.Intent.RunID, EventID: d.Intent.EventID})
 }
 
@@ -130,6 +133,17 @@ func (p *PushNotificationProvider) SendBatch(ctx context.Context, deliveries []r
 			resultsByID[d.ID] = NotificationBatchResult{DeliveryID: d.ID, Err: &pushnotification.ProviderError{
 				Code: "InvalidProviderConfig", Retry: false, Revoke: false,
 				Err: fmt.Errorf("resolve push token for delivery %s: %w", d.ID, err),
+			}}
+			continue
+		}
+		if strings.TrimSpace(token) == "" {
+			// A successful resolver call can still yield an empty value when a
+			// registration is stale or decryption/configuration is incomplete.
+			// Keep this delivery isolated so valid siblings are still submitted
+			// and only this item is retried/recorded as failed.
+			resultsByID[d.ID] = NotificationBatchResult{DeliveryID: d.ID, Err: &pushnotification.ProviderError{
+				Code: "InvalidProviderConfig", Retry: false, Revoke: false,
+				Err: fmt.Errorf("resolve push token for delivery %s: empty token", d.ID),
 			}}
 			continue
 		}

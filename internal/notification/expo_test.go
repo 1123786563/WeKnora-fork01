@@ -86,6 +86,33 @@ func TestExpoProviderBatchReturnsPerItemPartialResults(t *testing.T) {
 	require.False(t, providerErr.Retry)
 }
 
+func TestExpoProviderBatchReportsEmptyTokenWithoutSubmittingEmptyMessage(t *testing.T) {
+	var requestCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		var messages []map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&messages))
+		require.Len(t, messages, 1)
+		require.Equal(t, "token-valid", messages[0]["to"])
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"status":"ok","id":"ticket-good"}]}`)
+	}))
+	defer srv.Close()
+	results, err := NewExpoProviderWithClient(srv.URL, "", srv.Client()).SendBatch(context.Background(), []PushBatchItem{
+		{ID: "empty", Token: "  "},
+		{ID: "good", Token: "token-valid"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, requestCount)
+	require.Len(t, results, 2)
+	var providerErr *ProviderError
+	require.ErrorAs(t, results[0].Err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	require.Equal(t, "ticket-good", results[1].Receipt.ID)
+}
+
 func TestExpoProviderRejectsMalformedEndpointAsConfigurationError(t *testing.T) {
 	provider := NewExpoProvider("://bad", "")
 	_, err := provider.Send(context.Background(), "token", PushPayload{})

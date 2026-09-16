@@ -75,6 +75,28 @@ func TestPushNotificationProviderBatchFailsClosedAndPreservesValidDevices(t *tes
 	require.Equal(t, "receipt-good", results[1].Receipt.ID)
 }
 
+func TestPushNotificationProviderBatchOmitsEmptyResolvedTokenAndPreservesValidDevice(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	adapter := NewPushNotificationProvider(provider, func(_ context.Context, d repository.NotificationDelivery) (string, error) {
+		if d.ID == "empty" {
+			return "  ", nil
+		}
+		return "token-valid", nil
+	})
+	results, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "empty"}, {ID: "good"}})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Len(t, provider.items, 1, "empty resolved tokens must never reach the provider")
+	require.Equal(t, "good", provider.items[0].ID)
+	require.Equal(t, "token-valid", provider.items[0].Token)
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, results[0].Err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	require.Equal(t, "receipt-good", results[1].Receipt.ID)
+}
+
 func TestPushNotificationProviderBatchRejectsUnconfiguredAdapter(t *testing.T) {
 	provider := &directBatchProvider{configured: true}
 	adapter := NewPushNotificationProvider(provider, nil)
