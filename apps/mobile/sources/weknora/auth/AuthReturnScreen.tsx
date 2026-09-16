@@ -50,7 +50,12 @@ export default function AuthReturnScreen() {
       if (stateRecord) {
         try {
           const parsed = JSON.parse(stateRecord) as { state?: unknown; issued_at?: unknown };
-          if (typeof parsed.state === 'string' && typeof parsed.issued_at === 'number' && Date.now() - parsed.issued_at <= 10 * 60 * 1000) registerAuthState(parsed.state);
+          if (typeof parsed.state === 'string' && typeof parsed.issued_at === 'number' && Date.now() - parsed.issued_at <= 10 * 60 * 1000) {
+            registerAuthState(parsed.state);
+            // Delete before consuming so a concurrent/cold-start callback
+            // cannot rehydrate the same state a second time.
+            await SecureStore.deleteItemAsync(NATIVE_OIDC_STATE_KEY);
+          }
         } catch { /* malformed local state is rejected below */ }
       }
       evaluated.current = evaluateAuthReturn(params, AUTH_RETURN_REDIRECT);
