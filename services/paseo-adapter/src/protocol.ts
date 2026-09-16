@@ -10,6 +10,7 @@ export interface StartCommand {
   provider: string;
   epoch: number;
   expiresAt: number;
+  payloadHash: string;
 }
 
 export interface PaseoPort {
@@ -53,7 +54,7 @@ export class BridgeError extends Error {
 }
 
 export function canonicalCommand(command: StartCommand): string {
-  return JSON.stringify({ commandID: command.commandID, runID: command.runID, attemptID: command.attemptID, targetID: command.targetID, workspaceRef: command.workspaceRef, prompt: command.prompt, provider: command.provider, epoch: command.epoch, expiresAt: command.expiresAt });
+  return JSON.stringify({ commandID: command.commandID, runID: command.runID, attemptID: command.attemptID, targetID: command.targetID, workspaceRef: command.workspaceRef, prompt: command.prompt, provider: command.provider, epoch: command.epoch, payloadHash: command.payloadHash, expiresAt: command.expiresAt });
 }
 
 export function commandHash(command: StartCommand): string {
@@ -79,7 +80,7 @@ export function decodeStartEnvelope(input: string): StartCommand {
   const envelope = value as Record<string, unknown>;
   if (Object.keys(envelope).sort().join(',') !== 'operation,payload,version' || envelope.version !== 1 || envelope.operation !== 'start' || !envelope.payload || typeof envelope.payload !== 'object' || Array.isArray(envelope.payload)) throw new BridgeError('INVALID_COMMAND');
   const payload = envelope.payload as Record<string, unknown>;
-  const allowed = ['attemptID', 'commandID', 'epoch', 'expiresAt', 'prompt', 'provider', 'runID', 'targetID', 'workspaceRef'];
+  const allowed = ['attemptID', 'commandID', 'epoch', 'expiresAt', 'payloadHash', 'prompt', 'provider', 'runID', 'targetID', 'workspaceRef'];
   if (Object.keys(payload).sort().join(',') !== allowed.sort().join(',')) throw new BridgeError('INVALID_COMMAND');
   const command = payload as unknown as StartCommand;
   validateStartCommand(command);

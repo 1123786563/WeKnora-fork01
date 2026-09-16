@@ -292,7 +292,26 @@ func (s *AgentRunStore) ClaimDriver(
 		if e := runScope(tx, key).Take(&row).Error; e != nil {
 			return e
 		}
-		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch}
+		var snapshot struct {
+			Prompt       string `json:"prompt"`
+			Text         string `json:"text"`
+			WorkspaceRef string `json:"workspaceRef"`
+			Provider     string `json:"provider"`
+		}
+		_ = json.Unmarshal([]byte(row.Snapshot), &snapshot)
+		prompt := snapshot.Prompt
+		if prompt == "" {
+			prompt = snapshot.Text
+		}
+		workspace := snapshot.WorkspaceRef
+		if workspace == "" {
+			workspace = row.TargetID
+		}
+		provider := snapshot.Provider
+		if provider == "" {
+			provider = driver
+		}
+		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider}
 		return nil
 	})
 	return fence, err

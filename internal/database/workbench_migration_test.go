@@ -278,7 +278,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
@@ -297,7 +297,7 @@ func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))

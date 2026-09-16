@@ -30,6 +30,7 @@ type StartCommand struct {
 	Prompt       string `json:"prompt"`
 	Provider     string `json:"provider"`
 	Epoch        int64  `json:"epoch"`
+	PayloadHash  string `json:"payloadHash"`
 	ExpiresAt    int64  `json:"expiresAt"`
 }
 
@@ -120,6 +121,23 @@ func commandSignature(c StartCommand, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(commandHash(c)))
 	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// CommandHash and CommandSignature are exported for trusted server-side
+// adapters constructing an admission envelope; untrusted request handlers
+// must never use them as an authorization substitute.
+func CommandHash(c StartCommand) string                     { return commandHash(c) }
+func CommandSignature(c StartCommand, secret string) string { return commandSignature(c, secret) }
+
+// StartWithAdmission sends a command with a per-command trusted admission.
+// It preserves the same HMAC, identity, and authorization checks as Start.
+func (c *BridgeClient) StartWithAdmission(ctx context.Context, command StartCommand, admission AdmissionContext) (BridgeResponse, error) {
+	if c == nil {
+		return BridgeResponse{}, ErrBridgeUnavailable
+	}
+	clone := *c
+	clone.config.Admission = admission
+	return clone.Start(ctx, command)
 }
 
 func (v AdmissionVerifier) Verify(c StartCommand, a AdmissionContext) error {

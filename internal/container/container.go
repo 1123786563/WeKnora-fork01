@@ -54,6 +54,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -165,14 +166,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
 	must(container.Provide(repository.NewMobileExchangeStore))
+	// The dispatch intent/receipt log is a first-class dependency of the
+	// durable worker. Keep it in the same database scope as AgentRunStore so
+	// provider starts can never bypass the W20 fence.
+	must(container.Provide(repository.NewExecutionDispatchStore))
+	must(container.Provide(newPaseoRemoteProvider))
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
 	must(container.Invoke(registerAgentRunResourceProtection))
 	// Resolve the runtime through this wrapper so the durable resource
-	// repository is always connected to the post-claim recovery hook;
+	// repository is always connected to the post-claim recovery hook; the
+	// wrapper also carries the W20 dispatch store and Paseo provider, engaging
+	// the remote intent/receipt fence when that integration is configured.
 	// *AgentRuntime must only be provided once for dig, so the bare
-	// NewAgentRuntime provider stays unregistered here.
+	// NewAgentRuntime / NewAgentRuntimeWithRemoteProvider providers stay
+	// unregistered here.
 	must(container.Provide(newAgentRuntime))
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
 	must(container.Provide(repository.NewExecutionTargetStore))

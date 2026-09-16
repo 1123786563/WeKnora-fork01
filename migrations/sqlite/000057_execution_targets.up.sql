@@ -16,8 +16,7 @@ CREATE TABLE execution_targets (
     CHECK (credential_version > 0),
     UNIQUE (runtime_id, external_target_id)
 );
-CREATE INDEX idx_execution_targets_owner
-    ON execution_targets (tenant_id, owner_id, state, created_at);
+CREATE INDEX idx_execution_targets_owner ON execution_targets (tenant_id, owner_id, state, created_at);
 CREATE TABLE execution_target_identities (
     tenant_id INTEGER NOT NULL,
     runtime_id VARCHAR(255) NOT NULL,
@@ -31,8 +30,7 @@ CREATE TABLE execution_target_identities (
     CHECK (credential_version > 0),
     CHECK (state IN ('active', 'revoked'))
 );
-CREATE INDEX idx_execution_target_identities_owner
-    ON execution_target_identities (tenant_id, owner_id, state);
+CREATE INDEX idx_execution_target_identities_owner ON execution_target_identities (tenant_id, owner_id, state);
 CREATE TABLE execution_workspaces (
     tenant_id INTEGER NOT NULL,
     id VARCHAR(128) NOT NULL,
@@ -41,8 +39,6 @@ CREATE TABLE execution_workspaces (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, id),
-    FOREIGN KEY (tenant_id, target_id)
-        REFERENCES execution_targets (tenant_id, id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id, target_id) REFERENCES execution_targets (tenant_id, id) ON DELETE CASCADE
 );
-CREATE INDEX idx_execution_workspaces_target
-    ON execution_workspaces (tenant_id, target_id);
+CREATE INDEX idx_execution_workspaces_target ON execution_workspaces (tenant_id, target_id);

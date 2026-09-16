@@ -6,7 +6,7 @@ import { startViaBridge } from './bridge.ts';
 
 const command = (patch: Partial<StartCommand> = {}): StartCommand => ({
   commandID: 'c', runID: 'r', attemptID: 'a', targetID: 'n', workspaceRef: 'w',
-  prompt: 'hi', provider: 'p', epoch: 1, expiresAt: Date.now() + 10_000, ...patch,
+  prompt: 'hi', provider: 'p', epoch: 1, payloadHash: 'hash-1', expiresAt: Date.now() + 10_000, ...patch,
 });
 const port = (patch: Partial<PaseoPort> = {}): PaseoPort => ({
   create: async () => ({ id: 'a' }), observe: async () => ({ state: 'running' }), cancel: async () => {}, ...patch,

@@ -29,11 +29,38 @@ type RunKey struct {
 	RunID    string
 }
 
+// RemoteProvider is the minimal provider capability required by a durable
+// dispatch worker. It lives in the dependency-free runtime package so the
+// worker, workbench service, and concrete Paseo adapter share one structural
+// contract without introducing an import cycle.
+type RemoteProvider interface {
+	Start(context.Context, RunKey, string) (string, error)
+}
+
+// RemoteStartRequest carries the fenced, immutable command data to a remote
+// provider. Implementations should prefer StartCommand; Start remains for
+// compatibility with older adapters.
+type RemoteStartRequest struct {
+	Fence        Fence
+	CommandID    string
+	PayloadHash  string
+	AttemptID    string
+	TargetID     string
+	WorkspaceRef string
+	Prompt       string
+	Provider     string
+}
+
+type RemoteCommandProvider interface {
+	StartCommand(context.Context, RemoteStartRequest) (string, error)
+}
+
 // Fence identifies a worker's exclusive, expiring claim on a run.
 type Fence struct {
 	RunKey
-	Owner string
-	Epoch int64
+	Owner                                    string
+	Epoch                                    int64
+	TargetID, WorkspaceRef, Prompt, Provider string
 }
 
 // RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.

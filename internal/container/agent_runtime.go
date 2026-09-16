@@ -10,6 +10,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/sandbox"
@@ -19,7 +20,9 @@ import (
 // newAgentRuntime assembles the durable tRPC runtime. The graph executor is
 // resolved through service.RegisteredGraphExecutor: the session service that
 // owns it is constructed after this provider in the dependency graph, while
-// the worker only executes after the container has fully booted.
+// the worker only executes after the container has fully booted. When the
+// Paseo host integration supplies a remote provider, the runtime is assembled
+// through the W20 dispatch fence instead of the local platform executor.
 func newAgentRuntime(
 	cfg *config.Config,
 	store *repository.AgentRunStore,
@@ -29,6 +32,8 @@ func newAgentRuntime(
 	db *gorm.DB,
 	craftStore craft.Store,
 	craftExecutor craft.Executor,
+	dispatch *repository.ExecutionDispatchStore,
+	provider workbenchservice.RemoteProvider,
 ) (*AgentRuntime, error) {
 	executor := func(ctx context.Context, fence agentruntime.Fence) error {
 		run := service.RegisteredGraphExecutor()
@@ -37,7 +42,13 @@ func newAgentRuntime(
 		}
 		return run(ctx, fence)
 	}
-	r, err := NewAgentRuntime(cfg, store, executor)
+	var r *AgentRuntime
+	var err error
+	if provider != nil {
+		r, err = newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+	} else {
+		r, err = NewAgentRuntime(cfg, store, executor)
+	}
 	if err != nil || r == nil || r.Worker == nil {
 		return r, err
 	}
@@ -182,6 +193,23 @@ func (r *AgentRuntime) SetRecoveryHook(hook func(context.Context, agentruntime.F
 }
 
 func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
+	return newAgentRuntimeWithDispatch(cfg, store, nil, nil, executors...)
+}
+
+// NewAgentRuntimeWithRemoteProvider is the production assembly point for a
+// Paseo-backed worker. The provider and durable dispatch store are explicit
+// dependencies so an enabled runtime cannot accidentally invoke a provider
+// outside the W20 intent/receipt fence.
+func NewAgentRuntimeWithRemoteProvider(
+	cfg *config.Config,
+	store *repository.AgentRunStore,
+	dispatch *repository.ExecutionDispatchStore,
+	provider workbenchservice.RemoteProvider,
+) (*AgentRuntime, error) {
+	return newAgentRuntimeWithDispatch(cfg, store, dispatch, provider)
+}
+
+func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunStore, dispatch *repository.ExecutionDispatchStore, provider workbenchservice.RemoteProvider, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
 	if store == nil {
 		return nil, errors.New("agent run store is required")
 	}
@@ -192,6 +220,9 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
+	if r.Enabled && provider == nil && len(executors) == 0 {
+		return nil, errors.New("durable agent recovery requires a graph executor or a configured remote provider")
+	}
 	c := service.DefaultWorkerConfig()
 	c.Enabled = r.RecoveryEnabled()
 	if r.Lease > 0 {
@@ -214,13 +245,31 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 	if len(executors) > 0 {
 		execute = executors[0]
 	}
-	if c.Enabled && execute == nil {
-		return nil, errors.New("tRPC recovery enabled but no graph executor provider is registered")
+	var worker *service.AgentRunWorker
+	if provider != nil {
+		if dispatch == nil {
+			return nil, errors.New("remote dispatch store is required when a provider is configured")
+		}
+		// Remote dispatch executes through the W20 intent/receipt fence; a
+		// local graph executor is not wired in provider mode.
+		remoteExecute := func(context.Context, agentruntime.Fence) error {
+			return errors.New("trpc graph executor is not wired")
+		}
+		worker, err = service.NewAgentRunWorkerWithRemoteDispatch(store, remoteExecute, service.RemoteDispatchConfig{
+			Dispatcher: workbenchservice.NewRemoteDispatcher(dispatch), Provider: provider,
+			CommandID: func(fence agentruntime.Fence) (string, string) {
+				return fence.RunID + "/" + fmt.Sprint(fence.Epoch), ""
+			},
+		}, c)
+	} else {
+		if c.Enabled && execute == nil {
+			return nil, errors.New("tRPC recovery enabled but no graph executor provider is registered")
+		}
+		if execute == nil {
+			execute = func(context.Context, agentruntime.Fence) error { return nil }
+		}
+		worker, err = service.NewAgentRunWorker(store, execute, c)
 	}
-	if execute == nil {
-		execute = func(context.Context, agentruntime.Fence) error { return nil }
-	}
-	worker, err := service.NewAgentRunWorker(store, execute, c)
 	if err != nil {
 		return nil, err
 	}
