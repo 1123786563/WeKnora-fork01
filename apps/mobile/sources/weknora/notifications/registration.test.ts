@@ -36,7 +36,9 @@ describe('mobile device registration', () => {
       method: 'PUT',
       body: JSON.stringify({ token: 'push', platform: 'android', scope_generation: 7, revision: 1 }),
     }));
-    expect(JSON.parse(fetcher.mock.calls[0][1].body as string)).not.toHaveProperty('owner_id');
+    const call = (fetcher.mock.calls as unknown[][])[0];
+    const request = call?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty('owner_id');
   });
 
   it('keeps a minimal pending revocation on offline logout and flushes it later', async () => {
@@ -45,8 +47,9 @@ describe('mobile device registration', () => {
     const offline = vi.fn(async () => response(503));
     await revokeOnLogout({ origin: 'https://api.example.test', deviceId: 'd', revision: 3, credential, pending, fetchImpl: offline });
     expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toHaveProperty('credential');
     const online = vi.fn(async () => response(204, null));
-    await expect(flushPendingRevocations(pending, online)).resolves.toBe(1);
+    await expect(flushPendingRevocations(pending, credential, online)).resolves.toBe(1);
     expect(rows).toEqual([]);
   });
 });

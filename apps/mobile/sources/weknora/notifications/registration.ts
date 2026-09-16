@@ -19,7 +19,6 @@ export interface PendingRevocation {
   origin: string;
   deviceId: string;
   revision?: number;
-  credential: Credential;
 }
 
 export interface PendingRevocationStore {
@@ -100,20 +99,61 @@ export async function revokeOnLogout(
   } catch {
     const rows = await input.pending.read();
     const duplicate = rows.some((row) => row.origin === input.origin && row.deviceId === input.deviceId && row.revision === input.revision);
-    if (!duplicate) await input.pending.write([...rows, { origin: input.origin, deviceId: input.deviceId, revision: input.revision, credential: input.credential }]);
+    if (!duplicate) await input.pending.write([...rows, { origin: input.origin, deviceId: input.deviceId, revision: input.revision }]);
   }
 }
 
-export async function flushPendingRevocations(store: PendingRevocationStore, fetchImpl?: typeof fetch): Promise<number> {
+/**
+ * A queued intent is deliberately not self-authenticating. Flush requires a
+ * fresh, in-memory product credential obtained after the next login; passing
+ * only fetch is rejected by retaining the queue instead of persisting a
+ * bearer token alongside it.
+ */
+export async function flushPendingRevocations(store: PendingRevocationStore, credential: Credential, fetchImpl?: typeof fetch): Promise<number> {
   const rows = await store.read();
+  if (credential.kind !== 'bearer' || !credential.accessToken.trim()) return 0;
   const remaining: PendingRevocation[] = [];
   for (const row of rows) {
     try {
-      await revokeDevice({ ...row, fetchImpl });
+      await revokeDevice({ ...row, credential, fetchImpl });
     } catch {
       remaining.push(row);
     }
   }
   await store.write(remaining);
   return rows.length - remaining.length;
+}
+
+export interface DevicePresence {
+  deviceId: string;
+  environment: string;
+  platform: DevicePlatform;
+  scopeGeneration: number;
+  revision: number;
+  lastSeenAt: string | null;
+}
+
+function parsePresence(payload: unknown): DevicePresence {
+  const data = (payload as { success?: unknown; data?: Record<string, unknown> })?.data;
+  if (!data || (payload as { success?: unknown }).success !== true || typeof data.device_id !== 'string' ||
+    (data.platform !== 'ios' && data.platform !== 'android') || typeof data.revision !== 'number' ||
+    typeof data.scope_generation !== 'number') throw new Error('INVALID_DEVICE_RESPONSE');
+  return { deviceId: data.device_id, environment: String(data.environment ?? ''), platform: data.platform,
+    scopeGeneration: data.scope_generation, revision: data.revision,
+    lastSeenAt: typeof data.last_seen_at === 'string' ? data.last_seen_at : null };
+}
+
+export async function getDevicePresence(input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'>): Promise<DevicePresence> {
+  const token = accessToken(input.credential); const response = await (input.fetchImpl ?? fetch)(`${endpoint(input.origin, input.deviceId)}/presence${input.revision === undefined ? '' : `?revision=${input.revision}`}`, { method: 'GET', headers: { Authorization: `Bearer ${token}` }, signal: input.signal });
+  if (!response.ok) throw await responseError(response); return parsePresence(await response.json());
+}
+
+export async function putDevicePresence(input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'>): Promise<DevicePresence> {
+  const token = accessToken(input.credential); const response = await (input.fetchImpl ?? fetch)(`${endpoint(input.origin, input.deviceId)}/presence${input.revision === undefined ? '' : `?revision=${input.revision}`}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, signal: input.signal });
+  if (!response.ok) throw await responseError(response); return parsePresence(await response.json());
+}
+
+export async function deleteDevicePresence(input: Omit<DeviceRegistrationInput, 'token' | 'platform' | 'scopeGeneration'>): Promise<void> {
+  const token = accessToken(input.credential); const response = await (input.fetchImpl ?? fetch)(`${endpoint(input.origin, input.deviceId)}/presence${input.revision === undefined ? '' : `?revision=${input.revision}`}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, signal: input.signal });
+  if (!response.ok && response.status !== 404) throw await responseError(response);
 }

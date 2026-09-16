@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,14 +21,9 @@ func openMobileHandlerDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.Exec(`CREATE TABLE mobile_devices (
-        tenant_id INTEGER NOT NULL, owner_id TEXT NOT NULL, device_id TEXT NOT NULL,
-        environment TEXT NOT NULL, space_id TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL,
-        token_ciphertext TEXT NOT NULL, token_hash TEXT NOT NULL, revision INTEGER NOT NULL,
-        scope_generation INTEGER NOT NULL DEFAULT 0, revoked_at DATETIME, last_seen_at DATETIME,
-        created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
-        PRIMARY KEY (tenant_id, owner_id, device_id, environment))`).Error)
-	require.NoError(t, db.Exec("CREATE UNIQUE INDEX uq_mobile_handler_token ON mobile_devices(environment, token_hash) WHERE revoked_at IS NULL").Error)
+	up, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000058_mobile_devices.up.sql"))
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(up)).Error)
 	return db
 }
 

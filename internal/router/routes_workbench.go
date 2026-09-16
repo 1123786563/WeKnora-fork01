@@ -75,4 +75,7 @@ func RegisterMobileDeviceRoutes(r *gin.RouterGroup, h *handler.MobileDeviceHandl
 	devices.PUT("/:id", h.Register)
 	devices.DELETE("/:id", h.Revoke)
 	devices.POST("/:id/presence", h.Presence)
+	devices.GET("/:id/presence", h.GetPresence)
+	devices.PUT("/:id/presence", h.PutPresence)
+	devices.DELETE("/:id/presence", h.DeletePresence)
 }
