@@ -3839,3 +3839,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `git diff --check` passes. This is implementation/unit/static evidence; it
   does not replace same-condition Vue screenshots or real backend mutation
   verification. No mobile code was modified.
+
+## 2026-09-16 Round R405 — Recheck local runtime and browser evidence boundary
+
+- Local probes currently reach Vue dev at `127.0.0.1:5180` with HTTP 200 and
+  the backend at `127.0.0.1:8080` with the expected anonymous HTTP 401. The
+  React Vite process is present but `127.0.0.1:5181` did not accept a
+  connection during five bounded retries, so no React browser comparison was
+  claimed.
+- CUA browser inventory was retried after the Vue service became reachable;
+  the environment still fails before tab control with
+  `Unable to load browser request-header policy`. This preserves the current
+  `blocked-env` classification for paired DOM/screenshots and interaction
+  evidence; it is not a page-parity result. No mobile code was modified.
