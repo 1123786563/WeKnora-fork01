@@ -137,7 +137,7 @@ test('tenant switcher lists memberships and delegates a different workspace', as
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
-  const client = { ...fakeClient('admin'), auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' }, tenant: { id: 'tenant-1', name: 'Parity' }, memberships: [{ tenant_id: 'tenant-1', tenant_name: 'Parity', role: 'admin' }, { tenant_id: 'tenant-2', tenant_name: 'Research', role: 'viewer' }] }) } };
+  const client = { ...fakeClient('admin'), auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: true }, tenant: { id: 'tenant-1', name: 'Parity' }, memberships: [{ tenant_id: 'tenant-1', tenant_name: 'Parity', role: 'admin' }, { tenant_id: 'tenant-2', tenant_name: 'Research', role: 'viewer' }] }) } };
   await act(async () => {
     mountedRoot?.render(React.createElement(PlatformShell, {
       client: client as never,
@@ -163,7 +163,7 @@ test('tenant selection closes the menu immediately, including the current-tenant
     ...fakeClient('admin'),
     auth: {
       me: async () => ({
-        user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' },
+        user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: true },
         tenant: { id: 'tenant-1', name: 'Parity' },
         memberships: [
           { tenant_id: 'tenant-1', tenant_name: 'Parity', role: 'admin' },

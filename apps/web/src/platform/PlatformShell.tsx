@@ -105,6 +105,15 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
   ];
 }
 
+/** Vue platform/index.vue mounts TenantSelector only for all-tenant access. */
+export function shouldShowTenantSwitcher(options: {
+  canAccessAllTenants: boolean;
+  collapsed: boolean;
+  hasSwitchHandler: boolean;
+}): boolean {
+  return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
+}
+
 const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
 
 const SHELL_SESSION_PAGE_SIZE = 30;
@@ -245,7 +254,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [client]);
 
   const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
-  const tenantSwitcherVisible = Boolean(onTenantSwitch && user.memberships.length > 0);
+  const tenantSwitcherVisible = shouldShowTenantSwitcher({
+    canAccessAllTenants: user.canAccessAllTenants,
+    collapsed,
+    hasSwitchHandler: Boolean(onTenantSwitch),
+  });
   const switchTenant = useCallback(async (tenantId: string) => {
     if (!onTenantSwitch || tenantSwitchPending) return;
     // Vue UserMenu.switchToTenant closes both the account menu and its
