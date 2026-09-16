@@ -24,3 +24,15 @@ export function navigateCreatedProductSession(input: {
     }
     return input.navigateProduct({ ...(input.session as object), id: input.sessionId, metadata: { productSession: product } });
 }
+
+/** Production seam used by the new-session route after the backend spawn returns. */
+export async function completeProductSessionCreation(input: {
+    sessionId: string;
+    refreshSessions: () => Promise<void>;
+    readSession: (sessionId: string) => unknown;
+    navigateProduct: (session: unknown) => boolean;
+    onUnavailable: () => void;
+}): Promise<boolean> {
+    await input.refreshSessions();
+    return navigateCreatedProductSession({ sessionId: input.sessionId, session: input.readSession(input.sessionId), navigateProduct: input.navigateProduct, onUnavailable: input.onUnavailable });
+}

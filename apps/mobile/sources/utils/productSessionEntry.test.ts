@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { navigateCreatedProductSession, resolveCreatedProductSessionNavigation } from './productSessionEntry';
+import { completeProductSessionCreation, navigateCreatedProductSession, resolveCreatedProductSessionNavigation } from './productSessionEntry';
 
 const session = { id: 'session-1', metadata: { productSession: { spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', resourceUserId: 'user-1', resourceTenantId: 'tenant-1', runId: 'run-1' } } };
 
@@ -21,4 +21,19 @@ describe('new product session production adapter', () => {
         expect(navigate).not.toHaveBeenCalled();
         expect(unavailable).toHaveBeenCalledOnce();
     });
+});
+
+it('runs refresh, reads durable metadata, then routes the created session', async () => {
+    const events: string[] = [];
+    const navigate = vi.fn(() => { events.push('router.push'); return true; });
+    const result = await completeProductSessionCreation({
+        sessionId: session.id,
+        refreshSessions: async () => { events.push('refreshSessions'); },
+        readSession: () => { events.push('storage.session'); return session; },
+        navigateProduct: navigate,
+        onUnavailable: vi.fn(),
+    });
+    expect(result).toBe(true);
+    expect(events).toEqual(['refreshSessions', 'storage.session', 'router.push']);
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ productSession: expect.objectContaining({ runId: 'run-1' }) }) }));
 });
