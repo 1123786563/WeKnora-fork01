@@ -21,6 +21,8 @@ type CleanupClaim struct {
 	OwnerID          string
 	SessionID        string
 	DeletionRevision int64
+	BackupReconciled bool
+	RetentionUntil   *time.Time
 	Worker           string
 	Epoch            int64
 }
@@ -126,7 +128,7 @@ func (s *AgentRunStore) claimCleanup(ctx context.Context, worker string, lease t
 		if updated.RowsAffected != 1 {
 			return runtime.ErrConflict
 		}
-		claim = CleanupClaim{TenantID: row.TenantID, OwnerID: row.OwnerID, SessionID: row.SessionID, DeletionRevision: row.DeletionRevision, Worker: worker, Epoch: row.Epoch + 1}
+		claim = CleanupClaim{TenantID: row.TenantID, OwnerID: row.OwnerID, SessionID: row.SessionID, DeletionRevision: row.DeletionRevision, BackupReconciled: row.BackupReconciled, RetentionUntil: row.RetentionUntil, Worker: worker, Epoch: row.Epoch + 1}
 		return nil
 	})
 	return claim, err
@@ -148,7 +150,7 @@ func (s *AgentRunStore) CompleteCleanup(ctx context.Context, claim CleanupClaim,
 		}
 		stopped, settled, retained := row.Stopped || facts.Stopped, row.Settled || facts.Settled, row.RetentionElapsed || facts.RetentionElapsed
 		state := "cleanup_pending"
-		canPurge := execution.CanPurge(execution.CleanupFacts{Stopped: stopped, Settled: settled, RetentionElapsed: retained})
+		canPurge := execution.CanPurge(execution.CleanupFacts{Stopped: stopped, Settled: settled, RetentionElapsed: retained}) && row.BackupReconciled && row.RetentionUntil != nil && !row.RetentionUntil.After(time.Now())
 		if canPurge {
 			// File/blob/backup deletion is an external side effect. Persist a
 			// durable ready intent and let RunCleanupPurgeOnce execute it outside
@@ -188,6 +190,35 @@ func (s *AgentRunStore) RunCleanupPurgeOnce(ctx context.Context, worker string, 
 
 // PurgeCleanupClaim continues the exact claim that produced cleanup_ready.
 // It rechecks every durable fact before and after the external delete.
+func (s *AgentRunStore) claimReadyForPurge(ctx context.Context, claim CleanupClaim, lease time.Duration) error {
+	if !claim.BackupReconciled || claim.RetentionUntil == nil || claim.RetentionUntil.After(time.Now()) {
+		return runtime.ErrLeaseLost
+	}
+	updated := s.db.WithContext(ctx).Model(&executionCleanupRow{}).
+		Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_ready' AND stopped=? AND settled=? AND retention_elapsed=? AND backup_reconciled=? AND retention_until IS NOT NULL AND retention_until <= ?", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch, true, true, true, true, time.Now()).
+		Updates(map[string]any{"state": "cleanup_claimed", "lease_until": time.Now().Add(lease)})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return runtime.ErrLeaseLost
+	}
+	return nil
+}
+
+func (s *AgentRunStore) refreshCleanupClaim(ctx context.Context, claim CleanupClaim) (CleanupClaim, error) {
+	var row executionCleanupRow
+	err := s.db.WithContext(ctx).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=?", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return CleanupClaim{}, runtime.ErrLeaseLost
+	}
+	if err != nil {
+		return CleanupClaim{}, err
+	}
+	claim.BackupReconciled, claim.RetentionUntil = row.BackupReconciled, row.RetentionUntil
+	return claim, nil
+}
+
 func (s *AgentRunStore) PurgeCleanupClaim(ctx context.Context, claim CleanupClaim) error {
 	if s == nil || s.cleanupFiles == nil {
 		return ErrCleanupFilesUnavailable
@@ -196,7 +227,7 @@ func (s *AgentRunStore) PurgeCleanupClaim(ctx context.Context, claim CleanupClai
 		return runtime.ErrConflict
 	}
 	var row executionCleanupRow
-	if err := s.db.WithContext(ctx).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_ready'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch).Take(&row).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_claimed' AND backup_reconciled=? AND retention_until IS NOT NULL AND retention_until <= ?", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch, true, time.Now()).Take(&row).Error; err != nil {
 		return runtime.ErrLeaseLost
 	}
 	if !row.Stopped || !row.Settled || !row.RetentionElapsed || !row.BackupReconciled || row.RetentionUntil == nil || row.RetentionUntil.After(time.Now()) {
@@ -207,7 +238,7 @@ func (s *AgentRunStore) PurgeCleanupClaim(ctx context.Context, claim CleanupClai
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row executionCleanupRow
-		if err := tx.Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_ready'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch).Take(&row).Error; err != nil {
+		if err := tx.Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_claimed' AND backup_reconciled=? AND retention_until IS NOT NULL AND retention_until <= ?", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch, true, time.Now()).Take(&row).Error; err != nil {
 			return runtime.ErrLeaseLost
 		}
 		if !row.Stopped || !row.Settled || !row.RetentionElapsed || !row.BackupReconciled || row.RetentionUntil == nil || row.RetentionUntil.After(time.Now()) {
@@ -358,11 +389,19 @@ func (s *AgentRunStore) RegisterCleanupArtifact(ctx context.Context, claim Clean
 	if claim.TenantID == 0 || claim.OwnerID == "" || claim.SessionID == "" || claim.DeletionRevision <= 0 || ref == "" || kind == "" {
 		return runtime.ErrConflict
 	}
-	var row executionCleanupRow
-	if err := s.db.WithContext(ctx).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND state <> 'purged'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision).Take(&row).Error; err != nil {
-		return runtime.ErrLeaseLost
-	}
-	return s.db.WithContext(ctx).Table("execution_cleanup_artifacts").Create(map[string]any{"tenant_id": claim.TenantID, "session_id": claim.SessionID, "deletion_revision": claim.DeletionRevision, "ref": ref, "kind": kind, "state": "pending", "receipt_state": "none"}).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row executionCleanupRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND state <> 'purged'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision).Take(&row).Error; err != nil {
+			return runtime.ErrLeaseLost
+		}
+		// Serialize all references, including rows owned by other sessions. This
+		// closes the late-upload race with the purge worker at the ref level.
+		var refs []struct{ Ref string }
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Table("execution_cleanup_artifacts").Select("ref").Where("tenant_id=? AND ref=?", claim.TenantID, ref).Find(&refs).Error; err != nil {
+			return err
+		}
+		return tx.Table("execution_cleanup_artifacts").Create(map[string]any{"tenant_id": claim.TenantID, "session_id": claim.SessionID, "deletion_revision": claim.DeletionRevision, "ref": ref, "kind": kind, "state": "pending", "receipt_state": "none"}).Error
+	})
 }
 
 func (s *AgentRunStore) updateCleanupObservation(ctx context.Context, claim CleanupClaim, updates map[string]any) error {
@@ -412,6 +451,13 @@ func (s *AgentRunStore) RunCleanupOnce(ctx context.Context, worker string, lease
 		return err
 	}
 	if execution.CanPurge(facts) {
+		claim, err = s.refreshCleanupClaim(ctx, claim)
+		if err != nil {
+			return err
+		}
+		if err := s.claimReadyForPurge(ctx, claim, lease); err != nil {
+			return err
+		}
 		return s.PurgeCleanupClaim(ctx, claim)
 	}
 	return nil

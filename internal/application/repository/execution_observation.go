@@ -36,6 +36,7 @@ type executionObservationRow struct {
 	Payload                               []byte
 	ProductSeq                            int64
 	SourceSeq                             int64
+	DeletionRevision                      int64 `gorm:"column:deletion_revision"`
 	HistoryIncomplete                     bool
 	ConfirmedSnapshot                     []byte
 	CreatedAt                             time.Time
@@ -138,7 +139,7 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		var existing executionObservationRow
 		err = tx.WithContext(ctx).Where("tenant_id = ? AND binding_id = ? AND generation = ? AND event_id = ?", key.TenantID, bindingID, source.Generation, source.EventID).Take(&existing).Error
 		if err == nil {
-			if existing.PayloadHash != source.PayloadHash {
+			if existing.PayloadHash != source.PayloadHash || existing.DeletionRevision != source.DeletionRevision {
 				return ErrSourceConflict
 			}
 			result = toExecutionEvent(existing)
@@ -171,7 +172,7 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		}
 		incomplete := source.SourceSeq > 0 && source.SourceSeq > sourceCursor.LastConfirmedSeq+1
 		confirmedSnapshot := append([]byte(`[]`), sourceCursor.ConfirmedSnapshot...)
-		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
+		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, DeletionRevision: source.DeletionRevision, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
 		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}
