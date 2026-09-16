@@ -1,3 +1,5 @@
+import { navigate } from './navigation.ts';
+
 export interface WebPlatformAdapters {
   navigate(path: string): void;
   replace(path: string): void;
@@ -11,8 +13,8 @@ export interface WebPlatformAdapters {
 
 export function createWebPlatformAdapters(): WebPlatformAdapters {
   return {
-    navigate: (path) => window.history.pushState({}, '', path),
-    replace: (path) => window.history.replaceState({}, '', path),
+    navigate: (path) => navigate(path),
+    replace: (path) => navigate(path, 'replace'),
     readPreference: (key) => window.localStorage.getItem(key),
     writePreference: (key, value) => window.localStorage.setItem(key, value),
     removePreference: (key) => window.localStorage.removeItem(key),

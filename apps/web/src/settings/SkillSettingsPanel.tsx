@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
 import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
-import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea } from '@weknora/ui';
+import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@weknora/ui';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { EmptyState } from './EmptyState.tsx';
 import { observeUploadProgress } from '../platform/http.ts';
 import './skill-settings.css';
 import {
@@ -227,6 +228,51 @@ function ServerGlyph() {
 }
 function MinusCircleGlyph() {
   return <GlyphIcon><circle cx="12" cy="12" r="8.5" /><path d="M8.5 12h7" /></GlyphIcon>;
+}
+
+/**
+ * Vue SkillSettings.vue:5-9 header help: a t-icon "help-circle" wrapped in a
+ * t-tooltip (placement right). Icon is 16px, --td-text-color-placeholder with
+ * cursor:help and a hover shift to --td-text-color-secondary
+ * (SkillSettings.vue:1244-1253); the popup content caps at 340px width with
+ * line-height 1.55 (SkillSettings.vue:1268-1271).
+ */
+function SkillHelpTooltip({ content }: { content: string }) {
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={content}
+            className="m-0 inline-flex cursor-help border-0 bg-transparent p-0 text-[rgba(0_0_0_/.4)] transition-colors duration-150 hover:text-[rgba(0_0_0_/.6)] focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <path d="M12 17h.01" />
+            </svg>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-[340px] leading-[1.55]">{content}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+/** Vue SkillSettings.vue:3-11 .section-header: 20px/600 title row (title +
+ * help icon, 8px gap) over a 14px secondary description, 28px bottom margin. */
+function SkillSectionHeader({ helpContent }: { helpContent: string }) {
+  const t = useSkillT();
+  return (
+    <header className="mb-7">
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="m-0 text-[20px] font-semibold leading-[normal] text-[rgba(0_0_0_/.9)]">{t('settings.skills.title')}</h2>
+        <SkillHelpTooltip content={helpContent} />
+      </div>
+      <p className="m-0 text-sm leading-[1.6] text-[rgba(0_0_0_/.6)]">{t('settings.skills.description')}</p>
+    </header>
+  );
 }
 
 /** Vue SandboxBackendBadge.vue — square icon badge, exact tones/sizes. */
@@ -480,18 +526,20 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
 
   const empty = catalog.length === 0;
   return <section data-testid="skill-settings" className="grid gap-3">
+    <SkillSectionHeader helpContent={t('settings.skills.helpTooltip')} />
     {toast ? <Status tone={toast.tone}>{toast.message}</Status> : null}
     {loadError ? <Status tone="error">{loadError}</Status> : null}
     {loading ? <Status>{t('common.loading')}</Status> : empty ? (
-      <div className="flex flex-col items-center justify-center px-4 py-[80px] text-center">
-        <Status>{t('settings.skills.emptyDesc')}</Status>
-        {skillConfigs.length === 0 ? <p className="m-0 mb-4 text-[13px] text-[rgba(0_0_0_/.4)]">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
-        <div className="flex items-center justify-center gap-2">
+      <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
+        <EmptyState
+          description={t('settings.skills.emptyDesc')}
+          hint={skillConfigs.length === 0 ? t('settings.skills.emptyNoSandboxHint') : undefined}
+        >
           <Button type="button" variant="primary" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
             ? <Button type="button" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
             : null}
-        </div>
+        </EmptyState>
       </div>
     ) : (
       <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] items-stretch gap-2.5">

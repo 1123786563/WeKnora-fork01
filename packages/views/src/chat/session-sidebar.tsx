@@ -213,7 +213,21 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
       </>
     </div> : null}
     {batchError ? <p role="alert" className="mx-[4px] my-[4px] text-[12px] text-[#e34d59]">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label={formatChatCopy(t, 'batchRetry')} className="border-0 bg-transparent p-0 text-[12px] text-[#07c05f] underline cursor-pointer" onClick={() => void submitBatchDelete()} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
-    {loading ? <p role="status">{t.loadingSessions}</p> : null}
+    {/* Vue menu.vue:113-131 renders four gradient skeleton rows while the
+        first bucket loads (never a text "Loading..." label); menu.vue:162-167
+        shows a small spinner below the rows while a later page streams in.
+        The i18n 加载中... copy stays as the sr-only announcement so screen
+        readers keep the old status text. */}
+    {loading && totalItems === 0 ? <div role="status" className="m-[4px]">
+      <span className="sr-only">{t.loadingSessions}</span>
+      {[0, 1, 2, 3].map((row) => <div key={row} aria-hidden="true" className="flex items-center rounded-[8px] px-[10px] py-[11px]">
+        <span className="block h-[14px] w-full rounded-[4px] bg-[#eceff3] motion-safe:animate-pulse" />
+      </div>)}
+    </div> : null}
+    {loading && totalItems > 0 ? <div role="status" className="flex items-center justify-center py-[8px]">
+      <span className="sr-only">{t.loadingSessions}</span>
+      <span aria-hidden="true" className="block h-[14px] w-[14px] rounded-full border-[1.5px] border-[rgba(0,0,0,0.4)] border-t-transparent motion-safe:animate-spin" />
+    </div> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key}>
       {group.label ? <h3 className="mt-[1rem] mx-0 mb-[0.35rem] text-[#66758b] text-[0.78rem] font-normal tracking-[0.04em] leading-[20px] uppercase">{sessionGroupLabel(t, group.label)}</h3> : null}

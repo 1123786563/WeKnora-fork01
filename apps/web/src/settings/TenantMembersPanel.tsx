@@ -4,6 +4,7 @@ import type { Locale } from '@weknora/i18n';
 import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { TenantAuditDrawer } from './TenantAuditDrawer.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import { auditDateParts } from './SystemAuditLogPanel.tsx';
 
 type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
@@ -872,7 +873,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           </Button>
         </div>
         {auditError ? <div className="flex flex-1 flex-col items-start"><div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><Button type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</Button></div></div>
-          : !auditLoading && audit.length === 0 ? <div className="flex flex-1 items-center justify-center px-3 py-6"><Status>{tr('tenantMember.audit.empty')}</Status></div>
+          : !auditLoading && audit.length === 0 ? <div className="flex flex-1 flex-col items-center justify-center px-3 py-6"><EmptyState description={tr('tenantMember.audit.empty')} /></div>
           : <div ref={auditScrollRef} className="audit-scroll-area min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <div className="overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
                 <table className={TBL}>

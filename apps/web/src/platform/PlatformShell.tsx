@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
 import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '../../../../packages/views/src/chat/session-sidebar.tsx';
+import { resolveChatCopy } from '../../../../packages/views/src/chat/chat-copy.ts';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
 import { ContextualGuideHost } from '../../../../packages/views/src/guides/ContextualGuide.tsx';
 import { NewUserGuide } from '../../../../packages/views/src/guides/NewUserGuide.tsx';
@@ -19,6 +21,7 @@ import {
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
 import { InvitationInbox } from './InvitationInbox.tsx';
+import { navigate, subscribeNavigation } from './navigation.ts';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
@@ -27,6 +30,13 @@ import '../../../../packages/views/src/guides/guides.css';
 import weknoraLogo from '../auth/assets/weknora.png';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
+
+function handleInternalLink(event: ReactMouseEvent<HTMLAnchorElement>, path: string, afterNavigate?: () => void): void {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  afterNavigate?.();
+  navigate(path);
+}
 
 export interface PlatformShellProps {
   client: Client;
@@ -140,6 +150,13 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     renameSession: formatMessage(locale, 'menu.renameSession'),
     newSession: formatMessage(locale, 'menu.newSession'),
   };
+  // Vue menu.vue renders session-list copy in the app locale (stored
+  // preference, zh-CN default). SessionSidebarList without a copy prop falls
+  // back to resolveChatLocale(), which also consults navigator.language and
+  // rendered English chat copy ("Loading...") in en-US browsers; pass the
+  // shell's resolved copy so the sidebar follows the app locale like the
+  // chat page does (ChatRoutePage: resolveChatCopy(readStoredLocale())).
+  const shellSidebarCopy = useMemo(() => resolveChatCopy(locale), [locale]);
 
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
@@ -180,19 +197,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const recentQueriesKey = recentQueriesStorageKey(user.id || null, readReactPlatformState(window.localStorage)?.tenantId ?? null);
 
   useEffect(() => {
-    // Route transitions in this app mostly use full navigations and popstate
-    // reloads the page. Track pushState/replaceState so in-place navigations
-    // (e.g. settings section links) still update the active highlight.
+    // Keep the active menu in sync with browser history and app navigation.
     const update = () => setPathname(window.location.pathname);
-    window.addEventListener('popstate', update);
-    const originalPush = window.history.pushState.bind(window.history);
-    const originalReplace = window.history.replaceState.bind(window.history);
-    window.history.pushState = (...args: Parameters<typeof originalPush>) => { const r = originalPush(...args); update(); return r; };
-    window.history.replaceState = (...args: Parameters<typeof originalReplace>) => { const r = originalReplace(...args); update(); return r; };
+    const unsubscribe = subscribeNavigation(update);
     return () => {
-      window.removeEventListener('popstate', update);
-      window.history.pushState = originalPush;
-      window.history.replaceState = originalReplace;
+      unsubscribe();
     };
   }, []);
 
@@ -302,15 +311,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [sessionSource, sessionSourceOptions]);
   const loadShellSessionPage = useCallback(async (page: number, generation: number) => {
     if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current || sessionsRequestRef.current) return;
+    sessionsRequestRef.current = true;
+    setSessionsLoading(true);
     // A bucket can disappear after an auth/client scope refresh. Let the
     // source effect restart from web rather than issuing a stale privileged
-    // request during that render transition.
+    // request during that render transition. The loading flag is raised
+    // before this early return so the reset frame keeps the skeleton (not
+    // the empty state); the effect run triggered by the source change resets
+    // sessionsRequestRef before reloading.
     if (!sessionSourceOptionsRef.current.some((option) => option.value === sessionSource)) {
       setSessionSource('web');
       return;
     }
-    sessionsRequestRef.current = true;
-    setSessionsLoading(true);
     try {
       const apiSource = sessionSource.startsWith('im:') ? sessionSource.slice('im:'.length) : sessionSource;
       const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: apiSource });
@@ -335,7 +347,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     const scopeChanged = sessionsClientRef.current !== null && sessionsScopeRef.current !== canSeeAdminSessionSources;
     sessionsClientRef.current = client;
     sessionsScopeRef.current = canSeeAdminSessionSources;
-    if (clientChanged || scopeChanged) {
+    // A bucket can disappear after an auth/client scope refresh. Restart from
+    // web rather than issuing a stale privileged request during that render
+    // transition. When the source is already web there is nothing to reset —
+    // falling through to the reload below is required: an early return here
+    // leaves sessionsMountedRef false so the in-flight request's finally
+    // never resets sessionsLoading and the sidebar strands on "Loading..."
+    // (R428 parity bug: the first admin auth/me flips the scope after mount).
+    if ((clientChanged || scopeChanged) && sessionSource !== 'web') {
       setSessionSource('web');
       return () => { sessionsMountedRef.current = false; };
     }
@@ -438,7 +457,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       // history patch mirrors into the active-row highlight.
       window.dispatchEvent(new CustomEvent(SHELL_SESSION_ROUTE_EVENT, { detail: { sessionId } }));
     } else {
-      window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`);
+      navigate(`/platform/chat/${encodeURIComponent(sessionId)}`);
     }
   }, []);
 
@@ -473,7 +492,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     setSessions(sessionsRef.current);
     // Vue menu.vue: deleting the open session routes back to creatChat.
     if (chatSessionIdFromPath(window.location.pathname) === sessionId) {
-      window.location.assign('/platform/creatChat');
+      navigate('/platform/creatChat');
     }
   }
 
@@ -484,7 +503,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - sessionIds.length);
     setSessions(sessionsRef.current);
     if (chatSessionIdFromPath(window.location.pathname) && selected.has(chatSessionIdFromPath(window.location.pathname)!)) {
-      window.location.assign('/platform/creatChat');
+      navigate('/platform/creatChat');
     }
     // Rebase the paginated window from page 1 after a destructive mutation so
     // rows shifted from later pages are not skipped by the old offset.
@@ -528,7 +547,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [paletteOpen]);
 
   const closePalette = useCallback(() => setPaletteOpen(false), []);
-  const navigateFromPalette = useCallback((path: string) => { window.location.assign(path); }, []);
+  const navigateFromPalette = useCallback((path: string) => { navigate(path); }, []);
   const recordPaletteSearch = useCallback((query: string) => {
     setRecentQueries(pushRecentQuery(window.localStorage, recentQueriesKey, query));
   }, [recentQueriesKey]);
@@ -578,7 +597,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
         : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
         <div className="flex items-center justify-between h-[42px] shrink-0 pr-[10px] pl-[14px]">
-          <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
+                <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  navigate('/platform/knowledge-bases');
+                }}>
             {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
           </a>
           {!collapsed && (
@@ -633,7 +656,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
               return (
-                <a key={item.key} href={item.href} className={(collapsed
+                <a key={item.key} href={item.href} onClick={(event) => {
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  navigate(item.href);
+                }} className={(collapsed
                   ? 'justify-center mx-[4px] px-0 '
                   : 'mx-0 px-[14px] ')
                   + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold whitespace-nowrap '
@@ -662,6 +689,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
               <SessionSidebarList
+                copy={shellSidebarCopy}
                 groups={sessionListGroups}
                 selectedSessionId={activeChatId}
                 loading={sessionsLoading}
@@ -730,12 +758,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 </button>
                 <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=userprofile"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
                   {labels.personalSettings}
                 </a>
                 <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=tenant"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
                   {labels.workspaceSettings}
                 </a>
                 {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
@@ -750,17 +778,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 </div> : null}
                 {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
                   {labels.membersSettings}
                 </a> : null}
                 {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=models"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
                   {labels.modelsSettings}
                 </a> : null}
                 {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=skills"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
                   {labels.skillsSettings}
                 </a> : null}
                 <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"

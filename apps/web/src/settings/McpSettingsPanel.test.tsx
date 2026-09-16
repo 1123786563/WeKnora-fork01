@@ -47,17 +47,41 @@ test('MCP settings keeps the Vue empty state for a viewer', () => {
   assert.doesNotMatch(html, /添加服务/);
 });
 
-test('MCP settings keeps the Vue admin-only management boundary for an owner', () => {
+test('MCP settings keeps the Vue admin-only management boundary for a viewer-level role', () => {
   const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
     client,
     initialServices: [{ id: 'mcp-1', name: 'Docs', description: 'Search docs', enabled: true, transport_type: 'sse', is_builtin: false }],
-    role: 'owner',
+    role: 'viewer',
   }));
   assert.doesNotMatch(html, /编辑/);
   assert.doesNotMatch(html, /删除/);
   assert.doesNotMatch(html, /添加服务/);
   assert.doesNotMatch(html, /role="switch"/);
   assert.match(html, /Docs/);
+});
+
+test('MCP settings gives owners the Vue management controls (hasRole ranks owner above admin)', () => {
+  const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
+    client,
+    initialServices: [{ id: 'mcp-1', name: 'Docs', description: 'Search docs', enabled: true, transport_type: 'sse', is_builtin: false }],
+    role: 'owner',
+  }));
+  assert.match(html, /编辑/);
+  assert.match(html, /删除/);
+  assert.match(html, /添加服务/);
+  assert.match(html, /role="switch"/);
+  assert.match(html, /Docs/);
+});
+
+test('MCP settings renders the Vue dashed add-service tile in the owner empty state (R428)', () => {
+  const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
+    client,
+    initialServices: [],
+    role: 'owner',
+  }));
+  assert.doesNotMatch(html, /暂无 MCP 服务/);
+  assert.match(html, /添加服务/);
+  assert.match(html, /border-dashed/, 'tile keeps the Vue dashed service-card--add border');
 });
 
 test('MCP settings renders service metadata and admin actions', () => {
@@ -327,6 +351,21 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.ok(footerButtons.findIndex((label) => label.includes('取消')) < footerButtons.findIndex((label) => label.includes('保存并下一步')), 'Vue footer order: cancel before confirm');
     assert.ok(!findButton('测试连接'), 'Vue baseline has no reachable test-connection UI');
     assert.ok(!dialog?.querySelector('section[aria-label="Tools 清单"]'), 'step 0 does not mount the tools panel');
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('the owner empty-state add tile opens the Vue add drawer like the admin tile (R428)', async () => {
+  const root = await mountEditor(React.createElement(McpSettingsPanel, { client: mcpStubClient(), initialServices: [], role: 'owner' }));
+  try {
+    assert.doesNotMatch(document.body.textContent ?? '', /暂无 MCP 服务/);
+    const addTile = findButton('添加服务');
+    assert.ok(addTile, 'owner empty state renders the Vue add-service tile');
+    await act(async () => { addTile?.click(); });
+    const dialog = document.querySelector('.wks-mcp-drawer');
+    assert.ok(dialog, 'clicking the tile opens the Vue add drawer');
+    assert.match(dialog?.getAttribute('aria-label') ?? '', /添加/);
   } finally {
     await unmountEditor(root);
   }

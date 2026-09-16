@@ -13,7 +13,8 @@ import { createBrowserCredentialAdapter, persistBrowserCredential } from './plat
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, shouldReloadOnPopState } from './routes.tsx';
+import { installNavigationObserver, subscribeNavigation } from './platform/navigation.ts';
+import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
 import { CraftRoutes } from './features/craft/routes.tsx';
 const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
@@ -81,13 +82,13 @@ const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).en
 const loadingLocale: Locale = isLocale(navigator.language) ? navigator.language : 'en-US';
 const loadingText = loadingLabel(loadingLocale);
 const embedEntryError = ({ 'zh-CN': 'Embed 必须使用独立入口。', 'en-US': 'Embed must use its isolated entrypoint.', 'ja-JP': 'Embed は専用エントリーポイントを使用してください。', 'ko-KR': 'Embed는 전용 진입점을 사용해야 합니다.', 'ru-RU': 'Embed должен использовать изолированную точку входа.' } as Record<Locale, string>)[loadingLocale];
-const route = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
-const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
-let session: ReactPlatformState = route.kind === 'embed'
+let currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
+const importedPlatformState = currentRoute.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
+let session: ReactPlatformState = currentRoute.kind === 'embed'
   ? { credential: { kind: 'anonymous' }, tenantId: null, preferences: {} }
   : importedPlatformState!;
-const browserCredentialAdapter = route.kind === 'embed' ? undefined : createBrowserCredentialAdapter(window.localStorage);
-const currentCredential = (): Credential => route.kind === 'embed'
+const browserCredentialAdapter = currentRoute.kind === 'embed' ? undefined : createBrowserCredentialAdapter(window.localStorage);
+const currentCredential = (): Credential => currentRoute.kind === 'embed'
   ? session.credential
   : readReactPlatformState(window.localStorage)?.credential ?? session.credential;
 const injectedApiBaseUrl = (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__;
@@ -140,16 +141,12 @@ const root = createRoot(document.getElementById('root')!);
 initTheme();
 const platformAdapters = createWebPlatformAdapters();
 
-// Most route transitions intentionally use full navigations so authentication,
-// tenant scope, and capability guards are re-evaluated. Settings owns its
-// same-path query/subsection history through popstate; only reload when browser
-// history changes the pathname and therefore the route tree.
-let previousPathname = window.location.pathname;
-window.addEventListener('popstate', () => {
-  const currentPathname = window.location.pathname;
-  const reload = shouldReloadOnPopState(previousPathname, currentPathname);
-  previousPathname = currentPathname;
-  if (reload) window.location.reload();
+// Route changes stay inside the mounted React tree. PlatformShell keeps its
+// identity while the route-specific content is reconciled from the new URL.
+installNavigationObserver();
+subscribeNavigation(() => {
+  currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
+  if (session.credential.kind === 'bearer') renderProtected();
 });
 
 function nextPathAfterAuth(): string {
@@ -172,7 +169,7 @@ function completeAuthentication(next: AuthSession): void {
 }
 
 function renderLogin(error = initialLoginError, inviteToken = '') {
-  renderAuth(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
+  renderAuth(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={currentRoute.kind === 'login' ? currentRoute.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
 }
 
 async function logout(): Promise<void> {
@@ -206,6 +203,7 @@ function renderShell(page: ReactNode): void {
 }
 
 function renderProtected() {
+  const route = currentRoute;
   const pathname = `${window.location.pathname}${window.location.search}`;
   const current = scopeRuntime.current().scope;
   const decision = guardRoute(pathname, {
@@ -289,11 +287,11 @@ function renderProtected() {
 }
 
 async function bootstrap() {
-  if (route.kind === 'embed') {
+  if (currentRoute.kind === 'embed') {
     root.render(<main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Status tone="error">{embedEntryError}</Status></main>);
     return;
   }
-  if (route.kind === 'login') {
+  if (currentRoute.kind === 'login') {
     const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
     if (inviteToken) {
       // Vue Login.vue:798-801 — an existing session redeems the token directly.
@@ -347,7 +345,7 @@ async function bootstrap() {
     renderLogin();
     return;
   }
-  if (route.kind === 'join') {
+  if (currentRoute.kind === 'join') {
     const redirect = routeRedirect(`${window.location.pathname}${window.location.search}`);
     const joinToken = new URLSearchParams(window.location.search).get('token')?.trim();
     if (joinToken) {

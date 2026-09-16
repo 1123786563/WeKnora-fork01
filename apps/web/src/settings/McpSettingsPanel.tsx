@@ -3,6 +3,7 @@ import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
+import { roleAtLeast } from "@weknora/views/settings/registry";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
 /* Tailwind utilities migrated from the deleted .wk-mcp-* rules in styles.css
@@ -665,8 +666,11 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const t = createTranslator(useAppLocale());
   const locale = useAppLocale();
   // Vue McpSettings.vue gates every MCP mutation and management control with
-  // authStore.hasRole('admin'); owners retain read-only visibility.
-  const canEdit = role === "admin";
+  // authStore.hasRole('admin') (frontend/src/stores/auth.ts:179) — a rank
+  // comparison (viewer < contributor < admin < owner), so owners pass too and
+  // keep the add-service tile in the empty state (R428 evidence). Only
+  // viewer/contributor fall back to the plain "no services" empty state.
+  const canEdit = roleAtLeast(role, "admin");
   const [services, setServices] = useState<McpService[]>(() =>
     (initialServices ?? []).map(asService),
   );
