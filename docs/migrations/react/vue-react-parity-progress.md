@@ -3871,6 +3871,18 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   mutations, Embed host streaming, or Wails feature interaction. No mobile
   code was modified.
 
+## 2026-09-16 Round R408 — Add Graph runtime interaction coverage
+
+- `a78cd6d0` adds a jsdom interaction test for the Knowledge Graph arrow
+  toggle, reciprocal-edge deduplication, and marker visibility. The test
+  exercises the rendered SVG contract rather than only testing the pure
+  helper; Graph focused coverage is now 10/10.
+- The supplemental change keeps Vue-derived edge color/opacity and uses a
+  directed-edge set for deterministic reciprocal detection. Web typecheck
+  and `git diff --check` pass. This remains DOM-host/source evidence, not
+  authenticated backend graph data or paired Vue screenshot evidence. No
+  mobile code was modified.
+
 ## 2026-09-16 Round R406 — Integrations form and channel-entry parity review
 
 - `4d1dd75a` fixes two confirmed Web integrations differences against the Vue
