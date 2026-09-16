@@ -24,12 +24,13 @@ export interface DisplayGraphEdge extends WikiGraphEdge {
  */
 export function displayGraphEdges(edges: readonly WikiGraphEdge[]): DisplayGraphEdge[] {
   const seen = new Set<string>();
+  const directed = new Set(edges.map((edge) => `${edge.source}\u0000${edge.target}`));
   const result: DisplayGraphEdge[] = [];
   for (const edge of edges) {
     const pair = [edge.source, edge.target].sort().join('\u0000');
     if (seen.has(pair)) continue;
     seen.add(pair);
-    const bidirectional = edges.some((candidate) => candidate.source === edge.target && candidate.target === edge.source);
+    const bidirectional = directed.has(`${edge.target}\u0000${edge.source}`);
     result.push({ ...edge, bidirectional });
   }
   return result;
