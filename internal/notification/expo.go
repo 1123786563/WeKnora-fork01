@@ -174,7 +174,9 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 		return nil, &ProviderError{Code: "MessageRateExceeded", Retry: true, StatusCode: resp.StatusCode, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &ProviderError{Code: "UnknownTransport", Retry: true, StatusCode: resp.StatusCode, Err: fmt.Errorf("expo status %d", resp.StatusCode)}
+		code := classifyExpoBatchHTTPFailure(resp.StatusCode, responseBody)
+		revoke, retry := ClassifyPushFailure(code)
+		return nil, &ProviderError{Code: code, Revoke: revoke, Retry: retry, StatusCode: resp.StatusCode, Err: fmt.Errorf("expo status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))}
 	}
 	var envelope expoEnvelope
 	if err := json.Unmarshal(responseBody, &envelope); err != nil {
@@ -203,6 +205,55 @@ func (p *ExpoProvider) SendBatch(ctx context.Context, items []PushBatchItem) ([]
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// classifyExpoBatchHTTPFailure keeps provider credential/configuration errors
+// out of the transport retry path.  Expo uses HTTP 401/403 for credentials,
+// while some gateways return a structured provider error with a 2xx/4xx
+// envelope.  Only recognized configuration codes are trusted here; unknown
+// responses remain retryable transport failures.
+func classifyExpoBatchHTTPFailure(status int, body []byte) string {
+	if status == http.StatusUnauthorized {
+		return "InvalidCredentials"
+	}
+	if status == http.StatusForbidden {
+		return "InvalidProviderToken"
+	}
+	var envelope struct {
+		Errors []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err == nil {
+		for _, item := range envelope.Errors {
+			if isExpoConfigurationCode(item.Code) {
+				return strings.TrimSpace(item.Code)
+			}
+		}
+		var code string
+		if len(envelope.Error) > 0 {
+			if json.Unmarshal(envelope.Error, &code) == nil && isExpoConfigurationCode(code) {
+				return strings.TrimSpace(code)
+			}
+			var detail struct {
+				Code string `json:"code"`
+			}
+			if json.Unmarshal(envelope.Error, &detail) == nil && isExpoConfigurationCode(detail.Code) {
+				return strings.TrimSpace(detail.Code)
+			}
+		}
+	}
+	return "UnknownTransport"
+}
+
+func isExpoConfigurationCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "InvalidCredentials", "InvalidProviderToken", "InvalidProviderConfig":
+		return true
+	default:
+		return false
+	}
 }
 
 func firstTicket(raw json.RawMessage) (expoTicket, error) {

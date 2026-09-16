@@ -109,26 +109,46 @@ func (p *PushNotificationProvider) SendReceipt(ctx context.Context, d repository
 }
 
 func (p *PushNotificationProvider) SendBatch(ctx context.Context, deliveries []repository.NotificationDelivery) ([]NotificationBatchResult, error) {
+	if p == nil || p.provider == nil || p.resolve == nil {
+		return nil, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Revoke: false, Err: errors.New("direct push provider is not configured")}
+	}
+	if configured, ok := p.provider.(interface{ Configured() bool }); ok && !configured.Configured() {
+		return nil, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Revoke: false, Err: errors.New("direct push provider is not configured")}
+	}
 	batch, ok := p.provider.(pushnotification.PushBatchProvider)
 	if !ok {
-		return nil, errors.New("push provider does not support batch delivery")
+		return nil, &pushnotification.ProviderError{Code: "InvalidProviderConfig", Retry: false, Revoke: false, Err: errors.New("push provider does not support batch delivery")}
 	}
 	items := make([]pushnotification.PushBatchItem, 0, len(deliveries))
+	resultsByID := make(map[string]NotificationBatchResult, len(deliveries))
 	for _, d := range deliveries {
 		token, err := p.resolve(ctx, d)
 		if err != nil {
-			items = append(items, pushnotification.PushBatchItem{ID: d.ID, Token: ""})
+			// Do not submit an empty token.  A resolver/decryption failure is a
+			// provider/configuration failure and must never be mistaken for a
+			// confirmed invalid device registration.
+			resultsByID[d.ID] = NotificationBatchResult{DeliveryID: d.ID, Err: &pushnotification.ProviderError{
+				Code: "InvalidProviderConfig", Retry: false, Revoke: false,
+				Err: fmt.Errorf("resolve push token for delivery %s: %w", d.ID, err),
+			}}
 			continue
 		}
 		items = append(items, pushnotification.PushBatchItem{ID: d.ID, Token: token, Payload: pushnotification.PushPayload{Title: d.Intent.Kind, Body: d.Intent.Kind, RunID: d.Intent.RunID, EventID: d.Intent.EventID}})
 	}
-	results, err := batch.SendBatch(ctx, items)
-	if err != nil {
-		return nil, err
+	if len(items) > 0 {
+		results, err := batch.SendBatch(ctx, items)
+		if err != nil {
+			return nil, err
+		}
+		for _, result := range results {
+			resultsByID[result.ID] = NotificationBatchResult{DeliveryID: result.ID, Receipt: result.Receipt, Err: result.Err}
+		}
 	}
-	out := make([]NotificationBatchResult, 0, len(results))
-	for _, result := range results {
-		out = append(out, NotificationBatchResult{DeliveryID: result.ID, Receipt: result.Receipt, Err: result.Err})
+	out := make([]NotificationBatchResult, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		if result, ok := resultsByID[delivery.ID]; ok {
+			out = append(out, result)
+		}
 	}
 	return out, nil
 }

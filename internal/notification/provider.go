@@ -56,7 +56,7 @@ func ClassifyPushFailure(code string) (revoke, retry bool) {
 		return true, false
 	case "MessageRateExceeded", "TooManyRequests", "Unavailable", "UnknownTransport", "Timeout", "TransportError":
 		return false, true
-	case "MessageTooBig", "InvalidCredentials", "InvalidProviderToken", "MessageTooBigPermanent":
+	case "MessageTooBig", "InvalidCredentials", "InvalidProviderToken", "InvalidProviderConfig", "MessageTooBigPermanent":
 		return false, false
 	default:
 		return false, true

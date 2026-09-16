@@ -98,3 +98,34 @@ func TestExpoProviderRejectsMalformedEndpointAsConfigurationError(t *testing.T) 
 	require.ErrorAs(t, err, &providerErr)
 	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
 }
+
+func TestExpoProviderBatchPausesCredentialFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		code   string
+	}{
+		{name: "unauthorized", status: http.StatusUnauthorized, code: "InvalidCredentials"},
+		{name: "forbidden", status: http.StatusForbidden, code: "InvalidProviderToken"},
+		{name: "structured", status: http.StatusBadRequest, body: `{"errors":[{"code":"InvalidCredentials"}]}`, code: "InvalidCredentials"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				if tc.body != "" {
+					_, _ = io.WriteString(w, tc.body)
+				}
+			}))
+			defer srv.Close()
+			_, err := NewExpoProviderWithClient(srv.URL, "", srv.Client()).SendBatch(context.Background(), []PushBatchItem{
+				{ID: "d1", Token: "token-1"}, {ID: "d2", Token: "token-2"},
+			})
+			var providerErr *ProviderError
+			require.ErrorAs(t, err, &providerErr)
+			require.Equal(t, tc.code, providerErr.Code)
+			require.False(t, providerErr.Revoke)
+			require.False(t, providerErr.Retry)
+		})
+	}
+}

@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +31,66 @@ type batchNotificationProvider struct {
 	failOnce  bool
 	seenIDs   []string
 	calls     [][]string
+}
+
+type directBatchProvider struct {
+	configured bool
+	items      []pushnotification.PushBatchItem
+}
+
+func (p *directBatchProvider) Configured() bool { return p != nil && p.configured }
+func (p *directBatchProvider) Send(context.Context, string, pushnotification.PushPayload) (pushnotification.PushReceipt, error) {
+	return pushnotification.PushReceipt{ID: "single"}, nil
+}
+func (p *directBatchProvider) SendBatch(_ context.Context, items []pushnotification.PushBatchItem) ([]pushnotification.PushBatchResult, error) {
+	p.items = append([]pushnotification.PushBatchItem(nil), items...)
+	results := make([]pushnotification.PushBatchResult, 0, len(items))
+	for _, item := range items {
+		results = append(results, pushnotification.PushBatchResult{ID: item.ID, Receipt: pushnotification.PushReceipt{ID: "receipt-" + item.ID, Status: "ok"}})
+	}
+	return results, nil
+}
+
+func TestPushNotificationProviderBatchFailsClosedAndPreservesValidDevices(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	resolverErr := errors.New("token decrypt failed")
+	adapter := NewPushNotificationProvider(provider, func(_ context.Context, d repository.NotificationDelivery) (string, error) {
+		if d.ID == "bad" {
+			return "", resolverErr
+		}
+		return "token-valid", nil
+	})
+	results, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "bad"}, {ID: "good"}})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Len(t, provider.items, 1, "resolver failures must never submit an empty token")
+	require.Equal(t, "good", provider.items[0].ID)
+	require.Equal(t, "token-valid", provider.items[0].Token)
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, results[0].Err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	require.ErrorIs(t, providerErr, resolverErr)
+	require.Equal(t, "receipt-good", results[1].Receipt.ID)
+}
+
+func TestPushNotificationProviderBatchRejectsUnconfiguredAdapter(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	adapter := NewPushNotificationProvider(provider, nil)
+	_, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "d1"}, {ID: "d2"}})
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+
+	provider = &directBatchProvider{configured: false}
+	adapter = NewPushNotificationProvider(provider, func(context.Context, repository.NotificationDelivery) (string, error) { return "token", nil })
+	_, err = adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "d1"}, {ID: "d2"}})
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.Empty(t, provider.items)
 }
 
 func (p *batchNotificationProvider) Send(_ context.Context, d repository.NotificationDelivery) error {
