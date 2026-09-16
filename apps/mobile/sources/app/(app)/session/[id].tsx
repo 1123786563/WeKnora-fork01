@@ -8,7 +8,7 @@ import { createProductConversationViewModel, createProductExecutionApi } from '@
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
-import { createPersistentExecutionRequestStorage } from '@/weknora/platform/execution-storage';
+import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
 import { projectExecutionSnapshot } from '@/weknora/conversations/execution-projection';
 
 type Params = ProductSessionResourceSelection & { id?: string; resourceUserId?: string; resourceTenantId?: string };
@@ -50,6 +50,10 @@ function ProductSessionRoute() {
     if (!identity.userId || !identity.tenantId || !host) return null;
     return createPersistentExecutionRequestStorage(AsyncStorage, `weknora:execution-request:${host.origin}:${identity.tenantId}:${identity.userId}:${sessionId}`);
   }, [host, identity.tenantId, identity.userId, sessionId]);
+  const eventStorage = React.useMemo(() => {
+    if (!identity.userId || !identity.tenantId || !host) return null;
+    return getExecutionStorage({ origin: host.origin, tenantID: identity.tenantId, userID: identity.userId });
+  }, [host, identity.tenantId, identity.userId]);
   const viewModel = React.useMemo(() => {
     if (!resources || !executionApi || !sessionId || !requestStorage) return null;
     return createProductConversationViewModel({
@@ -62,6 +66,7 @@ function ProductSessionRoute() {
       budgetUpper: 0,
       executions: executionApi,
       requestStorage,
+      eventStorage: eventStorage ?? undefined,
       projection: executionApi.snapshot ? {
         load: async (runID, signal) => projectExecutionSnapshot(await executionApi.snapshot!(runID, signal)),
       } : undefined,

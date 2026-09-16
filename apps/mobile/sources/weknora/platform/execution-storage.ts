@@ -204,6 +204,22 @@ export function createExecutionStorage(driver: ExecutionStorageDriver, cipher: P
 
 export type ExecutionStorage = ReturnType<typeof createExecutionStorage>;
 
+/**
+ * Native bootstrap registers the encrypted SQLite implementation once. The
+ * route reads this scoped factory instead of silently falling back to an
+ * in-memory projection. Web/test environments may leave it unset and must
+ * report durable recovery as unavailable.
+ */
+export type ExecutionStorageFactory = (scope: ExecutionScope) => ExecutionStorage | null;
+let executionStorageFactory: ExecutionStorageFactory | null = null;
+export function registerExecutionStorageFactory(factory: ExecutionStorageFactory): () => void {
+  executionStorageFactory = factory;
+  return () => { if (executionStorageFactory === factory) executionStorageFactory = null; };
+}
+export function getExecutionStorage(scope: ExecutionScope): ExecutionStorage | null {
+  return executionStorageFactory?.(scope) ?? null;
+}
+
 /** Small durable request index used before a native SQLite driver is injected.
  * The value contains no prompt or credential; only the opaque request identity
  * and server admission state are persisted. */
