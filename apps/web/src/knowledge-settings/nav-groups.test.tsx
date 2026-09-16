@@ -208,13 +208,14 @@ test('clicking a nav item activates it (Vue .nav-item.active) and swaps the cont
 
 test('unported Vue sections render the shared placeholder instead of a fabricated editor', async () => {
   await renderPage(clientFor({ dataSources: [], shareList: 0, activityCalls: [] }));
-  // R439 ported models/chunking/advanced; multimodal stays unported (phase 3).
-  const multimodalButton = navButtons().find((button) => button.getAttribute('data-section') === 'multimodal');
-  assert.ok(multimodalButton, 'multimodal nav item must exist (Vue renders it)');
-  await act(async () => { multimodalButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  // R439 ported models/chunking/advanced; R440 ported multimodal/asr/faq.
+  // The Vue basic section (name/description/type) stays the only unported one.
+  const basicButton = navButtons().find((button) => button.getAttribute('data-section') === 'basic');
+  assert.ok(basicButton, 'basic nav item must exist (Vue renders it)');
+  await act(async () => { basicButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   const text = document.body.textContent ?? '';
   assert.match(text, /not been ported/, 'placeholder must reuse the shared not-yet-ported notice');
-  assert.equal(document.body.querySelector('select'), null, 'no invented editing controls for unported sections');
+  assert.equal(document.body.querySelector('input'), null, 'no invented editing controls for unported sections');
 });
 
 test('surface chrome matches the Vue modal: 1000x750 modal frame and 208px sidebar', async () => {

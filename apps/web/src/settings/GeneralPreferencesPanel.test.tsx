@@ -109,7 +109,14 @@ test('general preferences keeps four labeled native selects (language/theme/mono
 test('applies persisted font preferences when the panel mounts', async () => {
   dom.window.localStorage.setItem('font_sans', 'georgia');
   dom.window.localStorage.setItem('font_mono', 'monaco');
+  // Pre-namespacing flat key: adopted into the active user's namespace by the
+  // startup migration, exactly like Vue preferenceStorage (login required —
+  // anon skips migration and keeps its own WeKnora_anon_* namespace).
+  dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u1' }));
   dom.window.localStorage.setItem('weknora-font-size', 'large');
+  const { migratePreferencesIntoUser, resetMigrationLatch } = await import('@weknora/domain/settings/local-preferences');
+  resetMigrationLatch();
+  migratePreferencesIntoUser(dom.window.localStorage);
 
   await mountPanel();
 

@@ -8,7 +8,7 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
-import { applyWikiSearch, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
+import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
@@ -296,7 +296,11 @@ export function WikiPage({
   async function reloadSelected() {
     if (!selected) return;
     try {
-      choose(await client.wiki.get(knowledgeBaseId, selected.slug));
+      const latest = await client.wiki.get(knowledgeBaseId, selected.slug);
+      // Vue `reloadLatestIntoEditor`: discard the local draft and re-open the
+      // editor seeded with the server's current content, staying in edit mode.
+      choose(latest);
+      setEditing(true);
     } catch (error) {
       setSaveState({
         status: "error",
@@ -305,6 +309,36 @@ export function WikiPage({
             ? error.message
             : t("wikiBrowser.editSaveFailed"),
       });
+    }
+  }
+
+  // Vue `cancelEditPage`: exit edit mode and drop the in-progress draft.
+  function cancelEdit() {
+    if (!selected) return;
+    choose(selected);
+  }
+
+  // Vue `overwriteSavePage`: resolve a 409 conflict by re-saving the local
+  // draft on top of the server's latest version (last write wins; the losing
+  // version stays in revision history).
+  async function overwriteConflict() {
+    if (!selected) return;
+    const result = await overwriteWikiPage(
+      client.wiki,
+      knowledgeBaseId,
+      selected.slug,
+      { title, content, summary },
+      {
+        titleRequired: t("wikiBrowser.newPageMissingFields"),
+        contentRequired: t("wikiBrowser.newPageMissingFields"),
+        conflict: t("wikiBrowser.editSaveFailed"),
+        saveFailed: t("wikiBrowser.editSaveFailed"),
+      },
+    );
+    setSaveState(result);
+    if (result.status === "saved") {
+      choose(result.page);
+      await loadPages();
     }
   }
 
@@ -584,6 +618,9 @@ export function WikiPage({
               </Button>
               {selected ? (
                 <>
+                  <Button type="button" onClick={cancelEdit}>
+                    {t("common.cancel")}
+                  </Button>
                   <Button type="button" onClick={() => void reloadSelected()}>
                     {t("wikiBrowser.editConflictReload")}
                   </Button>
@@ -594,7 +631,12 @@ export function WikiPage({
               ) : null}
             </div>
             {saveState?.status === "conflict" ? (
-              <Status tone="warning">{saveState.message}</Status>
+              <div className="wk-wiki-conflict flex items-center justify-between gap-[0.5rem]">
+                <Status tone="warning">{saveState.message}</Status>
+                <Button type="button" onClick={() => void overwriteConflict()}>
+                  {t("wikiBrowser.editConflictOverwrite")}
+                </Button>
+              </div>
             ) : null}
             {saveState?.status === "error" ? (
               <Status tone="error">{saveState.message}</Status>

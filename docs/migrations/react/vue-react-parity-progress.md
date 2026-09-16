@@ -4467,3 +4467,32 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1423/1423, `pnpm test:shared` 574/574, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r439-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R440 — Settings phase 3, per-user preferences, wiki editor contract, embed bridge sweep
+
+- Five parallel agents (A1 settings phase 3, A2 G2 preference namespacing, A3 wiki sweep, A4 commercial/embed
+  sweep, A5 verifier), file-domain mutually exclusive, TDD. A5 verdict: 4/4 PASS, zero new failures; the
+  orchestrator closed the script gap A5 surfaced.
+- A1: multimodal/asr/faq editors migrated, completing the settings section set except basic. faq_config does
+  NOT travel in KBModelConfigRequest — it follows Vue doSubmit as a base update PUT /knowledge-bases/:id
+  ({name,description,config:{faq_config}}) issued before the config PUT; disabled-clears-model_id semantics
+  ported for vlm/asr; multimodalInvalid/indexModeRequired guards jump to the offending section. 59/59 directory
+  regression; zero new i18n keys. Remaining: basic section; document-KB wiki/auto_tag/indexing_strategy
+  base-update wiring (channel ready).
+- A2 (G2 closed): preferences now persist per-user as WeKnora_${userId}_* (userId from weknora_user else anon)
+  with a one-shot migration latch (anon > Vue legacy flat > React flat priority, source keys removed,
+  resetMigrationLatch for account switches); locale intentionally stays flat on both sides. domain settings
+  tests 16/16; consumers 58/58. Deferred: GeneralPreferencesPanel direct font-key reads; platform layer has no
+  weknora_user writer yet (anon namespace until then).
+- A3: wiki edit cancel + 409 conflict overwrite (覆盖保存 with latest.version, reload injects server content
+  into the editor instead of exiting) per WikiBrowser.vue. Deferred: markdown/wiki-link rendering (single-round
+  candidate), list meta updated_at vs v{version}, issue/queue/backlink endpoints missing in api-client.
+- A4: commercial confirmed fork-owned with NO Vue counterpart (zero changes, 8/8 recorded). embed bridge post()
+  now carries Vue postToParent's sensitive-drop / handshake-'*' fallback; origin pinning, host validation, error
+  mapping already matched. Deferred: React has no embed page at all (standalone-entry error at /embed/*; no
+  embed.html) — standalone-round candidate.
+- Orchestrator: root test:shared never globbed packages/domain/src/settings/*.test.ts (A5 finding) — glob
+  added; shared gate now 590/590 (+16) so the G2 regression tests are gate-protected.
+- Gates: `pnpm test:shared` 590/590, `pnpm test:web` 1437/1437, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r440-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified.

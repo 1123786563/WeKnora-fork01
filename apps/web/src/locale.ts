@@ -4,10 +4,13 @@
 // for weknora:theme-changed.
 import { useCallback, useEffect, useState } from 'react';
 import { isLocale, type Locale } from '@weknora/i18n';
-import { readLocalPreferences } from '@weknora/domain/settings/local-preferences';
+import { readLocalPreferences, migratePreferencesIntoUser } from '@weknora/domain/settings/local-preferences';
 
 export function readPreferredLocale(): Locale {
   try {
+    // Vue preferenceStorage parity: adopt legacy/anon keys into the active
+    // user's namespace before reading (idempotent; latch-guarded per user).
+    migratePreferencesIntoUser(window.localStorage);
     const stored = readLocalPreferences(window.localStorage).locale;
     return stored && isLocale(stored) ? stored : 'zh-CN';
   } catch {

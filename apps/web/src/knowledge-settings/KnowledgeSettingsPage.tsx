@@ -76,7 +76,7 @@ export type KnowledgeSettingsSectionKey =
 
 const PORTED_KNOWLEDGE_SETTINGS_SECTIONS = new Set<KnowledgeSettingsSectionKey>([
   'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
-  'models', 'chunking', 'advanced',
+  'models', 'chunking', 'advanced', 'multimodal', 'asr', 'faq',
 ]);
 
 export function isPortedKnowledgeSettingsSection(key: KnowledgeSettingsSectionKey): boolean {
@@ -113,6 +113,7 @@ export type KnowledgeSettingsInput = KnowledgeBase & {
   share_count?: number;
   summary_model_id?: string;
   extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string };
+  faq_config?: { index_mode?: string; question_index_mode?: string };
 };
 
 export interface KnowledgeSettingsSection {
@@ -139,6 +140,9 @@ interface SettingSummary {
 
 const sections: KnowledgeSettingsSection[] = [
   { key: 'models', label: 'Models', description: 'Language and embedding models' },
+  { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes' },
+  { key: 'multimodal', label: 'Multimodal', description: 'Image description processing' },
+  { key: 'asr', label: 'Speech recognition', description: 'Audio transcription model' },
   { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health' },
   { key: 'parser', label: 'Parser', description: 'File-type parser rules' },
   { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior' },
@@ -183,9 +187,11 @@ export function getKnowledgeSettingsSections(
 ): KnowledgeSettingsSection[] {
   const canViewActivity = options.canViewActivity ?? true;
   return sections.filter((section) => {
-    // Vue gates chunking/advanced (and parser/storage/graph) behind !isFAQ;
-    // models stays available for FAQ bases like the Vue basic group.
-    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph' || section.key === 'chunking' || section.key === 'advanced') return !isFaqKnowledgeBase(knowledgeBase);
+    // Vue gates chunking/advanced (and parser/storage/graph/multimodal/asr)
+    // behind !isFAQ; models stays available for FAQ bases like the Vue basic
+    // group, which instead exposes the faq section.
+    if (section.key === 'faq') return isFaqKnowledgeBase(knowledgeBase);
+    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph' || section.key === 'chunking' || section.key === 'advanced' || section.key === 'multimodal' || section.key === 'asr') return !isFaqKnowledgeBase(knowledgeBase);
     if (section.key === 'activity') return canViewActivity;
     return true;
   });
@@ -407,6 +413,11 @@ export interface KnowledgeSettingsEditorOverrides {
   embeddingModelId?: string;
   documentSplitting?: Partial<Pick<KnowledgeSettingsSavePayload['documentSplitting'], 'chunkSize' | 'chunkOverlap' | 'separators' | 'enableParentChild' | 'parentChunkSize' | 'childChunkSize' | 'strategy' | 'tokenLimit' | 'languages'>>;
   questionGeneration?: Partial<Pick<KnowledgeSettingsSavePayload['questionGeneration'], 'enabled' | 'questionCount' | 'customInstructions'>>;
+  // R440 multimodal/asr sections (Vue multimodalConfig / asrConfig drafts).
+  multimodal?: { enabled?: boolean; vllmModelId?: string; descriptionLanguage?: string; customInstructions?: string };
+  asr?: { enabled?: boolean; modelId?: string };
+  // R440 faq section (Vue faqConfig draft, saved through the base KB update).
+  faqConfig?: { indexMode?: string; questionIndexMode?: string };
 }
 
 // Builds the exact KBModelConfigRequest body the Vue KnowledgeBaseEditorModal
@@ -495,8 +506,69 @@ export function buildKnowledgeSettingsConfigPayload(
     if (typeof overrides.embeddingModelId === 'string') payload.embeddingModelId = overrides.embeddingModelId;
     payload.documentSplitting = { ...payload.documentSplitting, ...defined(overrides.documentSplitting) };
     payload.questionGeneration = { ...payload.questionGeneration, ...defined(overrides.questionGeneration) };
+    // Vue vlm_config semantics: model_id is cleared when the toggle is off
+    // (handleMultimodalToggle clears vllmModelId, the payload guards with
+    // `enabled ? … : ''`). Untouched fields keep the round-trip values.
+    const multimodal = defined(overrides.multimodal);
+    if (Object.keys(multimodal).length > 0) {
+      const enabled = multimodal.enabled ?? payload.vlm_config.enabled;
+      const vllmModelId = multimodal.vllmModelId ?? payload.vlm_config.model_id;
+      payload.vlm_config = {
+        enabled,
+        model_id: enabled ? vllmModelId : '',
+        description_language: multimodal.descriptionLanguage ?? payload.vlm_config.description_language,
+        custom_instructions: multimodal.customInstructions ?? payload.vlm_config.custom_instructions,
+      };
+      payload.multimodal = { enabled };
+    }
+    // Vue asr_config semantics: same disabled-clears-model_id rule.
+    const asr = defined(overrides.asr);
+    if (Object.keys(asr).length > 0) {
+      const enabled = asr.enabled ?? payload.asr_config.enabled;
+      const modelId = asr.modelId ?? payload.asr_config.model_id;
+      payload.asr_config = { enabled, model_id: enabled ? modelId : '', language: payload.asr_config.language };
+    }
   }
   return payload;
+}
+
+// Vue doSubmit step 1 on edit: updateKnowledgeBase carries name/description and
+// the faq_config (FAQ bases only) through PUT /api/v1/knowledge-bases/:id,
+// before the KBModelConfigRequest PUT below.
+export function getKnowledgeBaseUpdatePath(knowledgeBaseId: string): string {
+  return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`;
+}
+
+export interface KnowledgeSettingsBaseUpdate {
+  name: string;
+  description: string;
+  config: { faq_config?: { index_mode: string; question_index_mode: string } };
+}
+
+export function buildKnowledgeSettingsBaseUpdate(
+  knowledgeBase: KnowledgeSettingsInput,
+  overrides?: KnowledgeSettingsEditorOverrides,
+): KnowledgeSettingsBaseUpdate {
+  const config: KnowledgeSettingsBaseUpdate['config'] = {};
+  if (knowledgeBase.type?.toLowerCase() === 'faq') {
+    const kbFaq = knowledgeBase.faq_config ?? {};
+    const faq = overrides?.faqConfig ?? {};
+    config.faq_config = {
+      index_mode: faq.indexMode ?? (typeof kbFaq.index_mode === 'string' && kbFaq.index_mode ? kbFaq.index_mode : 'question_only'),
+      question_index_mode: faq.questionIndexMode ?? (typeof kbFaq.question_index_mode === 'string' && kbFaq.question_index_mode ? kbFaq.question_index_mode : 'separate'),
+    };
+  }
+  return {
+    name: typeof knowledgeBase.name === 'string' ? knowledgeBase.name : '',
+    description: typeof knowledgeBase.description === 'string' ? knowledgeBase.description : '',
+    config,
+  };
+}
+
+// Sends the Vue doSubmit base update through the authenticated transport (the
+// shared api-client update helper is not wired into this surface yet).
+export async function saveKnowledgeSettingsBaseUpdate(client: WeKnoraClient, knowledgeBaseId: string, baseUpdate: KnowledgeSettingsBaseUpdate): Promise<void> {
+  await client.request({ method: 'PUT', path: getKnowledgeBaseUpdatePath(knowledgeBaseId), body: baseUpdate });
 }
 
 // Sends the update through the authenticated client transport. The
@@ -597,8 +669,28 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
       ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
       : parserRules(currentKnowledgeBase)) as Array<Record<string, unknown>>;
     const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract, editorDraft);
+    // Vue validateForm subset owned by these sections: an enabled multimodal
+    // toggle requires a VLLM model, a FAQ base requires an index mode. Each
+    // failure warns and jumps to the offending section before any request.
+    if (payload.vlm_config.enabled && !payload.vlm_config.model_id) {
+      setSaveState({ status: 'error', message: t('knowledgeEditor.messages.multimodalInvalid') });
+      setActiveSection('multimodal');
+      return;
+    }
+    const isFaq = currentKnowledgeBase.type?.toLowerCase() === 'faq';
+    const baseUpdate = buildKnowledgeSettingsBaseUpdate(currentKnowledgeBase, editorDraft);
+    if (isFaq && !baseUpdate.config.faq_config?.index_mode) {
+      setSaveState({ status: 'error', message: t('knowledgeEditor.messages.indexModeRequired') });
+      setActiveSection('faq');
+      return;
+    }
     setSaveState({ status: 'saving', message: '' });
-    void saveKnowledgeSettings(client, currentKnowledgeBase.id, payload).then(() => {
+    // Vue doSubmit order on edit: base update (name/description/faq_config)
+    // first, then the full KBModelConfigRequest PUT.
+    const baseFirst = isFaq
+      ? saveKnowledgeSettingsBaseUpdate(client, currentKnowledgeBase.id, baseUpdate)
+      : Promise.resolve();
+    void baseFirst.then(() => saveKnowledgeSettings(client, currentKnowledgeBase.id, payload)).then(() => {
       setSavedParserRules(rules);
       setPendingParserEngine('');
       setSaveState({ status: 'saved', message: t('knowledgeEditor.messages.updateSuccess') });
@@ -666,7 +758,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active.description}</p>
                 </>
               ) : null}
-              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
+              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
                 // Vue renders this section fully; the React port has not migrated
                 // it yet — surface the shared notice instead of a fabricated editor.
                 <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
@@ -701,6 +793,7 @@ interface SettingsSectionProps {
   graphExtract: GraphExtractConfig;
   modelId: string;
   client?: WeKnoraClient;
+  knowledgeBase: KnowledgeSettingsInput;
   knowledgeBaseId: string;
   knowledgeBaseName: string;
   canManage: boolean;
@@ -716,7 +809,7 @@ interface SettingsSectionProps {
   onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void;
 }
 
-function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
+function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
   // models/chunking/advanced carry no summary card (Vue has none either);
   // the legacy sections keep theirs.
   const summaryLabel = summary?.label ?? '';
@@ -737,6 +830,15 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
       ) : null}
       {section === 'advanced' ? (
         <AdvancedSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+      ) : null}
+      {section === 'multimodal' ? (
+        <MultimodalSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
+      ) : null}
+      {section === 'asr' ? (
+        <AsrSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
+      ) : null}
+      {section === 'faq' ? (
+        <FaqSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'vectorStore' ? (
         <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -1041,6 +1143,186 @@ function AdvancedSettingsSection({ editorPayload, editorDraft, t, onDraftChange 
           />
         </>
       ) : null}
+    </div>
+  );
+}
+
+// Vue multimodal section (KnowledgeBaseEditorModal.vue `currentSection ===
+// 'multimodal'`): toggle + conditional VLLM selector, description language and
+// custom instructions rows, all fed by the live model catalogue.
+const MULTIMODAL_DESCRIPTION_LANGUAGE_OPTIONS = [
+  { value: 'Chinese', labelKey: 'language.zhCN' },
+  { value: 'English', labelKey: 'language.enUS' },
+  { value: 'Korean', labelKey: 'language.koKR' },
+  { value: 'Russian', labelKey: 'language.ruRU' },
+] as const;
+
+function MultimodalSettingsSection({ editorPayload, editorDraft, models, t, onDraftChange }: EditorSectionProps & { models: KnowledgeSettingsModelOption[] }) {
+  const multimodal = editorPayload.vlm_config;
+  const draft = editorDraft.multimodal ?? {};
+  const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['multimodal']>) => {
+    onDraftChange({ ...editorDraft, multimodal: { ...editorDraft.multimodal, ...patch } });
+  };
+  const enabled = draft.enabled ?? multimodal.enabled;
+  const vllmModelId = draft.vllmModelId ?? multimodal.model_id;
+  const descriptionLanguage = draft.descriptionLanguage ?? multimodal.description_language;
+  const customInstructions = draft.customInstructions ?? multimodal.custom_instructions;
+  return (
+    <div>
+      <EditorSettingRow
+        label={t('knowledgeEditor.advanced.multimodal.label')}
+        description={t('knowledgeEditor.advanced.multimodal.description')}
+        control={(
+          <input
+            type="checkbox"
+            aria-label={t('knowledgeEditor.advanced.multimodal.label')}
+            checked={enabled}
+            onChange={(event) => set({ enabled: event.target.checked })}
+          />
+        )}
+      />
+      {enabled ? (
+        <>
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.multimodal.vllmLabel')}
+            description={t('knowledgeEditor.advanced.multimodal.vllmDescription')}
+            required
+            control={(
+              <select
+                aria-label={t('knowledgeEditor.advanced.multimodal.vllmLabel')}
+                value={vllmModelId}
+                onChange={(event) => set({ vllmModelId: event.target.value })}
+              >
+                <option value="">{t('knowledgeEditor.advanced.multimodal.vllmPlaceholder')}</option>
+                {filterKnowledgeSettingsModels(models, 'VLLM').map((model) => (
+                  <option key={model.id} value={model.id}>{model.displayName || model.name}</option>
+                ))}
+              </select>
+            )}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.multimodal.descriptionLanguageLabel')}
+            description={t('knowledgeEditor.advanced.multimodal.descriptionLanguageDescription')}
+            control={(
+              <select
+                aria-label={t('knowledgeEditor.advanced.multimodal.descriptionLanguageLabel')}
+                value={descriptionLanguage}
+                onChange={(event) => set({ descriptionLanguage: event.target.value })}
+              >
+                <option value="">{t('knowledgeEditor.advanced.multimodal.descriptionLanguageAuto')}</option>
+                {MULTIMODAL_DESCRIPTION_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
+                ))}
+              </select>
+            )}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.multimodal.customInstructionsLabel')}
+            description={t('knowledgeEditor.advanced.multimodal.customInstructionsDescription')}
+            control={(
+              <textarea
+                aria-label={t('knowledgeEditor.advanced.multimodal.customInstructionsLabel')}
+                maxLength={4000}
+                rows={3}
+                placeholder={t('knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder')}
+                value={customInstructions}
+                onChange={(event) => set({ customInstructions: event.target.value })}
+              />
+            )}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+// Vue asr section: toggle + conditional ASR model selector. asr_config.language
+// has no UI control in the Vue modal — it round-trips through the payload.
+function AsrSettingsSection({ editorPayload, editorDraft, models, t, onDraftChange }: EditorSectionProps & { models: KnowledgeSettingsModelOption[] }) {
+  const asr = editorPayload.asr_config;
+  const draft = editorDraft.asr ?? {};
+  const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['asr']>) => {
+    onDraftChange({ ...editorDraft, asr: { ...editorDraft.asr, ...patch } });
+  };
+  const enabled = draft.enabled ?? asr.enabled;
+  return (
+    <div>
+      <EditorSettingRow
+        label={t('knowledgeEditor.asr.label')}
+        description={t('knowledgeEditor.asr.desc')}
+        control={(
+          <input
+            type="checkbox"
+            aria-label={t('knowledgeEditor.asr.label')}
+            checked={enabled}
+            onChange={(event) => set({ enabled: event.target.checked })}
+          />
+        )}
+      />
+      {enabled ? (
+        <EditorSettingRow
+          label={t('knowledgeEditor.asr.modelLabel')}
+          description={t('knowledgeEditor.asr.modelDescription')}
+          required
+          control={(
+            <select
+              aria-label={t('knowledgeEditor.asr.modelLabel')}
+              value={draft.modelId ?? asr.model_id}
+              onChange={(event) => set({ modelId: event.target.value })}
+            >
+              <option value="">{t('knowledgeEditor.asr.modelPlaceholder')}</option>
+              {filterKnowledgeSettingsModels(models, 'ASR').map((model) => (
+                <option key={model.id} value={model.id}>{model.displayName || model.name}</option>
+              ))}
+            </select>
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// Vue faq section (FAQ bases only): the two index-mode radio groups plus the
+// entry guide copy.
+function FaqSettingsSection({ knowledgeBase, editorDraft, t, onDraftChange }: { knowledgeBase: KnowledgeSettingsInput; editorDraft: KnowledgeSettingsEditorOverrides; t: (key: string) => string; onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void }) {
+  const kbFaq = knowledgeBase.faq_config ?? {};
+  const draft = editorDraft.faqConfig ?? {};
+  const indexMode = draft.indexMode ?? (typeof kbFaq.index_mode === 'string' && kbFaq.index_mode ? kbFaq.index_mode : 'question_only');
+  const questionIndexMode = draft.questionIndexMode ?? (typeof kbFaq.question_index_mode === 'string' && kbFaq.question_index_mode ? kbFaq.question_index_mode : 'separate');
+  const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['faqConfig']>) => {
+    onDraftChange({ ...editorDraft, faqConfig: { ...editorDraft.faqConfig, ...patch } });
+  };
+  const radio = (groupLabelKey: string, labelKey: string, checked: boolean, onChange: () => void) => (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginRight: '1rem' }}>
+      <input type="radio" name={groupLabelKey} aria-label={t(labelKey)} checked={checked} onChange={onChange} />
+      {t(labelKey)}
+    </label>
+  );
+  return (
+    <div>
+      <EditorSettingRow
+        label={t('knowledgeEditor.faq.indexModeLabel')}
+        required
+        control={(
+          <div role="radiogroup" aria-label={t('knowledgeEditor.faq.indexModeLabel')}>
+            {radio('faqIndexMode', 'knowledgeEditor.faq.modes.questionOnly', indexMode === 'question_only', () => set({ indexMode: 'question_only' }))}
+            {radio('faqIndexMode', 'knowledgeEditor.faq.modes.questionAnswer', indexMode === 'question_answer', () => set({ indexMode: 'question_answer' }))}
+          </div>
+        )}
+      />
+      <p className="wk-muted" style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>{t('knowledgeEditor.faq.indexModeDescription')}</p>
+      <EditorSettingRow
+        label={t('knowledgeEditor.faq.questionIndexModeLabel')}
+        required
+        control={(
+          <div role="radiogroup" aria-label={t('knowledgeEditor.faq.questionIndexModeLabel')}>
+            {radio('faqQuestionIndexMode', 'knowledgeEditor.faq.modes.combined', questionIndexMode === 'combined', () => set({ questionIndexMode: 'combined' }))}
+            {radio('faqQuestionIndexMode', 'knowledgeEditor.faq.modes.separate', questionIndexMode === 'separate', () => set({ questionIndexMode: 'separate' }))}
+          </div>
+        )}
+      />
+      <p className="wk-muted" style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>{t('knowledgeEditor.faq.questionIndexModeDescription')}</p>
+      <p className="wk-muted" style={{ margin: 0 }}>{t('knowledgeEditor.faq.entryGuide')}</p>
     </div>
   );
 }
