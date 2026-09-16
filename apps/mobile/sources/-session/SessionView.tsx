@@ -80,7 +80,8 @@ import {
 import { RigActivityBar } from '@/components/RigActivityBar';
 import { AnimatedFade } from '@/components/AnimatedOverlay';
 import { useConversationViewModel } from '@/weknora/conversations/context';
-import type { ConversationViewModel } from '@/weknora/conversations/view-model';
+import { createRequestID, type ConversationViewModel } from '@/weknora/conversations/view-model';
+import { ProductConversationMessages } from '@/weknora/conversations/ProductConversationMessages';
 
 export const SessionView = React.memo((props: { id: string; viewModel?: ConversationViewModel }) => {
     const sessionId = props.id;
@@ -441,7 +442,7 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
                         session={session}
                         viewModel={conversationViewModel ?? undefined}
                         onProductSend={conversationViewModel?.send
-                            ? (text) => conversationViewModel.send!.submit(text, `${sessionId}:${text}`)
+                            ? (text) => conversationViewModel.send!.submit(text, createRequestID())
                             : undefined}
                         active={isFocused}
                         onHeaderBackdropVisibilityChange={contentRunsUnderHeader
@@ -1007,19 +1008,21 @@ export function SessionViewLoaded({
         <>
             <Deferred>
                 {messages.length > 0 && (
-                    <ChatList
-                        session={session}
-                        conversation={viewModel}
-                        active={active}
-                        topContentInset={chatListTopContentInset}
-                        bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}
-                        scrollButtonInset={usesFloatingMobileDock ? scrollButtonInset : undefined}
-                        headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
-                        onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
-                        onBottomDockVisibilityChange={usesFloatingMobileDock
-                            ? handleChatBottomVisibilityChange
-                            : undefined}
-                    />
+                    viewModel ? <ProductConversationMessages viewModel={viewModel} /> : (
+                        <ChatList
+                            session={session}
+                            conversation={viewModel}
+                            active={active}
+                            topContentInset={chatListTopContentInset}
+                            bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}
+                            scrollButtonInset={usesFloatingMobileDock ? scrollButtonInset : undefined}
+                            headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
+                            onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
+                            onBottomDockVisibilityChange={usesFloatingMobileDock
+                                ? handleChatBottomVisibilityChange
+                                : undefined}
+                        />
+                    )
                 )}
             </Deferred>
         </>

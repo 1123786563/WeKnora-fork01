@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createConversationViewModel, createSendController } from './view-model.ts';
+import { createConversationViewModel, createProductConversationViewModel, createSendController } from './view-model.ts';
 
 test('failed send keeps the draft and releases the busy lock', async () => {
   const vm = createSendController(async () => { throw new Error('offline'); });
@@ -42,4 +42,34 @@ test('view model maps execution and keeps pending/unknown states visible', () =>
   assert.equal(model.execution?.status, 'unknown');
   assert.equal(model.capabilities.canSteer, false);
   assert.equal(typeof model.commands.cancel, 'function');
+});
+
+test('product VM uses a fresh request id and refreshes unknown admission', async () => {
+  const calls: string[] = [];
+  const executions = {
+    start: async (input: { request_id: string }) => { calls.push(`start:${input.request_id}`); return { run_id: 'run-1', request_id: input.request_id, status: 'unknown' }; },
+    lookup: async (requestID: string) => { calls.push(`lookup:${requestID}`); return { state: 'unknown' as const, reason: 'timeout' }; },
+    command: async () => ({}),
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any;
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions });
+  await model.send!.submit('hello', 'request-unique');
+  assert.equal(model.execution?.requestID, 'request-unique');
+  assert.equal(model.execution?.status, 'unknown');
+  assert.deepEqual(calls, ['start:request-unique', 'lookup:request-unique']);
+});
+
+test('product VM approvals call typed decision and update the card state', async () => {
+  const decisions: Array<[string, string, number]> = [];
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'r1', status: 'pending' }),
+    lookup: async () => ({ state: 'pending' as const }),
+    command: async () => ({}),
+    decide: async (id: string, input: { action: 'approve' | 'reject'; expected_revision: number }) => { decisions.push([id, input.action, input.expected_revision]); },
+  };
+  const scope = { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), capture: () => ({ generation: 1, signal: new AbortController().signal }), accept: () => true } as any;
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions, pendingInteractions: [{ id: 'interaction-1', kind: 'approval', status: 'pending', label: 'Run tool' }] });
+  await model.commands.approve!('interaction-1', 3);
+  assert.deepEqual(decisions, [['interaction-1', 'approve', 3]]);
+  assert.equal(model.pendingInteractions[0]?.status, 'approved');
 });

@@ -1,10 +1,12 @@
+import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput } from '@weknora/api-client';
 import type { ExecutionDTO } from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
 
 export interface ExecutionApi {
-  start(input: { request_id: string; session_id: string; agent_id: string; target_id: string; workspace_ref: string; text: string; budget_upper: number }): Promise<unknown>;
-  lookup(requestID: string): Promise<unknown>;
-  command(runID: string, input: { action: 'cancel'; expected_revision: number } | { action: 'steer'; text: string; expected_revision: number }): Promise<unknown>;
+  start(input: StartExecutionInput, signal?: AbortSignal): Promise<{ run_id: string; request_id: string; status: string }>;
+  lookup(requestID: string, signal?: AbortSignal): Promise<{ state: 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown'; run_id?: string; reason?: string }>;
+  command(runID: string, input: ExecutionCommandInput, signal?: AbortSignal): Promise<unknown>;
+  decide?(interactionID: string, input: { action: 'approve' | 'reject'; expected_revision: number }, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ConversationScope {
@@ -45,6 +47,8 @@ export interface ConversationCommands {
   cancel(runID: string, expectedRevision?: number): Promise<void>;
   steer(runID: string, text: string, expectedRevision?: number): Promise<void>;
   refreshPending?(interactionID: string): Promise<void>;
+  approve?(interactionID: string, expectedRevision?: number): Promise<void>;
+  reject?(interactionID: string, expectedRevision?: number): Promise<void>;
 }
 
 export interface ConversationExecution {
@@ -63,6 +67,8 @@ export interface ConversationViewModel {
   execution: ConversationExecution | null;
   commands: ConversationCommands;
   send?: SendController;
+  subscribe?: (listener: () => void) => () => void;
+  getSnapshot?: () => ConversationViewModel;
 }
 
 
@@ -88,12 +94,22 @@ export function createProductConversationViewModel(input: {
   workspaceRef: string;
   budgetUpper: number;
   executions: ExecutionApi;
+  messages?: ConversationMessage[];
+  pendingInteractions?: PendingInteraction[];
 }): ConversationViewModel {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
+  const listeners = new Set<() => void>();
+  let model!: ConversationViewModel;
+  const notify = () => listeners.forEach((listener) => listener());
+  const updateExecution = (execution: ConversationExecution | null) => {
+    model.execution = execution;
+    notify();
+  };
   const send = createSendController(async (text, requestID) => {
     latestRequestID = requestID;
-    await input.executions.start({
+    const captured = input.scope.capture();
+    const ack = await input.executions.start({
       request_id: requestID,
       session_id: input.sessionId,
       agent_id: input.agent.id,
@@ -101,18 +117,88 @@ export function createProductConversationViewModel(input: {
       workspace_ref: input.workspaceRef,
       text,
       budget_upper: input.budgetUpper,
-    });
+    }, captured.signal);
+    if (!input.scope.accept(captured.generation)) return;
+    updateExecution({ runID: ack.run_id, requestID: ack.request_id, status: ack.status });
+    // A start acknowledgement is admission only. Re-read the durable request
+    // so an unknown/pending response survives a remount and scope transition.
+    if (ack.status === 'unknown' || ack.status === 'pending' || ack.status === 'dispatching') {
+      await refreshRequest(requestID, captured.signal);
+    }
   });
-  return createConversationViewModel({
+  const refreshRequest = async (requestID: string, signal?: AbortSignal): Promise<void> => {
+    const lookup = await input.executions.lookup(requestID, signal);
+    if (lookup.state === 'unknown' || lookup.state === 'pending' || lookup.state === 'dispatching') {
+      updateExecution({ runID: lookup.run_id ?? model.execution?.runID ?? '', requestID, status: lookup.state, reason: lookup.reason });
+    } else if (lookup.run_id) {
+      updateExecution({ runID: lookup.run_id, requestID, status: lookup.state, reason: lookup.reason });
+    }
+  };
+  model = createConversationViewModel({
     scope: { ...identity, spaceId: input.spaceId },
+    messages: input.messages,
+    pendingInteractions: input.pendingInteractions,
     capabilities: { canCancel: true, canSteer: true },
     commands: {
       cancel: async (runID, expectedRevision = 0) => { await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }); },
       steer: async (runID, text, expectedRevision = 0) => { await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }); },
-      refreshPending: async (interactionID) => { await input.executions.lookup(latestRequestID ?? interactionID); },
+      refreshPending: async (interactionID) => { await refreshRequest(latestRequestID ?? interactionID); },
+      approve: async (interactionID, expectedRevision = 0) => {
+        if (!input.executions.decide) throw new Error('APPROVAL_UNSUPPORTED');
+        await input.executions.decide(interactionID, { action: 'approve', expected_revision: expectedRevision });
+        const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
+        if (item) item.status = 'approved';
+        notify();
+      },
+      reject: async (interactionID, expectedRevision = 0) => {
+        if (!input.executions.decide) throw new Error('APPROVAL_UNSUPPORTED');
+        await input.executions.decide(interactionID, { action: 'reject', expected_revision: expectedRevision });
+        const item = model.pendingInteractions.find((candidate) => candidate.id === interactionID);
+        if (item) item.status = 'rejected';
+        notify();
+      },
     },
     send,
   });
+  model.subscribe = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
+  model.getSnapshot = () => model;
+  return model;
+}
+
+/** Generates a fresh command identity for every user submission. */
+export function createRequestID(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return `mobile:${globalThis.crypto.randomUUID()}`;
+  return `mobile:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+/** Product-owned authenticated W06 SDK adapter. Happy credentials never enter this client. */
+export function createProductExecutionApi(input: {
+  origin: string;
+  credential: BearerCredential;
+  scope: ProductScope;
+}): ExecutionApi {
+  const transport = createJsonTransport(fetch);
+  const client = createWeKnoraClient({
+    baseURL: input.origin,
+    transport: {
+      send: (request) => transport.send({
+        ...request,
+        headers: { ...request.headers, authorization: `Bearer ${input.credential.accessToken}` },
+      }),
+    },
+  });
+  const executions = createExecutionsApi(async (request) => {
+    const result = await client.request(request);
+    return result;
+  });
+  return {
+    start: (request, signal) => executions.start(request, signal),
+    lookup: (requestID, signal) => executions.lookup(requestID, signal),
+    command: (runID, command, signal) => executions.command(runID, command, signal),
+    decide: async (interactionID, decision, signal) => {
+      await client.chat.approvals.resolveTool(interactionID, { decision: decision.action }, signal);
+    },
+  };
 }
 
 /**
