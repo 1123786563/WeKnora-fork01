@@ -258,6 +258,10 @@ type CleanupFilePurger interface {
 	PurgeSessionFiles(context.Context, CleanupClaim) error
 }
 
+type idempotentFileDeleter interface {
+	DeleteFileIdempotent(context.Context, string, string) error
+}
+
 var (
 	ErrCleanupFilesUnavailable       = errors.New("execution cleanup file purger unavailable")
 	ErrCleanupObservationUnavailable = errors.New("execution cleanup observation unavailable")
@@ -291,14 +295,15 @@ func (p *FileCleanupPurger) PurgeSessionFiles(ctx context.Context, claim Cleanup
 		}
 		for _, item := range refs {
 			var live int64
-			if err := tx.Table("execution_cleanup_artifacts").Where("tenant_id=? AND ref=? AND state='pending'", claim.TenantID, item.Ref).Count(&live).Error; err != nil {
+			if err := tx.Table("execution_cleanup_artifacts").Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND ref=? AND state='pending'", claim.TenantID, item.Ref).Count(&live).Error; err != nil {
 				return err
 			}
 			if live > 1 {
 				return ErrCleanupSharedReference
 			}
 			token := fmt.Sprintf("%d:%s:%d:%d:%s", claim.TenantID, claim.SessionID, claim.DeletionRevision, claim.Epoch, item.Ref)
-			if err := tx.Table("execution_cleanup_artifacts").Where("tenant_id=? AND session_id=? AND deletion_revision=? AND ref=? AND state='pending'", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref).Updates(map[string]any{"delete_token": token, "delete_lease_until": time.Now().Add(10 * time.Minute)}).Error; err != nil {
+			key := fmt.Sprintf("cleanup:%d:%s:%d:%s", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref)
+			if err := tx.Table("execution_cleanup_artifacts").Where("tenant_id=? AND session_id=? AND deletion_revision=? AND ref=? AND state='pending'", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref).Updates(map[string]any{"delete_token": token, "provider_idempotency_key": key, "attempt": gorm.Expr("attempt+1"), "receipt_state": "uncertain", "delete_lease_until": time.Now().Add(10 * time.Minute)}).Error; err != nil {
 				return err
 			}
 		}
@@ -307,11 +312,18 @@ func (p *FileCleanupPurger) PurgeSessionFiles(ctx context.Context, claim Cleanup
 		return err
 	}
 	for _, item := range refs {
-		if err := p.files.DeleteFile(ctx, item.Ref); err != nil {
-			return err
+		key := fmt.Sprintf("cleanup:%d:%s:%d:%s", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref)
+		var deleteErr error
+		if deleter, ok := p.files.(idempotentFileDeleter); ok {
+			deleteErr = deleter.DeleteFileIdempotent(ctx, item.Ref, key)
+		} else {
+			deleteErr = p.files.DeleteFile(ctx, item.Ref)
+		}
+		if deleteErr != nil {
+			return deleteErr
 		}
 		token := fmt.Sprintf("%d:%s:%d:%d:%s", claim.TenantID, claim.SessionID, claim.DeletionRevision, claim.Epoch, item.Ref)
-		if err := p.db.WithContext(ctx).Table("execution_cleanup_artifacts").Where("tenant_id=? AND session_id=? AND deletion_revision=? AND ref=? AND state='pending' AND delete_token=?", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref, token).Updates(map[string]any{"state": "deleted", "deleted_at": time.Now(), "delete_token": "", "delete_lease_until": nil}).Error; err != nil {
+		if err := p.db.WithContext(ctx).Table("execution_cleanup_artifacts").Where("tenant_id=? AND session_id=? AND deletion_revision=? AND ref=? AND state='pending' AND delete_token=?", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref, token).Updates(map[string]any{"state": "deleted", "deleted_at": time.Now(), "receipt_state": "confirmed", "delete_token": "", "delete_lease_until": nil}).Error; err != nil {
 			return err
 		}
 	}
@@ -338,6 +350,19 @@ func (s *AgentRunStore) RecordCleanupRetention(ctx context.Context, claim Cleanu
 		return runtime.ErrConflict
 	}
 	return s.updateCleanupObservation(ctx, claim, map[string]any{"retention_until": until})
+}
+
+// RegisterCleanupArtifact is the late-upload guard. A producer carrying an
+// old deletion revision cannot attach a new ref to a tombstoned session.
+func (s *AgentRunStore) RegisterCleanupArtifact(ctx context.Context, claim CleanupClaim, ref, kind string) error {
+	if claim.TenantID == 0 || claim.OwnerID == "" || claim.SessionID == "" || claim.DeletionRevision <= 0 || ref == "" || kind == "" {
+		return runtime.ErrConflict
+	}
+	var row executionCleanupRow
+	if err := s.db.WithContext(ctx).Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND state <> 'purged'", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision).Take(&row).Error; err != nil {
+		return runtime.ErrLeaseLost
+	}
+	return s.db.WithContext(ctx).Table("execution_cleanup_artifacts").Create(map[string]any{"tenant_id": claim.TenantID, "session_id": claim.SessionID, "deletion_revision": claim.DeletionRevision, "ref": ref, "kind": kind, "state": "pending", "receipt_state": "none"}).Error
 }
 
 func (s *AgentRunStore) updateCleanupObservation(ctx context.Context, claim CleanupClaim, updates map[string]any) error {

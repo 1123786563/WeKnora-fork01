@@ -24,6 +24,9 @@ type SourceObservation struct {
 	BindingID, Generation, EventID, AttemptID, Type, PayloadHash string
 	Payload                                                      json.RawMessage
 	SourceSeq                                                    int64
+	// DeletionRevision is required for observations arriving after a session
+	// tombstone; active runs may leave it zero.
+	DeletionRevision int64
 }
 
 type executionObservationRow struct {
@@ -107,6 +110,22 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		key, err := s.resolveBinding(ctx, tx, bindingID)
 		if err != nil {
 			return err
+		}
+		var identity struct{ SessionID, OwnerID string }
+		if err := tx.Table("agent_runs").Select("session_id, owner_id").Where("tenant_id=? AND run_id=?", key.TenantID, key.RunID).Take(&identity).Error; err != nil {
+			return err
+		}
+		var tombstone struct{ DeletionRevision int64 }
+		tombErr := tx.Table("execution_cleanup").Select("deletion_revision").Where("tenant_id=? AND session_id=? AND owner_id=? AND state <> 'purged'", key.TenantID, identity.SessionID, identity.OwnerID).Take(&tombstone).Error
+		if tombErr == nil {
+			if source.DeletionRevision <= 0 || source.DeletionRevision != tombstone.DeletionRevision {
+				return agentruntime.ErrLeaseLost
+			}
+		} else if !errors.Is(tombErr, gorm.ErrRecordNotFound) {
+			if strings.Contains(strings.ToLower(tombErr.Error()), "no such table") {
+				return agentruntime.ErrConflict
+			}
+			return tombErr
 		}
 		lock := tx.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID)
 		if tx.Dialector.Name() == "postgres" {

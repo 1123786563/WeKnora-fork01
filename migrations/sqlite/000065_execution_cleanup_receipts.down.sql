@@ -1,0 +1,1 @@
+-- SQLite down migrations cannot drop columns on all supported versions.

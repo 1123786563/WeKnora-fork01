@@ -20,6 +20,25 @@ type recordingCleanupFiles struct {
 	deleted []string
 }
 
+type crashCleanupFiles struct {
+	interfaces.FileService
+	attempts  int
+	failFirst bool
+}
+
+func (f *crashCleanupFiles) DeleteFile(_ context.Context, _ string) error {
+	f.attempts++
+	if f.failFirst {
+		f.failFirst = false
+		return assertCleanupCrash{}
+	}
+	return nil
+}
+
+type assertCleanupCrash struct{}
+
+func (assertCleanupCrash) Error() string { return "simulated crash after intent" }
+
 func (f *recordingCleanupFiles) DeleteFile(_ context.Context, ref string) error {
 	f.deleted = append(f.deleted, ref)
 	return nil
@@ -52,6 +71,7 @@ func TestExecutionCleanupTombstoneClaimAndSettlement(t *testing.T) {
 	require.NoError(t, s.RunCleanupPurgeOnce(ctx, "cleanup-purger", time.Minute))
 	require.NoError(t, db.Table("execution_cleanup").Where("tenant_id=? AND session_id=?", 1, "s1").Pluck("state", &state).Error)
 	require.Equal(t, "purged", state)
+	require.ErrorIs(t, s.PurgeCleanupClaim(ctx, claim), runtime.ErrLeaseLost)
 }
 
 func TestExecutionCleanupFactsAreMonotonicAndRevisionFenced(t *testing.T) {
@@ -91,4 +111,31 @@ func TestFileCleanupPurgerPreservesSharedRefsAndIsIdempotent(t *testing.T) {
 	require.Equal(t, []string{"blob://shared"}, files.deleted)
 	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
 	require.Equal(t, []string{"blob://shared"}, files.deleted)
+}
+
+func TestFileCleanupPurgerRecoversUncertainReceipt(t *testing.T) {
+	db := openRunTestDB(t)
+	files := &crashCleanupFiles{failFirst: true}
+	purger := NewFileCleanupPurger(db, files)
+	require.NoError(t, db.Exec("INSERT INTO execution_cleanup_artifacts (tenant_id,session_id,deletion_revision,ref,kind) VALUES (1,'s1',1,'blob://crash','file')").Error)
+	claim := CleanupClaim{TenantID: 1, OwnerID: "u1", SessionID: "s1", DeletionRevision: 1, Worker: "w", Epoch: 1}
+	require.Error(t, purger.PurgeSessionFiles(context.Background(), claim))
+	var receipt, token string
+	var attempts int
+	var artifact struct {
+		ReceiptState           string
+		DeleteToken            string
+		ProviderIdempotencyKey string
+		Attempt                int
+	}
+	require.NoError(t, db.Table("execution_cleanup_artifacts").Select("receipt_state, delete_token, provider_idempotency_key, attempt").Where("tenant_id=1 AND session_id='s1'").Scan(&artifact).Error)
+	receipt, token, attempts = artifact.ReceiptState, artifact.DeleteToken, artifact.Attempt
+	require.Equal(t, "uncertain", receipt)
+	require.NotEmpty(t, token)
+	require.NotEmpty(t, artifact.ProviderIdempotencyKey)
+	require.Equal(t, 1, attempts)
+	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
+	require.Equal(t, 2, files.attempts)
+	require.NoError(t, db.Table("execution_cleanup_artifacts").Where("tenant_id=1 AND session_id='s1'").Pluck("receipt_state", &receipt).Error)
+	require.Equal(t, "confirmed", receipt)
 }
