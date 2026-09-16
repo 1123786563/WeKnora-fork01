@@ -52,7 +52,9 @@ export function patchUploadTask(tasks: readonly UploadTaskState[], uploadId: str
 }
 
 function hasUploadKnowledgeBaseId(kbId: string | number | undefined | null): boolean {
-  return kbId !== undefined && kbId !== null && kbId !== '';
+  // KnowledgeBaseList.vue guards upload events with `!detail.kbId`.
+  // Keep the same contract for numeric IDs as well as empty strings.
+  return Boolean(kbId);
 }
 
 function terminalStatus(status: UploadTaskStatus | undefined): Exclude<UploadTaskStatus, 'uploading'> {

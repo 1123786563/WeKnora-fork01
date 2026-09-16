@@ -12,9 +12,8 @@ test('upload progress clamps and replaces duplicate task events', () => {
   assert.deepEqual(next, [task('u1', 'kb1', 55)]);
 });
 
-test('upload events accept zero-like knowledge-base ids but reject only absent ids', () => {
-  const started = applyUploadTaskEvent([], { type: 'start', uploadId: 'u0', kbId: 0 });
-  assert.deepEqual(started, [task('u0', '0', 0)]);
+test('upload events follow Vue and reject falsy knowledge-base ids', () => {
+  assert.deepEqual(applyUploadTaskEvent([], { type: 'start', uploadId: 'u0', kbId: 0 }), []);
   assert.deepEqual(applyUploadTaskEvent([], { type: 'start', uploadId: 'missing', kbId: '' }), []);
   assert.deepEqual(applyUploadTaskEvent([], { type: 'start', uploadId: 'missing', kbId: null as never }), []);
 });
