@@ -20,7 +20,7 @@ export async function openProtectedDocument(path:string,name:string):Promise<voi
    task.onProgressUpdate(p=>{if(p.totalBytesWritten>MAX_BYTES)task.abort()});
   });
   if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
-  const info=await Taro.getFileInfo({filePath});if(info.size>MAX_BYTES)throw new Error('文件超出本端查看上限');
+  const info=await Taro.getFileInfo({filePath}) as {size:number};if(info.size>MAX_BYTES)throw new Error('文件超出本端查看上限');
   await Taro.openDocument({filePath,showMenu:false});
  }finally{auth.scope.release(controller);if(filePath){try{Taro.getFileSystemManager().unlinkSync(filePath)}catch{/* temporary file may already be removed */}}}
 }

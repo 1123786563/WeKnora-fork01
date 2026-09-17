@@ -58,7 +58,8 @@ export default defineAppConfig({
     "backgroundColor": "#F5F7F2",
     "backgroundTextStyle": "dark"
   },
-  "lazyCodeLoading": "requiredComponents",
+  // 不启用 lazyCodeLoading:requiredComponents——Taro 全局自定义组件（comp）在该模式下
+  // 基础库按需注入失败（Component is not found in path "wx://not-found"），全部页面白屏。
   "tabBar": {
     "color": "#657469",
     "selectedColor": "#155B49",

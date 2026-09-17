@@ -8,7 +8,10 @@ const appid=process.env.WEKNORA_WEAPP_APPID??'touristappid';
 writeFileSync(resolve(process.cwd(),'project.config.json'),JSON.stringify({miniprogramRoot:'dist/',projectname:'weknora-miniprogram',appid,compileType:'miniprogram',setting:{es6:true,minified:true,urlCheck:true}},null,2));
 export default defineConfig({
   projectName:'weknora-miniprogram',date:'2026-09-17',designWidth:375,deviceRatio:{375:2},
-  sourceRoot:'src',outputRoot:'dist',framework:'react',compiler:'webpack5',
+  sourceRoot:'src',outputRoot:'dist',framework:'react',
+  // prebundle 的 remoteEntry 依赖注入与 app.json 的 lazyCodeLoading:requiredComponents
+  // 冲突：页面 chunk 不被加载，全部页面 "has not been registered yet" 白屏。关闭 prebundle。
+  compiler:{type:'webpack5',prebundle:{enable:false}},
   plugins:['@tarojs/plugin-platform-weapp'],
   defineConstants:{__API_ORIGIN__:JSON.stringify(origin)},
   // watch 构建本身很快；显式关闭持久化缓存，避免规则调整后坏模块被缓存复活。

@@ -136,9 +136,6 @@ importers:
       '@weknora/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      abort-controller:
-        specifier: 3.0.0
-        version: 3.0.0
       core-js:
         specifier: 3.41.0
         version: 3.41.0
