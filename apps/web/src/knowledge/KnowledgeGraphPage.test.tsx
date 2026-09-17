@@ -105,6 +105,23 @@ function tapNode(node: SVGGElement, pointerId = 1) {
   node.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId, button: 0, clientX: 10, clientY: 10 }));
 }
 
+// jsdom ships no setPointerCapture, so capture behavior is observed by
+// patching the SVG element prototypes (the gesture code may only ever capture
+// on the svg root, but the eager-capture R432 defect was about ANY pointerdown
+// capture retargeting the compat click). This keeps the "lazy capture"
+// contract assertable: capture must happen only for a real drag, never at
+// pointerdown / for a stationary tap.
+function captureRecorder(): number[] {
+  const captured: number[] = [];
+  const record = function record(this: Element, pointerId: number) {
+    captured.push(pointerId);
+  };
+  for (const proto of [dom.window.SVGSVGElement.prototype, dom.window.SVGGElement.prototype]) {
+    Object.defineProperty(proto, 'setPointerCapture', { configurable: true, value: record });
+  }
+  return captured;
+}
+
 test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract', async () => {
   const container = await mount();
   // Scope to the canvas svg's transform group: the legend arrow-toggle button
@@ -698,8 +715,12 @@ test('graph tap selects (drawer + persistent highlight) and background click cle
   // Pointer-sequence activation (pointerdown + stationary pointerup) — the
   // path real browsers take; a bare MouseEvent('click') used to mask the
   // capture bug.
+  const captured = captureRecorder();
   await act(async () => tapNode(mid));
   await act(async () => {});
+  // The R432 fix: a stationary tap never takes pointer capture (eager capture
+  // on pointerdown retargeted the compat click to the svg root and ate taps).
+  assert.deepEqual(captured, [], 'a stationary tap never captures the pointer');
   // Drawer opens and the selection keeps the highlight on (Vue click →
   // graphSelectedSlug + applyHighlight + openGraphDrawer).
   assert.ok(container.querySelector('aside[role="dialog"]'), 'drawer opens on tap');
@@ -735,9 +756,12 @@ test('graph node drag never activates the node — tap is the only pointer activ
     configurable: true,
     value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 760, bottom: 420, width: 760, height: 420, toJSON: () => ({}) }),
   });
+  const captured = captureRecorder();
   await act(async () => {
     mid.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId: 7, button: 0, clientX: 50, clientY: 50 }));
+    assert.deepEqual(captured, [], 'pointerdown must not capture — eager capture retargeted taps to the svg root');
     svg.dispatchEvent(new dom.window.PointerEvent('pointermove', { bubbles: true, pointerId: 7, button: 0, clientX: 120, clientY: 90 }));
+    assert.deepEqual(captured, [7], 'the svg captures lazily, exactly once the drag is real');
     svg.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId: 7, button: 0, clientX: 120, clientY: 90 }));
   });
   await act(async () => {});
@@ -762,6 +786,25 @@ test('graph double-tap on the same node fetches the drawer page once (Vue pendin
   await act(async () => {});
   assert.equal(pageFetches, 1, 'the second tap inside the 300ms window belongs to the dblclick ego pivot, not another fetch');
   assert.ok(container.querySelector('aside[role="dialog"]'), 'the first tap still opened the drawer');
+});
+
+test('graph node-tap debounce expires — a tap after the 300ms window activates again', async () => {
+  const client = highlightClient();
+  let pageFetches = 0;
+  const innerGet = client.wiki.get.bind(client.wiki);
+  client.wiki.get = (async (...args: Parameters<typeof innerGet>) => {
+    pageFetches += 1;
+    return innerGet(...args);
+  }) as typeof client.wiki.get;
+  const container = await mountWith(client);
+  const mid = nodeGroup(container, 'Mid')!;
+  await act(async () => tapNode(mid, 4));
+  // Outlast the 300ms double-tap window, then tap the same node again.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+  await act(async () => tapNode(mid, 5));
+  await act(async () => {});
+  assert.equal(pageFetches, 2, 'a tap outside the 300ms window is a fresh activation, not the dblclick pair');
+  assert.ok(container.querySelector('aside[role="dialog"]'), 'the drawer is open after the re-tap');
 });
 
 test('graph keyboard selection produces the same highlight as Vue applyHighlight', async () => {

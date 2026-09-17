@@ -126,6 +126,11 @@ export interface KnowledgeSettingsSection {
   key: KnowledgeSettingsSectionKey;
   label: string;
   description: string;
+  // R457: the heading/description copy resolves through the locale translator;
+  // label/description keep the en-US fallback text (identical to the pre-R457
+  // hardcoded strings) for the raw-contract consumers.
+  labelKey: string;
+  descriptionKey: string;
 }
 
 export interface KnowledgeSettingsSummary {
@@ -152,21 +157,24 @@ interface SettingSummary {
   detailKey?: string;
 }
 
+// R457: label/description keep the en-US fallback copy; the rendered surface
+// resolves kbSettings.sections.* through the locale translator (all five
+// locales carry the keys; zh-CN aligns with the Vue sidebar vocabulary).
 const sections: KnowledgeSettingsSection[] = [
-  { key: 'basic', label: 'Basics', description: 'Name, description and knowledge-base type' },
-  { key: 'models', label: 'Models', description: 'Language and embedding models' },
-  { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes' },
-  { key: 'multimodal', label: 'Multimodal', description: 'Image description processing' },
-  { key: 'asr', label: 'Speech recognition', description: 'Audio transcription model' },
-  { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health' },
-  { key: 'parser', label: 'Parser', description: 'File-type parser rules' },
-  { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior' },
-  { key: 'advanced', label: 'Advanced', description: 'Question generation and extra options' },
-  { key: 'storage', label: 'Storage', description: 'Files and document instance' },
-  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status' },
-  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base' },
-  { key: 'activity', label: 'Activity', description: 'Recent configuration changes' },
-  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction' },
+  { key: 'basic', label: 'Basics', description: 'Name, description and knowledge-base type', labelKey: 'kbSettings.sections.basic.label', descriptionKey: 'kbSettings.sections.basic.description' },
+  { key: 'models', label: 'Models', description: 'Language and embedding models', labelKey: 'kbSettings.sections.models.label', descriptionKey: 'kbSettings.sections.models.description' },
+  { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes', labelKey: 'kbSettings.sections.faq.label', descriptionKey: 'kbSettings.sections.faq.description' },
+  { key: 'multimodal', label: 'Multimodal', description: 'Image description processing', labelKey: 'kbSettings.sections.multimodal.label', descriptionKey: 'kbSettings.sections.multimodal.description' },
+  { key: 'asr', label: 'Speech recognition', description: 'Audio transcription model', labelKey: 'kbSettings.sections.asr.label', descriptionKey: 'kbSettings.sections.asr.description' },
+  { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health', labelKey: 'kbSettings.sections.vectorStore.label', descriptionKey: 'kbSettings.sections.vectorStore.description' },
+  { key: 'parser', label: 'Parser', description: 'File-type parser rules', labelKey: 'kbSettings.sections.parser.label', descriptionKey: 'kbSettings.sections.parser.description' },
+  { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior', labelKey: 'kbSettings.sections.chunking.label', descriptionKey: 'kbSettings.sections.chunking.description' },
+  { key: 'advanced', label: 'Advanced', description: 'Question generation and extra options', labelKey: 'kbSettings.sections.advanced.label', descriptionKey: 'kbSettings.sections.advanced.description' },
+  { key: 'storage', label: 'Storage', description: 'Files and document instance', labelKey: 'kbSettings.sections.storage.label', descriptionKey: 'kbSettings.sections.storage.description' },
+  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status', labelKey: 'kbSettings.sections.datasource.label', descriptionKey: 'kbSettings.sections.datasource.description' },
+  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base', labelKey: 'kbSettings.sections.share.label', descriptionKey: 'kbSettings.sections.share.description' },
+  { key: 'activity', label: 'Activity', description: 'Recent configuration changes', labelKey: 'kbSettings.sections.activity.label', descriptionKey: 'kbSettings.sections.activity.description' },
+  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction', labelKey: 'kbSettings.sections.graph.label', descriptionKey: 'kbSettings.sections.graph.description' },
 ];
 
 function isFaqKnowledgeBase(knowledgeBase: KnowledgeSettingsInput): boolean {
@@ -948,9 +956,9 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
             <div className="wkbs-content-wrapper">
               {active ? (
                 <>
-                  <p className="wk-eyebrow">{active.label}</p>
-                  <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active.label}</h3>
-                  <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active.description}</p>
+                  <p className="wk-eyebrow">{t(active.labelKey)}</p>
+                  <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{t(active.labelKey)}</h3>
+                  <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{t(active.descriptionKey)}</p>
                 </>
               ) : null}
               {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} indexingLocked={indexingLocked} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (

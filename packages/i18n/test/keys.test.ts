@@ -114,3 +114,75 @@ test('keeps the kbSettings.summary tile keys aligned across every locale', () =>
   assert.equal(formatMessage('zh-CN', 'kbSettings.summary.storage.defaultLabel'), '系统默认');
   assert.equal(formatMessage('zh-CN', 'kbSettings.summary.storage.noInstanceDetail'), '未绑定实例');
 });
+
+// R457 A1: the editor-section headings/descriptions (the eyebrow, h3 title and
+// muted sentence above every knowledge-settings section) were the last
+// hardcoded English on the surface ("Basics", "Parser", "Storage", …). Vue's
+// navGroups/sidebar copy is already i18n through knowledgeEditor.navGroups.* /
+// knowledgeEditor.sidebar.*; the section headings gain fresh
+// kbSettings.sections.* keys carried by all five locales. en-US keeps the
+// pre-R457 hardcoded strings byte-for-byte.
+test('keeps the kbSettings.sections heading keys aligned across every locale', () => {
+  const sectionKeys: Array<[string, string, string]> = [
+    ['basic', 'Basics', 'Name, description and knowledge-base type'],
+    ['models', 'Models', 'Language and embedding models'],
+    ['faq', 'FAQ', 'FAQ indexing modes'],
+    ['multimodal', 'Multimodal', 'Image description processing'],
+    ['asr', 'Speech recognition', 'Audio transcription model'],
+    ['vectorStore', 'Vector store', 'Bound retrieval engine and health'],
+    ['parser', 'Parser', 'File-type parser rules'],
+    ['chunking', 'Chunking', 'Chunk size and splitting behavior'],
+    ['advanced', 'Advanced', 'Question generation and extra options'],
+    ['storage', 'Storage', 'Files and document instance'],
+    ['datasource', 'Data sources', 'External connectors and sync status'],
+    ['share', 'Share', 'Spaces with access to this knowledge base'],
+    ['activity', 'Activity', 'Recent configuration changes'],
+    ['graph', 'Knowledge graph', 'Entity and relationship extraction'],
+  ];
+  const expected = sectionKeys.flatMap(([key]) => [
+    `kbSettings.sections.${key}.label`,
+    `kbSettings.sections.${key}.description`,
+  ]);
+  assert.equal(expected.length, 28);
+  const placeholders = (value: string) => [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]);
+  for (const locale of supportedLocales) {
+    const localeSectionKeys = Object.keys(messages[locale]).filter((key) => key.startsWith('kbSettings.sections.'));
+    assert.equal(localeSectionKeys.length, 28, `${locale} kbSettings.sections key count`);
+    for (const key of expected) {
+      assert.ok(messages[locale][key], `${locale} is missing ${key}`);
+      assert.notEqual(messages[locale][key], key, `${locale} ${key} resolved to the raw key`);
+      assert.deepEqual(placeholders(messages[locale][key]), [], `${locale} ${key} must not carry placeholders`);
+    }
+    // The summary baseline (36 keys) stays untouched by this round.
+    assert.equal(Object.keys(messages[locale]).filter((key) => key.startsWith('kbSettings.summary.')).length, 36, `${locale} kbSettings.summary key count`);
+  }
+  // en-US reuses the pre-R457 hardcoded English byte-for-byte.
+  for (const [key, label, description] of sectionKeys) {
+    assert.equal(formatMessage('en-US', `kbSettings.sections.${key}.label`), label);
+    assert.equal(formatMessage('en-US', `kbSettings.sections.${key}.description`), description);
+  }
+  // zh-CN renders idiomatic Chinese aligned with the Vue sidebar vocabulary.
+  const zhLabels: Record<string, string> = {
+    basic: '基本信息', models: '模型配置', faq: 'FAQ 设置', multimodal: '图像处理',
+    asr: '音频处理', vectorStore: '向量存储', parser: '解析引擎', chunking: '分块设置',
+    advanced: '高级设置', storage: '存储引擎', datasource: '数据源', share: '共享管理',
+    activity: '活动记录', graph: '知识图谱',
+  };
+  for (const [key, label] of Object.entries(zhLabels)) {
+    assert.equal(formatMessage('zh-CN', `kbSettings.sections.${key}.label`), label);
+    assert.ok(formatMessage('zh-CN', `kbSettings.sections.${key}.description`).length > 0, `zh-CN sections.${key}.description is non-empty`);
+  }
+});
+
+test('keeps zh-CN knowledge-settings headings and navigation free of hardcoded English', () => {
+  const guarded = (key: string) =>
+    key.startsWith('kbSettings.sections.')
+    || key.startsWith('knowledgeEditor.sidebar.')
+    || key.startsWith('knowledgeEditor.navGroups.');
+  for (const [key, value] of Object.entries(messages['zh-CN'])) {
+    if (!guarded(key)) continue;
+    // Uppercase proper nouns (FAQ, Embedding) are allowed; lowercase residue
+    // from hardcoded English sentences is not.
+    assert.doesNotMatch(value, /[a-z]/, `zh-CN ${key} must not embed lowercase English residue`);
+  }
+});

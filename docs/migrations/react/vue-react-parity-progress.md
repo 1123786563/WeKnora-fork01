@@ -4909,3 +4909,29 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1649/1649, `pnpm test:shared` 747/747, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r456-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R457 — Section titles i18n, graph pointer-capture verified, wiki source-doc wiring completed
+
+- Four parallel agents (A1 settings section titles i18n, A2 graph pointer-capture verification, A3 wiki
+  source-doc host wiring, A4 verifier). Verdict: A1 PASS, A2 PASS (verification-only, zero production changes),
+  A3 CONCERNS → the orchestrator completed the one-line host wiring in-round (main.tsx WikiEntry gains
+  `onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId, navigate })}`, the React equivalent of Vue's
+  openSourceDoc card-details behavior). Final gates on the final code: test:web 1657/1657, test:shared
+  749/749, typecheck clean, build ✓.
+- A1: the sections array's 14 label/description pairs (28 strings) wired through `kbSettings.sections.*` —
+  R438's navGroups keys were already i18n-wired (zero new keys needed there); zh-CN aligned to the Vue sidebar
+  vocabulary; en-US byte-identical fallbacks; guards extended (28 sections keys + zh-CN no-English-residue
+  guard covering sidebar/navGroups/sections). knowledge-settings 108/108; i18n 73/73.
+- A2: the R432-era pointer-capture question CLOSED — the lazy-capture fix is fully present (7/7 elements
+  verified in source): pointerdown does NOT capture, move >3px captures once on the svg root, stationary
+  pointerup opens the drawer via endGraphGesture, 300ms debounce, no <g> onClick, pointercancel not a tap.
+  +43 test lines with a captureRecorder patch and a mutation check (re-adding eager capture flips exactly the
+  two new assertions). knowledge graph 51/51. Deferred: end-to-end browser capture (subagents have no
+  browser) — main-session screenshot candidate.
+- A3: `wiki/source-doc-open.ts` (wikiSourceDocPath + createWikiSourceDocOpener) + 3 jsdom tests delivered;
+  the orchestrator wired WikiEntry in main.tsx (one line + import), completing footer source-doc clicks →
+  /knowledgeBase/:kbId/documents/:docId. Known flake recorded: platform/contextual-guide.test.tsx auto-skip
+  flaked once in the full run (single-file reruns green ×2) — elimination queued.
+- Gates: `pnpm test:web` 1657/1657, `pnpm test:shared` 749/749, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r457-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

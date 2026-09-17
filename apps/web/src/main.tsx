@@ -16,6 +16,7 @@ import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { installNavigationObserver, navigate, subscribeNavigation } from './platform/navigation.ts';
 import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
+import { createWikiSourceDocOpener } from './wiki/source-doc-open.ts';
 import { CraftRoutes } from './features/craft/routes.tsx';
 const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
 const IntegrationsRoutePage = lazy(() => import('./integrations/IntegrationsRoutePage.tsx').then((module) => ({ default: module.IntegrationsRoutePage })));
@@ -57,7 +58,7 @@ function WikiEntry({ client, knowledgeBaseId, initialSlug, initialDocumentId, ca
     return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
   }
   if (wikiEnabled === null) return <Status tone="neutral">加载中…</Status>;
-  return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} />;
+  return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId, navigate })} />;
 }
 import './styles.css';
 
