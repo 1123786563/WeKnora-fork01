@@ -189,6 +189,18 @@
 - **门禁**：go build ./internal/... 0、go test BatchDownload ok、typecheck 0、test:web **1683/1683**（+6）、i18n 73/73。
 - **C7 状态：✅ 完成**（本轮 React 侧+本分支后端就绪；main 的 Vue 侧第 1 轮已有）。
 
+### 2026-09-18 第 10 轮（B13 评估不作 + A11 会话 fork 阶段 1 地基落地）🔄
+
+**B13 评估结论：⛔ 本任务不作业**（记录裁决）：上游 559ad53（KnowledgeTagFilter 组件化，KnowledgeBase.vue -1236 行）与 d645334（useCitationPopover 共享化）均为**纯代码重构、用户行为不变**；移植需动 worktree 的 fork Vue（cron lane 基线，纪律不侵入）；解锁的 C4/C6 也是组件化类对齐项且 fork React 已有等价功能入口（按标签筛选/引用弹层均有实现）。若后续 cron lane 自然对齐到该形态，C4/C6 随之关闭。
+
+**A11 会话 fork（上游 42e6163，90 文件 +8267/-262）拆 4 阶段，本轮完成阶段 1（worktree 提交 `2372f8ec`）**：
+- **类型**：SandboxCheckpoint/ForkBootstrap（Valuer+Scanner）、ForkSnapshotLease 新表、Session 三新列（ParentSessionID/ForkedFromMessageID/ForkBootstrap）、Message.SandboxCheckpoint、MessageArtifact.ContentHash+WithRestoredMtime——上游 session_fork.go 整文件+6 条单测全过。
+- **仓库查询**：消息排序钉死 (created_at,id)（fork 边界可复现）；ListMessagesBySessionUpTo 组合游标历史查询；GetMessagesByRequestIDs 收紧为会话内（接口+实现+service 调用方，上游补丁干净应用）；RewriteSandboxCheckpoints。
+- **迁移**：上游 000097/000098 → fork versioned **000150/000151** + sqlite **000072/000073**（编号纪律）。
+- **门禁**：go build ./internal/... 0；types ok（新 6 测试绿）；repository AgentRun 系列绿。**分支预存红（stash 对照证实非本轮引入）**：sqlite 迁移 runner 未设 NoTxWrap（service 两个 agent_run 测试+craft down-to-41 报 PRAGMA 事务错）、TestExecutionDispatchSQLiteMigrationHead 断言 20 vs 实际（链头漂移）——均属外部 lane 待修，已记录。
+- **⚠️ 事故记录（外部清扫复现）**：2372f8ec 提交时暂存区混入外部 cron lane 的 R462 文件（evidence/auth api 死代码删除/ShareDialog/pre-push 脚本等 18+ 文件）——内容自洽完整（R462 裁决性成品），21 条相关测试绿，按纪律验证入库+记录归属：**R462 内容归属 cron lane，载体提交 2372f8ec**。
+- **后续阶段**（下轮候选）：阶段 2=fork service（509 行：分叉创建/历史复制/孤儿快照回收）+handler+路由；阶段 3=沙箱 git checkpoint（session_manager/docker_snapshot/bootstrapper，**trpc-agent-go 每轮完成挂点是 fork 特有适配点**）；阶段 4=React 入口 C1（forkPoint）。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
