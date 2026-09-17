@@ -5,3 +5,4 @@ export * from './submission.ts';
 export * from './query-scope.ts';
 export * from './session-list.ts';
 export * from './agent-options.ts';
+export * from './resource-presentation.ts';
