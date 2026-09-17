@@ -79,7 +79,7 @@
 | W31 | [实时语音、打断与后台进度展示](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W32 | [高级交互能力端口与保留清单闭合](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W33 | [删除墓碑、远程停止和迟到用量](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `93dd0648`, `60250b69`, `189cd427`, `213bd0b3`, `0eb09eaa`, `2c65c36d`, `ea2f88c6`, `41438878`（整链 merge 于 `c6d78821`） | repository Cleanup+race、service Cleanup、vet、build 在集成树全 GREEN；PG/真实节点/备份演练 blocked-env | rereview7 Spec PASS / Quality APPROVED（7 轮修复收敛：状态机/门禁/revision/幂等 fail-closed/late-upload 锁全闭合） | W26 文件幂等实现与 delete_lease_until 消费语义为 W26 域；W34 解锁 | W34/W35/W37 downstream |
-| W34 | [安全部署、能力开关与可观测性](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
+| W34 | [安全部署、能力开关与可观测性](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `625ab622`（外部裹挟提交，路径过滤审查）, `8bab606d` | execution/config/router/workbench 四包 ok、vet 0、compose 渲染 0、真实容器验证（egress 四向/隔离/限额）；mTLS/双 bridge/备份轮换 blocked-env | review PASS+I-1→fix1→rereview1 Spec PASS / Quality APPROVED | drain/platform/read 三入口生产接线；paseo/voice/notifications 如实标注无消费方；W35/W36 解锁 | 
 | W35 | [事件保留、备份恢复与崩溃演练](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W36 | [原生升级、兼容窗口与性能验收](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W37 | [完整验收门禁与分阶段交付报告](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
