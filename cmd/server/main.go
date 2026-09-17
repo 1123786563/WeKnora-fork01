@@ -32,6 +32,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/container"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -68,6 +69,8 @@ func main() {
 		resourceCleaner interfaces.ResourceCleaner,
 		systemSettingSvc interfaces.SystemSettingService,
 		agentRuntime *container.AgentRuntime,
+		notificationWorker *workbenchservice.NotificationWorker,
+		notificationDeliveryWorker *workbenchservice.NotificationDeliveryWorker,
 	) error {
 		if err := container.ValidateAgentRuntimeConfig(cfg); err != nil {
 			return err
@@ -85,6 +88,8 @@ func main() {
 		}
 
 		ctx, done := context.WithCancel(context.Background())
+		notificationWorker.Start(ctx)
+		notificationDeliveryWorker.Start(ctx)
 
 		// Start the durable tRPC run worker. An enabled runtime without a
 		// registered graph executor is a boot failure: every service has been

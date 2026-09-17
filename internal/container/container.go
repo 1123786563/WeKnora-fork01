@@ -169,6 +169,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// W26: immutable artifact version rows live in the same business database
 	// scope as the run store so imports and downloads share one fence.
 	must(container.Provide(repository.NewArtifactVersionStore))
+	must(container.Provide(repository.NewNotificationStore))
+	must(container.Provide(workbenchservice.NewNotificationProjector))
+	must(container.Provide(workbenchservice.NewNotificationWorker))
+	must(container.Provide(newMobileNotificationProvider))
+	must(container.Provide(workbenchservice.NewNotificationDeliveryWorker))
 	must(container.Provide(repository.NewMobileExchangeStore))
 	// W30: voice session rows (ownership, provider mapping, admission
 	// verdict, settled usage) share the same business database scope.
@@ -723,6 +728,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+// newMobileNotificationProvider keeps push delivery behind a single
+// deployment-configured HTTP gateway. An empty endpoint is valid during local
+// development: the worker remains durable and fail-closed until the gateway
+// is configured.
+func newMobileNotificationProvider() workbenchservice.NotificationProvider {
+	return workbenchservice.NewHTTPNotificationProvider(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")))
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver
