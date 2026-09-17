@@ -332,7 +332,13 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           : <LiveSectionsPanel client={client} section={key} payload={sectionPayload} />)
       : null;
     return (
-      <div key={key} style={isActive ? undefined : { display: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
+      <div key={key} style={isActive
+        ? { visibility: 'visible' }
+        // Hidden sections stay mounted but are taken out of flow with
+        // visibility+position instead of display:none — toggling display
+        // would reset and replay the .wks-section fade-in animation on every
+        // revisit, which read as a flicker.
+        : { position: 'absolute', top: 0, left: 0, width: '100%', visibility: 'hidden', pointerEvents: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
         {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
           {/* Panels owning their full Vue section header render it themselves:
               general/models here, and members — TenantMembers.vue:8-65 renders
@@ -394,7 +400,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                 ))}
               </div>
             </nav>
-            <section className="wks-content" aria-live="polite">
+            <section className="wks-content" aria-live="polite" style={{ position: 'relative' }}>
               {visitedSections.map((key) => renderSectionPanel(key))}
             </section>
           </div>
