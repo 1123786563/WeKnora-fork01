@@ -50,14 +50,14 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
       onChunk(new Uint8Array(1024));
       return 2048;
     },
-    uploadBytes: async (meta, send) => {
+    uploadBytes: async (meta, provideChunks) => {
       // 传给服务端的是 bytes 与元数据——URI 不进请求
       sentUri.value = meta.name.includes('content://');
-      send(new Uint8Array(512));
-      // 上传在途：切空间
+      let sent = 0;
+      provideChunks((chunk) => { sent += chunk.length; uploadedBytes.push(chunk.length); });
+      // 上传在途：切空间（守卫路径——非异常兜底）
       generation = 2;
-      send(new Uint8Array(512));
-      return { documentID: 'doc-42', bytesUploaded: 1024 };
+      return { documentID: 'doc-42', bytesUploaded: sent };
     },
   });
 
@@ -65,9 +65,10 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   if (outcome.applied) throw new Error('late result must not be applied after scope switch');
   if (outcome.failure !== 'scope_changed') throw new Error(`expected scope_changed, got ${outcome.failure}`);
   if (sentUri.value) throw new Error('content uri must never be uploaded');
+  if (uploadedBytes.reduce((a, b) => a + b, 0) !== 2048) throw new Error('real bytes must have been streamed to the upload channel');
 
-  // 草稿保留：失败路径不清选取（文件对象仍可重试——由调用方持有；此处观测控制器未要求清除）
-  const draftPreserved = file.name === '季度数据.pdf' && file.uri.startsWith('content://');
+  // 草稿保留：scope_changed 路径控制器无清除调用——选取对象由调用方继续持有（观测其未被改动）
+  const draftPreserved = file.sizeBytes === 2048 && file.name === '季度数据.pdf';
 
   // 对照：无切换 → 正常应用
   const okController = createUploadController({
@@ -76,7 +77,6 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   });
   const ok = await okController.upload({ ...file, sizeBytes: 100 }, { isCurrent: () => true });
   if (!ok.applied || ok.result?.documentID !== 'doc-ok') throw new Error('normal upload must apply');
-  void uploadedBytes;
 
   // 前置校验：超大/非法 MIME 拒绝且保留草稿
   if (precheckFile({ ...file, sizeBytes: DEFAULT_UPLOAD_CONSTRAINTS.maxBytes + 1 }).ok) throw new Error('oversize must be rejected');

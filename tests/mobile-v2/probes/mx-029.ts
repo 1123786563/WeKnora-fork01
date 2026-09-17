@@ -46,17 +46,20 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   const controller = createVoiceSessionController(ports);
   const session = await controller.start('run-1');
 
-  // frozen：停止播报——媒体输出停止，任务取消计数 0
+  // frozen：停止播报——媒体输出停止，任务取消计数 0（ports 级副作用断言——防返回值硬编码）
   const interrupted = await controller.stop('interrupt_output', { expectedRevision: 4 });
   if (!interrupted.mediaOutputStopped || interrupted.sessionEnded || interrupted.runCancelled) {
     throw new Error(`interrupt_output must only stop output, got ${JSON.stringify(interrupted)}`);
   }
   if (controller.runCancelObservations() !== 0) throw new Error('interrupt must never cancel the run');
+  if (runCancels !== 0) throw new Error('interrupt must never touch the cancel command channel (ports-level)');
+  if (sessionEnds !== 0) throw new Error('interrupt must not end the session (ports-level)');
   void session;
 
-  // 对照：结束语音≠取消任务（runCancels 仍 0）
+  // 对照：结束语音≠取消任务（ports 级 runCancels 仍 0）
   const ended = await controller.stop('end_session', { expectedRevision: 4 });
   if (!ended.sessionEnded || ended.runCancelled) throw new Error('end_session must not cancel the run');
+  if (runCancels !== 0) throw new Error('end_session must not touch cancel channel (ports-level)');
   // 取消任务：独立通道（计数 +1）
   const controller2 = createVoiceSessionController(ports);
   await controller2.start('run-1');
