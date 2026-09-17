@@ -953,7 +953,7 @@
       "kind": "create",
       "shared_serialized": false,
       "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "note": "目标能力三态裁决"
     },
     "pnpm-lock.yaml": {
       "owners": [
@@ -1800,7 +1800,8 @@
         "MX-015",
         "MX-016",
         "MX-022",
-        "MX-018"
+        "MX-018",
+        "MX-026"
       ],
       "kind": "modify",
       "shared_serialized": true,
