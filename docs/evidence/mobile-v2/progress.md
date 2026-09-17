@@ -58,7 +58,7 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-033 | review | 1e015177→32786008 | mv2 40/40（recovery 3+security 4）· frozen 1/1 · go admission ok | 待独立review（收尾批） | MX-033.md / fault-matrix.md |
 | MX-034 | blocked-env | ddfe1831→09b56a52 | 显式命令 exit=1 blocked-env（正确的红）· mv2 40/40（E2E 独立） | 待独立review（收尾批） | MX-034.md / native-e2e.md |
 | MX-035 | partial | 09b56a52→a799d30c | 静态层 frozen 双空（41/41，含真缺口修复）· 设备层 pending · tsc 11 | 待独立review（收尾批） | MX-035.md / accessibility-performance.md |
-| MX-036 | review | a799d30c→(待提交) | frozen core=releasable/remote=blocked-env/false（回归真实执行）· mv2 42/42 | 待独立review（收尾批） | MX-036.md / release-report.md |
+| MX-036 | review | a799d30c→74d3337b | frozen core=releasable/remote=blocked-env/false（回归真实执行）· mv2 42/42 | 收尾批复核进行中（7 项批） | MX-036.md / release-report.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 
@@ -76,3 +76,11 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 - 回归基线：mv2 **19/19**、shared **590/590**、挂载 9/9、apps/mobile tsc **11=新基线**（D-026；app/5、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1 为 legacy 遗留）、go 全量 100 包 ok。
 - 纪律重申：注册表变更后必跑 test:mobile-v2（mx-001 守护已两次抓住回归）；证据命令全量计数禁 tail；提交被 Mimosa 全项目 i18n 误报拦截时按 D-022 重试（本轮 1-3 次重试均通过）。
 - 修复轮历史：审查体系已抓 6 个 P1（pending wire 空 action、注册表 kind 回归、Sheet 键盘/返回焦点、SSO state 契约、AEAD 密钥竞态、overview 虚构列）——全部修复并有回归测试。
+
+## 接续说明（2026-09-18 第三轮收口——36/36 已全部处置）
+
+- HEAD `74d3337b`，工作区干净，未 push。**36 项全部处置完毕**：29 项 accepted（001-026/028/030/031，含 025/029 修复轮）+ MX-027 not-activated（remote 条件边未激活——manifest 强制关闭）+ MX-034 blocked-env（编排+探测交付，正确的红）+ MX-035 partial（静态层 frozen 通过/设备层 pending）+ MX-032/033/036 已提交待收尾批复核（代理在途，结论到达后按 R1 模式处置并更新 acceptance-index）。
+- 最终回归基线：**mv2 42/42、shared 590/590、挂载 9/9、go 99 包 ok（1 项上游轮既有 flaky 登记）**、tsc **11=新基线**。
+- 发布裁决：core=releasable-with-conditions（设备证据+收尾批复核两条件）；globalAllPassed=false（如实）。
+- 待办移交：①收尾批复核结论登记（acceptance-index review-pending→accepted）②解除 blocked-env 三要素后执行 MX-034 配方+MX-035 矩阵采集回填③MX-027 若激活 remote profile 需 W17-24/W26 依赖链评估。
+- 纪律提醒不变（D-027 替换必须 assert；注册表变更后必跑 mv2 守护；Mimosa 拦截按 D-022 重试）。
