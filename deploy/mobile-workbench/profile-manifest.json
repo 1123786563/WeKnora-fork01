@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "generated_by": "MX-032",
+  "note": "部署能力开关与证据门禁清单。capability = 部署 ∩ 健康 ∩ 权限 ∩ 验收证据；证据缺失=unavailable（隐藏入口而非置灰按钮）。",
+  "profiles": {
+    "core": {
+      "deploy_enabled": true,
+      "evidence_required": [],
+      "note": "登录/空间/发任务/事件/审批/恢复/通知/清理/发布——本轮 core 范围"
+    },
+    "oidc": {
+      "deploy_enabled": true,
+      "evidence_required": ["oidc:real-idp-e2e"],
+      "note": "真实 IdP 双平台回跳证据未取得（blocked-env）——能力 unavailable"
+    },
+    "resources": {
+      "deploy_enabled": true,
+      "evidence_required": ["resources:knowledge-list-wiring"],
+      "note": "知识列表 API 接线证据未取得——unavailable"
+    },
+    "connectors": {
+      "deploy_enabled": true,
+      "evidence_required": ["connectors:connection-api-wiring"],
+      "note": "连接 API 服务端接线未核验——unavailable"
+    },
+    "remote": {
+      "deploy_enabled": true,
+      "evidence_required": ["remote:cancel-evidence", "remote:paseo-live-probe"],
+      "note": "MX-027 未实施（条件边未激活）+ live Paseo blocked-env——unavailable"
+    },
+    "personal_node": {
+      "deploy_enabled": false,
+      "evidence_required": ["personal-node:node-binding-evidence"],
+      "note": "个人节点未实施——deploy 直接关闭"
+    },
+    "dictation": {
+      "deploy_enabled": true,
+      "evidence_required": ["dictation:engine-wiring"],
+      "note": "识别引擎接线 blocked-env——unavailable"
+    },
+    "voice": {
+      "deploy_enabled": true,
+      "evidence_required": ["voice:media-provider-e2e"],
+      "note": "真实媒体/推送环境 blocked-env——unavailable"
+    },
+    "full_happy": {
+      "deploy_enabled": false,
+      "evidence_required": ["full-happy:original-matrix-complete"],
+      "note": "原矩阵完整实现（H24-H33）未达成——deploy 关闭"
+    }
+  }
+}
