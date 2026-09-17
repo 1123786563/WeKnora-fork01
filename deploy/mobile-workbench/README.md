@@ -2,10 +2,13 @@
 
 This directory is the W34 managed deployment surface of the mobile AI SaaS
 workbench: hardening, capability switches, egress enforcement and the
-observability contract. The companion Go pieces are
+observability contract, plus the W35 backup-restore runbook, event retention
+policy and fault-drill entrypoints. The companion Go pieces are
 `internal/execution/deployment_policy.go` (the managed-node policy and the
-five health metrics) and the capability switches in `internal/config`
-(`workbench.*`).
+five health metrics), `internal/execution/restore_policy.go` (the W35
+restore admission predicate), the event retention pass in
+`internal/application/repository/agent_run_events.go`, and the capability
+switches in `internal/config` (`workbench.*`).
 
 ## Topology
 
@@ -118,6 +121,83 @@ Version-incompatible peers are refused by the existing fenced
 admission/dispatch layer (authorization version + payload hash), not by this
 file; the two-bridge lease race is settled by the durable dispatch store's
 fenced claim — both behaviours are covered by the W20–W24 tests.
+
+## Backup restore, event retention and fault drills (W35)
+
+### Restore admission policy
+
+Restoring a node's durable state from a backup snapshot closes NEW command
+dispatch by default. It reopens only when the code-level predicate
+`internal/execution.MayDispatchAfterRestore(reconciled, unknown)` holds:
+every binding carried in the restored state has been reconciled against the
+authoritative external systems — still-live external processes observed,
+provider usage records matched against command receipts, projections
+rebuilt — AND no dispatch outcome stayed unknown. A stale backup that still
+shows a command as `queued` is never read as proof the command never
+executed: the external process may have started and billed usage after the
+snapshot was taken, so replaying it is exactly the duplicate-side-effect
+window this policy closes. Node credentials are re-verified (epoch bumped)
+as part of the restore drill before dispatch reopens.
+
+### Event retention (snapshot-then-trim)
+
+`AgentRunStore.ApplyEventRetention` (`internal/application/repository/agent_run_events.go`)
+runs one bounded time-based retention pass over `agent_run_events`:
+
+- Window: 30 days by default (`DefaultEventRetention`), overridable per pass
+  via `EventRetentionOptions.Retention`; a negative window is rejected, not
+  treated as trim-everything.
+- Eligibility: only events older than the cutoff of runs already in a
+  terminal status (`succeeded`/`failed`/`canceled`). Live runs are never
+  touched.
+- W33 coordination: runs whose session carries a live (non-purged)
+  `execution_cleanup` tombstone are skipped entirely — their rows belong to
+  the evidence-fenced W33 purge path, and deleting usage/replay evidence
+  under that fence could deadlock settlement.
+- Protected families, never deleted by this global pass (each follows its
+  own retention/evidence policy): `usage.*` (commercial records),
+  `approval.*` (live approval evidence), `run_completed` (the finalize
+  idempotency receipt), `retention.trimmed` (the snapshots below).
+- Snapshot-then-trim: for every trimmed run the pass appends a
+  `retention.trimmed` summary event (trimmed count, first/last seq,
+  per-type histogram, cutoff) and deletes the stale prefix in the SAME
+  transaction — a crash can never leave events deleted without their
+  snapshot, and old replay cursors over the trimmed prefix surface the
+  explicit reload error (`ErrCursorExpired`) rather than silent data loss.
+
+The pass is a store-level API invoked explicitly (operator job / worker
+sweep); no background scheduler is wired to it in W35. The finalize-time
+per-run watermark trim (`TrimEventsBefore`, last 1000 events) from earlier
+weeks is unchanged and orthogonal.
+
+### Fault drills
+
+```bash
+# Structure/validation/JSON-contract proof without a test deployment:
+node scripts/mobile-workbench/fault-scenarios.mjs --harness [--repeat 3]
+
+# Real injection into an explicit, allowlisted, non-production deployment:
+node scripts/mobile-workbench/fault-scenarios.mjs \
+  --target https://wb-test-1.internal:8443 \
+  --allowlist "https://wb-test-1.internal" \
+  --expect-version "$(git rev-parse --short HEAD)" \
+  --scenario restore_snapshot --repeat 3
+```
+
+Guards, in order, before any injection: an explicit target (`--target` or
+`WB_TEST_DEPLOYMENT`; otherwise immediate non-zero exit), origin membership
+in `--allowlist` / `WB_TEST_ORIGIN_ALLOWLIST`, and the deployment control
+endpoint answering `test_deployment: true` plus a version that matches
+`--expect-version`. Each scenario (`start_ack_lost`, `bridge_restart`,
+`daemon_restart`, `db_unavailable`, `restore_snapshot`) emits one JSON line
+per drill — `scenario`, `baseline_sha`, `run_id`, `actual_process_count`,
+`usage_count`, `result` — whose checks compare database run counts, external
+process counts and commercial usage records, never just HTTP 200. After a
+`restore_snapshot` drill the script also verifies dispatch stayed closed
+until reconciliation finished and node credentials were re-verified. No
+fixed RTO/RPO is promised; control-plane recovery time and data loss are
+read off the drill output per run.
+
 
 ## Observability contract
 
