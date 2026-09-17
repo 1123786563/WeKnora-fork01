@@ -1,0 +1,1745 @@
+{
+  "schema_version": 1,
+  "generated_by": "MX-001",
+  "baseline_head": "6a70c35a19c58511b8372b5a68b5147ab577ad14",
+  "source_task_index": "docs/design/mobile-v2/plans/task-index.json",
+  "execution_mode": {
+    "serial_single_writer": true,
+    "parallel_implementers": 0,
+    "note": "单实现者串行模式（决策 D-001）：每任务基于上一 accepted SHA 提交；shared_serialized 文件在多任务间按 DAG 顺序排队写"
+  },
+  "lock_transfer_protocol": "任务需要变更他人持有锁的文件时，先在 docs/evidence/mobile-v2/decisions.md 登记锁转移及理由，再实施；禁止静默顺手修改",
+  "migration_sequences": {
+    "postgres": {
+      "dir": "migrations/versioned",
+      "head": 135,
+      "next": 136
+    },
+    "sqlite": {
+      "dir": "migrations/sqlite",
+      "head": 57,
+      "next": 58
+    },
+    "note": "MX-001 时点无任何 MX 任务声明迁移；需要迁移的任务必须先扩展自身 writes 并取下一可用编号，禁止覆盖旧迁移"
+  },
+  "files": {
+    "apps/mobile/package.json": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/app/(app)/_layout.tsx": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/app/_layout.tsx": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/auth/bootstrap.ts": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/auth/session.tsx": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/commercial/usage-presenter.ts": {
+      "owners": [
+        "MX-031"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/conversations/ConversationScreen.tsx": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/conversations/MessageBlock.tsx": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/conversations/ProductMessageList.tsx": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/conversations/view-model.ts": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/interactions/BudgetApproval.tsx": {
+      "owners": [
+        "MX-020"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/interactions/ConnectionConsent.tsx": {
+      "owners": [
+        "MX-020"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/interactions/QuestionForm.tsx": {
+      "owners": [
+        "MX-020"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/interactions/ToolApproval.tsx": {
+      "owners": [
+        "MX-019"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/interactions/controller.ts": {
+      "owners": [
+        "MX-019"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/navigation/ProductShell.tsx": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/navigation/routes.ts": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/notifications/deep-link.ts": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/notifications/registration.ts": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/execution-storage.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/native-file.ts": {
+      "owners": [
+        "MX-025"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/native-host.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/product-session.ts": {
+      "owners": [
+        "MX-011"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/recovery.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/platform/stream-transport.ts": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/preferences/store.ts": {
+      "owners": [
+        "MX-030"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/resources/artifact-viewer.ts": {
+      "owners": [
+        "MX-024"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/resources/connection-controller.ts": {
+      "owners": [
+        "MX-023"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/resources/share.ts": {
+      "owners": [
+        "MX-024"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/resources/upload.ts": {
+      "owners": [
+        "MX-025"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/AgentPickerScreen.tsx": {
+      "owners": [
+        "MX-016"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/ArtifactScreen.tsx": {
+      "owners": [
+        "MX-024"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/ConnectionScreen.tsx": {
+      "owners": [
+        "MX-023"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/ExecutionScreen.tsx": {
+      "owners": [
+        "MX-018"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/HomeScreen.tsx": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/InboxScreen.tsx": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/InteractionScreen.tsx": {
+      "owners": [
+        "MX-019"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/KnowledgeScreen.tsx": {
+      "owners": [
+        "MX-022"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/LoginScreen.tsx": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/NewTaskScreen.tsx": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/ProfileScreen.tsx": {
+      "owners": [
+        "MX-030"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/ResourcesScreen.tsx": {
+      "owners": [
+        "MX-022"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/SessionListScreen.tsx": {
+      "owners": [
+        "MX-014"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/SpacePickerScreen.tsx": {
+      "owners": [
+        "MX-011"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/TargetPickerScreen.tsx": {
+      "owners": [
+        "MX-026"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/UsageScreen.tsx": {
+      "owners": [
+        "MX-031"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/screens/VoiceInputScreen.tsx": {
+      "owners": [
+        "MX-028"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/Button.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/Card.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/Field.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/Sheet.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/StateView.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/StatusBadge.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/ui/theme.ts": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/voice/VoiceSessionPanel.tsx": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/voice/dictation.ts": {
+      "owners": [
+        "MX-028"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/voice/realtime.ts": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "apps/mobile/sources/weknora/workbench/task-form.ts": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "deploy/mobile-workbench/mobile-release.md": {
+      "owners": [
+        "MX-036"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "deploy/mobile-workbench/profile-manifest.json": {
+      "owners": [
+        "MX-032"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/acceptance-index.json": {
+      "owners": [
+        "MX-036"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/accessibility-performance.md": {
+      "owners": [
+        "MX-035"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/current-state-matrix.md": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/fault-matrix.md": {
+      "owners": [
+        "MX-033"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/file-ownership.json": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/native-baseline.md": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/native-e2e.md": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/profile-gates.md": {
+      "owners": [
+        "MX-032"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "docs/evidence/mobile-v2/release-report.md": {
+      "owners": [
+        "MX-036"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/application/service/workbench/admission.go": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/application/service/workbench/capabilities.go": {
+      "owners": [
+        "MX-032"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/application/service/workbench/interaction.go": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/application/service/workbench/overview.go": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/application/service/workbench/voice_session.go": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/execution/mobile_driver_policy.go": {
+      "owners": [
+        "MX-027"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/handler/session/workbench_commands.go": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/handler/session/workbench_inbox.go": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/handler/session/workbench_overview.go": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/handler/session/workbench_read.go": {
+      "owners": [
+        "MX-004",
+        "MX-027"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/router/routes_workbench.go": {
+      "owners": [
+        "MX-013",
+        "MX-021",
+        "MX-027",
+        "MX-032"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-001-preregistration",
+      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
+      "kind_basis": "preregistration"
+    },
+    "internal/workbench/contracts.go": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/workbench/interaction.go": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "package.json": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/api-client/src/knowledge/documents.ts": {
+      "owners": [
+        "MX-025"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/api-client/src/mobile/executions.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/api-client/src/mobile/interactions.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/api-client/src/mobile/overview.ts": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/contracts/src/mobile/execution.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/contracts/src/mobile/interactions.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/contracts/src/mobile/read-models.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/design-tokens/src/mobile/native-tokens.ts": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/design-tokens/src/mobile/tokens.css": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/design-tokens/src/mobile/tokens.json": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/agent-options.ts": {
+      "owners": [
+        "MX-016"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/execution-cache.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/execution-frames.ts": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/execution-presentation.ts": {
+      "owners": [
+        "MX-018"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/query-scope.ts": {
+      "owners": [
+        "MX-011"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/resource-presentation.ts": {
+      "owners": [
+        "MX-022"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/session-list.ts": {
+      "owners": [
+        "MX-014"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/submission.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "packages/domain/src/mobile/target-options.ts": {
+      "owners": [
+        "MX-026"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "pnpm-lock.yaml": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "services/paseo-adapter/src/mobile-capabilities.ts": {
+      "owners": [
+        "MX-027"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/maestro/core.yaml": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/maestro/scope.yaml": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-001.test.ts": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-002.test.ts": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-003.test.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-004.test.ts": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-005.test.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-006.test.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-007.test.ts": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-008.test.ts": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-009.test.ts": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-010.test.ts": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-011.test.ts": {
+      "owners": [
+        "MX-011"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-012.test.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-013.test.ts": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-014.test.ts": {
+      "owners": [
+        "MX-014"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-015.test.ts": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-016.test.ts": {
+      "owners": [
+        "MX-016"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-017.test.ts": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-018.test.ts": {
+      "owners": [
+        "MX-018"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-019.test.ts": {
+      "owners": [
+        "MX-019"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-020.test.ts": {
+      "owners": [
+        "MX-020"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-021.test.ts": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-022.test.ts": {
+      "owners": [
+        "MX-022"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-023.test.ts": {
+      "owners": [
+        "MX-023"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-024.test.ts": {
+      "owners": [
+        "MX-024"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-025.test.ts": {
+      "owners": [
+        "MX-025"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-026.test.ts": {
+      "owners": [
+        "MX-026"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-027.test.ts": {
+      "owners": [
+        "MX-027"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-028.test.ts": {
+      "owners": [
+        "MX-028"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-029.test.ts": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-030.test.ts": {
+      "owners": [
+        "MX-030"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-031.test.ts": {
+      "owners": [
+        "MX-031"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-032.test.ts": {
+      "owners": [
+        "MX-032"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-033.test.ts": {
+      "owners": [
+        "MX-033"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-034.test.ts": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-035.test.ts": {
+      "owners": [
+        "MX-035"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/mx-036.test.ts": {
+      "owners": [
+        "MX-036"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-001.ts": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-002.ts": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-003.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-004.ts": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-005.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-006.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-007.ts": {
+      "owners": [
+        "MX-007"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-008.ts": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-009.ts": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-010.ts": {
+      "owners": [
+        "MX-010"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-011.ts": {
+      "owners": [
+        "MX-011"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-012.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-013.ts": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-014.ts": {
+      "owners": [
+        "MX-014"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-015.ts": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-016.ts": {
+      "owners": [
+        "MX-016"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-017.ts": {
+      "owners": [
+        "MX-017"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-018.ts": {
+      "owners": [
+        "MX-018"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-019.ts": {
+      "owners": [
+        "MX-019"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-020.ts": {
+      "owners": [
+        "MX-020"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-021.ts": {
+      "owners": [
+        "MX-021"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-022.ts": {
+      "owners": [
+        "MX-022"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-023.ts": {
+      "owners": [
+        "MX-023"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-024.ts": {
+      "owners": [
+        "MX-024"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-025.ts": {
+      "owners": [
+        "MX-025"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-026.ts": {
+      "owners": [
+        "MX-026"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-027.ts": {
+      "owners": [
+        "MX-027"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-028.ts": {
+      "owners": [
+        "MX-028"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-029.ts": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-030.ts": {
+      "owners": [
+        "MX-030"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-031.ts": {
+      "owners": [
+        "MX-031"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-032.ts": {
+      "owners": [
+        "MX-032"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-033.ts": {
+      "owners": [
+        "MX-033"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-034.ts": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-035.ts": {
+      "owners": [
+        "MX-035"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/probes/mx-036.ts": {
+      "owners": [
+        "MX-036"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/recovery.test.ts": {
+      "owners": [
+        "MX-033"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/security.test.ts": {
+      "owners": [
+        "MX-033"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "tests/mobile-v2/visual-baseline.json": {
+      "owners": [
+        "MX-035"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "task-index",
+      "kind_basis": "baseline-ls-tree"
+    },
+    "internal/router/router.go": {
+      "owners": [
+        "MX-013",
+        "MX-021",
+        "MX-032"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-001-preregistration",
+      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
+      "kind_basis": "preregistration"
+    },
+    "internal/container/container.go": {
+      "owners": [
+        "MX-013",
+        "MX-021",
+        "MX-032"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-001-preregistration",
+      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
+      "kind_basis": "preregistration"
+    },
+    "internal/container/workbench.go": {
+      "owners": [
+        "MX-013",
+        "MX-032"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-001-preregistration",
+      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
+      "kind_basis": "preregistration"
+    },
+    "docs/evidence/mobile-v2/MX-001.md": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-001-coordinator",
+      "note": "任务证据文件，任务自有",
+      "kind_basis": "preregistration"
+    },
+    "docs/evidence/mobile-v2/preflight.md": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": true,
+      "source": "mx-001-coordinator",
+      "note": "协调者维护；后续环境变化由协调者追加（追加式单写）",
+      "kind_basis": "preregistration"
+    },
+    "docs/evidence/mobile-v2/decisions.md": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": true,
+      "source": "mx-001-coordinator",
+      "note": "协调者追加式单写：后续任务的新决策由协调者登记 D-xxx",
+      "kind_basis": "preregistration"
+    },
+    "docs/evidence/mobile-v2/progress.md": {
+      "owners": [
+        "MX-001"
+      ],
+      "kind": "create",
+      "shared_serialized": true,
+      "source": "mx-001-coordinator",
+      "note": "总计划§5执行台账热点：协调者单写，实现者不直接改",
+      "kind_basis": "preregistration"
+    }
+  }
+}
