@@ -54,11 +54,11 @@
 | B5 | IM：agent 完成后错误不丢失 / QA 返回后 finalize | `e07e782`+`b23ae05` | e07e782 生产代码 fork 本已处于修复后状态（EventAgentComplete 不再 closeDone），仅缺测试；b23ae05 两处 goroutine 已补 defer + qa_exit_test.go 已加 | ✅ 完成（stream_exit_test.go 未移植——依赖上游测试基建且其对应生产修复本已在位） |
 | B6 | KB 初始化创建模型补租户戳 | `c9d5987` | 待核 | ✅ 完成（本轮） |
 | B7 | Milvus 保留关键词检索分数 | `38fee1e` | 待核（fork 用 postgres/paradedb 为主） | ✅ 完成（本轮） |
-| B8 | sandbox：文件访问与 artifact 发布分离 | `5780cb0` | 待核 | ⬜ 待办 |
-| B9 | sandbox 远程调用去重（perf） | `1c43934` | 待核 | ⬜ 待办 |
-| B10 | MCP 并发策略更新测试稳定（SQLite） | `ac4dd59` | 待核 | ⬜ 待办 |
-| B11 | skill 后台安装竞态修复 | `fc7f37d` | 待核 | ⬜ 待办 |
-| B12 | 客户端会话与集成请求处理对齐 | `d7ccd5b` | 待核 | ⬜ 待办 |
+| B8 | sandbox：文件访问与 artifact 发布分离 | `5780cb0` | 已移植（18/22 文件补丁 + prompts.go/sandbox_ls.go/session_manager.go 手工改写 + 3 个旧行为测试重写 + prompts_shell_test 新增） | ✅ 完成 |
+| B9 | sandbox 远程调用去重（perf） | `1c43934` | **回退**：依赖 fork 缺失的 `ExecShellCommandWithOutputSnapshot`/`connectRemoteSession`/`validateSessionSummary` 基建（属 A17 链：session_connect/session_file_operation/workspace_checkpointer/pinned_session_sandbox），已用 `git apply -R` 精确回退 | ⬜ 随 A17 一起做 |
+| B10 | MCP 并发策略更新测试稳定（SQLite） | `ac4dd59` | 补丁干净应用 | ✅ 完成 |
+| B11 | skill 后台安装竞态修复 | `fc7f37d` | 补丁干净应用 | ✅ 完成 |
+| B12 | 客户端会话与集成请求处理对齐 | `d7ccd5b` | 91 文件大提交，涉 client SDK + dingtalk 迁移，需单独立项评估 | ⬜ 待办（大条目） |
 | B13 | 前端 tag 过滤重构 + 引用弹层生命周期共享 | `559ad53`+`d645334` | fork Vue 未同步 | ⬜ 待办（影响 React parity，需双端同步评估） |
 
 ## C. 前端（Vue=上游基线 → React 同步）
@@ -79,12 +79,22 @@
 
 | # | 项 | 状态 |
 |---|---|---|
-| D1 | fork 栈启动（OrbStack WeKnora-app :8080 + React :5181 + Vue :5180） | ⬜ 待办（OrbStack 可能休眠，恢复：`open -a OrbStack && docker start WeKnora-postgres WeKnora-docreader WeKnora-app`） |
-| D2 | 上游栈启动（weknora-upstream docker-compose，端口需错开：8080→18080 等） | ⬜ 待办 |
-| D3 | 核心流程一一对照（登录/KB/上传/解析/检索/聊天/流式/设置/图谱）逐项记录 | ⬜ 待办（依赖 D1/D2） |
+| D1 | fork 栈启动（OrbStack WeKnora-app :8080 + React :5181 + Vue :5180） | ✅ 完成（后端健康；注意镜像滞后于 main，验证本轮新功能需重建镜像） |
+| D2 | 上游栈启动（weknora-upstream compose + override：`Up-WeKnora-*` 容器名，app :18080 / UI :18081 / minio :19000-19001；.env 由 example 生成+JWT_SECRET 随机+端口 sed；账号 parity-up@local.dev / Parity123456! tenant 10000） | ✅ 完成 |
+| D3 | 核心流程一一对照逐项记录 | 🔄 进行中。已完成：注册/登录（上游返回 `token`+`refresh_token`+`memberships`+`active_tenant`）双栈可用；KB 创建/列表双栈可用。**发现有意分歧 D3-1**：KB 响应信封 fork 用 `success+data`，上游用 `success+knowledge_base`/`knowledge_bases`——fork 三端（React/Vue/mobile）已适配自有信封，判定 ⛔ 不改。待做：模型配置同步后对照上传/解析/检索/聊天/流式；浏览器级页面对照 |
 | D4 | 对照账号 | fork 栈：parity-test@local.dev / Parity123456!（tenant 10000）；上游栈需新建 |
 
 ## E. 完成记录
+
+### 2026-09-17 第 2 轮（B8 完整移植 + 双栈就绪 + D3 冒烟）
+- **B8 完整移植**（`5780cb0` 文件访问与 artifact 发布分离）：18/22 文件补丁直用；prompts.go（ArtifactOutputDir 动态化 + artifact 链接指引两条新增）、sandbox_ls.go（移除 /workspace 白名单强制 + 描述/schema/注释同步 + 删 inspectablePathError/inspectableRootsDescription + path import）、session_manager.go（cleanSessionWorkspaceWritePath 放宽到整沙箱保留 input 只读；cleanSessionWorkDir 改绝对路径语义 + install 模式保留 workspace/skills 范围）三处手工改写；三个旧行为测试按上游重写（AcceptsSandboxSkillRoot/AllowsTemporaryWorkDir/SandboxPaths 写入矩阵）+ prompts_shell_test 增补 + registry_journal_test 用例更新。
+  - **教训**：`git show --stat | awk` 会截断长文件路径为 `.../xxx`，用截断名做 `--include` 时 git apply 静默跳过（零文件应用也退出 0）——B8 的 `agent_service_install_shell_test.go` 因此漏应用，首轮全量测试才暴露（TestOrdinaryAgentKeepsTheUnprivilegedShell 失败）。补应用后修复。
+- **B9 回退**：依赖 A17 链基建（connectRemoteSession/validateSessionSummary/ExecShellCommandWithOutputSnapshot），部分应用编译失败后 `git apply -R` 逐文件精确回退，保留 B8。条目改为「随 A17 一起做」。
+- **B10/B11**（MCP SQLite 测试稳定 / skill 安装竞态）：干净应用。
+- **验证**：`go build ./...` EXIT=0；`go test ./internal/...` 全量 EXIT=0（100 包 ok，0 FAIL）。
+- **D1/D2 双栈就绪**：fork :8080 健康；上游栈 `Up-WeKnora-*` 容器组 app :18080 healthy / UI :18081。上游 .env 生成方式与账号已记录于 D2。
+- **D3 冒烟对照**：注册/登录/KB 创建/列表双栈全通。发现有意分歧 D3-1（KB 响应信封 `data` vs `knowledge_base`/`knowledge_bases`）——fork 三端已适配，⛔ 不改。
+- 遗留：D3 深流程（需给上游栈配模型）；A8-A21；B12；C1-C7。
 
 ### 2026-09-17 第 1 轮（静态对照 + 第一批移植）✅
 - 基线盘点：上游克隆 `2514e42`，差异统计入档；台账建立。

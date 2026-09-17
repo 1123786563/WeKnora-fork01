@@ -243,7 +243,6 @@ func TestToolJournalOrdinarySafetyRejectionRemainsPlanned(t *testing.T) {
 		},
 		{"sandbox unavailable", NewShellExecTool(nil, nil), `{"command":"pwd"}`},
 		{"destructive command", NewShellExecTool(&fakeShellExecutor{}, nil), `{"command":"rm -rf /"}`},
-		{"outside workdir", NewShellExecTool(&fakeShellExecutor{}, nil), `{"command":"pwd","work_dir":"/etc"}`},
 		{
 			"missing credential", NewShellExecTool(&fakeShellExecutor{}, stubEnvResolver{missing: []string{"API_KEY"}}),
 			`{"command":"pwd"}`,

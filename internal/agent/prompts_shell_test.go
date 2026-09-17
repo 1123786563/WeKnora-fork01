@@ -23,3 +23,10 @@ func TestToolGuidanceUsesActualCapabilities(t *testing.T) {
 	require.Empty(t, formatToolGuidance(nil))
 	require.NotContains(t, formatToolGuidance([]string{"execute_skill_script"}), "execute_skill_script is available")
 }
+
+func TestArtifactGuidanceUsesConfiguredOutputDirectory(t *testing.T) {
+	t.Setenv("WEKNORA_SKILL_OUTPUT_DIR", "/workspace/deliverables")
+	guidance := formatToolGuidance([]string{"shell_exec", "read_file"})
+	require.Contains(t, guidance, "/workspace/deliverables is the only directory collected for download")
+	require.NotContains(t, guidance, "/workspace/output is the only directory collected")
+}

@@ -1225,9 +1225,8 @@ func cleanSessionInputPath(filePath string) (string, error) {
 	)
 }
 
-// cleanSessionWorkspaceWritePath keeps model-authored writes inside the
-// session workspace and out of the attachment tree. Validation is lexical
-// (path.Clean plus prefix checks), matching cleanSessionWorkDir.
+// cleanSessionWorkspaceWritePath normalizes model-authored sandbox writes and
+// protects staged attachments. The remote session binding isolates the files.
 func cleanSessionWorkspaceWritePath(filePath string) (string, error) {
 	clean := ResolveWorkspacePath(filePath)
 	if !path.IsAbs(clean) || clean == "." || clean == "/" {
@@ -1236,45 +1235,30 @@ func cleanSessionWorkspaceWritePath(filePath string) (string, error) {
 	if clean == SessionWorkspaceRoot || clean == SessionOutputRoot || clean == SessionInputRoot {
 		return "", fmt.Errorf("sandbox: workspace write path %q is a directory, not a file", filePath)
 	}
-	if !strings.HasPrefix(clean, SessionWorkspaceRoot+"/") {
-		return "", fmt.Errorf("sandbox: workspace write path %q is outside %s", filePath, SessionWorkspaceRoot)
-	}
 	if strings.HasPrefix(clean, SessionInputRoot+"/") {
 		return "", fmt.Errorf("sandbox: session input %s is read-only", SessionInputRoot)
 	}
 	return clean, nil
 }
 
-// cleanSessionWorkDir keeps shell_exec inside directories we are willing to let
-// an agent work in. Ordinary sessions get /workspace only.
-//
-// Validation is lexical (path.Clean plus prefix checks): a symlink under an
-// allowed root that resolves elsewhere at execution time is not detected and
-// that is intentional. The only caller that passes allowSkillsRoot also passes
-// AsRoot and runs arbitrary install shell commands, so a symlink would grant
-// nothing those commands cannot already reach via cd or absolute paths. For
-// ordinary sessions the allowlist is unchanged and its lexical nature is
-// pre-existing. The allowlist stops casual wandering and makes intent
-// auditable; the real isolation boundary is the remote sandbox itself.
-//
-// allowSkillsRoot widens it to the skills image root for install/maintenance
-// sessions, so the installer agent can set work_dir to the skill directory and
-// run ordinary relative commands instead of composing long absolute paths. It
-// is a widening, not a removal: everything outside these two roots is still
-// refused.
+// cleanSessionWorkDir requires an absolute sandbox-local working directory.
+// Ordinary calls may work anywhere; the install/maintenance option retains its
+// explicit workspace/skills scope. Neither check changes filesystem privileges.
 func cleanSessionWorkDir(workDir string, allowSkillsRoot bool) (string, error) {
 	clean := path.Clean(strings.TrimSpace(workDir))
+	if !path.IsAbs(clean) {
+		return "", fmt.Errorf("sandbox: work dir %q must be absolute", workDir)
+	}
+	if !allowSkillsRoot {
+		return clean, nil
+	}
 	if clean == SessionWorkspaceRoot || strings.HasPrefix(clean, SessionWorkspaceRoot+"/") {
 		return clean, nil
 	}
-	if allowSkillsRoot &&
-		(clean == SkillsImageRoot || strings.HasPrefix(clean, SkillsImageRoot+"/")) {
+	if clean == SkillsImageRoot || strings.HasPrefix(clean, SkillsImageRoot+"/") {
 		return clean, nil
 	}
-	allowed := SessionWorkspaceRoot
-	if allowSkillsRoot {
-		allowed = SessionWorkspaceRoot + ", " + SkillsImageRoot
-	}
+	allowed := SessionWorkspaceRoot + ", " + SkillsImageRoot
 	return "", fmt.Errorf(
 		"sandbox: work dir %q is outside allowed roots (%s)",
 		workDir, allowed,

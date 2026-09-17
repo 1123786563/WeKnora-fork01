@@ -177,10 +177,10 @@ func TestSessionBoundManagerShellExecRunsAsSandboxUser(t *testing.T) {
 	require.Equal(t, DefaultSandboxExecUser, shell[0].User)
 }
 
-func TestCleanSessionWorkDirRejectsSkillRootByDefault(t *testing.T) {
+func TestCleanSessionWorkDirAcceptsSandboxSkillRoot(t *testing.T) {
 	skillDir := mustSkillDir(t, "sk-1")
 	_, err := cleanSessionWorkDir(skillDir, false)
-	require.Error(t, err, "ordinary sessions must stay inside /workspace")
+	require.NoError(t, err, "ordinary sessions may use any directory in their sandbox")
 
 	got, err := cleanSessionWorkDir(skillDir, true)
 	require.NoError(t, err, "install sessions need to work inside the skills root")
@@ -253,14 +253,13 @@ func TestExecShellCommandEmptyWorkDirUsesWorkspace(t *testing.T) {
 	require.Equal(t, DefaultSandboxExecUser, last.User)
 }
 
-func TestExecShellCommandRejectsInvalidWorkDir(t *testing.T) {
+func TestExecShellCommandAllowsTemporaryWorkDir(t *testing.T) {
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(10000))
-	mgr, _ := newSessionManagerExecTestHarness(t)
+	mgr, client := newSessionManagerExecTestHarness(t)
 
-	_, err := mgr.ExecShellCommand(ctx, "sess-1", "echo hi", "/etc", time.Second, nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "outside allowed roots")
-	require.Contains(t, err.Error(), SessionWorkspaceRoot)
+	_, err := mgr.ExecShellCommand(ctx, "sess-1", "echo hi", "/tmp/task", time.Second, nil)
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/task", lastExecRequest(t, client).WorkDir)
 }
 
 // The manager is what the skill install flow holds, so the path from "the
@@ -338,7 +337,10 @@ func TestCleanSessionWorkspaceWritePathAcceptsWorkspaceAndRefusesInput(t *testin
 	require.Error(t, err)
 	_, err = cleanSessionWorkspaceWritePath("/workspace/output")
 	require.Error(t, err)
-	_, err = cleanSessionWorkspaceWritePath("/etc/passwd")
+	got, err = cleanSessionWorkspaceWritePath("/tmp/task/check.txt")
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/task/check.txt", got)
+	_, err = cleanSessionWorkspaceWritePath("/tmp/../workspace/input/report.txt")
 	require.Error(t, err)
 	got, err = cleanSessionWorkspaceWritePath("relative.py")
 	require.NoError(t, err)
