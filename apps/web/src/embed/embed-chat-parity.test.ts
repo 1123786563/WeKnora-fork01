@@ -18,6 +18,19 @@ import test from 'node:test';
 import { extractStreamReferences, mapHistoryMessages, normalizeSuggestedQuestions, referenceHeadline, type EmbedChatMessage } from './chat-data.ts';
 import { embedText } from './messages.ts';
 
+// The surface test below loads EmbedEntryPage.tsx, which imports the embed
+// markdown pipeline (`marked` + `dompurify` + embed-chat.css). Mirror the
+// wiki test harness: stub .css for node, bind jsdom globals before the
+// dynamic import so DOMPurify attaches to a window like in the vite build.
+import * as nodeModule from 'node:module';
+type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+hooks.registerHooks?.({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+(globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
+(globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
+
 test('mapHistoryMessages mirrors the Vue session rows into the entry face', () => {
   const rows = [
     { role: 'user', content: 'hello' },

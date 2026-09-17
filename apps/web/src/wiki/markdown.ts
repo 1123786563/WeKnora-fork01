@@ -17,7 +17,8 @@ import DOMPurify from 'dompurify';
 /** Vue WikiBrowser.vue: /\[\[([^\]]+)\]\]/g → wiki-content-link anchors. */
 const WIKI_LINK_PATTERN = /\[\[([^\]]+)\]\]/g;
 
-function escapeHTML(value: string): string {
+/** Shared attribute escaper for generated inline HTML (wiki links, embed pills). */
+export function escapeHTML(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -64,7 +65,8 @@ export function stripDuplicateLeadingTitle(content: string, title: string): stri
 // Verbatim port of frontend/src/utils/markdownDomPurify.ts (the config behind
 // Vue's sanitizeMarkdownHTML) — wiki page bodies must survive/strip exactly
 // the same way as the Vue reader.
-const domPurifyAllowedUriRegexp =
+/** Vue markdownDomPurify.ts URI allow-list — shared with the embed chat face. */
+export const domPurifyAllowedUriRegexp =
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob):|data:image\/|(?:resource|storage|local|minio|cos|tos|s3|oss|ks3|obs):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
 const domPurifyForbidTags = ['script', 'style', 'object', 'embed', 'form', 'input'];

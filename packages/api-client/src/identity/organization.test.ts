@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOrganizationApi } from './organization.ts';
 
+test('exposes pending_join_request_count as a typed number for the shell badge defensive read', async () => {
+  const api = createOrganizationApi(async (request) => request.path === '/api/v1/organizations'
+    ? { success: true, data: { organizations: [{ id: 'o1', name: 'Org', description: '', owner_id: 'u', owner_tenant_id: 1, pending_join_request_count: 4 }], total: 1 } }
+    : { success: true });
+  const page = await api.list();
+  // Typed read: before the explicit Organization declaration this resolves to
+  // the index signature (`unknown`) and fails the scoped typecheck.
+  const pending: number | undefined = page.items[0]?.pending_join_request_count;
+  assert.equal(pending, 4);
+});
+
 test('maps organization list/search and member role routes with encoded ids', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createOrganizationApi(async (request) => {

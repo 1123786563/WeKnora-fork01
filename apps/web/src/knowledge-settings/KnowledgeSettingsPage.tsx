@@ -956,7 +956,7 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} indexingLocked={indexingLocked} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'models' ? (
-        <ModelsSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
+        <ModelsSettingsSection editorPayload={editorPayload} knowledgeBase={knowledgeBase} editorDraft={editorDraft} indexingLocked={indexingLocked} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'chunking' ? (
         <ChunkingSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} client={client} t={t} onDraftChange={onDraftChange} />
@@ -982,8 +982,7 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
               {editorOptions.vectorStores.filter((store) => store.id && store.id !== '').map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}
             </select>
           </label>
-          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.vectorStore.immutableHint')}</p>
-          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
+          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.vectorStore.immutableHint')}</p>          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
         </div>
       ) : null}
       {section === 'parser' ? (
@@ -1012,7 +1011,9 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
               {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}
             </select>
           </label>
-          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.storage.migrateHint')}</p>
+          {/* Vue KBStorageSettings renders the migrate hint only while the
+              edit-mode KB has files (v-if="props.hasFiles"). */}
+          {indexingLocked ? <p className="wk-muted" data-storage-migrate-hint="" style={{ margin: 0 }}>{t('kbSettings.storage.migrateHint')}</p> : null}
           {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
         </div>
       ) : null}
@@ -1046,7 +1047,9 @@ interface EditorSectionProps {
 }
 
 // Vue .setting-row layout: info column (label + desc) and control column.
-function EditorSettingRow({ label, description, required, control }: { label: string; description?: string; required?: boolean; control: ReactNode }) {
+// `alert` carries the conditional warning node rendered under the description
+// in the info column (Vue t-alert placement, e.g. the R444 Embedding lock).
+function EditorSettingRow({ label, description, alert, required, control }: { label: string; description?: string; alert?: ReactNode; required?: boolean; control: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem', padding: '0.9rem 0', borderBottom: '1px solid #dce3ed', flexWrap: 'wrap' }}>
       <div style={{ flex: '0 1 40%', minWidth: '12rem' }}>
@@ -1055,6 +1058,7 @@ function EditorSettingRow({ label, description, required, control }: { label: st
           {required ? <span aria-hidden="true"> *</span> : null}
         </label>
         {description ? <p className="wk-muted" style={{ margin: '0.2rem 0 0', fontSize: '0.85rem' }}>{description}</p> : null}
+        {alert}
       </div>
       <div style={{ flex: '0 1 55%', minWidth: '12rem' }}>{control}</div>
     </div>
@@ -1251,14 +1255,25 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
 
 // Vue KBModelConfig: llm (KnowledgeQA) and embedding (Embedding) selectors fed
 // by the live model catalogue, unavailable models excluded (modelDefaults).
-function ModelsSettingsSection({ editorPayload, editorDraft, models, t, onDraftChange }: EditorSectionProps & { models: KnowledgeSettingsModelOption[] }) {
+// Vue KBModelConfig (KnowledgeBaseEditorModal.vue `currentSection ===
+// 'models'`): LLM plus Embedding selectors. R444: the same probe signal as the
+// basic indexing lock (edit-mode hasFiles) also binds the Embedding row —
+// `:disabled="ragEnabled && hasFiles"` with the knowledgeEditor.models.
+// embeddingLocked warning in the info column. With every index strategy off
+// (ragEnabled false) Vue keeps the selector editable even though the basic
+// checks stay locked, so ragEnabled resolves from the live draft strategy.
+function ModelsSettingsSection({ editorPayload, knowledgeBase, editorDraft, indexingLocked, models, t, onDraftChange }: EditorSectionProps & { knowledgeBase: KnowledgeSettingsInput; indexingLocked: boolean; models: KnowledgeSettingsModelOption[] }) {
   const optionLabel = (model: KnowledgeSettingsModelOption) => model.displayName || model.name;
-  const renderSelector = (type: string, labelKey: string, placeholderKey: string, value: string, onChange: (next: string) => void, required?: boolean) => (
+  const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, editorDraft);
+  const ragEnabled = Boolean(indexing.vectorEnabled || indexing.keywordEnabled);
+  const embeddingLocked = ragEnabled && indexingLocked;
+  const renderSelector = (type: string, labelKey: string, placeholderKey: string, value: string, onChange: (next: string) => void, required?: boolean, options: { disabled?: boolean; alert?: ReactNode } = {}) => (
     <EditorSettingRow
       label={t(labelKey)}
+      alert={options.alert}
       required={required}
       control={(
-        <select value={value} aria-label={t(labelKey)} onChange={(event) => onChange(event.target.value)}>
+        <select value={value} aria-label={t(labelKey)} disabled={options.disabled} onChange={(event) => onChange(event.target.value)}>
           <option value="">{t(placeholderKey)}</option>
           {filterKnowledgeSettingsModels(models, type).map((model) => (
             <option key={model.id} value={model.id}>{optionLabel(model)}</option>
@@ -1270,7 +1285,12 @@ function ModelsSettingsSection({ editorPayload, editorDraft, models, t, onDraftC
   return (
     <div>
       {renderSelector('KnowledgeQA', 'knowledgeEditor.models.llmLabel', 'knowledgeEditor.models.llmPlaceholder', editorPayload.llmModelId, (next) => onDraftChange({ ...editorDraft, llmModelId: next }), true)}
-      {renderSelector('Embedding', 'knowledgeEditor.models.embeddingLabel', 'knowledgeEditor.models.embeddingPlaceholder', editorPayload.embeddingModelId, (next) => onDraftChange({ ...editorDraft, embeddingModelId: next }), true)}
+      {renderSelector('Embedding', 'knowledgeEditor.models.embeddingLabel', 'knowledgeEditor.models.embeddingPlaceholder', editorPayload.embeddingModelId, (next) => onDraftChange({ ...editorDraft, embeddingModelId: next }), true, {
+        disabled: embeddingLocked,
+        alert: embeddingLocked ? (
+          <p className="wk-muted" data-embedding-locked-tip="" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>{t('knowledgeEditor.models.embeddingLocked')}</p>
+        ) : undefined,
+      })}
     </div>
   );
 }

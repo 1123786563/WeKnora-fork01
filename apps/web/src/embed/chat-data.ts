@@ -277,7 +277,7 @@ function docTitlesMatch(a: string, b: string): boolean {
 /** resolveCitationChunkId: map model context indexes (n, DOC-n, FAQ-n) and doc
  * titles onto the real chunk id from the retrieval references. An empty raw id
  * yields '' so the tag is dropped, exactly like the Vue guard. */
-function resolveCitationChunkId(
+export function resolveCitationChunkId(
   rawChunkId: string,
   attrs: { doc?: string },
   refs: Record<string, unknown>[],

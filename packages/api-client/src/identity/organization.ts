@@ -3,7 +3,7 @@ import { array, dataArray, dataRecord, encoded, numberValue, optionalNumber, opt
 
 export type OrganizationRole = 'admin' | 'editor' | 'viewer';
 export type OrganizationPermission = 'admin' | 'editor' | 'viewer';
-export interface Organization { id: string; name: string; description: string; owner_id: string; owner_tenant_id: number; /** Whether the current tenant already has a pending role-upgrade request (org detail endpoint, Vue OrganizationSettingsModal.vue). */ has_pending_upgrade?: boolean; [key: string]: unknown }
+export interface Organization { id: string; name: string; description: string; owner_id: string; owner_tenant_id: number; /** Whether the current tenant already has a pending role-upgrade request (org detail endpoint, Vue OrganizationSettingsModal.vue). */ has_pending_upgrade?: boolean; /** Pending join requests awaiting review; defensive read for the platform-shell org badge (PlatformShell.tsx, Vue OrganizationsView). */ pending_join_request_count?: number; [key: string]: unknown }
 export interface OrganizationPage { items: Organization[]; total: number; resourceCounts?: JsonRecord }
 export interface OrganizationMember { id: string; user_id: string; username: string; email: string; role: OrganizationRole; tenant_id: number; tenant_name?: string; joined_at: string; [key: string]: unknown }
 export interface OrganizationMemberPage { items: OrganizationMember[]; total: number }

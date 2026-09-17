@@ -4593,3 +4593,34 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1530/1530, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓
   (orchestrator re-confirmed on the merged state). Evidence:
   `evidence/vue-react-parity/2026-09-17-r443-code-parity-round.md`. No Vue, mobile, or Go code was modified.
+
+## 2026-09-17 Round R444 — Embedding lock warning, embed markdown pipeline, admin invite/pagination, shared-drawer evidence
+
+- Five parallel agents (A1 Embedding lock warning, A2 embed markdown pipeline, A3 administration closeout +
+  Organization typing, A4 browser fixture/evidence, A5 verifier). A5 verdict: A1/A2/A3 PASS with zero
+  orchestrator fixes; A4's report landed after A5's polling window (agent itself completed; findings folded in
+  at closure).
+- A1: Embedding selector locks with the Vue warning when `ragEnabled && hasFiles` — driven by the same R443
+  probe as isIndexingLocked; all-strategies-off keeps Embedding editable (Vue-authoritative nuance); storage
+  migrate-hint now conditional on hasFiles. knowledge-settings 81/81; zero new i18n keys. Deferred: storage
+  "editable when no files" (needs the save pipeline), row-visibility signal diff.
+- A2: embed answers render through the Vue-identical pipeline — citation pills extracted to placeholders BEFORE
+  marked.parse, restored + standalone-paragraph collapse after, same-version DOMPurify. wiki/markdown.ts only
+  gained two exports; wiki consumption unchanged (19/19). Live findings fixed: DOMPurify hook element.remove()
+  aborts sanitization (FORBID_TAGS carries it), USE_PROFILES strips target (same-version behavior). embed
+  44/44. Deferred: KaTeX, mermaid/image safe-renderer, citation-icon svg.
+- A3: Organization.pending_join_request_count typed in api-client; invite two-step confirmation per Vue
+  (preview → confirm sends, Back returns, failure stays); admin members pagination (default 20,
+  [10,20,50,100], clamped jump, server total). administration 11/11, identity 5/5; 7 new keys ×5 locale (ru
+  mirrors Vue ru-RU honestly). Deferred: barrel export, auto-accept skip, owner invite role.
+- A4 browser evidence (6 paired screenshots, r444-20260917/): reusable fixture created (shared-fixture
+  account, tenant 10003, KB 08e02d8b shared viewer via org Parity 共享空间 + invite code d2e59d97f312aaa9);
+  the R438 shared-KB drawer matches on BOTH ends (five fields + buttons verbatim, read-only entry on both).
+  Recorded diffs: React shared card's extra 设置 button (Vue: 查看详情 only); React-only read-only banner vs
+  Vue's stale 拖拽上传 copy; document count "-" vs "0"; drawer close text button vs × icon. Side findings:
+  fixture tenant without models stalls the UI create wizard (setup done via API); Vue share-management org
+  search misses an org the user administers with no network request (suspected Vue filter bug, flagged). The
+  pending-approval badge pair was not capturable (invite joined without approval; React tab present, empty).
+- Gates: `pnpm test:web` 1545/1545, `pnpm test:shared` 600/600, `pnpm typecheck:web` clean, `pnpm build:web` ✓
+  (A5 final run on the merged state; +19 all accounted). Evidence:
+  `evidence/vue-react-parity/2026-09-17-r444-code-parity-round.md`. No Vue, mobile, or Go code was modified.

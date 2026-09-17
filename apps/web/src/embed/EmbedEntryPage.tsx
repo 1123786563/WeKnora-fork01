@@ -24,7 +24,6 @@ import {
   isWebSearchReference,
   mapHistoryMessages,
   normalizeSuggestedQuestions,
-  parseCitationSegments,
   referenceContent,
   referenceHeadline,
   referenceTitle,
@@ -33,13 +32,14 @@ import {
   shouldTriggerHistoryLoad,
   suggestionAttributionBody,
   toReadySuggestions,
-  type CitationSegment,
   type EmbedChatMessage,
   type EmbedReference,
   type EmbedReadySuggestions,
   type EmbedSuggestionAttribution,
   type EmbedSuggestionItem,
 } from './chat-data.ts';
+import { renderEmbedChatMarkdown } from './markdown.ts';
+import './embed-chat.css';
 
 // Vue parity for the isolated embed entry:
 // - entry: frontend/embed.html + frontend/src/embed-main.ts (separate document,
@@ -733,50 +733,33 @@ function EmbedFollowUps(props: {
   );
 }
 
-function truncateCitationLabel(text: string, maxLength = 13): string {
-  if (text.length <= maxLength) return text;
-  const half = Math.floor((maxLength - 3) / 2);
-  return `${text.slice(0, half + ((maxLength - 3) % 2))}...${text.slice(-half)}`;
-}
-
-// Inline citation pills (citationMarkdown preprocessCitationTags): plain text
-// stays text, <web/> becomes an external link pill, <kb/> a popover pill.
+// Embed bot answer rendering (EmbedBotMessage.vue): the full answer goes
+// through the Vue markdown pipeline — citations are converted to pill HTML
+// BEFORE marked and re-injected AFTER it, then the whole HTML is sanitized.
+// The React face renders that sanitized HTML and resolves kb-pill clicks by
+// delegation, the same way useEmbedCitationPopover binds `.citation-kb`.
 function EmbedMessageContent(props: {
   content: string;
   references?: EmbedReference[];
   onCitation: (doc: string, chunkId: string, el: HTMLElement) => void;
 }) {
-  const segments = parseCitationSegments(props.content, (props.references ?? []) as unknown as Record<string, unknown>[]);
-  if (segments.length === 0) return null;
-  if (segments.length === 1 && segments[0].type === 'text') return <>{segments[0].text}</>;
+  const html = useMemo(
+    () => renderEmbedChatMarkdown(props.content, (props.references ?? []) as unknown as Record<string, unknown>[]),
+    [props.content, props.references],
+  );
+  if (!html) return null;
   return (
-    <>
-      {segments.map((segment: CitationSegment, index) => {
-        if (segment.type === 'text') return <span key={index}>{segment.text}</span>;
-        if (segment.type === 'web') {
-          return (
-            <a
-              key={index}
-              className="embed-citation-web mx-0.5 rounded-[6px] border border-[#eef1f5] bg-white px-1.5 py-0.5 text-[12px] text-[color:var(--embed-primary,#2563eb)] no-underline hover:border-[#d8dde5]"
-              href={segment.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={segment.title}
-            >{segment.domain}</a>
-          );
+    <div
+      className="embed-chat-markdown"
+      onClick={(event) => {
+        const target = event.target as Element | null;
+        const pill = target?.closest?.('.citation-kb');
+        if (pill) {
+          props.onCitation(pill.getAttribute('data-doc') || '', pill.getAttribute('data-chunk-id') || '', pill as HTMLElement);
         }
-        return (
-          <button
-            key={index}
-            type="button"
-            className="embed-citation-kb mx-0.5 cursor-pointer rounded-[6px] border border-[#eef1f5] bg-white px-1.5 py-0.5 text-[12px] text-[#1f2329] hover:border-[#d8dde5]"
-            data-chunk-id={segment.chunkId}
-            data-doc={segment.doc}
-            onClick={(event) => props.onCitation(segment.doc, segment.chunkId, event.currentTarget)}
-          >{truncateCitationLabel(segment.doc)}</button>
-        );
-      })}
-    </>
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 

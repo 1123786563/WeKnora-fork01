@@ -1,0 +1,212 @@
+/*
+ * Embed chat markdown + citation pill styles (R444/A2).
+ *
+ * Port of the Vue embed answer face:
+ *   - frontend/src/components/css/chat-markdown.less  (typography, trimmed to
+ *     the elements the embed answers can produce — no mermaid/katex chrome)
+ *   - frontend/src/components/css/chat-citations.less (chat-citation-pills
+ *     mixin: .citation pills and wiki-content-link)
+ * The embed canvas is light-forced (EmbedPage.vue), so the TDesign color vars
+ * collapse to their light values and the brand accent is --embed-primary
+ * (set from the channel primary color, like EmbedPage.vue pageStyle).
+ */
+
+.embed-chat-markdown {
+  overflow-wrap: break-word;
+  line-height: 1.6;
+
+  p {
+    margin: 0 0 8px;
+  }
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    margin: 14px 0 8px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  h1:first-child, h2:first-child, h3:first-child,
+  h4:first-child, h5:first-child, h6:first-child,
+  p:first-child, ul:first-child, ol:first-child,
+  pre:first-child, blockquote:first-child, table:first-child {
+    margin-top: 0;
+  }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.12em; }
+  h4, h5, h6 { font-size: 1em; }
+
+  ul, ol {
+    margin: 0 0 8px;
+    padding-left: 1.4em;
+  }
+  li {
+    margin: 2px 0;
+  }
+
+  a {
+    color: var(--embed-primary, #2563eb);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+
+  blockquote {
+    margin: 0 0 8px;
+    padding: 2px 0 2px 10px;
+    border-left: 3px solid rgba(31, 35, 41, 0.15);
+    color: #4b5563;
+  }
+
+  code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(31, 35, 41, 0.06);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+
+  pre {
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(31, 35, 41, 0.05);
+    overflow-x: auto;
+  }
+  pre code {
+    padding: 0;
+    background: transparent;
+    font-size: 0.9em;
+  }
+
+  table {
+    margin: 0 0 8px;
+    border-collapse: collapse;
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  th, td {
+    padding: 5px 10px;
+    border: 1px solid rgba(31, 35, 41, 0.14);
+    text-align: left;
+  }
+  th {
+    background: rgba(31, 35, 41, 0.04);
+    font-weight: 600;
+  }
+
+  img {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+
+  hr {
+    margin: 12px 0;
+    border: 0;
+    border-top: 1px solid rgba(31, 35, 41, 0.12);
+  }
+
+  /* chat-citations.less chat-citation-pills() */
+  .citation {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    vertical-align: baseline;
+    box-sizing: border-box;
+    border-radius: 999px;
+    padding: 0 5px;
+    font-size: 0.72em;
+    line-height: 1.45;
+    margin: 0 0.06em;
+    background-clip: padding-box;
+    transform: translateY(-0.04em);
+  }
+
+  .citation-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    background-color: currentColor;
+    opacity: 0.68;
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+  }
+
+  /* Vue paints ziliao.svg / websearch-globe.svg through the mask; the embed
+     face ships without those assets, so the icon slot is hidden and the pill
+     shows the domain / doc label only. */
+  .citation-icon {
+    display: none;
+  }
+
+  .citation-text,
+  .citation-domain {
+    line-height: 1.45;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .citation-kb {
+    background: rgba(31, 35, 41, 0.04);
+    color: #1f2329;
+    border: 0;
+    box-shadow: inset 0 0 0 1px rgba(31, 35, 41, 0.1);
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  }
+  .citation-kb:hover {
+    background: rgba(31, 35, 41, 0.07);
+    box-shadow: inset 0 0 0 1px rgba(31, 35, 41, 0.18);
+  }
+
+  .citation-web {
+    background: color-mix(in srgb, var(--embed-primary, #2563eb) 6%, transparent);
+    color: var(--embed-primary, #2563eb);
+    border: 0;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--embed-primary, #2563eb) 17%, transparent);
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    text-decoration: none;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  }
+  .citation-web:hover {
+    background: color-mix(in srgb, var(--embed-primary, #2563eb) 10%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--embed-primary, #2563eb) 28%, transparent);
+    text-decoration: none;
+  }
+
+  .citation-web:focus-visible,
+  .citation-kb:focus-visible {
+    outline: 2px solid var(--embed-primary, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .citation-tip {
+    display: none;
+  }
+
+  a.wiki-content-link {
+    color: var(--embed-primary, #2563eb);
+    border-bottom: 1px dashed var(--embed-primary, #2563eb);
+    text-decoration: none;
+    font-weight: 500;
+    transition: border-bottom-style 0.15s ease;
+  }
+  a.wiki-content-link:hover {
+    border-bottom-style: solid;
+    text-decoration: none;
+  }
+}

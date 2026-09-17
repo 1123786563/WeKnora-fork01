@@ -35,6 +35,18 @@ import {
 } from './chat-data.ts';
 import { embedText } from './messages.ts';
 
+// The follow-up surface tests load EmbedEntryPage.tsx (marked + dompurify +
+// embed-chat.css). Mirror the wiki test harness: stub .css for node and bind
+// jsdom globals before the dynamic import so DOMPurify attaches to a window.
+import * as nodeModule from 'node:module';
+type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+hooks.registerHooks?.({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+(globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
+(globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
+
 const olderBatch = [
   { id: 'm3', role: 'assistant', content: 'older answer', created_at: '2024-01-01T10:00:00Z' },
   { id: 'm2', role: 'user', content: 'older question', created_at: '2024-01-01T09:59:00Z' },
