@@ -60,8 +60,34 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   await firstLoad;
   // 再翻一页（同 updated_at，id 决胜）
   await controller.loadNextPage();
-  // 空间切换代际（迟到响应兜底路径）
-  generation += 1;
+
+  // 空间切换维度（R1 P2-1）：代际前进后，旧空间的在途响应不得落地
+  let staleVisible = false;
+  const staleLoad = (async () => {
+    const stale = createSessionListController({
+      loadPage: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { items: [{ runId: 'stale-run', title: '', updatedAt: '2026-09-18T08:00:00Z', runStatus: 'running' }] };
+      },
+      capture: () => ({ generation }),
+      accept: (candidate) => candidate === generation,
+      now: () => 0,
+      debounceMs: 0,
+    });
+    const inFlight = stale.refresh();
+    generation += 1; // 空间切换：代际前进
+    await inFlight;
+    staleVisible = stale.state.items.some((item) => item.runId === 'stale-run');
+  })();
+  await staleLoad;
+  if (staleVisible) throw new Error('response captured before a scope switch must not land after it');
+
+  // 空间切换失效（R1 P2-2）：已落地 items/nextCursor 必须可失效
+  if (controller.state.items.length === 0) throw new Error('precondition: landed items exist');
+  controller.invalidate();
+  if (controller.state.items.length !== 0 || controller.state.nextCursor !== undefined) {
+    throw new Error('invalidate must clear landed items and cursor');
+  }
 
   const state = controller.state;
   if (calls.some((call) => call.filter === 'waiting_user' && call.after === undefined) === false) {

@@ -37,7 +37,7 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-013 | fixing→review | 6d94a204→cd10655d(+fix) | frozen Go ok（含派生断言）· mv2 待复验 | R1 FAIL(P1 虚构列)→已修复→待复核 | MX-013.md |
 | MX-014 | review | cd10655d→(待提交) | mv2 15/15 · shared 590/590 · tsc 14=基线 | 待独立review | MX-014.md |
 
-| MX-014 | review | cd10655d→336b0ffb | mv2 15/15 · shared 590/590 · tsc 14=基线 | 审查进行中 | MX-014.md |
+| MX-014 | fixing→review | cd10655d→336b0ffb(+fix) | mv2 16/16（含双维度杀伤断言）· tsc 11=新基线 | R1(2×P2+5×P3)→已修复→待复核 | MX-014.md |
 | MX-017 | review | 336b0ffb→(待提交) | mv2 16/16 · frozen dup-seq 1/你好/0 · tsc 11=新基线(D-026) | 待独立review | MX-017.md |
 
 ## 接续说明（2026-09-18 本轮收口）

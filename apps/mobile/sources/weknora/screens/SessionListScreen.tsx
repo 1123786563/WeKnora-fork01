@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { SessionListController, SessionFilter } from '@weknora/domain/mobile';
 import { useWeknoraTheme } from '../ui/theme.ts';
+import { nativeTokens } from '@weknora/design-tokens/mobile';
 import { Card } from '../ui/Card.tsx';
 import { StatusBadge, type BadgeTone } from '../ui/StatusBadge.tsx';
 import { StateView } from '../ui/StateView.tsx';
@@ -34,19 +35,20 @@ export function SessionListScreen({ controller, onOpenSession, onNewTask, testID
   const { theme } = useWeknoraTheme();
   const [, force] = useState(0);
   const [search, setSearch] = useState('');
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
-
-  // 控制器状态变化驱动重绘（领域层不可变 state，指针比较即可）
   const statePtr = useRef(controller.state);
+
+  // 订阅驱动重绘（控制器 emit）；卸载时释放（去抖定时器不再触发读）
   useEffect(() => {
-    const timer = setInterval(() => {
+    const unsubscribe = controller.subscribe(() => {
       if (statePtr.current !== controller.state) {
         statePtr.current = controller.state;
-        if (mounted.current) force((n) => n + 1);
+        force((n) => n + 1);
       }
-    }, 50);
-    return () => clearInterval(timer);
+    });
+    return () => {
+      unsubscribe();
+      controller.dispose();
+    };
   }, [controller]);
   const state = controller.state;
 
@@ -90,6 +92,7 @@ export function SessionListScreen({ controller, onOpenSession, onNewTask, testID
           keyExtractor={(item) => item.runId}
           onEndReached={() => void controller.loadNextPage()}
           onEndReachedThreshold={0.4}
+          ListFooterComponent={state.loading && items.length > 0 ? <StateView kind="loading" message="正在加载更多" /> : null}
           contentContainerStyle={{ padding: theme.spacing[16], gap: theme.spacing[12] }}
           renderItem={({ item }) => (
             <Card onPress={onOpenSession ? () => onOpenSession(item.runId) : undefined} accessibilityLabel={`打开会话 ${item.title || item.runId}，状态 ${item.runStatus}`} compact>
@@ -110,7 +113,7 @@ export function SessionListScreen({ controller, onOpenSession, onNewTask, testID
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  filters: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  filters: { flexDirection: 'row', gap: nativeTokens.spacing[8], flexWrap: 'wrap' },
   chip: { borderWidth: StyleSheet.hairlineWidth },
   row: { flexDirection: 'row', alignItems: 'center' },
   grow: { flex: 1 },

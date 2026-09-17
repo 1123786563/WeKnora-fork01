@@ -61,11 +61,15 @@ export function createSessionListController(ports: SessionListPorts) {
   let state: SessionListState = { items: [], filter: 'all', search: '', loading: false, exhausted: false };
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let queryEpoch = 0;
+  const listeners = new Set<() => void>();
+  function emit(): void {
+    for (const listener of listeners) listener();
+  }
 
   function dedup(items: SessionListItem[]): SessionListItem[] {
     const seen = new Set<string>();
     const out: SessionListItem[] = [];
-    for (const item of items.sort((a, b) => (a.updatedAt === b.updatedAt ? (a.runId < b.runId ? 1 : -1) : a.updatedAt < b.updatedAt ? 1 : -1))) {
+    for (const item of [...items].sort((a, b) => (a.updatedAt === b.updatedAt ? (a.runId < b.runId ? 1 : -1) : a.updatedAt < b.updatedAt ? 1 : -1))) {
       if (seen.has(item.runId)) continue;
       seen.add(item.runId);
       out.push(item);
@@ -84,6 +88,7 @@ export function createSessionListController(ports: SessionListPorts) {
       ...(reset || !state.nextCursor ? {} : { after: state.nextCursor }),
     };
     state = { ...state, loading: true };
+    emit();
     let response: ListPageResponse;
     try {
       response = await ports.loadPage(request);
@@ -98,6 +103,7 @@ export function createSessionListController(ports: SessionListPorts) {
       nextCursor: response.nextCursor,
       exhausted: response.nextCursor === undefined,
     };
+    emit();
   }
 
   return {
@@ -125,6 +131,28 @@ export function createSessionListController(ports: SessionListPorts) {
       searchTimer = setTimeout(() => {
         void fetchPage(true);
       }, debounceMs);
+    },
+    /**
+     * 空间切换失效（P2-2）：清除已落地 items/nextCursor 并作废一切在途查询。
+     * 接线合同：宿主在 scope identity 变化时必须调用本方法（或按 scope 重建实例）——
+     * generation 守卫只拦在途响应，不清已落地状态。
+     */
+    invalidate(): void {
+      queryEpoch += 1;
+      if (searchTimer !== undefined) clearTimeout(searchTimer);
+      state = { items: [], filter: state.filter, search: state.search, loading: false, exhausted: false };
+      emit();
+    },
+    /** 状态订阅（替代轮询重绘）。返回取消函数。 */
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    /** 释放（清理去抖定时器；卸载后不再触发读）。 */
+    dispose(): void {
+      queryEpoch += 1;
+      if (searchTimer !== undefined) clearTimeout(searchTimer);
+      listeners.clear();
     },
     /** 重复键观测（列表稳定 id 合同） */
     duplicateIds(): string[] {
