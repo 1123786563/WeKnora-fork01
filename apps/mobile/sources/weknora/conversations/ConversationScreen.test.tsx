@@ -66,4 +66,45 @@ it('preserves a failed draft and prevents a second native submit while busy', as
   await first;
   await act(async () => renderer!.unmount());
 });
+
+it('wires attachment picker, camera and share entries with cancel and failed-record removal', async () => {
+  const entries = { chooseFromLibrary: vi.fn(async () => undefined), takePhoto: vi.fn(async () => undefined), acceptSharedFile: vi.fn(async () => undefined) };
+  const cancelled: string[] = [];
+  const removed: string[] = [];
+  let records = [
+    { id: 'u1', input: { sessionID: 's1', uri: 'content://a', name: 'a.pdf', mime: 'application/pdf', size: 2 }, status: 'uploading' as const },
+    { id: 'u2', input: { sessionID: 's1', uri: 'content://b', name: 'b.png', mime: 'image/png', size: 3 }, status: 'failed' as const, error: 'UPLOAD_HTTP_500' },
+  ];
+  const attachments = {
+    entries,
+    records: () => records,
+    cancel: (id: string) => { cancelled.push(id); records = records.filter((item) => item.id !== id); },
+    remove: (id: string) => { removed.push(id); records = records.filter((item) => item.id !== id); },
+  };
+  const viewModel = model({ pendingInteractions: [], capabilities: { canCancel: false, canSteer: false, canAttach: true, canVoice: false } });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, attachments })); });
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '附件' }).props.onPress());
+  expect(entries.chooseFromLibrary).toHaveBeenCalledTimes(1);
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '拍照' }).props.onPress());
+  expect(entries.takePhoto).toHaveBeenCalledTimes(1);
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '取消上传 a.pdf' }).props.onPress());
+  expect(cancelled).toEqual(['u1']);
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '移除 b.png' }).props.onPress());
+  expect(removed).toEqual(['u2']);
+  // The system-share entry is exposed on the same prop for the native intent layer.
+  await act(async () => attachments.entries.acceptSharedFile());
+  expect(entries.acceptSharedFile).toHaveBeenCalledTimes(1);
+  await act(async () => renderer!.unmount());
+});
+
+it('hides attachment entries when the capability is off', async () => {
+  const entries = { chooseFromLibrary: vi.fn(async () => undefined), takePhoto: vi.fn(async () => undefined), acceptSharedFile: vi.fn(async () => undefined) };
+  const attachments = { entries, records: () => [], cancel: () => undefined, remove: () => undefined };
+  const viewModel = model({ pendingInteractions: [] });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, attachments })); });
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: '附件' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+});
 });

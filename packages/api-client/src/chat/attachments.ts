@@ -27,12 +27,25 @@ export function createChatAttachmentsApi(request: (input: ClientRequest) => Prom
   return {
     async upload(sessionId: string, input: ChatAttachmentUploadInput, signal?: AbortSignal): Promise<TemporaryAttachment> {
       const form = new FormData();
-      if (isNativeFileSource(input.file)) form.append('file', input.file as unknown as Blob);
-      else form.append('file', input.file, input.fileName);
-      if (input.agentId) form.append('agent_id', input.agentId);
-      if (input.agentSourceTenantId) form.append('agent_source_tenant_id', input.agentSourceTenantId);
-      if (input.parserEngine) form.append('parser_engine', input.parserEngine);
-      return parseTemporaryAttachmentResponse(await request({ method: 'POST', path: `/api/v1/sessions/${encoded(sessionId, 'sessionId')}/attachments`, body: form, signal }));
+      const nativeFile = isNativeFileSource(input.file) ? input.file : undefined;
+      if (nativeFile) form.append('file', nativeFile as unknown as Blob);
+      else form.append('file', input.file as Blob, input.fileName);
+      // Native sources ride the local file port (transport.sendMultipartFile):
+      // the platform resolves content:// and file:// URIs to bytes so the
+      // multipart part carries the file itself, never the device-local path.
+      const multipartFields: Record<string, string> = {};
+      if (input.agentId) multipartFields.agent_id = input.agentId;
+      if (input.agentSourceTenantId) multipartFields.agent_source_tenant_id = input.agentSourceTenantId;
+      if (input.parserEngine) multipartFields.parser_engine = input.parserEngine;
+      for (const [key, value] of Object.entries(multipartFields)) form.append(key, value);
+      return parseTemporaryAttachmentResponse(await request({
+        method: 'POST',
+        path: `/api/v1/sessions/${encoded(sessionId, 'sessionId')}/attachments`,
+        body: form,
+        nativeFile,
+        multipartFields,
+        signal,
+      }));
     },
     async list(sessionId: string, signal?: AbortSignal): Promise<TemporaryAttachment[]> {
       return (parseTemporaryAttachmentListResponse(await request({ method: 'GET', path: `/api/v1/sessions/${encoded(sessionId, 'sessionId')}/attachments`, signal }))).data;
