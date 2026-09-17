@@ -571,6 +571,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// upstream contract degrades every sandbox-carrying fork instead of
 	// failing (message-only forks still copy history + lineage).
 	must(container.Provide(newSessionForkService))
+	must(container.Provide(newWorkspaceCheckpointer))
+	must(container.Provide(newSandboxIDLookup))
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))

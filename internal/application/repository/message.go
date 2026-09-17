@@ -422,7 +422,40 @@ func (r *messageRepository) GetSessionArtifacts(
 	return result, nil
 }
 
-// GetSessionAttachments returns every user-uploaded attachment in creation
+// RecordRestoredArtifactMtime updates ModTime (and ContentHash) on artifacts
+// in this session whose source path matches a same-content sandbox restore.
+func (r *messageRepository) RecordRestoredArtifactMtime(
+	ctx context.Context, sessionID, sourcePath string, mod time.Time, hash string,
+) error {
+	if sessionID == "" || sourcePath == "" {
+		return nil
+	}
+	var messages []*types.Message
+	if err := r.db.WithContext(ctx).
+		Select("id", "session_id", "artifacts").
+		Where("session_id = ?", sessionID).
+		Find(&messages).Error; err != nil {
+		return err
+	}
+	for _, message := range messages {
+		if message == nil {
+			continue
+		}
+		updated, changed := message.Artifacts.WithRestoredMtime(sourcePath, mod, hash)
+		if !changed {
+			continue
+		}
+		if err := r.db.WithContext(ctx).
+			Model(&types.Message{}).
+			Where("id = ? AND session_id = ?", message.ID, sessionID).
+			Update("artifacts", updated).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetSessionAttachments returns every user-uploaded attachment in every
 // order while projecting only the attachments JSON column.
 func (r *messageRepository) GetSessionAttachments(
 	ctx context.Context, sessionID string,

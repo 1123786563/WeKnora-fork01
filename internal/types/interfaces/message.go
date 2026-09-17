@@ -121,6 +121,9 @@ type MessageRepository interface {
 	// CommittedAt. Used after a forked sandbox boots so a later fork-of-fork
 	// compares against the live handle rather than the parent's sandbox.
 	RewriteSandboxCheckpoints(ctx context.Context, sessionID, oldSandboxID, newSandboxID string) error
+	// RecordRestoredArtifactMtime stamps sandbox mtime onto artifacts whose
+	// content hash already matches, after a fork checkout restored files.
+	RecordRestoredArtifactMtime(ctx context.Context, sessionID, sourcePath string, mod time.Time, hash string) error
 	// GetKnowledgeIDsBySessionID retrieves all knowledge IDs for messages in a session
 	GetKnowledgeIDsBySessionID(ctx context.Context, sessionID string) ([]string, error)
 	// UpdateMessageKnowledgeID updates the knowledge_id field for a message
