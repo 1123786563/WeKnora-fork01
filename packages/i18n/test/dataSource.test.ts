@@ -89,6 +89,11 @@ const EDITOR_KEYS = [
   'dataSource.credential.removeFailed',
   'dataSource.credential.confirmRemovePrompt',
   'dataSource.credential.confirmRemove',
+  // R451 A1: rss custom header rows editor (Vue model.editor.customHeaders*
+  // block, relocated under the dataSource.credential prefix).
+  'dataSource.credential.headerAdd',
+  'dataSource.credential.headerKeyPlaceholder',
+  'dataSource.credential.headerValuePlaceholder',
 ];
 
 function dataSourceKeys(locale: string): string[] {
@@ -97,7 +102,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 180);
+  assert.equal(keys.length, 183);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -145,6 +150,18 @@ test('credential step copy is byte-exact against the Vue credential block', () =
   assert.equal(formatMessage('ja-JP', 'dataSource.credential.update'), '差し替え');
   assert.equal(formatMessage('ko-KR', 'dataSource.credential.update'), '교체');
   assert.equal(formatMessage('ru-RU', 'dataSource.credential.update'), 'Заменить');
+});
+
+// R451 A1: rss custom header rows copy, byte-exact against the Vue
+// model.editor.customHeaders* block across all five locales.
+test('rss custom header rows copy is byte-exact against the Vue editor block', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.headerAdd'), '添加请求头');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.headerKeyPlaceholder'), 'Header 名称');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.headerValuePlaceholder'), 'Header 值');
+  assert.equal(formatMessage('en-US', 'dataSource.credential.headerAdd'), 'Add Header');
+  assert.equal(formatMessage('ja-JP', 'dataSource.credential.headerKeyPlaceholder'), 'ヘッダー名');
+  assert.equal(formatMessage('ko-KR', 'dataSource.credential.headerValuePlaceholder'), '헤더 값');
+  assert.equal(formatMessage('ru-RU', 'dataSource.credential.headerAdd'), 'Добавить заголовок');
 });
 
 test('data-source editor copy is byte-exact against the Vue en-US baseline', () => {
