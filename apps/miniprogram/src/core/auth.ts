@@ -92,7 +92,18 @@ export class AuthCoordinator {
     const secret=this.secret;
     if(secret.kind!=='bearer'||!secret.refreshToken)throw new Error('需要重新登录');
     const work=(async()=>{
-      const next=await this.api.refresh(secret.refreshToken!);
+      let next;
+      try{
+        next=await this.api.refresh(secret.refreshToken!);
+      }catch(error){
+        // A definitive 401 from the refresh endpoint means the refresh token is
+        // dead: staying "ready" would turn every later action into an endless
+        // 401 loop. Network-class failures are NOT credential verdicts; the
+        // session stays for a later retry.
+        const status=typeof error==='object'&&error!==null?(error as {status?:number}).status:undefined;
+        if(status===401)this.clear();
+        throw error;
+      }
       if(!this.scope.isCurrent(stamp)||this.secret.kind!=='bearer'||this.secret.accessToken!==secret.accessToken)throw new Error('Stale auth scope');
       this.save({kind:'bearer',accessToken:next.access_token,refreshToken:next.refresh_token});
     })();
