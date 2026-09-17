@@ -166,6 +166,17 @@
 **门禁**：typecheck:web 0 错、test:web **1672/1672**（+6）、api-client 86/86。
 **注意**：语言切换器（GeneralPreferencesPanel 写 localStorage['locale']）在 ②③ 修后即全程生效；fork 后端本地化两栈行为已实证一致（同 Accept-Language 头同返回）。遗留池：智能体选择器富面板+就绪门禁（第 6 轮未修②）、上游 t-image 空占位定性、A 类大条目。
 
+### 2026-09-18 第 8 轮（智能体选择器富面板+就绪门禁落地，替换原生 combobox）✅
+
+> 第 6 轮「发现未修②」闭环。worktree 提交 `521f84db`（10 文件，与 cron lane 无交集）。
+
+- **就绪判定**：`packages/views/src/chat/agent-readiness.ts` 移植上游 `utils/agent-readiness.ts` 契约——agent 必须显式引用**存在且类型为 KnowledgeQA** 的对话模型才可选；smart-reasoning 且 knowledge_search 可跑（kb_selection_mode≠none，allowed_tools 空走默认含 knowledge_search）时还需 Rerank 模型。测试 4 条（纯函数）。
+- **选择器面板** `agent-selector.tsx`（AgentSelectorPanel）：头部「选择智能体 + 管理」（SPA 导航 /platform/agents）；内置/自定义分组；每项图标（💬/✦）+ 未就绪 ⚠（title/aria 用本地化缺失清单）；点击未就绪项**拦截**并 toast「尚未就绪，还需配置：…」；hover 详情卡（400ms 隐藏延迟）：名称+设置/去配置按钮、当前徽章、描述、模式/KB(all|{count})/多轮标签、能力区（网络搜索 on/off、图片上传 支持/不支持）、待配置徽章+缺失项、去配置深链 `?edit=&section=model&highlight=`。React 实现注意：hooks 全置顶（第 6 轮教训）；树内 fixed 渲染替代 Teleport（views 无 react-dom 依赖，composer 控制栏不在滚动区无裁剪）。
+- **接线**：composer chip 由原生 select 换 button+受控面板（agents 过滤 disabled）；ChatPage 透传 agentModels/onManageAgents/onConfigureAgent/onAgentNotReady；ChatRoutePage 传**全量模型**（含 Rerank 类型——chatModels 仅 KnowledgeQA 会误报缺重排）做就绪判定、切换 toast（agentSwitchedOn/Off 五语言，与上游 input.agentSwitched 文案一致）、URL ?agentId 同步、aria-live toast 浮条。i18n：chat-copy 五语言 ×26 键，逐字镜像上游 locale（agent.selector.*/agent.capabilities.*/agent.type.*/input.agentMissing*）。
+- **浏览器复验**（fork :5181）：面板结构=上游（分组/图标/⚠ 提示语义）；未就绪项（维基问答/数据分析师 缺对话模型——真实数据状态）点击被拦+toast，chip 不变；智能推理（第 6 轮配过 rerank）就绪可切，toast「已切换到智能推理」+chip+?agentId 三态同步；hover 详情卡内容与上游结构一致（网络搜索状态值差异为两侧 agent 配置数据差异，非代码差异）；「+管理」SPA 导航 /platform/agents 生效。证据 `evidence/browser-agent-chat/fk-07`（面板+详情卡）、`fk-08`（切换 toast）。
+- **门禁**：typecheck:web 0 错、test:web **1677/1677**（+5：readiness 4+selector 4，2 条旧 select 断言按面板契约更新）。jsdom 坑备忘：无 innerText 用 textContent；React onMouseEnter/Leave 需派发冒泡 mouseover/mouseout。
+- **已知余差**（记录不修）：共享智能体分组（上游「共享给我」组，fork 聊天侧尚无 shared-agents 数据管道，待 org 域接入）；网络搜索「未配置」三态（上游需 webSearchProviders 就绪判定，fork 无该数据源，暂两态）；详情卡浮层定位为简化版（上游有 zoom 修正与视口翻转精细逻辑）。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
