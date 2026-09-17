@@ -1911,6 +1911,33 @@
       "shared_serialized": false,
       "source": "mx-006/007-lock-extension",
       "note": "apps/mobile/sources/components/ChatList.tsx 的相对路径条目见下"
+    },
+    "apps/mobile/tests/mobile-v2/rn-mock.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-008-lock-extension",
+      "note": "node 测试基底 mock（vitest.mobile-v2 alias 专用）"
+    },
+    "apps/mobile/vitest.mobile-v2.config.ts": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-008-lock-extension",
+      "note": "挂载验证专用 vitest 配置（不触碰默认全量入口）"
+    },
+    "apps/mobile/sources/weknora/ui/sheet.mobilev2.spec.tsx": {
+      "owners": [
+        "MX-008"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-008-lock-extension",
+      "note": "frozen 场景挂载 spec（MX008-OBSERVATION 输出）"
     }
   }
 }
