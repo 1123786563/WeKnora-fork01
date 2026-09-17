@@ -224,6 +224,20 @@
 - **门禁与复验**：go build ./... 0；**sandbox 包全量 PASS**（含新 docker_snapshot/session_bootstrapper/lifecycle 测试）；service Fork/Checkpoint 系列绿（Craft 失败=stash 基线预存）；镜像重建 healthy，boot 无 DI panic，fork 端点 200 降级语义不变（验证行已清理）。
 - **A11 状态：阶段 1-3 完成（port 真实接线挂 A17）**；阶段 4（React C1）为最后一块。
 
+### 2026-09-18 第 13 轮（A11 阶段 4：React 入口 C1 落地，A11 全链路闭环）✅
+
+> worktree 提交 `45461fa8`（13 文件 +283 行）。**A11 四阶段全部完成**——分叉功能从数据库到浏览器 UI 全链路可用。
+
+- **fork-point.ts**：逐行移植上游 resolveForkAffordance（流式中 assistant 阻断；user/assistant 点允许）+ sessionStorage landing stash（takeForkLanding 按会话匹配且恰好消费一次——防历史重载冲掉预填）。5 单测。
+- **api-client** `sessions.fork`：POST /sessions/:id/fork，解析 session_id/degraded/reason。
+- **消息级入口**（MessageList）：用户气泡下方 ⑂ 按钮（「从这里分叉出新会话」）+ assistant 工具栏分叉图标（「从这条回答继续分叉」），由 canForkMessage 门禁（流式中隐藏）。文案键五语言（zh 逐字镜像上游硬编码 tooltip；busy/失败 toast 同）。
+- **谱系角标**：SessionSidebar 在 parent_session_id 存在时显示 ⑂ 徽标（「由其他会话分叉而来」）；ChatSession 契约加字段。
+- **ChatRoutePage.forkAtMessage**：in-flight 防重→fork→stash 预填→刷新侧边栏列表→SPA 导航→409 映射 busy toast；draft 恢复在分叉会话选中时消费 landing。
+- **端到端实测**（fork :5181+新镜像后端）：首条 user 消息分叉 → 后端日志 `messages=0 degraded=false`（**与上游语义一致**——首条 user 无前史仅预填）、新会话带 parent 谱系+「（分支）」标题、sessions API 返回 parent_session_id、SPA 导航+预填生效。证据 `evidence/browser-c7/fk-02`。测试数据已清理。
+- **门禁**：typecheck 0、test:web **1689/1689**（+6）。
+- **已知观察（记录）**：CUA 坐标点击小按钮精度不足（原生 click/locator 可靠）；draft 消费时序在快速连续分叉时可能显示前一次 stash——单测已覆盖单次语义，后续如复现再修。
+- **C1 状态：✅ 完成**。**A11 整体：✅ 完成（port 真实接线挂 A17，降级语义符合上游）**。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
