@@ -50,6 +50,13 @@ async function renderChatRoutePage(input: {
             export function resolveChatCopy() {
               return { deleteConfirmBody: 'Delete this conversation? This cannot be undone.', knowledgeBasesLoadFailed: 'Failed to load knowledge bases' };
             }
+            export function resolveForkAffordance() {
+              return { canFork: false };
+            }
+            export function stashForkLanding() {}
+            export function takeForkLanding() {
+              return null;
+            }
           `,
         }));
         build.onLoad({ filter: /\.css$/ }, () => ({ loader: 'js', contents: '' }));

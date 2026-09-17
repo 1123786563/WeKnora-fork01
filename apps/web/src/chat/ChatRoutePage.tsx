@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
+import { ApiError } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage } from '@weknora/views/chat/page';
+import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/composer';
@@ -410,7 +412,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   useEffect(() => {
     setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : '');
-  }, [storageKey]);
+    // Vue fork landing: after forking at a user message the question is
+    // prefilled in the new session (index.vue readForkLanding). Consume the
+    // stash once the forked session becomes the selected one so the history
+    // reload above cannot clobber it.
+    if (selectedSessionId) {
+      const landing = takeForkLanding(selectedSessionId);
+      if (landing && landing.text) setDraft(landing.text);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, selectedSessionId]);
 
   useEffect(() => {
     terminalController.current?.close();
@@ -636,6 +647,50 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const target = query ? `/platform/agents?${query}` : '/platform/agents';
     window.history.pushState({}, '', target);
     window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
+  // Vue index.vue handleFork (L365-410): fork at the message, carry the
+  // user question across navigation in sessionStorage, refresh the sidebar
+  // list, and land on the forked chat. 409 → 请等本轮回答结束后再分叉.
+  const forkInFlightRef = useRef(false);
+  async function forkAtMessage(messageId: string) {
+    if (forkInFlightRef.current) return;
+    if (!messageId || !selectedSessionId) return;
+    const source = messages.find((m) => m.id === messageId);
+    if (!source) return;
+    const sourceSessionId = selectedSessionId;
+    forkInFlightRef.current = true;
+    try {
+      const result = await client.sessions.fork(sourceSessionId, messageId);
+      if (!result.sessionId) return;
+      const prefill = source.role === 'user' ? String(source.content ?? '') : '';
+      stashForkLanding(result.sessionId, prefill);
+      // Sidebar refresh: the forked session appears immediately (Vue
+      // updataMenuChildren). The list effect keys on scope+filters, so bump
+      // the page state to force one reload.
+      setSessionPage((page) => page);
+      void client.sessions.list({ page: 1, pageSize: 30, source: sessionSource || undefined, keyword: sessionKeyword || undefined }).then((list) => {
+        setSessions(list.data);
+        const pageCount = sessionPageCount(list.total, list.page_size);
+        setSessionPageCountValue(pageCount);
+        if (list.page !== 1) setSessionPage(1);
+      }, () => undefined);
+      window.history.pushState({}, '', `/platform/chat/${result.sessionId}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 409 || /FORK_SOURCE_BUSY|active turn/.test(error.message))) {
+        showAgentToast(copy.forkBusyToast);
+        return;
+      }
+      const status = (error as { status?: number })?.status;
+      if (status === 409) {
+        showAgentToast(copy.forkBusyToast);
+        return;
+      }
+      showAgentToast(copy.forkFailedToast);
+    } finally {
+      forkInFlightRef.current = false;
+    }
   }
 
   function changeSessionSource(source: string): void {
@@ -1155,6 +1210,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     selectedModelId={selectedModelId}
     onModelChange={setSelectedModelId}
     starterQuestions={starterQuestions}
+    onForkMessage={forkAtMessage}
+    canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
     starterQuestionsLoading={starterQuestionsLoading}
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}

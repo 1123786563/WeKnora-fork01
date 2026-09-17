@@ -35,6 +35,8 @@ export interface ChatSession {
   is_pinned: boolean;
   created_at?: string;
   updated_at?: string;
+  /** Session lineage (A11): set when this session was forked from another. */
+  parent_session_id?: string;
   [key: string]: unknown;
 }
 

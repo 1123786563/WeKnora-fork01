@@ -252,6 +252,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
             + (active ? 'bg-[#e9f8ec] text-[#07c05f] font-medium' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[rgba(0,0,0,0.04)]')}>
             {session.running === true ? <span role="status" aria-label={t.sessionInProgress} title={t.sessionInProgress} className="wk-chat-session-running inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[#07c05f]"><span aria-hidden="true" className="wk-chat-session-running-spinner block h-[12px] w-[12px] rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-[wk-chat-session-spin_0.8s_linear_infinite]" /></span> : null}
             {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}
+            {session.parent_session_id ? <span role="img" aria-label={t.forkBadgeTooltip} title={t.forkBadgeTooltip} className="shrink-0 text-[11px] text-[rgba(0,0,0,0.4)]">⑂</span> : null}
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{session.title || untitledLabel || t.untitledChat}</span>
             {badge.kind ? <span className={badge.kind + ' shrink-0 text-[10px] font-semibold tracking-[0.03em] leading-[1.4] uppercase text-[rgba(0,0,0,0.4)] bg-[#eee] rounded-[4px] px-[4px]'} title={t.sourceLabel}>{badge.label}</span> : null}
           </button>}

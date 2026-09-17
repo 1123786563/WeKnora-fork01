@@ -84,6 +84,7 @@ export default defineConfig({
       '@weknora/views/chat/chat-copy': fileURLToPath(new URL('../../packages/views/src/chat/chat-copy.ts', import.meta.url)),
       '@weknora/views/chat/composer': fileURLToPath(new URL('../../packages/views/src/chat/composer.tsx', import.meta.url)),
       '@weknora/views/chat/markdown': fileURLToPath(new URL('../../packages/views/src/chat/markdown.ts', import.meta.url)),
+      '@weknora/views/chat/fork-point': fileURLToPath(new URL('../../packages/views/src/chat/fork-point.ts', import.meta.url)),
       '@weknora/views/chat/mermaid': fileURLToPath(new URL('../../packages/views/src/chat/mermaid.ts', import.meta.url)),
       '@weknora/views/embed/bridge': fileURLToPath(new URL('../../packages/views/src/embed/bridge.ts', import.meta.url)),
       '@weknora/views/guides/contextual-guides': fileURLToPath(new URL('../../packages/views/src/guides/contextual-guides.ts', import.meta.url)),
