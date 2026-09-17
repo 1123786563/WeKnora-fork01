@@ -1,7 +1,6 @@
 import { createRoot } from 'react-dom/client';
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { RouterProvider } from '@tanstack/react-router';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
 import { isLocale, loadingLabel, type Locale } from '@weknora/i18n/runtime';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
 import { reloginAfterRefreshFailure } from './auth/relogin.ts';
@@ -12,54 +11,9 @@ import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
-import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { installNavigationObserver, navigate, subscribeNavigation } from './platform/navigation.ts';
-import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
-import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
-import { createWikiSourceDocOpener } from './wiki/source-doc-open.ts';
-import { CraftRoutes } from './features/craft/routes.tsx';
-const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
-const IntegrationsRoutePage = lazy(() => import('./integrations/IntegrationsRoutePage.tsx').then((module) => ({ default: module.IntegrationsRoutePage })));
-const KnowledgeDocumentsPage = lazy(() => import('./documents/KnowledgeDocumentsPage.tsx').then((module) => ({ default: module.KnowledgeDocumentsPage })));
-const KnowledgeDocumentDetailPage = lazy(() => import('./documents/KnowledgeDocumentDetailPage.tsx').then((module) => ({ default: module.KnowledgeDocumentDetailPage })));
-const WikiPage = lazy(() => import('./wiki/WikiPage.tsx').then((module) => ({ default: module.WikiPage })));
-const FAQPage = lazy(() => import('./faq/FAQPage.tsx').then((module) => ({ default: module.FAQPage })));
-const DataSourcesPage = lazy(() => import('./data-sources/DataSourcesPage.tsx').then((module) => ({ default: module.DataSourcesPage })));
-const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeSettingsPage.tsx').then((module) => ({ default: module.KnowledgeSettingsPage })));
-const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
-const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
-const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
-const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
-const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
-const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
-const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
-const NotFoundPage = lazy(() => import('./NotFoundPage.tsx').then((module) => ({ default: module.NotFoundPage })));
-const DevMarkdownPage = lazy(() => import('./DevMarkdownPage.tsx').then((module) => ({ default: module.DevMarkdownPage })));
-const PlatformShell = lazy(() => import('./platform/PlatformShell.tsx').then((module) => ({ default: module.PlatformShell })));
-const LoginPage = lazy(() => import('./auth/LoginPage.tsx').then((module) => ({ default: module.LoginPage })));
-const JoinPage = lazy(() => import('./auth/JoinPage.tsx').then((module) => ({ default: module.JoinPage })));
-const WorkspaceOnboardingPage = lazy(() => import('./auth/WorkspaceOnboardingPage.tsx').then((module) => ({ default: module.WorkspaceOnboardingPage })));
-const AppsPage = lazy(() => import('./apps/AppsPages.tsx').then((module) => ({ default: module.AppsPage })));
-
-function WikiEntry({ client, knowledgeBaseId, initialSlug, initialDocumentId, canContribute }: { client: ReturnType<typeof createWeKnoraClient>; knowledgeBaseId: string; initialSlug?: string; initialDocumentId?: string; canContribute: boolean }) {
-  const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
-  useEffect(() => {
-    let active = true;
-    void client.knowledgeBases.settings.get(knowledgeBaseId).then((kb) => {
-      if (active) setWikiEnabled(shouldOpenWiki(kb));
-    }).catch(() => {
-      // Preserve the existing Wiki error surface when capability lookup is unavailable.
-      if (active) setWikiEnabled(true);
-    });
-    return () => { active = false; };
-  }, [client, knowledgeBaseId]);
-  if (wikiEnabled === false) {
-    window.history.replaceState({}, document.title, wikiEntryPath(knowledgeBaseId));
-    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
-  }
-  if (wikiEnabled === null) return <Status tone="neutral">加载中…</Status>;
-  return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} onOpenSourceDoc={createWikiSourceDocOpener({ knowledgeBaseId, navigate })} />;
-}
+import { installNavigationObserver, setNavigationSink } from './platform/navigation.ts';
+import { resolveRoute } from './routes.tsx';
+import { createWeKnoraRouter } from './router.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -82,10 +36,9 @@ if (oidcCallback?.kind === 'success') {
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
 const loadingLocale: Locale = isLocale(navigator.language) ? navigator.language : 'en-US';
 const loadingText = loadingLabel(loadingLocale);
-// R441: /embed/* no longer dead-ends on the isolated-entry error — the isolated
-// entry itself is mounted (Vue frontend/embed.html + embed-main.ts parity).
-const EmbedEntryPage = lazy(() => import('./embed/EmbedEntryPage.tsx').then((module) => ({ default: module.EmbedEntryPage })));
-let currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
+// The embed entry keeps an anonymous session and skips the bearer credential
+// adapter; every other entry boots the legacy platform session import.
+const currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
 const importedPlatformState = currentRoute.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = currentRoute.kind === 'embed'
   ? { credential: { kind: 'anonymous' }, tenantId: null, preferences: {} }
@@ -138,29 +91,17 @@ client = createWeKnoraClient({
   }),
 });
 
-const root = createRoot(document.getElementById('root')!);
 // Vue useTheme.initTheme parity: apply the stored theme on startup and
 // re-apply on weknora:theme-changed / OS scheme changes (theme.ts).
 // The embed entry forces light mode instead (frontend/embed.html sets
 // theme-mode="light" before the app boots).
 if (currentRoute.kind !== 'embed') initTheme();
-const platformAdapters = createWebPlatformAdapters();
 
-// Route changes stay inside the mounted React tree. PlatformShell keeps its
-// identity while the route-specific content is reconciled from the new URL.
-installNavigationObserver();
-subscribeNavigation(() => {
-  currentRoute = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
-  if (session.credential.kind === 'bearer') renderProtected();
-});
+const root = createRoot(document.getElementById('root')!);
 
 function nextPathAfterAuth(): string {
   const next = new URLSearchParams(window.location.search).get('next');
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
-}
-
-function renderAuth(page: ReactNode): void {
-  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingText}</Status></main>}>{page}</Suspense>);
 }
 
 function completeAuthentication(next: AuthSession): void {
@@ -171,10 +112,6 @@ function completeAuthentication(next: AuthSession): void {
   // dropped us into a non-home tenant so X-Tenant-ID stays consistent.
   if (landing.activeTenantId) scopeRuntime.setTenant(landing.activeTenantId);
   window.location.assign(landing.target);
-}
-
-function renderLogin(error = initialLoginError, inviteToken = '') {
-  renderAuth(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={currentRoute.kind === 'login' ? currentRoute.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
 }
 
 async function logout(): Promise<void> {
@@ -201,183 +138,55 @@ async function switchTenantFromShell(tenantId: string): Promise<void> {
   window.location.assign('/platform/knowledge-bases');
 }
 
-// All protected /platform/* pages render inside the platform shell
-// (sidebar matching the Vue menu.vue). Auth/onboarding/embed pages stay bare.
-function renderShell(page: ReactNode): void {
-  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingText}</Status></main>}><PlatformShell client={client} onLogout={logout} onTenantSwitch={switchTenantFromShell}>{page}</PlatformShell></Suspense>);
-}
-
-function renderProtected() {
-  const route = currentRoute;
-  const pathname = `${window.location.pathname}${window.location.search}`;
-  const current = scopeRuntime.current().scope;
-  const decision = guardRoute(pathname, {
-    authenticated: session.credential.kind === 'bearer',
-    tenantId: current.tenantId,
-    capabilities: scopeRuntime.capabilities(),
-    isSystemAdmin: scopeRuntime.isSystemAdmin(),
-    liteMode,
-    development,
-  });
-  if (decision.kind === 'redirect') {
-    if (decision.to === '/onboarding/workspace') {
-      if (window.location.pathname !== decision.to) platformAdapters.replace(decision.to);
-      renderAuth(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
-      return;
-    }
-    if (decision.reason === 'authentication-required') {
-      platformAdapters.replace(decision.to);
-      renderLogin();
-      return;
-    }
-    window.location.replace(decision.to);
-    return;
-  }
-  if (route.kind === 'craft') {
-    // W05 craft mounts at /craft and /craft/:sessionId through the same
-    // assembly (legacy session + shared scope + shared client) — no second
-    // router. Craft stays reachable without an interactive session, matching
-    // the pre-merge guard behaviour.
-    root.render(<CraftRoutes client={client} scopeController={scopeController} session={session} apiBaseUrl={apiBaseUrl} />);
-    return;
-  }
-  if (route.kind === 'onboarding') {
-    renderAuth(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
-    return;
-  }
-  if (protectedPageForRoute(route) === 'knowledge-bases') {
-    renderShell(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
-  } else if (protectedPageForRoute(route) === 'markdown-test') {
-    renderShell(<DevMarkdownPage />);
-  } else if (route.kind === 'knowledge-document') {
-    renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => navigate(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
-  } else if (route.kind === 'knowledge-wiki') {
-    renderShell(<WikiEntry client={client} knowledgeBaseId={route.knowledgeBaseId} initialDocumentId={new URLSearchParams(window.location.search).get('knowledge_id')?.trim() || undefined} canContribute={scopeRuntime.role() !== 'viewer'} />);
-  } else if (route.kind === 'knowledge-faq') {
-    renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
-  } else if (route.kind === 'knowledge-settings') {
-    renderShell(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
-  } else if (route.path === '/platform/agents') {
-    // Real agents list (parity with Vue AgentList.vue); the consolidated
-    // configuration surface stays reachable at /platform/configuration.
-    renderShell(<AgentsPage client={client} tenantId={scopeRuntime.current().scope.tenantId} />);
-  } else if (route.path === '/platform/configuration') {
-    renderShell(<ConfigurationPage client={client} />);
-  } else if (route.path === '/platform/administration') {
-    renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
-  } else if (route.path === '/platform/organizations') {
-    renderShell(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} role={scopeRuntime.role()} />);
-  } else if (route.path === '/platform/settings') {
-    renderShell(<SettingsPage capabilities={scopeRuntime.capabilities()} liteMode={liteMode} client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
-  } else if (route.path === '/platform/system') {
-    renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
-  } else if (route.kind === 'apps') {
-    renderShell(<AppsPage client={client} mode={route.mode} id={route.id} role={scopeRuntime.role()} />);
-  } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
-    const knowledgeBaseId = route.knowledgeBaseId;
-    const initialDocumentId = route.initialDocumentId;
-    if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} initialDocumentId={initialDocumentId} canContribute={scopeRuntime.role() !== 'viewer'} />);
-    else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
-    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => navigate(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
-  } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
-    renderShell(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
-  } else if (route.path === '/platform/integrations') {
-    const integrationQuery = new URLSearchParams(window.location.search);
-    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} activeAgentId={(integrationQuery.get('agentId') ?? integrationQuery.get('agent_id'))?.trim() || null} apiBaseUrl={apiBaseUrl} />);
-  } else if (route.kind === 'not-found') {
-    renderShell(<NotFoundPage path={route.path} />);
-  } else {
-    renderShell(<NotFoundPage path={route.path} />);
-  }
-}
-
-async function bootstrap() {
-  if (currentRoute.kind === 'embed') {
-    // Vue renders /embed/:channelId from the isolated embed.html document
-    // (embed-main.ts router). React keeps one bundle, so the isolated entry is
-    // this bare page: no platform shell, no bearer session, anonymous client.
-    root.render(<EmbedEntryPage apiBaseUrl={apiBaseUrl} />);
-    return;
-  }
-  if (currentRoute.kind === 'login') {
-    const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
-    if (inviteToken) {
-      // Vue Login.vue:798-801 — an existing session redeems the token directly.
-      if (session.credential.kind === 'bearer') {
-        try {
-          await client.auth.acceptInvitationByToken(inviteToken);
-          clearPendingInviteToken(window.sessionStorage);
-        } catch { /* Vue acceptAndEnter: an invalid token still enters the app */ }
-        window.location.assign('/platform/knowledge-bases');
-        return;
-      }
-      // Vue Login.vue:803-808 — invite_only stays on the login card; open
-      // deployments render the registration form.
-      let registrationMode = 'self_serve';
-      try { registrationMode = (await client.auth.registrationConfig()).registrationMode; } catch { /* fail open like loadAuthConfig */ }
-      if (registrationMode === 'invite_only') {
-        renderLogin(undefined, inviteToken);
-      } else {
-        renderAuth(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
-      }
-      return;
-    }
-    // Vue router.beforeEach redirects an already-authenticated visitor away
-    // from /login. Keep the same public-entry behavior in React: validate the
-    // imported session before choosing the tenantless onboarding landing.
-    if (session.credential.kind === 'bearer') {
-      try {
-        const authMe = await client.auth.me();
-        const hydrated = scopeRuntime.hydrate(authMe);
-        session.tenantId = hydrated.scope.tenantId;
-        window.location.assign(hydrated.scope.tenantId ? '/platform/knowledge-bases' : '/onboarding/workspace');
-        return;
-      } catch {
-        scopeRuntime.logout();
-        await browserCredentialAdapter?.clear();
-        session = { ...session, credential: { kind: 'anonymous' }, tenantId: null };
-      }
-    }
-    // Vue Login.vue:817-831 — lite-edition transparent auto-setup on /login.
-    const AUTO_SETUP_FAILED_KEY = 'weknora_auto_setup_failed';
-    if (window.localStorage.getItem(AUTO_SETUP_FAILED_KEY) !== 'true') {
-      try {
-        const autoSession = await client.auth.autoSetup();
-        window.localStorage.setItem('weknora_lite_mode', 'true');
-        completeAuthentication(autoSession);
-        return;
-      } catch {
-        window.localStorage.setItem(AUTO_SETUP_FAILED_KEY, 'true');
-      }
-    }
-    renderLogin();
-    return;
-  }
-  if (currentRoute.kind === 'join') {
-    const redirect = routeRedirect(`${window.location.pathname}${window.location.search}`);
-    const joinToken = new URLSearchParams(window.location.search).get('token')?.trim();
-    if (joinToken) {
-      // Vue share-links land on /login|/register?token — never dead-end /join.
-      window.location.replace(`/register?token=${encodeURIComponent(joinToken)}`);
-    } else if (session.credential.kind !== 'bearer') {
-      window.location.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
-    } else if (redirect) window.location.replace(redirect);
-    return;
-  }
+// auth/me + scope hydration happens once per boot, before the first protected
+// page renders; a failed restore clears the session like the pre-router
+// bootstrap did (the login card then renders with the restore error).
+let sessionHydration: { ok: true; tenantId: string | null } | { ok: false } | null = null;
+let sessionRestoreError: string | undefined;
+async function ensureSessionHydrated(): Promise<{ ok: true; tenantId: string | null } | { ok: false }> {
+  if (sessionHydration !== null) return sessionHydration;
   if (session.credential.kind !== 'bearer') {
-    renderProtected();
-    return;
+    sessionHydration = { ok: false };
+    return sessionHydration;
   }
   try {
     const authMe = await client.auth.me();
     const hydrated = scopeRuntime.hydrate(authMe);
     session.tenantId = hydrated.scope.tenantId;
-    renderProtected();
+    sessionHydration = { ok: true, tenantId: hydrated.scope.tenantId };
   } catch (error) {
     scopeRuntime.logout();
     await browserCredentialAdapter?.clear();
-    renderLogin(error instanceof Error ? error.message : 'Your session could not be restored.');
+    session = { ...session, credential: { kind: 'anonymous' }, tenantId: null };
+    sessionRestoreError = error instanceof Error ? error.message : 'Your session could not be restored.';
+    sessionHydration = { ok: false };
   }
+  return sessionHydration;
 }
 
-void bootstrap();
+// Route changes stay inside the mounted React tree: page/anchor-driven URL
+// mutations are bridged into the TanStack router (platform/navigation.ts),
+// which owns rendering. Craft and the chat page keep their own internal URL
+// state machines (bridge-excluded there).
+installNavigationObserver();
+const router = createWeKnoraRouter({
+  client,
+  scopeController,
+  scopeRuntime,
+  session: () => session,
+  liteMode,
+  development,
+  apiBaseUrl,
+  loadingText,
+  initialLoginError: () => initialLoginError ?? sessionRestoreError,
+  ensureSessionHydrated,
+  logout,
+  switchTenantFromShell,
+  completeAuthentication,
+});
+setNavigationSink((url, mode) => {
+  if (mode === 'replace') router.history.replace(url);
+  else router.history.push(url);
+});
+
+root.render(<RouterProvider router={router} />);

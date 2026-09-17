@@ -1,8 +1,23 @@
 export type NavigationMode = 'push' | 'replace';
 type NavigationListener = (url: string) => void;
+type NavigationSink = (url: string, mode: NavigationMode) => void;
 const listeners = new Set<NavigationListener>();
 let installed = false;
 let lastNotifiedUrl = '';
+let sink: NavigationSink | null = null;
+let bridging = false;
+
+// Craft and the chat page own internal URL state machines (parse window.location
+// + their own popstate listeners + in-memory session state that must survive a
+// same-page transition). Their raw pushState/replaceState calls stay outside the
+// TanStack bridge: bridging them would remount the page and reload session data
+// on every internal switch.
+const BRIDGE_EXCLUDED_PREFIXES = ['/craft', '/platform/chat', '/platform/creatChat'];
+
+function isBridgeExcluded(url: string): boolean {
+  const path = url.split('?')[0]!.split('#')[0]!;
+  return BRIDGE_EXCLUDED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
 
 function currentUrl(): string {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -18,6 +33,15 @@ function notify(): void {
 export function subscribeNavigation(listener: NavigationListener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/**
+ * Hands URL mutations to the TanStack router once it exists. The sink performs
+ * the history mutation itself (router.history.push/replace), so the raw
+ * history call is skipped to avoid a duplicate browser history entry.
+ */
+export function setNavigationSink(next: NavigationSink | null): void {
+  sink = next;
 }
 
 export function installNavigationObserver(): () => void {
@@ -41,8 +65,34 @@ export function installNavigationObserver(): () => void {
     event.preventDefault();
     navigate(`${url.pathname}${url.search}${url.hash}`);
   };
-  window.history.pushState = ((...args: Parameters<History['pushState']>) => { originalPushState(...args); notify(); }) as History['pushState'];
-  window.history.replaceState = ((...args: Parameters<History['replaceState']>) => { originalReplaceState(...args); notify(); }) as History['replaceState'];
+  window.history.pushState = ((...args: Parameters<History['pushState']>) => {
+    const url = typeof args[2] === 'string' ? args[2] : currentUrl();
+    if (sink !== null && !bridging && !isBridgeExcluded(url)) {
+      bridging = true;
+      try {
+        sink(url, 'push');
+        return;
+      } finally {
+        bridging = false;
+      }
+    }
+    originalPushState(...args);
+    notify();
+  }) as History['pushState'];
+  window.history.replaceState = ((...args: Parameters<History['replaceState']>) => {
+    const url = typeof args[2] === 'string' ? args[2] : currentUrl();
+    if (sink !== null && !bridging && !isBridgeExcluded(url)) {
+      bridging = true;
+      try {
+        sink(url, 'replace');
+        return;
+      } finally {
+        bridging = false;
+      }
+    }
+    originalReplaceState(...args);
+    notify();
+  }) as History['replaceState'];
   window.addEventListener('popstate', onPopState);
   // Capture before React or a nested menu can stop propagation without
   // preventing the browser's default document navigation.
@@ -58,6 +108,11 @@ export function installNavigationObserver(): () => void {
 }
 
 export function navigate(path: string, mode: NavigationMode = 'push'): void {
+  if (sink !== null && !isBridgeExcluded(path)) {
+    sink(path, mode);
+    return;
+  }
   const method = mode === 'replace' ? window.history.replaceState : window.history.pushState;
   method.call(window.history, {}, document.title, path);
+  notify();
 }
