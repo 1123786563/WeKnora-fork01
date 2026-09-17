@@ -5029,3 +5029,26 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1673/1673, `pnpm test:shared` 751/751, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r461-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-18 Round R462 — R461 fixes live-verified, nested-form fixed, auth cleanup + pre-push hook
+
+- Four parallel agents (A1 browser verification, A2 nested-form fix, A3 auth adjudication + pre-push hook,
+  A4 verifier). Verdict: all PASS; gates test:web 1683/1683 (baseline raised by the external agent-selector
+  commit; A2 +2/A3 −2 net zero), test:shared 756/756, typecheck 0, build ✓, integrity 0 P0.
+- A1 (14 screenshots): R461 wiki edit fix VERIFIED LIVE — 编辑/历史/删除+新建页面/新建目录 all visible for
+  the creator account, editor opens/cancels cleanly, matching Vue's five-button baseline. Nested form
+  precisely located (KB-edit modal share section; console evidence is the reliable signal — the DOM query
+  returns 0 because the parser de-nests). agent selector (521f84db) regression PASS; KB list smoke PASS.
+- A2: Vue's KBShareSettings uses NO form (t-button @click) — the ShareDialog's INLINE mode drops its form,
+  confirm becomes type=button onClick (modal mode keeps the R438-locked submit contract); busy/validation
+  guards preserved; the hidden required-Select hack no longer rendered inline. +2 tests; ShareDialog 17/17;
+  scoped 223/223. Left: the outer save form still wraps all sections (App.tsx structural, future round).
+- A3: apps/web createAuthApi deleted (zero production consumers — real stack uses api-client's; persistLogin
+  retained, pins the session-chain tests); pre-push hook gains the integrity gate (worktree-aware setup-hooks
+  installs the stub without touching core.hooksPath; exit-code matrix verified: clean 0 / P0 shapes 1).
+- Gates: `pnpm test:web` 1683/1683, `pnpm test:shared` 756/756, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r462-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
+__zcode_status=$?
+if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-a9fd5be9-a4f2-4fd7-af1e-af3e95610d96-cwd'; fi
+exit "$__zcode_status"

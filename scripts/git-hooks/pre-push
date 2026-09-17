@@ -13,6 +13,15 @@ fi
 
 cd "$ROOT"
 
+# R462 A3: commit-integrity gate. Runs before any per-ref work so the push is
+# blocked early when a tracked file imports something missing from the git
+# index (the R442/R444/R451 "forgot to git add" incident class). The check is
+# local git + filesystem only -- no network, no credentials.
+if ! node "$ROOT/scripts/check-commit-integrity.mjs" --root "$ROOT"; then
+  log_fail "pre-push blocked: commit-integrity P0 findings (re-run manually: pnpm check:integrity)"
+  exit 1
+fi
+
 remote="${1:-origin}"
 while read -r _local_ref local_sha remote_ref remote_sha; do
   if [[ "$local_sha" =~ ^0+$ ]]; then

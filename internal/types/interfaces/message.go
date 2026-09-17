@@ -105,8 +105,22 @@ type MessageRepository interface {
 	SearchMessagesByKeyword(ctx context.Context, tenantID uint64, ownerID, keyword string, sessionIDs []string, limit int) ([]*types.MessageWithSession, error)
 	// GetMessagesByKnowledgeIDs retrieves messages by their associated Knowledge IDs
 	GetMessagesByKnowledgeIDs(ctx context.Context, knowledgeIDs []string) ([]*types.MessageWithSession, error)
-	// GetMessagesByRequestIDs retrieves messages by their request IDs (used to fetch Q&A pair partners)
-	GetMessagesByRequestIDs(ctx context.Context, requestIDs []string) ([]*types.MessageWithSession, error)
+	// ListMessagesBySessionUpTo returns every message sorting strictly before
+	// the (boundary, boundaryID) composite cursor, oldest first. Used by
+	// session fork to copy the history preceding a fork point.
+	ListMessagesBySessionUpTo(
+		ctx context.Context, sessionID string, boundary time.Time, boundaryID string,
+	) ([]*types.Message, error)
+	// GetMessagesByRequestIDs retrieves messages by request ID inside one session
+	// (used to fetch Q&A pair partners). Empty sessionID returns no rows.
+	GetMessagesByRequestIDs(
+		ctx context.Context, sessionID string, requestIDs []string,
+	) ([]*types.MessageWithSession, error)
+	// RewriteSandboxCheckpoints replaces SandboxID on every copied checkpoint
+	// in the session that still points at oldSandboxID, keeping CommitSHA and
+	// CommittedAt. Used after a forked sandbox boots so a later fork-of-fork
+	// compares against the live handle rather than the parent's sandbox.
+	RewriteSandboxCheckpoints(ctx context.Context, sessionID, oldSandboxID, newSandboxID string) error
 	// GetKnowledgeIDsBySessionID retrieves all knowledge IDs for messages in a session
 	GetKnowledgeIDsBySessionID(ctx context.Context, sessionID string) ([]string, error)
 	// UpdateMessageKnowledgeID updates the knowledge_id field for a message

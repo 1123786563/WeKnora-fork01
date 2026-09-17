@@ -10,8 +10,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createAuthApi, persistLogin, type ParsedLogin } from './api.ts';
-import type { ClientRequest } from '@weknora/api-client';
+import { persistLogin, type ParsedLogin } from './api.ts';
 import { persistBrowserCredential } from '../platform/credentials.ts';
 import {
   clearWeknoraUser,
@@ -113,36 +112,7 @@ test('anon pre-login theme is adopted by the FIRST login and not by the next', (
   assert.equal(readLocalPreferences(s).theme, 'light');
 });
 
-// Migrated from auth-state.test.ts when the AuthPages dead stack was removed
-// (R461 A2): these pin the retained auth/api.ts adapter to the Vue endpoint
-// paths and login persistence contract.
-test('auth adapter preserves the Vue endpoint paths and login persistence contract', async () => {
-  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
-  const api = createAuthApi({ request: async (input: ClientRequest) => { requests.push(input); return input.path === '/api/v1/auth/login' ? { success: true, token: 'access', refresh_token: 'refresh', user: { id: 'u-1' }, tenant: { id: 7 } } : { success: true, registration_mode: 'invite_only', complex_password_enabled: true }; } } as never);
-  const session = await api.login('u@example.com', 'password');
-  assert.equal(session.tenantId, '7');
-  assert.deepEqual(requests[0], { method: 'POST', path: '/api/v1/auth/login', body: { email: 'u@example.com', password: 'password' } });
-  const values = new Map<string, string>();
-  persistLogin(session, { setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); } });
-  assert.equal(values.get('weknora_token'), 'access');
-  assert.equal(values.get('weknora_refresh_token'), 'refresh');
-  assert.equal(values.get('weknora_selected_tenant_id'), '7');
-});
-
-test('auth adapter preserves OIDC and invite endpoint contracts', async () => {
-  const requests: ClientRequest[] = [];
-  const api = createAuthApi({ request: async (input: ClientRequest) => {
-    requests.push(input);
-    if (input.path === '/api/v1/auth/oidc/config') return { success: true, enabled: true, provider_display_name: 'Logto' };
-    if (input.path.startsWith('/api/v1/auth/oidc/url?')) return { success: true, authorization_url: 'https://idp.example/authorize' };
-    return { success: true };
-  } } as never);
-  assert.deepEqual(await api.oidcConfig(), { success: true, enabled: true, provider_display_name: 'Logto' });
-  assert.deepEqual(await api.oidcStart('https://app.example/api/v1/auth/oidc/callback'), { success: true, authorization_url: 'https://idp.example/authorize' });
-  assert.deepEqual(await api.acceptInvitation('invite-token'), { success: true });
-  assert.deepEqual(requests, [
-    { method: 'GET', path: '/api/v1/auth/oidc/config' },
-    { method: 'GET', path: '/api/v1/auth/oidc/url?redirect_uri=https%3A%2F%2Fapp.example%2Fapi%2Fv1%2Fauth%2Foidc%2Fcallback' },
-    { method: 'POST', path: '/api/v1/me/invitations/accept-by-token', body: { token: 'invite-token' } },
-  ]);
-});
+// R462 A3: the two adapter contract tests migrated here from auth-state.test.ts
+// (R461 A2) were removed together with createAuthApi -- production login goes
+// through @weknora/api-client's createAuthApi, whose endpoint contracts are
+// pinned by packages/api-client/src/auth/endpoints.test.ts.

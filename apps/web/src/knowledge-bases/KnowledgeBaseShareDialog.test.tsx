@@ -91,6 +91,28 @@ async function mount(client: WeKnoraClient, onChanged: () => void = () => undefi
   return document.body;
 }
 
+// R462: the inline mount mirrors Vue KBShareSettings embedded in the editor
+// modal. It may be hosted inside the editor's save <form> (App.tsx onSubmit),
+// so the host defaults to an outer form to exercise the nesting contract.
+async function mountInline(client: WeKnoraClient, host?: HTMLElement) {
+  window.localStorage.setItem('locale', 'en-US');
+  const container = document.createElement('div');
+  (host ?? document.body).append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open inline onClose={() => undefined} onChanged={() => undefined} />);
+  });
+  return container;
+}
+
+// Vue KBShareSettings opens on the share list; the add-share entry (t-popup
+// trigger, `knowledgeEditor.share.addShare`) toggles to the add-share form.
+async function openInlineShareForm(container: HTMLElement) {
+  const addShare = [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === 'Share');
+  assert.ok(addShare, 'inline share list should expose the add-share entry');
+  await act(async () => addShare?.click());
+}
+
 function button(container: HTMLElement, label: string) {
   return [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes(label));
 }
@@ -374,4 +396,43 @@ test('does not report a successful share when the post-mutation reload fails', a
   assert.match(container.textContent ?? '', /reload failed/);
   assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
   assert.equal(changed, 0);
+});
+
+// R462: the inline mount lives inside the editor save <form> (App.tsx
+// `onSubmit={save}`, share section of the "integration" nav group). Vue
+// KBShareSettings (KnowledgeBaseEditorModal share section) renders no <form>
+// and confirms via t-button @click, so the React inline mount must not emit a
+// <form> either — a nested form breaks HTML parsing/hydration.
+test('inline share section renders without a form so the editor save form never nests', async () => {
+  const client = clientFor(async () => ({ items: [], total: 0 }));
+  const container = await mountInline(client);
+  await openInlineShareForm(container);
+
+  assert.ok(container.textContent?.includes('Select Shared Space'), 'the add-share form should be visible');
+  assert.equal(container.querySelector('form'), null, 'the inline share section must not render a <form> (Vue KBShareSettings has none)');
+  const confirm = button(container, 'Confirm');
+  assert.ok(confirm, 'confirm action stays available');
+  assert.equal(confirm?.getAttribute('type'), 'button', 'Vue confirms with @click, not a submit button');
+});
+
+test('inline share inside the outer save form submits without nested forms and keeps the guards', async () => {
+  const payloads: unknown[] = [];
+  const client = clientFor(async () => ({ items: [], total: 0 }), {
+    create: async (_kbId, payload) => { payloads.push(payload); return { id: 'share-1' }; },
+  });
+  const outer = document.createElement('form');
+  document.body.append(outer);
+  const container = await mountInline(client, outer);
+  await openInlineShareForm(container);
+
+  assert.equal(outer.querySelectorAll('form').length, 0, 'no nested <form> inside the outer save form');
+  // Vue-style org selection through the combobox; inline has no form-select fallback.
+  await act(async () => container.querySelector<HTMLButtonElement>('[role="combobox"]')?.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('[role="option"]')?.click());
+
+  const confirm = button(container, 'Confirm');
+  assert.ok(confirm);
+  assert.equal(confirm?.disabled, false, 'confirm enables once an organization is picked');
+  await act(async () => confirm?.click());
+  assert.deepEqual(payloads, [{ organization_id: 'org-editor', permission: 'viewer' }], 'clicking confirm still submits the share like Vue handleShare');
 });
