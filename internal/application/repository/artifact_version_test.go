@@ -415,10 +415,18 @@ func TestArtifactVersionsMigrationDownIsReversible(t *testing.T) {
 		return count
 	}
 	require.Equal(t, 1, tableCount(), "000067 up must create artifact_versions")
-	// Step back exactly one version: 000067 -> 000066.
-	require.NoError(t, migrator.Steps(-1))
+	// Step back to exactly 000066 so the 000067 DOWN runs last: the head
+	// keeps advancing with later tasks (W30's 000068 voice_sessions already
+	// follows), so the step count is derived from the live head instead of
+	// assuming this migration is the newest one.
+	version, dirty, err := migrator.Version()
+	require.NoError(t, err)
+	require.False(t, dirty)
+	require.Greater(t, version, uint(66), "000067 must already be applied")
+	stepsTo := int(version - 66) // land on 000066 so the 000067 DOWN runs last
+	require.NoError(t, migrator.Steps(-stepsTo))
 	require.Zero(t, tableCount(), "000067 down must drop artifact_versions")
 	// Re-applying must restore the table.
-	require.NoError(t, migrator.Steps(1))
+	require.NoError(t, migrator.Steps(stepsTo))
 	require.Equal(t, 1, tableCount())
 }

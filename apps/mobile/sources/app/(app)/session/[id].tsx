@@ -8,6 +8,7 @@ import { createProductConversationViewModel, createProductExecutionApi } from '@
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
 import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
+import { createProductVoiceTranscriber } from '@/weknora/voice/product-transcriber';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
@@ -91,12 +92,16 @@ function ProductSessionRoute() {
     });
   }, [auth.authSession, auth.credential, auth.scope, host, sessionId, viewModel]);
   // W29 voice chain: the production dictation port (expo-audio capture with
-  // permission gating and temp-file cleanup). The authenticated transcription
-  // call is the port's W30 consumption point and is injected there when W30
-  // lands; the scope seam cancels an in-flight dictation on space switch.
+  // permission gating and temp-file cleanup). W30 wires the authenticated
+  // transcription call into the port's consumption seam — the capture goes
+  // to the product endpoint over the authSession's bearer, budget and the
+  // provider key stay server-side; the scope seam cancels an in-flight
+  // dictation on space switch.
   const dictation = React.useMemo(() => (
     host && viewModel && auth.credential?.kind === 'bearer' && auth.authSession
-      ? { port: createProductDictationPort(), scope: auth.scope }
+      ? { port: createProductDictationPort({
+          transcribe: createProductVoiceTranscriber({ origin: host.origin, credential: auth.credential, authSession: auth.authSession }),
+        }), scope: auth.scope }
       : null
   ), [auth.authSession, auth.credential, auth.scope, host, viewModel]);
   // Sessions without explicit product resource metadata remain the retained Happy route.

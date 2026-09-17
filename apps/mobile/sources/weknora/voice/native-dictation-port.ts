@@ -29,7 +29,7 @@ import { File } from 'expo-file-system';
 import { DictationError, type DictationPort } from './dictation';
 
 /** W30 consumption point: the authenticated transcription call over the product authSession. */
-export type DictationTranscriber = (uri: string) => Promise<string>;
+export type DictationTranscriber = (uri: string, signal?: AbortSignal) => Promise<string>;
 
 export interface ProductDictationPortInput {
   transcribe?: DictationTranscriber;
@@ -86,9 +86,9 @@ export function createProductDictationPort(input: ProductDictationPortInput = {}
       deleteFile(stale);
       deleteFile(active?.uri);
     },
-    async transcribe(uri: string): Promise<string> {
+    async transcribe(uri: string, signal?: AbortSignal): Promise<string> {
       if (!input.transcribe) throw new DictationError('TRANSCRIBE_FAILED', 'TRANSCRIBE_ENDPOINT_PENDING_W30');
-      return input.transcribe(uri);
+      return input.transcribe(uri, signal);
     },
   };
 }

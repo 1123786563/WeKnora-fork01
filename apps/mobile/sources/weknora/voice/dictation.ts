@@ -57,7 +57,8 @@ export interface DictationPort {
   start(): Promise<void>;
   stop(): Promise<{ uri: string; durationMs: number }>;
   cancel(): Promise<void>;
-  transcribe(uri: string): Promise<string>;
+  /** The optional signal (M-3) aborts the underlying upload on timeout/cancel. */
+  transcribe(uri: string, signal?: AbortSignal): Promise<string>;
 }
 
 /** Structural subset of ProductScope (W07): space switches invalidate an in-flight dictation. */
@@ -110,10 +111,15 @@ export interface DictationController {
   isPermissionDenied(): boolean;
 }
 
-function withTimeout<T>(value: Promise<T>, ms: number, code: DictationErrorCode): Promise<T> {
+function withTimeout<T>(value: Promise<T>, ms: number, code: DictationErrorCode, abort?: AbortController): Promise<T> {
   if (!(ms > 0)) return value;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new DictationError(code)), ms);
+    const timer = setTimeout(() => {
+      // M-3: a timed-out transcription also aborts the underlying upload so
+      // the request cannot linger past its deadline.
+      abort?.abort();
+      reject(new DictationError(code));
+    }, ms);
     value.then(
       (result) => { clearTimeout(timer); resolve(result); },
       (error) => { clearTimeout(timer); reject(error); },
@@ -148,6 +154,7 @@ export function createDictationController(
   let capped = false;
   let capTimer: ReturnType<typeof setTimeout> | null = null;
   let capturedGeneration: number | null = null;
+  let transcribeAbort: AbortController | null = null;
 
   const notify = () => options.onStateChange?.(phase, failure);
   const setState = (next: DictationState) => { phase = next; notify(); };
@@ -207,7 +214,10 @@ export function createDictationController(
       clearCapTimer();
     }
     const run = ++flow;
-    let transcribeCall: () => Promise<string>;
+    let transcribeCall: (signal?: AbortSignal) => Promise<string>;
+    // M-3: one abort channel per transcription — timeout and cancel both
+    // abort the underlying upload instead of merely dropping its result.
+    transcribeAbort = new AbortController();
     if (port) {
       if (phase !== 'recording' || !recordingActive) return;
       recordingActive = false;
@@ -231,14 +241,14 @@ export function createDictationController(
         return;
       }
       const uri = recording.uri;
-      transcribeCall = () => port.transcribe(uri);
+      transcribeCall = (signal?: AbortSignal) => port.transcribe(uri, signal);
     } else {
-      transcribeCall = transcribe;
+      transcribeCall = () => transcribe();
     }
     failure = null;
     setState('transcribing');
     try {
-      const text = await withTimeout(transcribeCall(), limits.transcribeTimeoutMs, 'TRANSCRIBE_TIMEOUT');
+      const text = await withTimeout(transcribeCall(transcribeAbort.signal), limits.transcribeTimeoutMs, 'TRANSCRIBE_TIMEOUT', transcribeAbort);
       if (run !== flow) return;
       if (capturedGeneration !== null && options.scope && !options.scope.accept(capturedGeneration)) {
         fail('SCOPE_CHANGED');
@@ -262,6 +272,8 @@ export function createDictationController(
     flow += 1; // supersede any in-flight stop/transcribe
     clearCapTimer();
     recordingActive = false;
+    transcribeAbort?.abort();
+    transcribeAbort = null;
     if (port) await port.cancel().catch(() => undefined);
     failure = null;
     setState('idle');

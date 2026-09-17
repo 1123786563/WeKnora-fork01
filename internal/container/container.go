@@ -36,6 +36,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v8"
@@ -99,6 +100,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
+	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/tencent/vectordatabase-sdk-go/tcvectordb"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/auth"
@@ -168,6 +170,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// scope as the run store so imports and downloads share one fence.
 	must(container.Provide(repository.NewArtifactVersionStore))
 	must(container.Provide(repository.NewMobileExchangeStore))
+	// W30: voice session rows (ownership, provider mapping, admission
+	// verdict, settled usage) share the same business database scope.
+	must(container.Provide(repository.NewVoiceSessionStore))
+	must(container.Provide(newMobileVoiceHandler))
 	// The dispatch intent/receipt log is a first-class dependency of the
 	// durable worker. Keep it in the same database scope as AgentRunStore so
 	// provider starts can never bypass the W20 fence.
@@ -2128,6 +2134,47 @@ func newCraftPreviewService(
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
 		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
 	})
+}
+
+// newMobileVoiceHandler assembles the W30 mobile voice surface (fail-closed
+// like the W26 craft precedent): the managed provider's server-held wiring
+// (long-lived key, token/transcribe endpoints, media-proxy signing key) and
+// the charged-voice price version come from the WEKNORA_VOICE_* environment
+// references. None of it is required for boot — an unconfigured provider
+// answers ErrProviderUnavailable on call and an unpriced voice plane refuses
+// charged sessions, so the endpoints mount once and deny safely until the
+// deployment configures them. The provider's long-lived key never leaves
+// this process: token minting and transcription proxying both happen here.
+func newMobileVoiceHandler(
+	db *gorm.DB,
+	gate domain.ExecutionGate,
+) (*handler.MobileVoiceHandler, error) {
+	provider, err := voice.NewManagedProvider(voice.Config{
+		LongLivedAPIKey:    strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_API_KEY")),
+		Model:              strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_MODEL")),
+		TokenEndpoint:      strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_TOKEN_URL")),
+		TranscribeEndpoint: strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_TRANSCRIBE_URL")),
+		SigningKey:         strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROXY_SIGNING_KEY")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// The charged-voice admission source: the price version in force plus
+	// its audio_seconds rate. The rate resolver itself belongs to the
+	// commercial pricing administration (blocked-env); until one is wired
+	// the admission fails closed — charged voice is refused, never priced
+	// through a text dimension.
+	rates := &handler.PriceVersionVoiceAdmission{
+		Version: strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PRICE_VERSION")),
+	}
+	return handler.NewMobileVoiceHandler(
+		repository.NewVoiceSessionStore(db),
+		provider,
+		provider,
+		gate,
+		rates,
+		repocommercial.NewBudgetStore(db),
+	)
 }
 
 // newCraftKnowledgeService assembles C01's knowledge material build onto

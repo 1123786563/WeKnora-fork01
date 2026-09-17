@@ -91,3 +91,20 @@ func RegisterWorkbenchCommandRoutes(r *gin.RouterGroup, h *session.WorkbenchComm
 	workbench.POST("/interactions/:id/decisions", h.DecideInteraction)
 	workbench.POST("/:run_id/commands", h.Command)
 }
+
+// RegisterMobileVoiceRoutes exposes the W30 mobile voice surface: the
+// authorized short-lived session (POST), its stop/settle path (DELETE) and
+// the server-proxied transcription consumed by W29's dictation port. The
+// handler performs the product-context ownership predicate; this guard only
+// establishes the existing Viewer/API-key boundary, matching the workbench
+// lanes. A nil handler mounts nothing (the container fails closed instead
+// of assembling a half-wired voice plane).
+func RegisterMobileVoiceRoutes(r *gin.RouterGroup, h *handler.MobileVoiceHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	voice := g.apiKeyGroup(r.Group("/mobile/voice", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	voice.POST("/sessions", h.CreateVoiceSession)
+	voice.DELETE("/sessions/:id", h.StopVoiceSession)
+	voice.POST("/transcriptions", h.TranscribeAudio)
+}
