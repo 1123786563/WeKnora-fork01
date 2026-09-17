@@ -4935,3 +4935,25 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1657/1657, `pnpm test:shared` 749/749, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r457-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+## 2026-09-17 Round R458 — Contextual-guide flake eliminated; external router refactor documented
+
+- Three parallel agents (A1 flake elimination, A2 browser evidence, A3 verifier). Verdict: A1 PASS (4×
+  full-suite green in its window); A2's live evidence documented the R457 wiki wiring states and an EXTERNAL
+  router-refactor WIP. Final state attribution: the 3 test:web failures and 16 typecheck errors on the current
+  tree ALL belong to the external router WIP files (router.tsx ×15 + router.test.tsx ×1 type errors; deep-link
+  / redirect / 404 test failures) — none attributable to this round.
+- A1: the contextual-guide auto-skip flake root-caused (optional chat-kb step needs a 13-hop setTimeout retry
+  ladder; the test budgeted a fixed 40ms sleep — green isolated, intermittent under full-suite concurrency)
+  and eliminated test-only: a `waitFor(check, label, timeoutMs=5000)` act-stepped polling helper replaces 10
+  fixed-sleep+assertion sites; semantics unrelaxed, negatives untouched, no fake timers. Evidence: single-file
+  ×3 green, full test:web ×2 green at completion, CPU-saturated stress (10 busy-loop processes) 14/14.
+  Sibling guidance tests may reuse the waitFor pattern (outside domain, noted).
+- A2 (read-only): wiki fixture pages carry source_refs:null so the R457 source-doc click remains
+  unobservable until a fixture page has sources (footer linkedFrom renders correctly; both ends behave the
+  same on empty). LIVE-caught the external router WIP white-screening every guarded route (`new URL(href)`
+  without base in untracked router.tsx) — documented for the external owner; the R457 wiki source-doc wiring
+  itself is committed (7a86a0a2 by the external process).
+- Attribution (final tree): test:web 1657/1660 (3 external-attributed), typecheck 16 errors all in the
+  external router WIP files, contextual-guide scoped 14/14. No Vue, mobile, or Go code was modified by this
+  round. The external router refactor should land with its own resolution; R459 should re-run full gates
+  after it settles.
