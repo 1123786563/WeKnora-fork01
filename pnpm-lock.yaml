@@ -395,6 +395,9 @@ importers:
       '@weknora/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@weknora/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@weknora/domain':
         specifier: workspace:*
         version: link:../../packages/domain

@@ -85,6 +85,7 @@
     "@ungap/structured-clone": "^1.3.0",
     "@weknora/api-client": "workspace:*",
     "@weknora/contracts": "workspace:*",
+    "@weknora/design-tokens": "workspace:*",
     "@weknora/domain": "workspace:*",
     "@weknora/i18n": "workspace:*",
     "abort-controller": "^3.0.0",

@@ -25,12 +25,13 @@
   "files": {
     "apps/mobile/package.json": {
       "owners": [
-        "MX-002"
+        "MX-002",
+        "MX-007"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-006/007-lock-extension",
+      "note": "锁转移：MX-007 追加 @weknora/design-tokens 依赖"
     },
     "apps/mobile/sources/app/(app)/_layout.tsx": {
       "owners": [
@@ -515,8 +516,8 @@
       ],
       "kind": "create",
       "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "source": "mx-006/007-lock-extension",
+      "note": "产品主题（weknoraThemes/useWeknoraTheme/touchSizes）"
     },
     "apps/mobile/sources/weknora/voice/VoiceSessionPanel.tsx": {
       "owners": [
@@ -866,8 +867,8 @@
       ],
       "kind": "create",
       "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "source": "mx-006/007-lock-extension",
+      "note": "web CSS 令牌"
     },
     "packages/design-tokens/src/mobile/tokens.json": {
       "owners": [
@@ -875,8 +876,8 @@
       ],
       "kind": "create",
       "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "source": "mx-006/007-lock-extension",
+      "note": "版本化令牌唯一源（自设计包逐字拷贝+溯源标注）"
     },
     "packages/domain/src/mobile/agent-options.ts": {
       "owners": [
@@ -1881,6 +1882,35 @@
       "shared_serialized": false,
       "source": "mx-006-lock-extension",
       "note": "锁扩展：version 协商 httptest（MX-004 P2-3）"
+    },
+    ".gitignore": {
+      "owners": [
+        "MX-004",
+        "MX-006"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-006/007-lock-extension",
+      "note": "仓库级共享配置（MX-004 fixtures 忽略、MX-006 weknora 源码反向例外）；变更须先登记"
+    },
+    "packages/design-tokens/package.json": {
+      "owners": [
+        "MX-002",
+        "MX-007"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-006/007-lock-extension",
+      "note": "锁转移：MX-007 追加 mobile 子路径出口"
+    },
+    "apps/mobile/sources/components/ChatList.tsx": {
+      "owners": [
+        "MX-002"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-006/007-lock-extension",
+      "note": "apps/mobile/sources/components/ChatList.tsx 的相对路径条目见下"
     }
   }
 }

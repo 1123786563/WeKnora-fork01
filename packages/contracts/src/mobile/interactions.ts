@@ -40,9 +40,10 @@ function kind(value: unknown, path: string): InteractionKind {
 
 function action(value: unknown, path: string): InteractionAction {
   const raw = nonEmpty(value, path);
-  const allowed: readonly InteractionAction[] = ['approve', 'reject', 'extend', 'retry', 'provide_result', 'terminate'];
+  const allowed: readonly string[] = ['approve', 'reject', 'extend', 'retry', 'provide_result', 'terminate'];
   if (!allowed.includes(raw)) throw new ContractError(path, 'unknown interaction action');
-  return raw;
+  // 成员校验后的受控断言：raw 必为矩阵内动作
+  return raw as InteractionAction;
 }
 
 /** kind 与 action 不允许互换（预算域不能发 approve 等）。 */

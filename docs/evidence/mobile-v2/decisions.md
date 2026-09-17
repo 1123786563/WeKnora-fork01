@@ -75,3 +75,19 @@ tests/mobile-v2/fixtures/*.bin 为 `go test -run TestMX004Emit` 用真实 writer
 ## D-017 · handler 决定接线的单一规则源（2026-09-18，MX-005）
 
 DecideInteraction 以 `input.ID = c.Param("id"); input.Validate()` 替换手工 decision_id/args_hash 检查：wire 的 id 来自 URL 参数（body 内 id 不必填），绑定后再走 MX-003 冻结的同一 admission 规则；本地自检（SDK parseInteractionDecision）与服务器规则一致且有意更严。
+
+## D-019 · 令牌唯一源与对比率豁免（2026-09-18，MX-007）
+
+- `packages/design-tokens/src/mobile/tokens.json` 为产品令牌唯一版本化源（自设计包逐字拷贝，仅 native-tokens.ts 头部加两行溯源注释）；消费出口 `@weknora/design-tokens/mobile`。产品组件禁止散落颜色/间距/圆角常量（MX-008 组件起消费 theme.ts）。
+- 对比率验收：ACTIVE 文本/状态对 ≥4.5 全过（probe 断言）；`disabled/disabled-bg` light=3.31 按 WCAG 1.4.3 非活动控件豁免（probe stderr 报告、不作为失败；dark=5.22 本就达标）。
+- theme.ts 不替换 Happy 全局 Unistyles 主题（壳层不动）；用户显式外观偏好接入点留 MX-030。
+
+## D-020 · .gitignore 变更补登记（2026-09-18，MX-006 审查 P2-1）
+
+MX-004（fixtures/*.bin 忽略）与 MX-006（`!apps/mobile/sources/weknora/` 精确反向例外——大小写不敏感 FS 上 WeKnora 构建产物规则误伤产品源码）两处 .gitignore 变更补入注册表（owners MX-004/MX-006，shared_serialized）。此后仓库级配置变更一律先登记。
+
+## D-021 · typecheck 基线澄清与对齐连带修复（2026-09-18）
+
+- MX-002 证据曾记「typecheck 3 错误」——实际为 `tail -4` 截断：**基线（6a70c35a 依赖）即有 14 个错误**（app/5、ConversationScreen/3、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1，均为继承缺陷，归属 MX-009/017）。
+- 本轮修复对齐/新代码引入的 6 个：stream-transport.test 3（MX-004 联合帧收窄）、contracts interactions 2（类型收紧）、ChatList 1（flash-list 2.0.2 与双 @types/react 实例的名义冲突，@ts-expect-error 定点记录为可见债务）。终态 typecheck=14=基线持平。
+- 纪律：typecheck 证据必须用全量计数（grep -c），禁止 tail 截断。

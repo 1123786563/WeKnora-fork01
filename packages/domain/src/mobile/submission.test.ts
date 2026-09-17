@@ -56,10 +56,39 @@ test('same request_id different input conflicts without network', async () => {
 
 test('digest changes when any of the seven fields changes', () => {
   const base = inputDigest(input());
-  assert.notEqual(inputDigest(input({ text: 'x' })), base);
-  assert.notEqual(inputDigest(input({ budget_upper: 101 })), base);
-  assert.notEqual(inputDigest(input({ workspace_ref: 'w2' })), base);
+  for (const field of ['request_id', 'session_id', 'agent_id', 'target_id', 'workspace_ref', 'text', 'budget_upper'] as const) {
+    const mutated = field === 'budget_upper' ? input({ budget_upper: 101 }) : input({ [field]: `changed-${field}` } as Partial<MobileStartInput>);
+    assert.notEqual(inputDigest(mutated), base, `digest must change when ${field} changes`);
+  }
   assert.equal(inputDigest(input()), base, 'same input must produce a stable digest');
+});
+
+test('unknown lookup keeps reconciliation state and never re-dispatches', async () => {
+  let startCount = 0;
+  let lookupCount = 0;
+  const transport: SubmissionTransport = {
+    start: async (i) => { startCount += 1; throw new Error('ack lost'); },
+    lookup: async () => { lookupCount += 1; return { state: 'unknown' }; },
+  };
+  const store = createInMemorySubmissionStore();
+  const coordinator = createSubmissionCoordinator(store, transport);
+  const first = await coordinator.submit(input(), scope);
+  assert.equal(first.entry.phase, 'awaiting_reconciliation');
+  // 重启后重复 submit：走 existing 分支（零 start 调用），unknown 维持对账态
+  const restarted = createSubmissionCoordinator(store, transport);
+  const second = await restarted.submit(input(), scope);
+  assert.equal(second.dispatched, false);
+  assert.equal(second.entry.phase, 'awaiting_reconciliation');
+  assert.equal(startCount, 1);
+  assert.ok(lookupCount >= 1, 'reconciliation must have consulted lookup');
+  // pending 同理不重发
+  const pendingTransport: SubmissionTransport = {
+    start: transport.start,
+    lookup: async () => ({ state: 'pending' as const }),
+  };
+  const third = await createSubmissionCoordinator(store, pendingTransport).submit(input(), scope);
+  assert.equal(third.dispatched, false);
+  assert.equal(startCount, 1);
 });
 
 test('rejected submissions allow controlled retry with a fresh request_id', async () => {
