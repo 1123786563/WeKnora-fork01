@@ -82,10 +82,4 @@
 | W34 | [安全部署、能力开关与可观测性](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `625ab622`（外部裹挟提交，路径过滤审查）, `8bab606d` | execution/config/router/workbench 四包 ok、vet 0、compose 渲染 0、真实容器验证（egress 四向/隔离/限额）；mTLS/双 bridge/备份轮换 blocked-env | review PASS+I-1→fix1→rereview1 Spec PASS / Quality APPROVED | drain/platform/read 三入口生产接线；paseo/voice/notifications 如实标注无消费方；W35/W36 解锁 | 
 | W35 | [事件保留、备份恢复与崩溃演练](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `b5dffe6e` | execution 全绿、repository 回归 7 项绿、vet/node --check 0、harness 15 records 0 failures；真实部署注入/RTO-RPO blocked-env | review Spec PASS / Quality APPROVED（0 C/I） | restore 谓词/30d 可配置保留+W33 协调/守卫链 fail-closed/五场景 JSON 契约 | 保留 pass 接线跟踪；W37 待 W36 |
 | W36 | [原生升级、兼容窗口与性能验收](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `f52fe9e5` | compatibility 11/11、test:shared 603/603、typecheck、双平台 expo export、frozen-lockfile 全 exit 0；性能 harness 三指标达标；原生构建/真机/商店 blocked-env | review Spec PASS / Quality APPROVED（0 C） | 三态+W34 消费 harness、100×1000×10 真实构造、blocked-env 事实复核 | 兼容接线 carry-forward 归 W37；W31/W32 子门 blocked-dependency |
-| W37 | [完整验收门禁与分阶段交付报告](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
-
-## 执行记录要求
-
-每任务追加一段执行记录，字段为：baseline SHA、实际文件清单、scope profile、RED命令/退出码/关键断言、GREEN命令/退出码、数据库方言与skip、真实服务和客户端版本、脱敏证据路径/hash、规格审查结果、质量审查结果、修复提交、剩余阻塞及下一步。没有对应证据不得修改accepted。
-
-只记录授权范围内的测试；不将token、密钥或DSN写入本文件。已有实现无需重复重写，提供重新收集的行为证据后再调整状态。
+| W37 | [完整验收门禁与分阶段交付报告](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers（代码侧；重生成轮待办） | delivery | `7fe877a2`, `11f7fff2` | CLI 17/17+实跑 exit 1 恰缺项、protocol-gate 7/7、domain 13/13、Go 三包 ok | review PASS+1I→fix1→rereview1 Spec PASS / Quality APPROVED | missingEvidence 门禁+祖先校验 fail-closed+兼容接线 carry-forward 三处+分阶段报告如实 | 重生成轮（全部任务收口后）：三行处置+哈希刷新+W31/W32 状态 |
