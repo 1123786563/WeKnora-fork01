@@ -201,6 +201,17 @@
 - **⚠️ 事故记录（外部清扫复现）**：2372f8ec 提交时暂存区混入外部 cron lane 的 R462 文件（evidence/auth api 死代码删除/ShareDialog/pre-push 脚本等 18+ 文件）——内容自洽完整（R462 裁决性成品），21 条相关测试绿，按纪律验证入库+记录归属：**R462 内容归属 cron lane，载体提交 2372f8ec**。
 - **后续阶段**（下轮候选）：阶段 2=fork service（509 行：分叉创建/历史复制/孤儿快照回收）+handler+路由；阶段 3=沙箱 git checkpoint（session_manager/docker_snapshot/bootstrapper，**trpc-agent-go 每轮完成挂点是 fork 特有适配点**）；阶段 4=React 入口 C1（forkPoint）。
 
+### 2026-09-18 第 11 轮（A11 阶段 2：fork service+handler+路由落地）✅
+
+> worktree 提交 `4247f870`（7 文件 +849 行）。阶段 2 完成——**A11 后端功能面就绪**（沙箱状态携带待阶段 3，无沙箱路径按上游语义降级）。
+
+- **service/session_fork.go**（上游整文件干净应用，509 行）：完整分叉决策链——属主校验（非本人→404 防枚举）、fork 点校验（user/assistant；未完成 assistant=busy）、**busy 源在做任何可观察动作前拒绝**（409）、组合游标历史复制（user 点排他/assistant 点含该回答）、requestID 逐值重映射（配对保持）、标题「（分支）」回退、快照租约记录/清除/弃置（孤儿回收链）、四类降级原因（NO_CHECKPOINT/SANDBOX_REPLACED/SANDBOX_GONE/SNAPSHOT_UNSUPPORTED）——降级不失败。
+- **handler/session/fork.go** + Handler 接线（新增 forkService 字段，参数用具体类型使 dig 可注入、字段保留窄接口供 stub 测试）+ 路由 `POST /sessions/:session_id/fork`；container `newSessionForkService` 以 nil sandbox port 装配（阶段 3 接快照基建前按上游无沙箱部署语义全降级）。
+- **测试**：`session_fork_parity_test.go` 6 场景（首条 user fork 不降级/降级复制+配对重映射/checkpoint+nil port→SANDBOX_GONE/assistant 点含回答+未完成 busy/属主与 not-found 语义/哨兵包装）——6/6 绿。
+- **容器级实测**：镜像重建 healthy；`POST /sessions/d269ea34…/fork` → 200 `{session_id, degraded:true, reason:NO_CHECKPOINT}`（与上游响应结构一致）；DB 验证 fork 行（parent 谱系/标题后缀/4 条历史复制）后清理测试数据。
+- **门禁**：go build ./internal/... 0；TestFork 6/6；handler/session+container 包 ok。
+- **剩余**：阶段 3（沙箱 git checkpoint 基建 + trpc 挂点 + 快照 port 接线，使有沙箱会话 fork 可携带状态）、阶段 4（React 入口 C1 forkPoint.ts 等价实现）、上游 fork.go 测试 135 行可再移植。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
