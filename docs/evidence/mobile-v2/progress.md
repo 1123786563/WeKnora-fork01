@@ -7,7 +7,8 @@
 | 任务 | 状态 | BASE→HEAD | 测试（cmd·exit·发现/通过） | Review | 证据 |
 |---|---|---|---|---|---|
 | MX-001 | accepted | 6a70c35a→04176329 | tsx --test mx-001.test.ts · RED exit1 → GREEN exit0 · 1/1（含基线 kind 不变量） | R1 FAIL(2×P1)→修复→复核 PASS | MX-001.md |
-| MX-002 | review | 64b8da68→(待提交) | test:mobile-v2 · RED exit1(13+真实偏差) → GREEN exit0 · 2/2；test:shared 579/579；prebuild 双平台 exit0 | 待独立review | MX-002.md / native-baseline.md |
+| MX-002 | review | 64b8da68→52c87b1c | test:mobile-v2 · RED exit1(13+真实偏差) → GREEN exit0 · 2/2；test:shared 579/579；prebuild 双平台 exit0 | 审查进行中 | MX-002.md / native-baseline.md |
+| MX-003 | review | 52c87b1c→(待提交) | mv2 3/3 · shared 579/579 · go workbench+handler ok · RED=3 真实断言失败 | 待独立review | MX-003.md |
 
 ## 首次更新（2026-09-18，MX-001）
 

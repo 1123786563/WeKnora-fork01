@@ -35,7 +35,47 @@ export interface ExecutionEvent {
 export interface ExecutionSnapshot {
   execution: ExecutionDTO;
   watermark: number;
+  /** Go 侧 ExecutionSnapshot.Incomplete：快照是否被截断（跨语言漂移修复，MX-003 冻结） */
+  incomplete: boolean;
+  /** Go 侧 ExecutionSnapshot.ConfirmedWatermark：已确认落盘水位 */
+  confirmedWatermark: number;
   events: ExecutionEvent[];
+}
+
+/** 命令闭集，镜像 internal/workbench/interaction.go ExecutionCommand（cancel 无载荷，steer 带文本）。 */
+export type CommandAction = 'cancel' | 'steer';
+
+export interface CommandDecision {
+  action: CommandAction;
+  allowed: boolean;
+  reason: string;
+}
+
+const TERMINAL_RUN_STATUS: readonly RunStatus[] = ['succeeded', 'failed', 'canceled'];
+
+/**
+ * 冻结的命令准入规则（MX-003，关闭 G03）：
+ * 1. 终态 run 不允许 cancel/steer；
+ * 2. capability 未上报 → unavailable（没有能力事实就不得放行）；
+ * 3. capability 非 supported → 沿用其 state/reason（不可用/禁止分别表达）；
+ * 4. revision<=0（无快照 revision）→ 拒绝：乐观并发命令必须携带真实 expected_revision；
+ * 5. run_status 未知（含 reconciling 等中间态）不默认放行或拒绝为失败，按 unavailable 表达。
+ */
+export function evaluateCommand(execution: ExecutionDTO, action: CommandAction): CommandDecision {
+  if (TERMINAL_RUN_STATUS.includes(execution.run_status)) {
+    return { action, allowed: false, reason: `run already ${execution.run_status}` };
+  }
+  const capability = execution.capabilities[action];
+  if (!capability) {
+    return { action, allowed: false, reason: `capability ${action} not reported` };
+  }
+  if (capability.state !== 'supported') {
+    return { action, allowed: false, reason: `${action} ${capability.state}: ${capability.reason}` };
+  }
+  if (execution.revision <= 0) {
+    return { action, allowed: false, reason: 'command requires a snapshot revision (expected_revision)' };
+  }
+  return { action, allowed: true, reason: '' };
 }
 
 function object(value: unknown, path: string): Record<string, unknown> {
@@ -141,10 +181,17 @@ export function parseExecutionEvent(value: unknown): ExecutionEvent {
 export function parseExecutionSnapshot(value: unknown): ExecutionSnapshot {
   const row = object(value, '');
   if (!Array.isArray(row.events)) throw new ContractError('events', 'expected an array');
+  if (typeof row.incomplete !== 'boolean') throw new ContractError('incomplete', 'expected a boolean');
   const execution = parseExecution(row.execution);
   const events = row.events.map(parseExecutionEvent);
   for (const [index, event] of events.entries()) {
     if (event.run_id !== execution.run_id) throw new ContractError(`events[${index}].run_id`, 'must match execution.run_id');
   }
-  return { execution, watermark: safeInteger(row.watermark, 'watermark', 0), events };
+  return {
+    execution,
+    watermark: safeInteger(row.watermark, 'watermark', 0),
+    incomplete: row.incomplete,
+    confirmedWatermark: safeInteger(row.confirmed_watermark, 'confirmed_watermark', 0),
+    events,
+  };
 }

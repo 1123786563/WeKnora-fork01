@@ -826,8 +826,8 @@
       ],
       "kind": "modify",
       "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "source": "mx-003-lock-extension",
+      "note": "锁扩展：快照 incomplete/confirmed_watermark 冻结字段 + evaluateCommand 规则；后续消费方任务只读"
     },
     "packages/contracts/src/mobile/interactions.ts": {
       "owners": [
@@ -1740,6 +1740,51 @@
       "source": "mx-001-coordinator",
       "note": "总计划§5执行台账热点：协调者单写，实现者不直接改",
       "kind_basis": "preregistration"
+    },
+    "packages/contracts/src/index.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-003-lock-extension",
+      "note": "锁扩展：契约出口单写（总计划§5 热点），MX-003 冻结导出"
+    },
+    "packages/api-client/src/mobile/executions.test.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-003-lock-extension",
+      "note": "锁扩展：消费方 fixture 对齐冻结契约"
+    },
+    "packages/contracts/test/mobile-execution.test.ts": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-003-lock-extension",
+      "note": "锁扩展：消费方 fixture 对齐冻结契约"
+    },
+    "internal/workbench/crosslang_mx003_test.go": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-003-lock-extension",
+      "note": "跨语言共享 fixture 测试（Go 侧）"
+    },
+    "tests/mobile-v2/fixtures/mx-003-crosslang.json": {
+      "owners": [
+        "MX-003"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-003-lock-extension",
+      "note": "Go/TS 共享 fixture，两端同源"
     }
   }
 }

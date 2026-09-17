@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -41,6 +42,28 @@ func ValidateInteractionAction(kind, action string) error {
 	}
 	if !allowed[InteractionKind(kind)][action] {
 		return ErrInteractionActionMismatch
+	}
+	return nil
+}
+
+// Validate mirrors the wire-level admission requirements (handler checks in
+// workbench_commands.go) so service and tests share one rule: identity fields
+// non-empty, kind/action matrix holds, revision stays in the safe range.
+func (d InteractionDecision) Validate() error {
+	if strings.TrimSpace(d.ID) == "" {
+		return invalid("id", "required")
+	}
+	if strings.TrimSpace(d.DecisionID) == "" {
+		return invalid("decision_id", "required")
+	}
+	if strings.TrimSpace(d.ArgsHash) == "" {
+		return invalid("args_hash", "required")
+	}
+	if err := ValidateInteractionAction(d.Kind, d.Action); err != nil {
+		return err
+	}
+	if d.ExpectedRevision < 0 || d.ExpectedRevision > MaxSafeInteger {
+		return fmt.Errorf("%w: expected_revision", ErrSequenceOverflow)
 	}
 	return nil
 }

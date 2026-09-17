@@ -53,5 +53,7 @@ test('validate execution DTO capabilities and snapshot watermark', () => {
   assert.throws(() => parseExecutionEvent({ ...event, payload: [] }), /payload/);
   assert.throws(() => parseExecutionEvent({ ...event, run_id: undefined }), /run_id/);
   assert.throws(() => parseExecutionEvent({ ...event, attempt_id: undefined }), /attempt_id/);
-  assert.deepEqual(parseExecutionSnapshot({ execution, watermark: 1, events: [event] }).watermark, 1);
+  assert.deepEqual(parseExecutionSnapshot({ execution, watermark: 1, incomplete: false, confirmed_watermark: 0, events: [event] }).watermark, 1);
+  assert.equal(parseExecutionSnapshot({ execution, watermark: 1, incomplete: false, confirmed_watermark: 0, events: [event] }).confirmedWatermark, 0);
+  assert.throws(() => parseExecutionSnapshot({ execution, watermark: 1, events: [event] } as unknown as Record<string, unknown>), /incomplete/);
 });

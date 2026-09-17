@@ -45,3 +45,11 @@ Go 端将完整 envelope 写入业务 SSE data 帧（id=seq、event=type 保持�
 ## D-011 · Mimosa 钩子与提交策略（2026-09-18）
 
 Mimosa 预提交扫描曾以「硬编码凭据」拦截提交，所指均为既有 i18n 翻译文案（如 "Please enter a secret key" UI 字符串）误报，且不在任务差异内。处置：不修改翻译文件（越界且破坏 i18n）；提交经扫描器兼容策略通过时如实记录；后续在收尾阶段运行一次完整 mimosa 审计复核。另：Bash 命令中出现测试文件路径+重定向会被 PreToolUse 误判为绕写，已改用根脚本名（test:mobile-v2）执行测试。
+
+## D-012 · 交互契约以 A 类现网形状冻结（2026-09-18，MX-003）
+
+交互决定 wire 冻结为 Go 现网 `workbench.InteractionDecision`：{id, decision_id, kind, action, args_hash, expected_revision}，kind×action 矩阵镜像 ValidateInteractionAction（tool_approval: approve|reject；budget: extend；recovery: retry|provide_result|terminate）。04-api-contracts.md §4 的 B 类提案（content_digest/budget authorized_upper/question answer/connection authorize）**不进入**本轮契约——未经服务端注册；connection/question 域由 MX-020/MX-023 版本化扩展另冻。Go 侧 `recovering` 不入 validRunStatus（枚举以 contracts.go 为准；service 层 cancel 端口对 recovering 的放行由 MX-005 对齐）。
+
+## D-013 · 命令准入规则冻结（2026-09-18，MX-003，关闭 G03 规则面）
+
+`evaluateCommand(execution, action)`（packages/contracts）：终态 run 拒绝；capability 未上报=unavailable；非 supported 沿用其 state/reason；revision<=0（无快照 revision）拒绝。VM/页面（MX-017/018/019）必须消费此规则，禁止再硬编码 canCancel/canSteer 布尔。服务端强制在 MX-005 Command 通道对齐同一矩阵。

@@ -631,13 +631,40 @@ export function parseKnowledgeFolderTreeResponse(value: unknown): KnowledgeFolde
 export type {
   Capability,
   CapabilityState,
+  CommandAction,
+  CommandDecision,
   ExecutionDriver,
   ExecutionDTO,
   ExecutionEvent,
   ExecutionSnapshot,
   RunStatus,
 } from './mobile/execution.ts';
-export { parseExecution, parseExecutionEvent, parseExecutionSnapshot } from './mobile/execution.ts';
+export { parseExecution, parseExecutionEvent, parseExecutionSnapshot, evaluateCommand } from './mobile/execution.ts';
+
+export type {
+  InteractionAction,
+  InteractionKind,
+  InteractionRecord,
+} from './mobile/interactions.ts';
+export {
+  INTERACTION_ACTIONS_BY_KIND,
+  interactionActionAllowed,
+  parseInteraction,
+  parseInteractionDecision,
+} from './mobile/interactions.ts';
+
+export type {
+  ArtifactSummary,
+  ExecutionListPage,
+  ExecutionSummary,
+  InboxItem,
+  InboxPage,
+  InteractionSummary,
+  WorkbenchBootstrap,
+  WorkbenchOverview,
+  WorkspaceMembership,
+} from './mobile/read-models.ts';
+export { parseExecutionListPage, parseInboxPage, parseWorkbenchOverview } from './mobile/read-models.ts';
 
 export function parseKnowledgeTagListResponse(value: unknown): KnowledgeTagListResponse {
   const envelope = actionEnvelope(value);

@@ -21,6 +21,8 @@ const execution = {
 const snapshot = {
   execution,
   watermark: 4,
+  incomplete: false,
+  confirmed_watermark: 3,
   events: [{
     schema_version: 1,
     run_id: 'run/1',
@@ -86,7 +88,13 @@ test('unwraps and validates execution and snapshot contracts', async () => {
   const api = createExecutionsApi(respond(execution));
   assert.deepEqual(await api.get('run/1'), execution);
   const snapshotApi = createExecutionsApi(respond(snapshot));
-  assert.deepEqual(await snapshotApi.snapshot('run/1'), snapshot);
+  assert.deepEqual(await snapshotApi.snapshot('run/1'), {
+    execution: snapshot.execution,
+    watermark: snapshot.watermark,
+    incomplete: snapshot.incomplete,
+    confirmedWatermark: snapshot.confirmed_watermark,
+    events: snapshot.events,
+  });
   const malformed = createExecutionsApi(async () => ({ success: true, data: { ...execution, run_id: '' } }));
   await assert.rejects(malformed.get('r'), (error: unknown) => error instanceof ContractError);
   const wrongEnvelope = createExecutionsApi(async () => ({ success: false, data: execution }));
