@@ -65,6 +65,12 @@ export function findNodeHandle(component: unknown): string | number | null {
 
 export const useColorScheme = (): 'light' | 'dark' | null => 'light';
 
+export const Share = {
+  sharedAction: 'sharedAction' as const,
+  dismissedAction: 'dismissedAction' as const,
+  share: async (_content: { title?: string; message?: string }) => ({ action: 'sharedAction' as const }),
+};
+
 // 其余 RN 导出（未被产品 UI 层消费）按需抛错，防止静默假实现
 const unavailable = (name: string) => (): never => {
   throw new Error(`rn-mock: ${name} is not implemented in the node test substrate`);
