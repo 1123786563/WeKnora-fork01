@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -19,6 +21,125 @@ import (
 type notificationProviderSpy struct {
 	mu    sync.Mutex
 	sends []repository.NotificationDelivery
+}
+
+type batchNotificationProvider struct {
+	mu        sync.Mutex
+	called    int
+	failID    string
+	failIndex int
+	failOnce  bool
+	seenIDs   []string
+	calls     [][]string
+}
+
+type directBatchProvider struct {
+	configured bool
+	items      []pushnotification.PushBatchItem
+}
+
+func (p *directBatchProvider) Configured() bool { return p != nil && p.configured }
+func (p *directBatchProvider) Send(context.Context, string, pushnotification.PushPayload) (pushnotification.PushReceipt, error) {
+	return pushnotification.PushReceipt{ID: "single"}, nil
+}
+func (p *directBatchProvider) SendBatch(_ context.Context, items []pushnotification.PushBatchItem) ([]pushnotification.PushBatchResult, error) {
+	p.items = append([]pushnotification.PushBatchItem(nil), items...)
+	results := make([]pushnotification.PushBatchResult, 0, len(items))
+	for _, item := range items {
+		results = append(results, pushnotification.PushBatchResult{ID: item.ID, Receipt: pushnotification.PushReceipt{ID: "receipt-" + item.ID, Status: "ok"}})
+	}
+	return results, nil
+}
+
+func TestPushNotificationProviderBatchFailsClosedAndPreservesValidDevices(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	resolverErr := errors.New("token decrypt failed")
+	adapter := NewPushNotificationProvider(provider, func(_ context.Context, d repository.NotificationDelivery) (string, error) {
+		if d.ID == "bad" {
+			return "", resolverErr
+		}
+		return "token-valid", nil
+	})
+	results, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "bad"}, {ID: "good"}})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Len(t, provider.items, 1, "resolver failures must never submit an empty token")
+	require.Equal(t, "good", provider.items[0].ID)
+	require.Equal(t, "token-valid", provider.items[0].Token)
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, results[0].Err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	require.ErrorIs(t, providerErr, resolverErr)
+	require.Equal(t, "receipt-good", results[1].Receipt.ID)
+}
+
+func TestPushNotificationProviderBatchOmitsEmptyResolvedTokenAndPreservesValidDevice(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	adapter := NewPushNotificationProvider(provider, func(_ context.Context, d repository.NotificationDelivery) (string, error) {
+		if d.ID == "empty" {
+			return "  ", nil
+		}
+		return "token-valid", nil
+	})
+	results, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "empty"}, {ID: "good"}})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Len(t, provider.items, 1, "empty resolved tokens must never reach the provider")
+	require.Equal(t, "good", provider.items[0].ID)
+	require.Equal(t, "token-valid", provider.items[0].Token)
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, results[0].Err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+	require.Equal(t, "receipt-good", results[1].Receipt.ID)
+}
+
+func TestPushNotificationProviderBatchRejectsUnconfiguredAdapter(t *testing.T) {
+	provider := &directBatchProvider{configured: true}
+	adapter := NewPushNotificationProvider(provider, nil)
+	_, err := adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "d1"}, {ID: "d2"}})
+	var providerErr *pushnotification.ProviderError
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.False(t, providerErr.Revoke)
+	require.False(t, providerErr.Retry)
+
+	provider = &directBatchProvider{configured: false}
+	adapter = NewPushNotificationProvider(provider, func(context.Context, repository.NotificationDelivery) (string, error) { return "token", nil })
+	_, err = adapter.SendBatch(context.Background(), []repository.NotificationDelivery{{ID: "d1"}, {ID: "d2"}})
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "InvalidProviderConfig", providerErr.Code)
+	require.Empty(t, provider.items)
+}
+
+func (p *batchNotificationProvider) Send(_ context.Context, d repository.NotificationDelivery) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.called++
+	p.calls = append(p.calls, []string{d.ID})
+	return nil
+}
+
+func (p *batchNotificationProvider) SendBatch(_ context.Context, deliveries []repository.NotificationDelivery) ([]NotificationBatchResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.called++
+	callIDs := make([]string, 0, len(deliveries))
+	results := make([]NotificationBatchResult, 0, len(deliveries))
+	for i, d := range deliveries {
+		p.seenIDs = append(p.seenIDs, d.ID)
+		callIDs = append(callIDs, d.ID)
+		if (d.ID == p.failID || (p.failIndex >= 0 && i == p.failIndex)) && (!p.failOnce || p.called == 1) {
+			results = append(results, NotificationBatchResult{DeliveryID: d.ID, Err: &pushnotification.ProviderError{Code: "UnknownTransport", Retry: true}})
+			continue
+		}
+		results = append(results, NotificationBatchResult{DeliveryID: d.ID, Receipt: pushnotification.PushReceipt{ID: "receipt-" + d.ID, Status: "ok"}})
+	}
+	p.calls = append(p.calls, callIDs)
+	return results, nil
 }
 
 func (p *notificationProviderSpy) Send(_ context.Context, d repository.NotificationDelivery) error {
@@ -147,6 +268,101 @@ func TestNotificationDeliveryConcurrentWorkersSendExactlyOnce(t *testing.T) {
 	require.False(t, store.Retry(context.Background(), deliveryA.ID, "worker-a", deliveryA.Fence), "stale worker cannot retry winner")
 }
 
+func TestNotificationDeliveryBatchRetriesOnlyFailedItem(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	runs := repository.NewAgentRunStore(db)
+	_, err := runs.Admit(context.Background(), deliveryTestAdmission("batch-run"))
+	require.NoError(t, err)
+	for _, device := range []string{"batch-a", "batch-b"} {
+		require.NoError(t, db.Exec(`INSERT INTO mobile_devices (tenant_id, owner_id, device_id, environment, platform, token_ciphertext, token_hash) VALUES (1,'u1',?,'dev','ios','cipher',?)`, device, "hash-"+device).Error)
+		store := repository.NewNotificationStore(db)
+		require.NoError(t, store.Enqueue(context.Background(), repository.NotificationIntent{TenantID: 1, EventID: "batch-event-" + device, OwnerID: "u1", DeviceID: device, Environment: "dev", Kind: "completed", RunID: "batch-run", ExpiresAt: time.Now().Add(time.Hour)}))
+	}
+	store := repository.NewNotificationStore(db)
+	provider := &batchNotificationProvider{failIndex: 1, failOnce: true}
+	worker := NewNotificationDeliveryWorker(store, provider, "batch-worker")
+	// Exercise the public claim/RunOnce path. The provider fails only its
+	// second item on the first call; the next claim must select that row alone.
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	require.Len(t, provider.calls, 1)
+	require.Len(t, provider.calls[0], 2)
+	failedID := provider.calls[0][1]
+	require.NoError(t, db.Exec(`UPDATE mobile_notification_intents SET next_attempt_at=NULL WHERE id=?`, failedID).Error)
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	require.Len(t, provider.calls, 2)
+	require.Equal(t, []string{failedID}, provider.calls[1], "only the failed delivery is retried")
+	var states []struct{ ID, State string }
+	require.NoError(t, db.Table("mobile_notification_intents").Select("id,state").Order("id").Find(&states).Error)
+	require.Len(t, states, 2)
+	for _, state := range states {
+		require.Equal(t, "sent", state.State)
+	}
+}
+
+func TestNotificationDeliveryPermanentProviderErrorDoesNotRevokeDevice(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "provider-config-device")
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	health := repository.NewNotificationProviderStateStore(db)
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithHealth(store, &notificationProviderSpy{}, "provider-config-worker", revoker, health, "mobile")
+	deliveries, err := store.Claim(context.Background(), "provider-config-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "InvalidCredentials", Revoke: false, Retry: false})
+	require.NoError(t, err)
+	state, stateErr := health.State(context.Background(), "mobile")
+	require.NoError(t, stateErr)
+	require.True(t, state.Paused)
+	_, err = revoker.GetActiveForTenant(context.Background(), 1, "u1", "provider-config-device")
+	require.NoError(t, err, "provider-wide configuration failure must preserve registration")
+}
+
+func TestInvalidNotificationEndpointPausesDurablyAndDoesNotClaim(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "invalid-endpoint-device")
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	health := repository.NewNotificationProviderStateStore(db)
+	provider := NewHTTPNotificationProvider("://bad")
+	worker := NewNotificationDeliveryWorkerWithHealth(store, provider, "invalid-endpoint-worker", nil, health, "mobile")
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err := health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.True(t, state.Paused)
+	require.EqualValues(t, 1, state.AlertCount)
+	// A repeated pass observes the durable pause before Claim and must not call
+	// the malformed provider or create another alert.
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err = health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, state.AlertCount)
+	var delivery struct{ State string }
+	require.NoError(t, db.Table("mobile_notification_intents").Select("state").Order("id").Take(&delivery).Error)
+	require.Equal(t, "pending", delivery.State)
+}
+
+func TestNotificationProviderPausePersistsAndRecovers(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "pause-device")
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	health := repository.NewNotificationProviderStateStore(db)
+	worker := NewNotificationDeliveryWorkerWithHealth(store, NewHTTPNotificationProvider(""), "pause-worker", nil, health, "mobile")
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err := health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.True(t, state.Paused)
+	require.EqualValues(t, 1, state.AlertCount)
+	// Restart with a configured provider: the durable pause is cleared before
+	// claiming, and a successful send records recovery.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"r1","status":"ok"}`))
+	}))
+	defer server.Close()
+	worker = NewNotificationDeliveryWorkerWithHealth(store, NewHTTPNotificationProvider(server.URL), "pause-worker-2", nil, health, "mobile")
+	require.NoError(t, worker.RunOnce(context.Background(), 10))
+	state, err = health.State(context.Background(), "mobile")
+	require.NoError(t, err)
+	require.False(t, state.Paused)
+}
+
 func TestHTTPNotificationProviderSendsScopedIdentityAndFailsClosed(t *testing.T) {
 	seen := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -174,6 +390,66 @@ func TestHTTPNotificationProviderSendsScopedIdentityAndFailsClosed(t *testing.T)
 		t.Fatal("provider request was not observed")
 	}
 	require.Error(t, NewHTTPNotificationProvider("").Send(context.Background(), repository.NotificationDelivery{}))
+}
+
+func TestHTTPNotificationProviderPropagatesRetryAfter(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		header string
+		check  func(time.Duration) bool
+	}{
+		{name: "seconds", header: "7", check: func(got time.Duration) bool { return got == 7*time.Second }},
+		{name: "http-date", header: time.Now().Add(3 * time.Second).UTC().Format(http.TimeFormat), check: func(got time.Duration) bool { return got > 0 && got <= 3*time.Second }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Retry-After", tc.header)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer srv.Close()
+			_, err := NewHTTPNotificationProvider(srv.URL).SendReceipt(context.Background(), repository.NotificationDelivery{})
+			var providerErr *pushnotification.ProviderError
+			require.ErrorAs(t, err, &providerErr)
+			require.True(t, providerErr.Retry)
+			require.True(t, tc.check(providerErr.RetryAfter), "retry-after=%s", providerErr.RetryAfter)
+		})
+	}
+}
+
+func TestNotificationDeliveryPermanentProviderErrorRevokesDevice(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "permanent-device")
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithRevoker(store, &notificationProviderSpy{}, "permanent-worker", revoker)
+	deliveries, err := store.Claim(context.Background(), "permanent-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "DeviceNotRegistered", Revoke: true, Retry: false})
+	require.NoError(t, err)
+	_, getErr := revoker.GetActiveForTenant(context.Background(), 1, "u1", "permanent-device")
+	require.ErrorIs(t, getErr, repository.ErrMobileDeviceNotFound)
+}
+
+func TestNotificationDeliveryPermanentFailureDoesNotRevokeReboundRegistration(t *testing.T) {
+	store, db := seedDeliveryFixture(t, "rebound-device")
+	revoker := repository.NewMobileDeviceStore(db, "dev")
+	worker := NewNotificationDeliveryWorkerWithRevoker(store, &notificationProviderSpy{}, "rebound-worker", revoker)
+	deliveries, err := store.Claim(context.Background(), "rebound-worker", 1, time.Minute)
+	require.NoError(t, err)
+	require.Len(t, deliveries, 1)
+	require.Equal(t, int64(1), deliveries[0].DeviceRevision)
+	// The provider failed for revision 1, but the user rebinds the same
+	// installation before the failure callback runs. The CAS revoke must
+	// reject revision 1 and preserve the replacement registration.
+	require.NoError(t, revoker.Bind(context.Background(), repository.DeviceRegistration{
+		TenantID: 1, OwnerID: "u1", DeviceID: "rebound-device", Environment: "dev", Platform: "ios",
+		TokenCiphertext: "cipher-v2", TokenHash: repository.DeviceTokenHash("token-v2"), Revision: 1, ScopeGeneration: 0,
+	}))
+	err = worker.releaseDeliveryWithCause(context.Background(), deliveries[0], &pushnotification.ProviderError{Code: "DeviceNotRegistered", Revoke: true, Retry: false})
+	require.ErrorIs(t, err, repository.ErrMobileDeviceRevision)
+	active, getErr := revoker.GetActiveForTenant(context.Background(), 1, "u1", "rebound-device")
+	require.NoError(t, getErr)
+	require.Equal(t, int64(2), active.Revision)
+	require.Equal(t, repository.DeviceTokenHash("token-v2"), active.TokenHash)
 }
 
 func deliveryTestAdmission(runID string) agentruntime.Admission {
@@ -261,4 +537,21 @@ func TestNotificationDeliveryDoesNotMaskRetryDatabaseError(t *testing.T) {
 	err = worker.RunOnce(context.Background(), 1)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "notification_delivery_retry_persist")
+}
+
+func TestNotificationRetryBackoffIsBoundedAndJittered(t *testing.T) {
+	first := notificationRetryDelay("delivery-a", 1, 0)
+	second := notificationRetryDelay("delivery-a", 2, 0)
+	if first < time.Second || first >= 2*time.Second {
+		t.Fatalf("first backoff=%s", first)
+	}
+	if second < 2*time.Second || second >= 4*time.Second {
+		t.Fatalf("second backoff=%s", second)
+	}
+	if got := notificationRetryDelay("delivery-a", 99, 10*time.Minute); got != 5*time.Minute {
+		t.Fatalf("cap=%s", got)
+	}
+	if got := notificationRetryDelay("delivery-a", 1, 5*time.Second); got != 5*time.Second {
+		t.Fatalf("retry-after hint=%s", got)
+	}
 }

@@ -33,6 +33,33 @@ func TestNotificationOutboxDeduplicates(t *testing.T) {
 	require.Equal(t, int64(1), rows[0].Attempt)
 }
 
+func TestNotificationProviderStatePauseAlertAndRecoverySurvivesStoreRestart(t *testing.T) {
+	db := openRunTestDB(t)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (
+		provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0,
+		reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0,
+		paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
+	ctx := context.Background()
+	stateStore := NewNotificationProviderStateStore(db)
+	require.NoError(t, stateStore.Pause(ctx, "mobile", "invalid endpoint"))
+	require.NoError(t, stateStore.Pause(ctx, "mobile", "invalid endpoint"))
+	state, err := stateStore.State(ctx, "mobile")
+	require.NoError(t, err)
+	require.True(t, state.Paused)
+	require.EqualValues(t, 1, state.AlertCount)
+	// Reconstructing the repository against the same database models a process
+	// restart: the pause and alert evidence remain durable.
+	restarted := NewNotificationProviderStateStore(db)
+	paused, err := restarted.IsPaused(ctx, "mobile")
+	require.NoError(t, err)
+	require.True(t, paused)
+	require.NoError(t, restarted.Recover(ctx, "mobile"))
+	state, err = restarted.State(ctx, "mobile")
+	require.NoError(t, err)
+	require.False(t, state.Paused)
+	require.NotNil(t, state.RecoveredAt)
+}
+
 func TestNotificationOutboxFenceRejectsStaleAck(t *testing.T) {
 	db := openRunTestDB(t)
 	ctx := context.Background()

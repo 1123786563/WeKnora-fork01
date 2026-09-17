@@ -31,6 +31,7 @@ var versionedSQLiteTables = []string{
 	"mobile_devices",
 	"mobile_notification_intents",
 	"mobile_notification_checkpoints",
+	"mobile_notification_provider_state",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -61,10 +62,11 @@ var versionedSQLiteColumns = map[string][]string{
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
 // queue at 000056, the execution target schema at 000057, the mobile device
-// registry at 000058, the notification outbox at 000059, the cleanup ledger
-// and artifact receipts at 000061-000066, artifact versions at 000067 and
-// the mobile voice plane at 000068-000069.
-const expectedSQLiteMigrationVersion = 69
+// registry at 000058, the notification outbox at 000059, notification
+// delivery columns at 000060, the cleanup ledger and artifact receipts at
+// 000061-000066, artifact versions at 000067, the mobile voice plane at
+// 000068-000069 and the notification provider pause state at 000070.
+const expectedSQLiteMigrationVersion = 70
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

@@ -91,6 +91,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/sandbox"
@@ -170,10 +171,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// scope as the run store so imports and downloads share one fence.
 	must(container.Provide(repository.NewArtifactVersionStore))
 	must(container.Provide(repository.NewNotificationStore))
+	must(container.Provide(repository.NewNotificationProviderStateStore))
 	must(container.Provide(workbenchservice.NewNotificationProjector))
 	must(container.Provide(workbenchservice.NewNotificationWorker))
 	must(container.Provide(newMobileNotificationProvider))
-	must(container.Provide(workbenchservice.NewNotificationDeliveryWorker))
+	must(container.Provide(newMobileNotificationDeliveryWorker))
 	must(container.Provide(repository.NewMobileExchangeStore))
 	// W30: voice session rows (ownership, provider mapping, admission
 	// verdict, settled usage) share the same business database scope.
@@ -734,8 +736,46 @@ func BuildContainer(container *dig.Container) *dig.Container {
 // deployment-configured HTTP gateway. An empty endpoint is valid during local
 // development: the worker remains durable and fail-closed until the gateway
 // is configured.
-func newMobileNotificationProvider() workbenchservice.NotificationProvider {
-	return workbenchservice.NewHTTPNotificationProvider(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")))
+func newMobileNotificationProvider(cfg *config.Config, devices *repository.MobileDeviceStore) workbenchservice.NotificationProvider {
+	endpoint := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL"))
+	providerKind := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER"))
+	accessToken := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN"))
+	if endpoint == "" && cfg != nil && cfg.MobileNotification != nil {
+		endpoint = strings.TrimSpace(cfg.MobileNotification.ProviderURL)
+	}
+	if providerKind == "" && cfg != nil && cfg.MobileNotification != nil {
+		providerKind = strings.TrimSpace(cfg.MobileNotification.Provider)
+		if accessToken == "" {
+			accessToken = strings.TrimSpace(cfg.MobileNotification.AccessToken)
+		}
+	}
+	if strings.EqualFold(providerKind, "expo") {
+		return workbenchservice.NewPushNotificationProvider(pushnotification.NewExpoProvider(endpoint, accessToken), func(ctx context.Context, d repository.NotificationDelivery) (string, error) {
+			if devices == nil {
+				return "", errors.New("mobile_device_store_unavailable")
+			}
+			registration, err := devices.GetActiveForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID)
+			if err != nil {
+				return "", err
+			}
+			key := secutils.GetAESKey()
+			if len(key) != 32 {
+				return "", errors.New("mobile_device_token_decryption_not_configured")
+			}
+			return secutils.DecryptAESGCM(registration.TokenCiphertext, key)
+		})
+	}
+	if providerKind != "" && !strings.EqualFold(providerKind, "gateway") && !strings.EqualFold(providerKind, "http") {
+		return workbenchservice.NewHTTPNotificationProvider("")
+	}
+	// The gateway is the safe default and intentionally receives only the
+	// scoped device identity. Unknown modes fail closed rather than silently
+	// selecting a different vendor.
+	return workbenchservice.NewHTTPNotificationProvider(endpoint)
+}
+
+func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, provider workbenchservice.NotificationProvider, devices *repository.MobileDeviceStore, health *repository.NotificationProviderStateStore) *workbenchservice.NotificationDeliveryWorker {
+	return workbenchservice.NewNotificationDeliveryWorkerWithHealth(store, provider, "mobile-notification-delivery", devices, health, "mobile")
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver

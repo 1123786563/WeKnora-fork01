@@ -25,6 +25,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/container"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -191,6 +192,8 @@ func main() {
 			cfg *config.Config,
 			router *gin.Engine,
 			resourceCleaner interfaces.ResourceCleaner,
+			notificationWorker *workbenchservice.NotificationWorker,
+			notificationDeliveryWorker *workbenchservice.NotificationDeliveryWorker,
 		) error {
 			server := &http.Server{Handler: router}
 
@@ -203,6 +206,9 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("failed to start server: %v", err)
 			}
+			workerCtx, stopWorkers := context.WithCancel(context.Background())
+			notificationWorker.Start(workerCtx)
+			notificationDeliveryWorker.Start(workerCtx)
 
 			tcpAddr := listener.Addr().(*net.TCPAddr)
 			port := tcpAddr.Port
@@ -220,6 +226,7 @@ func main() {
 			go func() {
 				<-app.shutdownCh
 				logger.Infof(context.Background(), "Wails shutting down, stopping Go backend...")
+				stopWorkers()
 
 				listener.Close()
 				shutdownTimeout := cfg.Server.ShutdownTimeout
