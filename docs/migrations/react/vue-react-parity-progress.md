@@ -4797,3 +4797,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1615/1615, `pnpm test:shared` 604/604, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r450-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R451 — Datasource credential removal landed, resource-step editors, edition probe
+
+- Three parallel agents (A1 datasource closeout, A2 edition probe, A3 verifier). Verdict: A2 PASS; A1 initially
+  FAIL on one endpoint — **the dispatched verifier caught a production-404 before merge** (the process working
+  as designed) — and the orchestrator reworked it in-round. Final gates: test:web 1626/1626 (+13), test:shared
+  606/606 (+2), typecheck clean, build ✓, zero new failures.
+- A1: `removeCredentials(id)` landed on the typed client and the Remove three-state UI activates it with the
+  Vue removeFailed fallback. Resource-step editors ported: rss custom headers as key-value rows
+  (serializeAuthHeaders; treated as credential draft — included in the connection test and putCredentials
+  gates, cleared on cancel-replace), Drive folder_token row (load button, share hint, inline required error,
+  persisted as resource_ids=[token] with root loading and reopen prefill). GitLab projects multi-select
+  deferred (needs a structured settings channel — the key=value settingsText protocol cannot carry it; i18n
+  keys already in place). **Verifier-caught defect reworked**: the remove path was `/credentials` but the
+  backend route is `/:id/credentials/:field` with only `credentials` existing (routes_infra.go; Vue dels the
+  doubled `/credentials/credentials`) — fixed with the contract test replaying the doubled path; the mock that
+  encoded the wrong shape corrected. data-sources 43/43.
+- A2: the lite gating now merges the server signal — React already had `client.settings.system.info()` with
+  `SystemInfo.edition` (zero api-client changes); PlatformShell probes once on mount and merges with Vue's
+  semantics (localStorage init first, server edition==='lite' promotes AND persists — one-way upgrade,
+  non-lite never downgrades, probe failure silent). 4 behavioral tests; lite-mode 9/9; platform 199/199.
+  Environment note recorded: a failing jsdom PlatformShell test can hang node:test until SIGKILL (40-70s).
+- Gates: `pnpm test:web` 1626/1626, `pnpm test:shared` 606/606, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r451-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

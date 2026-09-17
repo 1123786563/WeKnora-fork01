@@ -55,12 +55,23 @@ afterEach(async () => {
 
 const settle = (ms = 10) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 
-function fakeClient(options?: { canAccessAllTenants?: boolean; memberships?: number }) {
+function fakeClient(options?: { canAccessAllTenants?: boolean; memberships?: number; edition?: string; systemInfoError?: Error }) {
   const memberships = Array.from({ length: options?.memberships ?? 1 }, (_, i) => ({
     tenant_id: i + 1,
     tenant_name: i === 0 ? 'Home' : `Space ${i + 1}`,
     role: 'owner',
   }));
+  // R452-A2 — the settings.system.info namespace only appears when the test
+  // configures it, mirroring bare fakes/embed mounts that omit it entirely
+  // (PlatformShell must probe defensively, like its organizations lookup).
+  const system = options?.edition !== undefined || options?.systemInfoError
+    ? {
+        info: async () => {
+          if (options?.systemInfoError) throw options.systemInfoError;
+          return { edition: options?.edition };
+        },
+      }
+    : undefined;
   return {
     auth: {
       me: async () => ({
@@ -74,10 +85,11 @@ function fakeClient(options?: { canAccessAllTenants?: boolean; memberships?: num
     },
     sessions: { list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }) },
     organizations: { list: async () => ({ items: [], total: 0, resourceCounts: undefined }) },
+    ...(system ? { settings: { system } } : {}),
   };
 }
 
-async function mount(clientOptions?: { canAccessAllTenants?: boolean; memberships?: number }) {
+async function mount(clientOptions?: { canAccessAllTenants?: boolean; memberships?: number; edition?: string; systemInfoError?: Error }) {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   document.body.replaceChildren();
   const container = document.createElement('div');
@@ -169,4 +181,67 @@ test('R450-A2: without the flag the menu keeps workspace settings and logout', a
   const texts = menuItems().map((el) => el.textContent ?? '');
   assert.ok(texts.some((t) => t.includes('空间设置')), 'workspace settings renders');
   assert.ok(texts.some((t) => t.includes('退出')), 'logout renders');
+});
+
+// R452-A2 — Vue menu.vue:986-991: besides the localStorage flag, the shell
+// probes GET /api/v1/system/info; when the response reports edition 'lite'
+// the menu upgrades its lite gating and persists the flag via
+// authStore.setLiteMode(true) (stores/auth.ts:411-418). Without this probe
+// a first session on a lite deployment never enters the gating because the
+// localStorage key has not been written yet. The probe is async, so the
+// assertions settle one tick after mount like the Vue then() callback.
+test('R452-A2: server edition=lite enters lite gating without the localStorage flag', async () => {
+  await mount({ edition: 'lite' });
+  await settle(30);
+  await openUserMenu();
+  assert.equal(
+    document.querySelector('a[href="/platform/organizations"]'),
+    null,
+    'organizations rail entry hidden once the probe reports edition lite',
+  );
+  assert.equal(
+    window.localStorage.getItem('weknora_lite_mode'),
+    'true',
+    'probe persists the flag like Vue authStore.setLiteMode(true)',
+  );
+  const texts = menuItems().map((el) => el.textContent ?? '');
+  assert.ok(!texts.some((t) => t.includes('空间设置')), 'workspace settings gated off by the server probe');
+  assert.ok(!texts.some((t) => t.includes('退出')), 'logout gated off by the server probe');
+});
+
+// Vue menu.vue:987 only upgrades on edition === 'lite'; a standard edition
+// leaves the flag untouched and the gating off.
+test('R452-A2: server edition non-lite keeps the shell out of lite gating', async () => {
+  await mount({ edition: 'standard' });
+  await settle(30);
+  await openUserMenu();
+  assert.ok(document.querySelector('a[href="/platform/organizations"]'), 'organizations rail entry stays');
+  assert.equal(
+    window.localStorage.getItem('weknora_lite_mode'),
+    null,
+    'probe must not write the flag for a non-lite edition',
+  );
+  const texts = menuItems().map((el) => el.textContent ?? '');
+  assert.ok(texts.some((t) => t.includes('空间设置')), 'workspace settings stays outside lite mode');
+});
+
+// The localStorage flag wins once set: a non-lite probe never downgrades
+// (Vue menu.vue:987-990 only ever calls setLiteMode(true)).
+test('R452-A2: a non-lite probe never downgrades an existing localStorage flag', async () => {
+  window.localStorage.setItem('weknora_lite_mode', 'true');
+  await mount({ edition: 'standard' });
+  await settle(30);
+  await openUserMenu();
+  assert.equal(document.querySelector('a[href="/platform/organizations"]'), null, 'gating stays lite from localStorage');
+  assert.equal(window.localStorage.getItem('weknora_lite_mode'), 'true', 'localStorage flag stays persisted');
+});
+
+// Vue menu.vue:991 swallows probe failures — gating keeps whatever the
+// localStorage flag decided and the key stays untouched.
+test('R452-A2: a failed system-info probe leaves the gating unchanged', async () => {
+  await mount({ systemInfoError: new Error('probe failed') });
+  await settle(30);
+  await openUserMenu();
+  assert.ok(document.querySelector('a[href="/platform/organizations"]'), 'organizations rail entry stays');
+  assert.equal(window.localStorage.getItem('weknora_lite_mode'), null, 'failed probe writes nothing');
 });

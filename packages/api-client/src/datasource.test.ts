@@ -42,6 +42,29 @@ test('loads resource ancestors through the explicit restoration route', async ()
   assert.deepEqual(await api.resourceAncestors('ds/a', ['page/1']), ['root', 'folder/1']);
 });
 
+// Vue confirmRemoveCredentials issues DELETE /api/v1/datasource/:id/credentials/credentials
+// (the route takes a field segment and only the `credentials` field exists —
+// internal/router/routes_infra.go; frontend/src/api/datasource/index.ts:174).
+// The typed client must expose it so callers do not feature-detect; backend
+// failures (e.g. 404 when nothing is stored) propagate to the caller for its
+// remove-failed copy.
+test('removeCredentials issues DELETE on the credentials subresource and propagates failures', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const failing = createDataSourcesApi(async (request) => {
+    requests.push({ method: request.method, path: request.path });
+    throw new Error('404: no credentials configured');
+  });
+  await assert.rejects(failing.removeCredentials('ds/a'), /404/);
+  assert.deepEqual(requests, [{ method: 'DELETE', path: '/api/v1/datasource/ds%2Fa/credentials/credentials' }]);
+
+  const ok = createDataSourcesApi(async (request) => {
+    assert.equal(request.method, 'DELETE');
+    assert.equal(request.path, '/api/v1/datasource/ds%2Fa/credentials/credentials');
+    return undefined;
+  });
+  await ok.removeCredentials('ds/a');
+});
+
 test('rejects malformed data source responses', async () => {
   const api = createDataSourcesApi(async () => [{ ...source, id: '' }]);
   await assert.rejects(api.list('kb-1'), /Invalid data source field: id/);

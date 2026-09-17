@@ -1,5 +1,7 @@
 import type { DataSource } from '@weknora/api-client';
 
+export interface HeaderRow { key: string; value: string }
+
 export interface DataSourceFormValues {
   name: string;
   type: string;
@@ -10,6 +12,9 @@ export interface DataSourceFormValues {
   credentialsText: string;
   settingsText: string;
   resourceIds: string[];
+  // rss custom auth headers (Vue fieldType 'custom_headers'): edited as
+  // key-value rows, serialized into config.credentials.auth_headers.
+  authHeaders?: HeaderRow[];
 }
 
 export function parseCredentialLines(text: string): Record<string, string> {
@@ -33,6 +38,14 @@ export function buildDataSourceInput(values: DataSourceFormValues): Partial<Data
   const type = values.type.trim();
   if (!name) throw new Error('Data source name is required');
   if (!type) throw new Error('Data source type is required');
+  const credentials = parseCredentialLines(values.credentialsText);
+  // Vue syncRssAuthHeadersToCredentials: only the rss connector maps its
+  // key-value rows into credentials.auth_headers; empty rows leave the
+  // credentials object untouched.
+  if (type === 'rss') {
+    const serialized = serializeAuthHeaders(values.authHeaders ?? []);
+    if (serialized) credentials.auth_headers = serialized;
+  }
   return {
     name,
     type,
@@ -40,7 +53,7 @@ export function buildDataSourceInput(values: DataSourceFormValues): Partial<Data
     sync_mode: values.mode,
     conflict_strategy: values.conflict,
     sync_deletions: values.deletions,
-    config: { credentials: parseCredentialLines(values.credentialsText), settings: parseCredentialLines(values.settingsText), resource_ids: values.resourceIds },
+    config: { credentials, settings: parseCredentialLines(values.settingsText), resource_ids: values.resourceIds },
   };
 }
 
@@ -58,7 +71,16 @@ export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
     credentialsText: '',
     settingsText: Object.entries(settings).filter(([, value]) => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean').map(([key, value]) => `${key} = ${String(value)}`).join('\n'),
     resourceIds,
+    // Vue resets rssAuthHeaders to [] on dialog open: stored auth_headers stay
+    // server-side untouched unless the user opts in to Replace and retypes rows.
+    authHeaders: [],
   };
+}
+
+// Vue serializeAuthHeaders: drop rows with blank keys, trim keys, join the
+// remaining rows as "Key: Value" lines (values verbatim).
+export function serializeAuthHeaders(rows: HeaderRow[]): string {
+  return rows.filter((item) => item.key.trim()).map((item) => `${item.key.trim()}: ${item.value}`).join('\n');
 }
 
 export type CredentialField = { key: string; label: string; placeholder?: string; secret?: boolean; optional?: boolean; hint?: string };

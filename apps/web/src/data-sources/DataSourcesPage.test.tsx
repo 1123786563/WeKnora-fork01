@@ -32,7 +32,9 @@ test('keeps permission gates on both opening and saving paths', () => {
 
 test('preserves credential replacement and deletion semantics on edit', () => {
   assert.match(page, /if \(editing && !form\.credentialsText\.trim\(\)\) input\.config = \{ \.\.\.config, credentials: undefined \};/);
-  assert.match(page, /if \(form\.credentialsText\.trim\(\)\) \{[\s\S]*?if \(editing\) await dataSources\.putCredentials\(saved\.id, credentials\);/);
+  // The commit gate includes the serialized rss header rows (Vue treats them
+  // as part of the credential draft).
+  assert.match(page, /if \(form\.credentialsText\.trim\(\) \|\| rssAuthHeadersSerialized\) \{[\s\S]*?if \(editing\) await dataSources\.putCredentials\(saved\.id, credentials\);/);
 });
 
 // Vue DataSourceEditorDialog.handleSubmit: the create branch calls
@@ -128,11 +130,12 @@ test('renders the Vue credential status rows with replace/remove and inline conf
 
 // Vue confirmRemoveCredentials calls DELETE /credentials on the data source
 // and, on success, resets to the unconfigured state with a removedToast. The
-// typed api-client may not ship removeCredentials yet (file-frozen for this
-// lane), so the page guards for it and surfaces removeFailed otherwise.
+// typed api-client now ships removeCredentials, so the page calls it directly
+// and surfaces the Vue removeFailed copy when the backend rejects.
 test('remove confirmation calls the credentials subresource and resets state', () => {
   assert.match(page, /async function confirmRemoveCredentials\(\)/);
-  assert.match(page, /typeof api\.removeCredentials !== 'function'/);
+  assert.match(page, /await dataSources\.removeCredentials\(editing\.id\);/);
+  assert.doesNotMatch(page, /typeof api\.removeCredentials/, 'feature-detect must go once the typed client ships removeCredentials');
   assert.match(page, /credentialStepReducer\(current, 'remove-confirmed'\)/);
   assert.match(page, /text: t\('dataSource\.credential\.removedToast'\)/);
   assert.match(page, /text: error instanceof Error \? error\.message : t\('dataSource\.credential\.removeFailed'\)/);
@@ -142,6 +145,48 @@ test('remove confirmation calls the credentials subresource and resets state', (
 // row after a successful PUT /credentials.
 test('a committed replacement collapses back to the configured row', () => {
   assert.match(page, /credentialStepReducer\(current, 'replace-committed'\)/);
+});
+
+// Vue connectorDefs gives rss a single custom_headers credential field: the
+// editor renders key-value rows (add / remove) with the authHeaders hint and
+// "Key: Value" placeholders, replacing the generic credentials textarea.
+test('rss renders the Vue custom header rows editor in place of the generic textarea', () => {
+  assert.match(page, /form\.type === 'rss' \? <div className="grid gap-2" data-kind="rss-auth-headers">/);
+  assert.match(page, /t\('dataSource\.credential\.headerAdd'\)/);
+  assert.match(page, /t\('dataSource\.credential\.headerKeyPlaceholder'\)/);
+  assert.match(page, /t\('dataSource\.credential\.headerValuePlaceholder'\)/);
+  assert.match(page, /\{t\('dataSource\.field\.authHeadersHint'\)\}/);
+  assert.match(page, /aria-label=\{t\('common\.delete'\)\}/);
+});
+
+// Vue validateStep1Fields/commitCredentialsIfNeeded treat the serialized rss
+// header rows as the credential draft: the connection test and the
+// /credentials commit run when rows exist even with an empty credentialsText,
+// and cancel-replace discards the rows like Vue cancelReplaceCredentials.
+test('rss header rows gate the connection test and commit, cancel discards them', () => {
+  assert.match(page, /const rssAuthHeadersSerialized = form\.type === 'rss' \? serializeAuthHeaders\(form\.authHeaders \?\? \[\]\) : '';/);
+  assert.match(page, /if \(!form\.credentialsText\.trim\(\) && !rssAuthHeadersSerialized\) \{/);
+  assert.match(page, /setForm\(\(current\) => \(\{ \.\.\.current, credentialsText: '', authHeaders: \[\] \}\)\)/);
+});
+
+// Vue 资源步为 Drive 连接器渲染 folder_token 输入行（输入 + 加载按钮 +
+// shareHint / 必填内联错误），首次加载成功前显示占位块；打开资源步时预填
+// 已保存 token，存在时自动加载（Vue nextStep step-2 branch）。
+test('drive connectors render the Vue folder_token input row with load and placeholder', () => {
+  assert.match(page, /data-kind="drive-folder-input"/);
+  assert.match(page, /t\('dataSource\.drive\.folderTokenLabel'\)/);
+  assert.match(page, /t\('dataSource\.drive\.folderTokenPlaceholder'\)/);
+  assert.match(page, /t\('dataSource\.drive\.load'\)/);
+  assert.match(page, /t\('dataSource\.drive\.shareHint'\)/);
+  assert.match(page, /t\('dataSource\.drive\.folderTokenRequired'\)/);
+  assert.match(page, /data-kind="drive-placeholder"/);
+  assert.match(page, /t\('dataSource\.drive\.placeholderTitle'\)/);
+  assert.match(page, /t\('dataSource\.drive\.placeholderDesc'\)/);
+  assert.match(page, /async function loadDriveRoot\(source: DataSource, explicitToken\?: string\)/);
+  assert.match(page, /const token = extractDriveFolderToken\(explicitToken \?\? driveToken\);/);
+  assert.match(page, /setForm\(\(current\) => \(\{ \.\.\.current, resourceIds: \[token\] \}\)\)/);
+  assert.match(page, /await dataSources\.update\(source\.id, \{ \.\.\.input, knowledge_base_id: knowledgeBaseId \}\);/);
+  assert.match(page, /if \(isDriveConnector\(source\.type\)\) \{[\s\S]*?await loadDriveRoot\(source, token\);/);
 });
 
 // Vue replaces credentialsRequiredForValidation's "typed replacement" input

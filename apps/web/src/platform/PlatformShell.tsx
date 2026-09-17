@@ -336,12 +336,42 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     return () => { active = false; };
   }, [client]);
 
+  // R452-A2 — Vue menu.vue:986-991: after mount the shell additionally
+  // probes GET /api/v1/system/info and upgrades the lite gating when the
+  // response reports edition 'lite'. The upgrade persists the durable key
+  // exactly like Vue authStore.setLiteMode(true) (stores/auth.ts:411-418);
+  // a non-lite edition never downgrades it and a failed probe is swallowed
+  // (menu.vue:991 `.catch(() => { })`).
+  const [liteEditionProbed, setLiteEditionProbed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    // Defensive lookup: bare test fakes and embed mounts may not provide
+    // the settings namespace at all (same posture as organizations above).
+    const systemApi = (client as unknown as {
+      settings?: { system?: { info?: (signal?: AbortSignal) => Promise<{ edition?: string }> } };
+    }).settings?.system;
+    const systemInfo = systemApi?.info?.bind(systemApi);
+    if (!systemInfo) return;
+    void systemInfo().then((info) => {
+      if (!active) return;
+      if (info?.edition === 'lite') {
+        window.localStorage.setItem('weknora_lite_mode', 'true');
+        setLiteEditionProbed(true);
+      }
+    }).catch(() => { /* Vue menu.vue:991 — silent */ });
+    return () => { active = false; };
+  }, [client]);
+
   const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
   // Vue menu.vue:7 renders a literal "Lite" edition mark next to the logo
   // when the edition flag is set; stores/auth.ts:538 sources it from the
   // durable localStorage key (same one main.tsx seeds the shell with).
   // R450-A2 — the same flag also gates the user menu / rail entries below.
-  const isLiteEdition = window.localStorage.getItem('weknora_lite_mode') === 'true';
+  // R452-A2 — Vue menu.vue:986-991 ORs in the system-info edition probe:
+  // localStorage decides first, then a lite server edition upgrades the
+  // gating (and persists the key) even on a first session where the key was
+  // never written; a non-lite probe never downgrades it.
+  const isLiteEdition = liteEditionProbed || window.localStorage.getItem('weknora_lite_mode') === 'true';
   const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
     canAccessAllTenants: user.canAccessAllTenants,
     collapsed,

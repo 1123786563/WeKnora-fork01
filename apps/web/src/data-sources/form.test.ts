@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialsRequiredForValidation, firstMissingRequiredCredential, initialCredentialStepState, parseCredentialLines, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS } from './form.ts';
+import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, parseCredentialLines, serializeAuthHeaders, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS } from './form.ts';
+import type { DataSource } from '@weknora/api-client';
 
 test('parses connector credentials from key-value lines and rejects malformed secrets', () => {
   assert.deepEqual(parseCredentialLines('app_id = demo\napp_secret = hidden\n'), { app_id: 'demo', app_secret: 'hidden' });
@@ -85,4 +86,37 @@ test('field map stays byte-compatible with the Vue connectorDefs', () => {
   assert.equal(gitlab.base_url!.label, 'dataSource.gitlab.baseUrl');
   assert.equal(gitlab.access_token!.label, 'dataSource.gitlab.accessToken');
   assert.equal(VUE_SETTINGS_FIELDS.rss!.find((field) => field.key === 'feed_urls')!.hint, 'dataSource.field.feedUrlsHint');
+});
+
+// Vue DataSourceEditorDialog connectorDefs: the rss connector's only credential
+// field is auth_headers with fieldType 'custom_headers', edited as key-value
+// rows and serialized by serializeAuthHeaders ("Key: Value" lines, empty-key
+// rows dropped, keys trimmed) into config.credentials.auth_headers.
+test('serializes rss auth header rows the way Vue serializeAuthHeaders does', () => {
+  assert.equal(serializeAuthHeaders([{ key: ' Authorization ', value: 'Bearer x' }, { key: '   ', value: 'dropped' }, { key: 'X-Trace', value: '1' }]), 'Authorization: Bearer x\nX-Trace: 1');
+  assert.equal(serializeAuthHeaders([]), '');
+  assert.equal(serializeAuthHeaders([{ key: 'k', value: '' }]), 'k: ');
+});
+
+// Vue syncRssAuthHeadersToCredentials writes the serialized rows into
+// form.config.credentials.auth_headers for rss only; other connectors never
+// grow an auth_headers key and empty rows leave credentials untouched.
+test('rss header rows flow into config.credentials.auth_headers on build', () => {
+  const base = { name: 'Feeds', schedule: '0 0 */6 * * *', mode: 'incremental' as const, conflict: 'overwrite' as const, deletions: true, settingsText: '', resourceIds: [] };
+  const rss = buildDataSourceInput({ ...base, type: 'rss', credentialsText: '', authHeaders: [{ key: 'Authorization', value: 'Bearer x' }] });
+  assert.deepEqual((rss.config as Record<string, unknown>).credentials, { auth_headers: 'Authorization: Bearer x' });
+  const rssEmpty = buildDataSourceInput({ ...base, type: 'rss', credentialsText: '', authHeaders: [] });
+  assert.deepEqual((rssEmpty.config as Record<string, unknown>).credentials, {});
+  const notion = buildDataSourceInput({ ...base, type: 'notion', credentialsText: '', authHeaders: [{ key: 'Authorization', value: 'Bearer x' }] });
+  assert.deepEqual((notion.config as Record<string, unknown>).credentials, {}, 'non-rss connectors never leak header rows into credentials');
+});
+
+// Edit hydration mirrors Vue: rssAuthHeaders resets to [] when the dialog
+// opens, so stored auth_headers stay server-side unless the user opts in to
+// Replace and retypes rows.
+test('dataSourceFormFrom opens the rss header editor with empty rows', () => {
+  const source = { id: 'ds-1', knowledge_base_id: 'kb-1', name: 'Feeds', type: 'rss', config: { credentials: { auth_headers: 'Authorization: Bearer x' }, settings: {}, resource_ids: [] } } as DataSource;
+  assert.deepEqual(dataSourceFormFrom(source).authHeaders, []);
+  const plain = { id: 'ds-2', knowledge_base_id: 'kb-1', name: 'Notion', type: 'notion' } as DataSource;
+  assert.deepEqual(dataSourceFormFrom(plain).authHeaders, []);
 });
