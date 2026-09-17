@@ -34,12 +34,13 @@
 
 mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线守护（该文件相对基线 6a70c35a 恒为 create）；复核代理实跑抓获。R2 已修复并复跑 7/7。纪律固化：**任何 file-ownership.json 变更后必须重跑 test:mobile-v2**（守护测试就是为此存在）。
 
-| MX-013 | fixing→review | 6d94a204→cd10655d(+fix) | frozen Go ok（含派生断言）· mv2 待复验 | R1 FAIL(P1 虚构列)→已修复→待复核 | MX-013.md |
+| MX-013 | accepted | 6d94a204→0ff12076 | frozen Go ok（含派生断言）· mv2 16/16 | R1 FAIL(P1 虚构列)→修复→复核 PASS | MX-013.md |
 | MX-014 | review | cd10655d→(待提交) | mv2 15/15 · shared 590/590 · tsc 14=基线 | 待独立review | MX-014.md |
 
-| MX-014 | fixing→review | cd10655d→336b0ffb(+fix) | mv2 16/16（含双维度杀伤断言）· tsc 11=新基线 | R1(2×P2+5×P3)→已修复→待复核 | MX-014.md |
-| MX-017 | review | 336b0ffb→d782cc4f | mv2 16/16 · frozen dup-seq 1/你好/0 · tsc 11=新基线(D-026) | 审查进行中（与 013 复核/014 合并代理） | MX-017.md |
-| MX-016 | review | 964bf811→(待提交) | mv2 17/17 · shared 590/590 · tsc 11=基线 | 待独立review | MX-016.md |
+| MX-014 | accepted | cd10655d→964bf811(+fix2) | mv2 18/18（含真实翻页/重放去重断言） | R1→修复→PASS/APPROVED（证据缺口 R2 补齐：frozen 补真实翻页+重放页） | MX-014.md |
+| MX-017 | fixing→review | 336b0ffb→d782cc4f(+fix) | mv2 18/18 · tsc 11=基线 | 规格 PASS · 质量 CR(P2 屏造 request_id)→已修→待复核 | MX-017.md |
+| MX-016 | review | 964bf811→424cfe97 | mv2 17/17 · shared 590/590 · tsc 11=基线 | 待独立review | MX-016.md |
+| MX-022 | review | 424cfe97→(待提交) | mv2 18/18 · frozen 撤权零可见/禁问 | 待独立review | MX-022.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

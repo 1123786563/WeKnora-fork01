@@ -6,7 +6,15 @@ import { Button } from '../ui/Button.tsx';
 import { Field } from '../ui/Field.tsx';
 import { StatusBadge, type BadgeTone } from '../ui/StatusBadge.tsx';
 import { StateView } from '../ui/StateView.tsx';
-import type { ProductConversationViewModel, SendController } from './view-model.ts';
+import type { ProductConversationViewModel } from './view-model.ts';
+
+/**
+ * 发送端口（MX-017 R1 P2）：屏只提交文本——request_id 由持久提交协调器（MX-006）
+ * 在落盘后生成并闭包注入；本屏不发明幂等键（服务端 UNIQUE(tenant,owner,request_id)）。
+ */
+export interface ConversationSendPort {
+  submit(text: string): Promise<void>;
+}
 
 /**
  * 产品对话屏（MX-017 重写）：只依赖产品 VM/ports，零 Happy hooks（G07 页面半边）。
@@ -15,7 +23,7 @@ import type { ProductConversationViewModel, SendController } from './view-model.
  */
 export interface ConversationScreenProps {
   viewModel: ProductConversationViewModel;
-  send?: SendController;
+  send?: ConversationSendPort;
   onSend?: (text: string) => Promise<void>;
   testID?: string;
 }
@@ -37,9 +45,10 @@ export function ConversationScreen({ viewModel, send, onSend, testID }: Conversa
     setSending(true);
     try {
       if (send) {
-        await send.submit(draft, `persisted:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`);
+        await send.submit(draft);
+      } else {
+        await onSend?.(draft);
       }
-      await onSend?.(draft);
       setDraft('');
     } finally {
       setSending(false);

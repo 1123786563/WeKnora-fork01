@@ -97,7 +97,8 @@
       "kind": "modify",
       "shared_serialized": false,
       "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "kind_basis": "baseline-ls-tree",
+      "note": "产品对话屏（MX-017 重写；R1 P2 修复：发送端口不发明 request_id）"
     },
     "apps/mobile/sources/weknora/conversations/MessageBlock.tsx": {
       "owners": [
@@ -1812,7 +1813,8 @@
         "MX-006",
         "MX-011",
         "MX-014",
-        "MX-016"
+        "MX-016",
+        "MX-022"
       ],
       "kind": "modify",
       "shared_serialized": true,
