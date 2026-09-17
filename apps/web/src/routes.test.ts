@@ -19,7 +19,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/creatChat/unknown').kind, 'not-found');
   assert.deepEqual(guardRoute('/creatChat', { ...authenticated, authenticated: false, tenantId: null }), {
     kind: 'redirect',
-    to: '/login?next=%2FcreatChat',
+    to: '/login',
     reason: 'authentication-required',
   });
   assert.equal(resolveRoute('/platform').kind, 'platform');
@@ -45,7 +45,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/platform/apps/actions/action-1'), { kind: 'apps', path: '/platform/apps/actions/action-1', mode: 'action', id: 'action-1' });
   assert.equal(resolveRoute('/platform/apps/authorization/%E0%A4%A').kind, 'not-found');
   assert.equal(resolveRoute('/platform/apps/actions/%E0%A4%A').kind, 'not-found');
-  assert.deepEqual(guardRoute('/platform/apps', { ...authenticated, authenticated: false, tenantId: null }), { kind: 'redirect', to: '/login?next=%2Fplatform%2Fapps', reason: 'authentication-required' });
+  assert.deepEqual(guardRoute('/platform/apps', { ...authenticated, authenticated: false, tenantId: null }), { kind: 'redirect', to: '/login', reason: 'authentication-required' });
   assert.equal(routeRedirect('/'), '/platform/knowledge-bases');
   assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?cmdk=');
   assert.equal(routeRedirect('/platform/knowledge-search'), '/platform/knowledge-bases?cmdk=');
@@ -86,7 +86,7 @@ test('keeps the development markdown fixture public and dispatchable', () => {
 test('guards protected deep links and redirects no-tenant sessions to onboarding', () => {
   assert.deepEqual(guardRoute('/platform/knowledge-bases?tab=mine', { ...authenticated, authenticated: false, tenantId: null }), {
     kind: 'redirect',
-    to: '/login?next=%2Fplatform%2Fknowledge-bases%3Ftab%3Dmine',
+    to: '/login',
     reason: 'authentication-required',
   });
   assert.deepEqual(guardRoute('/platform/knowledge-bases', { ...authenticated, tenantId: null }), {
@@ -111,7 +111,7 @@ test('authenticates legacy platform redirects before choosing their destination'
   for (const path of ['/platform', '/platform/knowledge-search?q=hello', '/platform/tenant', '/platform/administration']) {
     assert.deepEqual(guardRoute(path, loggedOut), {
       kind: 'redirect',
-      to: `/login?next=${encodeURIComponent(path)}`,
+      to: '/login',
       reason: 'authentication-required',
     });
   }
@@ -207,7 +207,7 @@ test('keeps query-driven settings and modal/preview entry points on their owning
 test('guards legacy integration URLs before forwarding to the Vue settings destination', () => {
   const path = '/platform/integrations?tab=embed';
   assert.deepEqual(guardRoute(path, { ...authenticated, authenticated: false, tenantId: null }), {
-    kind: 'redirect', to: `/login?next=${encodeURIComponent(path)}`, reason: 'authentication-required',
+    kind: 'redirect', to: '/login', reason: 'authentication-required',
   });
   assert.deepEqual(guardRoute(path, { ...authenticated, tenantId: null }), {
     kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required',
@@ -224,7 +224,7 @@ test('requires authentication before rendering not-found pages under protected p
   const loggedOut = { ...authenticated, authenticated: false, tenantId: null };
   assert.deepEqual(guardRoute('/platform/not-a-page', loggedOut), {
     kind: 'redirect',
-    to: '/login?next=%2Fplatform%2Fnot-a-page',
+    to: '/login',
     reason: 'authentication-required',
   });
   assert.equal(guardRoute('/unknown', loggedOut).kind, 'allow');

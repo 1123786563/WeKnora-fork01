@@ -20,13 +20,11 @@ const oidcCallback = parseOIDCCallbackHash(window.location.hash);
 let initialLoginError: string | undefined;
 if (oidcCallback?.kind === 'success') {
   persistBrowserCredential(window.localStorage, { kind: 'bearer', accessToken: oidcCallback.session.token, refreshToken: oidcCallback.session.refreshToken });
-  // Vue App.vue redeems a pending invite token after the OIDC round-trip and
-  // honours ?next; keep the query so bootstrap can apply both.
+  // Vue App.vue redeems a pending invite token after the OIDC round-trip.
   const pendingInvite = readPendingInviteToken(window.sessionStorage);
-  const nextParam = new URLSearchParams(window.location.search).get('next');
   const target = pendingInvite
     ? `/login?token=${encodeURIComponent(pendingInvite)}`
-    : nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/platform/knowledge-bases';
+    : '/platform/knowledge-bases';
   window.history.replaceState({}, document.title, target);
 } else if (oidcCallback?.kind === 'error') {
   initialLoginError = oidcCallback.message;
@@ -99,13 +97,10 @@ if (currentRoute.kind !== 'embed') initTheme();
 
 const root = createRoot(document.getElementById('root')!);
 
-function nextPathAfterAuth(): string {
-  const next = new URLSearchParams(window.location.search).get('next');
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
-}
-
 function completeAuthentication(next: AuthSession): void {
-  const landing = computeAuthLanding(next, nextPathAfterAuth());
+  // Vue parity: no return-URL parameter — post-auth landing is the default
+  // home, or onboarding when the session has no tenant yet.
+  const landing = computeAuthLanding(next);
   session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: landing.activeTenantId };
   persistBrowserCredential(window.localStorage, session.credential);
   // Vue Login.vue:584-590 — apply the active-tenant override when the server

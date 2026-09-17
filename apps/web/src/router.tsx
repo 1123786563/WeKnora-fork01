@@ -178,7 +178,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     if (deps.session().credential.kind === 'bearer') {
       const hydrated = await deps.ensureSessionHydrated();
       if (!hydrated.ok) {
-        window.history.replaceState({}, document.title, `/login?next=${encodeURIComponent(locationPathWithQuery(location))}`);
+        window.history.replaceState({}, document.title, '/login');
         await navigationTakesOver(abortSignal);
         throw new Error('unreachable');
       }
@@ -218,7 +218,6 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
 
   const loginSearch = (search: Record<string, unknown>): Record<string, string> => ({
     ...(typeof search.token === 'string' && search.token !== '' ? { token: search.token } : {}),
-    ...(typeof search.next === 'string' && search.next !== '' ? { next: search.next } : {}),
   });
 
   // beforeLoad hands the invite token / join handoff to the login card through
@@ -328,7 +327,6 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     validateSearch: (search: Record<string, unknown>): Record<string, string> => ({
       ...(typeof search.token === 'string' && search.token !== '' ? { token: search.token } : {}),
       ...(typeof search.code === 'string' && search.code !== '' ? { code: search.code } : {}),
-      ...(typeof search.next === 'string' && search.next !== '' ? { next: search.next } : {}),
     }),
     beforeLoad: ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
       const search = (location.search ?? {}) as Record<string, string>;
@@ -340,19 +338,22 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
         return navigationTakesOver(abortSignal);
       }
       if (deps.session().credential.kind !== 'bearer') {
-        const nextPath = locationPathWithQuery(location);
-        const loginTarget = `/login?next=${encodeURIComponent(nextPath)}`;
-        window.location.replace(loginTarget);
+        window.history.replaceState({}, document.title, '/login');
         return navigationTakesOver(abortSignal);
       }
       // Authenticated: forward to the invite landing (organizations?invite_code
-      // when a code came along), preserving the pre-router hard replace.
+      // when a code came along), preserving the pre-router hard replace. The
+      // internal-path allowlist judges the path only — the query (invite_code)
+      // is re-attached afterwards so the exact redirect contract of
+      // routeRedirect/Vue survives the check.
       const decision = guardRoute(locationPathWithQuery(location), guardContext());
       const inviteCode = typeof search.code === 'string' ? search.code : '';
-      const fallback = inviteCode !== '' ? `/platform/organizations?invite_code=${encodeURIComponent(inviteCode)}` : '/platform/organizations';
-      const decisionTarget = decision.kind === 'redirect' ? decision.to : fallback;
-      const joinTarget = internalTarget(decisionTarget.split('?')[0]!, fallback);
-      window.location.replace(joinTarget);
+      const fallbackPath = '/platform/organizations';
+      const fallbackQuery = inviteCode !== '' ? `invite_code=${encodeURIComponent(inviteCode)}` : '';
+      const decisionTarget = decision.kind === 'redirect' ? decision.to : `${fallbackPath}${fallbackQuery ? `?${fallbackQuery}` : ''}`;
+      const joinParts = decisionTarget.split('?');
+      const joinQuery = joinParts[1] ? `?${joinParts[1]}` : '';
+      window.location.replace(`${internalTarget(joinParts[0]!, fallbackPath)}${joinQuery}`);
       return navigationTakesOver(abortSignal);
     },
   });

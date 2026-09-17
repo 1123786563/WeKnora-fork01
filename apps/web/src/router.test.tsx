@@ -5,8 +5,8 @@
 // navigate(); allow-path commits belong to the mounted RouterProvider
 // Transitioner, so page matching is asserted with the pure matchRoutes() API.
 // The guard/alias matrix itself stays unit-tested in routes.test.ts, and the
-// mounted behaviour (redirects on cold start, ?next preservation, rendering)
-// is verified against the dev server.
+// mounted behaviour (redirects on cold start, rendering) is verified against
+// the dev server.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMemoryHistory } from '@tanstack/react-router';
@@ -15,6 +15,7 @@ import { createWeKnoraRouter, type WeKnoraRouter, type WeKnoraRouterDeps } from 
 interface FakeDeps {
   kind: 'anonymous' | 'bearer';
   tenantId: string | null;
+  systemAdmin?: boolean;
 }
 
 function makeDeps(fake: FakeDeps): WeKnoraRouterDeps {
@@ -30,7 +31,7 @@ function makeDeps(fake: FakeDeps): WeKnoraRouterDeps {
     scopeController: { current: () => scope },
     scopeRuntime: {
       capabilities: () => ({ agents: { supported: true }, organizations: { supported: true }, integrations: { supported: true } }),
-      isSystemAdmin: () => false,
+      isSystemAdmin: () => fake.systemAdmin === true,
       role: () => 'owner',
       canViewChannelSessions: () => false,
       current: () => scope,
@@ -55,11 +56,21 @@ function makeDeps(fake: FakeDeps): WeKnoraRouterDeps {
 function bootRouter(fake: FakeDeps, entry: string): WeKnoraRouter {
   // Headless stand-in: guard SPA replaces write through window.history and the
   // router sync rides on PopStateEvent in the browser; capture the target here.
+  // Hard redirect targets (window.location.replace — the pre-router semantics
+  // for capability/alias redirects) are captured separately.
   const replaceCalls: string[] = [];
+  const hardReplaces: string[] = [];
   const windowStub: Record<string, unknown> = {
     history: {
       replaceState: (_state: unknown, _title: string, url: string) => { replaceCalls.push(String(url)); },
       pushState: (_state: unknown, _title: string, url: string) => { replaceCalls.push(String(url)); },
+    },
+    location: {
+      replace: (url: string) => { hardReplaces.push(String(url)); },
+      assign: (url: string) => { hardReplaces.push(String(url)); },
+      href: 'http://localhost/',
+      pathname: '/',
+      search: '',
     },
     localStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
     dispatchEvent: () => true,
@@ -70,7 +81,13 @@ function bootRouter(fake: FakeDeps, entry: string): WeKnoraRouter {
   (globalThis as Record<string, unknown>).document = {};
   const router = createWeKnoraRouter(makeDeps(fake), { history: createMemoryHistory({ initialEntries: [entry] }) });
   (router as unknown as { __replaceCalls: string[] }).__replaceCalls = replaceCalls;
+  (router as unknown as { __hardReplaces: string[] }).__hardReplaces = hardReplaces;
   return router;
+}
+
+function routeBeforeLoad(router: WeKnoraRouter, routeId: string): ((ctx: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => unknown) | undefined {
+  const route = (router.routeTree as { children?: Array<{ id: string; options?: { beforeLoad?: (ctx: unknown) => unknown } }> }).children?.find((child) => child.id === routeId);
+  return route?.options?.beforeLoad as ((ctx: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => unknown) | undefined;
 }
 
 function matchedRouteIds(router: WeKnoraRouter, path: string): string[] {
@@ -80,17 +97,17 @@ function matchedRouteIds(router: WeKnoraRouter, path: string): string[] {
 const anonymous: FakeDeps = { kind: 'anonymous', tenantId: null };
 const member: FakeDeps = { kind: 'bearer', tenantId: 'tenant-1' };
 
-test('anonymous visitors on protected paths get an SPA replace to login with the next hop', async () => {
+test('anonymous visitors on protected paths get an SPA replace to plain login', async () => {
   const router = bootRouter(anonymous, '/login');
   const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;
   // Headless navigate() never flushes its React transition, so drive the
   // guard directly: the platform layout beforeLoad must produce the login
-  // SPA replace with the next hop preserved (verified mounted against the
-  // dev server as well).
+  // SPA replace (verified mounted against the dev server as well).
   const platformRoute = (router.routeTree as { children?: Array<{ id: string; options?: { beforeLoad?: (ctx: unknown) => Promise<unknown> } }> }).children?.find((route) => route.id === '/platform');
   void Promise.resolve(platformRoute?.options?.beforeLoad?.({ location: { pathname: '/platform/agents', search: {} }, abortSignal: undefined })).catch(() => { /* the takeover aborts the superseded load */ });
   await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.ok(replaceCalls.includes('/login?next=%2Fplatform%2Fagents'), `expected a login SPA replace, got ${replaceCalls.join(',')}`);
+  assert.ok(replaceCalls.includes('/login'), `expected a plain login SPA replace, got ${replaceCalls.join(',')}`);
+  assert.ok(replaceCalls.every((url) => !url.includes('next=')), 'no return-URL query may leak into the login redirect (Vue parity)');
 });
 
 test('anonymous root visits get an SPA replace to login', async () => {
@@ -98,7 +115,7 @@ test('anonymous root visits get an SPA replace to login', async () => {
   const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;
   void Promise.resolve((router.routeTree as { children?: Array<{ id: string; options?: { beforeLoad?: (ctx: unknown) => Promise<unknown> } }> }).children?.find((route) => route.id === '/')?.options?.beforeLoad?.({ location: { pathname: '/', search: {} }, abortSignal: undefined })).catch(() => { /* the takeover aborts the superseded load */ });
   await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.ok(replaceCalls.includes('/login?next=%2F'), `expected a login SPA replace, got ${replaceCalls.join(',')}`);
+  assert.ok(replaceCalls.includes('/login'), `expected a plain login SPA replace, got ${replaceCalls.join(',')}`);
 });
 
 test('authenticated platform paths match their pages inside the shell layout', () => {
@@ -144,4 +161,71 @@ test('public entries stay outside the shell', () => {
   assert.deepEqual(matchedRouteIds(router, '/craft/session-1'), ['__root__', '/craft', '/craft/$']);
   assert.deepEqual(matchedRouteIds(router, '/embed/channel-9'), ['__root__', '/embed/$']);
   assert.deepEqual(matchedRouteIds(router, '/onboarding/workspace'), ['__root__', '/onboarding/workspace']);
+});
+
+test('legacy platform redirect entries hard-replace to their destinations with the exact query preserved', async () => {
+  const admin: FakeDeps = { ...member, systemAdmin: true };
+  const router = bootRouter(admin, '/platform/knowledge-bases');
+  const hardReplaces = (router as unknown as { __hardReplaces: string[] }).__hardReplaces;
+  const platformBeforeLoad = routeBeforeLoad(router, '/platform');
+  assert.ok(platformBeforeLoad, 'the platform layout must run a guard beforeLoad');
+  // R-matrix REDIRECT rows: every retired platform URL keeps its redirect
+  // target and query exactly as routeRedirect/Vue define them (knowledge-search
+  // carries q as cmdk; integrations folds tab into the settings section and
+  // keeps unrelated params; administration/system map to settings sections).
+  const cases: Array<[string, Record<string, string>, string]> = [
+    ['/platform', {}, '/platform/knowledge-bases'],
+    ['/platform/knowledge-search', { q: 'hello' }, '/platform/knowledge-bases?cmdk=hello'],
+    ['/platform/tenant', {}, '/platform/settings'],
+    ['/platform/administration', {}, '/platform/settings?section=members'],
+    ['/platform/system', {}, '/platform/settings?section=system-global'],
+    ['/platform/system/queues', {}, '/platform/settings?section=runtime-queues'],
+    ['/platform/integrations', { tab: 'embed', agentId: 'a' }, '/platform/settings?agentId=a&section=integration-embed'],
+  ];
+  for (const [pathname, search, expected] of cases) {
+    hardReplaces.length = 0;
+    void Promise.resolve(platformBeforeLoad({ location: { pathname, search }, abortSignal: undefined })).catch(() => { /* the takeover aborts the superseded load */ });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.ok(hardReplaces.includes(expected), `${pathname} should hard-replace to ${expected}, got ${hardReplaces.join(',')}`);
+  }
+});
+
+test('join handoffs keep invite tokens and codes in their redirect targets', async () => {
+  const joinBeforeLoad = (router: WeKnoraRouter) => {
+    const beforeLoad = routeBeforeLoad(router, '/join');
+    assert.ok(beforeLoad, 'the join route must run its handoff beforeLoad');
+    return beforeLoad;
+  };
+  // Vue share-links land on /login|/register?token — /join?token forwards the
+  // token to the registration entry instead of dead-ending.
+  const anonRouter = bootRouter(anonymous, '/login');
+  void Promise.resolve(joinBeforeLoad(anonRouter)({ location: { pathname: '/join', search: { token: 't-9' } }, abortSignal: undefined })).catch(() => { /* takeover */ });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const anonHard = (anonRouter as unknown as { __hardReplaces: string[] }).__hardReplaces;
+  assert.ok(anonHard.includes('/register?token=t-9'), `expected the share-link token handoff, got ${anonHard.join(',')}`);
+
+  // Authenticated /join?code keeps the code as invite_code on organizations.
+  const memberRouter = bootRouter(member, '/platform/organizations');
+  void Promise.resolve(joinBeforeLoad(memberRouter)({ location: { pathname: '/join', search: { code: 'c-7' } }, abortSignal: undefined })).catch(() => { /* takeover */ });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const memberHard = (memberRouter as unknown as { __hardReplaces: string[] }).__hardReplaces;
+  assert.ok(memberHard.includes('/platform/organizations?invite_code=c-7'), `expected the invite_code handoff, got ${memberHard.join(',')}`);
+});
+
+test('knowledge-base view entries keep the tab, slug and knowledge_id query on their pages', () => {
+  const router = bootRouter(member, '/platform/knowledge-bases');
+  // The ?tab= documents|wiki|graph dispatch is query-driven on both knowledge
+  // base paths, so the routes must match with the query attached (the page
+  // reads tab/slug/knowledge_id from the location).
+  const withQuery = [
+    '/platform/knowledge-bases/kb-1?tab=wiki&slug=home',
+    '/platform/knowledge-bases/kb-1?tab=graph&slug=g',
+    '/platform/knowledge-bases/kb-1?tab=documents&knowledge_id=doc-2',
+    '/knowledgeBase/kb-1?tab=wiki&knowledge_id=doc-3',
+    '/knowledgeBase/kb-1/wiki?knowledge_id=doc-4',
+  ];
+  for (const path of withQuery) {
+    const ids = matchedRouteIds(router, path);
+    assert.ok(ids.length > 0, `${path} should still match its route with the query attached`);
+  }
 });

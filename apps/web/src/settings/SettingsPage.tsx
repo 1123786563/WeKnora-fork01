@@ -104,7 +104,12 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const [selectedKey, setSelectedKey] = useState(() => requestedSection(window.location.search));
-  const [payload, setPayload] = useState<unknown>(null);
+  // Per-section payload cache: revisiting a seen section renders its cached
+  // data instantly and refreshes silently. The previous single-slot payload
+  // forced "old data → 加载中 → content" through three paints on every tab
+  // switch, which read as a flicker.
+  const [payloadCache, setPayloadCache] = useState<Record<string, unknown>>({});
+  const payload = selectedKey in payloadCache ? payloadCache[selectedKey]! : null;
   const [models, setModels] = useState<readonly SettingsModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,15 +128,19 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const visibleSections = settingsSectionsForRole(role).filter((item) => sectionSupported(item.key));
   const roleDenied = !roleAtLeast(role, section.minRole);
 
-  async function load() {
+  async function load(force = false) {
     const generation = ++loadGenerationRef.current;
     const isCurrentLoad = () => generation === loadGenerationRef.current;
-    if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
-    setLoading(true); setError(null); setNotice(null);
+    if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setError(null); setLoading(false); return; }
+    // 首访（无缓存）与保存后的强制刷新才显示加载占位；普通切 tab 走静默刷新，
+    // 已渲染的面板保持不动，数据到达后静默更新。
+    const hasCache = selectedKey in payloadCache;
+    if (!hasCache || force) setLoading(true);
+    setError(null); setNotice(null);
     try {
       const next = await readSettingsSection(client, selectedKey, tenantId);
       if (!isCurrentLoad()) return;
-      setPayload(next);
+      setPayloadCache((prev) => ({ ...prev, [selectedKey]: next }));
       if (selectedKey === 'retrieval' || selectedKey === 'chathistory') {
         try {
           const nextModels = await client.configuration.models.list();
@@ -143,7 +152,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     }
     catch (reason) {
       if (!isCurrentLoad()) return;
-      setPayload(null); setError(errorText(reason, t('common.error')));
+      // 有缓存时静默保留旧数据；仅无缓存的失败才顶替整个内容区。
+      if (!hasCache) setError(errorText(reason, t('common.error')));
     }
     finally {
       if (isCurrentLoad()) setLoading(false);
@@ -245,63 +255,106 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     navigate('/platform/settings?' + selectSettingsQuery(next, window.location.search), 'replace');
   }, []);
 
-  const generalPanel = selectedKey === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
-  const resourcePanel = selectedKey === 'storage' || selectedKey === 'vectorstore' || selectedKey === 'websearch'
-    ? <ResourceSettingsPanel client={client} section={selectedKey} initialValue={payload} />
-    : null;
-  const configPanel = selectedKey === 'retrieval'
-    ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={payload} models={models} />
-    : selectedKey === 'chathistory'
-      ? <ConfigSettingsPanel
+  // Keep-alive: once a section has been opened its panel stays mounted and is
+  // merely hidden on switch. Panels re-run their own requests on every
+  // remount (skills need catalog + sandbox configs; memory/ollama fetch
+  // internally), which read as a flicker on every revisit. Keeping them alive
+  // also preserves in-panel form state; everything unmounts when the drawer
+  // closes (the route leaves /platform/settings).
+  const [visitedSections, setVisitedSections] = useState<string[]>(() => [selectedKey]);
+  useEffect(() => {
+    setVisitedSections((prev) => (prev.includes(selectedKey) ? prev : [...prev, selectedKey]));
+  }, [selectedKey]);
+
+  function renderSectionPanel(key: string): ReactNode {
+    const section = settingsSectionMeta(key)!;
+    const sectionPayload = key in payloadCache ? payloadCache[key]! : null;
+    const sectionIntegrationTab = integrationTabForSection(key);
+    const sectionRoleDenied = !roleAtLeast(role, section.minRole);
+    const isActive = key === selectedKey;
+    const sectionError = isActive ? error : null;
+    const sectionLoading = isActive && loading;
+    const sectionDenied = sectionRoleDenied
+      ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
+      : null;
+    const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
+    const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
+      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} />
+      : null;
+    const configPanel = key === 'retrieval'
+      ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
+      : key === 'chathistory'
+        ? <ConfigSettingsPanel
+            client={client}
+            section="chathistory"
+            initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
+            models={models}
+            embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
+            stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
+            onSaved={() => void load(true)}
+          />
+        : key === 'parser'
+          ? <ConfigSettingsPanel client={client} section="parser" initialValue={((sectionPayload as Record<string, unknown> | null)?.config)} />
+          : null;
+    const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
+    const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
+    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
+    const runtimeQueuesPanel = key === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={sectionPayload as never} loading={sectionLoading} error={sectionError} /> : null;
+    const systemGlobalPanel = key === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
+    const platformApiKeysPanel = key === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
+    const systemAuditPanel = key === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={sectionPayload} /> : null;
+    const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} onMutated={() => void load(true)} /> : null;
+    const mcpPanel = key === 'mcp'
+      ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(sectionPayload) ? sectionPayload as never : []} />
+      : null;
+    const modelPanel = key === 'models'
+      ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(sectionPayload) ? sectionPayload as never : []} initialSubSection={initialSubSection ?? undefined} />
+      : null;
+    const sandboxPanel = key === 'sandbox'
+      ? <SandboxSettingsPanel
           client={client}
-          section="chathistory"
-          initialValue={((payload as Record<string, unknown> | null)?.config)}
-          models={models}
-          embeddingLocked={((payload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
-          stats={((payload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
-          onSaved={() => void load()}
+          role={role}
+          dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
+          // SandboxSettings.vue openSession (341-344): row click opens the chat
+          // session; full-page assign mirrors PlatformShell.openShellSession (204).
+          onOpenSession={(sessionId) => { navigate(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
         />
-      : selectedKey === 'parser'
-        ? <ConfigSettingsPanel client={client} section="parser" initialValue={((payload as Record<string, unknown> | null)?.config)} />
-        : null;
-  const ollamaPanel = selectedKey === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={payload} /> : null;
-  const cloudPanel = selectedKey === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={payload} /> : null;
-  const systemPanel = selectedKey === 'system' ? <SystemInfoPanel payload={payload} locale={locale} /> : null;
-  const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={payload as never} loading={loading} error={error} /> : null;
-  const systemGlobalPanel = selectedKey === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(payload) ? payload as never : []} /> : null;
-  const platformApiKeysPanel = selectedKey === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(payload) ? payload as never : []} /> : null;
-  const systemAuditPanel = selectedKey === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={payload} /> : null;
-  const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
-  const mcpPanel = selectedKey === 'mcp'
-    ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />
-    : null;
-  const modelPanel = selectedKey === 'models'
-    ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} initialSubSection={initialSubSection ?? undefined} />
-    : null;
-  const sandboxPanel = selectedKey === 'sandbox'
-    ? <SandboxSettingsPanel
-        client={client}
-        role={role}
-        dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
-        // SandboxSettings.vue openSession (341-344): row click opens the chat
-        // session; full-page assign mirrors PlatformShell.openShellSession (204).
-        onOpenSession={(sessionId) => { navigate(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
-      />
-    : null;
-  const skillPanel = selectedKey === 'skills'
-    ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(payload) ? payload as never : (((payload as { items?: unknown } | null)?.items ?? []) as never)} />
-    : null;
-  const membersPanel = selectedKey === 'members'
-    ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={payload as never} />
-    : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : selectedKey === 'runtime-queues' ? runtimeQueuesPanel : selectedKey === 'system-global' ? systemGlobalPanel : selectedKey === 'platform-api-keys' ? platformApiKeysPanel : selectedKey === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
-    ? (selectedKey === 'sandbox'
-        ? <PortedSectionsPanel section={selectedKey} />
-        : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
-    : null;
-  const deniedPanel = roleDenied
-    ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
-    : null;
+      : null;
+    const skillPanel = key === 'skills'
+      ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(sectionPayload) ? sectionPayload as never : (((sectionPayload as { items?: unknown } | null)?.items ?? []) as never)} />
+      : null;
+    const membersPanel = key === 'members'
+      ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={sectionPayload as never} />
+      : null;
+    const portedPanel = key === 'mcp' ? mcpPanel : key === 'models' ? modelPanel : key === 'sandbox' ? sandboxPanel : key === 'skills' ? skillPanel : key === 'members' ? membersPanel : key === 'runtime-queues' ? runtimeQueuesPanel : key === 'system-global' ? systemGlobalPanel : key === 'platform-api-keys' ? platformApiKeysPanel : key === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(key)
+      ? (key === 'sandbox'
+          ? <PortedSectionsPanel section={key} />
+          : <LiveSectionsPanel client={client} section={key} payload={sectionPayload} />)
+      : null;
+    return (
+      <div key={key} style={isActive ? undefined : { display: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
+        {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
+          {/* Panels owning their full Vue section header render it themselves:
+              general/models here, and members — TenantMembers.vue:8-65 renders
+              the h2 + permissions popover + audit entry + section-description
+              with the RBAC doc link, so a wrapper heading would duplicate it
+              (previously it also leaked the registry apiDomain as the text);
+              skills — SkillSettings.vue:3-11 renders the h2 + help-circle
+              tooltip + section-description itself. */}
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' ? (
+            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+              <div className="w-full">
+                <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>
+                <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, key).description}</p>
+              </div>
+            </div>
+          ) : null}
+          {sectionDenied ?? (sectionError ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
+        </div>}
+      </div>
+    );
+  }
   return createPortal((
     <main className="wk-settings-drawer-root">
       <div className="wks-overlay">
@@ -342,27 +395,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               </div>
             </nav>
             <section className="wks-content" aria-live="polite">
-              <div className={`wks-content-wrapper${selectedKey === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(selectedKey) || integrationTab ? ' wks-content-wrapper--full' : '')}`}>
-                {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
-                  {/* Panels owning their full Vue section header render it themselves:
-                      general/models here, and members — TenantMembers.vue:8-65 renders
-                      the h2 + permissions popover + audit entry + section-description
-                      with the RBAC doc link, so a wrapper heading would duplicate it
-                      (previously it also leaked the registry apiDomain as the text);
-                      skills — SkillSettings.vue:3-11 renders the h2 + help-circle
-                      tooltip + section-description itself. */}
-                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' && selectedKey !== 'mcp' && selectedKey !== 'skills' ? (
-                    <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-                      <div className="w-full">
-                        <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, selectedKey).title}</h2>
-                        <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, selectedKey).description}</p>
-                      </div>
-                    </div>
-                  ) : null}
-                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</></Suspense>)}
-                  {selectedKey === 'tenant' && role === 'owner' && !deniedPanel && !error && !loading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
-                </div>}
-              </div>
+              {visitedSections.map((key) => renderSectionPanel(key))}
             </section>
           </div>
         </div>
