@@ -49,11 +49,14 @@ afterEach(async () => {
 
 const settle = (ms = 10) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 
-function fakeClient() {
+function fakeClient(options?: { isSystemAdmin?: boolean }) {
   return {
     auth: {
       me: async () => ({
-        user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: false },
+        user: {
+          id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: false,
+          ...(options?.isSystemAdmin ? { is_system_admin: true } : {}),
+        },
         tenant: { id: 1, name: 'Home' },
         memberships: [{ tenant_id: 1, tenant_name: 'Home', role: 'owner' }],
       }),
@@ -63,12 +66,12 @@ function fakeClient() {
   };
 }
 
-async function mount(onLogout: () => void | Promise<void>) {
+async function mount(onLogout: () => void | Promise<void>, clientOptions?: { isSystemAdmin?: boolean }) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => mountedRoot?.render(React.createElement(PlatformShell, {
-    client: fakeClient() as never,
+    client: fakeClient(clientOptions) as never,
     onLogout,
     onTenantSwitch: async () => undefined,
     children: React.createElement('div', null, 'page'),
@@ -195,5 +198,84 @@ test('R448-A2: general.allSettings exists with the Vue locale copy in all five l
   for (const locale of supportedLocales) {
     assert.equal(messages[locale]['general.allSettings'], expected[locale], `${locale} copy matches Vue`);
     assert.equal(formatMessage(locale, 'general.allSettings'), expected[locale]);
+  }
+});
+
+// R449-A2 task 2 — Vue UserMenu.vue:81-84 labels the tenant quick link with
+// $t('settings.workspaceSettings') (「空间设置」); the React shell used
+// $t('settings.tenantInfo') (「空间信息」) — a different key that names the
+// settings SECTION header, not the menu entry. Both go to ?section=tenant,
+// so this is a pure naming divergence.
+test('R449-A2: user menu tenant entry is labelled 空间设置 (settings.workspaceSettings), not 空间信息', async () => {
+  await mount(() => undefined);
+  await openUserMenu();
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu, 'user dropdown renders');
+  const text = menu.textContent ?? '';
+  assert.ok(!text.includes('空间信息'), 'settings.tenantInfo copy must not leak into the user menu');
+  const entry = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+    .find((el) => (el.textContent ?? '').includes('空间设置')) as HTMLAnchorElement | undefined;
+  assert.ok(entry, '空间设置 entry renders');
+  assert.equal(entry.getAttribute('href'), '/platform/settings?section=tenant', 'keeps the tenant section quick-nav target');
+});
+
+test('R449-A2: settings.workspaceSettings exists with the Vue locale copy in all five locales', () => {
+  // frontend/src/i18n/locales/*.ts settings.workspaceSettings (zh-CN:5807 et al).
+  const expected: Record<string, string> = {
+    'zh-CN': '空间设置',
+    'en-US': 'Workspace Settings',
+    'ja-JP': 'ワークスペース設定',
+    'ko-KR': '워크스페이스 설정',
+    'ru-RU': 'Настройки пространства',
+  };
+  for (const locale of supportedLocales) {
+    assert.equal(messages[locale]['settings.workspaceSettings'], expected[locale], `${locale} copy matches Vue`);
+    assert.equal(formatMessage(locale, 'settings.workspaceSettings'), expected[locale]);
+  }
+});
+
+// R449-A2 task 1 — Vue UserMenu.vue:104-113 renders a 「系统管理」 entry
+// ($t('settings.navGroups.systemAdministration')) gated on the platform-wide
+// is_system_admin flag, positioned between 全部设置 and the docs entry:
+// handleSystemAdmin → /platform/settings?section=system-global. The React
+// shell never migrated it.
+test('R449-A2: system administration entry is hidden for non-system-admins', async () => {
+  await mount(() => undefined);
+  await openUserMenu();
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu, 'user dropdown renders');
+  const text = menu.textContent ?? '';
+  assert.ok(!text.includes('系统管理'), '系统管理 must stay hidden without is_system_admin');
+});
+
+test('R449-A2: system administration entry renders for is_system_admin users and navigates to section=system-global', async () => {
+  await mount(() => undefined, { isSystemAdmin: true });
+  await openUserMenu();
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu, 'user dropdown renders');
+  const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+  const entry = items.find((el) => (el.textContent ?? '').includes('系统管理')) as HTMLAnchorElement | undefined;
+  assert.ok(entry, '系统管理 entry renders for system admins');
+  assert.equal(entry.getAttribute('href'), '/platform/settings?section=system-global', 'Vue handleSystemAdmin target');
+  const idx = (el: Element | undefined) => (el ? items.indexOf(el) : -1);
+  const allSettings = items.find((el) => (el.textContent ?? '').includes('全部设置'));
+  const docs = items.find((el) => (el.textContent ?? '').includes('帮助与文档'));
+  assert.ok(allSettings && docs, 'context entries render');
+  assert.ok(idx(allSettings) < idx(entry), 'ordered after 全部设置 like Vue UserMenu.vue:100-113');
+  assert.ok(idx(entry) < idx(docs), 'ordered before the docs entry');
+});
+
+test('R449-A2: settings.navGroups.systemAdministration exists with the Vue locale copy in all five locales', () => {
+  // frontend/src/i18n/locales/*.ts settings.navGroups.systemAdministration (zh-CN:6039 et al).
+  const expected: Record<string, string> = {
+    'zh-CN': '系统管理',
+    'en-US': 'System Administration',
+    'ja-JP': 'システム管理',
+    'ko-KR': '시스템 관리',
+    'ru-RU': 'Системное администрирование',
+  };
+  for (const locale of supportedLocales) {
+    assert.equal(messages[locale]['settings.navGroups.systemAdministration'], expected[locale], `${locale} copy matches Vue`);
+    assert.equal(formatMessage(locale, 'settings.navGroups.systemAdministration'), expected[locale]);
   }
 });

@@ -667,6 +667,7 @@ export function EmbedChatSurface(props: {
               content={entry.content}
               references={entry.references}
               isCompleted={entry.is_completed === true}
+              locale={props.locale}
               onCitation={openCitation}
             />
             {entry.references && entry.references.length > 0 ? <EmbedReferences references={entry.references} locale={props.locale} /> : null}
@@ -756,6 +757,7 @@ function EmbedMessageContent(props: {
   references?: EmbedReference[];
   /** Vue session.is_completed: mermaid hydration waits for the finished turn. */
   isCompleted?: boolean;
+  locale: Locale;
   onCitation: (doc: string, chunkId: string, el: HTMLElement) => void;
 }) {
   const html = useMemo(
@@ -765,10 +767,19 @@ function EmbedMessageContent(props: {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Vue EmbedBotMessage watch/onUpdated: renderMermaidDiagrams runs only when
   // session.is_completed — streaming keeps the escaped source block, and
-  // engine failures stay contained (apps/web/src/embed/mermaid.ts).
+  // engine failures stay contained (apps/web/src/embed/mermaid.ts). The labels
+  // port the mermaid.diagram/expand header chrome (buildMermaidBlockHtml).
+  const mermaidLabels = useMemo(
+    () => ({
+      badge: embedText(props.locale, 'mermaidDiagram'),
+      expand: embedText(props.locale, 'mermaidExpand'),
+      close: embedText(props.locale, 'close'),
+    }),
+    [props.locale],
+  );
   useEffect(() => {
-    void hydrateEmbedAnswerMermaid(rootRef.current, props.isCompleted === true);
-  }, [html, props.isCompleted]);
+    void hydrateEmbedAnswerMermaid(rootRef.current, props.isCompleted === true, undefined, mermaidLabels);
+  }, [html, props.isCompleted, mermaidLabels]);
   if (!html) return null;
   return (
     <div

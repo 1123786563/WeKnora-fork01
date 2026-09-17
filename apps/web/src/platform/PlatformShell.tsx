@@ -161,7 +161,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
-    workspaceSettings: formatMessage(locale, 'settings.tenantInfo'),
+    // R449-A2 — Vue UserMenu.vue:83 labels the tenant quick link with
+    // $t('settings.workspaceSettings') (「空间设置」), not settings.tenantInfo
+    // (「空间信息」, which names the settings section header). Both target
+    // ?section=tenant; the menu label follows the Vue key.
+    workspaceSettings: formatMessage(locale, 'settings.workspaceSettings'),
     membersSettings: formatMessage(locale, 'tenantMember.title'),
     modelsSettings: formatMessage(locale, 'settings.modelManagement'),
     skillsSettings: formatMessage(locale, 'settings.skills.title'),
@@ -169,6 +173,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // $t('general.allSettings') below a divider that closes the section
     // quick-link group.
     allSettings: formatMessage(locale, 'general.allSettings'),
+    // R449-A2 — Vue UserMenu.vue:112 labels the system-admin entry with
+    // $t('settings.navGroups.systemAdministration') (「系统管理」).
+    systemAdministration: formatMessage(locale, 'settings.navGroups.systemAdministration'),
     // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
     reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Vue UserMenu.vue:115-134 keeps these external help/community entries
@@ -212,7 +219,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // navigated so leaving the step can return to the previous page, mirroring
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean; isSystemAdmin: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false, isSystemAdmin: false });
   // Vue menu.ts:72-81 — the organizations nav entry is gated on
   // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
   // the shared space). Initial true = fail-open while identity resolves:
@@ -246,6 +253,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       }),
       membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
       canAccessAllTenants: record.can_access_all_tenants === true,
+      // R449-A2 — Vue stores/auth.ts:121 isSystemAdmin (User.IsSystemAdmin):
+      // platform-wide flag, independent of per-tenant roles. Resolution
+      // mirrors scope-runtime.ts:75 (snake_case primary, camelCase tolerated).
+      // UI gating only; the server-side RequireSystemAdmin middleware is the
+      // real boundary.
+      isSystemAdmin: record.is_system_admin === true || record.isSystemAdmin === true,
     });
     // R017 RBAC self-resolution (OrganizationsPage parity, Vue
     // currentTenantRole): the active-tenant membership role — selected
@@ -909,6 +922,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
                   {labels.allSettings}
                 </a>
+                {/* R449-A2 — Vue UserMenu.vue:104-113 renders 「系统管理」 only
+                    for is_system_admin users, between 全部设置 and a divider
+                    that precedes the docs entry. handleSystemAdmin lands on
+                    the settings modal opened at the system-global group
+                    (?section=system-global). UI gating only; the server-side
+                    RequireSystemAdmin middleware is the real boundary. */}
+                {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=system-global"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=system-global', () => setMenuOpen(false))}>
+                  {labels.systemAdministration}
+                </a> : null}
+                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                 <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
                   onClick={() => setMenuOpen(false)}>

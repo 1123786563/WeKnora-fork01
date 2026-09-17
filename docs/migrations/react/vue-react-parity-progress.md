@@ -4746,3 +4746,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - No Vue, mobile, or Go code was modified by this round. Evidence:
   `evidence/vue-react-parity/2026-09-17-r448-code-parity-round.md`. Per-agent reports:
   .omc/state/r448/report-A{1,2,3}.md + report-A4-review.md (session artifacts).
+## 2026-09-17 Round R449 — External stash conflicts resolved; platform menu finish; dead-key cleanup; embed mermaid chrome
+
+- Three parallel agents + dispatched verifier. Verdict: all PASS, and the full gate suite RECOVERED to green
+  for the first time since the R448 external stash-pop (test:web 1602/1602, i18n 65/65, typecheck 0, build ✓).
+- A1: the three externally conflicted test files resolved with per-conflict git forensics — route.test.ts stash
+  side was a verbatim duplicate (dedup, zero intent loss); GraphSettings.test.ts union (HEAD 2 + stash 3 all
+  kept); McpToolsDirectory.test.tsx union with implementation-based trimming backed by git log --all forensics
+  (policyLoading/policyLoadFailed never existed in any committed implementation — landed code uses busy ||
+  busyTools.has || policyError; per-tool blocking intent and Chinese copy kept, 3 never-true assertions
+  dropped). Three files 28/28; TS1185 blockage cleared.
+- A2: platform menu gains the isSystemAdmin-gated 「系统管理」 entry (settings.navGroups.systemAdministration,
+  after 全部设置 with Vue's divider, → ?section=system-global) and renames 空间信息 → 空间设置
+  (settings.workspaceSettings byte-exact ×5 locale; both navigate ?section=tenant — pure naming divergence).
+  user-menu 14/14; platform 190 tests (two pre-existing cross-run order flakes documented, isolated green).
+  Deferred: SettingsPage tenant section title still 空间信息; isLiteMode gating divergence.
+- A3: dead key `knowledgeBase.documents.viewerReadonly` removed (×5 locale via spread, zero consumers verified,
+  guard synced); embed mermaid chrome assumption REVERSED — the Vue embed face reuses the main-chat badge +
+  expand-fullscreen chrome, and the React embed face now renders both with a fullscreen overlay (close/mask/
+  Esc), copy byte-exact ×5 locale. embed 16/16 (+5); typecheck clean (4 in-domain TS2345 fixed). Deferred:
+  viewer zoom/reset/download toolbar (shared-engine task), focus trap (Vue also lacks).
+- Gates: `pnpm test:web` 1602/1602, packages/i18n 65/65, `pnpm test:shared` 602/602, `pnpm typecheck:web` 0
+  errors, `pnpm build:web` ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-17-r449-conflict-resolution-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

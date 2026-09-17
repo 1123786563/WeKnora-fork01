@@ -6,7 +6,9 @@ import { formatMessage, messages, supportedLocales } from '../src/index.ts';
 // tenant/user profile). Full parity is asserted per-section as panels land.
 // general.allSettings (R448-A2) guards the user-menu catch-all entry copy —
 // its presence across all five locales keeps the key-set guard meaningful.
-const SAMPLE_KEYS = ['general.title', 'general.allSettings', 'settings.retrieval.title', 'tenant.name', 'user.password.oldPassword', 'settings.title'];
+// settings.workspaceSettings (R449-A2) guards the user-menu tenant quick link
+// (Vue UserMenu.vue:83 $t('settings.workspaceSettings'), 「空间设置」).
+const SAMPLE_KEYS = ['general.title', 'general.allSettings', 'settings.retrieval.title', 'tenant.name', 'user.password.oldPassword', 'settings.title', 'settings.workspaceSettings'];
 
 test('settings messages are present across locales for sampled keys that exist', () => {
   let checked = 0;

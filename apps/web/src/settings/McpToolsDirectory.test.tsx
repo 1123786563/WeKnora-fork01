@@ -89,6 +89,15 @@ test('MCP tool detail trigger keeps the Vue open-state brand color', () => {
   assert.match(source, /className=\{`[^`]*\$\{isOpen \? 'text-\[#07c05f\]' : 'text-\[#66758b\]'\}`\}/);
 });
 
+test('MCP directory keeps the existing Chinese i18n copy', () => {
+  assert.match(source, /'mcpMetadata\.searchTools': '搜索工具名称或描述'/);
+});
+
+test('MCP policy saving only blocks the affected tool while global loading blocks all controls', () => {
+  assert.match(source, /busy \|\| busyTools\?\.has\(tool\.name\) === true/);
+  assert.match(source, /busyTools\?\.has\(tool\.name\) === true/);
+});
+
 test('MCP policy controls preserve the Vue inline control layout', () => {
   assert.match(source, /className="items-center cursor-pointer leading-5 inline-flex gap-2 text-\[12px\]/);
 });

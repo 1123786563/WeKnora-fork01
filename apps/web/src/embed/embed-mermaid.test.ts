@@ -26,7 +26,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
 
 const { renderEmbedChatMarkdown } = await import('./markdown.ts');
-const { EMBED_MERMAID_PREFIX, defaultEmbedMermaidLoader, hydrateEmbedAnswerMermaid } = await import('./mermaid.ts');
+const { EMBED_MERMAID_PREFIX, defaultEmbedMermaidLoader, hydrateEmbedAnswerMermaid, decorateEmbedMermaidChrome } = await import('./mermaid.ts');
 const { hydrateMermaidBlocks, hydrateMermaidBlocksWithBrowserDefaults } = await import('@weknora/views/chat/mermaid');
 
 function mermaidRoot(): { root: HTMLElement; pre: HTMLElement } {
@@ -158,4 +158,95 @@ test('an empty sanitized SVG is treated as a failure and keeps the code block', 
   );
   assert.ok(root.contains(pre));
   assert.equal(root.querySelector('.wk-chat-mermaid'), null);
+});
+
+// ─── R449/A3 — badge/fullscreen chrome (EmbedBotMessage.vue parity) ──────────
+// Vue embed face renders every mermaid block through buildMermaidBlockHtml
+// (frontend/src/utils/markdownEnhancements.ts L105): a header with a
+// mermaid.diagram badge and a mermaid.expand fullscreen button, and
+// attachMarkdownEnhancementListeners opens the fullscreen viewer. The React
+// face must decorate the hydrated .wk-chat-mermaid figure with the same chrome.
+
+const zhLabels = { badge: '图表', expand: '全屏查看', close: '关闭' };
+
+function hydratedRoot(): {
+  root: HTMLElement;
+  figure: HTMLElement;
+  engine: (node: HTMLElement, prefix?: string) => Promise<void>;
+} {
+  const root = document.createElement('div');
+  root.innerHTML = '<pre data-markdown-diagram="mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>';
+  document.body.appendChild(root);
+  const figure = document.createElement('figure');
+  figure.className = 'wk-chat-mermaid';
+  figure.setAttribute('role', 'img');
+  figure.innerHTML = '<svg width="10"><path d="M0 0"></path></svg>';
+  // Fake views engine: swap the escaped source block for the hydrated figure.
+  const engine = async () => { root.querySelector('pre')?.replaceWith(figure); };
+  return { root, figure, engine };
+}
+
+test('hydration decorates the svg figure with the Vue badge/expand header', async () => {
+  const { root, figure, engine } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(root, true, engine, zhLabels);
+  const block = root.querySelector('.embed-mermaid-block');
+  assert.ok(block, 'the hydrated figure gets the mermaid block wrapper');
+  assert.ok(block?.contains(figure), 'the svg figure stays inside the block');
+  const badge = block?.querySelector('.embed-mermaid-block__badge');
+  assert.equal(badge?.textContent, '图表', 'the header badge carries the mermaid.diagram label');
+  const expand = block?.querySelector<HTMLButtonElement>('.embed-mermaid-block__expand');
+  assert.ok(expand, 'the header carries the fullscreen expand button');
+  assert.equal(expand?.getAttribute('aria-label'), '全屏查看', 'expand matches the mermaid.expand label');
+  assert.equal(expand?.getAttribute('title'), '全屏查看');
+});
+
+test('hydration without labels (or a failed loader) leaves no chrome behind', async () => {
+  const { root: bare, engine } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(bare, true, engine);
+  assert.equal(bare.querySelector('.embed-mermaid-block'), null, 'no chrome without labels');
+
+  const { root: failed } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(failed, true, async () => { throw new Error('boom'); }, zhLabels);
+  assert.equal(failed.querySelector('.embed-mermaid-block'), null, 'no chrome when hydration fails');
+});
+
+test('expand opens a fullscreen viewer dialog, close and Escape dismiss it', async () => {
+  const { root, engine } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(root, true, engine, zhLabels);
+  const expand = root.querySelector<HTMLButtonElement>('.embed-mermaid-block__expand')!;
+  expand.click();
+  const viewer = document.body.querySelector('.embed-mermaid-viewer');
+  assert.ok(viewer, 'expand opens the fullscreen viewer');
+  assert.equal(viewer?.getAttribute('role'), 'dialog');
+  assert.equal(viewer?.getAttribute('aria-label'), '全屏查看');
+  assert.ok(viewer?.querySelector('svg path[d="M0 0"]'), 'the viewer shows the diagram svg');
+
+  const closeBtn = viewer?.querySelector<HTMLButtonElement>('.embed-mermaid-viewer__close');
+  assert.ok(closeBtn, 'the viewer offers a close control');
+  assert.equal(closeBtn?.getAttribute('aria-label'), '关闭');
+  closeBtn!.click();
+  assert.equal(document.body.querySelector('.embed-mermaid-viewer'), null, 'close dismisses the viewer');
+
+  expand.click();
+  assert.ok(document.body.querySelector('.embed-mermaid-viewer'), 'expand reopens');
+  const EscapeEvent = (window as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+  document.dispatchEvent(new EscapeEvent('keydown', { key: 'Escape' }));
+  assert.equal(document.body.querySelector('.embed-mermaid-viewer'), null, 'Escape dismisses the viewer');
+});
+
+test('the expand button is disabled until an svg exists (Vue syncMermaidExpandButtons)', () => {
+  const root = document.createElement('div');
+  root.innerHTML = '<figure class="wk-chat-mermaid" role="img"></figure>';
+  document.body.appendChild(root);
+  decorateEmbedMermaidChrome(root, zhLabels);
+  const expand = root.querySelector<HTMLButtonElement>('.embed-mermaid-block__expand')!;
+  assert.ok(expand.disabled, 'no svg means the fullscreen action stays disabled');
+});
+
+test('figures already decorated are not wrapped twice', async () => {
+  const { root, engine } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(root, true, engine, zhLabels);
+  decorateEmbedMermaidChrome(root, zhLabels);
+  assert.equal(root.querySelectorAll('.embed-mermaid-block').length, 1, 'decoration is idempotent');
+  assert.equal(root.querySelectorAll('.embed-mermaid-block__badge').length, 1);
 });

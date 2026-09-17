@@ -238,6 +238,117 @@
   height: auto;
 }
 
+/* R449/A3 — badge/fullscreen chrome (EmbedBotMessage.vue parity). The hydrated
+ * figure is wrapped in .embed-mermaid-block with a header carrying the
+ * mermaid.diagram badge and the mermaid.expand fullscreen button
+ * (chat-markdown.less chat-mermaid-block__header/__badge/__expand). */
+.embed-chat-markdown .embed-mermaid-block {
+  margin: 8px 0;
+  border: 1px solid #e7eaef;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.embed-chat-markdown .embed-mermaid-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #eef1f5;
+  background: #f5f7fa;
+}
+
+.embed-chat-markdown .embed-mermaid-block__badge {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+}
+
+.embed-chat-markdown .embed-mermaid-block__expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.embed-chat-markdown .embed-mermaid-block__expand:hover {
+  background: #e7eaef;
+  color: #1f2329;
+}
+
+.embed-chat-markdown .embed-mermaid-block__expand:disabled,
+.embed-chat-markdown .embed-mermaid-block__expand.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.embed-chat-markdown .embed-mermaid-block .wk-chat-mermaid {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* Fullscreen viewer overlay (Vue openMermaidFullscreen minimal face): fixed
+ * dialog showing the diagram svg, dismissed by the close button, an overlay
+ * click, or Escape. */
+.embed-mermaid-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 18, 25, 0.72);
+  cursor: zoom-out;
+}
+
+.embed-mermaid-viewer__stage {
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 24px;
+  cursor: default;
+}
+
+.embed-mermaid-viewer__stage svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.embed-mermaid-viewer__close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1f2329;
+  cursor: pointer;
+}
+
+.embed-mermaid-viewer__close:hover {
+  background: #ffffff;
+}
+
 /* Pre-hydration the escaped source block renders like the plain code blocks
  * (Vue shows the same source inside the mermaid card while streaming). */
 .embed-chat-markdown pre[data-markdown-diagram="mermaid"] {

@@ -86,3 +86,18 @@ test('hides protected graph actions unless the caller explicitly grants admin ca
   assert.equal(shouldRenderGraphActions(false), false);
   assert.equal(shouldRenderGraphActions(true), true);
 });
+
+test('keeps the existing Chinese graph settings copy instead of replacing i18n with English literals', () => {
+  for (const marker of ['知识图谱配置', '启用实体关系提取', '关系类型', '示例文本', '实体列表', '关系列表', '提取操作', '知识图谱数据库未启用，实体关系提取功能将无法使用']) {
+    assert.match(source, new RegExp(marker));
+  }
+  assert.doesNotMatch(source, /Knowledge Graph Configuration/);
+});
+
+test('does not leave graph system status stuck in loading when no client is available', () => {
+  assert.match(source, /!client[\s\S]*setSystem\(\{ status: 'error'/);
+});
+
+test('resets graph system state when the supplied database engine changes', () => {
+  assert.match(source, /graphDatabaseEngine !== undefined[\s\S]*setSystem\(\{ status: 'ready', engine: graphDatabaseEngine \}\)/);
+});

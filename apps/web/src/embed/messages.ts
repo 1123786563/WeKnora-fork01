@@ -21,7 +21,9 @@ export type EmbedTextKey =
   | 'referencesDocAndWebCount'
   | 'followUpQuestions'
   | 'refreshSuggestedQuestions'
-  | 'close';
+  | 'close'
+  | 'mermaidDiagram'
+  | 'mermaidExpand';
 
 export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
   'zh-CN': {
@@ -44,6 +46,8 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     followUpQuestions: '继续问',
     refreshSuggestedQuestions: '换一批',
     close: '关闭',
+    mermaidDiagram: '图表',
+    mermaidExpand: '全屏查看',
   },
   'en-US': {
     loadError: 'Failed to load',
@@ -65,6 +69,8 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     followUpQuestions: 'Keep asking',
     refreshSuggestedQuestions: 'More',
     close: 'Close',
+    mermaidDiagram: 'Diagram',
+    mermaidExpand: 'Expand',
   },
   'ja-JP': {
     loadError: '読み込みに失敗しました',
@@ -86,6 +92,8 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     followUpQuestions: '続けて質問',
     refreshSuggestedQuestions: '別の質問',
     close: '閉じる',
+    mermaidDiagram: '図',
+    mermaidExpand: '全画面表示',
   },
   'ko-KR': {
     loadError: '로드 실패',
@@ -107,6 +115,8 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     followUpQuestions: '이어서 질문',
     refreshSuggestedQuestions: '다른 질문',
     close: '닫기',
+    mermaidDiagram: '다이어그램',
+    mermaidExpand: '전체 화면',
   },
   'ru-RU': {
     loadError: 'Не удалось загрузить',
@@ -128,6 +138,8 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     followUpQuestions: 'Спрашивайте дальше',
     refreshSuggestedQuestions: 'Ещё',
     close: 'Закрыть',
+    mermaidDiagram: 'Диаграмма',
+    mermaidExpand: 'На весь экран',
   },
 };
 

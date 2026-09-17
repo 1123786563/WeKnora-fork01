@@ -67,7 +67,7 @@ const documentsPageKeys = [
   'knowledgeBase.documents.url', 'knowledgeBase.documents.manualTitle', 'knowledgeBase.documents.manualContent',
   'knowledgeBase.documents.uploadFile', 'knowledgeBase.documents.importUrl', 'knowledgeBase.documents.createDocument',
   'knowledgeBase.documents.cancel', 'knowledgeBase.documents.statusUnknown', 'knowledgeBase.documents.loadingDocuments',
-  'knowledgeBase.documents.noDocuments', 'knowledgeBase.documents.root', 'knowledgeBase.documents.viewerReadonly',
+  'knowledgeBase.documents.noDocuments', 'knowledgeBase.documents.root',
   'knowledgeBase.documents.tabDocuments', 'knowledgeBase.documents.tabWiki', 'knowledgeBase.documents.tabGraph',
   'knowledgeBase.documents.detail', 'knowledgeBase.timeline.title', 'knowledgeBase.timeline.pending',
   'knowledgeBase.timeline.running', 'knowledgeBase.timeline.done', 'knowledgeBase.timeline.failed',
