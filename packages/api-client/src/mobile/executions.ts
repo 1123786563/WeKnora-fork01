@@ -42,6 +42,89 @@ export interface RequestLookup {
   reason?: string;
 }
 
+/** One owned workbench execution row. Navigation fields come from the run snapshot. */
+export interface WorkbenchExecutionItem {
+  run_id: string;
+  session_id: string;
+  agent_id?: string;
+  target_id?: string;
+  workspace_ref?: string;
+  space_id?: string;
+  status: string;
+  wait_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkbenchExecutionList {
+  items: WorkbenchExecutionItem[];
+  next_cursor?: string;
+}
+
+/**
+ * List facets. Tenant and owner are deliberately absent: the server derives
+ * them from the credential, and the cursor is bound to the exact filter it
+ * was issued under.
+ */
+export interface ExecutionListParams {
+  status?: string;
+  agent_id?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+function buildListQuery(params: ExecutionListParams = {}): string {
+  const query = new URLSearchParams();
+  if (params.status && params.status.trim() !== '') query.set('status', params.status);
+  if (params.agent_id && params.agent_id.trim() !== '') query.set('agent_id', params.agent_id);
+  if (params.cursor && params.cursor.trim() !== '') query.set('cursor', params.cursor);
+  if (typeof params.limit === 'number' && Number.isSafeInteger(params.limit) && params.limit > 0) {
+    query.set('limit', String(params.limit));
+  }
+  return query.toString();
+}
+
+const runStatuses = new Set(['queued', 'running', 'waiting_user', 'reconciling', 'succeeded', 'failed', 'canceled']);
+
+function optionalText(value: unknown, name: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new ContractError(name, 'must be a string when present');
+  return value;
+}
+
+function parseExecutionItem(value: unknown): WorkbenchExecutionItem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('execution list item must be an object');
+  const row = value as Record<string, unknown>;
+  if (typeof row.run_id !== 'string' || row.run_id.trim() === '') throw new ContractError('run_id', 'is required on every list item');
+  if (typeof row.session_id !== 'string' || row.session_id.trim() === '') throw new ContractError('session_id', 'is required on every list item');
+  if (typeof row.status !== 'string' || !runStatuses.has(row.status)) throw new ContractError('status', 'is an unknown run status');
+  if (typeof row.created_at !== 'string' || row.created_at.trim() === '') throw new ContractError('created_at', 'is required on every list item');
+  if (typeof row.updated_at !== 'string' || row.updated_at.trim() === '') throw new ContractError('updated_at', 'is required on every list item');
+  return {
+    run_id: row.run_id,
+    session_id: row.session_id,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    ...(optionalText(row.agent_id, 'agent_id') === undefined ? {} : { agent_id: row.agent_id as string }),
+    ...(optionalText(row.target_id, 'target_id') === undefined ? {} : { target_id: row.target_id as string }),
+    ...(optionalText(row.workspace_ref, 'workspace_ref') === undefined ? {} : { workspace_ref: row.workspace_ref as string }),
+    ...(optionalText(row.space_id, 'space_id') === undefined ? {} : { space_id: row.space_id as string }),
+    ...(optionalText(row.wait_reason, 'wait_reason') === undefined ? {} : { wait_reason: row.wait_reason as string }),
+  };
+}
+
+function parseExecutionList(value: unknown): WorkbenchExecutionList {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('execution list.data must be an object');
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.items)) throw new ContractError('items', 'must be an array');
+  const cursor = optionalText(row.next_cursor, 'next_cursor');
+  return {
+    items: row.items.map(parseExecutionItem),
+    ...(cursor === undefined ? {} : { next_cursor: cursor }),
+  };
+}
+
 type Request = (input: ClientRequest) => Promise<unknown>;
 
 function required(value: string, name: string): string {
@@ -166,6 +249,16 @@ export function executionEventsRequest(runID: string, lastEventID?: string): Cli
 }
 
 export function createExecutionsApi(request: Request) {
+  const list = async (params: ExecutionListParams = {}, signal?: AbortSignal): Promise<WorkbenchExecutionList> => {
+    const query = buildListQuery(params);
+    const response = await request({
+      method: 'GET',
+      path: `/api/v1/workbench/executions${query === '' ? '' : `?${query}`}`,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    return parseExecutionList(unwrap(response));
+  };
+
   const get = async (runID: string, signal?: AbortSignal): Promise<ExecutionDTO> => {
     const requestedRunID = required(runID, 'runID');
     const response = await request({ method: 'GET', path: `/api/v1/workbench/executions/${pathId(requestedRunID, 'runID')}`, ...(signal === undefined ? {} : { signal }) });
@@ -197,7 +290,7 @@ export function createExecutionsApi(request: Request) {
     return parseCommandAck(unwrap(response), requestedRunID, input.action);
   };
 
-  return { get, snapshot, start, lookup, command };
+  return { list, get, snapshot, start, lookup, command };
 }
 
 export type ExecutionsApi = ReturnType<typeof createExecutionsApi>;

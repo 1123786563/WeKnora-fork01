@@ -9,9 +9,14 @@ import (
 // RegisterWorkbenchRoutes exposes the versioned, ownership-scoped mobile
 // execution read API. The handler performs the final owner predicate; this
 // route guard only establishes the existing Viewer/API-key boundary.
-func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler, g *rbacGuards, targetHandlers ...*handler.ExecutionTargetHandler) {
+func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler, list *session.WorkbenchListHandler, g *rbacGuards, targetHandlers ...*handler.ExecutionTargetHandler) {
 	if g == nil {
 		return
+	}
+	if list != nil {
+		executions := r.Group("/workbench/executions", g.Viewer())
+		workbench := g.apiKeyGroup(executions, apiKeyChat(apiKeyFullAccess()))
+		workbench.GET("", list.ListWorkbenchExecutions)
 	}
 	if h != nil {
 		executions := r.Group("/workbench/executions", g.Viewer())

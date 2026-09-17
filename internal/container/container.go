@@ -188,6 +188,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
 	must(container.Provide(NewWorkbenchReadHandler))
+	must(container.Provide(repository.NewWorkbenchListStore))
+	must(container.Provide(NewWorkbenchListHandler))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))
 	must(container.Provide(NewWorkbenchInteractionStore))

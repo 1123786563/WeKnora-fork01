@@ -2,9 +2,9 @@ import { Text, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { router, useRouter } from "expo-router";
-import { MainView } from "@/components/MainView";
 import { Redirect } from 'expo-router';
 import { useProductAuth } from '@/weknora/auth/session';
+import { WorkbenchScreen } from '@/weknora/workbench/WorkbenchScreen';
 
 export default function Home() {
     const auth = useProductAuth();
@@ -16,7 +16,7 @@ export default function Home() {
 function Authenticated() {
     return (
         <View style={{ flex: 1 }}>
-            <MainView variant="phone" />
+            <WorkbenchScreen />
             <ProductNavigation />
         </View>
     );

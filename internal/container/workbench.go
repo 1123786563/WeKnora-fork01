@@ -20,6 +20,12 @@ func NewWorkbenchReadHandler(
 	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor)
 }
 
+// NewWorkbenchListHandler wires the mobile workbench list to the ownership-
+// scoped repository; tenant/owner always come from the authenticated context.
+func NewWorkbenchListHandler(lists *repository.WorkbenchListStore) *session.WorkbenchListHandler {
+	return session.NewWorkbenchListHandler(lists)
+}
+
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.
