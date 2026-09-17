@@ -29,7 +29,7 @@
 | A6 | XMind 文件导入白名单 | `d812645` | docparser 已有 xmind 引擎，导入白名单待核 | ✅ 完成（本轮，fork 白名单本已含 xmind，补齐上传扩展名校验一致性） |
 | A7 | 共享连接器文件名净化 | `820a14d` internal/datasource/filename.go | 各连接器各自实现 | ✅ 完成（本轮，新增共享包，原连接器实现保留） |
 | A8 | Confluence 同步连接器 | `01f0700` internal/datasource/connector/confluence | 无 | ✅ 完成（2026-09-18 第 14 轮，worktree eb12a2e2：整包应用+FullStreamingConnector+去重源域收敛+容器注册；/datasource/types 实测返回 confluence deletion_sync；前端表单细化留 UI 轮） |
-| A9 | 钉钉连接器（stream-only） | `internal/datasource/connector/dingtalk` + 迁移 000017/000096 | 无 | ⬜ 待办（大条目） |
+| A9 | 钉钉连接器（stream-only） | `5d3114f` internal/datasource/connector/dingtalk + d7ccd5b 迁移 | 无 | ✅ 完成（2026-09-18 第 15 轮，worktree 035d710b：整包 32 测试+FullSyncWithCursor+迁移重编 000152+容器实测 oauth2/deletion_sync） |
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
 | A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ⬜ 待办（大条目，需适配 trpc-agent-go checkpoint） |
 | A12 | 记忆提取（memory extraction/lifecycle/vector） | `internal/application/repository/memory_*.go` + 迁移 | 仅旧 memory.go | ⬜ 待办（大条目） |
@@ -38,7 +38,7 @@
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
 | A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ⬜ 待办 |
 | A17 | workspace_checkpointer / pinned_session_sandbox | `internal/application/service/` | 无 | ⬜ 待办（评估与 trpc checkpoint 关系） |
-| A18 | im channel_security | `internal/im/channel_security.go` | 无 | ⬜ 待办 |
+| A18 | im channel_security | `d7ccd5b` internal/im/channel_security.go | 无 | ✅ 完成（第 15 轮，同上：三入口拦截+4 组合单测） |
 | A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ⬜ 待办 |
 | A20 | embedpolicy 目录 | `internal/embedpolicy/` | 无 | ⬜ 待办（评估：fork embed-secure-mode 已有自有实现，可能 ⛔） |
 | A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | fork 编号已独立至 000135，需新编号追加 | ⬜ 随 A11/A12/A13 |
@@ -247,6 +247,24 @@
 - **门禁**：go build ./... 0；confluence 包测试全过；streamingFetch 单测过。**容器级验证**：镜像重建 healthy，`GET /api/v1/datasource/types` 实测返回 confluence（capabilities=[incremental, deletion_sync]，与上游一致），17 个连接器类型全列。
 - 前端（Vue DataSourceEditorDialog/datasourceIcons）与 React 设置页的数据源编辑器对接：上游 Vue 侧 71 行改动未随本轮（fork 的 React DataSourceEditor 已有通道枚举渲染，confluence 通过 types API 自动出现——已由容器验证证实）；图标与表单字段细化留待 UI 对齐轮。
 - **A8 状态：✅ 完成**。
+
+### 2026-09-18 第 15 轮（A9 钉钉连接器 + A18 im 通道安全）✅
+
+> worktree 提交 `035d710b`（17 文件 +3337 行）。一轮双条目。
+
+**A9 钉钉 Docs 同步连接器**（上游 5d3114f）：
+- connector/dingtalk 整包干净应用（client 524 行 OAuth+drive/dentry、connector 930 行安全同步+删除对账、markdown 441、resource 154 + 6 测试文件——**32 测试全过**）。
+- **FullSyncWithCursor 接口**（registry 层）：ForceFull/sync_mode=full 分派 FetchAllFromCursor——钉钉全量同步重取所有文档同时对旧 cursor 做删除对账（服务层分派同上游）。
+- 容器注册+metadata 升级（oauth2+deletion_sync+上游新描述）。
+- 迁移按 fork 编号纪律重编 **000152**_dingtalk_stream_only（上游 000096 与 fork execution_targets 撞号）：存量钉钉 im_channels webhook→websocket。
+- **容器实测**：镜像重建 healthy；`GET /datasource/types` 返回 dingtalk `{auth_type:oauth2, capabilities:[incremental,deletion_sync]}`；schema_migrations 推进到 **152**（迁移真实执行）。
+
+**A18 im 通道安全**（上游 d7ccd5b）：
+- `internal/im/channel_security.go`：validateChannelTransport——钉钉通道拒绝非 Stream 传输（HTTP 签名只认证时间戳不认证消息体），挂在 StartChannel/CreateChannel/UpdateChannel 三个入口（上游三处同位）。4 组合单测过。
+- 与 A9 的 stream-only 迁移构成同一条安全链（先修存量数据，再拦新增/更新）。
+
+**门禁**：go build ./... 0；dingtalk 32/32、im 包 ok。
+- **A9/A18 状态：✅ 完成**（钉钉前端表单/i18n 与 confluence 同留 UI 对齐轮）。
 
 ## G. 纪律与教训
 
