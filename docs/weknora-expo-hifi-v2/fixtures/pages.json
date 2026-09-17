@@ -1,0 +1,437 @@
+[
+  {
+    "id": "login",
+    "title": "登录",
+    "group": "身份",
+    "no": "M01",
+    "icon": "shield",
+    "intent": "以 WeKnora 产品身份开始",
+    "task": "MX-010",
+    "api": "产品 auth；OIDC SDK 路径沿原方案复验",
+    "rule": "邮箱、密码仅存在临时表单；登录后拉 memberships；不保存到原型缓存。",
+    "fields": [
+      "邮箱",
+      "密码",
+      "企业 SSO",
+      "可信服务器"
+    ],
+    "actions": [
+      "进入演示空间",
+      "企业 SSO 流程",
+      "高级服务器说明"
+    ]
+  },
+  {
+    "id": "spaces",
+    "title": "选择空间",
+    "group": "身份",
+    "no": "M02",
+    "icon": "layers",
+    "intent": "将工作与个人空间清晰分开",
+    "task": "MX-011",
+    "api": "bootstrap / memberships（聚合为提议）",
+    "rule": "先禁写、推进 generation、清可见态再切空间；已有任务不取消。",
+    "fields": [
+      "空间名称",
+      "角色",
+      "当前标识",
+      "独立计费说明"
+    ],
+    "actions": [
+      "选中空间",
+      "返回当前页"
+    ]
+  },
+  {
+    "id": "home",
+    "title": "工作台",
+    "group": "工作",
+    "no": "M03",
+    "icon": "home",
+    "intent": "今天，交给 Agent 做点什么",
+    "task": "MX-013",
+    "api": "GET /workbench/overview（提议）",
+    "rule": "我的任务，不等于全空间所有任务；聚合由后端授权后生成。",
+    "fields": [
+      "当前空间",
+      "任务计数",
+      "待处理",
+      "进行中",
+      "最近成果"
+    ],
+    "actions": [
+      "新建任务",
+      "处理审批",
+      "查看执行",
+      "打开收件箱"
+    ]
+  },
+  {
+    "id": "sessions",
+    "title": "会话",
+    "group": "工作",
+    "no": "M04",
+    "icon": "chat",
+    "intent": "每一次协作，都可以继续",
+    "task": "MX-014",
+    "api": "复用会话列表；缺聚合时新增薄读模型",
+    "rule": "查询键带 origin/user/tenant；过滤按服务端分页，不逐会话 N+1。",
+    "fields": [
+      "搜索",
+      "状态筛选",
+      "会话名称",
+      "Agent",
+      "最近更新"
+    ],
+    "actions": [
+      "搜索会话",
+      "切换状态",
+      "打开会话",
+      "新建"
+    ]
+  },
+  {
+    "id": "new",
+    "title": "新建任务",
+    "group": "工作",
+    "no": "M05",
+    "icon": "plus",
+    "intent": "说清目标，其他交给 Agent",
+    "task": "MX-015",
+    "api": "POST /workbench/executions（已读）；资源配置另接口",
+    "rule": "request_id 在网络前持久化；knowledge/attachments 不私自添加到已有 start body。",
+    "fields": [
+      "Agent",
+      "任务描述",
+      "附件",
+      "知识范围",
+      "执行目标",
+      "预算上限"
+    ],
+    "actions": [
+      "选择 Agent",
+      "添加附件演示",
+      "选知识",
+      "选目标",
+      "提交任务"
+    ]
+  },
+  {
+    "id": "agents",
+    "title": "选择 Agent",
+    "group": "工作",
+    "no": "M06",
+    "icon": "spark",
+    "intent": "为这项工作找一个合适的助手",
+    "task": "MX-016",
+    "api": "空间可见 Agent 目录；能力取服务端",
+    "rule": "不可用 coding 能力保留原因；无权 Agent 不暴露敏感配置。",
+    "fields": [
+      "Agent 名称",
+      "类别",
+      "能力标签",
+      "可用状态"
+    ],
+    "actions": [
+      "搜索 Agent",
+      "切换类别",
+      "选择返回"
+    ]
+  },
+  {
+    "id": "conversation",
+    "title": "对话",
+    "group": "工作",
+    "no": "M07",
+    "icon": "chat",
+    "intent": "消息、证据与执行放在一起",
+    "task": "MX-017",
+    "api": "snapshot / events；SSE envelope 先修复 G01",
+    "rule": "渲染不依赖 Happy 全局会话；用户上滑后不强制滚到底。",
+    "fields": [
+      "角色消息",
+      "引用",
+      "工具活动",
+      "审批卡",
+      "成果卡",
+      "输入框"
+    ],
+    "actions": [
+      "发送补充",
+      "查看审批",
+      "查看引用",
+      "查看执行",
+      "语音输入"
+    ]
+  },
+  {
+    "id": "run",
+    "title": "执行详情",
+    "group": "工作",
+    "no": "M08",
+    "icon": "activity",
+    "intent": "任务、进程与费用，各自说明",
+    "task": "MX-018",
+    "api": "get / snapshot / lookup / commands（已读）",
+    "rule": "申请取消不等于停止已确认，unknown 不允许新请求重发。",
+    "fields": [
+      "产品状态",
+      "执行观察",
+      "结算状态",
+      "request_id",
+      "预算",
+      "时间线"
+    ],
+    "actions": [
+      "申请取消",
+      "查询原请求",
+      "返回对话",
+      "查看成果"
+    ]
+  },
+  {
+    "id": "approval",
+    "title": "操作审批",
+    "group": "工作",
+    "no": "M09",
+    "icon": "shield",
+    "intent": "先看清影响，再决定一次",
+    "task": "MX-019",
+    "api": "interactions / decisions（路径已读，body 为提议）",
+    "rule": "工具批准、预算增加、连接授权分开；确认时重新校验 revision。",
+    "fields": [
+      "动作",
+      "连接账号",
+      "目标",
+      "内容摘要",
+      "风险",
+      "有效期",
+      "revision"
+    ],
+    "actions": [
+      "批准一次",
+      "拒绝",
+      "刷新冲突",
+      "二次确认"
+    ]
+  },
+  {
+    "id": "inbox",
+    "title": "收件箱",
+    "group": "工作",
+    "no": "M10",
+    "icon": "bell",
+    "intent": "只把需要关注的事情带给你",
+    "task": "MX-021",
+    "api": "GET /workbench/inbox（提议）",
+    "rule": "通知只是提示；回到详情重新授权，不能从通知直接批准。",
+    "fields": [
+      "类别",
+      "未读",
+      "事项摘要",
+      "空间",
+      "更新时间"
+    ],
+    "actions": [
+      "筛选待处理",
+      "标记全部已读",
+      "打开授权详情"
+    ]
+  },
+  {
+    "id": "resources",
+    "title": "资源",
+    "group": "资源",
+    "no": "M11",
+    "icon": "grid",
+    "intent": "为你的 Agent 准备好工具",
+    "task": "MX-022",
+    "api": "沿用知识 / Agent / 连接 / 产物 API",
+    "rule": "只读消费与轻管理；能力未验收不开放外部写入。",
+    "fields": [
+      "搜索",
+      "分类",
+      "资源计数",
+      "知识",
+      "连接",
+      "成果"
+    ],
+    "actions": [
+      "筛选资源",
+      "查看知识",
+      "查看连接",
+      "查看成果",
+      "远程目标"
+    ]
+  },
+  {
+    "id": "knowledge",
+    "title": "知识详情",
+    "group": "资源",
+    "no": "M12",
+    "icon": "book",
+    "intent": "答案要有依据",
+    "task": "MX-022",
+    "api": "沿用知识库、文档、引用 API",
+    "rule": "知识不是必选；引用访问重新授权；索引未就绪不参与检索。",
+    "fields": [
+      "知识库",
+      "可用文档",
+      "更新时间",
+      "文档行",
+      "引用片段"
+    ],
+    "actions": [
+      "用此知识提问",
+      "预览文档",
+      "收藏"
+    ]
+  },
+  {
+    "id": "connector",
+    "title": "连接详情",
+    "group": "资源",
+    "no": "M13",
+    "icon": "link",
+    "intent": "明确连接到哪里、允许做什么",
+    "task": "MX-023",
+    "api": "产品 Connection / ActionService，非 OC 管理接口",
+    "rule": "一项连接一个凭据管理方；撤销不回滚外部副作用。",
+    "fields": [
+      "Provider",
+      "个人/空间连接",
+      "账号",
+      "授权范围",
+      "动作能力",
+      "状态"
+    ],
+    "actions": [
+      "重新授权演示",
+      "撤销连接",
+      "查看动作范围"
+    ]
+  },
+  {
+    "id": "artifact",
+    "title": "任务成果",
+    "group": "资源",
+    "no": "M14",
+    "icon": "file",
+    "intent": "把结果变成可带走的工作",
+    "task": "MX-024",
+    "api": "受授权 artifact ID + version / 短期下载",
+    "rule": "模拟 Markdown 可本地下载；正式版签名 URL 不进持久缓存。",
+    "fields": [
+      "文件名",
+      "版本",
+      "来源 Run",
+      "正文预览",
+      "大小",
+      "访问范围"
+    ],
+    "actions": [
+      "预览",
+      "下载演示文件",
+      "分享说明",
+      "查看来源任务"
+    ]
+  },
+  {
+    "id": "targets",
+    "title": "执行目标",
+    "group": "资源",
+    "no": "M15",
+    "icon": "monitor",
+    "intent": "让任务在合适的地方执行",
+    "task": "MX-026",
+    "api": "execution-targets / execution-workspaces（已读）",
+    "rule": "手机只选受权引用；无任意 daemon URL 或 shell RPC。",
+    "fields": [
+      "平台目标",
+      "托管节点",
+      "个人节点",
+      "状态",
+      "支持能力",
+      "工作目录引用"
+    ],
+    "actions": [
+      "选择平台",
+      "选择已验证托管目标",
+      "查看不可用原因"
+    ]
+  },
+  {
+    "id": "voice",
+    "title": "语音输入",
+    "group": "原生",
+    "no": "M16",
+    "icon": "mic",
+    "intent": "先说出来，再确认发送",
+    "task": "MX-028",
+    "api": "按 W29 转写端口；实时语音另门禁",
+    "rule": "当前不请求麦克风；演示转写可编辑，发送使用最新文本。",
+    "fields": [
+      "录音/转写状态",
+      "音频指示",
+      "可编辑转写",
+      "隐私说明"
+    ],
+    "actions": [
+      "开始模拟录音",
+      "停止并转写",
+      "编辑文本",
+      "放入会话草稿"
+    ]
+  },
+  {
+    "id": "profile",
+    "title": "我的",
+    "group": "原生",
+    "no": "M17",
+    "icon": "user",
+    "intent": "工作方式，由你决定",
+    "task": "MX-030",
+    "api": "产品用户、scope、偏好和设备绑定",
+    "rule": "账单管理员单独授权；注销清凭证与本地敏感缓存。",
+    "fields": [
+      "用户",
+      "空间",
+      "角色",
+      "主题",
+      "通知",
+      "隐私",
+      "退出"
+    ],
+    "actions": [
+      "切空间",
+      "看用量",
+      "切主题",
+      "通知偏好",
+      "退出"
+    ]
+  },
+  {
+    "id": "usage",
+    "title": "空间用量",
+    "group": "原生",
+    "no": "M18",
+    "icon": "pie",
+    "intent": "知道用在哪里，也知道边界",
+    "task": "MX-031",
+    "api": "商业域读取适配；不创建新钱包",
+    "rule": "余额、预占、最终消耗分别显示；本原型不含购买与支付。",
+    "fields": [
+      "周期",
+      "可用额度",
+      "预占",
+      "已结算",
+      "用量构成",
+      "最近任务"
+    ],
+    "actions": [
+      "查看任务费用",
+      "账单角色说明",
+      "返回我的"
+    ]
+  }
+]

@@ -10,6 +10,10 @@ class MiniAbortSignal {
     if(this.aborted){cb();return}
     this.listeners.push(cb);
   }
+  removeEventListener(_type:'abort',cb:()=>void):void{
+    const i=this.listeners.indexOf(cb);
+    if(i!==-1)this.listeners.splice(i,1);
+  }
 }
 class MiniAbortController {
   signal=new MiniAbortSignal();

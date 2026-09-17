@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-17",
+  "scope": "Design deliverables only, not repository/native/backend implementation",
+  "source_baseline_inherited": "12737238aa7b9d6891e76b2397f6941024f45668",
+  "screens": 18,
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "mx_tasks": 36,
+  "all_mx_engineering_status": "pending",
+  "reports": {
+    "browser-layout.json": {
+      "passed": 252,
+      "failed": 0,
+      "sha256": "84df33d14657100f9e5b1f08616eb4a5ab497f93461b5f8b188d992da291666b"
+    },
+    "browser-interactions.json": {
+      "passed": 31,
+      "failed": 0,
+      "sha256": "2f5bf5874d6fb8e17d5583f3a6e418db55bcffd52f050baab6498fe2cf498a21"
+    },
+    "static-report.json": {
+      "passed": 85,
+      "failed": 0,
+      "sha256": "987ea355849dd8d0a5cbb7aab970c6854fb6ecbec139ed04a57de17d42a43057"
+    },
+    "handbook-report.json": {
+      "passed": 28,
+      "failed": 0,
+      "sha256": "d473f3e6b03e1fdb755b1fdd10c55256583b83939ecbb4e6ecd31315ea17482e"
+    }
+  },
+  "native_backend_live_services": "not_run",
+  "typecheck": "two delivered TS files, exit 0",
+  "prototype_node_tests": {
+    "passed": 8,
+    "failed": 0
+  },
+  "fonts_packaged": false
+}

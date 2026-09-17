@@ -1,0 +1,377 @@
+{
+  "repository": "1123786563/WeKnora-fork01",
+  "baseline_sha": "12737238aa7b9d6891e76b2397f6941024f45668",
+  "inspected_at": "2026-09-17",
+  "mode": "static targeted source review",
+  "full_clone": false,
+  "clone_failure": "container DNS could not resolve github.com",
+  "production_project_tests_run": false,
+  "github_writes": false,
+  "entries": [
+    {
+      "id": "S01",
+      "path": "packages/api-client/src/knowledge/documents.test.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/packages/api-client/src/knowledge/documents.test.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "main提交元数据及变更片段",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S02",
+      "path": "go.mod",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/go.mod",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–120；apps 目录由 GitHub tree读取",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S03",
+      "path": "CONTEXT.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/CONTEXT.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S04",
+      "path": "apps/mobile/package.json",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/package.json",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S05",
+      "path": "package.json",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/package.json",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S05",
+      "path": "apps/web/package.json",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/web/package.json",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S06",
+      "path": "apps/web/src/App.tsx",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/web/src/App.tsx",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–125；另读取src目录元数据",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S07",
+      "path": "packages/views/src/index.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/packages/views/src/index.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S08",
+      "path": "internal/router/routes_workbench.go",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/internal/router/routes_workbench.go",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S08",
+      "path": "internal/handler/session/workbench_read.go",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/internal/handler/session/workbench_read.go",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–370，分段读取",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S09",
+      "path": "packages/api-client/src/mobile/executions.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/packages/api-client/src/mobile/executions.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S10",
+      "path": "apps/mobile/sources/weknora/auth/session.tsx",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/auth/session.tsx",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文；不代表product-session依赖已完整审计",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S11",
+      "path": "apps/mobile/sources/weknora/auth/session.tsx",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/auth/session.tsx",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S12",
+      "path": "apps/mobile/sources/weknora/conversations/view-model.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/conversations/view-model.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–210",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S12",
+      "path": "apps/mobile/sources/weknora/conversations/ConversationScreen.tsx",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/conversations/ConversationScreen.tsx",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S13",
+      "path": "packages/api-client/src/auth/oidc.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/packages/api-client/src/auth/oidc.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S14",
+      "path": "apps/mobile/sources/-session/SessionView.tsx",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/-session/SessionView.tsx",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–155",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S15",
+      "path": "apps/mobile/sources/weknora/platform/stream-transport.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/platform/stream-transport.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S16",
+      "path": "apps/mobile/sources/weknora/platform/execution-storage.ts",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/apps/mobile/sources/weknora/platform/execution-storage.ts",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–180",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S17",
+      "path": "docs/superpowers/specs/2026-09-12-mobile-ai-saas-workbench-architecture.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/specs/2026-09-12-mobile-ai-saas-workbench-architecture.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "架构开头至第4节附近；大文件返回截断，未声称全文阅读",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S17",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-ai-saas-workbench.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-ai-saas-workbench.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–180关键章节；返回存在截断",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S18",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-01-core.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-01-core.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–105",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S19",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-02-client.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-02-client.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–100，170–268",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S20",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-03-notifications.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-03-notifications.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–90",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S21",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-04-paseo.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-04-paseo.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–95",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S22",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-05-resources-voice.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-05-resources-voice.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–100",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S23",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-06-delivery.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-06-delivery.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–100",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S24",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-code-agent-prompt.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-code-agent-prompt.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–105；返回尾部截断",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S24",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-execution-dag.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-execution-dag.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "完整节点/直接依赖/条件依赖与并行/热点部分；返回尾部截断",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S24",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-plan-review.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-plan-review.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S24",
+      "path": "docs/superpowers/plans/2026-09-12-mobile-workbench-task-index.json",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-mobile-workbench-task-index.json",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–160",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S24",
+      "path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/mobile-workbench-progress.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "全文",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S25",
+      "path": "docs/superpowers/plans/2026-09-12-open-connector-integration.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-open-connector-integration.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–135",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S25",
+      "path": "docs/superpowers/plans/2026-09-12-open-connector-code-agent-prompt.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-open-connector-code-agent-prompt.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–85",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    },
+    {
+      "id": "S26",
+      "path": "docs/superpowers/plans/2026-09-12-open-connector-progress.md",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/12737238aa7b9d6891e76b2397f6941024f45668/docs/superpowers/plans/2026-09-12-open-connector-progress.md",
+      "ref": "12737238aa7b9d6891e76b2397f6941024f45668",
+      "read_scope": "1–120请求返回至T18附近截断；补读28–65核对完整T18与证据开头",
+      "method": "GitHub connector read-only",
+      "runtime_verified": false
+    }
+  ],
+  "official_sources": [
+    {
+      "id": "O01",
+      "title": "Expo SDK官方兼容矩阵",
+      "url": "https://docs.expo.dev/versions/latest/",
+      "note": "2026-09-17读取；55/RN0.83/React19.2.0；57/RN0.86/React19.2.3。"
+    },
+    {
+      "id": "O02",
+      "title": "Expo New Architecture",
+      "url": "https://docs.expo.dev/guides/new-architecture/",
+      "note": "SDK55及以后仅New Architecture。"
+    },
+    {
+      "id": "O03",
+      "title": "Expo SDK56官方回归提示",
+      "url": "https://expo.dev/changelog/sdk-56",
+      "note": "2026-08-27增补说明；不以此代替本仓兼容验收。"
+    },
+    {
+      "id": "O04",
+      "title": "Expo OAuth/OpenID集成指南",
+      "url": "https://docs.expo.dev/guides/authentication/",
+      "note": "Development Build与回调、客户端密钥边界。"
+    },
+    {
+      "id": "O05",
+      "title": "Expo SDK55 fetch/编码API",
+      "url": "https://docs.expo.dev/versions/v55.0.0/sdk/expo/",
+      "note": "显式expo/fetch读流与UTF-8原生编码。"
+    },
+    {
+      "id": "O06",
+      "title": "Expo SDK55 SQLite API",
+      "url": "https://docs.expo.dev/versions/v55.0.0/sdk/sqlite/",
+      "note": "事务返回Promise<void>；withTransactionAsync非独占；原生独占事务使用txn对象。"
+    },
+    {
+      "id": "O07",
+      "title": "Expo通知FAQ",
+      "url": "https://docs.expo.dev/push-notifications/faq/",
+      "note": "推送验收使用开发构建与正式应用凭据。"
+    },
+    {
+      "id": "O08",
+      "title": "Expo Update运行时版本",
+      "url": "https://docs.expo.dev/eas-update/runtime-versions/",
+      "note": "runtimeVersion/fingerprint与分批更新。"
+    }
+  ]
+}

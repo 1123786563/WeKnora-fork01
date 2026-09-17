@@ -1,0 +1,13 @@
+{
+  "scope": "Standalone wireframes only",
+  "passed": 7,
+  "checks": [
+    "New work starts without a published version",
+    "First publication is v1",
+    "Failed current run is not labelled completed",
+    "Cancellation has its own terminal presentation",
+    "Preview renewal creates no run",
+    "Read-only blocks send and restore controls",
+    "Revoked citation shows denied access"
+  ]
+}

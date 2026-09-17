@@ -1,0 +1,3079 @@
+{
+  "schema_version": 2,
+  "source_baseline": "12737238aa7b9d6891e76b2397f6941024f45668",
+  "status": "design_only_not_executed",
+  "dependency_semantics": "depends_on are direct MX edges; conditional_dependencies are profile-activated. maps_w is traceability only; MX-001 resolves the original W/T/H dependency closure at slice level without introducing W36 -> early baseline cycles.",
+  "tasks": [
+    {
+      "id": "MX-001",
+      "stage": "S00",
+      "title": "当前代码、接口与台账对账",
+      "role": "架构 / 协调",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/001",
+      "depends_on": [],
+      "maps_ux": [
+        "UX00"
+      ],
+      "closes_gaps": [
+        "G11",
+        "G12"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "docs/evidence/mobile-v2/current-state-matrix.md",
+        "docs/evidence/mobile-v2/file-ownership.json",
+        "tests/mobile-v2/mx-001.test.ts",
+        "tests/mobile-v2/probes/mx-001.ts"
+      ],
+      "consumes": "本交付 references 与当前 checkout HEAD",
+      "produces": "EvidenceMatrix；逐路径 Create/Modify 裁决；原 W/T 子门禁映射",
+      "implementation_steps": [
+        "记录 HEAD、锁文件哈希、git status 与所有作用路径的 AGENTS；不清理用户改动",
+        "按 G01–G12 对比当前实现，已有行为先复验，不制造退化",
+        "检索全量 router/DI 和原 W 索引，标注 A/B/C 接口与前置证据",
+        "预登记共享文件、迁移两序列和 profile 负责人"
+      ],
+      "acceptance": [
+        "每个 G 缺口都有具体代码位置、负责人和下一测试",
+        "Create/Modify 不与实际文件状态矛盾",
+        "禁止将原 pending 或 passed 自动复制成本轮事实"
+      ],
+      "file_lock_keys": [
+        "docs/evidence/mobile-v2/current-state-matrix.md",
+        "docs/evidence/mobile-v2/file-ownership.json",
+        "tests/mobile-v2/mx-001.test.ts",
+        "tests/mobile-v2/probes/mx-001.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-001.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-001.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-001.md",
+      "first_test_spec": {
+        "given": "本交付 references 与当前 checkout HEAD",
+        "when": "记录 HEAD、锁文件哈希、git status 与所有作用路径的 AGENTS；不清理用户改动",
+        "then": "每个 G 缺口都有具体代码位置、负责人和下一测试",
+        "additional_assertions": [
+          "Create/Modify 不与实际文件状态矛盾",
+          "禁止将原 pending 或 passed 自动复制成本轮事实"
+        ]
+      },
+      "maps_w": [],
+      "probe_file": "tests/mobile-v2/probes/mx-001.ts",
+      "test_case": {
+        "name": "inventory-coverage",
+        "input": {
+          "fixture": "current-checkout-and-G01-G12"
+        },
+        "expected_observation": {
+          "unownedGaps": [],
+          "duplicateOwners": []
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-002",
+      "stage": "S00",
+      "title": "Expo 与 React 原生依赖基线",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/002",
+      "depends_on": [
+        "MX-001"
+      ],
+      "maps_ux": [
+        "UX00"
+      ],
+      "closes_gaps": [
+        "G05"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/package.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "docs/evidence/mobile-v2/native-baseline.md",
+        "tests/mobile-v2/mx-002.test.ts",
+        "tests/mobile-v2/probes/mx-002.ts"
+      ],
+      "consumes": "当前锁文件；SDK55 官方矩阵",
+      "produces": "可复现的 SDK/RN/React/renderer/native modules 版本组合",
+      "implementation_steps": [
+        "读取实际依赖解析而非只看 manifest",
+        "在独立依赖分支对齐 React、renderer、Expo 模块及包管理器",
+        "逐一复验 libsodium/音视频/MMKV/Unistyles/Reanimated/键盘模块",
+        "对 android/ios 归属和 prebuild 删除行为确认后再构建；升级新 SDK 独立决策"
+      ],
+      "acceptance": [
+        "doctor 的未解决项逐条列明",
+        "iOS/Android 同一 lockfile 构建并启动关键模块",
+        "没有通过关闭新架构或随意移除功能掩盖不兼容"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/package.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "docs/evidence/mobile-v2/native-baseline.md",
+        "tests/mobile-v2/mx-002.test.ts",
+        "tests/mobile-v2/probes/mx-002.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-002.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-002.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-002.md",
+      "first_test_spec": {
+        "given": "当前锁文件；SDK55 官方矩阵",
+        "when": "读取实际依赖解析而非只看 manifest",
+        "then": "doctor 的未解决项逐条列明",
+        "additional_assertions": [
+          "iOS/Android 同一 lockfile 构建并启动关键模块",
+          "没有通过关闭新架构或随意移除功能掩盖不兼容"
+        ]
+      },
+      "maps_w": [
+        "W36"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-002.ts",
+      "test_case": {
+        "name": "native-version-compat",
+        "input": {
+          "fixture": "locked-expo55-baseline"
+        },
+        "expected_observation": {
+          "rendererMatchesReact": true,
+          "nativeBuildPlatforms": [
+            "ios",
+            "android"
+          ]
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-003",
+      "stage": "S00",
+      "title": "跨语言契约与能力规则冻结",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/003",
+      "depends_on": [
+        "MX-001"
+      ],
+      "maps_ux": [
+        "UX00"
+      ],
+      "closes_gaps": [
+        "G03",
+        "G08"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "packages/contracts/src/mobile/execution.ts",
+        "packages/contracts/src/mobile/interactions.ts",
+        "packages/contracts/src/mobile/read-models.ts",
+        "internal/workbench/contracts.go",
+        "internal/workbench/interaction.go",
+        "tests/mobile-v2/mx-003.test.ts",
+        "tests/mobile-v2/probes/mx-003.ts"
+      ],
+      "consumes": "现有 ExecutionDTO/StartInput；本交付提议契约",
+      "produces": "完整 ExecutionEvent；三态 Capability；typed Interaction；契约版本清单",
+      "implementation_steps": [
+        "逐字段标注已存在/提议/兼容转换；不擅自增加 start 字段",
+        "冻结未知状态展示策略与命令拒绝规则",
+        "创建同一 Go/TS JSON fixture；安全整数上界与 UTC 时间验证",
+        "A 类路由 body 保持兼容，B 类接口在服务端接通前不发布"
+      ],
+      "acceptance": [
+        "未知事件 type 可保留但未知控制状态禁止写入",
+        "seq 非整数、溢出、缺 run_id、数组 payload 均拒绝",
+        "预算/工具/问题/连接交互不能互换 payload"
+      ],
+      "file_lock_keys": [
+        "packages/contracts/src/mobile/execution.ts",
+        "packages/contracts/src/mobile/interactions.ts",
+        "packages/contracts/src/mobile/read-models.ts",
+        "internal/workbench/contracts.go",
+        "internal/workbench/interaction.go",
+        "tests/mobile-v2/mx-003.test.ts",
+        "tests/mobile-v2/probes/mx-003.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-003.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-003.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-003.md",
+      "first_test_spec": {
+        "given": "现有 ExecutionDTO/StartInput；本交付提议契约",
+        "when": "逐字段标注已存在/提议/兼容转换；不擅自增加 start 字段",
+        "then": "未知事件 type 可保留但未知控制状态禁止写入",
+        "additional_assertions": [
+          "seq 非整数、溢出、缺 run_id、数组 payload 均拒绝",
+          "预算/工具/问题/连接交互不能互换 payload"
+        ]
+      },
+      "maps_w": [
+        "W01",
+        "W06"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-003.ts",
+      "test_case": {
+        "name": "unknown-capability",
+        "input": {
+          "fixture": "unknown-event-and-unavailable-cancel"
+        },
+        "expected_observation": {
+          "unknownType": "future.event",
+          "canCancel": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-004",
+      "stage": "S00",
+      "title": "SSE 完整事件与控制帧接通",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/004",
+      "depends_on": [
+        "MX-003"
+      ],
+      "maps_ux": [
+        "UX04"
+      ],
+      "closes_gaps": [
+        "G01"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "internal/handler/session/workbench_read.go",
+        "apps/mobile/sources/weknora/platform/stream-transport.ts",
+        "packages/domain/src/mobile/execution-frames.ts",
+        "tests/mobile-v2/mx-004.test.ts",
+        "tests/mobile-v2/probes/mx-004.ts"
+      ],
+      "consumes": "ExecutionEvent；版本协商规则",
+      "produces": "Go writer → native parser 一致字节合同",
+      "implementation_steps": [
+        "明确产品流 version=2 协商；保留旧调用兼容测试",
+        "将完整 envelope 写入业务 frame，control/error 不占业务 seq",
+        "UTF-8/CRLF 增量解码并拒绝 id/type 冲突",
+        "终态 drain 到一致 watermark；cursor_expired 触发快照路径"
+      ],
+      "acceptance": [
+        "中文逐字节、拆 CRLF、心跳、多 data 行、EOF 都能解析",
+        "Go 实际输出直接喂 TS parser，不使用各自不同 fixture",
+        "控制帧不推进 cursor，超过 256 条仍无丢失"
+      ],
+      "file_lock_keys": [
+        "internal/handler/session/workbench_read.go",
+        "apps/mobile/sources/weknora/platform/stream-transport.ts",
+        "packages/domain/src/mobile/execution-frames.ts",
+        "tests/mobile-v2/mx-004.test.ts",
+        "tests/mobile-v2/probes/mx-004.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-004.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-004.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-004.md",
+      "first_test_spec": {
+        "given": "ExecutionEvent；版本协商规则",
+        "when": "明确产品流 version=2 协商；保留旧调用兼容测试",
+        "then": "中文逐字节、拆 CRLF、心跳、多 data 行、EOF 都能解析",
+        "additional_assertions": [
+          "Go 实际输出直接喂 TS parser，不使用各自不同 fixture",
+          "控制帧不推进 cursor，超过 256 条仍无丢失"
+        ]
+      },
+      "maps_w": [
+        "W03",
+        "W09"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-004.ts",
+      "test_case": {
+        "name": "go-bytes-to-native-parser",
+        "input": {
+          "fixture": "Go-emitted-UTF8-CRLF-control-seq42",
+          "fault": "split-every-byte"
+        },
+        "expected_observation": {
+          "seqs": [
+            42
+          ],
+          "controlCount": 1,
+          "cursor": 42
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-005",
+      "stage": "S00",
+      "title": "类型化交互与乐观并发命令",
+      "role": "Go 后端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "server",
+      "module_key": "mobile-v2/005",
+      "depends_on": [
+        "MX-003"
+      ],
+      "maps_ux": [
+        "UX05"
+      ],
+      "closes_gaps": [
+        "G02",
+        "G03"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "internal/handler/session/workbench_commands.go",
+        "internal/application/service/workbench/interaction.go",
+        "packages/api-client/src/mobile/interactions.ts",
+        "tests/mobile-v2/mx-005.test.ts",
+        "tests/mobile-v2/probes/mx-005.ts"
+      ],
+      "consumes": "InteractionDecisionDraft；现有动作审批与授权服务",
+      "produces": "list/refresh/decide adapter；revision + digest + requestID 原子检查",
+      "implementation_steps": [
+        "读取真实 interaction DTO 并建立显式适配，禁止 any/optional-call 掩盖缺失",
+        "绑定 actor、tenant、冻结内容摘要、权限版本、到期时间",
+        "同意/拒绝 CAS；相同决定幂等，旧版本返回 409",
+        "工具审批不叠加第二次商业准入；预算审批单独检查角色"
+      ],
+      "acceptance": [
+        "两个设备并发决定只接受一次合法变更",
+        "撤权/到期/修改目标后旧批准不可执行",
+        "403 不刷新 token；unknown 不能伪装 failed 后重发"
+      ],
+      "file_lock_keys": [
+        "internal/handler/session/workbench_commands.go",
+        "internal/application/service/workbench/interaction.go",
+        "packages/api-client/src/mobile/interactions.ts",
+        "tests/mobile-v2/mx-005.test.ts",
+        "tests/mobile-v2/probes/mx-005.ts"
+      ],
+      "environment_gates": [
+        "隔离 PostgreSQL + SQLite"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-005.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-005.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-005.md",
+      "first_test_spec": {
+        "given": "InteractionDecisionDraft；现有动作审批与授权服务",
+        "when": "读取真实 interaction DTO 并建立显式适配，禁止 any/optional-call 掩盖缺失",
+        "then": "两个设备并发决定只接受一次合法变更",
+        "additional_assertions": [
+          "撤权/到期/修改目标后旧批准不可执行",
+          "403 不刷新 token；unknown 不能伪装 failed 后重发"
+        ]
+      },
+      "maps_w": [
+        "W05"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-005.ts",
+      "test_case": {
+        "name": "concurrent-decisions",
+        "input": {
+          "fixture": "same-interaction-revision4",
+          "fault": "two-concurrent-approve"
+        },
+        "expected_observation": {
+          "acceptedCount": 1,
+          "conflictCount": 1
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-006",
+      "stage": "S00",
+      "title": "持久提交身份与请求对账",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/006",
+      "depends_on": [
+        "MX-003"
+      ],
+      "maps_ux": [
+        "UX03"
+      ],
+      "closes_gaps": [
+        "G04"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "packages/domain/src/mobile/submission.ts",
+        "packages/api-client/src/mobile/executions.ts",
+        "internal/application/service/workbench/admission.go",
+        "tests/mobile-v2/mx-006.test.ts",
+        "tests/mobile-v2/probes/mx-006.ts"
+      ],
+      "consumes": "StartExecutionInput；RequestLookup；SubmissionStore port",
+      "produces": "startOnce / reconcileRequest 状态机",
+      "implementation_steps": [
+        "构造规范化输入摘要；网络前持久保存 request_id 与 scope",
+        "ACK 成功绑定原 run_id；超时置 awaiting_reconciliation",
+        "lookup 区分 pending/dispatching/admitted/rejected/unknown",
+        "明确 rejected-before-dispatch 才开放受控重试；输入变更须新意图确认"
+      ],
+      "acceptance": [
+        "双击、ACK 丢失、杀进程后只找到同一 Run",
+        "相同 requestID 不同正文返回冲突",
+        "unknown 不触发重新 POST 或新预算预占"
+      ],
+      "file_lock_keys": [
+        "packages/domain/src/mobile/submission.ts",
+        "packages/api-client/src/mobile/executions.ts",
+        "internal/application/service/workbench/admission.go",
+        "tests/mobile-v2/mx-006.test.ts",
+        "tests/mobile-v2/probes/mx-006.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-006.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-006.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-006.md",
+      "first_test_spec": {
+        "given": "StartExecutionInput；RequestLookup；SubmissionStore port",
+        "when": "构造规范化输入摘要；网络前持久保存 request_id 与 scope",
+        "then": "双击、ACK 丢失、杀进程后只找到同一 Run",
+        "additional_assertions": [
+          "相同 requestID 不同正文返回冲突",
+          "unknown 不触发重新 POST 或新预算预占"
+        ]
+      },
+      "maps_w": [
+        "W04",
+        "W06"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-006.ts",
+      "test_case": {
+        "name": "lost-ack-restart",
+        "input": {
+          "fixture": "same-request-and-input",
+          "fault": "ack-drop-process-restart"
+        },
+        "expected_observation": {
+          "startCount": 1,
+          "lookupRequestId": "request-original",
+          "runId": "run-original"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-007",
+      "stage": "S01",
+      "title": "语义设计令牌与原生主题",
+      "role": "设计系统 / TS",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/007",
+      "depends_on": [
+        "MX-001"
+      ],
+      "maps_ux": [
+        "UX01"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "packages/design-tokens/src/mobile/tokens.json",
+        "packages/design-tokens/src/mobile/native-tokens.ts",
+        "packages/design-tokens/src/mobile/tokens.css",
+        "apps/mobile/sources/weknora/ui/theme.ts",
+        "tests/mobile-v2/mx-007.test.ts",
+        "tests/mobile-v2/probes/mx-007.ts"
+      ],
+      "consumes": "本交付 tokens/tokens.json",
+      "produces": "light/dark 原生主题与 CSS 输出；token 测试",
+      "implementation_steps": [
+        "将本交付语义令牌作为版本化源，先比对现有 tokens 目录",
+        "原生数值 dp、字体缩放、圆角、层级与动效独立映射",
+        "组件仅消费语义色，不依赖硬编码 hex 或 Web className",
+        "新增 token 必须含用途、主题值和前景背景对比用例"
+      ],
+      "acceptance": [
+        "浅/深色全部必需 key 同构",
+        "关键文本/状态对比率 ≥4.5，不只检查主色",
+        "生成结果无漂移，支持 reduced motion 与动态字体"
+      ],
+      "file_lock_keys": [
+        "packages/design-tokens/src/mobile/tokens.json",
+        "packages/design-tokens/src/mobile/native-tokens.ts",
+        "packages/design-tokens/src/mobile/tokens.css",
+        "apps/mobile/sources/weknora/ui/theme.ts",
+        "tests/mobile-v2/mx-007.test.ts",
+        "tests/mobile-v2/probes/mx-007.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-007.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-007.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-007.md",
+      "first_test_spec": {
+        "given": "本交付 tokens/tokens.json",
+        "when": "将本交付语义令牌作为版本化源，先比对现有 tokens 目录",
+        "then": "浅/深色全部必需 key 同构",
+        "additional_assertions": [
+          "关键文本/状态对比率 ≥4.5，不只检查主色",
+          "生成结果无漂移，支持 reduced motion 与动态字体"
+        ]
+      },
+      "maps_w": [],
+      "probe_file": "tests/mobile-v2/probes/mx-007.ts",
+      "test_case": {
+        "name": "token-theme-parity",
+        "input": {
+          "fixture": "tokens.json"
+        },
+        "expected_observation": {
+          "missingThemeKeys": [],
+          "webNativeColorDiff": []
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-008",
+      "stage": "S01",
+      "title": "原生基础组件与状态组件",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/008",
+      "depends_on": [
+        "MX-007"
+      ],
+      "maps_ux": [
+        "UX01"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/ui/Button.tsx",
+        "apps/mobile/sources/weknora/ui/Card.tsx",
+        "apps/mobile/sources/weknora/ui/StatusBadge.tsx",
+        "apps/mobile/sources/weknora/ui/StateView.tsx",
+        "apps/mobile/sources/weknora/ui/Sheet.tsx",
+        "apps/mobile/sources/weknora/ui/Field.tsx",
+        "tests/mobile-v2/mx-008.test.ts",
+        "tests/mobile-v2/probes/mx-008.ts"
+      ],
+      "consumes": "native tokens；Capability",
+      "produces": "无业务网络副作用的 primitives",
+      "implementation_steps": [
+        "实现 primary/secondary/danger/disabled/loading/focus 按钮变体",
+        "卡片/列表/空态/错误/离线/加载组件通过 props 驱动",
+        "Sheet 处理 focus、返回、键盘和大字体；禁止嵌套点击区域",
+        "状态文字与颜色同时存在，动态文案提供读屏标签"
+      ],
+      "acceptance": [
+        "紧凑触控区44、主触控区48，文本放大不裁切",
+        "busy 按钮不重复触发；危险操作不只靠颜色",
+        "浅/深主题、VoiceOver/TalkBack 有可判读标签"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/ui/Button.tsx",
+        "apps/mobile/sources/weknora/ui/Card.tsx",
+        "apps/mobile/sources/weknora/ui/StatusBadge.tsx",
+        "apps/mobile/sources/weknora/ui/StateView.tsx",
+        "apps/mobile/sources/weknora/ui/Sheet.tsx",
+        "apps/mobile/sources/weknora/ui/Field.tsx",
+        "tests/mobile-v2/mx-008.test.ts",
+        "tests/mobile-v2/probes/mx-008.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-008.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-008.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-008.md",
+      "first_test_spec": {
+        "given": "native tokens；Capability",
+        "when": "实现 primary/secondary/danger/disabled/loading/focus 按钮变体",
+        "then": "紧凑触控区44、主触控区48，文本放大不裁切",
+        "additional_assertions": [
+          "busy 按钮不重复触发；危险操作不只靠颜色",
+          "浅/深主题、VoiceOver/TalkBack 有可判读标签"
+        ]
+      },
+      "maps_w": [],
+      "probe_file": "tests/mobile-v2/probes/mx-008.ts",
+      "test_case": {
+        "name": "sheet-focus-cancel",
+        "input": {
+          "fixture": "mounted-native-sheet",
+          "fault": "dismiss-before-decision"
+        },
+        "expected_observation": {
+          "decisionCount": 0,
+          "focusTarget": "trigger"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-009",
+      "stage": "S01",
+      "title": "四 Tab 与产品路由容器",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/009",
+      "depends_on": [
+        "MX-003",
+        "MX-008"
+      ],
+      "maps_ux": [
+        "UX01"
+      ],
+      "closes_gaps": [
+        "G07"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/app/(app)/_layout.tsx",
+        "apps/mobile/sources/app/_layout.tsx",
+        "apps/mobile/sources/weknora/navigation/routes.ts",
+        "apps/mobile/sources/weknora/navigation/ProductShell.tsx",
+        "tests/mobile-v2/mx-009.test.ts",
+        "tests/mobile-v2/probes/mx-009.ts"
+      ],
+      "consumes": "产品 route model；基础组件",
+      "produces": "四 Tab + 详情 Stack + modal 路由映射",
+      "implementation_steps": [
+        "确认现有 Expo Router 文件，保留根和旧路由兼容入口",
+        "产品 screen 与 legacy Happy screen 显式拆边界",
+        "Tab 只承载工作台/会话/资源/我的；详情保留返回栈",
+        "恢复深链前不得绕过 ProductAuthProvider/ScopeProvider"
+      ],
+      "acceptance": [
+        "M01–M18 均有唯一 screen ID 与导航路径",
+        "详情页返回不会回到另一空间的旧页",
+        "无需 Happy daemon/sync 才能渲染产品壳"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/app/(app)/_layout.tsx",
+        "apps/mobile/sources/app/_layout.tsx",
+        "apps/mobile/sources/weknora/navigation/routes.ts",
+        "apps/mobile/sources/weknora/navigation/ProductShell.tsx",
+        "tests/mobile-v2/mx-009.test.ts",
+        "tests/mobile-v2/probes/mx-009.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-009.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-009.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-009.md",
+      "first_test_spec": {
+        "given": "产品 route model；基础组件",
+        "when": "确认现有 Expo Router 文件，保留根和旧路由兼容入口",
+        "then": "M01–M18 均有唯一 screen ID 与导航路径",
+        "additional_assertions": [
+          "详情页返回不会回到另一空间的旧页",
+          "无需 Happy daemon/sync 才能渲染产品壳"
+        ]
+      },
+      "maps_w": [
+        "W10",
+        "W11"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-009.ts",
+      "test_case": {
+        "name": "product-route-no-happy",
+        "input": {
+          "fixture": "product-scope-without-happy-sync"
+        },
+        "expected_observation": {
+          "visibleTabs": [
+            "工作台",
+            "会话",
+            "资源",
+            "我的"
+          ],
+          "happyAuthRequests": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-010",
+      "stage": "S01",
+      "title": "产品登录、SSO 与冷启动身份",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/010",
+      "depends_on": [
+        "MX-002",
+        "MX-003",
+        "MX-009"
+      ],
+      "maps_ux": [
+        "UX00"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/auth/session.tsx",
+        "apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx",
+        "apps/mobile/sources/weknora/auth/bootstrap.ts",
+        "apps/mobile/sources/weknora/screens/LoginScreen.tsx",
+        "tests/mobile-v2/mx-010.test.ts",
+        "tests/mobile-v2/probes/mx-010.ts"
+      ],
+      "consumes": "CredentialAdapter；OIDC SDK；bootstrap port",
+      "produces": "AuthState 与 user/membership/scope 完整初始化",
+      "implementation_steps": [
+        "SecureStore 读凭证后执行服务端验证并加载成员关系",
+        "401 single-flight 刷新；刷新回写检查 generation；403 不刷新",
+        "系统浏览器 SSO 使用 PKCE、一次性 code、state、redirect 绑定",
+        "未知 origin 不自动切换；logout 不回退初始 origin"
+      ],
+      "acceptance": [
+        "刷新中退出后旧 token 不回写",
+        "重启/SSO 成功后 user/tenant 不是空值",
+        "真实 IdP 缺环境记录 blocked-env，密码登录证据不覆盖 SSO"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/auth/session.tsx",
+        "apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx",
+        "apps/mobile/sources/weknora/auth/bootstrap.ts",
+        "apps/mobile/sources/weknora/screens/LoginScreen.tsx",
+        "tests/mobile-v2/mx-010.test.ts",
+        "tests/mobile-v2/probes/mx-010.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-010.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-010.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-010.md",
+      "first_test_spec": {
+        "given": "CredentialAdapter；OIDC SDK；bootstrap port",
+        "when": "SecureStore 读凭证后执行服务端验证并加载成员关系",
+        "then": "刷新中退出后旧 token 不回写",
+        "additional_assertions": [
+          "重启/SSO 成功后 user/tenant 不是空值",
+          "真实 IdP 缺环境记录 blocked-env，密码登录证据不覆盖 SSO"
+        ]
+      },
+      "maps_w": [
+        "W07",
+        "W08"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-010.ts",
+      "test_case": {
+        "name": "cold-start-scope",
+        "input": {
+          "fixture": "valid-credential-missing-scope"
+        },
+        "expected_observation": {
+          "userId": "u1",
+          "tenantId": "t1",
+          "credentialInOrdinaryStorage": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-011",
+      "stage": "S01",
+      "title": "空间切换、缓存与迟到响应隔离",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/011",
+      "depends_on": [
+        "MX-010"
+      ],
+      "maps_ux": [
+        "UX02"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/platform/product-session.ts",
+        "apps/mobile/sources/weknora/screens/SpacePickerScreen.tsx",
+        "packages/domain/src/mobile/query-scope.ts",
+        "tests/mobile-v2/mx-011.test.ts",
+        "tests/mobile-v2/probes/mx-011.ts"
+      ],
+      "consumes": "AuthState；成员授权关系",
+      "produces": "generation-aware QueryKey/teardown 和切换控制器",
+      "implementation_steps": [
+        "阻止新 mutation 后递增 generation；abort 请求与 stream",
+        "清除旧界面敏感内容，重建 QueryClient scope",
+        "按 origin/user/tenant 读取对应草稿与缓存，不共享全局 key",
+        "保留服务端 Run；关闭旧语音/远程订阅；设备绑定独立撤销"
+      ],
+      "acceptance": [
+        "团队A→个人B没有旧消息、标题或账单闪现",
+        "旧请求/刷新/上传完成后不能污染新空间",
+        "返回A可恢复A草稿；未授权A则清理并拒绝恢复"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/platform/product-session.ts",
+        "apps/mobile/sources/weknora/screens/SpacePickerScreen.tsx",
+        "packages/domain/src/mobile/query-scope.ts",
+        "tests/mobile-v2/mx-011.test.ts",
+        "tests/mobile-v2/probes/mx-011.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-011.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-011.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-011.md",
+      "first_test_spec": {
+        "given": "AuthState；成员授权关系",
+        "when": "阻止新 mutation 后递增 generation；abort 请求与 stream",
+        "then": "团队A→个人B没有旧消息、标题或账单闪现",
+        "additional_assertions": [
+          "旧请求/刷新/上传完成后不能污染新空间",
+          "返回A可恢复A草稿；未授权A则清理并拒绝恢复"
+        ]
+      },
+      "maps_w": [
+        "W07",
+        "W11"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-011.ts",
+      "test_case": {
+        "name": "late-response-after-switch",
+        "input": {
+          "fixture": "tenant-A-to-B",
+          "fault": "A-response-arrives-last"
+        },
+        "expected_observation": {
+          "visibleTenant": "B",
+          "oldResponseApplied": false,
+          "canceledServerRuns": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-012",
+      "stage": "S01",
+      "title": "原生持久事件、快照与恢复",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/012",
+      "depends_on": [
+        "MX-002",
+        "MX-004",
+        "MX-011"
+      ],
+      "maps_ux": [
+        "UX04"
+      ],
+      "closes_gaps": [
+        "G06",
+        "G10"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/platform/execution-storage.ts",
+        "apps/mobile/sources/weknora/platform/native-host.ts",
+        "apps/mobile/sources/weknora/platform/recovery.ts",
+        "packages/domain/src/mobile/execution-cache.ts",
+        "tests/mobile-v2/mx-012.test.ts",
+        "tests/mobile-v2/probes/mx-012.ts"
+      ],
+      "consumes": "StreamFrame；ScopeKey；SubmissionStore",
+      "produces": "SQLite 实际 driver + 加密 payload + 恢复控制器",
+      "implementation_steps": [
+        "真实 expo/fetch 与 Expo SQLite 端口注入；不使用 Web 测试代替",
+        "写队列与 exclusive txn 内使用 txn 对象；显式捕获 void wrapper 返回结果",
+        "事件/投影/cursor 同事务；AEAD 密钥初始化单飞、AAD 绑定 scope/run/seq",
+        "过期 cursor 原子替换 snapshot/watermark 后重放；恢复先认证再对账"
+      ],
+      "acceptance": [
+        "磁盘满/事务 rollback 不推进 cursor",
+        "并发首次密钥、AAD篡改、密钥丢失、database locked 均可判定",
+        "杀 App 重开原生数据库后消息/草稿/原请求状态正确恢复"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/platform/execution-storage.ts",
+        "apps/mobile/sources/weknora/platform/native-host.ts",
+        "apps/mobile/sources/weknora/platform/recovery.ts",
+        "packages/domain/src/mobile/execution-cache.ts",
+        "tests/mobile-v2/mx-012.test.ts",
+        "tests/mobile-v2/probes/mx-012.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-012.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-012.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-012.md",
+      "first_test_spec": {
+        "given": "StreamFrame；ScopeKey；SubmissionStore",
+        "when": "真实 expo/fetch 与 Expo SQLite 端口注入；不使用 Web 测试代替",
+        "then": "磁盘满/事务 rollback 不推进 cursor",
+        "additional_assertions": [
+          "并发首次密钥、AAD篡改、密钥丢失、database locked 均可判定",
+          "杀 App 重开原生数据库后消息/草稿/原请求状态正确恢复"
+        ]
+      },
+      "maps_w": [
+        "W09",
+        "W12"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-012.ts",
+      "test_case": {
+        "name": "disk-full-transaction",
+        "input": {
+          "fixture": "persisted-seq41",
+          "fault": "disk-full-on-seq42"
+        },
+        "expected_observation": {
+          "cursor": 41,
+          "persistedSeqs": [
+            41
+          ]
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-013",
+      "stage": "S02",
+      "title": "工作台聚合读模型与首页",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/013",
+      "depends_on": [
+        "MX-008",
+        "MX-011"
+      ],
+      "maps_ux": [
+        "UX02"
+      ],
+      "closes_gaps": [
+        "G12"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "internal/handler/session/workbench_overview.go",
+        "internal/application/service/workbench/overview.go",
+        "packages/api-client/src/mobile/overview.ts",
+        "apps/mobile/sources/weknora/screens/HomeScreen.tsx",
+        "tests/mobile-v2/mx-013.test.ts",
+        "tests/mobile-v2/probes/mx-013.ts"
+      ],
+      "consumes": "Scope 与当前资源授权；提议 OverviewDTO",
+      "produces": "M03 + ownership-scoped 聚合响应",
+      "implementation_steps": [
+        "优先复用现有查询，无等价接口再加 B 类 overview",
+        "服务端授权后计算计数、进行中、待处理与成果；附 as_of",
+        "上限限制及批量读取，避免前端逐会话请求",
+        "UI 实现首页层次，分页与错误/空态、上次同步可见"
+      ],
+      "acceptance": [
+        "计数与列表过滤一致，无跨成员私密会话泄漏",
+        "并发状态改变后 as_of/快照边界可解释",
+        "空空间不显示另一空间演示/缓存内容"
+      ],
+      "file_lock_keys": [
+        "internal/handler/session/workbench_overview.go",
+        "internal/application/service/workbench/overview.go",
+        "packages/api-client/src/mobile/overview.ts",
+        "apps/mobile/sources/weknora/screens/HomeScreen.tsx",
+        "tests/mobile-v2/mx-013.test.ts",
+        "tests/mobile-v2/probes/mx-013.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-013.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-013.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-013.md",
+      "first_test_spec": {
+        "given": "Scope 与当前资源授权；提议 OverviewDTO",
+        "when": "优先复用现有查询，无等价接口再加 B 类 overview",
+        "then": "计数与列表过滤一致，无跨成员私密会话泄漏",
+        "additional_assertions": [
+          "并发状态改变后 as_of/快照边界可解释",
+          "空空间不显示另一空间演示/缓存内容"
+        ]
+      },
+      "maps_w": [
+        "W03",
+        "W11"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-013.ts",
+      "test_case": {
+        "name": "overview-owner-scope",
+        "input": {
+          "fixture": "two-users-one-tenant"
+        },
+        "expected_observation": {
+          "visibleRunIds": [
+            "owned-run"
+          ],
+          "perSessionHTTPRequests": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-014",
+      "stage": "S02",
+      "title": "会话列表、搜索与分页",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/014",
+      "depends_on": [
+        "MX-013"
+      ],
+      "maps_ux": [
+        "UX02"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/SessionListScreen.tsx",
+        "packages/domain/src/mobile/session-list.ts",
+        "tests/mobile-v2/mx-014.test.ts",
+        "tests/mobile-v2/probes/mx-014.ts"
+      ],
+      "consumes": "授权会话分页接口；stable cursor",
+      "produces": "M04 搜索/筛选/分页列表",
+      "implementation_steps": [
+        "搜索去抖仅控制读请求；每次捕获 scope generation",
+        "以 updated_at+id 稳定分页；筛选条件纳入 query key",
+        "虚拟列表使用 stable id，滚动与加载状态分离",
+        "切空间清分页 cursor；空搜索不反复查询全库"
+      ],
+      "acceptance": [
+        "跨页无重复，更新时间相同仍能稳定游标",
+        "搜索无结果与空空间文案不同",
+        "旧搜索结果到达时不覆盖新词或新空间"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/SessionListScreen.tsx",
+        "packages/domain/src/mobile/session-list.ts",
+        "tests/mobile-v2/mx-014.test.ts",
+        "tests/mobile-v2/probes/mx-014.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-014.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-014.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-014.md",
+      "first_test_spec": {
+        "given": "授权会话分页接口；stable cursor",
+        "when": "搜索去抖仅控制读请求；每次捕获 scope generation",
+        "then": "跨页无重复，更新时间相同仍能稳定游标",
+        "additional_assertions": [
+          "搜索无结果与空空间文案不同",
+          "旧搜索结果到达时不覆盖新词或新空间"
+        ]
+      },
+      "maps_w": [
+        "W10",
+        "W11"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-014.ts",
+      "test_case": {
+        "name": "pagination-filter-scope",
+        "input": {
+          "fixture": "equal-updated-at-two-pages",
+          "fault": "filter-change-late-response"
+        },
+        "expected_observation": {
+          "duplicateIds": [],
+          "appliedFilter": "waiting_user"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-015",
+      "stage": "S02",
+      "title": "新建任务、资源编排与提交",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/015",
+      "depends_on": [
+        "MX-006",
+        "MX-012",
+        "MX-016"
+      ],
+      "maps_ux": [
+        "UX03"
+      ],
+      "closes_gaps": [
+        "G04"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/NewTaskScreen.tsx",
+        "apps/mobile/sources/weknora/workbench/task-form.ts",
+        "tests/mobile-v2/mx-015.test.ts",
+        "tests/mobile-v2/probes/mx-015.ts"
+      ],
+      "consumes": "AgentOption；已准备的 session/resources；SubmissionController",
+      "produces": "M05 + 持久 request_id + ACK→Run 导航",
+      "implementation_steps": [
+        "字段绑定草稿；校验文本、预算安全整数与资源权限",
+        "按真实 API 准备 session/资源配置，不把附件字段擅加 StartInput",
+        "先保存原请求再提交；unknown 导向原请求核实页",
+        "取消输入保留可恢复草稿，离线不自动发送"
+      ],
+      "acceptance": [
+        "输入空白/预算小数/负数/溢出不发请求",
+        "附件未扫描完成不能交给 Agent",
+        "双击或 ACK 丢失恢复无重复任务"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/NewTaskScreen.tsx",
+        "apps/mobile/sources/weknora/workbench/task-form.ts",
+        "tests/mobile-v2/mx-015.test.ts",
+        "tests/mobile-v2/probes/mx-015.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-015.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-015.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-015.md",
+      "first_test_spec": {
+        "given": "AgentOption；已准备的 session/resources；SubmissionController",
+        "when": "字段绑定草稿；校验文本、预算安全整数与资源权限",
+        "then": "输入空白/预算小数/负数/溢出不发请求",
+        "additional_assertions": [
+          "附件未扫描完成不能交给 Agent",
+          "双击或 ACK 丢失恢复无重复任务"
+        ]
+      },
+      "maps_w": [
+        "W04",
+        "W06",
+        "W10"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-015.ts",
+      "test_case": {
+        "name": "submit-attachment-not-ready",
+        "input": {
+          "fixture": "valid-draft-scanning-attachment"
+        },
+        "expected_observation": {
+          "startCount": 0,
+          "draft": "保留这段文本"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-016",
+      "stage": "S02",
+      "title": "Agent 目录与可用能力选择",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/016",
+      "depends_on": [
+        "MX-008",
+        "MX-011"
+      ],
+      "maps_ux": [
+        "UX03"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/AgentPickerScreen.tsx",
+        "packages/domain/src/mobile/agent-options.ts",
+        "tests/mobile-v2/mx-016.test.ts",
+        "tests/mobile-v2/probes/mx-016.ts"
+      ],
+      "consumes": "服务端可见 Agent 和能力三态",
+      "produces": "M06 Agent 选择与目标约束",
+      "implementation_steps": [
+        "显示名称/能力摘要而非敏感 Prompt 配置",
+        "按类型与关键词筛选；选中后返回原表单",
+        "不可用能力显示原因，不允许隐藏后默认 fallback",
+        "编码 Agent 依赖实际已授权 target，不以名字启用 shell"
+      ],
+      "acceptance": [
+        "无权 Agent 不出现在列表",
+        "缺能力目标给出可解释原因且不能提交",
+        "切换 Agent 不丢任务文字"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/AgentPickerScreen.tsx",
+        "packages/domain/src/mobile/agent-options.ts",
+        "tests/mobile-v2/mx-016.test.ts",
+        "tests/mobile-v2/probes/mx-016.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-016.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-016.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-016.md",
+      "first_test_spec": {
+        "given": "服务端可见 Agent 和能力三态",
+        "when": "显示名称/能力摘要而非敏感 Prompt 配置",
+        "then": "无权 Agent 不出现在列表",
+        "additional_assertions": [
+          "缺能力目标给出可解释原因且不能提交",
+          "切换 Agent 不丢任务文字"
+        ]
+      },
+      "maps_w": [
+        "W11"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-016.ts",
+      "test_case": {
+        "name": "unavailable-agent",
+        "input": {
+          "fixture": "coding-driver-unavailable"
+        },
+        "expected_observation": {
+          "selectedAgent": "general",
+          "unavailableReason": "driver_unavailable"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-017",
+      "stage": "S02",
+      "title": "产品对话渲染与富消息",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/017",
+      "depends_on": [
+        "MX-004",
+        "MX-009",
+        "MX-012"
+      ],
+      "maps_ux": [
+        "UX04"
+      ],
+      "closes_gaps": [
+        "G07",
+        "G08"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/conversations/ConversationScreen.tsx",
+        "apps/mobile/sources/weknora/conversations/view-model.ts",
+        "apps/mobile/sources/weknora/conversations/ProductMessageList.tsx",
+        "apps/mobile/sources/weknora/conversations/MessageBlock.tsx",
+        "tests/mobile-v2/mx-017.test.ts",
+        "tests/mobile-v2/probes/mx-017.ts"
+      ],
+      "consumes": "ExecutionSnapshot/Event；消息投影；NativeHost",
+      "produces": "M07 + ProductConversationVM；原生引用/工具/成果卡",
+      "implementation_steps": [
+        "拆出产品 renderer，不再依赖 Happy useSession/useIsDataReady",
+        "messages、pendingInteractions、三状态与能力同源投影",
+        "稳定 message ID，分段 append 更新，用户上滑不抢滚动",
+        "输入端只有有类型 submit/steer/附件/语音事件，不调用任意 RPC"
+      ],
+      "acceptance": [
+        "无 Happy 登录/sync 数据仍可发起与展示产品会话",
+        "重复事件不重复文本；tool/result 不被拼入普通 assistant 字符串",
+        "空态、长消息、键盘、撤权和恢复均能渲染"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/conversations/ConversationScreen.tsx",
+        "apps/mobile/sources/weknora/conversations/view-model.ts",
+        "apps/mobile/sources/weknora/conversations/ProductMessageList.tsx",
+        "apps/mobile/sources/weknora/conversations/MessageBlock.tsx",
+        "tests/mobile-v2/mx-017.test.ts",
+        "tests/mobile-v2/probes/mx-017.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-017.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-017.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-017.md",
+      "first_test_spec": {
+        "given": "ExecutionSnapshot/Event；消息投影；NativeHost",
+        "when": "拆出产品 renderer，不再依赖 Happy useSession/useIsDataReady",
+        "then": "无 Happy 登录/sync 数据仍可发起与展示产品会话",
+        "additional_assertions": [
+          "重复事件不重复文本；tool/result 不被拼入普通 assistant 字符串",
+          "空态、长消息、键盘、撤权和恢复均能渲染"
+        ]
+      },
+      "maps_w": [
+        "W09",
+        "W10",
+        "W12"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-017.ts",
+      "test_case": {
+        "name": "duplicate-message-event",
+        "input": {
+          "fixture": "same-message-seq42-twice"
+        },
+        "expected_observation": {
+          "renderedMessageCount": 1,
+          "text": "你好",
+          "happySyncReads": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-018",
+      "stage": "S02",
+      "title": "执行详情与保守取消展示",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/018",
+      "depends_on": [
+        "MX-006",
+        "MX-017"
+      ],
+      "maps_ux": [
+        "UX04"
+      ],
+      "closes_gaps": [
+        "G08"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/ExecutionScreen.tsx",
+        "packages/domain/src/mobile/execution-presentation.ts",
+        "tests/mobile-v2/mx-018.test.ts",
+        "tests/mobile-v2/probes/mx-018.ts"
+      ],
+      "consumes": "ExecutionDTO 三状态；capabilities；revision",
+      "produces": "M08 状态投影与请求/取消处理",
+      "implementation_steps": [
+        "保留 run/execution/settlement 三个原值与观察时间",
+        "unknown 专用 lookup；无 revision 不发送 command",
+        "取消前确认；ACK 后显示 stop_pending，等待真实确认",
+        "终态结果可查看但结算仍可 pending；禁止显示自动退款"
+      ],
+      "acceptance": [
+        "取消按钮不立即变为停止已确认",
+        "unknown 页不会创建新请求 ID",
+        "unknown 枚举可显示原始状态但禁控制命令"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/ExecutionScreen.tsx",
+        "packages/domain/src/mobile/execution-presentation.ts",
+        "tests/mobile-v2/mx-018.test.ts",
+        "tests/mobile-v2/probes/mx-018.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-018.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-018.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-018.md",
+      "first_test_spec": {
+        "given": "ExecutionDTO 三状态；capabilities；revision",
+        "when": "保留 run/execution/settlement 三个原值与观察时间",
+        "then": "取消按钮不立即变为停止已确认",
+        "additional_assertions": [
+          "unknown 页不会创建新请求 ID",
+          "unknown 枚举可显示原始状态但禁控制命令"
+        ]
+      },
+      "maps_w": [
+        "W03",
+        "W12"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-018.ts",
+      "test_case": {
+        "name": "cancel-not-stop",
+        "input": {
+          "fixture": "cancel-ack-no-process-exit"
+        },
+        "expected_observation": {
+          "executionStatus": "stop_pending",
+          "label": "停止待确认",
+          "refundRequested": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-019",
+      "stage": "S02",
+      "title": "工具审批详情与二次确认",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/019",
+      "depends_on": [
+        "MX-005",
+        "MX-011",
+        "MX-017"
+      ],
+      "maps_ux": [
+        "UX05"
+      ],
+      "closes_gaps": [
+        "G02"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/InteractionScreen.tsx",
+        "apps/mobile/sources/weknora/interactions/ToolApproval.tsx",
+        "apps/mobile/sources/weknora/interactions/controller.ts",
+        "tests/mobile-v2/mx-019.test.ts",
+        "tests/mobile-v2/probes/mx-019.ts"
+      ],
+      "consumes": "Current Interaction；typed decide adapter",
+      "produces": "M09 + 冻结目标/内容/revision 确认 Sheet",
+      "implementation_steps": [
+        "显示连接账号、精确目标、内容摘要、风险、有效期与版本",
+        "打开确认前刷新当前详情，Sheet 保存 revision/digest/scope generation",
+        "确认提交后等服务端状态，客户端不宣告外部写入已成功",
+        "409/过期/撤权关闭旧确认并提示重新核对"
+      ],
+      "acceptance": [
+        "确认前内容改变不接受旧批准",
+        "并发批准/拒绝没有第二次外部写入",
+        "返回/Escape/Android Back 不提交决定"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/InteractionScreen.tsx",
+        "apps/mobile/sources/weknora/interactions/ToolApproval.tsx",
+        "apps/mobile/sources/weknora/interactions/controller.ts",
+        "tests/mobile-v2/mx-019.test.ts",
+        "tests/mobile-v2/probes/mx-019.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-019.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-019.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-019.md",
+      "first_test_spec": {
+        "given": "Current Interaction；typed decide adapter",
+        "when": "显示连接账号、精确目标、内容摘要、风险、有效期与版本",
+        "then": "确认前内容改变不接受旧批准",
+        "additional_assertions": [
+          "并发批准/拒绝没有第二次外部写入",
+          "返回/Escape/Android Back 不提交决定"
+        ]
+      },
+      "maps_w": [
+        "W05",
+        "W06"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-019.ts",
+      "test_case": {
+        "name": "approval-frozen-revision",
+        "input": {
+          "fixture": "open-revision4-current5",
+          "fault": "stale-confirm"
+        },
+        "expected_observation": {
+          "decisionCount": 0,
+          "nextAction": "refresh"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-020",
+      "stage": "S02",
+      "title": "预算、问题与连接授权交互",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/020",
+      "depends_on": [
+        "MX-019"
+      ],
+      "maps_ux": [
+        "UX05"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/interactions/BudgetApproval.tsx",
+        "apps/mobile/sources/weknora/interactions/QuestionForm.tsx",
+        "apps/mobile/sources/weknora/interactions/ConnectionConsent.tsx",
+        "tests/mobile-v2/mx-020.test.ts",
+        "tests/mobile-v2/probes/mx-020.ts"
+      ],
+      "consumes": "Interaction discriminated union；授权角色",
+      "produces": "三类专用交互页面/Sheet，不混用批准布尔值",
+      "implementation_steps": [
+        "预算显示旧上限、新申请与差额，校验 budget_authorize 权限",
+        "问题回复校验服务端 options/schema 与长度；提交最新编辑",
+        "连接授权使用受信系统浏览器，并查询产品连接状态",
+        "未知交互类型只读展示；不 fall back 至批准任意操作"
+      ],
+      "acceptance": [
+        "工具批准不能增加预算，预算批准不能授权连接",
+        "问题内容更新后发送最新值",
+        "授权回跳状态不合法不激活连接"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/interactions/BudgetApproval.tsx",
+        "apps/mobile/sources/weknora/interactions/QuestionForm.tsx",
+        "apps/mobile/sources/weknora/interactions/ConnectionConsent.tsx",
+        "tests/mobile-v2/mx-020.test.ts",
+        "tests/mobile-v2/probes/mx-020.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-020.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-020.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-020.md",
+      "first_test_spec": {
+        "given": "Interaction discriminated union；授权角色",
+        "when": "预算显示旧上限、新申请与差额，校验 budget_authorize 权限",
+        "then": "工具批准不能增加预算，预算批准不能授权连接",
+        "additional_assertions": [
+          "问题内容更新后发送最新值",
+          "授权回跳状态不合法不激活连接"
+        ]
+      },
+      "maps_w": [
+        "W05"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-020.ts",
+      "test_case": {
+        "name": "typed-interaction-fields",
+        "input": {
+          "fixture": "budget-question-connection-tool"
+        },
+        "expected_observation": {
+          "toolBudgetFieldCount": 0,
+          "questionAnswer": "用户编辑后的回答",
+          "connectionState": "authorizing"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-021",
+      "stage": "S02",
+      "title": "通知注册、收件箱与安全深链",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/021",
+      "depends_on": [
+        "MX-013",
+        "MX-019"
+      ],
+      "maps_ux": [
+        "UX07"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/notifications/registration.ts",
+        "apps/mobile/sources/weknora/notifications/deep-link.ts",
+        "apps/mobile/sources/weknora/screens/InboxScreen.tsx",
+        "internal/handler/session/workbench_inbox.go",
+        "tests/mobile-v2/mx-021.test.ts",
+        "tests/mobile-v2/probes/mx-021.ts"
+      ],
+      "consumes": "事件 outbox；设备注册；Scope/AuthState",
+      "produces": "M10 + InboxDTO + 冷启动导航意图",
+      "implementation_steps": [
+        "设备 environment/user/session/revision 隔离与撤销",
+        "事件提交与通知意图同事务，回执失败重试不制造新任务",
+        "深链只携资源标识；先认证、空间确认、重查权限",
+        "拒绝通知权限不影响任务；通知只提示不携审批正文"
+      ],
+      "acceptance": [
+        "A账号退出后B不收到A的敏感内容",
+        "跨空间通知点击先确认，不直接执行决定",
+        "冷启动/删除资源/撤权/重复推送均正确"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/notifications/registration.ts",
+        "apps/mobile/sources/weknora/notifications/deep-link.ts",
+        "apps/mobile/sources/weknora/screens/InboxScreen.tsx",
+        "internal/handler/session/workbench_inbox.go",
+        "tests/mobile-v2/mx-021.test.ts",
+        "tests/mobile-v2/probes/mx-021.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-021.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-021.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-021.md",
+      "first_test_spec": {
+        "given": "事件 outbox；设备注册；Scope/AuthState",
+        "when": "设备 environment/user/session/revision 隔离与撤销",
+        "then": "A账号退出后B不收到A的敏感内容",
+        "additional_assertions": [
+          "跨空间通知点击先确认，不直接执行决定",
+          "冷启动/删除资源/撤权/重复推送均正确"
+        ]
+      },
+      "maps_w": [
+        "W13",
+        "W14",
+        "W15",
+        "W16"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-021.ts",
+      "test_case": {
+        "name": "notification-cross-account",
+        "input": {
+          "fixture": "device-A-logout-B-login",
+          "fault": "late-A-intent"
+        },
+        "expected_observation": {
+          "deliveredToB": 0,
+          "approvalCount": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-022",
+      "stage": "S03",
+      "title": "资源与知识消费页面",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/022",
+      "depends_on": [
+        "MX-008",
+        "MX-011"
+      ],
+      "maps_ux": [
+        "UX06"
+      ],
+      "closes_gaps": [],
+      "profile": "resources",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/ResourcesScreen.tsx",
+        "apps/mobile/sources/weknora/screens/KnowledgeScreen.tsx",
+        "packages/domain/src/mobile/resource-presentation.ts",
+        "tests/mobile-v2/mx-022.test.ts",
+        "tests/mobile-v2/probes/mx-022.ts"
+      ],
+      "consumes": "现有资源列表/知识/文档 API",
+      "produces": "M11/M12 与知识引用选择模型",
+      "implementation_steps": [
+        "资源分 Agent/知识/连接/成果，不复制全后台菜单",
+        "文档列表展示扫描/索引状态；每次预览重新授权",
+        "用此知识提问仅选引用，不复制文档进入新 tenant",
+        "收藏归属 scope，不与产品权限混淆"
+      ],
+      "acceptance": [
+        "知识未就绪给出明确状态",
+        "资源搜索只查当前允许的范围",
+        "知识可选，空知识库仍可创建通用任务"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/ResourcesScreen.tsx",
+        "apps/mobile/sources/weknora/screens/KnowledgeScreen.tsx",
+        "packages/domain/src/mobile/resource-presentation.ts",
+        "tests/mobile-v2/mx-022.test.ts",
+        "tests/mobile-v2/probes/mx-022.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-022.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-022.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-022.md",
+      "first_test_spec": {
+        "given": "现有资源列表/知识/文档 API",
+        "when": "资源分 Agent/知识/连接/成果，不复制全后台菜单",
+        "then": "知识未就绪给出明确状态",
+        "additional_assertions": [
+          "资源搜索只查当前允许的范围",
+          "知识可选，空知识库仍可创建通用任务"
+        ]
+      },
+      "maps_w": [
+        "W25",
+        "W28"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-022.ts",
+      "test_case": {
+        "name": "knowledge-access-revoked",
+        "input": {
+          "fixture": "cached-knowledge-title",
+          "fault": "server-403"
+        },
+        "expected_observation": {
+          "visibleSensitiveFields": [],
+          "canAskWithKnowledge": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-023",
+      "stage": "S03",
+      "title": "连接详情与授权生命周期",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/023",
+      "depends_on": [
+        "MX-019",
+        "MX-022"
+      ],
+      "maps_ux": [
+        "UX06"
+      ],
+      "closes_gaps": [
+        "G11"
+      ],
+      "profile": "connectors",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/ConnectionScreen.tsx",
+        "apps/mobile/sources/weknora/resources/connection-controller.ts",
+        "tests/mobile-v2/mx-023.test.ts",
+        "tests/mobile-v2/probes/mx-023.ts"
+      ],
+      "consumes": "产品 Connection/Installation/Action 权限；OC T13/T18 子门禁",
+      "produces": "M13 connection state / allowlisted actions / revoke",
+      "implementation_steps": [
+        "明确个人连接和空间连接，不暴露 Provider 凭据",
+        "授权入口使用产品 API；系统浏览器回跳后查询",
+        "撤销带当前版本并使正在显示的权限失效",
+        "真实外写开关仅由对应门禁控制，不因 T18 行 passed 自动开启"
+      ],
+      "acceptance": [
+        "撤销后动作不可调用，不能空 grant 当拒绝全部",
+        "连接授权不代表所有成员可读取密钥",
+        "无 live-write/billing 证据只读或禁写"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/ConnectionScreen.tsx",
+        "apps/mobile/sources/weknora/resources/connection-controller.ts",
+        "tests/mobile-v2/mx-023.test.ts",
+        "tests/mobile-v2/probes/mx-023.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "external_gates": [
+        "T13 产品 API 当前接线验证",
+        "T18 provider_write/billing 子证据通过才可启用写操作"
+      ],
+      "test_file": "tests/mobile-v2/mx-023.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-023.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-023.md",
+      "first_test_spec": {
+        "given": "产品 Connection/Installation/Action 权限；OC T13/T18 子门禁",
+        "when": "明确个人连接和空间连接，不暴露 Provider 凭据",
+        "then": "撤销后动作不可调用，不能空 grant 当拒绝全部",
+        "additional_assertions": [
+          "连接授权不代表所有成员可读取密钥",
+          "无 live-write/billing 证据只读或禁写"
+        ]
+      },
+      "maps_w": [
+        "W24"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-023.ts",
+      "test_case": {
+        "name": "connection-revoke-auth-version",
+        "input": {
+          "fixture": "auth-version3",
+          "fault": "revoke-then-dispatch"
+        },
+        "expected_observation": {
+          "providerWriteCount": 0,
+          "rawSecretFields": []
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-024",
+      "stage": "S03",
+      "title": "不可变成果预览、下载与分享",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/024",
+      "depends_on": [
+        "MX-017",
+        "MX-022"
+      ],
+      "maps_ux": [
+        "UX06"
+      ],
+      "closes_gaps": [],
+      "profile": "resources",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/ArtifactScreen.tsx",
+        "apps/mobile/sources/weknora/resources/artifact-viewer.ts",
+        "apps/mobile/sources/weknora/resources/share.ts",
+        "tests/mobile-v2/mx-024.test.ts",
+        "tests/mobile-v2/probes/mx-024.ts"
+      ],
+      "consumes": "ArtifactRef{id,version,mime,size,run_id}；PreviewPort",
+      "produces": "M14 原生预览与受控系统分享",
+      "implementation_steps": [
+        "下载前重新授权；签名 URL 不持久保存",
+        "文本/图片/表格安全原生渲染；动态 HTML 优先静态化",
+        "不可变 artifact/version 关联来源，工作目录文件先导入",
+        "系统分享确认外流范围；缓存文件按策略清理"
+      ],
+      "acceptance": [
+        "到期链接重新鉴权，不直接永久链接分享",
+        "不可信 HTML 不读取产品 token/桥接或任意本地文件",
+        "远程产物仅 remote profile 验证后显示"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/ArtifactScreen.tsx",
+        "apps/mobile/sources/weknora/resources/artifact-viewer.ts",
+        "apps/mobile/sources/weknora/resources/share.ts",
+        "tests/mobile-v2/mx-024.test.ts",
+        "tests/mobile-v2/probes/mx-024.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "remote": [
+          "MX-027"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-024.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-024.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-024.md",
+      "first_test_spec": {
+        "given": "ArtifactRef{id,version,mime,size,run_id}；PreviewPort",
+        "when": "下载前重新授权；签名 URL 不持久保存",
+        "then": "到期链接重新鉴权，不直接永久链接分享",
+        "additional_assertions": [
+          "不可信 HTML 不读取产品 token/桥接或任意本地文件",
+          "远程产物仅 remote profile 验证后显示"
+        ]
+      },
+      "maps_w": [
+        "W25",
+        "W27",
+        "W28"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-024.ts",
+      "test_case": {
+        "name": "artifact-link-expired",
+        "input": {
+          "fixture": "artifact-version1",
+          "fault": "expired-url-then-permission-revoked"
+        },
+        "expected_observation": {
+          "shareCount": 0,
+          "persistentSignedUrls": []
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-025",
+      "stage": "S03",
+      "title": "原生附件与上传校验",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/025",
+      "depends_on": [
+        "MX-012",
+        "MX-015",
+        "MX-022"
+      ],
+      "maps_ux": [
+        "UX06"
+      ],
+      "closes_gaps": [],
+      "profile": "resources",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/resources/upload.ts",
+        "apps/mobile/sources/weknora/platform/native-file.ts",
+        "packages/api-client/src/knowledge/documents.ts",
+        "tests/mobile-v2/mx-025.test.ts",
+        "tests/mobile-v2/probes/mx-025.ts"
+      ],
+      "consumes": "nativeFile + multipartFields；现有 session attachment API",
+      "produces": "UploadState 与正式 Expo 文件适配",
+      "implementation_steps": [
+        "content:// 和 file:// 在 native port 转流/multipart，不传路径当文件",
+        "客户端大小提示与服务端真实 MIME/摘要/扫描各司其职",
+        "abort/作用域切换/超时保留草稿并清理孤儿",
+        "默认会话临时使用；入知识库另行明确操作"
+      ],
+      "acceptance": [
+        "iOS照片/Android content URI 真文件链路通过",
+        "伪 MIME/超限/零字节/撤权失败关闭",
+        "扫描前 Agent 不能读取；取消不丢文本"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/resources/upload.ts",
+        "apps/mobile/sources/weknora/platform/native-file.ts",
+        "packages/api-client/src/knowledge/documents.ts",
+        "tests/mobile-v2/mx-025.test.ts",
+        "tests/mobile-v2/probes/mx-025.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-025.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-025.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-025.md",
+      "first_test_spec": {
+        "given": "nativeFile + multipartFields；现有 session attachment API",
+        "when": "content:// 和 file:// 在 native port 转流/multipart，不传路径当文件",
+        "then": "iOS照片/Android content URI 真文件链路通过",
+        "additional_assertions": [
+          "伪 MIME/超限/零字节/撤权失败关闭",
+          "扫描前 Agent 不能读取；取消不丢文本"
+        ]
+      },
+      "maps_w": [
+        "W25"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-025.ts",
+      "test_case": {
+        "name": "native-file-switch",
+        "input": {
+          "fixture": "Android-content-uri",
+          "fault": "tenant-switch-during-upload"
+        },
+        "expected_observation": {
+          "lateResultApplied": false,
+          "draftPreserved": true
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-026",
+      "stage": "S03",
+      "title": "执行目标选择与能力解释",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/026",
+      "depends_on": [
+        "MX-016",
+        "MX-018"
+      ],
+      "maps_ux": [
+        "UX09"
+      ],
+      "closes_gaps": [],
+      "profile": "remote",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/TargetPickerScreen.tsx",
+        "packages/domain/src/mobile/target-options.ts",
+        "tests/mobile-v2/mx-026.test.ts",
+        "tests/mobile-v2/probes/mx-026.ts"
+      ],
+      "consumes": "authorized target/workspace refs + capabilities",
+      "produces": "M15 目标选择 VM",
+      "implementation_steps": [
+        "按平台/托管/个人分类；只展示允许目标",
+        "观察新鲜度与可用能力分开显示",
+        "选择 target 不改变 tenant；workspace_ref 不等于空间",
+        "未绑定节点给出原因，不接受任意 daemon URL"
+      ],
+      "acceptance": [
+        "无权限 target 无敏感路径泄露",
+        "离线节点不宣告任务失败或自动迁移",
+        "未通过 probe 的目标不宣告 supported"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/TargetPickerScreen.tsx",
+        "packages/domain/src/mobile/target-options.ts",
+        "tests/mobile-v2/mx-026.test.ts",
+        "tests/mobile-v2/probes/mx-026.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-026.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-026.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-026.md",
+      "first_test_spec": {
+        "given": "authorized target/workspace refs + capabilities",
+        "when": "按平台/托管/个人分类；只展示允许目标",
+        "then": "无权限 target 无敏感路径泄露",
+        "additional_assertions": [
+          "离线节点不宣告任务失败或自动迁移",
+          "未通过 probe 的目标不宣告 supported"
+        ]
+      },
+      "maps_w": [
+        "W17",
+        "W18",
+        "W19"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-026.ts",
+      "test_case": {
+        "name": "target-not-observable",
+        "input": {
+          "fixture": "remote-create-true-observe-false"
+        },
+        "expected_observation": {
+          "selectedTarget": "platform",
+          "admittedRemoteCount": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-027",
+      "stage": "S03",
+      "title": "Paseo 服务身份与远程治理接线",
+      "role": "Go 后端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "server",
+      "module_key": "mobile-v2/027",
+      "depends_on": [
+        "MX-003",
+        "MX-006",
+        "MX-026"
+      ],
+      "maps_ux": [
+        "UX09"
+      ],
+      "closes_gaps": [
+        "G09"
+      ],
+      "profile": "remote",
+      "status": "pending",
+      "writes": [
+        "internal/execution/mobile_driver_policy.go",
+        "internal/handler/session/workbench_read.go",
+        "internal/router/routes_workbench.go",
+        "services/paseo-adapter/src/mobile-capabilities.ts",
+        "tests/mobile-v2/mx-027.test.ts",
+        "tests/mobile-v2/probes/mx-027.ts"
+      ],
+      "consumes": "固定上游 SDK；服务身份；运行绑定/租约/fence",
+      "produces": "已验收的 target 能力集合与来源事件安全入口",
+      "implementation_steps": [
+        "来源事件持久化前验证 service identity/tenant/run/binding/fence",
+        "停止、启动回执不确定、租约过期都保留不确定状态并对账",
+        "子 Run 复用预算树；不能复制余额或旁路 ActionService",
+        "个人节点 W23 另验；产物导入不可变版本"
+      ],
+      "acceptance": [
+        "普通移动 token 不能写 source-events",
+        "错 binding/run 在任何写入前拒绝",
+        "启动回执丢失不重复创建外部进程；迟到用量正确处理"
+      ],
+      "file_lock_keys": [
+        "internal/execution/mobile_driver_policy.go",
+        "internal/handler/session/workbench_read.go",
+        "internal/router/routes_workbench.go",
+        "services/paseo-adapter/src/mobile-capabilities.ts",
+        "tests/mobile-v2/mx-027.test.ts",
+        "tests/mobile-v2/probes/mx-027.ts"
+      ],
+      "environment_gates": [
+        "隔离 PostgreSQL + SQLite"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-027.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-027.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-027.md",
+      "first_test_spec": {
+        "given": "固定上游 SDK；服务身份；运行绑定/租约/fence",
+        "when": "来源事件持久化前验证 service identity/tenant/run/binding/fence",
+        "then": "普通移动 token 不能写 source-events",
+        "additional_assertions": [
+          "错 binding/run 在任何写入前拒绝",
+          "启动回执丢失不重复创建外部进程；迟到用量正确处理"
+        ]
+      },
+      "maps_w": [
+        "W17",
+        "W18",
+        "W19",
+        "W20",
+        "W21",
+        "W22",
+        "W23",
+        "W24",
+        "W26"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-027.ts",
+      "test_case": {
+        "name": "source-event-before-write",
+        "input": {
+          "fixture": "valid-run-wrong-binding",
+          "fault": "cross-tenant-source-event"
+        },
+        "expected_observation": {
+          "persistedEvents": 0,
+          "responseStatus": 404
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-028",
+      "stage": "S03",
+      "title": "确认式听写与会话草稿",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/028",
+      "depends_on": [
+        "MX-017",
+        "MX-025"
+      ],
+      "maps_ux": [
+        "UX08"
+      ],
+      "closes_gaps": [],
+      "profile": "dictation",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/VoiceInputScreen.tsx",
+        "apps/mobile/sources/weknora/voice/dictation.ts",
+        "tests/mobile-v2/mx-028.test.ts",
+        "tests/mobile-v2/probes/mx-028.ts"
+      ],
+      "consumes": "AudioPort/TranscriptionPort；scoped draft",
+      "produces": "M16 record → transcribe → edit → confirm",
+      "implementation_steps": [
+        "权限只在首次录音前申请；拒绝可继续文字任务",
+        "转写结果进入可编辑 draft，不自动提交给 Agent",
+        "用户确认后读取当前文本并沿普通提交/steer",
+        "切空间/退出/取消音频关闭媒体但不取消已有 Run"
+      ],
+      "acceptance": [
+        "修改转写后使用最新文字",
+        "拒绝麦克风/打断/后台切换都有说明",
+        "结束录音不等于取消任务或批准操作"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/VoiceInputScreen.tsx",
+        "apps/mobile/sources/weknora/voice/dictation.ts",
+        "tests/mobile-v2/mx-028.test.ts",
+        "tests/mobile-v2/probes/mx-028.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-028.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-028.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-028.md",
+      "first_test_spec": {
+        "given": "AudioPort/TranscriptionPort；scoped draft",
+        "when": "权限只在首次录音前申请；拒绝可继续文字任务",
+        "then": "修改转写后使用最新文字",
+        "additional_assertions": [
+          "拒绝麦克风/打断/后台切换都有说明",
+          "结束录音不等于取消任务或批准操作"
+        ]
+      },
+      "maps_w": [
+        "W29"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-028.ts",
+      "test_case": {
+        "name": "edited-transcript",
+        "input": {
+          "fixture": "initial-transcript",
+          "fault": "edit-before-confirm"
+        },
+        "expected_observation": {
+          "draft": "用户最终编辑的文本",
+          "submittedMessages": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-029",
+      "stage": "S03",
+      "title": "实时语音与独立中断语义",
+      "role": "共享 TS / Go",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "shared",
+      "module_key": "mobile-v2/029",
+      "depends_on": [
+        "MX-006",
+        "MX-021",
+        "MX-028"
+      ],
+      "maps_ux": [
+        "UX08"
+      ],
+      "closes_gaps": [],
+      "profile": "voice",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/voice/realtime.ts",
+        "apps/mobile/sources/weknora/voice/VoiceSessionPanel.tsx",
+        "internal/application/service/workbench/voice_session.go",
+        "tests/mobile-v2/mx-029.test.ts",
+        "tests/mobile-v2/probes/mx-029.ts"
+      ],
+      "consumes": "短期媒体令牌；预算授权；Run/voice session mapping",
+      "produces": "interrupt / endVoice / cancelTask 三个独立动作",
+      "implementation_steps": [
+        "通过产品 API 授权与限额，不下发长期服务密钥",
+        "媒体会话与产品 Run 绑定；账务沿原商业入口",
+        "明确暂停播报/结束语音/取消任务的不同状态转移",
+        "后台与来电打断处理；不可语音绕过危险写审批"
+      ],
+      "acceptance": [
+        "三种停止操作互不误触发",
+        "语音结束后迟到用量仍能结算",
+        "真实媒体/推送环境缺失不得开放能力"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/voice/realtime.ts",
+        "apps/mobile/sources/weknora/voice/VoiceSessionPanel.tsx",
+        "internal/application/service/workbench/voice_session.go",
+        "tests/mobile-v2/mx-029.test.ts",
+        "tests/mobile-v2/probes/mx-029.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "remote": [
+          "MX-027"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-029.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-029.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-029.md",
+      "first_test_spec": {
+        "given": "短期媒体令牌；预算授权；Run/voice session mapping",
+        "when": "通过产品 API 授权与限额，不下发长期服务密钥",
+        "then": "三种停止操作互不误触发",
+        "additional_assertions": [
+          "语音结束后迟到用量仍能结算",
+          "真实媒体/推送环境缺失不得开放能力"
+        ]
+      },
+      "maps_w": [
+        "W30",
+        "W31"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-029.ts",
+      "test_case": {
+        "name": "voice-interrupt-not-cancel",
+        "input": {
+          "fixture": "active-voice-active-run",
+          "fault": "interrupt-output"
+        },
+        "expected_observation": {
+          "mediaOutputStopped": true,
+          "runCancelCount": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-030",
+      "stage": "S03",
+      "title": "账户偏好、外观与退出",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/030",
+      "depends_on": [
+        "MX-009",
+        "MX-011"
+      ],
+      "maps_ux": [
+        "UX01"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/ProfileScreen.tsx",
+        "apps/mobile/sources/weknora/preferences/store.ts",
+        "tests/mobile-v2/mx-030.test.ts",
+        "tests/mobile-v2/probes/mx-030.ts"
+      ],
+      "consumes": "AuthState/Scope；token theme；设备撤销",
+      "produces": "M17 偏好页与完整退出流程",
+      "implementation_steps": [
+        "主题支持 system/light/dark；原型提供 light/dark 对照",
+        "通知偏好与系统权限分开，关闭偏好不停止任务",
+        "退出撤销设备、关闭流/语音、清凭证和指定缓存",
+        "偏好不含 Provider secrets；不清别的账户数据"
+      ],
+      "acceptance": [
+        "退出中刷新不会恢复旧账户",
+        "浅深主题、字体、页面状态保持一致",
+        "网络离线退出仍本地安全清理并记录最小撤销意图"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/ProfileScreen.tsx",
+        "apps/mobile/sources/weknora/preferences/store.ts",
+        "tests/mobile-v2/mx-030.test.ts",
+        "tests/mobile-v2/probes/mx-030.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-030.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-030.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-030.md",
+      "first_test_spec": {
+        "given": "AuthState/Scope；token theme；设备撤销",
+        "when": "主题支持 system/light/dark；原型提供 light/dark 对照",
+        "then": "退出中刷新不会恢复旧账户",
+        "additional_assertions": [
+          "浅深主题、字体、页面状态保持一致",
+          "网络离线退出仍本地安全清理并记录最小撤销意图"
+        ]
+      },
+      "maps_w": [
+        "W07",
+        "W13"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-030.ts",
+      "test_case": {
+        "name": "logout-device-generation",
+        "input": {
+          "fixture": "active-credential-and-device",
+          "fault": "late-token-refresh"
+        },
+        "expected_observation": {
+          "credential": null,
+          "activeStreams": 0,
+          "oldTokenRewritten": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-031",
+      "stage": "S03",
+      "title": "空间用量与只读商业视图",
+      "role": "Expo 客户端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "native",
+      "module_key": "mobile-v2/031",
+      "depends_on": [
+        "MX-013",
+        "MX-030"
+      ],
+      "maps_ux": [
+        "UX06"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "apps/mobile/sources/weknora/screens/UsageScreen.tsx",
+        "apps/mobile/sources/weknora/commercial/usage-presenter.ts",
+        "tests/mobile-v2/mx-031.test.ts",
+        "tests/mobile-v2/probes/mx-031.ts"
+      ],
+      "consumes": "现有商业域授权读取端口",
+      "produces": "M18 可用/预占/已结算/待结算分离",
+      "implementation_steps": [
+        "只适配选定 OpenMeter 模型与商业域，不建新钱包",
+        "显示时间与账单账户作用域，不混用其他空间余额",
+        "BYOK 模型费和平台服务费分开说明，不假定全任务免费",
+        "普通 Admin 与 billing admin 分权；购买/退款不纳入本轮"
+      ],
+      "acceptance": [
+        "没有商业权限不显示金额与敏感明细",
+        "进行中消耗明确非最终数字",
+        "记录来源与 as_of；无来源不展示假精确值"
+      ],
+      "file_lock_keys": [
+        "apps/mobile/sources/weknora/screens/UsageScreen.tsx",
+        "apps/mobile/sources/weknora/commercial/usage-presenter.ts",
+        "tests/mobile-v2/mx-031.test.ts",
+        "tests/mobile-v2/probes/mx-031.ts"
+      ],
+      "environment_gates": [
+        "iOS/Android 开发构建"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {},
+      "test_file": "tests/mobile-v2/mx-031.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-031.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-031.md",
+      "first_test_spec": {
+        "given": "现有商业域授权读取端口",
+        "when": "只适配选定 OpenMeter 模型与商业域，不建新钱包",
+        "then": "没有商业权限不显示金额与敏感明细",
+        "additional_assertions": [
+          "进行中消耗明确非最终数字",
+          "记录来源与 as_of；无来源不展示假精确值"
+        ]
+      },
+      "maps_w": [],
+      "probe_file": "tests/mobile-v2/probes/mx-031.ts",
+      "test_case": {
+        "name": "usage-finality",
+        "input": {
+          "fixture": "reserved120-pending38-settled1260"
+        },
+        "expected_observation": {
+          "reserved": 120,
+          "pending": 38,
+          "settled": 1260,
+          "paymentRequests": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-032",
+      "stage": "S04",
+      "title": "服务端能力清单与部署开关",
+      "role": "Go 后端",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "server",
+      "module_key": "mobile-v2/032",
+      "depends_on": [
+        "MX-013",
+        "MX-019",
+        "MX-021"
+      ],
+      "maps_ux": [
+        "UX10"
+      ],
+      "closes_gaps": [
+        "G11"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "internal/application/service/workbench/capabilities.go",
+        "deploy/mobile-workbench/profile-manifest.json",
+        "docs/evidence/mobile-v2/profile-gates.md",
+        "tests/mobile-v2/mx-032.test.ts",
+        "tests/mobile-v2/probes/mx-032.ts"
+      ],
+      "consumes": "已验收 provider/driver/权限/商业 subgate",
+      "produces": "profile → capability state/reason；最低协议窗口",
+      "implementation_steps": [
+        "capability 取部署、服务健康、用户权限与验收证据交集",
+        "core/oidc/resources/connectors/remote/personal_node/dictation/voice/full_happy 分开",
+        "能力撤销后刷新并强制服务端拒绝新准入",
+        "配置只隐藏未发布能力，不将按钮置灰当完成功能"
+      ],
+      "acceptance": [
+        "任一缺证据能力不能显示 supported",
+        "旧任务仍可停止/清理/结算，不因关新准入而丢失",
+        "旧客户端兼容性以版本协商测试证明"
+      ],
+      "file_lock_keys": [
+        "internal/application/service/workbench/capabilities.go",
+        "deploy/mobile-workbench/profile-manifest.json",
+        "docs/evidence/mobile-v2/profile-gates.md",
+        "tests/mobile-v2/mx-032.test.ts",
+        "tests/mobile-v2/probes/mx-032.ts"
+      ],
+      "environment_gates": [
+        "隔离 PostgreSQL + SQLite"
+      ],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "resources": [
+          "MX-022",
+          "MX-024",
+          "MX-025"
+        ],
+        "connectors": [
+          "MX-023"
+        ],
+        "remote": [
+          "MX-026",
+          "MX-027"
+        ],
+        "dictation": [
+          "MX-028"
+        ],
+        "voice": [
+          "MX-029"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-032.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-032.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-032.md",
+      "first_test_spec": {
+        "given": "已验收 provider/driver/权限/商业 subgate",
+        "when": "capability 取部署、服务健康、用户权限与验收证据交集",
+        "then": "任一缺证据能力不能显示 supported",
+        "additional_assertions": [
+          "旧任务仍可停止/清理/结算，不因关新准入而丢失",
+          "旧客户端兼容性以版本协商测试证明"
+        ]
+      },
+      "maps_w": [
+        "W34"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-032.ts",
+      "test_case": {
+        "name": "profile-with-missing-evidence",
+        "input": {
+          "fixture": "remote-without-cancel-evidence"
+        },
+        "expected_observation": {
+          "remoteCapability": "unavailable",
+          "reason": "missing_cancel_evidence"
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-033",
+      "stage": "S04",
+      "title": "恢复、并发与安全故障注入",
+      "role": "QA / Release",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "quality",
+      "module_key": "mobile-v2/033",
+      "depends_on": [
+        "MX-006",
+        "MX-012",
+        "MX-018",
+        "MX-019",
+        "MX-032"
+      ],
+      "maps_ux": [
+        "UX10"
+      ],
+      "closes_gaps": [
+        "G01",
+        "G04",
+        "G06",
+        "G09"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "tests/mobile-v2/recovery.test.ts",
+        "tests/mobile-v2/security.test.ts",
+        "docs/evidence/mobile-v2/fault-matrix.md",
+        "tests/mobile-v2/mx-033.test.ts",
+        "tests/mobile-v2/probes/mx-033.ts"
+      ],
+      "consumes": "当前集成 HEAD；真实受控环境",
+      "produces": "故障矩阵证据与各 profile 独立结论",
+      "implementation_steps": [
+        "注入 ACK 丢失、事件乱序、游标过期、DB写失败与进程重启",
+        "并发批准/撤权/换空间/迟到回调验证写入前边界",
+        "删除墓碑保留清理与迟到用量，不移除必要结算记录",
+        "remote/voice 对应环境缺失保留 blocked，不用 mock 标通过"
+      ],
+      "acceptance": [
+        "至少逐项覆盖本交付状态表的所有负向行为",
+        "无重复外部执行、重复账务与越权可见数据",
+        "日志不含 Prompt、token、完整文件内容"
+      ],
+      "file_lock_keys": [
+        "tests/mobile-v2/recovery.test.ts",
+        "tests/mobile-v2/security.test.ts",
+        "docs/evidence/mobile-v2/fault-matrix.md",
+        "tests/mobile-v2/mx-033.test.ts",
+        "tests/mobile-v2/probes/mx-033.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "resources": [
+          "MX-022",
+          "MX-024",
+          "MX-025"
+        ],
+        "connectors": [
+          "MX-023"
+        ],
+        "remote": [
+          "MX-026",
+          "MX-027"
+        ],
+        "dictation": [
+          "MX-028"
+        ],
+        "voice": [
+          "MX-029"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-033.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-033.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-033.md",
+      "first_test_spec": {
+        "given": "当前集成 HEAD；真实受控环境",
+        "when": "注入 ACK 丢失、事件乱序、游标过期、DB写失败与进程重启",
+        "then": "至少逐项覆盖本交付状态表的所有负向行为",
+        "additional_assertions": [
+          "无重复外部执行、重复账务与越权可见数据",
+          "日志不含 Prompt、token、完整文件内容"
+        ]
+      },
+      "maps_w": [
+        "W33",
+        "W35"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-033.ts",
+      "test_case": {
+        "name": "crash-recovery-budget",
+        "input": {
+          "fixture": "side-effect-succeeded",
+          "fault": "crash-before-local-settlement"
+        },
+        "expected_observation": {
+          "providerWriteCount": 1,
+          "settlementCount": 1
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-034",
+      "stage": "S04",
+      "title": "双平台产品链 E2E",
+      "role": "QA / Release",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "quality",
+      "module_key": "mobile-v2/034",
+      "depends_on": [
+        "MX-015",
+        "MX-017",
+        "MX-018",
+        "MX-019",
+        "MX-021",
+        "MX-030",
+        "MX-031",
+        "MX-033"
+      ],
+      "maps_ux": [
+        "UX10"
+      ],
+      "closes_gaps": [
+        "G10"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "tests/mobile-v2/maestro/core.yaml",
+        "tests/mobile-v2/maestro/scope.yaml",
+        "docs/evidence/mobile-v2/native-e2e.md",
+        "tests/mobile-v2/mx-034.test.ts",
+        "tests/mobile-v2/probes/mx-034.ts"
+      ],
+      "consumes": "iOS/Android 开发构建 + 当前后端",
+      "produces": "真实登录→任务→审批→成果→重启恢复证据",
+      "implementation_steps": [
+        "真实产品账户与平台 Agent 走完核心链",
+        "冷启动通知/前后台/杀进程/权限拒绝分别记录",
+        "记录 build、OS、后端 SHA、数据库与服务来源",
+        "浏览器原型截图不替代 Native E2E"
+      ],
+      "acceptance": [
+        "两个原生平台同一核心场景通过",
+        "没有 silent skip/no tests found",
+        "截图/视频/日志可关联单一 run_id 与构建"
+      ],
+      "file_lock_keys": [
+        "tests/mobile-v2/maestro/core.yaml",
+        "tests/mobile-v2/maestro/scope.yaml",
+        "docs/evidence/mobile-v2/native-e2e.md",
+        "tests/mobile-v2/mx-034.test.ts",
+        "tests/mobile-v2/probes/mx-034.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "resources": [
+          "MX-022",
+          "MX-024",
+          "MX-025"
+        ],
+        "connectors": [
+          "MX-023"
+        ],
+        "remote": [
+          "MX-026",
+          "MX-027"
+        ],
+        "dictation": [
+          "MX-028"
+        ],
+        "voice": [
+          "MX-029"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-034.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-034.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-034.md",
+      "first_test_spec": {
+        "given": "iOS/Android 开发构建 + 当前后端",
+        "when": "真实产品账户与平台 Agent 走完核心链",
+        "then": "两个原生平台同一核心场景通过",
+        "additional_assertions": [
+          "没有 silent skip/no tests found",
+          "截图/视频/日志可关联单一 run_id 与构建"
+        ]
+      },
+      "maps_w": [
+        "W12",
+        "W16",
+        "W36"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-034.ts",
+      "test_case": {
+        "name": "native-core-e2e",
+        "input": {
+          "fixture": "controlled-platform-agent-ios-android"
+        },
+        "expected_observation": {
+          "verifiedPlatforms": [
+            "ios",
+            "android"
+          ],
+          "duplicateRunCount": 0
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-035",
+      "stage": "S04",
+      "title": "视觉、无障碍与性能验收",
+      "role": "QA / Release",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "quality",
+      "module_key": "mobile-v2/035",
+      "depends_on": [
+        "MX-008",
+        "MX-017",
+        "MX-034"
+      ],
+      "maps_ux": [
+        "UX10"
+      ],
+      "closes_gaps": [],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "tests/mobile-v2/visual-baseline.json",
+        "docs/evidence/mobile-v2/accessibility-performance.md",
+        "tests/mobile-v2/mx-035.test.ts",
+        "tests/mobile-v2/probes/mx-035.ts"
+      ],
+      "consumes": "高保真 screens/tokens + 实际原生实现",
+      "produces": "逐页视觉差异与性能基线报告",
+      "implementation_steps": [
+        "比对18页 light/dark、320–430宽、平板与横屏",
+        "读屏/动态字体/键盘/返回/焦点/减少动画实测",
+        "1000条消息与长文本测输入和滚动；记录设备/数据/耗时",
+        "以明确差异清单修正，不以缩小字体消除溢出"
+      ],
+      "acceptance": [
+        "所有主要文字层级、颜色语义、触控与组件态符合约束",
+        "用户查看历史时流式输出不抢滚动",
+        "性能指标按实测记录，不将目标值写成通过"
+      ],
+      "file_lock_keys": [
+        "tests/mobile-v2/visual-baseline.json",
+        "docs/evidence/mobile-v2/accessibility-performance.md",
+        "tests/mobile-v2/mx-035.test.ts",
+        "tests/mobile-v2/probes/mx-035.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "resources": [
+          "MX-022",
+          "MX-024",
+          "MX-025"
+        ],
+        "connectors": [
+          "MX-023"
+        ],
+        "remote": [
+          "MX-026",
+          "MX-027"
+        ],
+        "dictation": [
+          "MX-028"
+        ],
+        "voice": [
+          "MX-029"
+        ]
+      },
+      "test_file": "tests/mobile-v2/mx-035.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-035.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-035.md",
+      "first_test_spec": {
+        "given": "高保真 screens/tokens + 实际原生实现",
+        "when": "比对18页 light/dark、320–430宽、平板与横屏",
+        "then": "所有主要文字层级、颜色语义、触控与组件态符合约束",
+        "additional_assertions": [
+          "用户查看历史时流式输出不抢滚动",
+          "性能指标按实测记录，不将目标值写成通过"
+        ]
+      },
+      "maps_w": [
+        "W36"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-035.ts",
+      "test_case": {
+        "name": "visual-a11y-matrix",
+        "input": {
+          "fixture": "all-pages-light-dark-200-percent-native"
+        },
+        "expected_observation": {
+          "unreachablePrimaryActions": [],
+          "criticalA11yFindings": []
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    },
+    {
+      "id": "MX-036",
+      "stage": "S04",
+      "title": "发布门禁、回退与交接",
+      "role": "QA / Release",
+      "repository": "1123786563/WeKnora-fork01",
+      "track": "quality",
+      "module_key": "mobile-v2/036",
+      "depends_on": [
+        "MX-032",
+        "MX-033",
+        "MX-034",
+        "MX-035"
+      ],
+      "maps_ux": [
+        "UX10"
+      ],
+      "closes_gaps": [
+        "G11"
+      ],
+      "profile": "core",
+      "status": "pending",
+      "writes": [
+        "docs/evidence/mobile-v2/release-report.md",
+        "docs/evidence/mobile-v2/acceptance-index.json",
+        "deploy/mobile-workbench/mobile-release.md",
+        "tests/mobile-v2/mx-036.test.ts",
+        "tests/mobile-v2/probes/mx-036.ts"
+      ],
+      "consumes": "各任务 integrated SHA；profile 子门禁；原 W/T/H 依赖闭包",
+      "produces": "仅已验收 profile 发布结论与回退演练",
+      "implementation_steps": [
+        "读取本轮启用的所有直接/条件/继承前置，并校验 hash 与证据",
+        "未完成能力明确禁用；支付/公开个人节点/E2EE 单独授权",
+        "新版本先关新准入并保留旧运行清理/结算；原生与OTA兼容窗口验证",
+        "逐路径提交/PR/发布单独授权；交接复现命令、风险与责任人"
+      ],
+      "acceptance": [
+        "没有以 core 通过覆盖 remote/resources/voice",
+        "native 依赖变更不作为纯JS更新下发",
+        "旧运行/事件/账务能在回退后继续对账"
+      ],
+      "file_lock_keys": [
+        "docs/evidence/mobile-v2/release-report.md",
+        "docs/evidence/mobile-v2/acceptance-index.json",
+        "deploy/mobile-workbench/mobile-release.md",
+        "tests/mobile-v2/mx-036.test.ts",
+        "tests/mobile-v2/probes/mx-036.ts"
+      ],
+      "environment_gates": [],
+      "implementation_status_note": "仅详细设计与验收要求；本交付未执行仓库实现或更新既有 W/T 状态",
+      "conditional_dependencies": {
+        "resources": [
+          "MX-022",
+          "MX-024",
+          "MX-025"
+        ],
+        "connectors": [
+          "MX-023"
+        ],
+        "remote": [
+          "MX-026",
+          "MX-027"
+        ],
+        "dictation": [
+          "MX-028"
+        ],
+        "voice": [
+          "MX-029"
+        ]
+      },
+      "external_gates": [
+        "原 W 索引按激活 profile 递归闭包重新计算",
+        "full_happy：W32 与 H24–H33 对应真实交互证据；本 MX 不替代其实现",
+        "personal_node：W23 独立验收",
+        "oidc：W08 真实 IdP 回跳验收"
+      ],
+      "test_file": "tests/mobile-v2/mx-036.test.ts",
+      "test_command": "pnpm exec tsx --test tests/mobile-v2/mx-036.test.ts",
+      "evidence_path": "docs/evidence/mobile-v2/MX-036.md",
+      "first_test_spec": {
+        "given": "各任务 integrated SHA；profile 子门禁；原 W/T/H 依赖闭包",
+        "when": "读取本轮启用的所有直接/条件/继承前置，并校验 hash 与证据",
+        "then": "没有以 core 通过覆盖 remote/resources/voice",
+        "additional_assertions": [
+          "native 依赖变更不作为纯JS更新下发",
+          "旧运行/事件/账务能在回退后继续对账"
+        ]
+      },
+      "maps_w": [
+        "W33",
+        "W34",
+        "W35",
+        "W36",
+        "W37"
+      ],
+      "probe_file": "tests/mobile-v2/probes/mx-036.ts",
+      "test_case": {
+        "name": "release-blocked-subgate",
+        "input": {
+          "fixture": "core-pass-remote-blocked-env"
+        },
+        "expected_observation": {
+          "core": "releasable",
+          "remote": "blocked-env",
+          "globalAllPassed": false
+        },
+        "implementation": "Probe runs actual task boundary and returns observations; missing environment is blocked-env, never a fabricated success."
+      },
+      "mapping_semantics": "maps_w/maps_ux are traceability, not whole-parent prerequisites; preserve original W internal dependencies at slice level."
+    }
+  ]
+}

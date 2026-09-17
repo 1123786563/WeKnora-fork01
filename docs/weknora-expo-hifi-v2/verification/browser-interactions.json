@@ -1,0 +1,134 @@
+{
+  "scope": "Local HTML demonstrator only; no production/native auth, database, push, microphone, provider or billing verified",
+  "tests": [
+    {
+      "name": "edited task and budget produce one demo request",
+      "pass": true
+    },
+    {
+      "name": "blank task is rejected",
+      "pass": true
+    },
+    {
+      "name": "invalid budget does not create request",
+      "pass": true
+    },
+    {
+      "name": "offline disables submit and preserves draft",
+      "pass": true
+    },
+    {
+      "name": "unknown acknowledgement reconciles same request without restart",
+      "pass": true
+    },
+    {
+      "name": "tenant switch isolates drafts and private home data",
+      "pass": true
+    },
+    {
+      "name": "agent selection returns to task draft",
+      "pass": true
+    },
+    {
+      "name": "unavailable coding capability is not enabled",
+      "pass": true
+    },
+    {
+      "name": "target selection updates current draft",
+      "pass": true
+    },
+    {
+      "name": "session search filters and provides empty result",
+      "pass": true
+    },
+    {
+      "name": "session status filter is applied",
+      "pass": true
+    },
+    {
+      "name": "resource search stays scoped",
+      "pass": true
+    },
+    {
+      "name": "approval requires confirmation and does not claim external success",
+      "pass": true
+    },
+    {
+      "name": "escape cancels confirmation and restores focus",
+      "pass": true
+    },
+    {
+      "name": "confirmation keyboard focus stays inside dialog",
+      "pass": true
+    },
+    {
+      "name": "explicit rejection is a distinct decision",
+      "pass": true
+    },
+    {
+      "name": "revision conflict refresh does not resend previous approval",
+      "pass": true
+    },
+    {
+      "name": "forbidden pages hide sensitive payloads",
+      "pass": true
+    },
+    {
+      "name": "cancel means stop pending, not confirmed stop",
+      "pass": true
+    },
+    {
+      "name": "attachment readiness gates task submission",
+      "pass": true
+    },
+    {
+      "name": "late upload result cannot cross scope generation",
+      "pass": true
+    },
+    {
+      "name": "edited voice transcript becomes unsent draft before send",
+      "pass": true
+    },
+    {
+      "name": "user messages are escaped, not executable HTML",
+      "pass": true
+    },
+    {
+      "name": "connection revoke/reconnect has explicit simulated confirmation",
+      "pass": true
+    },
+    {
+      "name": "theme and notification preferences are interactive",
+      "pass": true
+    },
+    {
+      "name": "logout returns to login and clears demo state",
+      "pass": true
+    },
+    {
+      "name": "mark read does not approve a task",
+      "pass": true
+    },
+    {
+      "name": "error recovery preserves draft and does not launch",
+      "pass": true
+    },
+    {
+      "name": "gallery opens selected live page",
+      "pass": true
+    },
+    {
+      "name": "artifact download creates only a labelled local demo file",
+      "pass": true
+    },
+    {
+      "name": "list titles and metadata have distinct readable lines",
+      "pass": true
+    }
+  ],
+  "passed": 31,
+  "failed": 0,
+  "js_errors": [],
+  "external_requests": [],
+  "all_request_urls": []
+}

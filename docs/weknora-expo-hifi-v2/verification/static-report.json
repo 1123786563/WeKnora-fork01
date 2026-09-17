@@ -1,0 +1,350 @@
+{
+  "scope": "Generated artifact structure, task DAG and selected token pairs only; no production/native validation",
+  "checks": [
+    {
+      "name": "18 unique page IDs",
+      "pass": true
+    },
+    {
+      "name": "36 unique task IDs",
+      "pass": true
+    },
+    {
+      "name": "all pages mapped",
+      "pass": true
+    },
+    {
+      "name": "all tasks pending",
+      "pass": true
+    },
+    {
+      "name": "G01-G12 mapped",
+      "pass": true
+    },
+    {
+      "name": "DAG core",
+      "pass": true
+    },
+    {
+      "name": "DAG voice",
+      "pass": true
+    },
+    {
+      "name": "DAG resources",
+      "pass": true
+    },
+    {
+      "name": "DAG resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG remote",
+      "pass": true
+    },
+    {
+      "name": "DAG remote,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG remote,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG remote,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,remote",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,remote,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,remote,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG dictation,remote,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,remote",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,remote,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,remote,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,remote,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,remote",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,remote,voice",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,remote,resources",
+      "pass": true
+    },
+    {
+      "name": "DAG connectors,dictation,remote,resources,voice",
+      "pass": true
+    },
+    {
+      "name": "standalone M01",
+      "pass": true
+    },
+    {
+      "name": "standalone M02",
+      "pass": true
+    },
+    {
+      "name": "standalone M03",
+      "pass": true
+    },
+    {
+      "name": "standalone M04",
+      "pass": true
+    },
+    {
+      "name": "standalone M05",
+      "pass": true
+    },
+    {
+      "name": "standalone M06",
+      "pass": true
+    },
+    {
+      "name": "standalone M07",
+      "pass": true
+    },
+    {
+      "name": "standalone M08",
+      "pass": true
+    },
+    {
+      "name": "standalone M09",
+      "pass": true
+    },
+    {
+      "name": "standalone M10",
+      "pass": true
+    },
+    {
+      "name": "standalone M11",
+      "pass": true
+    },
+    {
+      "name": "standalone M12",
+      "pass": true
+    },
+    {
+      "name": "standalone M13",
+      "pass": true
+    },
+    {
+      "name": "standalone M14",
+      "pass": true
+    },
+    {
+      "name": "standalone M15",
+      "pass": true
+    },
+    {
+      "name": "standalone M16",
+      "pass": true
+    },
+    {
+      "name": "standalone M17",
+      "pass": true
+    },
+    {
+      "name": "standalone M18",
+      "pass": true
+    },
+    {
+      "name": "no shared fonts",
+      "pass": true
+    },
+    {
+      "name": "authored local markdown links",
+      "pass": true
+    },
+    {
+      "name": "theme key parity",
+      "pass": true
+    },
+    {
+      "name": "contrast light ink/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast light ink/bg",
+      "pass": true
+    },
+    {
+      "name": "contrast light muted/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast light muted/bg",
+      "pass": true
+    },
+    {
+      "name": "contrast light subtle/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast light on-brand/brand",
+      "pass": true
+    },
+    {
+      "name": "contrast light brand/brand-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast light warning/warning-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast light danger/danger-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast light info/info-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast light purple/purple-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast light hero-ink/hero",
+      "pass": true
+    },
+    {
+      "name": "contrast light control-line/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast dark ink/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast dark ink/bg",
+      "pass": true
+    },
+    {
+      "name": "contrast dark muted/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast dark muted/bg",
+      "pass": true
+    },
+    {
+      "name": "contrast dark subtle/surface",
+      "pass": true
+    },
+    {
+      "name": "contrast dark on-brand/brand",
+      "pass": true
+    },
+    {
+      "name": "contrast dark brand/brand-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast dark warning/warning-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast dark danger/danger-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast dark info/info-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast dark purple/purple-soft",
+      "pass": true
+    },
+    {
+      "name": "contrast dark hero-ink/hero",
+      "pass": true
+    },
+    {
+      "name": "contrast dark control-line/surface",
+      "pass": true
+    },
+    {
+      "name": "proposal not production labeled",
+      "pass": true
+    }
+  ],
+  "passed": 85,
+  "failed": 0,
+  "errors": [],
+  "broken_links": [],
+  "profile_combinations": 32
+}

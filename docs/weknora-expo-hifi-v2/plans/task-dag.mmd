@@ -1,0 +1,160 @@
+flowchart TD
+  MX001["MX-001 当前代码、接口与台账对账"]
+  MX002["MX-002 Expo 与 React 原生依赖基线"]
+  MX003["MX-003 跨语言契约与能力规则冻结"]
+  MX004["MX-004 SSE 完整事件与控制帧接通"]
+  MX005["MX-005 类型化交互与乐观并发命令"]
+  MX006["MX-006 持久提交身份与请求对账"]
+  MX007["MX-007 语义设计令牌与原生主题"]
+  MX008["MX-008 原生基础组件与状态组件"]
+  MX009["MX-009 四 Tab 与产品路由容器"]
+  MX010["MX-010 产品登录、SSO 与冷启动身份"]
+  MX011["MX-011 空间切换、缓存与迟到响应隔离"]
+  MX012["MX-012 原生持久事件、快照与恢复"]
+  MX013["MX-013 工作台聚合读模型与首页"]
+  MX014["MX-014 会话列表、搜索与分页"]
+  MX015["MX-015 新建任务、资源编排与提交"]
+  MX016["MX-016 Agent 目录与可用能力选择"]
+  MX017["MX-017 产品对话渲染与富消息"]
+  MX018["MX-018 执行详情与保守取消展示"]
+  MX019["MX-019 工具审批详情与二次确认"]
+  MX020["MX-020 预算、问题与连接授权交互"]
+  MX021["MX-021 通知注册、收件箱与安全深链"]
+  MX022["MX-022 资源与知识消费页面"]
+  MX023["MX-023 连接详情与授权生命周期"]
+  MX024["MX-024 不可变成果预览、下载与分享"]
+  MX025["MX-025 原生附件与上传校验"]
+  MX026["MX-026 执行目标选择与能力解释"]
+  MX027["MX-027 Paseo 服务身份与远程治理接线"]
+  MX028["MX-028 确认式听写与会话草稿"]
+  MX029["MX-029 实时语音与独立中断语义"]
+  MX030["MX-030 账户偏好、外观与退出"]
+  MX031["MX-031 空间用量与只读商业视图"]
+  MX032["MX-032 服务端能力清单与部署开关"]
+  MX033["MX-033 恢复、并发与安全故障注入"]
+  MX034["MX-034 双平台产品链 E2E"]
+  MX035["MX-035 视觉、无障碍与性能验收"]
+  MX036["MX-036 发布门禁、回退与交接"]
+  MX001 --> MX002
+  MX001 --> MX003
+  MX003 --> MX004
+  MX003 --> MX005
+  MX003 --> MX006
+  MX001 --> MX007
+  MX007 --> MX008
+  MX003 --> MX009
+  MX008 --> MX009
+  MX002 --> MX010
+  MX003 --> MX010
+  MX009 --> MX010
+  MX010 --> MX011
+  MX002 --> MX012
+  MX004 --> MX012
+  MX011 --> MX012
+  MX008 --> MX013
+  MX011 --> MX013
+  MX013 --> MX014
+  MX006 --> MX015
+  MX012 --> MX015
+  MX016 --> MX015
+  MX008 --> MX016
+  MX011 --> MX016
+  MX004 --> MX017
+  MX009 --> MX017
+  MX012 --> MX017
+  MX006 --> MX018
+  MX017 --> MX018
+  MX005 --> MX019
+  MX011 --> MX019
+  MX017 --> MX019
+  MX019 --> MX020
+  MX013 --> MX021
+  MX019 --> MX021
+  MX008 --> MX022
+  MX011 --> MX022
+  MX019 --> MX023
+  MX022 --> MX023
+  MX017 --> MX024
+  MX022 --> MX024
+  MX027 -. "remote" .-> MX024
+  MX012 --> MX025
+  MX015 --> MX025
+  MX022 --> MX025
+  MX016 --> MX026
+  MX018 --> MX026
+  MX003 --> MX027
+  MX006 --> MX027
+  MX026 --> MX027
+  MX017 --> MX028
+  MX025 --> MX028
+  MX006 --> MX029
+  MX021 --> MX029
+  MX028 --> MX029
+  MX027 -. "remote" .-> MX029
+  MX009 --> MX030
+  MX011 --> MX030
+  MX013 --> MX031
+  MX030 --> MX031
+  MX013 --> MX032
+  MX019 --> MX032
+  MX021 --> MX032
+  MX022 -. "resources" .-> MX032
+  MX024 -. "resources" .-> MX032
+  MX025 -. "resources" .-> MX032
+  MX023 -. "connectors" .-> MX032
+  MX026 -. "remote" .-> MX032
+  MX027 -. "remote" .-> MX032
+  MX028 -. "dictation" .-> MX032
+  MX029 -. "voice" .-> MX032
+  MX006 --> MX033
+  MX012 --> MX033
+  MX018 --> MX033
+  MX019 --> MX033
+  MX032 --> MX033
+  MX022 -. "resources" .-> MX033
+  MX024 -. "resources" .-> MX033
+  MX025 -. "resources" .-> MX033
+  MX023 -. "connectors" .-> MX033
+  MX026 -. "remote" .-> MX033
+  MX027 -. "remote" .-> MX033
+  MX028 -. "dictation" .-> MX033
+  MX029 -. "voice" .-> MX033
+  MX015 --> MX034
+  MX017 --> MX034
+  MX018 --> MX034
+  MX019 --> MX034
+  MX021 --> MX034
+  MX030 --> MX034
+  MX031 --> MX034
+  MX033 --> MX034
+  MX022 -. "resources" .-> MX034
+  MX024 -. "resources" .-> MX034
+  MX025 -. "resources" .-> MX034
+  MX023 -. "connectors" .-> MX034
+  MX026 -. "remote" .-> MX034
+  MX027 -. "remote" .-> MX034
+  MX028 -. "dictation" .-> MX034
+  MX029 -. "voice" .-> MX034
+  MX008 --> MX035
+  MX017 --> MX035
+  MX034 --> MX035
+  MX022 -. "resources" .-> MX035
+  MX024 -. "resources" .-> MX035
+  MX025 -. "resources" .-> MX035
+  MX023 -. "connectors" .-> MX035
+  MX026 -. "remote" .-> MX035
+  MX027 -. "remote" .-> MX035
+  MX028 -. "dictation" .-> MX035
+  MX029 -. "voice" .-> MX035
+  MX032 --> MX036
+  MX033 --> MX036
+  MX034 --> MX036
+  MX035 --> MX036
+  MX022 -. "resources" .-> MX036
+  MX024 -. "resources" .-> MX036
+  MX025 -. "resources" .-> MX036
+  MX023 -. "connectors" .-> MX036
+  MX026 -. "remote" .-> MX036
+  MX027 -. "remote" .-> MX036
+  MX028 -. "dictation" .-> MX036
+  MX029 -. "voice" .-> MX036

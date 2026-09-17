@@ -1,0 +1,5376 @@
+{
+  "scope": "Chromium set_content render only; not local-file navigation, native rendering, hosted deployment or reload persistence",
+  "layout_cases": [
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "light",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 320,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          320,
+          320
+        ],
+        "content": [
+          320,
+          320
+        ],
+        "phone": [
+          320,
+          320
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 360,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          360,
+          360
+        ],
+        "content": [
+          360,
+          360
+        ],
+        "phone": [
+          360,
+          360
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 430,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          430,
+          430
+        ],
+        "content": [
+          430,
+          430
+        ],
+        "phone": [
+          430,
+          430
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 768,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          768,
+          768
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 1440,
+      "font_scale": 1,
+      "measurements": {
+        "document": [
+          1440,
+          1440
+        ],
+        "content": [
+          388,
+          388
+        ],
+        "phone": [
+          388,
+          388
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M01",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "theme": "dark",
+      "width": 390,
+      "font_scale": 1.25,
+      "measurements": {
+        "document": [
+          390,
+          390
+        ],
+        "content": [
+          390,
+          390
+        ],
+        "phone": [
+          390,
+          390
+        ]
+      },
+      "pass": true
+    }
+  ],
+  "standalone_initialization": [
+    {
+      "page": "M01",
+      "pass": true
+    },
+    {
+      "page": "M02",
+      "pass": true
+    },
+    {
+      "page": "M03",
+      "pass": true
+    },
+    {
+      "page": "M04",
+      "pass": true
+    },
+    {
+      "page": "M05",
+      "pass": true
+    },
+    {
+      "page": "M06",
+      "pass": true
+    },
+    {
+      "page": "M07",
+      "pass": true
+    },
+    {
+      "page": "M08",
+      "pass": true
+    },
+    {
+      "page": "M09",
+      "pass": true
+    },
+    {
+      "page": "M10",
+      "pass": true
+    },
+    {
+      "page": "M11",
+      "pass": true
+    },
+    {
+      "page": "M12",
+      "pass": true
+    },
+    {
+      "page": "M13",
+      "pass": true
+    },
+    {
+      "page": "M14",
+      "pass": true
+    },
+    {
+      "page": "M15",
+      "pass": true
+    },
+    {
+      "page": "M16",
+      "pass": true
+    },
+    {
+      "page": "M17",
+      "pass": true
+    },
+    {
+      "page": "M18",
+      "pass": true
+    }
+  ],
+  "design_system_default_visible": true,
+  "js_errors": [],
+  "network_requests": [],
+  "passed": 252,
+  "failed": 0
+}

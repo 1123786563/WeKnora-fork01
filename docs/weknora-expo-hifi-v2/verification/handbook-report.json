@@ -1,0 +1,176 @@
+{
+  "scope": "injected handoff reader only",
+  "checks": [
+    {
+      "width": 390,
+      "section": 0,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 1,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 2,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 3,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 4,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 5,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 6,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 7,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 8,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 9,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 10,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 11,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 12,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 390,
+      "section": 13,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 0,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 1,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 2,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 3,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 4,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 5,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 6,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 7,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 8,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 9,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 10,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 11,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 12,
+      "visible": true,
+      "no_document_overflow": true
+    },
+    {
+      "width": 1440,
+      "section": 13,
+      "visible": true,
+      "no_document_overflow": true
+    }
+  ],
+  "js_errors": [],
+  "passed": 28,
+  "failed": 0
+}

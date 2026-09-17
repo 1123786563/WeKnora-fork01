@@ -1,0 +1,31 @@
+{
+  "design_date": "2026-09-17",
+  "repository_baseline_inherited": "12737238aa7b9d6891e76b2397f6941024f45668",
+  "source_mode": "User-provided previous design artifacts; no new GitHub checkout or project validation in this turn",
+  "files": [
+    {
+      "name": "source-manifest.json",
+      "sha256": "5d5fbaa298d049e139c61ccf08177cf01391967036e3f314b8e1aa37abecdfaa"
+    },
+    {
+      "name": "04-api-contract-proposal.md",
+      "sha256": "32a6b773992b7d7e66802cbe5f9e80aadaa05ebed42e4d0870b34f40ea719193"
+    },
+    {
+      "name": "01-expo-mobile-architecture.md",
+      "sha256": "b2ee5befe6408fb7e40adfb555f33e13917d38658dbd44c7dea39af4c2508b03"
+    },
+    {
+      "name": "03-pages-and-implementation.md",
+      "sha256": "3197f282750602845d4753198a0bdcc52f4d3b9c4640af06dda5fa0c0632bf56"
+    },
+    {
+      "name": "sources.md",
+      "sha256": "be27a29df9b96a17abb422a3170ff310c0ace27ead5123f8eafa882fa910c0dd"
+    },
+    {
+      "name": "02-source-review-and-gap.md",
+      "sha256": "39925854cd2a7544d3fb50a0399ca4e0f1bbb11e760f62cfb3d6f788e7a7d4e2"
+    }
+  ]
+}

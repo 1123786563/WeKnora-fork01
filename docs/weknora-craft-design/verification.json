@@ -1,0 +1,19 @@
+{
+  "scope": "Standalone wireframes only; no real backend or model calls",
+  "passed": 13,
+  "checks": [
+    "Home renders",
+    "Recent work opens the workbench",
+    "Version-bound files panel",
+    "Verification facts panel",
+    "Knowledge sources panel",
+    "Historic version selection",
+    "Restoring changes workspace revision, not immutable published versions",
+    "Disconnect simulation does not create a run",
+    "Approval recorded separately from delivery",
+    "Failed run preserves the last published preview",
+    "Explicit send and explicit demo completion",
+    "390px layout has no document overflow",
+    "No JavaScript page errors"
+  ]
+}

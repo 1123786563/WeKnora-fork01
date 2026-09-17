@@ -1,0 +1,41 @@
+{
+  "name": "WeKnora Craft wireframe proposal",
+  "status": "Design proposal; map to existing @weknora/ui semantic tokens before production",
+  "colors": {
+    "background": "#F7F7F5",
+    "surface": "#FFFFFF",
+    "foreground": "#232729",
+    "muted": "#677174",
+    "border": "#DFE3E1",
+    "accent": "#235E50",
+    "accentSoft": "#EDF5F1",
+    "warning": "#825B1D",
+    "warningBackground": "#FCF7EB",
+    "error": "#953E37"
+  },
+  "radiusPx": {
+    "control": 8,
+    "panel": 12,
+    "composer": 15
+  },
+  "spacingScalePx": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32
+  ],
+  "layoutPx": {
+    "sidebar": 218,
+    "desktopChat": 378,
+    "header": 70,
+    "drawer": 442,
+    "singleColumnBreakpoint": 760
+  },
+  "fontFamily": "System font stack; no distributed font files",
+  "notes": [
+    "No real backend or AI model integration in the prototype.",
+    "Colors describe the design only, not production accessibility certification."
+  ]
+}
