@@ -91,3 +91,7 @@ MX-004（fixtures/*.bin 忽略）与 MX-006（`!apps/mobile/sources/weknora/` �
 - MX-002 证据曾记「typecheck 3 错误」——实际为 `tail -4` 截断：**基线（6a70c35a 依赖）即有 14 个错误**（app/5、ConversationScreen/3、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1，均为继承缺陷，归属 MX-009/017）。
 - 本轮修复对齐/新代码引入的 6 个：stream-transport.test 3（MX-004 联合帧收窄）、contracts interactions 2（类型收紧）、ChatList 1（flash-list 2.0.2 与双 @types/react 实例的名义冲突，@ts-expect-error 定点记录为可见债务）。终态 typecheck=14=基线持平。
 - 纪律：typecheck 证据必须用全量计数（grep -c），禁止 tail 截断。
+
+## D-023 · 产品入口接线的锁账落点（2026-09-18，MX-009 审查 P2 澄清）
+
+MX-009 裁决「入口接线随 MX-010 落地」在锁账上不闭合：`_layout.tsx` 写锁仅 MX-009 持有，MX-010 写集不含 layout，且产品壳作为屏幕需要 /product 文件路由（无文件则不可达）。修正落点：**入口接线归 MX-013**（其交付 HomeScreen + /product 路由文件，届时以锁转移取得 app/_layout.tsx 与 (app)/_layout.tsx 完成入口切换）；MX-010 交付身份正确性（bootstrap/登录屏/SSO 换取后补身份），LoginScreen 以 onAuthenticated 回调解耦宿主。在此之前不制造无鉴权壳、不破坏 legacy Happy 流。

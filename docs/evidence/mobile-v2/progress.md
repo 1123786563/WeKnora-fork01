@@ -13,8 +13,9 @@
 | MX-005 | accepted | 98002709→c9505e26 | mv2 7/7 · shared 589/589 | R1 FAIL→修复→复核 FAIL(注册表回归)→R2 修复→终核 PASS | MX-005.md |
 | MX-006 | review | d8550bde→d9cfc83c(+fix) | mv2 8/8 · shared 589/589 · domain 5/5 · adapter 2/2 | R1 单点 FAIL(.gitignore 登记)→P2/P3 已修复→待 scoped 确认 | MX-006.md |
 | MX-007 | review | c9505e26→5e6e3c29 | mv2 8/8 · shared 589/589 · 对比率 ACTIVE 全过(disabled 豁免) · typecheck 14=基线 | 审查进行中 | MX-007.md |
-| MX-008 | fixing→review | 5e6e3c29→08a5c9cb(+fix) | mv2 10/10 · 挂载 4/4 · typecheck 14=基线 | R1 FAIL(2×P1 Sheet 键盘/返回焦点)→已修复→待复核 | MX-008.md |
-| MX-009 | review | 08a5c9cb→(待提交) | mv2 10/10 · 挂载 4/4 · happyAuthRequests=0 | 待独立review | MX-009.md |
+| MX-008 | accepted | 5e6e3c29→12a9c4da(含fix) | mv2 10/10 · 挂载 4/4 · typecheck 14=基线 | R1(2×P1)→修复→复核 PASS | MX-008.md |
+| MX-009 | accepted | 08a5c9cb→12a9c4da | mv2 10/10 · 挂载 4/4 · happyAuthRequests=0 | 规格 PASS · 质量 APPROVED（P2 锁账澄清→D-023） | MX-009.md |
+| MX-010 | review | 12a9c4da→(待提交) | mv2 11/11 · shared 590/590 · typecheck 14=基线 | 待独立review | MX-010.md |
 
 ## 首次更新（2026-09-18，MX-001）
 

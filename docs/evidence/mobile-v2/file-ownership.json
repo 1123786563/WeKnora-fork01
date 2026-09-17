@@ -67,7 +67,7 @@
       "kind": "create",
       "shared_serialized": false,
       "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "note": "冷启动身份引导（resolveScopeFromMe + BootstrapPort）"
     },
     "apps/mobile/sources/weknora/auth/session.tsx": {
       "owners": [
