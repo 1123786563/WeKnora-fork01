@@ -3,7 +3,8 @@
 This directory is the W34 managed deployment surface of the mobile AI SaaS
 workbench: hardening, capability switches, egress enforcement and the
 observability contract, plus the W35 backup-restore runbook, event retention
-policy and fault-drill entrypoints. The companion Go pieces are
+policy and fault-drill entrypoints, plus the W36 native release /
+compatibility window policy. The companion Go pieces are
 `internal/execution/deployment_policy.go` (the managed-node policy and the
 five health metrics), `internal/execution/restore_policy.go` (the W35
 restore admission predicate), the event retention pass in
@@ -198,6 +199,80 @@ until reconciliation finished and node credentials were re-verified. No
 fixed RTO/RPO is promised; control-plane recovery time and data loss are
 read off the drill output per run.
 
+
+## Native release, compatibility window and upgrade policy (W36)
+
+### Protocol compatibility window (actual behaviour)
+
+The mobile app and the server negotiate through a protocol compatibility
+window, implemented in `packages/domain/src/mobile/compatibility.ts` and
+pinned by `packages/domain/src/mobile/compatibility.test.ts`:
+
+- The server advertises `[protocol_minimum, protocol_maximum]` (this server
+  release: `[2, 3]`; the current app build speaks protocol generation 3, so
+  the window covers the PREVIOUS generation — generation-2 apps stay `full`).
+- `protocolMode(client, minimum, maximum)` tri-state:
+  - `full` — every surface usable, control commands (cancel/steer) included;
+  - `upgrade_required` (app older than the window) — the app keeps the safe
+    surface only: login plus the upgrade explanation; it sends NO control
+    commands, and a server-side re-check refuses them anyway;
+  - `server_upgrade_required` (app newer than the window, e.g. after a server
+    rollback) — same safe-surface degradation.
+- A malformed/unknown capability payload is treated as `unknown_schema`:
+  control commands are refused rather than guessed; login stays.
+- Malformed windows (`minimum > maximum`, non-integer or `< 1` generations)
+  are rejected with `INVALID_PROTOCOL_RANGE`.
+- Rollback interplay with the W34 switches: closing `platform_admission` or
+  turning on `worker_drain` refuses NEW admissions while EXISTING runs stay
+  queryable (read gate untouched) and cleanable — no admission switch ever
+  cuts query and cleanup at the same time.
+
+### Upgrade / rollback procedure
+
+Rolling upgrade: follow the W34 drain sequence above (drain → wait for
+in-flight runs → replace → clear). Rollback: close
+`WEKNORA_WORKBENCH_PLATFORM_ADMISSION` (or set `WEKNORA_WORKBENCH_WORKER_DRAIN=true`)
+on the rolled-back generation; apps newer than the rolled-back server window
+degrade to the safe surface automatically (`server_upgrade_required`), and
+old runs remain queryable and cleanable throughout.
+
+### Release manifest (pin per release)
+
+Fixed for this worktree state (verify before any store submission):
+
+| Item | Value |
+| --- | --- |
+| App config actually resolved by Expo | `apps/mobile/app.config.ts` (version `0.0.0`, slug `weknora`; the sibling `app.config.js` dev variant is NOT what Expo resolves) |
+| Bundle identifiers | iOS `com.weknora.mobile` / Android `com.weknora.mobile` |
+| Expo SDK | 55 (resolved `expo@55.0.31`, spec `~55.0.8`) |
+| React Native | `0.83.1` |
+| React | `19.3.0` |
+| JS update bundles | `npx expo export --platform ios|android` (scripts `export:ios` / `export:android` in `apps/mobile/package.json`); Hermes `.hbc` + `metadata.json` |
+
+### Expand/contract and the native release rule
+
+- **Expand** freely: widening the window (raising `protocol_maximum`) keeps
+  every existing app inside `full`.
+- **Contract deliberately**: dropping an old `protocol_minimum` is a release
+  decision taken only after the old app generation's field compatibility has
+  been validated; destructive cleanup of old-app data happens only after
+  users have upgraded and the compatibility-carrying data has been
+  re-validated.
+- **Native changes need a native release**: `expo export` bundles ship JS and
+  assets only (expo-updates). Adding or upgrading any native dependency
+  (anything that changes `ios/`/`android/` native projects, Podfile entries,
+  or the Expo/RN/plugins versions above) CANNOT be delivered as a JS update —
+  it requires a new native build, signing and store review. A JS-only update
+  must never be recorded as covering a native runtime change.
+
+### Native payments
+
+The native purchase entrypoint is NOT opened: the app carries
+entitlement-sync code only (`apps/mobile/sources/sync/purchases.ts` parses
+entitlement state; no store purchase flow is exposed). Web payment flows are
+product surfaces, NOT store-acceptance evidence for the mobile lane. Do not
+enable a purchase entry until the native payment lane is completed and
+accepted.
 
 ## Observability contract
 

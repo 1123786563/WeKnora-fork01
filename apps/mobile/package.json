@@ -9,6 +9,8 @@
     "web": "expo start --web",
     "test": "vitest",
     "prebuild": "rm -rf android ios && expo prebuild",
+    "export:ios": "expo export --platform ios",
+    "export:android": "expo export --platform android",
     "typecheck": "tsc --noEmit"
   },
   "jest": {
