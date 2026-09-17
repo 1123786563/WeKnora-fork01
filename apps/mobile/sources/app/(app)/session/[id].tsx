@@ -4,17 +4,18 @@ import { Text, View } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { SessionView } from '@/-session/SessionView';
 import { ConversationScreen } from '@/weknora/conversations/ConversationScreen';
+import type { ArtifactFileData, KnowledgeCitationData } from '@/weknora/renderers/registry';
+import type { ConversationResultResources } from '@/weknora/conversations/ProductConversationMessages';
 import { createProductConversationViewModel, createProductExecutionApi } from '@/weknora/conversations/view-model';
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
 import { createMobileKnowledgeApi } from '@/weknora/knowledge/api';
-import type { ArtifactFileData, KnowledgeCitationData } from '@/weknora/renderers/registry';
-import type { ConversationResultResources } from '@/weknora/conversations/ProductConversationMessages';
 import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
 import { createProductVoiceTranscriber } from '@/weknora/voice/product-transcriber';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
+import { createProtocolGate } from '@/weknora/platform/protocol-gate';
 import { projectExecutionSnapshot } from '@/weknora/conversations/execution-projection';
 
 type Params = ProductSessionResourceSelection & { id?: string; resourceUserId?: string; resourceTenantId?: string; runId?: string };
@@ -61,6 +62,21 @@ function ProductSessionRoute() {
     if (!identity.userId || !identity.tenantId || !host) return null;
     return getExecutionStorage({ origin: host.origin, tenantID: identity.tenantId, userID: identity.userId });
   }, [host, identity.tenantId, identity.userId]);
+  // W37 protocol compatibility gate: the production handshake reads
+  // /system/capabilities once per authenticated mount (over the same
+  // auth-session transport as executions) and classifies this build against
+  // the advertised window. Unknown schema, a failed handshake or an
+  // out-of-window verdict stops cancel/steer at the view-model boundary
+  // while login/reads and the upgrade notice stay available.
+  const protocolGate = React.useMemo(() => (
+    executionApi?.capabilities ? createProtocolGate((signal) => executionApi.capabilities!(signal)) : null
+  ), [executionApi]);
+  React.useEffect(() => {
+    if (!protocolGate) return;
+    const controller = new AbortController();
+    void protocolGate.handshake(controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, [protocolGate]);
   const viewModel = React.useMemo(() => {
     if (!resources || !executionApi || !sessionId || !requestStorage) return null;
     return createProductConversationViewModel({
@@ -77,8 +93,9 @@ function ProductSessionRoute() {
       projection: executionApi.snapshot ? {
         load: async (runID, signal) => projectExecutionSnapshot(await executionApi.snapshot!(runID, signal)),
       } : undefined,
+      ...(protocolGate ? { protocolGate } : {}),
     });
-  }, [auth.scope, executionApi, requestStorage, resources, sessionId]);
+  }, [auth.scope, executionApi, protocolGate, requestStorage, resources, sessionId]);
   // W25 upload chain (I-1 fix): the production assembly point. The pipeline
   // exists exactly when a bearer-authenticated product conversation does;
   // ConversationScreen keeps its own capability gate, so a route that cannot

@@ -193,6 +193,10 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
     };
   }, [recovery, redraw]);
   const recoveryState = recovery?.getState();
+  // W37 protocol gate: present exactly when the compatibility verdict is not
+  // 'full'. The safe surface — login, reads and this explanation — stays
+  // available while cancel/steer are stopped at the view-model boundary.
+  const protocolNotice = viewModel.protocolNotice;
   const executionNotice = viewModel.execution?.status === 'unknown'
     ? '连接状态未知，正在等待服务端确认'
     : viewModel.execution?.status === 'pending' || viewModel.execution?.status === 'dispatching'
@@ -205,6 +209,11 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
           prop-drilling through SessionView. */}
       <ConversationResultResourcesContext.Provider value={resultResources ?? null}>
       <View style={{ flex: 1 }}>
+        {protocolNotice && (
+          <View accessibilityLabel="protocol-compatibility-notice" accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+            <Text>{protocolNotice}</Text>
+          </View>
+        )}
         {executionNotice && (
           <View accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
             <Text>{executionNotice}</Text>

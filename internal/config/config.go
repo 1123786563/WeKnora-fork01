@@ -105,6 +105,13 @@ type WorkbenchConfig struct {
 	// completion and cleanup still runs. Unset (or false) = normal
 	// operation. Env: WEKNORA_WORKBENCH_WORKER_DRAIN.
 	WorkerDrain *bool `yaml:"worker_drain" json:"worker_drain"`
+	// ProtocolMinimum/ProtocolMaximum override the advertised protocol
+	// compatibility window (W36/W37). Unset keeps the compiled defaults,
+	// which must stay aligned with packages/domain/src/mobile
+	// SERVER_PROTOCOL_WINDOW {minimum: 2, maximum: 3}. Env:
+	// WEKNORA_WORKBENCH_PROTOCOL_MINIMUM / WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM.
+	ProtocolMinimum *int `yaml:"protocol_minimum" json:"protocol_minimum"`
+	ProtocolMaximum *int `yaml:"protocol_maximum" json:"protocol_maximum"`
 }
 
 // AreWorkbenchReadsEnabled reports whether workbench read paths answer.
@@ -143,6 +150,29 @@ func (c *Config) AreWorkbenchNotificationsEnabled() bool {
 // Nil keeps the explicit opt-out default (false).
 func (c *Config) IsWorkbenchWorkerDraining() bool {
 	return c != nil && c.Workbench != nil && c.Workbench.WorkerDrain != nil && *c.Workbench.WorkerDrain
+}
+
+// ProtocolWindow reports the protocol compatibility window this server
+// advertises on /system/capabilities. Nil config or unset pointers keep the
+// compiled defaults (2, 3) aligned with the TS SERVER_PROTOCOL_WINDOW; an
+// override that would produce an unservable window (minimum < 1 or
+// maximum < minimum) falls back to the defaults rather than broadcasting
+// nonsense.
+func (c *Config) ProtocolWindow() (minimum int, maximum int) {
+	minimum, maximum = 2, 3
+	if c == nil || c.Workbench == nil {
+		return minimum, maximum
+	}
+	if c.Workbench.ProtocolMinimum != nil && *c.Workbench.ProtocolMinimum >= 1 {
+		minimum = *c.Workbench.ProtocolMinimum
+	}
+	if c.Workbench.ProtocolMaximum != nil && *c.Workbench.ProtocolMaximum >= 1 {
+		maximum = *c.Workbench.ProtocolMaximum
+	}
+	if maximum < minimum {
+		return 2, 3
+	}
+	return minimum, maximum
 }
 
 // AreCommercialNewOrdersEnabled reports whether NEW commercial orders are
@@ -1243,6 +1273,11 @@ func applyOpenConnectorDefaults(cfg *Config) {
 //   - WEKNORA_WORKBENCH_VOICE_ADMISSION
 //   - WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED
 //   - WEKNORA_WORKBENCH_WORKER_DRAIN
+//
+// The protocol window overrides (W37) parse as integers; unset or
+// unparseable values never change the advertised window:
+//   - WEKNORA_WORKBENCH_PROTOCOL_MINIMUM
+//   - WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM
 func applyWorkbenchCapabilityDefaults(cfg *Config) {
 	if cfg.Workbench == nil {
 		cfg.Workbench = &WorkbenchConfig{}
@@ -1254,6 +1289,16 @@ func applyWorkbenchCapabilityDefaults(cfg *Config) {
 	applyRolloutSwitchEnv(&w.VoiceAdmission, "WEKNORA_WORKBENCH_VOICE_ADMISSION")
 	applyRolloutSwitchEnv(&w.NotificationsEnabled, "WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED")
 	applyRolloutSwitchEnv(&w.WorkerDrain, "WEKNORA_WORKBENCH_WORKER_DRAIN")
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_WORKBENCH_PROTOCOL_MINIMUM")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 {
+			w.ProtocolMinimum = &n
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 {
+			w.ProtocolMaximum = &n
+		}
+	}
 }
 
 func applyAuditDefaults(cfg *Config) {

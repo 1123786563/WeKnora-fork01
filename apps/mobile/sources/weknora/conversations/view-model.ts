@@ -1,6 +1,8 @@
 import { createJsonTransport, createWeKnoraClient, createExecutionsApi, type BearerCredential, type ExecutionCommandInput, type StartExecutionInput, type ProductAuthSession } from '@weknora/api-client';
 import type { ExecutionDTO, ExecutionEvent, ExecutionSnapshot } from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
+import type { ClientGateVerdict } from '@weknora/domain/mobile';
+import { serverCapabilitiesRequest } from '../platform/protocol-gate';
 import { projectExecutionEvent, type ProductConversationProjection } from './execution-projection';
 import { executionEventsRequest } from '@weknora/api-client';
 import { ExecutionSSEParser } from '../platform/stream-transport';
@@ -13,6 +15,12 @@ export interface ExecutionApi {
   snapshot?(runID: string, signal?: AbortSignal): Promise<ExecutionSnapshot>;
   stream?(runID: string, lastEventID: string | undefined, onEvent: (event: ExecutionEvent) => void, signal?: AbortSignal): Promise<void>;
   decide?(interactionID: string, input: { action: 'approve' | 'reject'; expected_revision: number }, signal?: AbortSignal): Promise<void>;
+  /**
+   * W37 protocol handshake: raw /system/capabilities envelope over the same
+   * authenticated transport. The protocol gate consumes it; absent on test
+   * doubles that do not exercise compatibility.
+   */
+  capabilities?(signal?: AbortSignal): Promise<unknown>;
 }
 
 export interface ConversationScope {
@@ -102,6 +110,22 @@ export interface ConversationViewModel {
   getSnapshot?: () => ConversationViewModel;
   /** W12 lifecycle recovery controller; mounted by the conversation screen. */
   recovery?: ExecutionRecovery;
+  /**
+   * W37 protocol-gate notice. Present exactly when the compatibility
+   * verdict is not 'full': the safe surface (login, reads, this
+   * explanation) stays available while control commands are stopped.
+   */
+  protocolNotice?: string;
+}
+
+/**
+ * W37 carry-forward: the protocol compatibility gate the production route
+ * mounts from the /system/capabilities handshake. latest() is undefined
+ * until the first handshake settles — that state is fail-closed too.
+ */
+export interface ConversationProtocolGate {
+  latest(): ClientGateVerdict | undefined;
+  subscribe(listener: () => void): () => void;
 }
 
 
@@ -132,6 +156,8 @@ export function createProductConversationViewModel(input: {
   requestStorage?: ConversationRequestStorage;
   projection?: ConversationProjectionSource;
   eventStorage?: ConversationEventStorage;
+  /** W37 protocol gate: stops cancel/steer unless the verdict is 'full'. */
+  protocolGate?: ConversationProtocolGate;
 }): ConversationViewModel {
   const identity = input.scope.identity();
   let latestRequestID: string | undefined;
@@ -254,6 +280,29 @@ export function createProductConversationViewModel(input: {
     await persistExecution(execution);
     if (execution.runID) await loadProjection(execution.runID, captured.signal).catch(() => undefined);
   };
+  // W37 protocol gate: cancel/steer are control commands and may only leave
+  // the device on a 'full' compatibility verdict. An absent verdict (handshake
+  // still in flight or failed) is fail-closed — the request never leaves.
+  const protocolNoticeFor = (mode: ClientGateVerdict['mode']): string | undefined => {
+    if (mode === 'full') return undefined;
+    if (mode === 'upgrade_required') return '当前应用版本低于服务端兼容窗口，任务控制（取消/调整）已停用；登录与查询保持可用，请升级应用。';
+    if (mode === 'server_upgrade_required') return '服务端版本低于当前应用所需的兼容窗口，任务控制（取消/调整）已停用；登录与查询保持可用，请联系管理员或稍后重试。';
+    return '无法确认服务端兼容性，任务控制（取消/调整）已停用；登录与查询保持可用。';
+  };
+  const assertControlCommandsAllowed = () => {
+    if (!input.protocolGate) return;
+    const verdictValue = input.protocolGate.latest();
+    if (!verdictValue || !verdictValue.controlCommandsAllowed) throw new Error('PROTOCOL_UPGRADE_REQUIRED');
+  };
+  const gateAllowsControl = () => (input.protocolGate ? input.protocolGate.latest()?.controlCommandsAllowed === true : true);
+  const applyProtocolVerdict = () => {
+    if (!input.protocolGate || !model) return;
+    const verdictValue = input.protocolGate.latest();
+    model.capabilities.canCancel = gateAllowsControl();
+    model.capabilities.canSteer = gateAllowsControl();
+    model.protocolNotice = verdictValue ? protocolNoticeFor(verdictValue.mode) : protocolNoticeFor('unknown_schema');
+    notify();
+  };
   model = createConversationViewModel({
     scope: { ...identity, spaceId: input.spaceId },
     messages: input.messages,
@@ -264,14 +313,17 @@ export function createProductConversationViewModel(input: {
     // W29: same contract for the voice surface — canVoice is declared here
     // and the screen still hides the hold-to-talk entry until a `dictation`
     // prop (native audio port) reaches it.
-    capabilities: { canCancel: true, canSteer: true, canAttach: true, canVoice: true },
+    // W37: control commands additionally require a 'full' protocol verdict.
+    capabilities: { canCancel: gateAllowsControl(), canSteer: gateAllowsControl(), canAttach: true, canVoice: true },
     commands: {
       cancel: async (runID, expectedRevision = 0) => {
+        assertControlCommandsAllowed();
         const captured = input.scope.capture();
         await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }, captured.signal);
         if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
       },
       steer: async (runID, text, expectedRevision = 0) => {
+        assertControlCommandsAllowed();
         const captured = input.scope.capture();
         await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }, captured.signal);
         if (!input.scope.accept(captured.generation)) throw new Error('SCOPE_CHANGED');
@@ -312,6 +364,16 @@ export function createProductConversationViewModel(input: {
   });
   model.subscribe = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
   model.getSnapshot = () => model;
+  // W37: reflect a verdict that settled before this model existed and follow
+  // later handshake completions (a late 'full' verdict reopens control
+  // commands; a degrading window closes them again).
+  if (input.protocolGate) {
+    const initialVerdict = input.protocolGate.latest();
+    model.capabilities.canCancel = initialVerdict?.controlCommandsAllowed === true;
+    model.capabilities.canSteer = initialVerdict?.controlCommandsAllowed === true;
+    model.protocolNotice = protocolNoticeFor(initialVerdict?.mode ?? 'unknown_schema');
+    input.protocolGate.subscribe(() => applyProtocolVerdict());
+  }
   // W12 lifecycle recovery (production assembly): the controller is built on
   // the same ports the screen drives through AppState. status consults the
   // durable snapshot API; refreshHistory re-projects it; subscribe reopens
@@ -390,6 +452,9 @@ export function createProductExecutionApi(input: {
     lookup: (requestID, signal) => scoped((activeSignal) => executions.lookup(requestID, activeSignal), signal),
     command: (runID, command, signal) => scoped((activeSignal) => executions.command(runID, command, activeSignal), signal),
     snapshot: (runID, signal) => scoped((activeSignal) => executions.snapshot(runID, activeSignal), signal),
+    // W37 protocol handshake: the raw capabilities envelope over the SAME
+    // authenticated transport (auth-session refresh semantics included).
+    capabilities: (signal) => scoped((activeSignal) => client.request(serverCapabilitiesRequest()), signal ?? undefined),
     stream: async (runID, lastEventID, onEvent, signal) => {
       const request = executionEventsRequest(runID, lastEventID);
       const captured = input.scope.capture();

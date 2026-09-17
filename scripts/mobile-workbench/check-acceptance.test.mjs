@@ -1,0 +1,187 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  missingEvidence,
+  validateEvidenceRecord,
+  validateAcceptance,
+  collectGateFailures,
+} from './check-acceptance.mjs';
+
+// Fixed dependencies for the pure validators: the filesystem and git object
+// database are injected so every rule below is a decision about THIS task's
+// behaviour, never about the machine the test happens to run on.
+const deps = (overrides = {}) => ({
+  fileExists: () => true,
+  readFile: () => '',
+  commitExists: () => true,
+  repoRoot: '/repo',
+  ...overrides,
+});
+
+test('mock and skipped runs cannot satisfy native acceptance', () => {
+  const rows = [{ kind: 'unit', status: 'pass' }, { kind: 'ios_native', status: 'skipped' }];
+  assert.deepEqual(missingEvidence(rows, ['unit', 'ios_native', 'android_native']), ['ios_native', 'android_native']);
+});
+
+test('missingEvidence lists each required kind without a passing row', () => {
+  const rows = [
+    { kind: 'unit', status: 'pass' },
+    { kind: 'database', status: 'blocked-env' },
+    { kind: 'remote', status: 'pass' },
+    { kind: 'billing', status: 'mock' },
+  ];
+  assert.deepEqual(missingEvidence(rows, ['unit', 'database', 'remote', 'billing', 'security']), [
+    'database',
+    'billing',
+    'security',
+  ]);
+});
+
+test('a pass row with an empty command is rejected', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'unit', status: 'pass', baseline_sha: 'a'.repeat(40), command: '', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+    deps(),
+  );
+  assert.ok(violations.some((v) => v.includes('command')));
+});
+
+test('a pass row with a non-zero exit code is rejected', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'unit', status: 'pass', baseline_sha: 'a'.repeat(40), command: 'go test ./...', exit_code: 1, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+    deps(),
+  );
+  assert.ok(violations.some((v) => v.includes('exit_code')));
+});
+
+test('a pass row whose artifact file is missing is rejected', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'recovery', status: 'pass', baseline_sha: 'a'.repeat(40), command: 'node scripts/x.mjs --harness', exit_code: 0, artifact_path: 'docs/evidence/missing.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W35-review.md', review_independent: true },
+    deps({ fileExists: (p) => !p.includes('missing') }),
+  );
+  assert.ok(violations.some((v) => v.includes('artifact')));
+});
+
+test('a pass row whose baseline SHA left the candidate history (stale SHA) is rejected', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'unit', status: 'pass', baseline_sha: 'deadbeef', command: 'pnpm test:shared', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+    deps({ commitExists: (sha) => sha !== 'deadbeef' }),
+  );
+  assert.ok(violations.some((v) => v.includes('baseline_sha')));
+});
+
+test('skip and mock statuses can never be recorded as accepted evidence', () => {
+  for (const status of ['skip', 'skipped', 'mock']) {
+    const violations = validateEvidenceRecord(
+      { kind: 'ios_native', status, baseline_sha: 'a'.repeat(40), command: 'xcodebuild test', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W07-rereview-final2.md', review_independent: true },
+      deps(),
+    );
+    assert.ok(violations.some((v) => v.includes('status')), `status ${status} must be rejected`);
+  }
+});
+
+test('an implementer-only report cannot back a pass row', () => {
+  const noReview = validateEvidenceRecord(
+    { kind: 'unit', status: 'pass', baseline_sha: 'a'.repeat(40), command: 'go test ./...', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: '', review_independent: false },
+    deps(),
+  );
+  assert.ok(noReview.some((v) => v.includes('review_ref')));
+
+  const implementerReport = validateEvidenceRecord(
+    { kind: 'unit', status: 'pass', baseline_sha: 'a'.repeat(40), command: 'go test ./...', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W11-report.md', review_independent: true },
+    deps(),
+  );
+  assert.ok(implementerReport.some((v) => v.includes('review_ref')));
+});
+
+test('blocked-env rows stay honest: they never satisfy a required kind and need no fabricated command', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'ios_native', status: 'blocked-env', baseline_sha: 'a'.repeat(40), command: '', exit_code: null, artifact_path: 'docs/evidence/mobile-workbench/W36-native-release.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W36-review.md', review_independent: true, note: 'no signing identity / no ios project' },
+    deps(),
+  );
+  assert.deepEqual(violations, []);
+  assert.deepEqual(missingEvidence([{ kind: 'ios_native', status: 'blocked-env' }], ['ios_native']), ['ios_native']);
+});
+
+test('validateAcceptance fails a delivered profile with missing kinds', () => {
+  const result = validateAcceptance(
+    {
+      baseline_sha: 'f'.repeat(40),
+      evidence: [
+        { kind: 'unit', status: 'pass', baseline_sha: 'f'.repeat(40), command: 'pnpm test:shared', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+      ],
+      profiles: [{ profile: 'core', release_status: 'delivered', required_kinds: ['unit', 'database', 'ios_native'] }],
+    },
+    deps(),
+  );
+  assert.ok(result.missing.core.includes('database'));
+  assert.ok(result.missing.core.includes('ios_native'));
+});
+
+test('validateAcceptance rejects skip wording in the release report', () => {
+  const doc = {
+    baseline_sha: 'f'.repeat(40),
+    evidence: [],
+    profiles: [{ profile: 'core', release_status: 'not_in_release', required_kinds: [] }],
+  };
+  const result = validateAcceptance(doc, deps({ readFile: (p) => (p.includes('release-report') ? 'delivered; one suite SKIPped' : '') }));
+  assert.ok(result.violations.some((v) => v.includes('release-report') && v.toLowerCase().includes('skip')));
+});
+
+test('collectGateFailures turns every violation and missing kind into gate failures (non-zero exit)', () => {
+  const failures = collectGateFailures({
+    violations: ['evidence[0]: command must not be empty'],
+    missing: { core: ['database'] },
+  });
+  assert.deepEqual(failures, ['evidence[0]: command must not be empty', 'profile core missing evidence kinds: database']);
+});
+
+test('a fully evidenced delivered profile passes the gate with zero failures', () => {
+  const evidence = [
+    { kind: 'unit', status: 'pass', baseline_sha: 'f'.repeat(40), command: 'pnpm test:shared', exit_code: 0, artifact_path: 'docs/evidence/a.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+    { kind: 'database', status: 'pass', baseline_sha: 'e'.repeat(40), command: 'go test ./internal/application/repository -count=1', exit_code: 0, artifact_path: 'docs/evidence/b.md', artifact_hash: 'sha256:2', observed_at: '2026-09-16T00:00:00Z', review_ref: 'task-W02-rereview.md', review_independent: true },
+  ];
+  const result = validateAcceptance(
+    { baseline_sha: 'f'.repeat(40), evidence, profiles: [{ profile: 'core', release_status: 'delivered', required_kinds: ['unit', 'database'] }] },
+    deps(),
+  );
+  assert.deepEqual(result.violations, []);
+  assert.deepEqual(result.missing, {});
+  assert.deepEqual(collectGateFailures(result), []);
+});
+
+test('a delivered profile with gaps fails the gate; not_in_release is an explicit declaration, not a pass', () => {
+  const result = validateAcceptance(
+    {
+      baseline_sha: 'f'.repeat(40),
+      evidence: [
+        { kind: 'unit', status: 'pass', baseline_sha: 'f'.repeat(40), command: 'pnpm test:shared', exit_code: 0, artifact_path: 'docs/evidence/a.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
+      ],
+      profiles: [
+        // voice still misses W31 (not implemented) — a "delivered" claim can
+        // never cover the gap: the gate fails.
+        { profile: 'voice', release_status: 'delivered', required_kinds: ['unit', 'ios_native'] },
+        // resources declares W28 out of this release: the gap stays visible
+        // in the report, but it is an honest staged declaration, not a pass
+        // and not a silent drop.
+        { profile: 'resources', release_status: 'not_in_release', required_kinds: ['unit', 'android_native'], not_in_release_reason: 'W28 not implemented' },
+      ],
+    },
+    deps(),
+  );
+  assert.ok(result.missing.voice.includes('ios_native'));
+  assert.ok(result.missing.resources.includes('android_native'));
+  const failures = collectGateFailures(result);
+  assert.ok(failures.some((f) => f.includes('voice')));
+  assert.ok(!failures.some((f) => f.includes('resources')));
+  // The declaration itself is still verified: a not_in_release profile must
+  // carry its reason.
+  const silent = validateAcceptance(
+    {
+      baseline_sha: 'f'.repeat(40),
+      evidence: [],
+      profiles: [{ profile: 'resources', release_status: 'not_in_release', required_kinds: [] }],
+    },
+    deps(),
+  );
+  assert.ok(silent.violations.some((v) => v.includes('not_in_release_reason')));
+});
