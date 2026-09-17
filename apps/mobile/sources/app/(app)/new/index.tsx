@@ -41,7 +41,7 @@ import { machineSpawnNewSession, sessionSetAgentModes } from '@/sync/ops';
 import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { createProductSessionNavigationFromSession, useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useWorktrees } from '@/hooks/useWorktrees';
 import { useShallow } from 'zustand/react/shallow';
@@ -1556,7 +1556,7 @@ function NewSessionScreen() {
                     }
 
                     router.back();
-                    navigateToSession(result.sessionId);
+                    navigateToSession(result.sessionId, createProductSessionNavigationFromSession(storage.getState().sessions[result.sessionId]));
                     break;
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(

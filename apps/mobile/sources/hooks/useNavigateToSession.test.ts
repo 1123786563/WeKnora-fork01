@@ -21,7 +21,7 @@ vi.mock('@/sync/sync', () => ({ sync: { preloadSession: mocks.preloadSession } }
 vi.mock('@/track', () => ({ trackSessionSwitched: mocks.trackSessionSwitched }));
 vi.mock('@/utils/perfLog', () => ({ perfMark: mocks.perfMark }));
 
-import { useSessionPressHandlers } from './useNavigateToSession';
+import { createProductSessionNavigation, useSessionPressHandlers } from './useNavigateToSession';
 
 let renderer: ReturnType<typeof create>;
 let handlers: ReturnType<typeof useSessionPressHandlers>;
@@ -43,6 +43,11 @@ beforeEach(() => {
 afterEach(() => act(() => renderer.unmount()));
 
 describe('session row press contract', () => {
+    it('creates owner and tenant bound product metadata for entry adapters', () => {
+        expect(createProductSessionNavigation({ sessionId: 's1', spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', userId: 'user-1', tenantId: 'tenant-1', runId: 'run-1' })).toEqual({
+            spaceId: 'space-1', agentId: 'agent-1', targetId: 'target-1', workspaceRef: 'workspace-1', resourceUserId: 'user-1', resourceTenantId: 'tenant-1', resourceSessionId: 's1', runId: 'run-1',
+        });
+    });
     it('prepares on touch-down without navigating or tracking a switch', () => {
         handlers.onPressIn();
         expect(mocks.preloadSession).toHaveBeenCalledWith('a');
