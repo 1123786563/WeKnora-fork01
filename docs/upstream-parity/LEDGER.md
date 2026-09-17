@@ -83,9 +83,18 @@
 | D2 | 上游栈启动（weknora-upstream compose + override：`Up-WeKnora-*` 容器名，app :18080 / UI :18081 / minio :19000-19001；.env 由 example 生成+JWT_SECRET 随机+端口 sed；账号 parity-up@local.dev / Parity123456! tenant 10000） | ✅ 完成 |
 | D3 | 核心流程一一对照逐项记录 | 🔄 进行中（API 级已完成）。已完成：注册/登录/KB 创建列表/上传→解析→分块→启用/混合检索/聊天流式 SSE。**结论汇总**：①信封分歧 D3-1（`success+data` vs `knowledge_base(s)`，fork 三端已适配，⛔ 不改）；②聊天事件序列 fork=上游超集：fork 多发 `session_title` 流内标题事件——**D3-2 fork 有意扩展**，Vue(index.vue:1525) 与 React(ChatRoutePage.tsx:345) 均已消费，⛔ 不改；③SSE 安全防护双栈一致（host.docker.internal / 直连 IP / 解析到私网的域名全部拒绝——白名单走 system_settings `ssrf.whitelist` 键，两栈已写入 `[parity-mock, 192.168.3.32]`）；④检索响应结构逐键一致、同一文档同一查询双栈命中一致。待做：浏览器级页面一一对照、agent-chat（智能体模式流）、更多知识格式 |
 | D4 | 对照账号 | fork 栈：parity-test@local.dev / Parity123456!（**实际 tenant 10001，记忆中 10000 已过时**）；上游栈：parity-up@local.dev / Parity123456!（tenant 10000） |
+| D6 | 浏览器级页面一一对照 | 🔄 首轮完成（1440×900 双栈对照，证据 `evidence/browser-d3/` 12 张）。**P1 缺陷 D6-1**：fork React 聊天页对空内容 assistant 消息（`content:""`，如 QA 失败轮产生的消息）**整页崩溃**（#root 卸载为空，`/platform/chat/:id` 白屏，重载无效）；上游 Vue 同数据渲染正常（对照实验：upstream 会话 e9bd0ca3 首条 assistant 置空后页面正常）。复现：fork 会话 `589fdd67-0eda-440e-bf31-8788f610e464`（:5181 已登录 parity-test）。修复归属：React 聊天渲染链（packages/views chat engine 消息列表/markdown 渲染对空 content 的防御），在 React lane（worktree 分支）实施。其余对照点见第 4 轮记录 |
 | D5 | 双栈共享 mock 模型服务 | ✅ 完成：容器 `parity-mock`（python:3.12-alpine 跑 /Users/wuyongjun/trea/parity-mock/mock_server.py，同时接入 weknora-upstream_WeKnora-network 与 react-multiclient_WeKnora-network 两网），OpenAI 兼容 /v1/embeddings(1024 维确定性)+/v1/chat/completions(流式 SSE)。两栈 DB 已插 mock-llm(KnowledgeQA)/mock-embed(Embedding,1024) 并 is_default；fork tenant 10001 旧 rig 模型(parity-llm-mock 等)已同指 parity-mock。SSRF 白名单经 system_settings `ssrf.whitelist`（重启 app 生效）。**复跑入口：两栈 KB `parity-smoke*` 各传 parity-doc.md → batch-reparse → hybrid-search/knowledge-chat** |
 
 ## E. 完成记录
+
+### 2026-09-17 第 4 轮（浏览器级页面对照首轮）✅
+- 证据：`docs/upstream-parity/evidence/browser-d3/` 12 张（up-*/fk-* 成对：login/kb-list/kb-detail/chat-session/chat-new/chat-emptymsg/sessionB）。
+- 登录页：双端布局一致；**小差异**：上游邮箱/密码 label 带必填星号（`* 邮箱`），fork React 无星号；左侧轮播图初始帧不同（Rotation 时序，非缺陷）。
+- KB 列表/详情：IA 与卡片结构一致；两栈同样显示「部分知识库尚未初始化」横幅（初始化门控行为一致——models 表有模型但 initialization 配置未走时两栈都提示）。fork 知识库设置弹层（分组 IA）为 fork 增强形态。日期筛选控件呈现不同（fork --/--/----- vs 上游 起始时间/结束时间）——属 React↔Vue parity lane 范畴。
+- 聊天页：上游 `/platform/chat`（无会话）空态白屏为上游自身行为；点开会话正常。fork `/platform/creatChat` 正常（含新手引导浮层、模型 chip）。
+- **P1 缺陷 D6-1（本轮最重要产出）**：fork React 对空 content assistant 消息整页崩溃，上游 Vue 容错。上游栈保留了一个空消息测试会话（e9bd0ca3 首答被置空）作为长期复现夹具。
+- 工程注记：locator 点击在 fork React 上频繁 3s 超时，坐标点击（cua）全程可用；:5181 dev server 属常驻进程（非本会话启动，勿杀）。
 
 ### 2026-09-17 第 3 轮（D3 深流程 API 级对照）✅
 - **mock 基建（D5）**：本地 OpenAI 兼容 mock 容器 `parity-mock` 双网接入；两栈 DB 插入相同模型行；SSRF 白名单经 system_settings 运行时键（重启 app 生效）。期间实测两栈 SSRF 防护行为完全一致（host.docker.internal/直连 IP/私网解析域名全拦）。
