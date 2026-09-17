@@ -28,7 +28,7 @@
 | A5 | 文档摘要生成可选开关 | `105c177` | 有 GenerateSummaryPrompt 但无开关 | ✅ 完成（本轮） |
 | A6 | XMind 文件导入白名单 | `d812645` | docparser 已有 xmind 引擎，导入白名单待核 | ✅ 完成（本轮，fork 白名单本已含 xmind，补齐上传扩展名校验一致性） |
 | A7 | 共享连接器文件名净化 | `820a14d` internal/datasource/filename.go | 各连接器各自实现 | ✅ 完成（本轮，新增共享包，原连接器实现保留） |
-| A8 | Confluence 同步连接器 | `01f0700` internal/datasource/connector/confluence | 无 | ⬜ 待办（大条目） |
+| A8 | Confluence 同步连接器 | `01f0700` internal/datasource/connector/confluence | 无 | ✅ 完成（2026-09-18 第 14 轮，worktree eb12a2e2：整包应用+FullStreamingConnector+去重源域收敛+容器注册；/datasource/types 实测返回 confluence deletion_sync；前端表单细化留 UI 轮） |
 | A9 | 钉钉连接器（stream-only） | `internal/datasource/connector/dingtalk` + 迁移 000017/000096 | 无 | ⬜ 待办（大条目） |
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
 | A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ⬜ 待办（大条目，需适配 trpc-agent-go checkpoint） |
@@ -237,6 +237,16 @@
 - **门禁**：typecheck 0、test:web **1689/1689**（+6）。
 - **已知观察（记录）**：CUA 坐标点击小按钮精度不足（原生 click/locator 可靠）；draft 消费时序在快速连续分叉时可能显示前一次 stash——单测已覆盖单次语义，后续如复现再修。
 - **C1 状态：✅ 完成**。**A11 整体：✅ 完成（port 真实接线挂 A17，降级语义符合上游）**。
+
+### 2026-09-18 第 14 轮（A8 Confluence 同步连接器移植）✅
+
+> worktree 提交 `eb12a2e2`（16 文件 +1995 行）。上游 01f0700 的 connector/confluence 包**整目录干净应用**（client 358 行 Server/Cloud 双模式分页+错误分类 fail-closed、connector 343 行全量流+删除对账、types 324 行+6 个测试文件全过）。
+
+- **接线**（上游核心补丁因分支分歧改为手工）：FullStreamingConnector 接口（registry 层）——force-full 运行重取全部条目但保留旧 cursor 作删除基线，Asynq 重试续传不重启（datasource_service.streamingFetch 分派+上游单测应用）；容器注册（fork 已预留 confluence 槽位）+ metadata 升级 deletion_sync。
+- **去重范围修正**：同字节数据源文件不再互相顶替——GitLab 同名 README 模板/Confluence 复制页保持独立文档；hash 检查在 metadata datasource_id+external_id 域内收敛（KnowledgeCheckParams 两新字段+repository JSONB 谓词+上游 usesSourceIdentityDuplicateCheck 函数）。
+- **门禁**：go build ./... 0；confluence 包测试全过；streamingFetch 单测过。**容器级验证**：镜像重建 healthy，`GET /api/v1/datasource/types` 实测返回 confluence（capabilities=[incremental, deletion_sync]，与上游一致），17 个连接器类型全列。
+- 前端（Vue DataSourceEditorDialog/datasourceIcons）与 React 设置页的数据源编辑器对接：上游 Vue 侧 71 行改动未随本轮（fork 的 React DataSourceEditor 已有通道枚举渲染，confluence 通过 types API 自动出现——已由容器验证证实）；图标与表单字段细化留待 UI 对齐轮。
+- **A8 状态：✅ 完成**。
 
 ## G. 纪律与教训
 
