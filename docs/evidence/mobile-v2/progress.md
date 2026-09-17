@@ -51,3 +51,11 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 - 常用命令：`pnpm run test:mobile-v2`（13/13 基线）、`pnpm run test:shared`（590/590）、`cd apps/mobile && pnpm exec tsc --noEmit | grep -c "error TS"`（14=基线）、挂载套件 `pnpm --filter @weknora/mobile exec vitest run -c vitest.mobile-v2.config.ts`（4/4）、Go `go test ./internal/workbench/ ./internal/handler/session/ ./internal/application/service/workbench/`。
 - 纪律提醒：file-ownership.json 任何变更后必须重跑 test:mobile-v2（mx-001 基线守护）；typecheck 证据用全量 grep -c 禁止 tail；提交被 Mimosa 全项目误报间歇拦截时按 D-022 处置（重试，不改文案换绿灯）。
 - 证据索引：本目录 progress.md（唯一进度事实）、decisions.md D-001–D-024、current-state-matrix.md、file-ownership.json（~200 锁）。
+
+## 接续说明（2026-09-18 第二轮收口）
+
+- HEAD `463a61db`（MX-030），工作区干净，未 push。**已提交 18/36**：MX-001–014 accepted（014 证据补齐后视为 accepted）；MX-016（424cfe97）/MX-017（d782cc4f+fix 5e53cb6c）/MX-022（620ddcb8）审查代理已派（结论到达后按 R1 模式处置）；MX-030（463a61db）待派审查。
+- **下一就绪**（依赖闭包已满足，按序实施）：MX-018（执行详情/保守取消）→ MX-019（工具审批+二次确认）→ MX-024（成果预览）→ MX-031（空间用量）；MX-015 待 MX-016 accepted；MX-021 需 MX-019。
+- 回归基线：mv2 **19/19**、shared **590/590**、挂载 9/9、apps/mobile tsc **11=新基线**（D-026；app/5、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1 为 legacy 遗留）、go 全量 100 包 ok。
+- 纪律重申：注册表变更后必跑 test:mobile-v2（mx-001 守护已两次抓住回归）；证据命令全量计数禁 tail；提交被 Mimosa 全项目 i18n 误报拦截时按 D-022 重试（本轮 1-3 次重试均通过）。
+- 修复轮历史：审查体系已抓 6 个 P1（pending wire 空 action、注册表 kind 回归、Sheet 键盘/返回焦点、SSO state 契约、AEAD 密钥竞态、overview 虚构列）——全部修复并有回归测试。
