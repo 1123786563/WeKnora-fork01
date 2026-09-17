@@ -76,6 +76,19 @@ const EDITOR_KEYS = [
   'dataSource.cronSchedulePlaceholder',
   'dataSource.credentialsPlaceholder',
   'dataSource.settingsPlaceholder',
+  // Vue credential.* block (frontend/src/i18n/locales/*.ts), flattened under
+  // the dataSource. prefix for the edit-mode Replace/Remove step.
+  'dataSource.credential.configured',
+  'dataSource.credential.unconfigured',
+  'dataSource.credential.configure',
+  'dataSource.credential.update',
+  'dataSource.credential.remove',
+  'dataSource.credential.inputPlaceholder',
+  'dataSource.credential.saveFailed',
+  'dataSource.credential.removedToast',
+  'dataSource.credential.removeFailed',
+  'dataSource.credential.confirmRemovePrompt',
+  'dataSource.credential.confirmRemove',
 ];
 
 function dataSourceKeys(locale: string): string[] {
@@ -84,7 +97,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 169);
+  assert.equal(keys.length, 180);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -117,6 +130,21 @@ test('data-source editor copy is byte-exact against the Vue zh-CN baseline', () 
   assert.equal(formatMessage('zh-CN', 'dataSource.drive.folderTokenRequired'), '请输入具体文件夹的 folder_token，不支持云空间根目录');
   assert.equal(formatMessage('zh-CN', 'dataSource.syncDeletions'), '同步删除（源端删除时同步删除知识库中的条目）');
   assert.equal(formatMessage('zh-CN', 'dataSource.testing'), '测试中...');
+});
+
+// Vue credential.* block, byte-exact (frontend/src/i18n/locales/zh-CN.ts
+// lines 375-388): the edit-mode Replace/Remove step copy.
+test('credential step copy is byte-exact against the Vue credential block', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.configured'), '已配置');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.unconfigured'), '未配置');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.update'), '更换');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.remove'), '移除');
+  assert.equal(formatMessage('zh-CN', 'dataSource.credential.confirmRemovePrompt'), '确认移除？此操作不可撤销');
+  assert.equal(formatMessage('en-US', 'dataSource.credential.update'), 'Replace');
+  assert.equal(formatMessage('en-US', 'dataSource.credential.confirmRemovePrompt'), 'Remove this credential? This cannot be undone.');
+  assert.equal(formatMessage('ja-JP', 'dataSource.credential.update'), '差し替え');
+  assert.equal(formatMessage('ko-KR', 'dataSource.credential.update'), '교체');
+  assert.equal(formatMessage('ru-RU', 'dataSource.credential.update'), 'Заменить');
 });
 
 test('data-source editor copy is byte-exact against the Vue en-US baseline', () => {

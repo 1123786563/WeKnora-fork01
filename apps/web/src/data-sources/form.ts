@@ -61,20 +61,27 @@ export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
   };
 }
 
-export type CredentialField = { key: string; label: string; placeholder?: string; secret?: boolean; optional?: boolean };
+export type CredentialField = { key: string; label: string; placeholder?: string; secret?: boolean; optional?: boolean; hint?: string };
 
 // Ported from the Vue DataSourceEditorDialog connectorDefs: per-connector
 // credential fields with required/optional flags drive the field-level
 // validation that runs before the connection test (validateStep1Fields).
+// Labels, placeholders and hints mirror the Vue defs byte-for-byte.
 export const VUE_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
-  feishu: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
-  feishu_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.larksuite.com', optional: true }],
+  feishu: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true, hint: 'dataSource.field.baseUrlHint' }],
+  lark: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true, hint: 'dataSource.field.baseUrlHint' }],
+  feishu_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true, hint: 'dataSource.field.baseUrlHint' }],
+  lark_drive: [{ key: 'app_id', label: 'dataSource.field.appId', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'dataSource.field.appSecret', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://open.feishu.cn', optional: true, hint: 'dataSource.field.baseUrlHint' }],
   notion: [{ key: 'api_key', label: 'dataSource.field.integrationToken', placeholder: 'ntn_xxxx', secret: true }],
-  yuque: [{ key: 'api_token', label: 'dataSource.field.apiToken', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://www.yuque.com', optional: true }],
-  ima: [{ key: 'client_id', label: 'dataSource.field.imaClientId', secret: true }, { key: 'api_key', label: 'dataSource.field.imaApiKey', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://ima.qq.com', optional: true }],
-  gitlab: [{ key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.field.apiToken', secret: true }],
+  yuque: [{ key: 'api_token', label: 'dataSource.field.apiToken', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://www.yuque.com', optional: true, hint: 'dataSource.field.baseUrlHint' }],
+  ima: [{ key: 'client_id', label: 'dataSource.field.imaClientId', secret: true }, { key: 'api_key', label: 'dataSource.field.imaApiKey', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://ima.qq.com', optional: true, hint: 'dataSource.field.baseUrlHint' }],
+  gitlab: [{ key: 'base_url', label: 'dataSource.gitlab.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.gitlab.accessToken', secret: true }],
+};
+
+// Vue renders rss feed URLs as a dedicated settings field with its hint line
+// (datasource.field.feedUrlsHint) instead of generic credential inputs.
+export const VUE_SETTINGS_FIELDS: Record<string, CredentialField[]> = {
+  rss: [{ key: 'feed_urls', label: 'dataSource.field.feedUrls', placeholder: 'https://example.com/feed.xml', hint: 'dataSource.field.feedUrlsHint' }],
 };
 
 export function credentialValue(text: string, key: string): string {
@@ -104,4 +111,53 @@ export function firstMissingRequiredCredential(type: string, credentialsText: st
 // credentials.credentials.configured (datasource_credentials.go).
 export function credentialsRequiredForValidation(input: { isEdit: boolean; credentialsConfigured: boolean; replacementTyped: boolean }): boolean {
   return !(input.isEdit && input.credentialsConfigured && !input.replacementTyped);
+}
+
+// --- Vue edit-mode credential step (Replace / Remove) ---
+
+export type CredentialStepKind = 'configured' | 'unconfigured' | 'inputs';
+
+// Vue DataSourceEditorDialog template branches on the credentials section:
+// an edit of a configured connector shows the "configured" faux row (with
+// Replace / Remove actions) until the user opts in to Replace; an edit of a
+// row without stored credentials shows the "unconfigured" faux row whose
+// Configure action reveals the inputs; create mode always shows the inputs.
+export function credentialStepKind(input: { isEdit: boolean; credentialsConfigured: boolean; replaceMode: boolean }): CredentialStepKind {
+  if (!input.isEdit || input.replaceMode) return 'inputs';
+  return input.credentialsConfigured ? 'configured' : 'unconfigured';
+}
+
+export interface CredentialStepState {
+  credentialsConfigured: boolean;
+  replaceMode: boolean;
+  pendingRemove: boolean;
+}
+
+export type CredentialStepAction =
+  | 'enter-replace'
+  | 'cancel-replace'
+  | 'request-remove'
+  | 'cancel-remove'
+  | 'remove-confirmed'
+  | 'replace-committed';
+
+export function initialCredentialStepState(credentialsConfigured: boolean): CredentialStepState {
+  return { credentialsConfigured, replaceMode: false, pendingRemove: false };
+}
+
+// Pure mirror of the Vue handlers: enterReplaceCredentials (closes any pending
+// remove prompt), cancelReplaceCredentials (discards the typed draft, handled
+// by the caller clearing credentialsText), requestRemoveCredentials /
+// cancelPendingRemoveCredentials (inline confirm, no modal), confirmRemoveCredentials
+// success (falls back to the unconfigured row) and commitCredentialsIfNeeded
+// success (the replacement becomes the configured set, inputs collapse).
+export function credentialStepReducer(state: CredentialStepState, action: CredentialStepAction): CredentialStepState {
+  switch (action) {
+    case 'enter-replace': return { ...state, replaceMode: true, pendingRemove: false };
+    case 'cancel-replace': return { ...state, replaceMode: false, pendingRemove: false };
+    case 'request-remove': return { ...state, pendingRemove: true };
+    case 'cancel-remove': return { ...state, pendingRemove: false };
+    case 'remove-confirmed': return { credentialsConfigured: false, replaceMode: false, pendingRemove: false };
+    case 'replace-committed': return { credentialsConfigured: true, replaceMode: false, pendingRemove: false };
+  }
 }

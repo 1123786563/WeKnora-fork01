@@ -4770,3 +4770,30 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   errors, `pnpm build:web` ✓. Evidence:
   `evidence/vue-react-parity/2026-09-17-r449-conflict-resolution-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R450 — Preview fix live-verified, lite-mode gating, credential Replace/Remove
+
+- Four parallel agents (A1 isolated-context live verification, A2 platform settings residuals, A3 datasource
+  credential closeout, A4 verifier). Verdict: all PASS, zero rework; gates on the merged state: test:web
+  1615/1615 (+13), test:shared 604/604 (+1), typecheck clean, build ✓.
+- A1: the chunking preview fix loop CLOSED — real click twice, envelope unwrapped, no failure toast, stats row
+  and 6 chunk cards render (R447 envelope unwrap + R448 rejected:null normalization together resolve the live
+  chain). Platform menu regression green (空间设置/帮助与文档/系统管理 correctly gated-hidden for the non-sysadmin
+  parity account); shared-KB banner absence verified live on the R444 fixture; join-requests naming renders
+  with badge and empty state. A4 adjudication: 全部设置 landing at ?section=general is NOT a defect (menu href
+  matches Vue; the query is SettingsPage URL normalization, Vue behaves the same). Transient isLiteEdition TDZ
+  white-screen was an HMR mid-edit state, gone in the final code.
+- A2: tenant section title verified CONSISTENT with Vue (空间信息 on both — R449 record stands, no-op closed);
+  isLiteMode source is equivalent (localStorage weknora_lite_mode) and the shell now gates the six Vue-cited
+  points (space identity/switch panel, 空间设置 shortcut, divider+logout, member/model/skill entries, sidebar
+  organizations). 5 behavioral tests; zero new i18n keys. R449 erratum: the gated entry is the 空间设置
+  shortcut, not a "share item". Deferred: getSystemInfo edition probe equivalent.
+- A3: credential step three-state machine (configured → unconfigured → Replace inputs with Cancel), inline
+  danger confirm for Remove, replacementTyped bound to the explicit replace mode (R447 exemption tests
+  unchanged), prereq hints/placeholders per Vue connectorDefs (lark placeholder byte-corrected, gitlab专用
+  keys); +11 dataSource.credential.* keys ×5 locale byte-exact, guard 169→180. Deferred: removeCredentials
+  feature-detect call (api-client frozen), resource-step editors (rss headers/Drive folder_token/GitLab
+  projects).
+- Gates: `pnpm test:web` 1615/1615, `pnpm test:shared` 604/604, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r450-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

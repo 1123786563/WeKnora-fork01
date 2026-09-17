@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDataSourceInput, credentialsRequiredForValidation, firstMissingRequiredCredential, parseCredentialLines } from './form.ts';
+import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialsRequiredForValidation, firstMissingRequiredCredential, initialCredentialStepState, parseCredentialLines, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS } from './form.ts';
 
 test('parses connector credentials from key-value lines and rejects malformed secrets', () => {
   assert.deepEqual(parseCredentialLines('app_id = demo\napp_secret = hidden\n'), { app_id: 'demo', app_secret: 'hidden' });
@@ -22,7 +22,7 @@ test('flags the first missing required credential field before submit (Vue valid
   assert.equal(firstMissingRequiredCredential('feishu', 'app_id = cli_x'), 'dataSource.field.appSecret');
   assert.equal(firstMissingRequiredCredential('feishu', 'app_id = cli_x\napp_secret = s'), null, 'base_url is optional in Vue');
   assert.equal(firstMissingRequiredCredential('notion', ''), 'dataSource.field.integrationToken');
-  assert.equal(firstMissingRequiredCredential('gitlab', 'base_url = https://gitlab.example.com'), 'dataSource.field.apiToken');
+  assert.equal(firstMissingRequiredCredential('gitlab', 'base_url = https://gitlab.example.com'), 'dataSource.gitlab.accessToken', 'gitlab uses its own Vue label keys');
 });
 
 test('skips credential field validation for connectors without a Vue field map', () => {
@@ -40,4 +40,49 @@ test('runs the required-credential walk only when Vue credentialsRequired holds'
   assert.equal(credentialsRequiredForValidation({ isEdit: true, credentialsConfigured: true, replacementTyped: true }), true, 'typed replacement re-enables validation');
   assert.equal(credentialsRequiredForValidation({ isEdit: true, credentialsConfigured: false, replacementTyped: false }), true, 'unconfigured connector validates');
   assert.equal(credentialsRequiredForValidation({ isEdit: true, credentialsConfigured: false, replacementTyped: true }), true);
+});
+
+// Vue DataSourceEditorDialog step-1 credential branches: create always shows
+// the inputs; a configured edit shows the "configured" faux row until the user
+// opts in to Replace; an unconfigured edit shows the "not configured" row whose
+// Configure action reveals the inputs (degenerate replace mode).
+test('derives the Vue credential step branch (configured / unconfigured / inputs)', () => {
+  const kind = (isEdit: boolean, credentialsConfigured: boolean, replaceMode: boolean) => credentialStepKind({ isEdit, credentialsConfigured, replaceMode });
+  assert.equal(kind(false, false, false), 'inputs', 'create always renders inputs');
+  assert.equal(kind(true, true, false), 'configured');
+  assert.equal(kind(true, true, true), 'inputs', 'replace mode reveals editable inputs');
+  assert.equal(kind(true, false, false), 'unconfigured');
+  assert.equal(kind(true, false, true), 'inputs');
+});
+
+// Vue enterReplaceCredentials / cancelReplaceCredentials / request- and
+// cancelRemoveCredentials / confirmRemoveCredentials / commitCredentialsIfNeeded
+// as a pure reducer. cancel-replace discards anything typed; remove-confirmed
+// falls back to the unconfigured row; replace-committed collapses back to the
+// configured row with the new credentials stored server-side.
+test('Reducer reproduces the Vue replace/remove credential state machine', () => {
+  const start = initialCredentialStepState(true);
+  assert.deepEqual(start, { credentialsConfigured: true, replaceMode: false, pendingRemove: false });
+  assert.deepEqual(credentialStepReducer(start, 'enter-replace'), { credentialsConfigured: true, replaceMode: true, pendingRemove: false }, 'entering replace cancels a pending remove prompt');
+  assert.deepEqual(credentialStepReducer({ ...start, replaceMode: true }, 'cancel-replace'), { credentialsConfigured: true, replaceMode: false, pendingRemove: false });
+  assert.deepEqual(credentialStepReducer(start, 'request-remove'), { credentialsConfigured: true, replaceMode: false, pendingRemove: true });
+  assert.deepEqual(credentialStepReducer({ ...start, pendingRemove: true }, 'cancel-remove'), { credentialsConfigured: true, replaceMode: false, pendingRemove: false });
+  assert.deepEqual(credentialStepReducer({ ...start, pendingRemove: true, replaceMode: true }, 'remove-confirmed'), { credentialsConfigured: false, replaceMode: false, pendingRemove: false }, 'after removal the row falls back to unconfigured');
+  assert.deepEqual(credentialStepReducer({ ...start, replaceMode: true }, 'replace-committed'), { credentialsConfigured: true, replaceMode: false, pendingRemove: false }, 'a committed replacement collapses back to the configured row');
+});
+
+// Vue connectorDefs is the source of truth for labels, placeholders and hints.
+// The React field map must stay byte-compatible: lark reuses the Feishu
+// base_url placeholder, gitlab carries its own label keys, base_url fields
+// render the shared baseUrlHint, and the rss feed_urls setting keeps its hint.
+test('field map stays byte-compatible with the Vue connectorDefs', () => {
+  const baseUrl = (type: string) => VUE_CREDENTIAL_FIELDS[type]!.find((field) => field.key === 'base_url');
+  assert.equal(baseUrl('lark')!.placeholder, 'https://open.feishu.cn');
+  for (const type of ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'yuque', 'ima']) {
+    assert.equal(baseUrl(type)!.hint, 'dataSource.field.baseUrlHint', `${type} base_url carries the shared hint`);
+  }
+  const gitlab = Object.fromEntries(VUE_CREDENTIAL_FIELDS.gitlab!.map((field) => [field.key, field]));
+  assert.equal(gitlab.base_url!.label, 'dataSource.gitlab.baseUrl');
+  assert.equal(gitlab.access_token!.label, 'dataSource.gitlab.accessToken');
+  assert.equal(VUE_SETTINGS_FIELDS.rss!.find((field) => field.key === 'feed_urls')!.hint, 'dataSource.field.feedUrlsHint');
 });

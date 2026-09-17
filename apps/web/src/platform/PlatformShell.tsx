@@ -337,7 +337,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [client]);
 
   const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
-  const tenantSwitcherVisible = shouldShowTenantSwitcher({
+  // Vue menu.vue:7 renders a literal "Lite" edition mark next to the logo
+  // when the edition flag is set; stores/auth.ts:538 sources it from the
+  // durable localStorage key (same one main.tsx seeds the shell with).
+  // R450-A2 — the same flag also gates the user menu / rail entries below.
+  const isLiteEdition = window.localStorage.getItem('weknora_lite_mode') === 'true';
+  const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
     canAccessAllTenants: user.canAccessAllTenants,
     collapsed,
     hasSwitchHandler: Boolean(onTenantSwitch),
@@ -661,8 +666,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // Vue menu.ts:76-78 — drop the organizations entry below admin. Filtering
   // after the build keeps the item table (labels/icons/guides) authoritative.
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => item.key !== 'organizations' || canSeeOrganizations),
-    [navItems, canSeeOrganizations],
+    // R450-A2 — Vue stores/menu.ts:64,73 adds 'organizations' (and the
+    // sidebar logout) to liteHiddenPaths; the React rail only owns the
+    // organizations entry, so it drops out under lite mode too.
+    () => navItems.filter((item) => item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)),
+    [navItems, canSeeOrganizations, isLiteEdition],
   );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
@@ -686,13 +694,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     });
   };
 
-  // Vue menu.vue:7 renders a literal "Lite" edition mark next to the logo
-  // when the edition flag is set; stores/auth.ts:538 sources it from the
-  // durable localStorage key (same one main.tsx seeds the shell with).
-  const isLiteEdition = window.localStorage.getItem('weknora_lite_mode') === 'true';
-
   const initial = (user.name || '?').charAt(0).toUpperCase();
-  const showTenantIdentityLine = !collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants);
+  // R450-A2 — Vue UserMenu.vue:247-253 gates the tenant identity line with
+  // !isLiteMode ("Lite 模式下没有 RBAC 概念，统一隐藏"); the same panel owns
+  // the tenant switcher, so the switcher collapses with it (UserMenu.vue:56).
+  const showTenantIdentityLine = !isLiteEdition && (!collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants));
   const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
 
   return (
@@ -880,11 +886,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
                   {labels.personalSettings}
                 </a>
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」
+                    quick link with !isLiteMode; lite deployments have no
+                    tenant surface to manage. */}
+                {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=tenant"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
                   {labels.workspaceSettings}
-                </a>
+                </a>}
                 {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
                   <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={toggleTenantSubmenu}>
                     <span>{t('tenant.switcher.menuLabel')}</span><span aria-hidden="true">{tenantMenuOpen ? '⌃' : '⌄'}</span>
@@ -895,17 +904,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     </button>)}
                   </div> : null}
                 </div> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
                   {labels.membersSettings}
                 </a> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=models"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
                   {labels.modelsSettings}
                 </a> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=skills"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
                   {labels.skillsSettings}
@@ -970,11 +979,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     </svg>
                   </span>
                 </a>
-                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
-                  onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
-                  {t('auth.logout')}
-                </button>
+                {/* R450-A2 — Vue UserMenu.vue:136-144 keeps the divider and
+                    the logout item behind !isLiteMode: lite editions have no
+                    account session to end (Vue stores/auth.ts logout also
+                    clears the weknora_lite_mode key). */}
+                {!isLiteEdition && <>
+                  <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
+                  <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
+                    onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
+                    {t('auth.logout')}
+                  </button>
+                </>}
               </div>
             )}
           </div>

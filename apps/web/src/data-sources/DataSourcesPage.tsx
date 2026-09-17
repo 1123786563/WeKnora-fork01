@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourceSyncLog, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Checkbox, Input, Select, Sheet, Status, Textarea } from '@weknora/ui';
-import { buildDataSourceInput, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, VUE_CREDENTIAL_FIELDS, type CredentialField, type DataSourceFormValues } from './form.ts';
+import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS, type CredentialField, type DataSourceFormValues } from './form.ts';
 import { resourceCheckStates, toggleResourceSelection } from './resource-selection.ts';
 import { classifyDataSourceError } from './error-state.ts';
 import { isSyncRunning, mergeSyncLogs } from './log-state.ts';
@@ -12,9 +12,6 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 const newForm: DataSourceFormValues = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '', resourceIds: [] };
 const LOG_PAGE_SIZE = 50;
 const VUE_CREATE_CONNECTOR_ORDER = ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab'];
-const VUE_SETTINGS_FIELDS: Record<string, CredentialField[]> = {
-  rss: [{ key: 'feed_urls', label: 'dataSource.field.feedUrls', placeholder: 'https://example.com/feed.xml' }],
-};
 
 const syncStatusKeys: Record<string, string> = {
   running: 'dataSource.status.running', success: 'dataSource.status.success', partial: 'dataSource.status.partial',
@@ -68,6 +65,7 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
   const [resourceLoading, setResourceLoading] = useState(false);
   const [resourceError, setResourceError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DataSource | null | undefined>(undefined);
+  const [credentialStep, setCredentialStep] = useState(() => initialCredentialStepState(false));
   const [createStep, setCreateStep] = useState<'type' | 'form'>('type');
   const [form, setForm] = useState<DataSourceFormValues>(newForm);
   const [loading, setLoading] = useState(true);
@@ -108,9 +106,9 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     return stopPolling;
   }, [client, knowledgeBaseId]);
 
-  function openCreate() { if (accessDenied || !canManage) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setResourceSource(null); setMessage(null); }
+  function openCreate() { if (accessDenied || !canManage) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setCredentialStep(initialCredentialStepState(false)); setResourceSource(null); setMessage(null); }
   function chooseCreateType(type: string) { setForm((current) => ({ ...current, type })); setCreateStep('form'); }
-  function openEdit(source: DataSource) { if (!canManage) return; setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setResourceSource(null); setMessage(null); }
+  function openEdit(source: DataSource) { if (!canManage) return; setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setCredentialStep(initialCredentialStepState((source as { credentials?: { credentials?: { configured?: unknown } } })?.credentials?.credentials?.configured === true)); setResourceSource(null); setMessage(null); }
   function updateForm<K extends keyof DataSourceFormValues>(key: K, value: DataSourceFormValues[K]) { setForm((current) => ({ ...current, [key]: value })); }
 
   async function save(event?: FormEvent<HTMLFormElement>) {
@@ -122,9 +120,9 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     }
     // Vue validateStep1Fields runs the per-field required-credential walk only
     // when credentials are required: an edit of an already-configured
-    // connector without typed replacements keeps its stored credentials.
-    const editCredentialsConfigured = (editing as { credentials?: { credentials?: { configured?: unknown } } } | null | undefined)?.credentials?.credentials?.configured === true;
-    if (credentialsRequiredForValidation({ isEdit: Boolean(editing), credentialsConfigured: editCredentialsConfigured, replacementTyped: Boolean(form.credentialsText.trim()) })) {
+    // connector stays on the configured row until the user opts in to Replace,
+    // so the walk is keyed off the replace-mode flag (needsConnectionTest).
+    if (credentialsRequiredForValidation({ isEdit: Boolean(editing), credentialsConfigured: credentialStep.credentialsConfigured, replacementTyped: credentialStep.replaceMode })) {
       const missingCredential = firstMissingRequiredCredential(form.type, form.credentialsText);
       if (missingCredential) {
         setMessage({ tone: 'warning', text: `${t(missingCredential)} ${t('dataSource.isRequired')}` });
@@ -144,6 +142,9 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
       const saved = editing ? await dataSources.update(editing.id, input) : await dataSources.create({ ...input, knowledge_base_id: knowledgeBaseId });
       if (form.credentialsText.trim()) {
         if (editing) await dataSources.putCredentials(saved.id, credentials);
+        // Vue commitCredentialsIfNeeded: the replacement is now the stored
+        // credential set; collapse back to the configured row.
+        if (editing) setCredentialStep((current) => credentialStepReducer(current, 'replace-committed'));
       }
       setEditing(undefined);
       if (editing) {
@@ -164,6 +165,25 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     finally { setSaving(false); }
   }
   async function remove(source: DataSource) { if (!canManage) return; if (!window.confirm(`${t('dataSource.deleteConfirm')} ${source.name}`)) return; setAction(source.id); try { await dataSources.remove(source.id); await load(); setMessage({ tone: 'success', text: t('dataSource.deleteSuccess') }); } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('dataSource.deleteFailed') }); } finally { setAction(null); } }
+  // Vue confirmRemoveCredentials: DELETE the /credentials subresource of the
+  // edited data source; success falls back to the unconfigured row with the
+  // removedToast. The typed api-client may not ship removeCredentials yet (the
+  // package is file-frozen for this lane), so the call is feature-detected and
+  // surfaces the Vue removeFailed copy when absent.
+  async function confirmRemoveCredentials() {
+    if (!editing) return;
+    setAction('remove-credentials');
+    try {
+      const api = dataSources as { removeCredentials?: (id: string) => Promise<unknown> };
+      if (typeof api.removeCredentials !== 'function') throw new Error(t('dataSource.credential.removeFailed'));
+      await api.removeCredentials(editing.id);
+      setCredentialStep((current) => credentialStepReducer(current, 'remove-confirmed'));
+      setForm((current) => ({ ...current, credentialsText: '' }));
+      setMessage({ tone: 'success', text: t('dataSource.credential.removedToast') });
+    } catch (error) {
+      setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('dataSource.credential.removeFailed') });
+    } finally { setAction(null); }
+  }
   async function run(source: DataSource, operation: 'sync' | 'pause' | 'resume' | 'validate') { if (!canManage) return; setAction(`${operation}:${source.id}`); try { const result = operation === 'sync' ? await dataSources.sync(source.id) : operation === 'pause' ? await dataSources.pause(source.id) : operation === 'resume' ? await dataSources.resume(source.id) : await dataSources.validate(source.id); const failure = connectionError(result, t('dataSource.testFailed')); if (failure) throw new Error(failure); if (operation !== 'validate') await load(); const successText = operation === 'sync' ? t('dataSource.syncTriggered') : operation === 'validate' ? t('dataSource.testSuccess') : operation === 'pause' ? t('dataSource.paused') : t('dataSource.resumed'); setMessage({ tone: 'success', text: successText }); } catch (error) { const fallback = operation === 'sync' ? t('dataSource.syncFailed') : operation === 'validate' ? t('dataSource.testFailed') : operation === 'pause' ? t('dataSource.pauseFailed') : t('dataSource.pauseFailed'); setMessage({ tone: 'error', text: error instanceof Error ? error.message : fallback }); } finally { setAction(null); } }
   async function loadLogs(source: DataSource, offset: number) {
     const append = offset > 0;
@@ -187,6 +207,7 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
   async function showResources(source: DataSource) { setResourceSource(source); setForm(dataSourceFormFrom(source)); setResources([]); setResourceParent(undefined); setResourceTrail([]); await loadResources(source, undefined, []); await revealResourceSelections(source); }
   async function expandAllResources() { if (!resourceSource) return; setResourceLoading(true); setResourceError(null); try { const byId = new Map(resources.map((resource) => [resource.external_id, resource])); const queue = resources.filter((resource) => resource.has_children).map((resource) => resource.external_id); const visited = new Set<string>(); while (queue.length > 0) { const parentId = queue.shift()!; if (visited.has(parentId)) continue; visited.add(parentId); const children = await dataSources.resources(resourceSource.id, parentId); for (const child of children) { byId.set(child.external_id, child); if (child.has_children) queue.push(child.external_id); } } setResources([...byId.values()]); } catch (error) { const classified = classifyDataSourceError(error, t('dataSource.resourceLoadFailed')); setResourceError(classified.kind === 'forbidden' ? t('dataSource.drive.loadForbiddenHint') : classified.kind === 'auth' ? t('dataSource.drive.loadAuthHint') : classified.kind === 'not-found' ? t('dataSource.drive.loadNotFoundHint') : classified.message); } finally { setResourceLoading(false); } }
   const resourceStates = resourceCheckStates(resources, form.resourceIds);
+  const kind = credentialStepKind({ isEdit: Boolean(editing), credentialsConfigured: credentialStep.credentialsConfigured, replaceMode: credentialStep.replaceMode });
   const visibleResources = resources.filter((resource) => resource.parent_id === resourceParent || (!resourceParent && !resource.parent_id));
   const createTypes = VUE_CREATE_CONNECTOR_ORDER.flatMap((type) => {
     const connector = types.find((item) => item.type === type);
@@ -200,8 +221,11 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
       <p className="wk-muted m-0 text-muted">{t('dataSource.credentialsLabel')}</p>
       <label>{t('dataSource.nameLabel')} <Input required value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></label>
       <label>{t('dataSource.connectorTypeLabel')} <Select required value={form.type} onChange={(event) => updateForm('type', event.target.value)}>{(editing ? types : createTypes).map((type) => <option key={type.type} value={type.type}>{type.name} ({type.type})</option>)}</Select></label>
-      <fieldset className="grid gap-3 rounded-lg border border-line-soft p-3"><legend className="px-1 text-[13px] font-semibold">{t('dataSource.credentialsLabel')}</legend>{VUE_CREDENTIAL_FIELDS[form.type] ? VUE_CREDENTIAL_FIELDS[form.type].map((field) => <label key={field.key} className="grid gap-1 text-[13px]"><span>{t(field.label)}</span><Input type={field.secret ? 'password' : 'text'} required={!field.optional} placeholder={field.placeholder} value={credentialValue(form.credentialsText, field.key)} onChange={(event) => updateForm('credentialsText', setCredentialValue(form.credentialsText, field.key, event.target.value))} /></label>) : <Textarea rows={4} value={form.credentialsText} onChange={(event) => updateForm('credentialsText', event.target.value)} placeholder={t('dataSource.credentialsPlaceholder')} />}</fieldset>
-      <fieldset className="grid gap-3 rounded-lg border border-line-soft p-3"><legend className="px-1 text-[13px] font-semibold">{t('dataSource.connectorSettingsLabel')}</legend>{VUE_SETTINGS_FIELDS[form.type] ? VUE_SETTINGS_FIELDS[form.type].map((field) => <label key={field.key} className="grid gap-1 text-[13px]"><span>{t(field.label)}</span><Textarea rows={3} required={!field.optional} placeholder={field.placeholder} value={credentialValue(form.settingsText, field.key)} onChange={(event) => updateForm('settingsText', setCredentialValue(form.settingsText, field.key, event.target.value))} /></label>) : <Textarea rows={4} value={form.settingsText} onChange={(event) => updateForm('settingsText', event.target.value)} placeholder={t('dataSource.settingsPlaceholder')} />}</fieldset>
+      {kind === 'configured' ? (credentialStep.pendingRemove ? <div className="grid gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3 text-[13px]" data-kind="confirm-remove"><span className="text-danger">{t('dataSource.credential.confirmRemovePrompt')}</span><div className="flex items-center gap-2"><Button type="button" variant="text" size="small" onClick={() => setCredentialStep((current) => credentialStepReducer(current, 'cancel-remove'))}>{t('common.cancel')}</Button><Button type="button" variant="danger" size="small" loading={action === 'remove-credentials'} onClick={() => void confirmRemoveCredentials()}>{t('dataSource.credential.confirmRemove')}</Button></div></div> : <div className="flex items-center gap-2 rounded-lg border border-line-soft p-3 text-[13px]" data-kind="configured"><span className="text-success-text" aria-hidden="true">✓</span><span>{t('dataSource.credential.configured')}</span><div className="ml-auto flex items-center gap-2"><Button type="button" variant="text" size="small" onClick={() => setCredentialStep((current) => credentialStepReducer(current, 'enter-replace'))}>{t('dataSource.credential.update')}</Button><Button type="button" variant="danger" size="small" onClick={() => setCredentialStep((current) => credentialStepReducer(current, 'request-remove'))}>{t('dataSource.credential.remove')}</Button></div></div>) : null}
+      {kind === 'unconfigured' ? <div className="flex items-center gap-2 rounded-lg border border-dashed border-line-soft p-3 text-[13px] text-muted" data-kind="unconfigured"><span>{t('dataSource.credential.unconfigured')}</span><Button type="button" variant="text" size="small" className="ml-auto" onClick={() => setCredentialStep((current) => credentialStepReducer(current, 'enter-replace'))}>{t('dataSource.credential.configure')}</Button></div> : null}
+      {kind === 'inputs' ? <fieldset className="grid gap-3 rounded-lg border border-line-soft p-3"><legend className="px-1 text-[13px] font-semibold">{t('dataSource.credentialsLabel')}</legend>{VUE_CREDENTIAL_FIELDS[form.type] ? VUE_CREDENTIAL_FIELDS[form.type].map((field) => <label key={field.key} className="grid gap-1 text-[13px]"><span>{t(field.label)}</span><Input type={field.secret ? 'password' : 'text'} required={!field.optional} placeholder={field.placeholder || t('dataSource.credential.inputPlaceholder')} value={credentialValue(form.credentialsText, field.key)} onChange={(event) => updateForm('credentialsText', setCredentialValue(form.credentialsText, field.key, event.target.value))} />{field.hint ? <small className="text-muted">{t(field.hint)}</small> : null}</label>) : <Textarea rows={4} value={form.credentialsText} onChange={(event) => updateForm('credentialsText', event.target.value)} placeholder={t('dataSource.credentialsPlaceholder')} />}</fieldset> : null}
+      {editing && credentialStep.replaceMode ? <Button type="button" variant="text" size="small" className="justify-self-start" onClick={() => { setCredentialStep((current) => credentialStepReducer(current, 'cancel-replace')); setForm((current) => ({ ...current, credentialsText: '' })); }}>{t('common.cancel')}</Button> : null}
+      <fieldset className="grid gap-3 rounded-lg border border-line-soft p-3"><legend className="px-1 text-[13px] font-semibold">{t('dataSource.connectorSettingsLabel')}</legend>{VUE_SETTINGS_FIELDS[form.type] ? VUE_SETTINGS_FIELDS[form.type].map((field) => <label key={field.key} className="grid gap-1 text-[13px]"><span>{t(field.label)}</span><Textarea rows={3} required={!field.optional} placeholder={field.placeholder || t('dataSource.credential.inputPlaceholder')} value={credentialValue(form.settingsText, field.key)} onChange={(event) => updateForm('settingsText', setCredentialValue(form.settingsText, field.key, event.target.value))} />{field.hint ? <small className="text-muted">{t(field.hint)}</small> : null}</label>) : <Textarea rows={4} value={form.settingsText} onChange={(event) => updateForm('settingsText', event.target.value)} placeholder={t('dataSource.settingsPlaceholder')} />}</fieldset>
       <label>{t('dataSource.syncScheduleLabel')} <Input required value={form.schedule} onChange={(event) => updateForm('schedule', event.target.value)} /></label>
       <label>{t('dataSource.syncModeLabel')} <Select value={form.mode} onChange={(event) => updateForm('mode', event.target.value as DataSourceFormValues['mode'])}><option value="incremental">{t('dataSource.syncMode.incremental')}</option><option value="full">{t('dataSource.syncMode.full')}</option></Select></label>
       <label>{t('dataSource.conflictLabel')} <Select value={form.conflict} onChange={(event) => updateForm('conflict', event.target.value as DataSourceFormValues['conflict'])}><option value="overwrite">{t('dataSource.conflict.overwrite')}</option><option value="skip">{t('dataSource.conflict.skip')}</option></Select></label>

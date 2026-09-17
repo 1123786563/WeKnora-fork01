@@ -106,3 +106,54 @@ test('appends the dashed add card to the grid for managers alongside sources', (
   const grid = page.slice(page.indexOf('wk-data-source-grid'));
   assert.match(grid, /\{canManage \? <button type="button" className="wk-data-source-create/);
 });
+
+// Vue DataSourceEditorDialog edit mode renders the configured-credential faux
+// row (credential-faux-input): "configured ✓" with Replace (update) + Remove
+// actions; Remove swaps the row into an inline confirm prompt
+// (confirmRemovePrompt + cancel/confirmRemove) instead of a modal; the
+// unconfigured degenerate row shows a Configure action that reveals the inputs;
+// replace mode renders a Cancel action that discards anything typed.
+test('renders the Vue credential status rows with replace/remove and inline confirm', () => {
+  assert.match(page, /const kind = credentialStepKind\(\{ isEdit: Boolean\(editing\), credentialsConfigured: credentialStep\.credentialsConfigured, replaceMode: credentialStep\.replaceMode \}\)/);
+  assert.match(page, /kind === 'configured' \? \(credentialStep\.pendingRemove \? /);
+  assert.match(page, /t\('dataSource\.credential\.confirmRemovePrompt'\)/);
+  assert.match(page, /t\('dataSource\.credential\.confirmRemove'\)/);
+  assert.match(page, /t\('dataSource\.credential\.configured'\)/);
+  assert.match(page, /t\('dataSource\.credential\.update'\)/);
+  assert.match(page, /t\('dataSource\.credential\.remove'\)/);
+  assert.match(page, /t\('dataSource\.credential\.unconfigured'\)/);
+  assert.match(page, /t\('dataSource\.credential\.configure'\)/);
+  assert.doesNotMatch(page, /window\.confirm\(`?\$\{t\('dataSource\.credential/);
+});
+
+// Vue confirmRemoveCredentials calls DELETE /credentials on the data source
+// and, on success, resets to the unconfigured state with a removedToast. The
+// typed api-client may not ship removeCredentials yet (file-frozen for this
+// lane), so the page guards for it and surfaces removeFailed otherwise.
+test('remove confirmation calls the credentials subresource and resets state', () => {
+  assert.match(page, /async function confirmRemoveCredentials\(\)/);
+  assert.match(page, /typeof api\.removeCredentials !== 'function'/);
+  assert.match(page, /credentialStepReducer\(current, 'remove-confirmed'\)/);
+  assert.match(page, /text: t\('dataSource\.credential\.removedToast'\)/);
+  assert.match(page, /text: error instanceof Error \? error\.message : t\('dataSource\.credential\.removeFailed'\)/);
+});
+
+// Vue commitCredentialsIfNeeded collapses replace mode back to the configured
+// row after a successful PUT /credentials.
+test('a committed replacement collapses back to the configured row', () => {
+  assert.match(page, /credentialStepReducer\(current, 'replace-committed'\)/);
+});
+
+// Vue replaces credentialsRequiredForValidation's "typed replacement" input
+// with the explicit replace-mode flag, and cancel-replace clears the draft.
+test('replace mode drives the validation exemption and cancel discards the draft', () => {
+  assert.match(page, /replacementTyped: credentialStep\.replaceMode/);
+  assert.match(page, /credentialStepReducer\(current, 'cancel-replace'\)/);
+});
+
+// Vue connectorDefs renders each credential field with its hint line
+// (form-desc) and falls empty placeholders back to credential.inputPlaceholder.
+test('credential fields render Vue hints and the input placeholder fallback', () => {
+  assert.match(page, /placeholder=\{field\.placeholder \|\| t\('dataSource\.credential\.inputPlaceholder'\)\}/);
+  assert.match(page, /\{field\.hint \? <small className="text-muted">\{t\(field\.hint\)\}<\/small> : null\}/);
+});
