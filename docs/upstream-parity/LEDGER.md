@@ -154,6 +154,18 @@
 
 **遗留**：上游 t-image 空占位定性；i18n 与选择器差距排期（上两条未修项）。
 
+### 2026-09-18 第 7 轮（i18n 缺口修复：聊天域跟随部署默认 zh-CN + Accept-Language 请求注入）✅
+
+> 第 6 轮「发现未修①」的闭环。根因是**三层叠加**，全部按上游契约修复（worktree 提交 `4659aacb`，与 cron lane 的 auth 死代码删除 WIP 文件不相交）：
+
+1. **resolveChatLocale 嗅探浏览器语言**（packages/views/src/chat/chat-copy.ts）：多出的 `navigator.language` 一跳使英文浏览器落到 en-US——上游 i18n/index.ts 是 `localStorage['locale'] || BUILT_IN_DEFAULT(zh-CN)`，从不嗅探。已对齐（回归测试钉住无存储→zh-CN、存储 ja-JP→ja-JP 两路）。
+2. **api-client 从不发 Accept-Language**（packages/api-client/src/client.ts）：上游 request.ts:86 每个请求注入 `getCurrentLanguage()`，后端本地化负载（内置智能体名/描述，builtin_agents.yaml 读路径 ApplyBuiltinAgentLocalization——fork 后端机制与上游本就一致、容器内 yaml 在）据此返回对应语言。request()/requestBinary() 现按同一约定注入（测试 86/86）。
+3. **main.tsx 传 `locale: navigator.language`**（apps/web/src/platform/http.ts + main.tsx）：启动时一次性取浏览器语言，把 en-US 钉死在 transport 层并覆盖 ②。transport 现接受响应式 provider 且默认 `activeLocale()`（localStorage→zh-CN），main.tsx 改传 `() => readStoredLocale()`，与 Vue 拦截器的逐请求解析对齐。
+
+**复验（浏览器双栈，证据 `evidence/browser-agent-chat/`）**：fork creatChat 页「Hi，我是 WeKnora，让你的知识触手可及／直接向模型提问／选择智能体／对话模型／发送」+ 下拉选项（快速问答/智能推理/维基问答/数据分析师）与上游 **up-04 基线逐字一致**（fk-06 vs up-04）；智能体列表页 4 卡片名/描述全中文（fk-05）与上游 up-01 一致。诊断手段备忘：页面 patch fetch 抓出站头定位到第 3 层（al=en-US 但 localStorage['locale']=null）。
+**门禁**：typecheck:web 0 错、test:web **1672/1672**（+6）、api-client 86/86。
+**注意**：语言切换器（GeneralPreferencesPanel 写 localStorage['locale']）在 ②③ 修后即全程生效；fork 后端本地化两栈行为已实证一致（同 Accept-Language 头同返回）。遗留池：智能体选择器富面板+就绪门禁（第 6 轮未修②）、上游 t-image 空占位定性、A 类大条目。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
