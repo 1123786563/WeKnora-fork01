@@ -147,10 +147,12 @@
 
 **发现未修（下轮候选）**：
 - **i18n 缺口（功能差异）**：fork 新对话页主体英文（Hi, I am WeKnora— / Ask questions directly to the model / Select Agent / Chat model / Send），上游同页全中文；内置智能体卡片名/描述英文（Quick Answer/Smart Reasoning/…），上游中文（快速问答/智能推理/…）。fork 侧边栏/登录/KB 页均为中文——聊天域 locale 未接线或键缺失。
-- **智能体选择器功能差距**：fork=原生 combobox（Select Agent 下拉）；上游=富面板（分组/管理入口/未就绪门禁+去配置直达/特性徽章/详情卡）。上游就绪门禁（smart-reasoning 需对话模型+重排模型）fork 未实现——用 mock 已可配置出就绪态做对照。
+- **智能体选择器功能差距**：fork=原生 combobox（Select Agent 下拉）；上游=富面板（分组/管理入口/未就绪门禁+去配置直达/特性徽章/详情卡）。上游就绪门禁（smart-reasoning 需对话模型+重排模型）fork 前端未实现——**后端已同样强制**（knowledge_search 启用时无 rerank_model_id 直接报错「rerank model is not configured」，SSE error 事件，fork 前端以 alert+Retry 正确呈现）；数据侧已给 fork builtin-smart-reasoning 配置 mock-rerank（custom_agents.config.rerank_model_id）。
 - 后端旧镜像滞后的 migration error（db_version 135 failed）已随新镜像消失（新代码迁移集含 135 down 文件）。
 
-**遗留**：新镜像（WITH_ANYDOC=0）滚动后端到端复验 agent-chat（发送→流式→完成不崩溃）；上游 t-image 空占位定性；i18n 与选择器差距排期。
+**端到端复验（2026-09-18 02:20，修复镜像 c974350a + 5e382d0b）✅**：原崩溃会话冷加载正常渲染（2 消息行、header menu 在位、无崩溃）；同会话重发智能体消息 → 后端 agent 运行完成（assistant 92 字符内容 + 1 agent_step）→ 前端流式渲染 +「思考与工具」折叠时间线（含 ✓ 完成标记，对应上游 AgentStreamDisplay 结构）。证据 `evidence/browser-agent-chat/fk-04-agent-chat-fixed-e2e.png`（另有 fk-02 i18n 缺口、fk-03 修复前崩溃、up-01/02/03 上游基线）。
+
+**遗留**：上游 t-image 空占位定性；i18n 与选择器差距排期（上两条未修项）。
 
 ## G. 纪律与教训
 
