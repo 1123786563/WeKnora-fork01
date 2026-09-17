@@ -26,7 +26,7 @@ export function StatusBadge({ tone, label, testID }: StatusBadgeProps) {
   };
   const { fg, bg } = map[tone];
   return (
-    <View testID={testID} style={[styles.badge, { backgroundColor: bg, borderRadius: theme.radius.pill }]}>
+    <View testID={testID} style={[styles.badge, { backgroundColor: bg, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing[8], paddingVertical: theme.spacing[2] }]}>
       <Text style={{ color: fg, fontSize: theme.typography.caption.fontSize, lineHeight: theme.typography.caption.lineHeight, fontWeight: '600' }}>
         {label}
       </Text>
@@ -35,5 +35,5 @@ export function StatusBadge({ tone, label, testID }: StatusBadgeProps) {
 }
 
 const styles = StyleSheet.create({
-  badge: { paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start' },
+  badge: { alignSelf: 'flex-start' },
 });

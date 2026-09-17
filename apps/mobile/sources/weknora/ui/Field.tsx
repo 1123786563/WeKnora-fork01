@@ -25,9 +25,9 @@ export interface FieldProps {
 export function Field({ label, value, onChangeText, placeholder, helper, error, multiline = false, secureTextEntry = false, accessibilityLabel, testID }: FieldProps) {
   const { theme } = useWeknoraTheme();
   const [focused, setFocused] = useState(false);
-  const describedBy = `${label}-helper`;
+  const describedBy = useId();
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { gap: theme.spacing[6] }]}>
       <Text style={{ color: theme.colors.ink, fontSize: theme.typography.label.fontSize, lineHeight: theme.typography.label.lineHeight, fontWeight: '600' }}>
         {label}
       </Text>
@@ -40,6 +40,7 @@ export function Field({ label, value, onChangeText, placeholder, helper, error, 
         multiline={multiline}
         secureTextEntry={secureTextEntry}
         accessible
+        accessibilityLabelledBy={helper !== undefined && error === undefined ? describedBy : undefined}
         accessibilityLabel={error ? `${accessibilityLabel ?? label}，${error}` : accessibilityLabel ?? label}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -70,6 +71,6 @@ export function Field({ label, value, onChangeText, placeholder, helper, error, 
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 6, alignSelf: 'stretch' },
+  container: { alignSelf: 'stretch' },
   input: { borderWidth: StyleSheet.hairlineWidth, minHeight: 48, textAlignVertical: 'top' },
 });

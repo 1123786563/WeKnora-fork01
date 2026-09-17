@@ -67,6 +67,32 @@ describe('MX-008 sheet', () => {
     console.log(`MX008-OBSERVATION ${JSON.stringify(observed)}`);
   });
 
+  it('hardware back dismisses without decision and returns focus to trigger', () => {
+    focusCalls.length = 0;
+    backHandlers.length = 0;
+    let decisionCount = 0;
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <Sheet
+          visible
+          title="确认操作"
+          triggerFocusRef={{ current: { __testTag: 'trigger' } }}
+          onClose={() => undefined}
+          children={<text>{'确认内容'}</text>}
+          footer={<Button label="批准" accessibilityLabel="批准该工具调用" onPress={() => { decisionCount += 1; }} />}
+        />,
+      );
+    });
+    expect(backHandlers.length).toBe(1);
+    act(() => {
+      const handled = backHandlers[0]!();
+      expect(handled).toBe(true);
+    });
+    expect(focusCalls.includes('trigger')).toBe(true);
+    console.log(`MX008-BACK-OBSERVATION ${JSON.stringify({ decisionCount, focusTarget: focusCalls.includes('trigger') ? 'trigger' : 'none' })}`);
+  });
+
   it('busy button does not dispatch repeatedly', () => {
     let dispatched = 0;
     let renderer!: ReturnType<typeof create>;

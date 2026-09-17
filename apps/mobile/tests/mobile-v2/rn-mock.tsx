@@ -15,6 +15,7 @@ const el = React.createElement;
 export const View = (props: React.PropsWithChildren<Record<string, unknown>>) => el('view', props, props.children);
 export const Text = (props: React.PropsWithChildren<Record<string, unknown>>) => el('text', props, props.children);
 export const ScrollView = (props: React.PropsWithChildren<Record<string, unknown>>) => el('scrollview', props, props.children);
+export const KeyboardAvoidingView = (props: React.PropsWithChildren<Record<string, unknown>>) => el('keyboardavoidingview', props, props.children);
 export const TextInput = (props: React.PropsWithChildren<Record<string, unknown>>) => el('textinput', props, props.children);
 export const ActivityIndicator = (props: React.PropsWithChildren<Record<string, unknown>>) => el('activityindicator', props, props.children);
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { AccessibilityInfo, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle } from 'react-native';
+import { AccessibilityInfo, BackHandler, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle } from 'react-native';
 import { useWeknoraTheme } from './theme.ts';
 
 /**
@@ -44,6 +44,8 @@ export function Sheet({ visible, title, triggerFocusRef, onClose, children, foot
       AccessibilityInfo.setAccessibilityFocus(handle);
     }
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      // 返回键与遮罩同语义：先归还焦点再收起（不得绕过 focusTrigger）
+      focusTrigger();
       onClose();
       return true;
     });
@@ -61,8 +63,8 @@ export function Sheet({ visible, title, triggerFocusRef, onClose, children, foot
       <Pressable style={[styles.scrim, { backgroundColor: theme.colors.scrim }]} onPress={handleClose} accessibilityLabel="关闭" accessibilityRole="button">
         {/* 遮罩点击关闭；内容区拦截事件，不嵌套点击区 */}
       </Pressable>
-      <View style={[styles.sheet, { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, paddingBottom: theme.spacing[20] }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.colors['control-line'] }]} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.sheet, { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, paddingBottom: theme.spacing[20] }]}>
+        <View style={[styles.grabber, { backgroundColor: theme.colors['control-line'], borderRadius: theme.spacing[2], marginTop: theme.spacing[8] }]} />
         <Text ref={titleRef} accessibilityRole="header" style={{ color: theme.colors.ink, fontSize: theme.typography.subtitle.fontSize, lineHeight: theme.typography.subtitle.lineHeight, fontWeight: '600', paddingHorizontal: theme.spacing[20], paddingTop: theme.spacing[12] }}>
           {title}
         </Text>
@@ -70,7 +72,7 @@ export function Sheet({ visible, title, triggerFocusRef, onClose, children, foot
           {children}
         </ScrollView>
         {footer ? <View style={{ paddingHorizontal: theme.spacing[20], paddingTop: theme.spacing[8], gap: theme.spacing[12] }}>{footer}</View> : null}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -78,5 +80,5 @@ export function Sheet({ visible, title, triggerFocusRef, onClose, children, foot
 const styles = StyleSheet.create({
   scrim: { flex: 1 },
   sheet: { maxHeight: '85%', width: '100%' },
-  grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginTop: 8 },
+  grabber: { alignSelf: 'center', width: 36, height: 4 },
 });

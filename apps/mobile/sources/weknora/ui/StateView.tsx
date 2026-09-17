@@ -43,7 +43,7 @@ const KIND_LABEL: Record<StateViewKind, string> = {
 export function StateView({ kind, message, detail, actionLabel, onAction, testID }: StateViewProps) {
   const { theme } = useWeknoraTheme();
   return (
-    <View testID={testID} style={[styles.container, { padding: theme.spacing[24] }]} accessibilityLiveRegion={kind === 'error' ? 'assertive' : undefined}>
+    <View testID={testID} style={[styles.container, { padding: theme.spacing[24], gap: theme.spacing[4] }]} accessibilityLiveRegion={kind === 'error' ? 'assertive' : undefined}>
       {kind === 'loading' ? (
         <ActivityIndicator color={theme.colors.brand} />
       ) : (
@@ -70,5 +70,5 @@ export function StateView({ kind, message, detail, actionLabel, onAction, testID
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', justifyContent: 'flex-start', gap: 4 },
+  container: { alignItems: 'center', justifyContent: 'flex-start' },
 });

@@ -78,7 +78,7 @@ DecideInteraction 以 `input.ID = c.Param("id"); input.Validate()` 替换手工 
 
 ## D-019 · 令牌唯一源与对比率豁免（2026-09-18，MX-007）
 
-- `packages/design-tokens/src/mobile/tokens.json` 为产品令牌唯一版本化源（自设计包逐字拷贝，仅 native-tokens.ts 头部加两行溯源注释）；消费出口 `@weknora/design-tokens/mobile`。产品组件禁止散落颜色/间距/圆角常量（MX-008 组件起消费 theme.ts）。
+- `packages/design-tokens/src/mobile/tokens.json` 为产品令牌唯一版本化源（自设计包逐字拷贝，仅 native-tokens.ts 头部加一行溯源注释）；消费出口 `@weknora/design-tokens/mobile`。产品组件禁止散落颜色/间距/圆角常量（MX-008 组件起消费 theme.ts）。
 - 对比率验收：ACTIVE 文本/状态对 ≥4.5 全过（probe 断言）；`disabled/disabled-bg` light=3.31 按 WCAG 1.4.3 非活动控件豁免（probe stderr 报告、不作为失败；dark=5.22 本就达标）。
 - theme.ts 不替换 Happy 全局 Unistyles 主题（壳层不动）；用户显式外观偏好接入点留 MX-030。
 

@@ -15,19 +15,28 @@ import type { WeknoraTheme } from './theme.ts';
 export type ButtonVariant = 'primary' | 'secondary' | 'danger';
 export type ButtonSize = 'primary' | 'compact';
 
-export interface ButtonProps {
+export interface BaseButtonProps {
   label: string;
   onPress: () => void;
-  variant?: ButtonVariant;
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  /** 危险操作的明确动词（如「删除知识库」）；读屏与视觉共用 */
-  accessibilityLabel?: string;
-  /** danger 变体的图标位（组件不自行选择图标，避免语义漂移） */
   LeadingIcon?: React.ComponentType<{ size: number; color: string }>;
   testID?: string;
 }
+
+/** danger 变体必须提供明确动词（非颜色通道强制，不只靠红色区分危险） */
+export interface DangerButtonProps extends BaseButtonProps {
+  variant: 'danger';
+  accessibilityLabel: string;
+}
+
+export interface RegularButtonProps extends BaseButtonProps {
+  variant?: Exclude<ButtonVariant, 'danger'>;
+  accessibilityLabel?: string;
+}
+
+export type ButtonProps = DangerButtonProps | RegularButtonProps;
 
 function variantStyle(theme: WeknoraTheme, variant: ButtonVariant): { container: ViewStyle; text: { color: string } } {
   switch (variant) {
@@ -89,9 +98,9 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
       {loading ? (
         <ActivityIndicator color={vs.text.color} />
       ) : (
-        <View style={styles.row}>
+        <View style={[styles.row, { gap: theme.spacing[8] }]}>
           {LeadingIcon ? <LeadingIcon size={theme.size.icon} color={iconColor} /> : null}
-          <Text style={[{ color: disabled ? theme.colors.disabled : vs.text.color, fontWeight: typography.fontWeight }, styles.label]}>{label}</Text>
+          <Text style={{ color: disabled ? theme.colors.disabled : vs.text.color, fontWeight: typography.fontWeight, fontSize: typography.fontSize, lineHeight: typography.lineHeight }}>{label}</Text>
         </View>
       )}
     </Pressable>
@@ -99,7 +108,6 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
 });
 
 const styles = StyleSheet.create({
-  base: { alignItems: 'center', justifyContent: 'center', gap: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  label: { fontSize: 16 },
+  base: { alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center' },
 });

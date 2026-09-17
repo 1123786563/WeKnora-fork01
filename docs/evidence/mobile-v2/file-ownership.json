@@ -836,7 +836,8 @@
     "packages/contracts/src/mobile/interactions.ts": {
       "owners": [
         "MX-003",
-        "MX-005"
+        "MX-005",
+        "MX-007"
       ],
       "kind": "create",
       "shared_serialized": true,
@@ -1905,12 +1906,13 @@
     },
     "apps/mobile/sources/components/ChatList.tsx": {
       "owners": [
-        "MX-002"
+        "MX-002",
+        "MX-007"
       ],
       "kind": "modify",
       "shared_serialized": false,
       "source": "mx-006/007-lock-extension",
-      "note": "apps/mobile/sources/components/ChatList.tsx 的相对路径条目见下"
+      "note": "flash-list 2.0.2 对齐的类型连带（定点 @ts-expect-error，D-021）"
     },
     "apps/mobile/tests/mobile-v2/rn-mock.tsx": {
       "owners": [
@@ -1938,6 +1940,25 @@
       "shared_serialized": false,
       "source": "mx-008-lock-extension",
       "note": "frozen 场景挂载 spec（MX008-OBSERVATION 输出）"
+    },
+    "apps/mobile/sources/weknora/platform/stream-transport.test.ts": {
+      "owners": [
+        "MX-004",
+        "MX-007"
+      ],
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-007-fix",
+      "note": "锁补登记：MX-004 ParsedExecutionFrame 联合类型变更的消费方断言收窄（5e6e3c29 内提交，审查 R1 指出未登记）"
+    },
+    "apps/mobile/sources/weknora/navigation/product-shell.mobilev2.spec.tsx": {
+      "owners": [
+        "MX-009"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-009-lock-extension",
+      "note": "产品壳挂载 spec（MX009-OBSERVATION）"
     }
   }
 }

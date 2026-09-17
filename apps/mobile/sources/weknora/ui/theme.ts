@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Appearance } from 'react-native';
-import { resolveNativeTheme, type ThemeMode } from '@weknora/design-tokens/mobile';
+import { resolveNativeTheme, nativeTokens, type ThemeMode } from '@weknora/design-tokens/mobile';
 
 /**
  * WeKnora 产品主题（MX-007）。
@@ -29,5 +29,5 @@ export function useWeknoraTheme(explicit?: ThemeMode): { mode: ThemeMode; theme:
   return useMemo(() => ({ mode, theme: weknoraThemes[mode] }), [mode]);
 }
 
-/** 触控尺寸合同（设计令牌 size）：紧凑触控 44、主触控 48。 */
-export const touchSizes = { compact: 44, primary: 48 } as const;
+/** 触控尺寸合同：由令牌 size 派生（紧凑=icon-touch 44、主触控=touch 48），令牌变更即同步。 */
+export const touchSizes = { compact: nativeTokens.size['icon-touch'], primary: nativeTokens.size.touch } as const;
