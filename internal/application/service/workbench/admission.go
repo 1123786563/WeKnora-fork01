@@ -75,6 +75,20 @@ type AdmissionCoordinator struct {
 	requests *repository.WorkbenchRequestRepository
 	budget   TaskBudgetPort
 	publish  func(context.Context, agentruntime.RunKey) error
+	// admissionGate is the W34 capability switch seam (drain /
+	// platform_admission), installed by the container assembly through
+	// SetAdmissionGate. nil keeps admission open (legacy behaviour).
+	admissionGate func(targetID string) error
+}
+
+// SetAdmissionGate installs the W34 capability gate consulted by Start
+// before identity, budget reservation or any durable write. Passing nil
+// removes the gate.
+func (a *AdmissionCoordinator) SetAdmissionGate(gate func(targetID string) error) {
+	if a == nil {
+		return
+	}
+	a.admissionGate = gate
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -117,7 +131,24 @@ func contextIdentity(ctx context.Context) (uint64, string, error) {
 }
 
 func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentruntime.Run, error) {
-	if a == nil || a.runs == nil || a.requests == nil {
+	if a == nil {
+		return agentruntime.Run{}, errors.New("admission coordinator is not configured")
+	}
+	// W34 capability gate: consulted BEFORE identity, budget reservation or
+	// any durable write, so a closed lane rejects NEW work without side
+	// effects. Already-admitted runs and cleanup paths are untouched (drain
+	// semantics). The target is normalized the same way as below so the
+	// gate always sees "platform" for unset targets.
+	gateTarget := in.TargetID
+	if strings.TrimSpace(gateTarget) == "" {
+		gateTarget = "platform"
+	}
+	if a.admissionGate != nil {
+		if err := a.admissionGate(gateTarget); err != nil {
+			return agentruntime.Run{}, err
+		}
+	}
+	if a.runs == nil || a.requests == nil {
 		return agentruntime.Run{}, errors.New("admission coordinator is not configured")
 	}
 	tenant, actor, err := contextIdentity(ctx)

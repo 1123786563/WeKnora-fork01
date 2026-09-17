@@ -4,6 +4,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -29,8 +30,14 @@ func NewWorkbenchListHandler(lists *repository.WorkbenchListStore) *session.Work
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.
-func NewWorkbenchAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
-	return workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+// The W34 capability gate (workbench.worker_drain / platform_admission) is
+// installed here so every NEW admission consults the switches before any
+// budget reservation or durable write; already-admitted runs and cleanup
+// stay untouched (drain semantics).
+func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
+	coordinator := workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+	coordinator.SetAdmissionGate(workbenchservice.NewWorkbenchCapabilityGate(cfg))
+	return coordinator
 }
 
 func NewWorkbenchStartHandler(admission *workbenchservice.AdmissionCoordinator) *session.WorkbenchStartHandler {

@@ -66,10 +66,20 @@ container consumption tests (`WorkbenchPlatformAdmissionEnabled` /
 ```text
 go test ./internal/execution -count=1        # ok (6 deployment-policy/metrics tests + existing suite)
 go test ./internal/config -count=1           # ok (4 new capability tests + existing suite)
-go test ./internal/container -count=1        # ok (3 new W34 tests + existing suite)
-go test ./internal/agent/recoverytest -count=1  # ok (AgentRecoveryAdmissionEnabled consumers unaffected)
+go test ./internal/container -count=1        # W34 tests PASS; full suite result degraded later (see note)
+go test ./internal/agent/recoverytest -count=1  # FAIL at fix time (see note)
 go vet ./internal/execution ./internal/config ./internal/container  # exit 0
 ```
+
+Note (review Minor-1): the container and recoverytest results above were
+taken in the implementer's earlier run window and do NOT reflect the shared
+worktree's final state: with the W33 migration landed, the full container
+suite fails `TestWireCraftInteractionRegistrarRegistersPendingInteractions`
+and recoverytest fails wholesale on the same root cause (`cannot start a
+transaction within a transaction`, W33 sqlite NoTxWrap migration vs the
+migrator's transaction wrap) — a pre-existing defect on BASE, exposed once
+the BASE compile breakage was fixed, tracked in task-W34-report.md concern
+2. The W34-scoped tests of all three packages pass.
 
 ## Container evidence (Docker 29.4.0, compose v5.1.2 — available in this env)
 

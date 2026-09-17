@@ -75,26 +75,35 @@ Each lane closes independently. Closing a lane rejects NEW work in that lane
 only; already-admitted work finishes and read/cleanup paths stay available.
 One switch never cuts query and cleanup at the same time.
 
-| Config (`workbench:` section) | Env override | Unset default | Closes |
+| Config (`workbench:` section) | Env override | Unset default | Effect (wired entrypoints) |
 | --- | --- | --- | --- |
-| `read_enabled` | `WEKNORA_WORKBENCH_READ_ENABLED` | on (true) | workbench read paths (list/get/status) |
-| `platform_admission` | `WEKNORA_WORKBENCH_PLATFORM_ADMISSION` | on (true) | NEW platform-target executions |
-| `paseo_admission` | `WEKNORA_WORKBENCH_PASEO_ADMISSION` | on (true) | NEW remote (Paseo) executions — rollback gate on top of the opt-in enable path |
-| `voice_admission` | `WEKNORA_WORKBENCH_VOICE_ADMISSION` | on (true) | NEW voice-lane executions |
-| `notifications_enabled` | `WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED` | on (true) | NEW notification deliveries |
-| `worker_drain` | `WEKNORA_WORKBENCH_WORKER_DRAIN` | off (false) | NEW admissions in EVERY lane (drain; see below) |
+| `read_enabled` | `WEKNORA_WORKBENCH_READ_ENABLED` | on (true) | workbench read endpoints (list/get/snapshot/events/lookup) answer 503 — **wired**: `workbenchReadGate` on the read route groups (`internal/router/routes_workbench.go`) |
+| `platform_admission` | `WEKNORA_WORKBENCH_PLATFORM_ADMISSION` | on (true) | NEW platform-target workbench admissions rejected before budget/durable writes — **wired**: `workbench.NewWorkbenchCapabilityGate` installed on the `AdmissionCoordinator` (`internal/container/workbench.go`) |
+| `paseo_admission` | `WEKNORA_WORKBENCH_PASEO_ADMISSION` | on (true) | NEW remote (Paseo) admissions — **wiring target W22–W24** (no production remote submit entrypoint exists yet; the gate factory and `container.WorkbenchPaseoAdmissionEnabled` are ready to install there) |
+| `voice_admission` | `WEKNORA_WORKBENCH_VOICE_ADMISSION` | on (true) | NEW voice-lane executions — **wiring target W30/W31** (the voice API entrypoint does not exist yet) |
+| `notifications_enabled` | `WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED` | on (true) | NEW notification deliveries — **wiring target W14/W15** (the outbox/delivery worker does not exist yet) |
+| `worker_drain` | `WEKNORA_WORKBENCH_WORKER_DRAIN` | off (false) | NEW admissions refused in EVERY lane (drain; see below) — **wired**: the live tRPC admission entrypoint (`submitDurableAgentRun`), the workbench `AdmissionCoordinator`, and the container drain helpers |
 
-Runtime consumption (`internal/container/agent_runtime.go`):
+Runtime consumption (as of the W34 fix round):
 
-- `WorkbenchPlatformAdmissionEnabled(cfg)` — platform lane AND not draining.
-- `WorkbenchPaseoAdmissionEnabled(cfg)` — durable recovery admission AND the
-  paseo gate AND not draining.
-- `AgentRecoveryAdmissionEnabled(cfg)` — false while draining.
+- `submitDurableAgentRun` (`internal/application/service/agent_run_graph.go`)
+  refuses new tRPC admissions while draining — recovery admission and the
+  drain check are separate gates, so drain never silently re-enables a
+  disabled recovery lane or vice versa.
+- `AdmissionCoordinator.Start` consults `workbench.NewWorkbenchCapabilityGate`
+  BEFORE identity, budget reservation or any durable write: drain closes
+  every target lane, `platform_admission` closes only the platform target.
+- `workbenchReadGate` on the read route groups answers 503 while
+  `read_enabled` is off; it never gates writes, admission or cleanup.
+- `WorkbenchPlatformAdmissionEnabled(cfg)` / `WorkbenchPaseoAdmissionEnabled(cfg)`
+  (`internal/container/agent_runtime.go`) remain the assembly-level
+  predicates; `AgentRecoveryAdmissionEnabled(cfg)` is false while draining.
 
 ### Drain (rolling upgrade / incident stop)
 
 `worker_drain: true` (or `WEKNORA_WORKBENCH_WORKER_DRAIN=true`) means: refuse
-NEW admissions in every lane, keep the durable worker running so
+NEW admissions at every live entrypoint (tRPC graph admission and the
+workbench admission coordinator), keep the durable worker running so
 already-admitted runs execute to completion, and keep cleanup/reconciliation
 available. Sequence for a rolling upgrade:
 

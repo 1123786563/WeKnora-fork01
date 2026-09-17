@@ -83,12 +83,22 @@ type WorkbenchConfig struct {
 	// This is the rollback gate on top of the opt-in enable path (enabling
 	// Paseo itself stays a deployment act: provider + agent recovery
 	// switches). Unset keeps the gate open. Env: WEKNORA_WORKBENCH_PASEO_ADMISSION.
+	// Wiring target: the remote admission entrypoint lands with W22–W24; it
+	// must install workbench.NewWorkbenchCapabilityGate (or consult
+	// container.WorkbenchPaseoAdmissionEnabled) so this switch takes effect
+	// there. No production remote submit path exists on the current branch.
 	PaseoAdmission *bool `yaml:"paseo_admission" json:"paseo_admission"`
 	// VoiceAdmission gates NEW voice-lane executions. Unset keeps the gate
 	// open. Env: WEKNORA_WORKBENCH_VOICE_ADMISSION.
+	// Wiring target: the voice API entrypoint arrives with W30/W31; until
+	// then there is no voice lane to gate (the switch is consumed by that
+	// task, not faked here).
 	VoiceAdmission *bool `yaml:"voice_admission" json:"voice_admission"`
 	// NotificationsEnabled gates NEW notification deliveries. Unset keeps
 	// notifications on. Env: WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED.
+	// Wiring target: the notification outbox/delivery worker lands with
+	// W14/W15 (device binding W13 first); until that lane exists there is
+	// no delivery path to gate.
 	NotificationsEnabled *bool `yaml:"notifications_enabled" json:"notifications_enabled"`
 	// WorkerDrain puts the durable worker into drain mode: NEW admissions
 	// are refused everywhere while already-admitted runs continue to
@@ -1222,8 +1232,9 @@ func applyOpenConnectorDefaults(cfg *Config) {
 // true opts in. The env vars are read explicitly because
 // viper.AutomaticEnv has no SetEnvPrefix, so WEKNORA_-prefixed vars are not
 // bound to the nested struct automatically. Values are booleans only —
-// nothing secret is stored here, and the parse-failure log prints the
-// variable NAME, never an env value.
+// nothing secret is stored here; on a parse failure the shared helper logs
+// the variable NAME together with the unparseable value (boolean-lane
+// values, not secret material by design).
 //
 // Env overrides (when set and parseable as boolean):
 //   - WEKNORA_WORKBENCH_READ_ENABLED

@@ -175,6 +175,14 @@ func (s *sessionService) submitDurableAgentRun(
 	if s.cfg == nil || s.cfg.Agent == nil || !s.cfg.Agent.Recovery.RecoveryAdmissionEnabled() {
 		return errors.New("tRPC agent runs are disabled")
 	}
+	// W34 capability wiring: worker drain (workbench.worker_drain /
+	// WEKNORA_WORKBENCH_WORKER_DRAIN) refuses NEW admissions process-wide
+	// while the durable worker keeps draining already-admitted runs to
+	// completion — the same drain semantics as internal/container's
+	// AgentRuntime. Reads and cleanup paths are deliberately not gated.
+	if s.cfg.IsWorkbenchWorkerDraining() {
+		return errors.New("workbench worker drain refuses new admissions")
+	}
 	runs := RegisteredAgentRunService()
 	if runs == nil {
 		return errors.New("tRPC agent run service is unavailable")

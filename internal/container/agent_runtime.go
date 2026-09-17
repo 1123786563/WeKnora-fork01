@@ -353,6 +353,9 @@ func WorkbenchPlatformAdmissionEnabled(cfg *config.Config) bool {
 // on, the W34 paseo gate must be open, and worker drain closes the lane.
 // Enabling Paseo itself stays a deployment act (provider wiring + agent
 // recovery switches); this switch is the rollback gate on top.
+// Wiring target: consumed by the remote admission entrypoint when W22–W24
+// lands it (install workbench.NewWorkbenchCapabilityGate there); drain is
+// already enforced process-wide at the live entrypoints today.
 func WorkbenchPaseoAdmissionEnabled(cfg *config.Config) bool {
 	return AgentRecoveryAdmissionEnabled(cfg) && cfg.IsWorkbenchPaseoAdmissionEnabled()
 }
