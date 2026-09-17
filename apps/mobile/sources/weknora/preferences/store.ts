@@ -40,8 +40,6 @@ export interface LogoutDeps {
   teardown(): Promise<void> | void;
   revokeDevice(): Promise<void> | void;
   clearCredentials(scope: PreferenceScopeIdentity): Promise<void> | void;
-  /** 凭据存储写入守卫：退出后迟到的 token 刷新不得写回 */
-  credentialWriteGuard(): { write(token: string): Promise<void> } | null;
 }
 
 export function createPreferenceStore(backend: PreferenceStoreBackend, scope: PreferenceScopeIdentity) {
@@ -88,14 +86,18 @@ export function createPreferenceStore(backend: PreferenceStoreBackend, scope: Pr
      */
     async logout(deps: LogoutDeps): Promise<void> {
       generation += 1;
-      const retiredGeneration = generation;
-      await deps.teardown();
-      await deps.revokeDevice();
-      await deps.clearCredentials(scope);
-      await this.clearOwn();
-      // 迟到写守卫：退出后 guard 为 null（任何在途刷新写入被拒）
-      const guard = retiredGeneration === generation ? deps.credentialWriteGuard() : null;
-      void guard;
+      // 离线韧性（R1 P2-2）：远端撤销失败不阻断本地安全清理——
+      // 记录最小撤销意图（下次登录/注册通道重放），本地凭据与本 scope 缓存必清。
+      try {
+        await deps.teardown();
+        await deps.revokeDevice();
+      } catch (error) {
+        await backend.set(`weknora.pending-revoke:${scope.origin}:${scope.userId}`, new Date().toISOString());
+        void error;
+      } finally {
+        await deps.clearCredentials(scope);
+        await this.clearOwn();
+      }
     },
     /** 在途守卫：捕获时的 generation 仍然有效才允许写凭据。 */
     captureCredentialGuard(): { write(token: string): Promise<void>; isCurrent(): boolean } | null {

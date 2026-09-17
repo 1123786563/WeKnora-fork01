@@ -4,7 +4,6 @@ import { useWeknoraTheme, resolveThemeMode } from '../ui/theme.ts';
 import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 import { StateView } from '../ui/StateView.tsx';
-import { nativeTokens } from '@weknora/design-tokens/mobile';
 import type { AccountPreferences, ThemePreference } from '../preferences/store.ts';
 
 /**
@@ -111,4 +110,3 @@ const styles = StyleSheet.create({
   chip: { borderWidth: StyleSheet.hairlineWidth },
 });
 
-void nativeTokens;

@@ -72,5 +72,27 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     throw new Error('logout must not clear other accounts data');
   }
 
+  // 离线撤销韧性（R1 P2-2）：revokeDevice 抛错 → 本地清理仍完成 + 撤销意图落盘
+  const offlineStorage = new Map<string, string>([
+    [`${scope.origin}:u1:credential`, JSON.stringify({ kind: 'bearer', accessToken: 'active-token' })],
+    [`weknora.prefs.v1:${scope.origin}:${scope.userId}`, JSON.stringify({ theme: 'dark' })],
+  ]);
+  const offlineBackend: PreferenceStoreBackend = {
+    get: async (key) => offlineStorage.get(key) ?? null,
+    set: async (key, value) => { offlineStorage.set(key, value); },
+    remove: async (key) => { offlineStorage.delete(key); },
+  };
+  const offlineStore = createPreferenceStore(offlineBackend, scope);
+  await offlineStore.logout({
+    teardown: async () => { activeStreams = 0; },
+    revokeDevice: async () => { throw new Error('offline: revoke endpoint unreachable'); },
+    clearCredentials: async (target) => { offlineStorage.delete(`${target.origin}:${target.userId}:credential`); },
+  });
+  if (offlineStorage.has(`${scope.origin}:u1:credential`)) throw new Error('offline logout must still clear local credentials');
+  if (offlineStorage.has(`weknora.prefs.v1:${scope.origin}:${scope.userId}`)) throw new Error('offline logout must still clear own-scope preferences');
+  if (![...offlineStorage.keys()].some((key) => key.startsWith('weknora.pending-revoke:'))) {
+    throw new Error('offline revoke failure must record a minimal revoke intent');
+  }
+
   return { credential, activeStreams, oldTokenRewritten };
 }
