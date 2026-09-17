@@ -28,9 +28,14 @@ type StartInput struct {
 	AgentID      string `json:"agent_id"`
 	TargetID     string `json:"target_id"`
 	WorkspaceRef string `json:"workspace_ref"`
-	RequestID    string `json:"request_id"`
-	Text         string `json:"text"`
-	BudgetUpper  int64  `json:"budget_upper"`
+	// SpaceID is navigation metadata projected into the immutable run snapshot
+	// so the owned execution list can deep-link back into the product session.
+	// It is deliberately not part of the request hash: a retry that omits it
+	// must still reconcile onto the original request.
+	SpaceID     string `json:"space_id"`
+	RequestID   string `json:"request_id"`
+	Text        string `json:"text"`
+	BudgetUpper int64  `json:"budget_upper"`
 }
 
 type RequestState struct {
@@ -215,7 +220,7 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		}
 	}
 	assistantID := uuid.NewString()
-	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
+	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "space_id": in.SpaceID, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
 	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline})

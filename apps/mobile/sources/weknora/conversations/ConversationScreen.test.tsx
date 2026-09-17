@@ -1,14 +1,29 @@
 import * as React from 'react';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import { act, create } from 'react-test-renderer';
+import { AppState } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { ConversationScreen, ProductConversationMessages } from './ConversationScreen';
 import type { ConversationViewModel } from './view-model';
+import type { ExecutionRecovery } from '../executions/recovery';
 
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   const host = (name: string) => (props: any) => ReactModule.createElement(name, props, props.children);
-  return { Pressable: host('Pressable'), Text: host('Text'), TextInput: host('TextInput'), View: host('View'), ScrollView: host('ScrollView') };
+  const listeners = new Set<(state: string) => void>();
+  return {
+    Pressable: host('Pressable'), Text: host('Text'), TextInput: host('TextInput'), View: host('View'), ScrollView: host('ScrollView'),
+    AppState: {
+      currentState: 'active',
+      addEventListener: (type: string, listener: (state: string) => void) => {
+        if (type !== 'change') return { remove: () => undefined };
+        listeners.add(listener);
+        return { remove: () => { listeners.delete(listener); } };
+      },
+      // Test-only emission seam for the mocked native AppState.
+      emitForTest: (state: string) => { listeners.forEach((listener) => listener(state)); },
+    },
+  };
 });
 vi.mock('@/-session/SessionView', async () => {
   const ReactModule = await import('react');
@@ -105,6 +120,59 @@ it('hides attachment entries when the capability is off', async () => {
   let renderer: ReturnType<typeof create>;
   await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, attachments })); });
   expect(renderer!.root.findAllByProps({ accessibilityLabel: '附件' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+});
+
+function recoveryHandle(overrides: Partial<ExecutionRecovery> = {}): ExecutionRecovery & { transitions: string[]; retries: number } {
+  const transitions: string[] = [];
+  const handle = {
+    transitions,
+    retries: 0,
+    recover: async () => { handle.retries += 1; },
+    appStateChange: (next: string) => { transitions.push(next); },
+    getState: () => ({ state: 'idle' as const }),
+    subscribe: () => () => undefined,
+    dispose: () => { transitions.push('dispose'); },
+    ...overrides,
+  };
+  return handle as ExecutionRecovery & { transitions: string[]; retries: number };
+}
+
+it('forwards AppState transitions to the recovery handle and cleans up on unmount', async () => {
+  const viewModel = model({ pendingInteractions: [] });
+  const recovery = recoveryHandle();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, recovery })); });
+  const appState = AppState as unknown as { emitForTest(state: string): void };
+  await act(async () => { appState.emitForTest('background'); });
+  await act(async () => { appState.emitForTest('active'); });
+  expect(recovery.transitions).toEqual(['background', 'active']);
+  await act(async () => renderer!.unmount());
+  // After unmount the native subscription is gone: further transitions stop.
+  await act(async () => { appState.emitForTest('active'); });
+  expect(recovery.transitions).toEqual(['background', 'active', 'dispose']);
+});
+
+it('shows a retry affordance while recovery is failed and clears it once recovered', async () => {
+  const viewModel = model({ pendingInteractions: [] });
+  const state: { value: { state: 'idle' | 'recovering' | 'failed'; error?: unknown } } = { value: { state: 'failed', error: new Error('execution stream HTTP 404') } };
+  const retries = { count: 0 };
+  const stateListeners = new Set<() => void>();
+  const recovery: ExecutionRecovery = {
+    recover: async () => { retries.count += 1; state.value = { state: 'idle' }; stateListeners.forEach((listener) => listener()); },
+    appStateChange: () => undefined,
+    getState: () => state.value,
+    subscribe: (listener: () => void) => { stateListeners.add(listener); return () => stateListeners.delete(listener); },
+    dispose: () => undefined,
+  };
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, recovery })); });
+  const notice = renderer!.root.findByProps({ accessibilityLabel: 'recovery-failure' });
+  expect(notice).toBeDefined();
+  expect(renderer!.root.findByProps({ accessibilityLabel: '重试恢复' })).toBeDefined();
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '重试恢复' }).props.onPress(); });
+  expect(retries.count).toBe(1);
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'recovery-failure' })).toHaveLength(0);
   await act(async () => renderer!.unmount());
 });
 });

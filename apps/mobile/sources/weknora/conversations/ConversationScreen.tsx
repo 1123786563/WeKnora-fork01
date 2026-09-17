@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { AppState, Pressable, Text, TextInput, View } from 'react-native';
 import { SessionView } from '@/-session/SessionView';
 import { ConversationViewModelContext } from './context';
 import { createRequestID, type ConversationViewModel } from './view-model';
 import type { AttachmentEntryActions, SessionUploadRecord, SessionUploadStatus } from '../resources/upload';
+import { isRecoveryNotFound, type ExecutionRecovery } from '../executions/recovery';
 export { ProductConversationMessages } from './ProductConversationMessages';
 
 export interface ConversationScreenProps {
@@ -18,6 +19,13 @@ export interface ConversationScreenProps {
    * (native intent wiring; device evidence is blocked-env).
    */
   attachments?: ConversationAttachments;
+  /**
+   * W12 lifecycle recovery handle. Foreground transitions rerun the recovery
+   * pass (status -> history -> stream-when-active); background only closes
+   * the subscription. Unmounting removes the AppState subscription and
+   * disposes the handle, so the assembler passes a per-mount instance.
+   */
+  recovery?: ExecutionRecovery;
 }
 
 /** Attachment surface the conversation input box consumes. */
@@ -107,9 +115,23 @@ export function ConversationControlPanel({ viewModel, attachments }: { viewModel
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
+  // W12: the product conversation resumes executions when the app returns to
+  // the foreground and closes only its subscription when it leaves. Unmount
+  // removes the AppState listener and disposes the per-mount recovery handle.
+  React.useEffect(() => {
+    if (!recovery) return;
+    const unsubscribeState = recovery.subscribe(() => redraw());
+    const subscription = AppState.addEventListener('change', (next) => recovery.appStateChange(next));
+    return () => {
+      subscription.remove();
+      unsubscribeState();
+      recovery.dispose();
+    };
+  }, [recovery, redraw]);
+  const recoveryState = recovery?.getState();
   const executionNotice = viewModel.execution?.status === 'unknown'
     ? '连接状态未知，正在等待服务端确认'
     : viewModel.execution?.status === 'pending' || viewModel.execution?.status === 'dispatching'
@@ -121,6 +143,14 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
         {executionNotice && (
           <View accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
             <Text>{executionNotice}</Text>
+          </View>
+        )}
+        {recoveryState?.state === 'failed' && (
+          <View accessibilityLabel="recovery-failure" accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+            <Text>{isRecoveryNotFound(recoveryState.error) ? '执行不存在或已被清理，未自动新建会话' : '恢复执行失败'}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="重试恢复" onPress={() => void recovery?.recover()}>
+              <Text>重试恢复</Text>
+            </Pressable>
           </View>
         )}
         <ConversationControlPanel viewModel={viewModel} attachments={attachments} />
