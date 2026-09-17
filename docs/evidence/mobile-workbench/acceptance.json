@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-09-17T07:26:06.996Z",
-  "generated_by": "W37 task (scripts/mobile-workbench evidence collection from the two ledgers; no pass row is created for plan-writing itself)",
-  "baseline_sha": "f0f39fa0",
+  "generated_at": "2026-09-17T11:12:02Z",
+  "generated_by": "W37 regeneration round (final state: all 37 tasks W01-W37 accepted in both ledgers; evidence re-collected from the two ledgers and on-disk independent review files; pass-row commands re-run at the generation HEAD; no pass row is created for plan-writing itself)",
+  "baseline_sha": "46427a9e",
+  "regeneration_provenance": {
+    "original_generated_at": "2026-09-17T07:26:06.996Z",
+    "original_baseline_sha": "f0f39fa0",
+    "round": "regenerate-after-all-lanes-closed",
+    "changes": [
+      "W28/W30/W31/W32 flipped to accepted pass rows (final reviews task-W28-review / task-W30-rereview2 / task-W31-rereview1 / task-W32-review)",
+      "W37-review F1 three-line disposition: W08 re-anchored to an in-ancestor commit; W13 and W24 downgraded to blocked (lane-only integration, content absent from the candidate tree)",
+      "artifact hashes recomputed at generation time; doc baseline set to generation HEAD"
+    ]
+  },
   "release_report": "docs/evidence/mobile-workbench/release-report.md",
   "ledgers": [
     "docs/superpowers/plans/mobile-workbench-progress.md",
@@ -21,7 +31,7 @@
         "security"
       ],
       "scope": "W01–W07, W09–W16 (+W08 OIDC)",
-      "note": "Unit/security/database slices are independently reviewed; native layers and backend_model evidence are not closed, and six early-task reviews survive only as ledger text — the release claim stays pending."
+      "note": "Unit/security/database slices are independently reviewed and anchored in the candidate; native layers and backend_model evidence are not closed, six early-task reviews survive only as ledger text, and the W13–W16 notifications server lane never merged into the candidate — the release claim stays pending."
     },
     {
       "profile": "oidc",
@@ -31,7 +41,7 @@
         "ios_native"
       ],
       "scope": "W08",
-      "note": "The server callback chain and one-time exchange seam are review-verified; native IdP round-trip evidence is blocked-env."
+      "note": "The server callback chain and one-time exchange seam are review-verified on a baseline inside the candidate ancestry; native IdP round-trip evidence is blocked-env."
     },
     {
       "profile": "remote",
@@ -44,7 +54,7 @@
         "recovery"
       ],
       "scope": "W17–W24",
-      "note": "Code-level lanes accepted; the live Paseo/PG/container layer never left blocked-env."
+      "note": "Code-level lanes accepted; the live Paseo/PG/container layer never left blocked-env, and the W24 usage-binding lane (all seven commits on codex/mobile-w24) never merged into the candidate."
     },
     {
       "profile": "resources",
@@ -57,7 +67,7 @@
         "security"
       ],
       "scope": "W25–W28",
-      "note": "W25/W26/W27 accepted; W28 not implemented; native device layers blocked-env."
+      "note": "W25–W28 all accepted-with-blockers (W28 flipped in this regeneration round); native device layers remain blocked-env."
     },
     {
       "profile": "voice",
@@ -68,7 +78,7 @@
         "ios_native"
       ],
       "scope": "W29–W31",
-      "note": "W29 accepted; W30 review FAILED on settlement idempotency (fix round pending); W31 not implemented."
+      "note": "W29/W30/W31 all accepted-with-blockers (W30 settlement fixed and re-reviewed in round 2, W31 flipped in this regeneration round); real-device and real-provider media layers remain blocked-env, so ios_native stays open."
     },
     {
       "profile": "governance",
@@ -90,7 +100,7 @@
         "ios_native",
         "android_native"
       ],
-      "not_in_release_reason": "W32 (advanced interaction capability ports) is not implemented and the original H checklist is not closed — the complete Happy surface is explicitly not part of this release slice.",
+      "not_in_release_reason": "W32 delivered and got accepted at the core-capability scope (seven-operation gate, terminal tickets, 78-row parity matrix with 66 rows honestly open), but the H27–H33 management screens and the H33 WebSocket bridge are not implemented — the complete Happy surface is explicitly not part of this release slice.",
       "scope": "W32 + original H matrix"
     }
   ],
@@ -104,7 +114,7 @@
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
       "observed_at": "2026-09-17",
       "review_independent": true,
-      "note": "Spec PASS / Quality APPROVED per ledger; the early-session review file was lost, so no on-disk independent review backs this row — the gate therefore does not count it."
+      "note": "Spec PASS / Quality PASS per ledger; the early-session review file was lost, so no on-disk independent review backs this row — the gate therefore does not count it."
     },
     {
       "task": "W02",
@@ -165,15 +175,15 @@
       "task": "W08",
       "kind": "security",
       "status": "pass",
-      "baseline_sha": "661a7b7c",
+      "baseline_sha": "bd624219",
       "command": "go test ./internal/router -count=1",
       "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W08-seam-review.md",
       "artifact_hash": "sha256:5cb7a26dfbc0909762b32e4aa35ca4afaadac17af4e4a98957baeb0acd749143",
-      "observed_at": "2026-09-16",
+      "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W08-seam-review.md",
       "review_independent": true,
-      "note": "POST /auth/mobile/exchange verified in the test router by the independent seam review; focused Go run was then blocked-dependency on the W20 remote_dispatch compile defect (later repaired by cbbc04b4, not re-run for W08)."
+      "note": "Regeneration re-anchor (W37 review F1): the original baseline 661a7b7c is a dangling object outside the candidate history; the seam content lives in the candidate — 58858403 (ancestor) introduced the POST /auth/mobile/exchange router mount and bd624219 (ancestor, last W08 commit touching internal/handler/auth_oidc_mobile_test.go) is the new anchor. The command was blocked-dependency on the W20 remote_dispatch compile defect at seam-review time; that defect was repaired by cbbc04b4 (ancestor) and the suite was re-run at the regeneration HEAD 46427a9e: ok, exit 0."
     },
     {
       "task": "W09",
@@ -182,7 +192,7 @@
       "command": "",
       "exit_code": null,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/progress.md",
-      "artifact_hash": "sha256:2683d80412ad6279dcd270846e53741b170732497b3217c4db98793204d52353",
+      "artifact_hash": "sha256:f89051c992c605091634a77781d2dd55ce795f3358ed51df852f89593be42beb",
       "observed_at": "2026-09-17",
       "review_independent": true,
       "note": "Native Expo/iOS/Android runtime evidence blocked-env per ledger; code-level Vitest 10/10 was accepted, the native layer was not."
@@ -209,7 +219,7 @@
       "command": "go test ./internal/application/repository -run TestWorkbenchList -count=1",
       "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W11-review.md",
-      "artifact_hash": "sha256:bb502b159f773f1636fba88c3af5eb25b858b2b860d495442e62c91d78a43c60",
+      "artifact_hash": "sha256:bb502b159f775f1636fba88c3af5eb25b858b2b860d495442e62c91d78a43c60",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W11-review.md",
       "review_independent": true,
@@ -232,16 +242,15 @@
     {
       "task": "W13",
       "kind": "security",
-      "status": "pass",
-      "baseline_sha": "696de738",
-      "command": "go test ./internal/application/repository -run 'TestMobileDevice(DeterministicBindAndRevokeCommitOrderPreservesLifecycleFence|RegistrationIntentIssuedBeforeConcurrentLogoutCannotReopen|StaleRevocationCannotResurrect|RebindAfterLogoutAllocatesServerRevision|RevisionlessReplayAfterLogoutCannotReopen)' -count=1",
-      "exit_code": 0,
+      "status": "blocked",
+      "command": "",
+      "exit_code": null,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W13-final-review.md",
       "artifact_hash": "sha256:fd230809d25de6cd383e9adfe73a632dc1e1827c1c8e130cef9f0add8e4a389a",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W13-final-review.md",
       "review_independent": true,
-      "note": "Final review verified lifecycle fencing, queue isolation and deterministic Bind/Revoke races; mobile/full-Go remained blocked-env per ledger."
+      "note": "Regeneration downgrade (W37 review F1 disposition): all seven W13 implementation commits (a71f1128, ffd1b2bc, d06ffe0d, 44107dc3, 31016abe, e73f6edd, 696de738) live only on the codex/mobile-w13 lane branch — verified non-ancestors of the candidate HEAD; the W33 whole-chain merge c6d78821 carried only the W33 chain. The server-side content (internal/application/repository mobile_device tests, registration intents, notifications delivery) is absent from the candidate tree, so the review-verified command cannot be anchored to any candidate commit. The independent final review (PASS/APPROVED) is real and on disk, but the pass record is downgraded to blocked and the slice is not counted as delivered in this candidate."
     },
     {
       "task": "W14",
@@ -252,7 +261,7 @@
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
       "observed_at": "2026-09-17",
       "review_independent": true,
-      "note": "Scoped retry-error review PASS per ledger; review file lost (early session)."
+      "note": "Scoped retry-error review PASS per ledger; review file lost (early session). Regeneration note: the W14 outbox content is part of the same notifications lane and is likewise absent from the candidate tree (spot-checked commits are non-ancestors)."
     },
     {
       "task": "W15",
@@ -263,7 +272,7 @@
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
       "observed_at": "2026-09-17",
       "review_independent": true,
-      "note": "Empty-token review PASS per ledger; review file lost (early session)."
+      "note": "Empty-token review PASS per ledger; review file lost (early session). Regeneration note: provider-delivery content is lane-only and absent from the candidate tree (same notifications lane as W13/W14)."
     },
     {
       "task": "W16",
@@ -274,7 +283,7 @@
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
       "observed_at": "2026-09-17",
       "review_independent": true,
-      "note": "Final re-review PASS per ledger; review file lost (early session)."
+      "note": "Final re-review PASS per ledger; review file lost (early session). Regeneration note: deep-link/pending-card content is lane-only and absent from the candidate tree (same notifications lane as W13–W15); the mobile-side routing that W16 verified in isolation is not reachable without the server lane."
     },
     {
       "task": "core-native",
@@ -370,16 +379,15 @@
     {
       "task": "W24",
       "kind": "database",
-      "status": "pass",
-      "baseline_sha": "d19b0b1a",
-      "command": "go test ./internal/application/repository -run 'TestExecutionTargetStorePersistsServerUsageBinding\\|TestPersistUsageBindingOverridesUntrustedSnapshotFields' -count=1",
-      "exit_code": 0,
+      "status": "blocked",
+      "command": "",
+      "exit_code": null,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W24-final3-review.md",
       "artifact_hash": "sha256:2264b0e756429d717c897729d09825b04f2f7b2c220dd2fdd553dfd0f94277fa",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W24-final3-review.md",
       "review_independent": true,
-      "note": "final3 review verified trusted target policy, tenant/owner/credential checks, BYOK/parent admission snapshots and durable late/replay settlement on focused/race/vet/repository runs."
+      "note": "Regeneration downgrade (W37 review F1 disposition): all seven W24 implementation commits (a9404191, 622048e9, 16209fce, 027bec1e, 8f312787, fa597bf5, d19b0b1a) live only on the codex/mobile-w24 lane branch — verified non-ancestors of the candidate HEAD. The final usage-binding round (TestExecutionTargetStorePersistsServerUsageBinding, target.go usage parsing) is absent from the candidate tree, so the reviewed command cannot be anchored. Some W24-domain surfaces exist in the candidate via later work (cbbc04b4 rename fix, W30 commercial settlement consumption), but the reviewed persistence evidence is lane-only. The independent final3 review (PASS/APPROVED) is real and on disk; the pass record is downgraded to blocked and the slice is not counted as delivered in this candidate."
     },
     {
       "task": "remote-live",
@@ -388,7 +396,7 @@
       "command": "",
       "exit_code": null,
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
-      "artifact_hash": "sha256:0160681ae0e2f6e0d04f5308b3510391b2be46acfd120107eaa5e551143fb5d3",
+      "artifact_hash": "sha256:a7d0e1125bd8d2e69bc35614280c6ef240b9f82b35328df826b913a8fbe65ec8",
       "observed_at": "2026-09-17",
       "review_independent": true,
       "note": "Live Paseo/PG/container evidence for the whole remote lane stayed blocked-env across W17–W24 per ledger."
@@ -426,7 +434,7 @@
       "kind": "security",
       "status": "pass",
       "baseline_sha": "98293ea6",
-      "command": "go test ./internal/handler -run 'TestArtifactPreview\\|TestIssueArtifactPreview' -count=1",
+      "command": "go test ./internal/handler -run 'TestArtifactPreview|TestIssueArtifactPreview' -count=1",
       "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W27-rereview1.md",
       "artifact_hash": "sha256:cddbc65c98ffe0521d04517cbacf1c51840141b381c0c0935c2a06f82595ed23",
@@ -438,13 +446,16 @@
     {
       "task": "W28",
       "kind": "unit",
-      "status": "not_implemented",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "status": "pass",
+      "baseline_sha": "262d7eff",
+      "command": "pnpm exec tsx --test apps/mobile/sources/weknora/renderers/registry.test.ts",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W28-review.md",
+      "artifact_hash": "sha256:65e96837753d3564e2a39fe8d176c021b3d9970c6631d615565483283086950a",
       "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W28-review.md",
       "review_independent": true,
-      "note": "Knowledge citation and specialized result registrar: not implemented. A concurrent lane is in flight in the shared worktree but nothing is accepted; declared not in this release slice."
+      "note": "Status flip in the regeneration round (was not_implemented at interim generation time). Independent review re-ran registry 6/6, four component/message suites 27/27, mounted [id] 6/6, node:test regression 37/37 and typecheck exit 0 in /tmp snapshots, with a remove-the-module RED re-verification. Registry suite re-run at the regeneration HEAD 46427a9e: 6/6, exit 0. Real-device layer blocked-env."
     },
     {
       "task": "W29",
@@ -458,32 +469,49 @@
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W29-review.md",
       "review_independent": true,
-      "note": "Dictation 20/20, view-model 11/11, W12 recovery and W25 upload regressions re-run by the review; real-device behaviour and production transcription end-to-end blocked-env (W30 seam lands the call)."
+      "note": "Dictation 20/20, view-model 11/11, W12 recovery and W25 upload regressions re-run by the review; real-device behaviour and production transcription end-to-end blocked-env (W30 lands the seam)."
     },
     {
       "task": "W30",
       "kind": "billing",
-      "status": "review-fail-fix-pending",
-      "baseline_sha": "f0f39fa0",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W30-review.md",
-      "artifact_hash": "sha256:a2616efd69ce0ea5682207ed4955819e4e6b531ef2ecbdda9ee39403c91135e8",
+      "status": "pass",
+      "baseline_sha": "e9da7f44",
+      "command": "go test ./internal/handler -run 'TestMobileVoice|TestVoice|TestTranscription|TestPriceVersion|TestBound' -count=1",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W30-rereview2.md",
+      "artifact_hash": "sha256:1b22c3b97008231658d43426c2c52c546d09089cd3cae756f3442e55e044f97e",
       "observed_at": "2026-09-17",
-      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W30-review.md",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W30-rereview2.md",
       "review_independent": true,
-      "note": "Independent review completed 2026-09-17: Spec FAIL / Quality CHANGES_REQUIRED — I-1 double settlement of one actual usage and I-2 non-idempotent replay under the real ExecutionGate. The fix round has not run; billing stays unevidenced."
+      "note": "Status flip in the regeneration round (was review-fail-fix-pending at interim generation time). Fix round 2 was re-reviewed: honest settled semantics, exactly-once deferred settlement under the real ExecutionGate (usage facts 1, AmountMicro 400), idempotent replay and rate-drift conservative rejection all verified; rereview2 re-ran the 19/19 handler matrix (the command above is the combined form of the review's two runs: 18/18 plus the TestBound add-on), voice package, vet, router/commercial/repository suites green at e9da7f44. Re-run at the regeneration HEAD 46427a9e: 19/19, exit 0. Real provider/OpenMeter/PG migration/realtime media relay blocked-env."
     },
     {
       "task": "W31",
-      "kind": "ios_native",
-      "status": "not_implemented",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "kind": "unit",
+      "status": "pass",
+      "baseline_sha": "df26fb3b",
+      "command": "pnpm exec tsx --test apps/mobile/sources/weknora/voice/realtime.test.ts",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W31-rereview1.md",
+      "artifact_hash": "sha256:66065a8b9bc711cd7b8ffc42f3c86d52a1da8aab22366d3871691b74c885c7c5",
       "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W31-rereview1.md",
       "review_independent": true,
-      "note": "Realtime voice, interruption and background progress: not implemented (blocked-dependency on the W30 fix round per the W36 review)."
+      "note": "Status flip in the regeneration round (was not_implemented at interim generation time). Independent re-review verified connect-failure settlement exactly-once across five paths, unmount dispose (W12 contract) and the three-layer live-progress wiring (real lazy-loaded expo-notifications port 6/6, no content leakage, mounted runID terminal notification); re-ran realtime 20/20, ports/dictation 33/33, mounted vitest 28/28, typecheck exit 0. Re-run at the regeneration HEAD 46427a9e: 21/21 exit 0 (W32's R-1 fix added one race case after the review). Real-device and real-provider media layers stay blocked-env; the server-side hold sweeper remains Cannot-verify (client paths fully covered)."
+    },
+    {
+      "task": "W32",
+      "kind": "unit",
+      "status": "pass",
+      "baseline_sha": "b2b83d43",
+      "command": "pnpm exec tsx --test apps/mobile/sources/weknora/conversations/advanced.test.ts apps/mobile/sources/weknora/voice/realtime.test.ts",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W32-review.md",
+      "artifact_hash": "sha256:0cd0a4270d4b0570c081a1ff08290e93e8196d81f93403e4664afca718558924",
+      "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W32-review.md",
+      "review_independent": true,
+      "note": "New row in the regeneration round (the interim document had no W32 evidence row; full_happy was declared via profile only). Independent review re-ran advanced+realtime 31/31, vitest 27/27 and 16/16, typecheck exit 0; verified the seven-operation CAPABILITY_UNAVAILABLE gate with zero shell fallback, one-time terminal ticket reuse (server TTL semantics read), the 78-row parity matrix (12 harness / 66 open / 0 native, programmatic verification) and the manifest 695 target correction with 0 hash changes. Re-run at the regeneration HEAD 46427a9e: 31/31 exit 0. Real-device and live Happy remote CLI chains blocked-env; H27–H33 management screens / H33 WS bridge not implemented — core-capability release scope declared via the full_happy profile."
     },
     {
       "task": "W33",
@@ -497,7 +525,7 @@
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W33-rereview7.md",
       "review_independent": true,
-      "note": "Seven fix rounds converged (rereview7 PASS/APPROVED): fenced purge, deletion-revision observation, fail-closed idempotent file deletion and cross-session late-upload locks verified on repository+race runs. PG/real node/backup drill blocked-env."
+      "note": "Seven fix rounds converged (rereview7 PASS/APPROVED): fenced purge, deletion-revision observation, fail-closed idempotent file deletion and cross-session late-upload locks verified on repository+race runs; the whole 8-commit chain entered the candidate via merge c6d78821. PG/real node/backup drill blocked-env."
     },
     {
       "task": "W34",
