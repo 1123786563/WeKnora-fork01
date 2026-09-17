@@ -119,6 +119,11 @@ function clientFor(calls: ClientCalls): WeKnoraClient {
       types: async () => [],
     },
     knowledgeBases: {
+      documents: {
+        // Vue isIndexingLocked probe (loadKBData) — empty fixture keeps the
+        // indexing checks unlocked.
+        list: async () => ({ data: [], total: 0 }),
+      },
       settings: {
         parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU self-hosted', Available: true }] }),
         storageBackends: async () => ({ data: [{ id: 'st-1', name: 'Main storage', provider: 's3', status: 'ready' }] }),

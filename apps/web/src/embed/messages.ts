@@ -18,7 +18,10 @@ export type EmbedTextKey =
   | 'referencesTitle'
   | 'referencesDocCount'
   | 'referencesWebCount'
-  | 'referencesDocAndWebCount';
+  | 'referencesDocAndWebCount'
+  | 'followUpQuestions'
+  | 'refreshSuggestedQuestions'
+  | 'close';
 
 export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
   'zh-CN': {
@@ -38,6 +41,9 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     referencesDocCount: '引用了{count}篇文档',
     referencesWebCount: '参考了{count}条网页',
     referencesDocAndWebCount: '引用了{docCount}篇文档和{webCount}条网页',
+    followUpQuestions: '继续问',
+    refreshSuggestedQuestions: '换一批',
+    close: '关闭',
   },
   'en-US': {
     loadError: 'Failed to load',
@@ -56,6 +62,9 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     referencesDocCount: 'Referenced {count} document(s)',
     referencesWebCount: 'Referenced {count} web result(s)',
     referencesDocAndWebCount: 'Referenced {docCount} document(s) and {webCount} web result(s)',
+    followUpQuestions: 'Keep asking',
+    refreshSuggestedQuestions: 'More',
+    close: 'Close',
   },
   'ja-JP': {
     loadError: '読み込みに失敗しました',
@@ -74,6 +83,9 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     referencesDocCount: '{count}件のドキュメントを参照',
     referencesWebCount: '{count}件のWebページを参照',
     referencesDocAndWebCount: '{docCount}件のドキュメントと{webCount}件のWebページを参照',
+    followUpQuestions: '続けて質問',
+    refreshSuggestedQuestions: '別の質問',
+    close: '閉じる',
   },
   'ko-KR': {
     loadError: '로드 실패',
@@ -92,6 +104,9 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     referencesDocCount: '{count}개 문서 참조',
     referencesWebCount: '{count}개 웹 결과 참조',
     referencesDocAndWebCount: '{docCount}개 문서와 {webCount}개 웹 결과 참조',
+    followUpQuestions: '이어서 질문',
+    refreshSuggestedQuestions: '다른 질문',
+    close: '닫기',
   },
   'ru-RU': {
     loadError: 'Не удалось загрузить',
@@ -110,6 +125,9 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     referencesDocCount: 'Использовано {count} документ(ов)',
     referencesWebCount: 'Использовано {count} веб-результат(ов)',
     referencesDocAndWebCount: 'Использовано {docCount} документ(ов) и {webCount} веб-результат(ов)',
+    followUpQuestions: 'Спрашивайте дальше',
+    refreshSuggestedQuestions: 'Ещё',
+    close: 'Закрыть',
   },
 };
 

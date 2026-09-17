@@ -4566,3 +4566,30 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1499/1499, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r442-code-parity-round.md`. No Vue, mobile, or Go code was
   modified.
+
+## 2026-09-17 Round R443 — Indexing lock, embed pagination/follow-ups/citations, shell badge+throttle, wiki hydration
+
+- Five parallel agents (A1 isIndexingLocked, A2 embed residuals, A3 platform-shell residuals, A4 wiki source
+  hydration, A5 verifier), file-domain mutually exclusive, TDD. A5 verdict: **4/4 PASS, zero regressions, no
+  rework items** — the first round to close with no orchestrator fixes needed.
+- A1: settings surface probes `documents.list(kbId, {page:1,page_size:1})` once on open (edit mode, document
+  type; FAQ/create skip) and locks the indexing checkboxes with Vue's lockedTip when total>0; probe failure
+  degrades to unlocked (deliberate divergence recorded: Vue closes the editor on probe failure — product
+  decision noted). 15 request-count assertions updated individually across 7 test files + 4 new cases;
+  knowledge-settings 76/76; lockedTip key pre-existing ×5 locale.
+- A2: embed history scroll pagination (cursor = previous batch's first created_at → `before_time`, top-edge
+  500ms debounce, viewport-preserving prepend, four termination paths); per-message follow-up suggestions
+  (ensure/GET backfill/generating poll ≤120s, click sends with `suggestion_attribution`; host analytics events
+  intentionally out); citation pills mirroring Vue preprocessCitationTags/resolveCitationChunkId (DOC-n/FAQ-n/
+  positional/UUID, invalid dropped; web pills external, kb pills via embed.public.chunk; plain-text parsing
+  deviation recorded). 15 new tests; embed suites 36/36.
+- A3: organizations pending-approval badge (sum of pending_join_request_count, mount-time fetch, 18px amber
+  pill, raw count, hidden on failure) and the tenant submenu memberships ≥2000ms throttle refresh (applyAuthMe
+  extracted, stale-client guarded). 6 new tests; platform 176/176. Deferred: explicit
+  Organization.pending_join_request_count typing in api-client.
+- A4: wiki reader footer source-title hydration with ZERO api-client changes — existing documents.get is the
+  same GET /api/v1/knowledge/{id} Vue uses; createSourceRefTitleHydrator ports the Vue engine (dedupe, per-id
+  cache, title||file_name resolution, failure keeps truncated-id fallback, seq guard). 6 tests; wiki 44/44.
+- Gates: `pnpm test:web` 1530/1530, `pnpm test:shared` 596/596, `pnpm typecheck:web` clean, `pnpm build:web` ✓
+  (orchestrator re-confirmed on the merged state). Evidence:
+  `evidence/vue-react-parity/2026-09-17-r443-code-parity-round.md`. No Vue, mobile, or Go code was modified.

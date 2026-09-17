@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   WikiPage as WikiPageModel,
   WikiPageRevision,
@@ -9,6 +9,7 @@ import type {
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
+import { createSourceRefTitleHydrator, type SourceRefTitleHydrator } from "./source-titles.ts";
 import {
   assembleWikiIndexMarkdown,
   handleWikiBodyClick,
@@ -116,12 +117,15 @@ export function WikiReaderFooter({
   translate,
   onNavigate,
   onOpenSourceDoc,
+  sourceTitles,
 }: {
   page: { [key: string]: unknown; in_links?: unknown; source_refs?: unknown };
   resolveSlugName: (slug: string) => string;
   translate?: (key: string) => string;
   onNavigate: (slug: string) => void;
   onOpenSourceDoc?: (documentId: string) => void;
+  /** Hydrated id → title map from the Vue sourceRefTitleCache port. */
+  sourceTitles?: Record<string, string>;
 }) {
   const t = translate ?? ((key: string) => key);
   const inLinks = Array.isArray(page.in_links)
@@ -167,7 +171,7 @@ export function WikiReaderFooter({
                   onOpenSourceDoc?.(ref.id);
                 }}
               >
-                {ref.title}
+                {sourceTitles?.[ref.id] ?? ref.title}
               </a>
             ))}
           </span>
@@ -305,6 +309,31 @@ export function WikiPage({
   const [canContribute, setCanContribute] = useState(canContributeProp);
   // Vue picture-preview state: the previewed image src, null closes the viewer.
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  // Vue sourceRefTitleCache: hydrated source-document titles keyed by bare
+  // knowledge id, resolved through the shared documents detail endpoint
+  // (GET /api/v1/knowledge/{id}) — same capability the Vue browser uses.
+  const [sourceTitles, setSourceTitles] = useState<Record<string, string>>({});
+  const sourceTitleHydrator = useRef<{ client: WeKnoraClient; hydrator: SourceRefTitleHydrator } | null>(null);
+  if (!sourceTitleHydrator.current || sourceTitleHydrator.current.client !== client) {
+    sourceTitleHydrator.current = {
+      client,
+      hydrator: createSourceRefTitleHydrator((id) => client.knowledge.documents.get(id)),
+    };
+  }
+  const rawSourceRefs = (selected as { source_refs?: unknown } | null)?.source_refs;
+  const selectedSourceRefs = Array.isArray(rawSourceRefs)
+    ? rawSourceRefs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0)
+    : [];
+  const selectedSourceRefsKey = selectedSourceRefs.join("\u0000");
+  useEffect(() => {
+    if (selectedSourceRefsKey.length === 0) return;
+    let active = true;
+    void sourceTitleHydrator.current!.hydrator.hydrate(selectedSourceRefsKey.split("\u0000")).then((titles) => {
+      if (active) setSourceTitles(titles);
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSourceRefsKey]);
 
   useEffect(() => {
     let active = true;
@@ -855,6 +884,7 @@ export function WikiPage({
                 translate={t}
                 onNavigate={navigateToSlug}
                 onOpenSourceDoc={onOpenSourceDoc}
+                sourceTitles={sourceTitles}
               />
             </article>
           ) : null}

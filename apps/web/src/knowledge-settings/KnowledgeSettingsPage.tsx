@@ -704,6 +704,28 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   }, [client]);
   const fallbackKnowledgeBase: KnowledgeSettingsInput = { id: knowledgeBaseId ?? '', name: '', type: 'document' };
   const currentKnowledgeBase = knowledgeBase ?? fallbackKnowledgeBase;
+  // Vue isIndexingLocked signal (loadKBData): when the settings surface opens
+  // in edit mode for a document base, probe GET /knowledge-bases/:id/knowledge
+  // once with page=1&page_size=1. total > 0 means the KB already has content
+  // and the editor locks the indexing strategy (the backend requires a
+  // non-empty KB to keep at least one index). A failed probe degrades to
+  // unlocked so one rejected request cannot block the editor.
+  const [indexingLocked, setIndexingLocked] = useState(false);
+  const kbId = currentKnowledgeBase.id;
+  const isFaqBase = currentKnowledgeBase.type?.toLowerCase() === 'faq';
+  useEffect(() => {
+    if (!client || !kbId || isFaqBase) return;
+    let mounted = true;
+    Promise.resolve()
+      .then(() => client.knowledgeBases.documents.list(kbId, { page: 1, page_size: 1 }))
+      .then((result) => {
+        if (mounted) setIndexingLocked(((result as { total?: number }).total ?? 0) > 0);
+      })
+      .catch(() => {
+        if (mounted) setIndexingLocked(false);
+      });
+    return () => { mounted = false; };
+  }, [client, kbId, isFaqBase]);
   const availableSections = useMemo(() => getKnowledgeSettingsSections(currentKnowledgeBase, { canViewActivity }), [currentKnowledgeBase, canViewActivity]);
   // Vue editor contract: nav groups drive the sidebar; the content area renders
   // the active section, with unported Vue sections shown as placeholders.
@@ -865,7 +887,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active.description}</p>
                 </>
               ) : null}
-              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
+              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} indexingLocked={indexingLocked} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
                 // Vue renders this section fully; the React port has not migrated
                 // it yet — surface the shared notice instead of a fabricated editor.
                 <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
@@ -907,6 +929,7 @@ interface SettingsSectionProps {
   editorOptions: KnowledgeEditorOptions;
   pendingParserEngine: string;
   configuredParserEngine: string;
+  indexingLocked: boolean;
   onPendingParserEngine: (value: string) => void;
   t: (key: string) => string;
   StatusComponent: ElementType;
@@ -916,7 +939,7 @@ interface SettingsSectionProps {
   onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void;
 }
 
-function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
+function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, indexingLocked, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
   // models/chunking/advanced carry no summary card (Vue has none either);
   // the legacy sections keep theirs.
   const summaryLabel = summary?.label ?? '';
@@ -930,7 +953,7 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         </div>
       ) : null}
       {section === 'basic' ? (
-        <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+        <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} indexingLocked={indexingLocked} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'models' ? (
         <ModelsSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
@@ -1042,8 +1065,10 @@ function EditorSettingRow({ label, description, required, control }: { label: st
 // 'basic'`): the committed KB id with copy, the immutable type radios, the
 // document-only indexing-strategy checks with the conditional wiki tunables,
 // and the required name plus description editors. All values persist through
-// the base KB update (Vue doSubmit step 1), not the config PUT.
-function BasicSettingsSection({ knowledgeBase, editorDraft, t, onDraftChange }: { knowledgeBase: KnowledgeSettingsInput; editorDraft: KnowledgeSettingsEditorOverrides; t: (key: string) => string; onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void }) {
+// the base KB update (Vue doSubmit step 1), not the config PUT. While the KB
+// already has files (Vue isIndexingLocked) the indexing checks disable and the
+// lockedTip renders — a non-empty KB must keep at least one index.
+function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, onDraftChange }: { knowledgeBase: KnowledgeSettingsInput; editorDraft: KnowledgeSettingsEditorOverrides; indexingLocked: boolean; t: (key: string) => string; onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void }) {
   const name = editorDraft.name ?? (typeof knowledgeBase.name === 'string' ? knowledgeBase.name : '');
   const description = editorDraft.description ?? (typeof knowledgeBase.description === 'string' ? knowledgeBase.description : '');
   const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, editorDraft);
@@ -1112,26 +1137,39 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, t, onDraftChange }: 
             description={t('knowledgeEditor.indexing.description')}
             control={(
               <div style={{ display: 'grid', gap: '0.5rem' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', ...(indexingLocked ? { opacity: 0.6 } : {}) }}>
                   <input
                     type="checkbox"
                     aria-label={t('knowledgeEditor.indexing.searchTitle')}
                     checked={indexing.vectorEnabled}
-                    onChange={(event) => setIndexing({ vectorEnabled: event.target.checked, keywordEnabled: event.target.checked })}
+                    disabled={indexingLocked}
+                    onChange={(event) => {
+                      // Vue toggleVectorIndexing early-returns while locked.
+                      if (indexingLocked) return;
+                      setIndexing({ vectorEnabled: event.target.checked, keywordEnabled: event.target.checked });
+                    }}
                   />
                   {t('knowledgeEditor.indexing.searchTitle')}
                 </label>
                 <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.searchDesc')}</p>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', ...(indexingLocked ? { opacity: 0.6 } : {}) }}>
                   <input
                     type="checkbox"
                     aria-label={t('knowledgeEditor.indexing.wikiTitle')}
                     checked={indexing.wikiEnabled}
-                    onChange={(event) => setIndexing({ wikiEnabled: event.target.checked })}
+                    disabled={indexingLocked}
+                    onChange={(event) => {
+                      // Vue toggleWikiIndexing early-returns while locked.
+                      if (indexingLocked) return;
+                      setIndexing({ wikiEnabled: event.target.checked });
+                    }}
                   />
                   {t('knowledgeEditor.indexing.wikiTitle')}
                 </label>
                 <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.wikiDesc')}</p>
+                {indexingLocked ? (
+                  <p className="wk-muted" data-indexing-locked-tip="" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.lockedTip')}</p>
+                ) : null}
               </div>
             )}
           />

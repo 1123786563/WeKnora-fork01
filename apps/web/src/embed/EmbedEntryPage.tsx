@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createEmbedClient, type EmbedClient, type HttpTransport } from '@weknora/api-client';
 import { ChatComposer } from '@weknora/views/chat/composer';
 import { isLocale, type Locale } from '@weknora/i18n/runtime';
@@ -19,16 +19,26 @@ import {
 import { buildQueryWithHostContext } from './host-context.ts';
 import { embedText, type EmbedTextKey } from './messages.ts';
 import {
+  appendHistoryPage,
   extractStreamReferences,
   isWebSearchReference,
   mapHistoryMessages,
   normalizeSuggestedQuestions,
+  parseCitationSegments,
   referenceContent,
   referenceHeadline,
   referenceTitle,
   referenceUrl,
+  scrollOffsetAfterPrepend,
+  shouldTriggerHistoryLoad,
+  suggestionAttributionBody,
+  toReadySuggestions,
+  type CitationSegment,
   type EmbedChatMessage,
   type EmbedReference,
+  type EmbedReadySuggestions,
+  type EmbedSuggestionAttribution,
+  type EmbedSuggestionItem,
 } from './chat-data.ts';
 
 // Vue parity for the isolated embed entry:
@@ -159,6 +169,19 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
   const [suggestedLoading, setSuggestedLoading] = useState(false);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
+  // Scroll-paged history (useEmbedChatSession.ts limit=20 / created_at cursor).
+  const [historyLoadingOlder, setHistoryLoadingOlder] = useState(false);
+  const historyCursorRef = useRef('');
+  const hasMoreHistoryRef = useRef(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const messagesRef = useRef<EmbedChatMessage[]>([]);
+  messagesRef.current = messages;
+  const sessionRef = useRef<StoredSession | null>(null);
+  sessionRef.current = session;
+  const apiTokenRef = useRef('');
+  apiTokenRef.current = apiToken;
+  const suggestionAttributionRef = useRef<EmbedSuggestionAttribution | null>(null);
+  const followUpsEnabledRef = useRef(false);
 
   const bridge = useMemo(
     () => createEmbedBridge({ parentWindow: (parentWindow ?? {}) as object, referrer: props.referrer ?? (typeof document !== 'undefined' ? document.referrer : undefined) }),
@@ -173,6 +196,74 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
     if (!parentWindow) return false;
     return bridge.post(payload, (p, targetOrigin) => postMessage(parentWindow, p, targetOrigin), options);
   }, [bridge, parentWindow, postMessage]);
+
+  // --- per-message follow-up suggestions (EmbedChatCore.vue
+  // loadFollowUpSuggestions/loadPersistedFollowUps) -------------------------
+  const patchMessageByRowId = useCallback((rowId: string | undefined, patch: Partial<EmbedChatMessage>) => {
+    if (!rowId) return;
+    setMessages((prev) => prev.map((m) => (m.id === rowId ? { ...m, ...patch } : m)));
+  }, []);
+
+  const loadFollowUpsFor = useCallback(async (messageId: string, opts: { ensure?: boolean; regenerate?: boolean } = {}) => {
+    const sess = sessionRef.current;
+    const token = apiTokenRef.current;
+    if (!followUpsEnabledRef.current || !sess || !token || !messageId) return;
+    const visitorId = getOrCreateVisitorId(channelId);
+    patchMessageByRowId(messageId, { suggestions: null });
+    try {
+      let raw = opts.ensure || opts.regenerate
+        ? await client.embed.public.ensureMessageSuggestions(channelId, token, sess.id, messageId, sess.sig, visitorId, opts.regenerate === true)
+        : await client.embed.public.messageSuggestions(channelId, token, sess.id, messageId, sess.sig, visitorId);
+      // Vue polls once per second while the set is still generating (max 120s).
+      for (let attempt = 0; raw.status === 'generating' && attempt < 120; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (sessionRef.current?.id !== sess.id || !messagesRef.current.some((m) => m.id === messageId)) return;
+        raw = await client.embed.public.messageSuggestions(channelId, token, sess.id, messageId, sess.sig, visitorId);
+      }
+      patchMessageByRowId(messageId, { suggestions: toReadySuggestions(raw) });
+    } catch {
+      patchMessageByRowId(messageId, { suggestions: null });
+    }
+  }, [channelId, client, patchMessageByRowId]);
+
+  const loadPersistedFollowUps = useCallback((rows: EmbedChatMessage[]) => {
+    for (const row of rows) {
+      // Vue loadPersistedFollowUps: completed answers only, never re-requested
+      // for rows already carrying a set (suggestionSet === undefined guard).
+      if (row.role === 'assistant' && row.is_completed && row.id && row.suggestions === undefined) {
+        void loadFollowUpsFor(row.id);
+      }
+    }
+  }, [loadFollowUpsFor]);
+
+  // --- scroll-paged history (useEmbedChatSession.ts onChatScrollTop) --------
+  const loadOlderHistory = useCallback(async () => {
+    const sess = sessionRef.current;
+    const token = apiTokenRef.current;
+    if (!sess || !token || !hasMoreHistoryRef.current) return;
+    if (historyLoadingOlder) return;
+    setHistoryLoadingOlder(true);
+    try {
+      const rows = await client.embed.public.messages(channelId, token, sess.id, {
+        limit: 20,
+        beforeTime: historyCursorRef.current || undefined,
+        signature: sess.sig,
+        visitorId: getOrCreateVisitorId(channelId),
+      });
+      const page = appendHistoryPage(messagesRef.current, rows, historyCursorRef.current, 20);
+      historyCursorRef.current = page.cursor;
+      hasMoreHistoryRef.current = page.hasMore;
+      setMessages(page.messages);
+      setHasMoreHistory(page.hasMore);
+      loadPersistedFollowUps(page.messages.filter((m) => !messagesRef.current.includes(m)));
+    } catch {
+      // Vue marks pagination done when the fetch fails.
+      hasMoreHistoryRef.current = false;
+      setHasMoreHistory(false);
+    } finally {
+      setHistoryLoadingOlder(false);
+    }
+  }, [channelId, client, historyLoadingOlder, loadPersistedFollowUps]);
 
   const bootstrap = useCallback(async (embedToken: string) => {
     if (!channelId || !embedToken) return;
@@ -190,6 +281,7 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
 
       const cfg = await client.embed.public.config(channelId, apiToken) as EmbedConfig;
       setConfig(cfg);
+      followUpsEnabledRef.current = cfg.show_suggested_questions === true;
       if (!localePinnedRef.current) {
         const channelLocale = normalizeEmbedLocale(String(cfg.default_locale ?? ''));
         if (channelLocale) setLocale(channelLocale);
@@ -206,18 +298,29 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         try {
           const history = await client.embed.public.messages(channelId, apiToken, stored.id, { limit: 20, signature: stored.sig, visitorId });
           resolved = stored;
-          setMessages(mapHistoryMessages(history));
+          const page = appendHistoryPage([], history, '', 20);
+          setMessages(page.messages);
+          historyCursorRef.current = page.cursor;
+          hasMoreHistoryRef.current = page.hasMore;
+          setHasMoreHistory(page.hasMore);
+          loadPersistedFollowUps(page.messages);
         } catch { /* stale/expired: create a fresh signed session */ }
       }
       if (!resolved) {
         const created = await client.embed.public.createSession(channelId, apiToken);
         resolved = { id: created.id, sig: created.signature };
         // Vue also calls getmsgList for a brand-new session and gets an empty
-        // batch (no render change), so skipping the fetch here is equivalent.
+        // batch (no render change), so skipping the fetch here is equivalent;
+        // it also closes pagination like the Vue empty-batch branch.
+        historyCursorRef.current = '';
+        hasMoreHistoryRef.current = false;
+        setHasMoreHistory(false);
       }
       writeStoredSession(channelId, resolved);
       setSession(resolved);
       setApiToken(apiToken);
+      sessionRef.current = resolved;
+      apiTokenRef.current = apiToken;
 
       // Channel-level suggested questions (EmbedChatCore.vue
       // fetchSuggestedQuestions): only when the channel enables them.
@@ -237,7 +340,7 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
       setErrorKey(mapped.kind === 'disabled' ? 'channelDisabled' : mapped.kind === 'session' ? 'sessionFailed' : mapped.kind === 'exchange' ? 'invalidChannel' : 'loadError');
       setPhase('error');
     }
-  }, [channelId, client, postToHost]);
+  }, [channelId, client, postToHost, loadPersistedFollowUps]);
 
   useEffect(() => {
     if (!channelId) {
@@ -300,7 +403,12 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
     postToHost(embedMessageSentPayload(channelId, session.id, raw), { sensitive: true });
     setStreaming(true);
     let answer = '';
+    let assistantMessageId = '';
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+    // Vue setSuggestionAttribution: the set/question clicked in the follow-up
+    // card rides on the very next chat request, then the pending value clears.
+    const attribution = suggestionAttributionRef.current;
+    suggestionAttributionRef.current = null;
     try {
       await client.embed.public.chat({
         channelId,
@@ -308,14 +416,19 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         sessionId: session.id,
         signature: session.sig,
         visitorId: getOrCreateVisitorId(channelId),
-        body: { query },
+        body: suggestionAttributionBody({ query }, attribution),
       }, (event) => {
+        // Vue useChatStreamHandler keeps data.assistant_message_id as the id of
+        // the live answer row; follow-ups need it once the turn completes.
+        const eventId = typeof event.assistant_message_id === 'string' ? event.assistant_message_id : '';
+        if (eventId) assistantMessageId = eventId;
         const text = typeof event.content === 'string' ? event.content : '';
         if (text) {
           answer += text;
           setMessages((prev) => {
             const next = [...prev];
-            next[next.length - 1] = { role: 'assistant', content: answer };
+            const last = next.length > 0 ? next[next.length - 1] : undefined;
+            next[next.length - 1] = { role: 'assistant', content: answer, ...(last?.references ? { references: last.references } : {}), ...(assistantMessageId ? { id: assistantMessageId } : {}) };
             return next;
           });
         }
@@ -333,6 +446,8 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         }
       });
       if (answer) postToHost(embedMessageReceivedPayload(channelId, session.id, answer), { sensitive: true });
+      // Vue onTurnComplete -> loadFollowUpSuggestions(message, ensure=true).
+      if (assistantMessageId) void loadFollowUpsFor(assistantMessageId, { ensure: true });
     } catch {
       setMessages((prev) => {
         const next = [...prev];
@@ -342,7 +457,7 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
     } finally {
       setStreaming(false);
     }
-  }, [apiToken, channelId, client, hostContext, locale, postToHost, session, streaming]);
+  }, [apiToken, channelId, client, hostContext, locale, postToHost, session, streaming, loadFollowUpsFor]);
 
   const startNewChat = useCallback(() => {
     if (!session || !messages.length) return;
@@ -352,7 +467,12 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         const next = { id: created.id, sig: created.signature };
         writeStoredSession(channelId, next);
         setSession(next);
+        sessionRef.current = next;
         setMessages([]);
+        messagesRef.current = [];
+        historyCursorRef.current = '';
+        hasMoreHistoryRef.current = false;
+        setHasMoreHistory(false);
       } catch { /* keep the current session when creation fails (Vue L192-208) */ }
     })();
   }, [apiToken, channelId, client, messages.length, session]);
@@ -385,6 +505,21 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         welcomeMessage={typeof config?.welcome_message === 'string' ? config.welcome_message : ''}
         locale={locale}
         onSuggest={(question) => void submit({ query: question })}
+        loadingOlder={historyLoadingOlder}
+        hasMoreHistory={hasMoreHistory}
+        onReachTop={() => void loadOlderHistory()}
+        fetchChunk={async (chunkId) => {
+          const data = await client.embed.public.chunk(channelId, apiToken, chunkId) as Record<string, unknown>;
+          return typeof data.content === 'string' ? data.content : '';
+        }}
+        onFollowUpSelect={(entry, set, question) => {
+          // Vue handleFollowUpSelect: attach attribution, then send the text;
+          // the completed turn re-ensures its own follow-up set in submit().
+          suggestionAttributionRef.current = { suggestionSetId: set.id, questionId: question.id };
+          void submit({ query: question.text });
+        }}
+        onDismissFollowUps={(entry) => patchMessageByRowId(entry.id, { suggestionsDismissed: true })}
+        onRegenerateFollowUps={(entry) => entry.id && void loadFollowUpsFor(entry.id, { regenerate: true })}
       />
       <div className="shrink-0 px-3 pb-3">
         <EmbedComposer
@@ -402,8 +537,8 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
 
 // The message list half of EmbedChatCore.vue: welcome bubble (hidden once the
 // visitor speaks), channel suggested-question cards (click sends the question),
-// history/live messages, and the docInfo.vue-style references block under each
-// answer.
+// history/live messages, per-answer follow-up suggestion cards, inline citation
+// pills and the docInfo.vue-style references block.
 export function EmbedChatSurface(props: {
   messages: EmbedChatMessage[];
   suggestedQuestions: string[];
@@ -411,13 +546,91 @@ export function EmbedChatSurface(props: {
   welcomeMessage: string;
   locale: Locale;
   onSuggest: (question: string) => void;
+  /** Scroll-paged history (useEmbedChatSession onChatScrollTop, debounced 500ms). */
+  loadingOlder?: boolean;
+  hasMoreHistory?: boolean;
+  onReachTop?: () => void;
+  /** Embed chunk loader backing the kb citation pill popover. */
+  fetchChunk?: (chunkId: string) => Promise<string>;
+  onFollowUpSelect?: (entry: EmbedChatMessage, set: EmbedReadySuggestions, question: EmbedSuggestionItem) => void;
+  onDismissFollowUps?: (entry: EmbedChatMessage, set: EmbedReadySuggestions) => void;
+  onRegenerateFollowUps?: (entry: EmbedChatMessage, set: EmbedReadySuggestions) => void;
 }) {
   const hasUserMessage = props.messages.some((entry) => entry.role === 'user');
   const welcome = props.welcomeMessage.trim();
   const showSuggested = !hasUserMessage && (props.suggestedLoading || props.suggestedQuestions.length > 0);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const reachTopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Scroll restore for prepended history (handleMsgList: scrollTop =
+  // newScrollHeight - oldScrollHeight).
+  const prevHeightRef = useRef(0);
+  const wasLoadingOlderRef = useRef(false);
+  const prevCountRef = useRef(props.messages.length);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const newHeight = el.scrollHeight;
+    if (wasLoadingOlderRef.current && !props.loadingOlder && prevHeightRef.current > 0 && props.messages.length > prevCountRef.current && el.scrollTop <= 0) {
+      el.scrollTop = scrollOffsetAfterPrepend(prevHeightRef.current, newHeight);
+    }
+    wasLoadingOlderRef.current = Boolean(props.loadingOlder);
+    prevHeightRef.current = newHeight;
+    prevCountRef.current = props.messages.length;
+  }, [props.messages, props.loadingOlder]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el || !props.onReachTop || reachTopTimerRef.current) return;
+    // Vue debounces the top check by 500ms and guards in-flight/done states.
+    if (!shouldTriggerHistoryLoad(el.scrollTop, Boolean(props.loadingOlder), props.hasMoreHistory === true)) return;
+    reachTopTimerRef.current = setTimeout(() => {
+      reachTopTimerRef.current = null;
+      props.onReachTop?.();
+    }, 500);
+  };
+  useEffect(() => () => { if (reachTopTimerRef.current) clearTimeout(reachTopTimerRef.current); }, []);
+
+  // Citation pill popover (EmbedBotMessage useEmbedCitationPopover openKb).
+  const [citationFloat, setCitationFloat] = useState<{ doc: string; chunkId: string; top: number; left: number; content: string; error: string } | null>(null);
+  const chunkCacheRef = useRef(new Map<string, { content: string; error?: string }>());
+  const openCitation = (doc: string, chunkId: string, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    setCitationFloat({
+      doc,
+      chunkId,
+      top: rect.bottom + window.scrollY + 6,
+      left: Math.min(rect.left + window.scrollX, window.innerWidth - 320),
+      content: '',
+      error: '',
+    });
+    const scope = chunkCacheRef.current;
+    const cached = scope.get(chunkId);
+    if (cached) {
+      setCitationFloat({ doc, chunkId, top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 320), content: cached.content, error: cached.error || '' });
+      return;
+    }
+    if (!props.fetchChunk) {
+      scope.set(chunkId, { content: '', error: 'Failed to load' });
+      setCitationFloat({ doc, chunkId, top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 320), content: '', error: 'Failed to load' });
+      return;
+    }
+    void (async () => {
+      try {
+        const content = String(await props.fetchChunk?.(chunkId) || '').trim();
+        scope.set(chunkId, { content });
+        setCitationFloat((cur) => (cur && cur.chunkId === chunkId ? { ...cur, content } : cur));
+      } catch {
+        scope.set(chunkId, { content: '', error: 'Failed to load' });
+        setCitationFloat((cur) => (cur && cur.chunkId === chunkId ? { ...cur, error: 'Failed to load' } : cur));
+      }
+    })();
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+    <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" onScroll={onScroll}>
       {welcome && !hasUserMessage ? <div className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">{welcome}</div> : null}
+      {props.loadingOlder ? <div className="embed-history-loading self-center text-[12px] text-[#6b7280]">…</div> : null}
       {showSuggested ? (
         <div className="embed-suggested flex flex-col gap-2" aria-busy={props.suggestedLoading}>
           {props.suggestedQuestions.length > 0 ? <p className="m-0 text-[13px] font-medium text-[#6b7280]">{embedText(props.locale, 'suggestedQuestions')}</p> : null}
@@ -436,12 +649,134 @@ export function EmbedChatSurface(props: {
       {props.messages.map((entry, index) => entry.role === 'user' ? (
         <div key={index} className="self-end max-w-[85%] rounded-[12px] px-3 py-2 text-[14px] text-white" style={{ background: 'var(--embed-primary, #2563eb)' }}>{entry.content}</div>
       ) : (
-        <div key={index} className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">
-          {entry.content}
-          {entry.references && entry.references.length > 0 ? <EmbedReferences references={entry.references} locale={props.locale} /> : null}
+        <div key={index} className="embed-answer-row self-start flex max-w-[85%] flex-col gap-2">
+          <div className="rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">
+            <EmbedMessageContent
+              content={entry.content}
+              references={entry.references}
+              onCitation={openCitation}
+            />
+            {entry.references && entry.references.length > 0 ? <EmbedReferences references={entry.references} locale={props.locale} /> : null}
+          </div>
+          {entry.suggestions && !entry.suggestionsDismissed && entry.suggestions.questions.length > 0 ? (
+            <EmbedFollowUps
+              entry={entry}
+              set={entry.suggestions}
+              locale={props.locale}
+              onSelect={props.onFollowUpSelect}
+              onDismiss={props.onDismissFollowUps}
+              onRegenerate={props.onRegenerateFollowUps}
+            />
+          ) : null}
         </div>
       ))}
+      {citationFloat ? (
+        <div
+          className="embed-citation-float fixed z-50 max-w-[300px] rounded-[8px] border border-[#e7eaef] bg-white px-3 py-2 text-[12px] text-[#1f2329] shadow-lg"
+          style={{ top: citationFloat.top, left: citationFloat.left }}
+          onMouseLeave={() => setCitationFloat(null)}
+        >
+          <div className="font-medium">{citationFloat.doc}</div>
+          {citationFloat.error ? <div className="text-[#b91c1c]">{citationFloat.error}</div> : citationFloat.content
+            ? <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[#4b5563]">{citationFloat.content}</div>
+            : <div className="text-[#6b7280]">…</div>}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+// FollowUpSuggestions.vue visible behavior: title row with optional refresh
+// (allow_regenerate) and dismiss controls, then one button per question.
+function EmbedFollowUps(props: {
+  entry: EmbedChatMessage;
+  set: EmbedReadySuggestions;
+  locale: Locale;
+  onSelect?: (entry: EmbedChatMessage, set: EmbedReadySuggestions, question: EmbedSuggestionItem) => void;
+  onDismiss?: (entry: EmbedChatMessage, set: EmbedReadySuggestions) => void;
+  onRegenerate?: (entry: EmbedChatMessage, set: EmbedReadySuggestions) => void;
+}) {
+  return (
+    <div className="embed-followups w-full rounded-[12px] border border-[#eef1f5] bg-[#f8fafc] p-3" aria-live="polite">
+      <div className="mb-2 flex items-center justify-between text-[13px] font-semibold text-[#6b7280]">
+        <span>{embedText(props.locale, 'followUpQuestions')}</span>
+        <span className="flex gap-1">
+          {props.set.allowRegenerate ? (
+            <button
+              type="button"
+              className="cursor-pointer rounded-[6px] border-0 bg-transparent px-2 py-1 text-[12px] text-[#6b7280] hover:text-[color:var(--embed-primary,#2563eb)]"
+              onClick={() => props.onRegenerate?.(props.entry, props.set)}
+            >{embedText(props.locale, 'refreshSuggestedQuestions')}</button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={embedText(props.locale, 'close')}
+            className="cursor-pointer rounded-[6px] border-0 bg-transparent px-2 py-1 text-[12px] text-[#6b7280] hover:text-[color:var(--embed-primary,#2563eb)]"
+            onClick={() => props.onDismiss?.(props.entry, props.set)}
+          >✕</button>
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {props.set.questions.map((question) => (
+          <button
+            key={question.id || question.text}
+            type="button"
+            className="flex w-full cursor-pointer items-center justify-between rounded-[8px] border border-[#eef1f5] bg-white px-3 py-2 text-left text-[13px] leading-snug text-[#1f2329] hover:border-[#d8dde5]"
+            onClick={() => props.onSelect?.(props.entry, props.set, question)}
+          >
+            <span>{question.text}</span>
+            <span aria-hidden="true" className="text-[#9ca3af]">↗</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function truncateCitationLabel(text: string, maxLength = 13): string {
+  if (text.length <= maxLength) return text;
+  const half = Math.floor((maxLength - 3) / 2);
+  return `${text.slice(0, half + ((maxLength - 3) % 2))}...${text.slice(-half)}`;
+}
+
+// Inline citation pills (citationMarkdown preprocessCitationTags): plain text
+// stays text, <web/> becomes an external link pill, <kb/> a popover pill.
+function EmbedMessageContent(props: {
+  content: string;
+  references?: EmbedReference[];
+  onCitation: (doc: string, chunkId: string, el: HTMLElement) => void;
+}) {
+  const segments = parseCitationSegments(props.content, (props.references ?? []) as unknown as Record<string, unknown>[]);
+  if (segments.length === 0) return null;
+  if (segments.length === 1 && segments[0].type === 'text') return <>{segments[0].text}</>;
+  return (
+    <>
+      {segments.map((segment: CitationSegment, index) => {
+        if (segment.type === 'text') return <span key={index}>{segment.text}</span>;
+        if (segment.type === 'web') {
+          return (
+            <a
+              key={index}
+              className="embed-citation-web mx-0.5 rounded-[6px] border border-[#eef1f5] bg-white px-1.5 py-0.5 text-[12px] text-[color:var(--embed-primary,#2563eb)] no-underline hover:border-[#d8dde5]"
+              href={segment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={segment.title}
+            >{segment.domain}</a>
+          );
+        }
+        return (
+          <button
+            key={index}
+            type="button"
+            className="embed-citation-kb mx-0.5 cursor-pointer rounded-[6px] border border-[#eef1f5] bg-white px-1.5 py-0.5 text-[12px] text-[#1f2329] hover:border-[#d8dde5]"
+            data-chunk-id={segment.chunkId}
+            data-doc={segment.doc}
+            onClick={(event) => props.onCitation(segment.doc, segment.chunkId, event.currentTarget)}
+          >{truncateCitationLabel(segment.doc)}</button>
+        );
+      })}
+    </>
   );
 }
 

@@ -78,13 +78,24 @@ const catalogue = [
 interface UiCalls { requests: Array<{ method: string; path: string; body: Record<string, unknown> }> }
 
 function clientFor(calls: UiCalls, mode: 'ok' | 'fail' = 'ok'): WeKnoraClient {
+  const request = async (input: { method: string; path: string; body: Record<string, unknown> }) => {
+    calls.requests.push({ method: input.method, path: input.path, body: input.body });
+    if (mode === 'fail') throw new Error('save rejected');
+    return { success: true };
+  };
   return {
-    request: async (input: { method: string; path: string; body: Record<string, unknown> }) => {
-      calls.requests.push({ method: input.method, path: input.path, body: input.body });
-      if (mode === 'fail') throw new Error('save rejected');
-      return { success: true };
-    },
+    request,
     knowledgeBases: {
+      documents: {
+        // Vue isIndexingLocked probe (loadKBData): document bases only, routed
+        // through the same transport as every other request.
+        list: async (kbId: string, params: Record<string, number> = {}) => {
+          const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+          const suffix = query.toString();
+          await request({ method: 'GET', path: `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/knowledge${suffix ? `?${suffix}` : ''}`, body: {} });
+          return { data: [], total: 0 };
+        },
+      },
       settings: {
         parserEngines: async () => ({ data: [] }),
         storageBackends: async () => ({ data: [] }),
@@ -240,8 +251,8 @@ test('multimodal section renders the Vue rows and saves the draft through the PU
   await setValue(instructions, 'alt text');
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2, 'R441: Vue doSubmit now also runs the base update for document bases');
-  const body = calls.requests[1]!.body as { vlm_config?: Record<string, unknown> };
+  assert.equal(calls.requests.length, 3, 'mount-time documents probe plus the doSubmit pair for document bases');
+  const body = calls.requests[2]!.body as { vlm_config?: Record<string, unknown> };
   assert.deepEqual(body.vlm_config, { enabled: true, model_id: 'vlm-9', description_language: 'Korean', custom_instructions: 'alt text' });
 });
 
@@ -255,7 +266,7 @@ test('switching multimodal off hides the Vue conditional rows and clears model_i
 
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  const body = calls.requests[1]!.body as { vlm_config?: Record<string, unknown> };
+  const body = calls.requests[2]!.body as { vlm_config?: Record<string, unknown> };
   assert.deepEqual(body.vlm_config, { enabled: false, model_id: '', description_language: 'Chinese', custom_instructions: 'describe' });
 });
 
@@ -265,7 +276,7 @@ test('enabled multimodal without a model blocks the save with the Vue multimodal
   await openSection('multimodal');
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 0, 'Vue validateForm returns before any request');
+  assert.equal(calls.requests.length, 1, 'Vue validateForm returns before any request (only the mount-time documents probe ran)');
   assert.match(document.body.textContent ?? '', /multimodal/i);
   assert.equal(document.body.querySelector('button[data-section="multimodal"]')?.className.includes('is-active'), true, 'Vue jumps to the multimodal section');
 });
@@ -288,7 +299,7 @@ test('asr section renders the Vue toggle and ASR model selector', async () => {
   await setValue(model, 'asr-9');
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  const body = calls.requests[1]!.body as { asr_config?: Record<string, unknown> };
+  const body = calls.requests[2]!.body as { asr_config?: Record<string, unknown> };
   assert.deepEqual(body.asr_config, { enabled: true, model_id: 'asr-9', language: 'zh-CN' });
 });
 
@@ -314,7 +325,7 @@ test('faq section renders the Vue index-mode radios and saves through the base u
 
   await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT');
+  assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT (FAQ bases never run the document probe)');
   const base = calls.requests[0]!;
   assert.equal(base.method, 'PUT');
   assert.equal(base.path, '/api/v1/knowledge-bases/kb-faq');

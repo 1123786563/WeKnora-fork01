@@ -123,12 +123,23 @@ test('FAQ base update never carries the document-only config blocks', () => {
 interface UiCalls { requests: Array<{ method: string; path: string; body: Record<string, unknown> }> }
 
 function clientFor(calls: UiCalls): WeKnoraClient {
+  const request = async (input: { method: string; path: string; body: Record<string, unknown> }) => {
+    calls.requests.push({ method: input.method, path: input.path, body: input.body });
+    return { success: true };
+  };
   return {
-    request: async (input: { method: string; path: string; body: Record<string, unknown> }) => {
-      calls.requests.push({ method: input.method, path: input.path, body: input.body });
-      return { success: true };
-    },
+    request,
     knowledgeBases: {
+      documents: {
+        // Vue isIndexingLocked probe (loadKBData): routed through the same
+        // transport as every other request so the counts include it.
+        list: async (kbId: string, params: Record<string, number> = {}) => {
+          const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+          const suffix = query.toString();
+          await request({ method: 'GET', path: `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/knowledge${suffix ? `?${suffix}` : ''}`, body: {} });
+          return { data: [], total: 0 };
+        },
+      },
       settings: {
         parserEngines: async () => ({ data: [] }),
         storageBackends: async () => ({ data: [] }),
@@ -262,7 +273,7 @@ test('empty name blocks the save with the Vue nameRequired toast before any requ
   await setValue(name, '   ');
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 0, 'Vue validateForm returns before any request');
+  assert.equal(calls.requests.length, 1, 'Vue validateForm returns before any request (only the mount-time documents probe ran)');
   assert.match(document.body.textContent ?? '', /Please enter the knowledge base name/);
   assert.equal(document.body.querySelector('button[data-section="basic"]')?.className.includes('is-active'), true, 'Vue jumps back to the basic section');
 });
@@ -277,7 +288,7 @@ test('disabling every indexing strategy blocks the save with the Vue atLeastOne 
   await setValue(wiki, '', false);
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 0, 'Vue validateForm returns before any request');
+  assert.equal(calls.requests.length, 1, 'Vue validateForm returns before any request (only the mount-time documents probe ran)');
   assert.match(document.body.textContent ?? '', /At least one indexing strategy must be enabled/);
   assert.equal(document.body.querySelector('button[data-section="basic"]')?.className.includes('is-active'), true);
 });
@@ -293,8 +304,8 @@ test('document save issues the Vue doSubmit pair: base update first, then the co
   await clickSave();
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-  assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT');
-  const base = calls.requests[0]!;
+  assert.equal(calls.requests.length, 3, 'the mount-time documents probe plus the Vue doSubmit pair: base update first, then the config PUT');
+  const base = calls.requests[1]!;
   assert.equal(base.method, 'PUT');
   assert.equal(base.path, '/api/v1/knowledge-bases/kb-1');
   assert.deepEqual(base.body, {
@@ -306,7 +317,7 @@ test('document save issues the Vue doSubmit pair: base update first, then the co
       indexing_strategy: { vector_enabled: true, keyword_enabled: false, wiki_enabled: true, graph_enabled: false },
     },
   });
-  const configPut = calls.requests[1]!;
+  const configPut = calls.requests[2]!;
   assert.equal(configPut.path, '/api/v1/initialization/config/kb-1');
   assert.equal('name' in configPut.body, false, 'the KBModelConfigRequest body carries no name (matches Vue)');
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);

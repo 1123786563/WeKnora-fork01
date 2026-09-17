@@ -194,6 +194,54 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const [canSeeAdminSessionSources, setCanSeeAdminSessionSources] = useState(false);
   const authResolvedClientRef = useRef<Client | null>(null);
 
+  // Shared /auth/me reconciliation. The mount bootstrap and the tenant
+  // submenu's throttled refresh both apply the same payload so memberships
+  // and role gating stay consistent (Vue stores/auth.ts refreshFromAuthMe
+  // reconciles user / home tenant / memberships wholesale).
+  const applyAuthMe = useCallback((me: Awaited<ReturnType<Client['auth']['me']>>) => {
+    const record = me.user as Record<string, unknown>;
+    setUser({
+      id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
+      name: typeof record.username === 'string' && record.username ? record.username : '—',
+      email: typeof record.email === 'string' ? record.email : '',
+      avatar: typeof record.avatar === 'string' ? record.avatar : '',
+      tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
+      tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
+      role: '',
+      memberships: (me.memberships ?? []).flatMap((item) => {
+        if (!item || typeof item !== 'object') return [];
+        const row = item as Record<string, unknown>;
+        const rawId = row.tenant_id ?? row.tenantId;
+        if (rawId === undefined || rawId === null || String(rawId).trim() === '') return [];
+        return [{ tenantId: String(rawId), tenantName: typeof row.tenant_name === 'string' && row.tenant_name.trim() ? row.tenant_name : `#${String(rawId)}`, role: typeof row.role === 'string' ? row.role : '' }];
+      }),
+      membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
+      canAccessAllTenants: record.can_access_all_tenants === true,
+    });
+    // R017 RBAC self-resolution (OrganizationsPage parity, Vue
+    // currentTenantRole): the active-tenant membership role — selected
+    // tenant first, falling back to the home tenant — decides entry
+    // visibility, with the can_access_all_tenants superuser flag passing
+    // the admin gate. UI rendering only; the server route guard is the
+    // real boundary. An unknown role ('' — membership data absent, e.g.
+    // embedded/test mounts) fails open and keeps the entry visible.
+    const selectedTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? null;
+    const homeTenantId = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
+    const tenantId = selectedTenantId ?? homeTenantId;
+    let currentRole = '';
+    for (const item of me.memberships ?? []) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const id = row.tenant_id ?? row.tenantId;
+      if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
+    }
+    setCanSeeOrganizations(
+      currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
+    );
+    setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
+    setUser((current) => ({ ...current, role: currentRole }));
+  }, []);
+
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -215,48 +263,34 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     void client.auth.me().then((me) => {
       if (!active) return;
       authResolvedClientRef.current = client;
-      const record = me.user as Record<string, unknown>;
-      setUser({
-        id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
-        name: typeof record.username === 'string' && record.username ? record.username : '—',
-        email: typeof record.email === 'string' ? record.email : '',
-        avatar: typeof record.avatar === 'string' ? record.avatar : '',
-        tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
-        tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
-        role: '',
-        memberships: (me.memberships ?? []).flatMap((item) => {
-          if (!item || typeof item !== 'object') return [];
-          const row = item as Record<string, unknown>;
-          const rawId = row.tenant_id ?? row.tenantId;
-          if (rawId === undefined || rawId === null || String(rawId).trim() === '') return [];
-          return [{ tenantId: String(rawId), tenantName: typeof row.tenant_name === 'string' && row.tenant_name.trim() ? row.tenant_name : `#${String(rawId)}`, role: typeof row.role === 'string' ? row.role : '' }];
-        }),
-        membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
-        canAccessAllTenants: record.can_access_all_tenants === true,
-      });
-      // R017 RBAC self-resolution (OrganizationsPage parity, Vue
-      // currentTenantRole): the active-tenant membership role — selected
-      // tenant first, falling back to the home tenant — decides entry
-      // visibility, with the can_access_all_tenants superuser flag passing
-      // the admin gate. UI rendering only; the server route guard is the
-      // real boundary. An unknown role ('' — membership data absent, e.g.
-      // embedded/test mounts) fails open and keeps the entry visible.
-      const selectedTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? null;
-      const homeTenantId = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
-      const tenantId = selectedTenantId ?? homeTenantId;
-      let currentRole = '';
-      for (const item of me.memberships ?? []) {
-        if (!item || typeof item !== 'object') continue;
-        const row = item as Record<string, unknown>;
-        const id = row.tenant_id ?? row.tenantId;
-        if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
-      }
-      setCanSeeOrganizations(
-        currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
-      );
-      setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
-      setUser((current) => ({ ...current, role: currentRole }));
+      applyAuthMe(me);
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
+    return () => { active = false; };
+  }, [client, applyAuthMe]);
+
+  // Vue menu.vue:1004-1006 fetches the organizations list once on mount
+  // (when not already loaded) purely to power the sidebar pending-join
+  // badge; stores/organization.ts:100-102 totals each org's
+  // pending_join_request_count. Failures degrade to a hidden badge (the
+  // Vue store keeps last-known data and the total starts at 0) — no toast.
+  const [orgPendingJoinRequestCount, setOrgPendingJoinRequestCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    // Defensive lookup: bare test fakes and embed mounts may not provide
+    // the organizations namespace at all.
+    const organizationsApi = (client as unknown as {
+      organizations?: { list?: (signal?: AbortSignal) => Promise<{ items?: ReadonlyArray<Record<string, unknown>> }> };
+    }).organizations;
+    const listOrganizations = organizationsApi?.list?.bind(organizationsApi);
+    if (!listOrganizations) return;
+    void listOrganizations().then((page) => {
+      if (!active) return;
+      const total = (page.items ?? []).reduce((sum, org) => {
+        const pending = org.pending_join_request_count;
+        return sum + (typeof pending === 'number' && Number.isFinite(pending) && pending > 0 ? Math.floor(pending) : 0);
+      }, 0);
+      setOrgPendingJoinRequestCount(total);
+    }).catch(() => { /* keep 0 → badge stays hidden */ });
     return () => { active = false; };
   }, [client]);
 
@@ -281,6 +315,27 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       setTenantSwitchPending(null);
     }
   }, [activeTenantId, onTenantSwitch, tenantSwitchPending]);
+
+  // Vue UserMenu.vue:430-443 — opening the tenant submenu re-fetches
+  // /auth/me at most once per 2s (timestamp throttle) so membership
+  // invites/revokes surface without a reload. Failures are swallowed and
+  // the last-known membership list keeps rendering (refreshFromAuthMe
+  // returns false without a toast on the Vue side).
+  const lastTenantSubmenuMembershipRefreshRef = useRef(0);
+  const TENANT_SUBMENU_MEMBERSHIP_REFRESH_MS = 2000;
+  const toggleTenantSubmenu = useCallback(() => {
+    const next = !tenantMenuOpen;
+    setTenantMenuOpen(next);
+    if (!next) return;
+    const now = Date.now();
+    if (now - lastTenantSubmenuMembershipRefreshRef.current < TENANT_SUBMENU_MEMBERSHIP_REFRESH_MS) return;
+    lastTenantSubmenuMembershipRefreshRef.current = now;
+    void client.auth.me().then((me) => {
+      // A stale client's late response must not clobber the fresh one.
+      if (authResolvedClientRef.current !== client) return;
+      applyAuthMe(me);
+    }).catch(() => { /* keep last-known memberships; degrade silently */ });
+  }, [applyAuthMe, client, tenantMenuOpen]);
 
   // Recent ⌘K searches are namespaced per (user, tenant); reload whenever
   // that identity resolves (mirrors Vue commandPaletteStore's auth watcher).
@@ -684,6 +739,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
                   <span className="inline-flex shrink-0">{item.icon}</span>
                   {!collapsed && <span className="overflow-hidden text-ellipsis">{item.label}</span>}
+                  {/* Vue menu.vue:93-98 — amber pending-join pill on the
+                      organizations entry, expanded rail only, raw count. */}
+                  {!collapsed && item.key === 'organizations' && orgPendingJoinRequestCount > 0 && (
+                    <span data-testid="org-pending-badge" title={t('organization.settings.pendingJoinRequestsBadge')}
+                      className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-[9px] bg-[rgba(250,173,20,0.2)] px-[5px] text-[12px] font-semibold leading-[18px] text-[#e37318]">
+                      {orgPendingJoinRequestCount}
+                    </span>
+                  )}
                 </a>
               );
             })}
@@ -781,7 +844,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   {labels.workspaceSettings}
                 </a>
                 {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
-                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={() => setTenantMenuOpen((open) => !open)}>
+                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={toggleTenantSubmenu}>
                     <span>{t('tenant.switcher.menuLabel')}</span><span aria-hidden="true">{tenantMenuOpen ? '⌃' : '⌄'}</span>
                   </button>
                   {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="mt-[2px] max-h-[180px] overflow-y-auto">

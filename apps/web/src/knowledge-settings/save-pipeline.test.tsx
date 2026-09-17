@@ -149,14 +149,26 @@ test('saveKnowledgeSettings PUTs the payload through the authenticated client tr
 
 interface UiCalls { requests: Array<{ method: string; path: string; body: Record<string, unknown> }> }
 
+function documentsList(request: (input: { method: string; path: string; body: Record<string, unknown> }) => Promise<unknown>) {
+  // Vue isIndexingLocked probe (loadKBData): routed through the same transport
+  // as every other request so the counts include it.
+  return async (kbId: string, params: Record<string, number> = {}) => {
+    const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+    const suffix = query.toString();
+    return await request({ method: 'GET', path: `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/knowledge${suffix ? `?${suffix}` : ''}`, body: {} });
+  };
+}
+
 function clientFor(calls: UiCalls, mode: 'ok' | 'fail' = 'ok'): WeKnoraClient {
+  const request = async (input: { method: string; path: string; body: Record<string, unknown> }) => {
+    calls.requests.push({ method: input.method, path: input.path, body: input.body });
+    if (mode === 'fail') throw new Error('storage backend unavailable');
+    return { success: true };
+  };
   return {
-    request: async (input: { method: string; path: string; body: Record<string, unknown> }) => {
-      calls.requests.push({ method: input.method, path: input.path, body: input.body });
-      if (mode === 'fail') throw new Error('storage backend unavailable');
-      return { success: true };
-    },
+    request,
     knowledgeBases: {
+      documents: { list: documentsList(request) },
       settings: {
         parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true }, { Name: 'builtin', Description: 'Built-in', Available: true }] }),
         storageBackends: async () => ({ data: [{ id: 'st-1', name: 'Main storage', provider: 's3', status: 'ready' }] }),
@@ -205,6 +217,7 @@ test('save button is gated to owner/admin and disabled while a save is in flight
       return { success: true };
     },
     knowledgeBases: {
+      documents: { list: documentsList(async (input) => { calls.requests.push({ method: input.method, path: input.path, body: input.body }); await gate; return { success: true }; }) },
       settings: {
         parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true }] }),
         storageBackends: async () => ({ data: [] }),
@@ -219,16 +232,16 @@ test('save button is gated to owner/admin and disabled while a save is in flight
     save.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await Promise.resolve();
   });
-  assert.equal(calls.requests.length, 1, 'first click starts exactly one request pair (base update in flight)');
+  assert.equal(calls.requests.length, 2, 'the mount-time documents probe plus exactly one in-flight request pair (base update)');
   assert.equal(save.disabled, true, 'save button must be disabled while saving (Vue :loading="saving")');
   await act(async () => {
     save.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await Promise.resolve();
   });
-  assert.equal(calls.requests.length, 1, 'repeat clicks while saving must be ignored');
+  assert.equal(calls.requests.length, 2, 'repeat clicks while saving must be ignored');
   await act(async () => { releaseSave!(); await gate; });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2, 'the base update resolves first, then the config PUT follows');
+  assert.equal(calls.requests.length, 3, 'mount probe, then the base update, then the config PUT');
   assert.equal(save.disabled, false, 'save button re-enables after the save settles');
   assert.match(document.body.textContent ?? '', /Configuration saved successfully/);
 });
@@ -248,8 +261,8 @@ test('a successful save persists the Vue update payload carrying the pending par
   });
   await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT');
-  const request = calls.requests[1]!;
+  assert.equal(calls.requests.length, 3, 'mount probe plus the Vue doSubmit pair: base update first, then the config PUT');
+  const request = calls.requests[2]!;
   assert.equal(request.method, 'PUT');
   assert.equal(request.path, '/api/v1/initialization/config/kb-1');
   const splitting = (request.body as { documentSplitting?: { parserEngineRules?: Array<Record<string, unknown>> } }).documentSplitting;
@@ -280,7 +293,7 @@ test('a failed save keeps the form state and surfaces the error message', async 
   assert.equal(selectAfter.disabled, false, 'the form must stay editable after a failed save');
   await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  assert.equal(calls.requests.length, 2, 'retry after failure issues a new PUT');
+  assert.equal(calls.requests.length, 3, 'mount probe plus the original pair and the retry PUT');
 });
 
 test('viewers get no save button (Vue canManage gating)', async () => {
@@ -288,7 +301,7 @@ test('viewers get no save button (Vue canManage gating)', async () => {
   await renderPage(clientFor(calls), 'viewer');
   const labels = [...document.body.querySelectorAll('button')].map((candidate) => (candidate.textContent ?? '').trim());
   assert.equal(labels.includes('Save Configuration'), false, 'viewer must not see the save button');
-  assert.equal(calls.requests.length, 0);
+  assert.equal(calls.requests.length, 1, 'only the mount-time documents probe runs for a viewer');
 });
 
 // Vue loadKBData seeds chunking with `||` fallbacks: a stored chunk_overlap 0

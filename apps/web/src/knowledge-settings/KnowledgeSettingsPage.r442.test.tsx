@@ -69,16 +69,27 @@ interface UiCalls {
   previews: Array<{ text: string; chunking_config: Record<string, unknown> }>;
 }
 
-function clientFor(calls: UiCalls, options: { preview?: () => unknown } = {}): WeKnoraClient {
+function clientFor(calls: UiCalls, options: { preview?: () => unknown; documentsTotal?: number } = {}): WeKnoraClient {
+  const request = async (input: { method: string; path: string; body: Record<string, unknown> }) => {
+    calls.requests.push({ method: input.method, path: input.path, body: input.body });
+    return { success: true };
+  };
   return {
-    request: async (input: { method: string; path: string; body: Record<string, unknown> }) => {
-      calls.requests.push({ method: input.method, path: input.path, body: input.body });
-      return { success: true };
-    },
+    request,
     configuration: {
       models: { list: async () => [] },
     },
     knowledgeBases: {
+      documents: {
+        // Vue isIndexingLocked probe (loadKBData): routed through the same
+        // transport as every other request so the counts include it.
+        list: async (kbId: string, params: Record<string, number> = {}) => {
+          const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+          const suffix = query.toString();
+          await request({ method: 'GET', path: `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/knowledge${suffix ? `?${suffix}` : ''}`, body: {} });
+          return { data: [], total: options.documentsTotal ?? 0 };
+        },
+      },
       settings: {
         parserEngines: async () => ({ data: [] }),
         storageBackends: async () => ({ data: [] }),
@@ -261,7 +272,7 @@ test('save enforces the Vue models contract: embedding required only with RAG on
   await renderPage(clientFor(callsA), { ...knowledgeBase, embedding_model_id: '' });
   await clickSave();
   await act(async () => { await Promise.resolve(); });
-  assert.equal(callsA.requests.length, 0, 'Vue validateForm returns before any request');
+  assert.equal(callsA.requests.length, 1, 'Vue validateForm returns before any request (only the mount-time documents probe ran)');
   assert.match(document.body.textContent ?? '', /RAG search requires an Embedding model/);
   const activeA = document.body.querySelector('button[data-section="models"][aria-current="page"]');
   assert.ok(activeA, 'the editor jumps to the models section');
@@ -271,7 +282,7 @@ test('save enforces the Vue models contract: embedding required only with RAG on
   await renderPage(clientFor(callsB), { ...knowledgeBase, summary_model_id: '' });
   await clickSave();
   await act(async () => { await Promise.resolve(); });
-  assert.equal(callsB.requests.length, 0);
+  assert.equal(callsB.requests.length, 1, 'only the mount-time documents probe ran');
   assert.match(document.body.textContent ?? '', /Please select a summary model/);
   assert.ok(document.body.querySelector('button[data-section="models"][aria-current="page"]'));
 
