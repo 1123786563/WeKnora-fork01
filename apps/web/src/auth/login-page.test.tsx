@@ -47,6 +47,10 @@ afterEach(async () => {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
   document.body.replaceChildren();
+  // Language selection persists to localStorage; clear it so the next test
+  // mounts with the default zh-CN locale.
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 const settle = (ms: number) => act(async () => {
@@ -110,6 +114,33 @@ test('OIDC failure presents a visible localized toast', async () => {
   assert.ok(oidc, 'expected the OIDC button');
   await act(async () => { oidc.click(); await settle(10); });
   assert.match(document.querySelector('[data-testid="auth-toast"]')?.textContent ?? '', /OIDC unavailable/);
+});
+
+// R445 A4: Vue Login.vue:636/647 — when the authorization-URL request fails
+// without a backend message the fallback is auth.oidcLoginFailed, not the
+// generic login-retry copy the React page used before this parity pass.
+test('OIDC failure without a backend message falls back to the Vue auth.oidcLoginFailed copy', async () => {
+  const client = fakeClient();
+  (client.auth as Record<string, unknown>).oidcConfig = async () => ({ enabled: true });
+  (client.auth as Record<string, unknown>).oidcUrl = async () => { throw 'network-down'; };
+  await mountLogin(client);
+  const oidc = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('OIDC')) as HTMLButtonElement;
+  assert.ok(oidc, 'expected the OIDC button');
+  await act(async () => { oidc.click(); await settle(10); });
+  assert.match(document.querySelector('[data-testid="auth-toast"]')?.textContent ?? '', /OIDC 登录失败/);
+});
+
+// R445 A4: Vue Login.vue:522-528 — selecting a language persists it and toasts
+// language.languageSaved through MessagePlugin.success.
+test('selecting a language toasts the Vue language.languageSaved confirmation', async () => {
+  await mountLogin(fakeClient());
+  const trigger = document.querySelector('.language-switch > button') as HTMLButtonElement;
+  await act(async () => { trigger.click(); });
+  const english = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('English')) as HTMLButtonElement;
+  await act(async () => { english.click(); });
+  const toast = document.querySelector('[data-testid="auth-toast"]');
+  assert.ok(toast, 'expected a toast after switching language');
+  assert.match(toast.textContent ?? '', /Language settings saved/);
 });
 
 test('validation errors are associated with their inputs', async () => {
