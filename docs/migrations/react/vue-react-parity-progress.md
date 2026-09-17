@@ -4658,3 +4658,30 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1560/1560, `pnpm test:shared` 600/600, `pnpm typecheck:web` clean, `pnpm build:web` ✓
   (dispatched reviewer's and orchestrator's runs agree; +15 vs R444). Evidence:
   `evidence/vue-react-parity/2026-09-17-r445-code-parity-round.md`. No Vue, mobile, or Go code was modified.
+
+## 2026-09-17 Round R446 — Embed mermaid hydration + paired-browser regression sweep
+
+- Four parallel agents: A1/A2 paired-browser regression over the R439-R445 code rounds, A3 mermaid hydration,
+  A4 verifier (verdict: A3 PASS, zero rework; gates on merged HEAD 1571/1571 web, 602/602 shared, typecheck and
+  build clean; the external process landed a mid-round fix for a transient attachments.ts TS error — attributed
+  there). Also at round open: committed the R445 ledger/matrix/evidence that closure had left uncommitted
+  (`125eb724`), and restarted both dev servers.
+- A3: mermaid blocks in embed answers hydrate after completion, mirroring Vue EmbedBotMessage — markdown
+  renderer tags fences (DOMPurify ALLOWED_ATTR +data-markdown-diagram only), hydration delegates to the shared
+  views engine (mermaid 11.15.0 via packages/views, no direct dep), live answers gain is_completed on submit
+  success, failures degrade to the code block. 11 controlled-promise tests; embed suites 61/61; mermaid ships
+  as its own async chunk. Deferred (views-readonly): badge/fullscreen chrome, per-color themes.
+- A1 browser sweep (24 screenshots): VERIFIED live — R444 overlap fix (80), chips anatomy, Embedding required
+  star with vector on, wiki markdown/[[link]]/footer, login language toast. NEW defects (R447 queue): D1 high —
+  React settings page auto-redirects to the VUE origin (:5180/platform/knowledge-bases?scope=all) after ~8s
+  idle, reproduced 3× (root cause unknown); D2 high — 「测试分块效果」preview fails 「Invalid chunking preview
+  response」 (response-shape mismatch, R442 slice); D3 strategy dropdown blank; D5 activity empty-card coexists
+  with the table; D6 untranslated general.helpAndDocs; D7 退出 click ineffective. D4 correction: Parity KB Demo
+  has 1 file — the storage select being disabled on BOTH ends is correct.
+- A2 browser sweep (15 screenshots): shared drawer R445 regression PASSES on both ends (fixture intact);
+  pending-approval badge correctly absent on both; embed no-token/invalid-token states match Vue copy; naming
+  diff recorded (待审核申请 vs 加入申请). Full embed handshake/chat untestable (no channel configured). Process
+  note: shared-browser contention between A1/A2 detected; captures redone atomically.
+- Gates: `pnpm test:web` 1571/1571, `pnpm test:shared` 602/602, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r446-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
