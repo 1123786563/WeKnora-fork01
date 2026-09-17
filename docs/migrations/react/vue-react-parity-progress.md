@@ -4847,3 +4847,31 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1634/1634, `pnpm test:shared` 606/606, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r452-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R453 — Feishu prereq port, empty-state re-attribution, shared-glob repair, integrity audit
+
+- Three parallel agents (A1 data-sources empty-state i18n + feishu prereq port, A2 commit-integrity audit, A3
+  verifier) plus orchestrator-executed batch-1 from the audit. Verdict: A1 PASS, A2 PASS; final gates
+  test:web 1638/1638 (+4), test:shared 746/746 under the repaired glob, typecheck clean, build ✓.
+- A1: the R452 empty-state English was RE-ATTRIBUTED — DataSourcesPage.tsx is fully i18n-wired; the English
+  tiles come from the KB-settings modal's summary (KnowledgeSettingsPage.tsx:352/:1056, knowledge-settings
+  domain, queued for its owner; a doesNotMatch guard test added). The feishu prereq 配置指引 block ported per
+  DataSourceEditorDialog.vue (requiredPermissions gating for feishu/lark/drive variants, 3-step per-type copy +
+  permission-code fallback + prereqOpenConsole link) plus docHint/openDoc; VUE_CONNECTOR_GUIDES metadata
+  byte-aligned; +41 dataSource.* keys ×5 locale byte-exact (guard 183→224). data-sources 55/55; i18n 70/70.
+- A2 audit (read-only): missing-module scan ~1560 files/2000+ imports ALL resolve (zero lingering R442/R444/
+  R451-class incidents); 24 CI-blind test files found (test:shared glob gaps: domain/craft+mobile,
+  api-client/craft+transport, contracts/craft, core/craft, happy-wire, ui/theme, views chat-copy/craft/guides —
+  spot-checks healthy, CI never ran them); i18n guards all consistent; 1 orphan platform-shell.css (hygiene).
+- Orchestrator batch-1: test:shared glob extended (+ui .ts suffix, views/chat .ts, craft, guides, domain
+  mobile/craft, api-client craft/transport, contracts/craft, core/craft). Expanded run exposed the vendored
+  @slopus/happy-wire vitest suite (own runner/build, not a workspace member) — excluded with an in-package
+  test:shared:note. Final: test:shared 746/746 (+144 newly gated, −4 vendored excluded).
+- Documentary note: the external process's `f3957313` ("chore: 删除过期的 artifacts…") swept A1's six
+  uncommitted data-sources feature files into its own commit alongside artifact deletions — recorded, no
+  history rewrite; A1's gates ran on the merged state and pass.
+- Gates: `pnpm test:web` 1638/1638, `pnpm test:shared` 746/746, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r453-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round. Deferred queue: KnowledgeSettingsPage summary-tile i18n (knowledge-settings domain);
+  platform-shell.css orphan deletion; pre-push import-resolvability + test-glob self-check script (A2
+  suggestion).
