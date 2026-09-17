@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, parseCredentialLines, serializeAuthHeaders, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS } from './form.ts';
+import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, parseCredentialLines, serializeAuthHeaders, VUE_CONNECTOR_GUIDES, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS } from './form.ts';
 import type { DataSource } from '@weknora/api-client';
 
 test('parses connector credentials from key-value lines and rejects malformed secrets', () => {
@@ -119,4 +119,31 @@ test('dataSourceFormFrom opens the rss header editor with empty rows', () => {
   assert.deepEqual(dataSourceFormFrom(source).authHeaders, []);
   const plain = { id: 'ds-2', knowledge_base_id: 'kb-1', name: 'Notion', type: 'notion' } as DataSource;
   assert.deepEqual(dataSourceFormFrom(plain).authHeaders, []);
+});
+
+// R453 A1: Vue DataSourceEditorDialog connectorDefs carry the guide metadata
+// that drives the prereq setup-guide (requiredPermissions.length > 0) and the
+// docHint/openDoc alert (docUrl non-empty).
+test('connector guide metadata matches the Vue connectorDefs contract', () => {
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.feishu, {
+    docUrl: 'https://open.feishu.cn/app',
+    permissionPageUrl: 'https://open.feishu.cn/app',
+    requiredPermissions: ['wiki:wiki:readonly', 'drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'],
+  });
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.lark, {
+    docUrl: 'https://open.larksuite.com/app',
+    permissionPageUrl: 'https://open.larksuite.com/app',
+    requiredPermissions: ['wiki:wiki:readonly', 'drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'],
+  });
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.feishu_drive.requiredPermissions, ['drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly']);
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.lark_drive.permissionPageUrl, 'https://open.larksuite.com/app');
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.yuque, {
+    docUrl: 'https://www.yuque.com/yuque/developer/api',
+    permissionPageUrl: 'https://www.yuque.com/settings/tokens',
+    requiredPermissions: ['repo:read', 'doc:read'],
+  });
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.notion, { docUrl: 'https://www.notion.so/my-integrations', permissionPageUrl: '', requiredPermissions: [] }, 'notion only shows the docHint alert');
+  assert.deepEqual(VUE_CONNECTOR_GUIDES.ima, { docUrl: 'https://ima.qq.com/agent-interface', permissionPageUrl: 'https://ima.qq.com/agent-interface', requiredPermissions: [] }, 'ima only shows the docHint alert');
+  assert.equal(VUE_CONNECTOR_GUIDES.rss, undefined);
+  assert.equal(VUE_CONNECTOR_GUIDES.gitlab, undefined);
 });

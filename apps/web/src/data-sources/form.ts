@@ -150,6 +150,23 @@ export const VUE_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
   gitlab: [{ key: 'base_url', label: 'dataSource.gitlab.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.gitlab.accessToken', secret: true }],
 };
 
+export type ConnectorGuide = { docUrl: string; permissionPageUrl: string; requiredPermissions: string[] };
+
+// Ported from the Vue DataSourceEditorDialog connectorDefs: the guide metadata
+// that drives the step-1 collapsible prereq setup-guide (shown only when
+// requiredPermissions.length > 0, i.e. feishu/lark/feishu_drive/lark_drive/
+// yuque) and the docHint inline alert with the openDoc link (shown whenever
+// docUrl is non-empty, which also covers notion and ima).
+export const VUE_CONNECTOR_GUIDES: Record<string, ConnectorGuide> = {
+  feishu: { docUrl: 'https://open.feishu.cn/app', permissionPageUrl: 'https://open.feishu.cn/app', requiredPermissions: ['wiki:wiki:readonly', 'drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'] },
+  lark: { docUrl: 'https://open.larksuite.com/app', permissionPageUrl: 'https://open.larksuite.com/app', requiredPermissions: ['wiki:wiki:readonly', 'drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'] },
+  feishu_drive: { docUrl: 'https://open.feishu.cn/app', permissionPageUrl: 'https://open.feishu.cn/app', requiredPermissions: ['drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'] },
+  lark_drive: { docUrl: 'https://open.larksuite.com/app', permissionPageUrl: 'https://open.larksuite.com/app', requiredPermissions: ['drive:drive:readonly', 'drive:export:readonly', 'docx:document:readonly'] },
+  yuque: { docUrl: 'https://www.yuque.com/yuque/developer/api', permissionPageUrl: 'https://www.yuque.com/settings/tokens', requiredPermissions: ['repo:read', 'doc:read'] },
+  notion: { docUrl: 'https://www.notion.so/my-integrations', permissionPageUrl: '', requiredPermissions: [] },
+  ima: { docUrl: 'https://ima.qq.com/agent-interface', permissionPageUrl: 'https://ima.qq.com/agent-interface', requiredPermissions: [] },
+};
+
 // Vue renders rss feed URLs as a dedicated settings field with its hint line
 // (datasource.field.feedUrlsHint) instead of generic credential inputs.
 export const VUE_SETTINGS_FIELDS: Record<string, CredentialField[]> = {

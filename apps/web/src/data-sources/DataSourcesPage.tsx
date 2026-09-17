@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourceSyncLog, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Checkbox, Input, Select, Sheet, Status, Textarea } from '@weknora/ui';
-import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, serializeAuthHeaders, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS, type CredentialField, type DataSourceFormValues, type GitLabProjectInput, type HeaderRow } from './form.ts';
+import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, serializeAuthHeaders, VUE_CONNECTOR_GUIDES, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS, type CredentialField, type DataSourceFormValues, type GitLabProjectInput, type HeaderRow } from './form.ts';
 import { extractDriveFolderToken, isDriveConnector, resourceCheckStates, toggleResourceSelection } from './resource-selection.ts';
 import { classifyDataSourceError } from './error-state.ts';
 import { isSyncRunning, mergeSyncLogs } from './log-state.ts';
@@ -23,6 +23,21 @@ const syncStatusKeys: Record<string, string> = {
 function localizedSyncStatus(t: (key: string) => string, status: unknown): string {
   if (typeof status !== 'string' || status.length === 0) return '';
   return syncStatusKeys[status] ? t(syncStatusKeys[status]) : status;
+}
+
+// Vue t(perTypeKey, fallbackKey): the per-type prereq copy wins; the shared
+// fallback applies when the per-type key is missing (formatMessage returns
+// the key itself when no locale carries it).
+function prereqCopy(t: (key: string) => string, perTypeKey: string, fallbackKey: string): string {
+  const value = t(perTypeKey);
+  return value === perTypeKey ? t(fallbackKey) : value;
+}
+
+// Vue renders permission <code> tags only when no per-type step-2 description
+// exists; formatMessage echoes the key back when it is missing, which is the
+// missing-key signal here.
+function hasKey(t: (key: string) => string, key: string): boolean {
+  return t(key) !== key;
 }
 
 // Vue ds-card__status colors: active→success, paused→warning, error→error.
@@ -71,6 +86,10 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
   const [editing, setEditing] = useState<DataSource | null | undefined>(undefined);
   const [credentialStep, setCredentialStep] = useState(() => initialCredentialStepState(false));
   const [createStep, setCreateStep] = useState<'type' | 'form'>('type');
+  // Vue DataSourceEditorDialog prereqExpanded: the step-1 setup-guide starts
+  // collapsed and resets whenever the editor (re)opens or the user picks a
+  // connector type (openEditor / nextStep set prereqExpanded.value = false).
+  const [prereqExpanded, setPrereqExpanded] = useState(false);
   const [form, setForm] = useState<DataSourceFormValues>(newForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,14 +129,15 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     return stopPolling;
   }, [client, knowledgeBaseId]);
 
-  function openCreate() { if (accessDenied || !canManage) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setCredentialStep(initialCredentialStepState(false)); setResourceSource(null); setMessage(null); }
+  function openCreate() { if (accessDenied || !canManage) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setCredentialStep(initialCredentialStepState(false)); setResourceSource(null); setMessage(null); setPrereqExpanded(() => false); }
   function chooseCreateType(type: string) {
     // Vue openEditor def branch: creating a gitlab connector seeds exactly one
     // empty project row (addGitLabProject) so the editor never starts blank.
     setForm((current) => ({ ...current, type, gitlabProjects: type === 'gitlab' && (current.gitlabProjects ?? []).length === 0 ? [{ ...emptyGitLabProject }] : current.gitlabProjects }));
     setCreateStep('form');
+    setPrereqExpanded(() => false);
   }
-  function openEdit(source: DataSource) { if (!canManage) return; setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setCredentialStep(initialCredentialStepState((source as { credentials?: { credentials?: { configured?: unknown } } })?.credentials?.credentials?.configured === true)); setResourceSource(null); setMessage(null); }
+  function openEdit(source: DataSource) { if (!canManage) return; setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setCredentialStep(initialCredentialStepState((source as { credentials?: { credentials?: { configured?: unknown } } })?.credentials?.credentials?.configured === true)); setResourceSource(null); setMessage(null); setPrereqExpanded(() => false); }
   function updateForm<K extends keyof DataSourceFormValues>(key: K, value: DataSourceFormValues[K]) { setForm((current) => ({ ...current, [key]: value })); }
 
   async function save(event?: FormEvent<HTMLFormElement>) {
@@ -270,6 +290,9 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
   }
   async function expandAllResources() { if (!resourceSource) return; setResourceLoading(true); setResourceError(null); try { const byId = new Map(resources.map((resource) => [resource.external_id, resource])); const queue = resources.filter((resource) => resource.has_children).map((resource) => resource.external_id); const visited = new Set<string>(); while (queue.length > 0) { const parentId = queue.shift()!; if (visited.has(parentId)) continue; visited.add(parentId); const children = await dataSources.resources(resourceSource.id, parentId); for (const child of children) { byId.set(child.external_id, child); if (child.has_children) queue.push(child.external_id); } } setResources([...byId.values()]); } catch (error) { const classified = classifyDataSourceError(error, t('dataSource.resourceLoadFailed')); setResourceError(classified.kind === 'forbidden' ? t('dataSource.drive.loadForbiddenHint') : classified.kind === 'auth' ? t('dataSource.drive.loadAuthHint') : classified.kind === 'not-found' ? t('dataSource.drive.loadNotFoundHint') : classified.message); } finally { setResourceLoading(false); } }
   const resourceStates = resourceCheckStates(resources, form.resourceIds);
+  // Vue currentDef: the connectorDefs entry for the edited type drives both
+  // the prereq setup-guide and the docHint/openDoc alert.
+  const guide = VUE_CONNECTOR_GUIDES[form.type];
   const kind = credentialStepKind({ isEdit: Boolean(editing), credentialsConfigured: credentialStep.credentialsConfigured, replaceMode: credentialStep.replaceMode });
   const visibleResources = resources.filter((resource) => resource.parent_id === resourceParent || (!resourceParent && !resource.parent_id));
   const createTypes = VUE_CREATE_CONNECTOR_ORDER.flatMap((type) => {
@@ -281,6 +304,18 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: 
     {editing === null && createStep === 'type' ? <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
       {createTypes.map((type) => <button key={type.type} type="button" className="flex min-h-[92px] flex-col items-start gap-1 rounded-[10px] border border-line-soft bg-white px-4 py-3 text-left transition-[border-color,box-shadow] duration-200 hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2" onClick={() => chooseCreateType(type.type)}><strong>{t(`dataSource.connector.${type.type}`)}</strong><span className="text-xs leading-5 text-muted">{t(`dataSource.connectorDesc.${type.type}`)}</span></button>)}
     </div> : <form className="wk-wiki-editor grid gap-3" onSubmit={(event) => void save(event)}>
+      {guide && guide.requiredPermissions.length > 0 ? <div className="wk-data-source-prereq grid gap-2 rounded-[10px] border border-line-soft bg-[#f7f9fc] p-3" data-kind="setup-guide">
+        <button type="button" aria-expanded={prereqExpanded} className="flex items-center gap-1.5 bg-transparent p-0 text-left text-[13px] font-medium text-primary" onClick={() => setPrereqExpanded((current) => !current)}><span aria-hidden="true">ⓘ</span><span className="flex-1">{prereqCopy(t, `dataSource.prereqBarText_${form.type}`, 'dataSource.prereqBarText')}</span><span aria-hidden="true">{prereqExpanded ? '▴' : '▾'}</span></button>
+        {prereqExpanded ? <div className="grid gap-2" data-kind="setup-guide-body">
+          <ol className="m-0 grid list-none gap-2 p-0">
+            <li className="grid gap-0.5 text-[13px]" data-step="1"><span className="font-medium">{prereqCopy(t, `dataSource.prereqStep1Brief_${form.type}`, 'dataSource.prereqBotBrief')}</span><span className="text-muted">{prereqCopy(t, `dataSource.prereqStep1Desc_${form.type}`, 'dataSource.prereqBotDesc')}</span></li>
+            <li className="grid gap-0.5 text-[13px]" data-step="2"><span className="font-medium">{prereqCopy(t, `dataSource.prereqStep2Brief_${form.type}`, 'dataSource.prereqPermBrief')}</span>{hasKey(t, `dataSource.prereqStep2Desc_${form.type}`) ? <span className="text-muted">{t(`dataSource.prereqStep2Desc_${form.type}`)}</span> : <span className="flex flex-wrap gap-1">{guide.requiredPermissions.map((perm) => <code key={perm} className="rounded bg-[#eef2f7] px-1.5 py-0.5 font-mono text-[11px] text-muted">{perm}</code>)}</span>}</li>
+            <li className="grid gap-0.5 text-[13px]" data-step="3"><span className="font-medium">{prereqCopy(t, `dataSource.prereqStep3Brief_${form.type}`, 'dataSource.prereqMemberBrief')}</span><span className="text-muted">{prereqCopy(t, `dataSource.prereqStep3Desc_${form.type}`, 'dataSource.prereqMemberDesc')}</span></li>
+          </ol>
+          {guide.permissionPageUrl ? <a className="inline-flex items-center gap-1 justify-self-start text-[13px] font-medium text-primary underline" href={guide.permissionPageUrl} target="_blank" rel="noopener">{prereqCopy(t, `dataSource.prereqOpenConsole_${form.type}`, 'dataSource.prereqOpenConsole')}<span aria-hidden="true">↗</span></a> : null}
+        </div> : null}
+      </div> : null}
+      {guide?.docUrl ? <div className="wk-data-source-doc-hint flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[13px]" data-kind="doc-hint"><span>{t('dataSource.docHint')}</span><a className="inline-flex items-center gap-1 font-medium text-primary underline" href={guide.docUrl} target="_blank" rel="noopener">{t('dataSource.openDoc')}</a></div> : null}
       <p className="wk-muted m-0 text-muted">{t('dataSource.credentialsLabel')}</p>
       <label>{t('dataSource.nameLabel')} <Input required value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></label>
       <label>{t('dataSource.connectorTypeLabel')} <Select required value={form.type} onChange={(event) => updateForm('type', event.target.value)}>{(editing ? types : createTypes).map((type) => <option key={type.type} value={type.type}>{type.name} ({type.type})</option>)}</Select></label>

@@ -94,6 +94,38 @@ const EDITOR_KEYS = [
   'dataSource.credential.headerAdd',
   'dataSource.credential.headerKeyPlaceholder',
   'dataSource.credential.headerValuePlaceholder',
+  // R453 A1: Vue DataSourceEditorDialog prereq setup-guide + doc-hint block
+  // (frontend/src/i18n/locales/*.ts datasource block, byte-exact). Covers the
+  // feishu/lark/feishu_drive/lark_drive/yuque per-type copy plus the shared
+  // docHint/openDoc and fallback keys the Vue template references. The ima
+  // per-type keys stay unported because Vue gates the guide on
+  // requiredPermissions.length > 0 and ima declares none.
+  'dataSource.docHint',
+  'dataSource.openDoc',
+  'dataSource.prereqBarText',
+  'dataSource.prereqOpenConsole',
+  'dataSource.prereqBotBrief',
+  'dataSource.prereqBotDesc',
+  'dataSource.prereqPermBrief',
+  'dataSource.prereqMemberBrief',
+  'dataSource.prereqMemberDesc',
+  'dataSource.prereqStep1Brief_feishu', 'dataSource.prereqStep1Desc_feishu',
+  'dataSource.prereqStep2Brief_feishu', 'dataSource.prereqStep2Desc_feishu',
+  'dataSource.prereqStep3Brief_feishu', 'dataSource.prereqStep3Desc_feishu',
+  'dataSource.prereqStep1Brief_lark', 'dataSource.prereqStep1Desc_lark',
+  'dataSource.prereqStep2Brief_lark', 'dataSource.prereqStep2Desc_lark',
+  'dataSource.prereqStep3Brief_lark', 'dataSource.prereqStep3Desc_lark',
+  'dataSource.prereqStep1Brief_feishu_drive', 'dataSource.prereqStep1Desc_feishu_drive',
+  'dataSource.prereqStep2Brief_feishu_drive', 'dataSource.prereqStep2Desc_feishu_drive',
+  'dataSource.prereqStep3Brief_feishu_drive', 'dataSource.prereqStep3Desc_feishu_drive',
+  'dataSource.prereqStep1Brief_lark_drive', 'dataSource.prereqStep1Desc_lark_drive',
+  'dataSource.prereqStep2Brief_lark_drive', 'dataSource.prereqStep2Desc_lark_drive',
+  'dataSource.prereqStep3Brief_lark_drive', 'dataSource.prereqStep3Desc_lark_drive',
+  'dataSource.prereqBarText_yuque',
+  'dataSource.prereqStep1Brief_yuque', 'dataSource.prereqStep1Desc_yuque',
+  'dataSource.prereqStep2Brief_yuque', 'dataSource.prereqStep2Desc_yuque',
+  'dataSource.prereqStep3Brief_yuque', 'dataSource.prereqStep3Desc_yuque',
+  'dataSource.prereqOpenConsole_yuque',
 ];
 
 function dataSourceKeys(locale: string): string[] {
@@ -102,7 +134,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 183);
+  assert.equal(keys.length, 224);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -176,4 +208,41 @@ test('data-source editor copy is byte-exact against the Vue en-US baseline', () 
 test('relative-time templates interpolate the datasource counters', () => {
   assert.equal(formatMessage('zh-CN', 'dataSource.minutesAgo', { n: 5 }), '5 分钟前');
   assert.equal(formatMessage('en-US', 'dataSource.hoursAgo', { n: 2 }), '2h ago');
+});
+
+// R453 A1: Vue DataSourceEditorDialog prereq setup-guide + doc-hint copy,
+// byte-exact against the frontend/src/i18n/locales/*.ts datasource block.
+test('prereq setup-guide copy is byte-exact against the Vue zh-CN baseline', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.docHint'), '在以下地址获取凭证：');
+  assert.equal(formatMessage('zh-CN', 'dataSource.openDoc'), '打开文档');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqBarText'), '首次使用？点击查看飞书应用配置指引');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqStep1Brief_feishu'), '创建飞书自建应用');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqStep2Desc_feishu'), '开放平台 → 你的应用 → 添加应用能力 → 机器人');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqStep3Desc_feishu'), '为应用开通 wiki:wiki:readonly, drive:drive:readonly, drive:export:readonly, docx:document:readonly 权限');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqStep3Desc_feishu_drive'), '为应用开通 drive:drive:readonly, drive:export:readonly, docx:document:readonly 权限');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqBarText_yuque'), '首次使用？点击查看语雀 Token 配置指引');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqOpenConsole_yuque'), '前往语雀 Token 设置');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqOpenConsole'), '前往飞书开放平台配置');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqBotBrief'), '为应用添加「机器人」能力');
+  assert.equal(formatMessage('zh-CN', 'dataSource.prereqMemberDesc'), '创建群聊 → 添加应用为群机器人 → 将群聊添加为知识库成员');
+});
+
+test('prereq setup-guide copy is byte-exact against the Vue en-US baseline', () => {
+  assert.equal(formatMessage('en-US', 'dataSource.docHint'), 'Get credentials at:');
+  assert.equal(formatMessage('en-US', 'dataSource.openDoc'), 'Open documentation');
+  assert.equal(formatMessage('en-US', 'dataSource.prereqStep1Brief_lark'), 'Create Lark custom app');
+  assert.equal(formatMessage('en-US', 'dataSource.prereqStep3Desc_lark_drive'), 'Enable drive:drive:readonly, drive:export:readonly, docx:document:readonly permissions');
+  assert.equal(formatMessage('en-US', 'dataSource.prereqOpenConsole'), 'Open Feishu Developer Console');
+  assert.equal(formatMessage('en-US', 'dataSource.prereqPermBrief'), 'Grant API permissions');
+});
+
+test('prereq setup-guide copy is byte-exact against the Vue ja/ko/ru baselines', () => {
+  assert.equal(formatMessage('ja-JP', 'dataSource.prereqBarText'), '初めてですか？クリックしてFeishuアプリの設定ガイドを表示');
+  assert.equal(formatMessage('ja-JP', 'dataSource.openDoc'), 'ドキュメントを開く');
+  assert.equal(formatMessage('ja-JP', 'dataSource.prereqOpenConsole'), 'Feishu開発者コンソールを開く');
+  assert.equal(formatMessage('ko-KR', 'dataSource.prereqBotBrief'), "앱에 '봇' 기능 추가");
+  assert.equal(formatMessage('ko-KR', 'dataSource.prereqOpenConsole'), 'Feishu 오픈 플랫폼 설정으로 이동');
+  assert.equal(formatMessage('ru-RU', 'dataSource.docHint'), 'Получить учётные данные можно здесь:');
+  assert.equal(formatMessage('ru-RU', 'dataSource.prereqOpenConsole'), 'Открыть настройки Feishu Open Platform');
+  assert.equal(formatMessage('ru-RU', 'dataSource.prereqMemberBrief'), 'Добавьте через групповой чат как участника базы знаний');
 });

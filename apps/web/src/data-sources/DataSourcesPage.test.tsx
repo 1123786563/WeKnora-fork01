@@ -235,3 +235,45 @@ test('creating a gitlab connector seeds one empty project row', () => {
   // channel is covered by gitlab-projects.test.ts.
   assert.match(page, /setForm\(dataSourceFormFrom\(source\)\)/);
 });
+
+// R453 A1: Vue DataSourceEditorDialog step-1 renders a collapsible prereq
+// setup-guide block (ds-setup-guide) above the form for connectors that
+// declare required permissions (feishu/lark/feishu_drive/lark_drive/yuque),
+// with the Vue t(perTypeKey, fallbackKey) copy chain, a permission-tag
+// fallback when no per-type step-2 description exists, and a
+// permissionPageUrl console link (target=_blank rel=noopener). It also
+// renders a docHint inline alert with an openDoc link for connectors with a
+// docUrl. The collapsed state resets whenever the editor (re)opens or the
+// user picks a connector type (Vue prereqExpanded.value = false).
+test('renders the Vue prereq setup-guide block with the per-type fallback chain', () => {
+  assert.match(page, /VUE_CONNECTOR_GUIDES/);
+  assert.match(page, /guide && guide\.requiredPermissions\.length > 0/);
+  assert.match(page, /aria-expanded=\{prereqExpanded\}/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqBarText_\$\{form\.type\}`, 'dataSource\.prereqBarText'\)/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqStep1Brief_\$\{form\.type\}`, 'dataSource\.prereqBotBrief'\)/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqStep2Brief_\$\{form\.type\}`, 'dataSource\.prereqPermBrief'\)/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqStep3Brief_\$\{form\.type\}`, 'dataSource\.prereqMemberBrief'\)/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqStep3Desc_\$\{form\.type\}`, 'dataSource\.prereqMemberDesc'\)/);
+  assert.match(page, /prereqCopy\(t, `dataSource\.prereqOpenConsole_\$\{form\.type\}`, 'dataSource\.prereqOpenConsole'\)/);
+  assert.match(page, /href=\{guide\.permissionPageUrl\} target="_blank" rel="noopener"/);
+  assert.match(page, /setPrereqExpanded\(\(\) => false\)/);
+});
+
+test('renders the Vue docHint inline alert with an openDoc link', () => {
+  assert.match(page, /guide\?\.docUrl/);
+  assert.match(page, /t\('dataSource\.docHint'\)/);
+  assert.match(page, /href=\{guide\.docUrl\} target="_blank" rel="noopener">\{t\('dataSource\.openDoc'\)\}/);
+});
+
+// R452 A1 browser evidence flagged English hardcoded empty-state copy; the
+// direct page path was already localized (R442), and the hardcoded strings
+// live in the knowledge-settings summary tiles, not here. Guard the page so
+// the data-sources surface itself can never regress to hardcoded copy.
+test('keeps the empty-state, add-card and loading copy on i18n keys', () => {
+  assert.match(page, /t\('dataSource\.empty'\)/);
+  assert.match(page, /t\('dataSource\.add'\)/);
+  assert.match(page, /t\('common\.loading'\)/);
+  assert.doesNotMatch(page, /No data sources/);
+  assert.doesNotMatch(page, /Add an external connector/);
+  assert.doesNotMatch(page, /Sync status/);
+});
