@@ -146,7 +146,12 @@ func TestNotificationCheckpointIsMonotonic(t *testing.T) {
 func TestEventRunKeysPageContinuesPastFirstPage(t *testing.T) {
 	db := openRunTestDB(t)
 	for i := 1; i <= 257; i++ {
-		require.NoError(t, db.Exec(`INSERT INTO agent_run_events (tenant_id, run_id, seq, attempt_id, event_type, payload) VALUES (?, ?, 1, 'a', 'run_completed', '{}')`, 1, fmt.Sprintf("run-%03d", i)).Error)
+		runID := fmt.Sprintf("run-%03d", i)
+		// agent_run_events enforces a foreign key onto agent_runs; admit the
+		// minimal parent row so the paging fixture satisfies the durable schema.
+		require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, snapshot, deadline)
+			VALUES (?, ?, 's1', 'u1', ?, 'a', 'h', '{}', datetime('now', '+10 minutes'))`, 1, runID, runID).Error)
+		require.NoError(t, db.Exec(`INSERT INTO agent_run_events (tenant_id, run_id, seq, attempt_id, event_type, payload) VALUES (?, ?, 1, 'a', 'run_completed', '{}')`, 1, runID).Error)
 	}
 	s := NewNotificationStore(db)
 	first, err := s.EventRunKeysPage(context.Background(), 256, agentruntime.RunKey{})
