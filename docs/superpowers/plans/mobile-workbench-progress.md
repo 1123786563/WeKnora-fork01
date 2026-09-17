@@ -38,7 +38,7 @@
 | W30 | [语音会话授权、短期令牌和结算](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W31 | [实时语音、打断与后台进度展示](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W32 | [高级交互能力端口与保留清单闭合](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
-| W33 | [删除墓碑、远程停止和迟到用量](2026-09-12-mobile-workbench-06-delivery.md) | awaiting-review | delivery | `93dd0648`, `60250b69`, `189cd427`, `213bd0b3`, `0eb09eaa`, `2c65c36d`, `ea2f88c6` | execution race/vet/diff GREEN；repository/W24 compile、SQLite 000055/legacy fixture、PG/W26 blocked-env | 第六轮状态机/revision/late artifact 修复完成，独立复审进行中 | W02/W04/W21/W22/W24 accepted-with-blockers；W26 仍未完成 | W34/W35/W37 downstream |
+| W33 | [删除墓碑、远程停止和迟到用量](2026-09-12-mobile-workbench-06-delivery.md) | accepted-with-blockers | delivery | `93dd0648`, `60250b69`, `189cd427`, `213bd0b3`, `0eb09eaa`, `2c65c36d`, `ea2f88c6`, `41438878`（整链 merge 于 `c6d78821`） | repository Cleanup+race、service Cleanup、vet、build 在集成树全 GREEN；PG/真实节点/备份演练 blocked-env | rereview7 Spec PASS / Quality APPROVED（7 轮修复收敛：状态机/门禁/revision/幂等 fail-closed/late-upload 锁全闭合） | W26 文件幂等实现与 delete_lease_until 消费语义为 W26 域；W34 解锁 | W34/W35/W37 downstream |
 | W34 | [安全部署、能力开关与可观测性](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W35 | [事件保留、备份恢复与崩溃演练](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W36 | [原生升级、兼容窗口与性能验收](2026-09-12-mobile-workbench-06-delivery.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
