@@ -6,7 +6,7 @@
 
 | 任务 | 状态 | BASE→HEAD | 测试（cmd·exit·发现/通过） | Review | 证据 |
 |---|---|---|---|---|---|
-| MX-001 | review | 6a70c35a→(待提交) | tsx --test mx-001.test.ts · RED exit1 → GREEN exit0 · 1/1 | 待独立review | MX-001.md |
+| MX-001 | accepted | 6a70c35a→04176329 | tsx --test mx-001.test.ts · RED exit1 → GREEN exit0 · 1/1（含基线 kind 不变量） | R1 FAIL(2×P1)→修复→复核 PASS | MX-001.md |
 
 ## 首次更新（2026-09-18，MX-001）
 
