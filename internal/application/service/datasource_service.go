@@ -820,8 +820,15 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 	var fetchErr error
 
 	if payload.ForceFull || ds.SyncMode == types.SyncModeFull {
-		// Full sync
-		items, fetchErr = connector.FetchAll(ctx, config, config.ResourceIDs)
+		// Full sync. FullSyncWithCursor connectors (DingTalk) re-fetch every
+		// document while still reconciling deletions against the previous
+		// cursor; plain FetchAll connectors keep the no-cursor behaviour.
+		if full, ok := connector.(datasource.FullSyncWithCursor); ok {
+			cursor, _ := ds.ParseSyncCursor()
+			items, nextCursor, fetchErr = full.FetchAllFromCursor(ctx, config, config.ResourceIDs, cursor)
+		} else {
+			items, fetchErr = connector.FetchAll(ctx, config, config.ResourceIDs)
+		}
 		logger.Infof(ctx, "full sync fetched %d items", len(items))
 	} else {
 		// Incremental sync
