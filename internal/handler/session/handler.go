@@ -39,6 +39,9 @@ type Handler struct {
 	// not support artifact collection; handlers must check before using.
 	artifactCollector *service.ArtifactCollector
 	memoryService     interfaces.MemoryService // Service for cross-session long-term memory
+	// forkService branches a session at a chosen user or assistant message.
+	// May be nil in deployments where fork is not wired; ForkSession checks.
+	forkService sessionForker
 	// userService / memberService back the sandbox terminal's self-contained
 	// handshake (browser WebSocket upgrades cannot send Authorization).
 	userService   interfaces.UserService
@@ -104,6 +107,11 @@ func NewHandler(
 	temporaryDocuments interfaces.TemporaryDocumentService,
 	artifactCollector *service.ArtifactCollector,
 	memoryService interfaces.MemoryService,
+	// forkService branches a session at a chosen user or assistant message.
+	// May be nil in deployments where fork is not wired; ForkSession checks.
+	// Concrete-typed parameter so dig can inject it; the field keeps the
+	// narrow interface for stub-based tests.
+	forkService *service.SessionForkService,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
@@ -126,6 +134,7 @@ func NewHandler(
 		temporaryDocuments:   temporaryDocuments,
 		artifactCollector:    artifactCollector,
 		memoryService:        memoryService,
+		forkService:          forkService,
 		userService:          userService,
 		memberService:        memberService,
 		terminalService:      terminalService,

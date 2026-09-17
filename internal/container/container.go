@@ -566,6 +566,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
 	must(container.Provide(handler.NewTagHandler))
+	// Session fork (A11): repositories only for now — the sandbox snapshot
+	// port stays nil until phase 3 wires git checkpoints, which per the
+	// upstream contract degrades every sandbox-carrying fork instead of
+	// failing (message-only forks still copy history + lineage).
+	must(container.Provide(newSessionForkService))
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
