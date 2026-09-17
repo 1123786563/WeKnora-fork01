@@ -4685,3 +4685,33 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1571/1571, `pnpm test:shared` 602/602, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r446-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R447 — Defect-fix round: chunking preview envelope, shell copy/logout, D1 root-caused as external
+
+- Four parallel agents (A1 knowledge-settings defects, A2 platform-shell defects, A3 D1 root-cause, A4
+  verifier). A4 verdict: **all PASS, zero rework**; gates on the final state: test:web 1583/1583, test:shared
+  602/602, typecheck clean, build ✓, zero new failures.
+- A1: D2 root cause — the backend wraps the chunking preview in a `{success, data}` envelope
+  (internal/handler/chunker_debug.go:256) while api-client parsed top-level fields; envelope unwrapping added
+  (minimal, contract documented — the old mock encoded a shape the backend never sends). D3: the empty strategy
+  option now renders the Vue placeholder (key pre-existing ×5 locale). D5: the activity overview card keyed off
+  a field the settings API never returns, so it always showed empty alongside the populated table — the empty
+  card no longer renders. knowledge-settings 90/90; api-client settings 8/8.
+- A2: D6 — `general.helpAndDocs` never existed in packages/i18n; added ×5 locale verbatim from the Vue locale
+  files. D7 — the shell's bare `void onLogout()` let a rejected/hung logout chain strand the user;
+  `runShellLogout` guarantees /login (hard-navigate on reject or 4s non-settle; the on-site failure mode is
+  inferred — R448 browser re-check queued). Naming — the org settings tab is 「加入申请」 per
+  OrganizationSettingsModal.vue:505-516/1006-1011 with the inner 「待审核申请」+badge; React used the inner title
+  in both places. platform 182/182 (+6), organizations 37/37.
+- A3: **D1 closed as EXTERNAL behavior, not a React defect** — the evidence and the external automation shared
+  one real Chrome tab; the external driver navigates to the Vue KB list on an ~8s cycle and Vue
+  `useListUrlState.ts:84` appends `?scope=all` (React never constructs it). Exclusion evidence: the settings
+  page has zero timers/navigations (grep counts), all apps/web location writes are same-origin relative, vite
+  proxies only /api + /files, no SW/BroadcastChannel/postMessage, no 5180 in env/config, no recent navigation
+  commits. Mitigations: browser agents now require isolated contexts with parallel driving frozen during
+  capture; `navigation-origin-guard.test.ts` added as a static sentinel against hardcoded absolute-URL
+  navigations (planted cross-origin samples caught, current code passes). Deferred: A2 found the user menu
+  missing a 「全部设置」 entry — recorded, not dispatched.
+- Gates: `pnpm test:web` 1583/1583, `pnpm test:shared` 602/602, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r447-defect-fix-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

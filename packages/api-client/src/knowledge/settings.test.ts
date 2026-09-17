@@ -101,7 +101,8 @@ test('loads and updates KB settings through the concrete endpoints', async () =>
       return { code: 0, data: [{ Name: 'builtin', Description: 'Built in', FileTypes: ['txt'] }], connected: true };
     }
     if (input.method === 'POST' && input.path === '/api/v1/chunker/preview') {
-      return { selected_tier: 'recursive', tier_chain: ['recursive'], rejected: [], chunks: [], stats: { count: 0, avg_chars: 0, min_chars: 0, max_chars: 0, stddev_chars: 0 } };
+      // The Go handler wraps PreviewChunkingResponse in a {success, data} envelope.
+      return { success: true, data: { selected_tier: 'recursive', tier_chain: ['recursive'], rejected: [], chunks: [], stats: { count: 0, avg_chars: 0, min_chars: 0, max_chars: 0, stddev_chars: 0 } } };
     }
     if (input.method === 'GET' && input.path === '/api/v1/storage-backends') {
       return { success: true, data: [{ id: 'storage-1', name: 'Local', provider: 'local', config: {}, source: 'env', status: 'active' }] };
@@ -137,8 +138,8 @@ test('rejects unsafe activity numbers and malformed optional parser fields', asy
 });
 
 test('rejects malformed chunking stats and default storage identifiers', async () => {
-  const chunking = createKnowledgeSettingsApi(async () => ({ selected_tier: 'recursive', tier_chain: ['recursive', 1], rejected: [], chunks: [], stats: { count: Number.NaN } }));
-  await assert.rejects(chunking.previewChunking({ text: 'hello', chunking_config: {} }), /Invalid chunking preview/);
+  const chunking = createKnowledgeSettingsApi(async () => ({ success: true, data: { selected_tier: 'recursive', tier_chain: ['recursive'], rejected: [], chunks: [], stats: { count: Number.NaN } } }));
+  await assert.rejects(chunking.previewChunking({ text: 'hello', chunking_config: {} }), /Invalid chunking preview stats/);
 
   const storage = createKnowledgeSettingsApi(async () => ({ success: true, data: [], default_storage_backend_id: 42 }));
   await assert.rejects(storage.storageBackends(), /Invalid default storage backend/);

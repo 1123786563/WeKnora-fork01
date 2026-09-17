@@ -45,6 +45,31 @@ export interface PlatformShellProps {
   children: ReactNode;
 }
 
+// R446 D7 — the user menu 「退出」 item must ALWAYS land the user on the login
+// page, matching Vue UserMenu.vue:518-536 handleLogout: the logout API call may
+// fail (Vue swallows the error) but local cleanup plus navigation still win.
+// A rejected onLogout means the parent chain died before it could navigate, and
+// a promise that never settles (hung transport / refresh coordinator) strands
+// the user in the shell forever — both cases fall back to a hard navigation.
+export const SHELL_LOGOUT_FALLBACK_MS = 4000;
+
+export async function runShellLogout(
+  onLogout: () => void | Promise<void>,
+  nav: (url: string) => void = (url) => window.location.assign(url),
+  fallbackMs: number = SHELL_LOGOUT_FALLBACK_MS,
+): Promise<void> {
+  // Object holder: the callbacks below mutate async, and TS's control-flow
+  // analysis would wrongly narrow a `let` scalar to its initializer.
+  const outcome = { status: 'timeout' as 'ok' | 'failed' | 'timeout' };
+  await Promise.race([
+    Promise.resolve()
+      .then(onLogout)
+      .then(() => { outcome.status = 'ok'; }, () => { outcome.status = 'failed'; }),
+    new Promise<void>((resolve) => setTimeout(resolve, fallbackMs)),
+  ]);
+  if (outcome.status !== 'ok') nav('/login');
+}
+
 // Nav labels migrated to packages/i18n menu.* (auto-ported from Vue locales).
 
 interface NavItem {
@@ -906,7 +931,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 </a>
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                 <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
-                  onClick={() => { setMenuOpen(false); void onLogout(); }}>
+                  onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
                   {t('auth.logout')}
                 </button>
               </div>

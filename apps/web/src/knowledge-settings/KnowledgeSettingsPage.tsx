@@ -950,12 +950,18 @@ interface SettingsSectionProps {
 
 function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, indexingLocked, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
   // models/chunking/advanced carry no summary card (Vue has none either);
-  // the legacy sections keep theirs.
+  // the legacy sections keep theirs. R446 D5: the activity overview card
+  // read activity data the KB payload never carries, so its "No activity
+  // yet" empty state coexisted with the populated audit table below. Vue's
+  // activity section (KnowledgeBaseActivitySettings.vue) has no overview
+  // card at all — its empty state lives inside the table — so the empty
+  // summary card is dropped here while a data-backed one (available) stays.
+  const showSummary = summary !== undefined && !(section === 'activity' && summary.kind === 'empty');
   const summaryLabel = summary?.label ?? '';
   const summaryDetail = summary?.detail ?? '';
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
-      {summary ? (
+      {showSummary ? (
         <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
           <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
           <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
@@ -1374,7 +1380,9 @@ function ChunkingSettingsSection({ editorPayload, editorDraft, client, t, onDraf
               value={strategy}
               onChange={(event) => set({ strategy: event.target.value })}
             >
-              <option value=""></option>
+              {/* Vue wk-select shows a placeholder for the not-set strategy
+                  (KBChunkingSettings.vue); a bare empty option rendered blank. */}
+              <option value="">{t('knowledgeEditor.chunking.strategyPlaceholder')}</option>
               {CHUNKING_STRATEGY_VALUES.map((value) => <option key={value} value={value}>{t(`knowledgeEditor.chunking.strategies.${value}.label`)}</option>)}
             </select>
             {/* Vue sits the test trigger next to the strategy picker so users

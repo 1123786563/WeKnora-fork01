@@ -303,7 +303,14 @@ function parseParserEngines(value: unknown): ParserEnginesResult {
 }
 
 function parseChunkingPreview(value: unknown): ChunkingPreviewResult {
-  const body = record(value, 'chunking preview');
+  // The Go handler (internal/handler/chunker_debug.go) always wraps the
+  // PreviewChunkingResponse in a gin.H{"success": true, "data": ...}
+  // envelope — the Vue client (frontend/src/api/chunker) reads the payload
+  // from `data` the same way. R446 D2: parsing the top level produced
+  // "Invalid chunking preview response" against the live backend.
+  const envelope = record(value, 'chunking preview');
+  if (envelope.success !== true) throw new Error('Invalid chunking preview response');
+  const body = record(envelope.data, 'chunking preview');
   if (typeof body.selected_tier !== 'string' || body.selected_tier.trim() === '' || !Array.isArray(body.tier_chain) || body.tier_chain.some((item) => typeof item !== 'string') || !Array.isArray(body.rejected) || !Array.isArray(body.chunks)) throw new Error('Invalid chunking preview response');
   const stats = record(body.stats, 'chunking preview stats');
   if (Object.values(stats).some((item) => typeof item !== 'number' || !Number.isFinite(item))) throw new Error('Invalid chunking preview stats');

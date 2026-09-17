@@ -863,7 +863,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     basic: 'organization.editor.navBasic',
     permissions: 'organization.editor.navPermissions',
     members: 'organization.members.listTitle',
-    requests: 'organization.joinRequests.listTitle',
+    // Vue OrganizationSettingsModal.vue:1008 labels the nav entry with
+    // t('organization.settings.joinRequests') (加入申请); 待审核申请 stays
+    // reserved for the inner list title (Vue :513).
+    requests: 'organization.settings.joinRequests',
     shares: 'organization.sharedResources.kbListTitle',
     agents: 'organization.sharedResources.agentListTitle',
     invite: 'organization.settings.inviteLink',
@@ -1066,7 +1069,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : settingsSection === 'requests' ? (
                     <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.joinRequests.listTitle')}</h2>
+                      {/* Vue OrganizationSettingsModal.vue:505-516 — the section
+                          heading is 加入申请 (+ description); 待审核申请 with a
+                          live count is the inner list title below it. */}
+                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.joinRequests')}</h2>
+                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.joinRequestsDesc')}</p>
+                      <div className="mb-[8px] flex items-center gap-[8px]">
+                        <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.joinRequests.listTitle')}</span>
+                        <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{requests.filter((request) => request.status === 'pending').length}</span>
+                      </div>
                       {feedStatus('requests', t(locale, 'organization.settings.reviewFailed'))}
                       {detailFeeds.requests.status === 'ready' && requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : null}
                       {detailFeeds.requests.status === 'ready' ? requests.filter((request) => request.status === 'pending').map((request) => (

@@ -354,11 +354,13 @@ test('card click opens the shared-space settings modal with members and join req
   const membersPanel = root.querySelector('[role="dialog"]') as HTMLElement;
   assert.match(membersPanel.textContent ?? '', /Alice/);
 
-  const requestsNav = [...membersPanel.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
-  assert.ok(requestsNav, 'expected join-requests nav item');
+  const requestsNav = [...membersPanel.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
+  assert.ok(requestsNav, 'expected join-requests nav item labelled 加入申请 like the Vue modal (OrganizationSettingsModal.vue:1008)');
   await click(requestsNav);
   await act(async () => {});
   const requestsPanel = root.querySelector('[role="dialog"]') as HTMLElement;
+  assert.match(requestsPanel.textContent ?? '', /加入申请/, 'section heading uses the Vue 加入申请 wording');
+  assert.match(requestsPanel.textContent ?? '', /待审核申请/, 'inner list title keeps the Vue 待审核申请 wording');
   assert.match(requestsPanel.textContent ?? '', /Bob/);
 
   const approveButtons = textButtons(requestsPanel, '通过');
@@ -431,7 +433,7 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
   assert.deepEqual([...sectionSelector.options].map((option) => [option.value, option.textContent]), [
     ['basic', '基本信息'],
     ['members', '共享空间成员'],
-    ['requests', '待审核申请'],
+    ['requests', '加入申请'],
     ['shares', '共享知识库'],
     ['agents', '共享智能体'],
     ['invite', '邀请链接'],
@@ -549,7 +551,7 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   assert.equal(memberRole.disabled, true);
   assert.equal(textButtons(dialog, '移除').length, 0);
 
-  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
+  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
   assert.equal(requestsNav, undefined, 'Vue hides join-request navigation from non-admin organization members');
 
   const inviteNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '邀请链接');
