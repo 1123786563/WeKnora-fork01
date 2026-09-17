@@ -744,14 +744,12 @@
       "owners": [
         "MX-013",
         "MX-021",
-        "MX-027",
-        "MX-032"
+        "MX-027"
       ],
       "kind": "modify",
       "shared_serialized": true,
-      "source": "mx-001-preregistration",
-      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
-      "kind_basis": "preregistration"
+      "source": "mx-021-lock-transfer",
+      "note": "锁转移链：overview(MX-013)+inbox(MX-021)+未来 MX-027"
     },
     "internal/workbench/contracts.go": {
       "owners": [
@@ -1671,37 +1669,32 @@
     "internal/router/router.go": {
       "owners": [
         "MX-013",
-        "MX-021",
-        "MX-032"
+        "MX-021"
       ],
       "kind": "modify",
       "shared_serialized": true,
-      "source": "mx-001-preregistration",
-      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
-      "kind_basis": "preregistration"
+      "source": "mx-021-lock-transfer",
+      "note": "锁转移：inbox handler 参数与注册"
     },
     "internal/container/container.go": {
       "owners": [
         "MX-013",
-        "MX-021",
-        "MX-032"
+        "MX-021"
       ],
       "kind": "modify",
       "shared_serialized": true,
-      "source": "mx-001-preregistration",
-      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
-      "kind_basis": "preregistration"
+      "source": "mx-021-lock-transfer",
+      "note": "锁转移：inbox provider 注册"
     },
     "internal/container/workbench.go": {
       "owners": [
         "MX-013",
-        "MX-032"
+        "MX-021"
       ],
       "kind": "modify",
       "shared_serialized": true,
-      "source": "mx-001-preregistration",
-      "note": "总计划§5热点：仅创建handler不等于接通；按DAG顺序串行单写，每次编辑批次先取得当前锁",
-      "kind_basis": "preregistration"
+      "source": "mx-021-lock-transfer",
+      "note": "锁转移：inbox DI provider"
     },
     "docs/evidence/mobile-v2/MX-001.md": {
       "owners": [
@@ -2016,6 +2009,13 @@
       "shared_serialized": false,
       "source": "mx-015-lock-deviation",
       "note": "规格声明路径；实际落位 packages/domain/src/mobile/task-form.ts（D-027 偏离披露，映射条目防覆盖缺口）"
+    },
+    "internal/handler/session/workbench_inbox_mx021_test.go": {
+      "owners": "MX-021",
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-021-lock-extension",
+      "note": "frozen Go 测试（跨账户投递+handler 谓词）"
     }
   }
 }
