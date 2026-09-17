@@ -76,19 +76,21 @@ test('passes cancellation to the upload request', async () => {
   assert.equal(signal, controller.signal);
 });
 
-test('keeps a native file URI inside multipart input without converting it to a shared DTO', async () => {
-  let captured: { value?: unknown } | undefined;
+test('keeps a native file URI unconverted on the nativeFile seam without building multipart form data', async () => {
+  let captured: { nativeFile?: unknown; body?: unknown; multipartFields?: Record<string, string> } | undefined;
   const originalFormData = globalThis.FormData;
-  class NativeFormDataCapture {
-    append(_name: string, value: unknown) { captured = { value }; }
+  class ForbiddenFormData {
+    constructor() { throw new Error('FormData must not be constructed for native file uploads'); }
   }
-  globalThis.FormData = NativeFormDataCapture as unknown as typeof FormData;
+  globalThis.FormData = ForbiddenFormData as unknown as typeof FormData;
   const api = createKnowledgeDocumentsApi(async (request) => {
+    captured = { nativeFile: request.nativeFile, body: request.body, multipartFields: request.multipartFields };
     return { success: true, data: { id: 'doc-native', parse_status: 'pending' } };
   });
   try {
     await api.upload('kb-1', { file: { uri: 'content://picker/large.pdf', name: 'large.pdf', type: 'application/pdf', size: 4_000_000 } });
-    assert.deepEqual(captured?.value, { uri: 'content://picker/large.pdf', name: 'large.pdf', type: 'application/pdf', size: 4_000_000 });
+    assert.deepEqual(captured?.nativeFile, { uri: 'content://picker/large.pdf', name: 'large.pdf', type: 'application/pdf', size: 4_000_000 });
+    assert.equal(captured?.body, undefined);
   } finally {
     globalThis.FormData = originalFormData;
   }
