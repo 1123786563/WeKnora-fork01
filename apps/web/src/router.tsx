@@ -7,20 +7,22 @@
 // (still unit-tested there), and every protected page renders inside the same
 // PlatformShell with the same lazy chunks.
 //
-// Redirect policy (open-redirect hardening): router redirect() calls only
-// ever target the literal in-app SPA destinations, /login and
-// /onboarding/workspace. Every other guard target keeps the pre-router
-// behaviour — a hard window.location.replace — after an internal-path
-// allowlist check (internalTarget). Navigation targets are normalized into
-// local constants before any navigation call so the allowlisted value, not a
-// raw user-influenced expression, is what reaches the navigator.
+// Redirect policy (open-redirect hardening): no dynamic router redirect()
+// calls at all. Authentication/workspace guard outcomes perform an SPA URL
+// replace through router.history.replace (the router's redirect() alone
+// renders the target without committing the URL), and every other guard
+// target keeps the pre-router behaviour — a hard window.location.replace —
+// after an internal-path allowlist check (internalTarget). Navigation
+// targets are normalized into local constants before any navigation call so
+// the allowlisted value, not a raw user-influenced expression, is what
+// reaches the navigator.
 //
 // Bridge contract with platform/navigation.ts: page-driven URL mutations
 // arrive through the navigation sink (router.history.push/replace). Craft and
 // the chat page keep their own URL state machines and are excluded from the
 // bridge there.
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { createRootRoute, createRoute, createRouter, notFound, Outlet, redirect, type RouterHistory } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, notFound, Outlet, useParams, useLocation, type RouterHistory } from '@tanstack/react-router';
 import { createWeKnoraClient, type AuthSession } from '@weknora/api-client';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
@@ -98,6 +100,17 @@ function pathWithQuery(href: string): string {
   return url.pathname + (search ? `?${search}` : '');
 }
 
+/** TanStack locations carry an internal href (no origin) — rebuild the
+ * path?query form from pathname + the parsed search object. */
+function locationPathWithQuery(location: { pathname: string; search?: unknown }): string {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries((location.search ?? {}) as Record<string, unknown>)) {
+    if (value !== undefined && value !== null && value !== '') searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return location.pathname + (query ? `?${query}` : '');
+}
+
 // Redirect targets here are first-party (guardRoute/routeRedirect output), but
 // the guard chain funnels user-influenced values in places (invite codes,
 // legacy alias maps). internalTarget enforces the internal-path allowlist so a
@@ -109,41 +122,21 @@ function internalTarget(path: string, fallback: string): string {
   return fallback;
 }
 
-function searchRecord(search: string): Record<string, string> {
-  return Object.fromEntries(new URLSearchParams(search));
-}
-
 /** Never-settling promise so the superseded navigation does not render its
- * route while window.location.replace takes over. Rejects on abort so the
- * router can clean the load up. */
+ * route while a URL replacement takes over. Rejects on abort so the router
+ * can clean the load up; the timeout is a safety valve — in the app the
+ * replacement's re-dispatched popstate aborts this load within a tick. */
 async function navigationTakesOver(abortSignal: AbortSignal | undefined): Promise<never> {
   await new Promise<never>((_resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('navigation takeover timeout')), 10000);
+    if (typeof timeout === 'object' && 'unref' in timeout) (timeout as { unref(): void }).unref();
     if (!abortSignal) return;
-    abortSignal.addEventListener('abort', () => reject(abortSignal.reason ?? new Error('redirect aborted')), { once: true });
+    abortSignal.addEventListener('abort', () => {
+      clearTimeout(timeout);
+      reject(abortSignal.reason ?? new Error('redirect aborted'));
+    }, { once: true });
   });
   throw new Error('unreachable');
-}
-
-/**
- * guardRoute decisions keep their pre-router semantics: authentication and
- * workspace redirects were SPA URL replaces (now the two literal redirect()
- * destinations), capability/system-admin redirects were hard
- * window.location.replace calls.
- */
-async function applyGuardDecision(decision: Extract<RouteGuardDecision, { kind: 'redirect' }>, abortSignal: AbortSignal | undefined): Promise<never> {
-  if (decision.reason === 'authentication-required') {
-    const nextSearch = searchRecord(decision.to.split('?')[1] ?? '');
-    throw redirect({ to: '/login', search: nextSearch, reloadDocument: false });
-  }
-  if (decision.reason === 'workspace-required' && decision.to.startsWith('/onboarding')) {
-    throw redirect({ to: '/onboarding/workspace', reloadDocument: false });
-  }
-  const hardParts = decision.to.split('?');
-  const hardTarget = internalTarget(hardParts[0]!, '/platform/knowledge-bases');
-  const hardQuery = hardParts[1] ? `?${hardParts[1]}` : '';
-  const hardUrl = `${hardTarget}${hardQuery}`;
-  window.location.replace(hardUrl);
-  await navigationTakesOver(abortSignal);
 }
 
 export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?: RouterHistory } = {}) {
@@ -158,22 +151,45 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     development,
   });
 
+  /**
+   * guardRoute decisions keep their pre-router semantics: authentication and
+   * workspace redirects were SPA URL replaces (replaceState — the navigation
+   * observer re-dispatches it to the router, which re-matches and renders the
+   * target), capability/system-admin redirects were hard
+   * window.location.replace calls.
+   */
+  const runGuardDecision = async (decision: Extract<RouteGuardDecision, { kind: 'redirect' }>, abortSignal: AbortSignal | undefined): Promise<never> => {
+    if (decision.reason === 'authentication-required' || (decision.reason === 'workspace-required' && decision.to.startsWith('/onboarding'))) {
+      const query = decision.to.includes('?') ? `?${decision.to.split('?')[1]}` : '';
+      window.history.replaceState({}, document.title, `${decision.to.split('?')[0]}${query}`);
+      await navigationTakesOver(abortSignal);
+      throw new Error('unreachable');
+    }
+    const hardParts = decision.to.split('?');
+    const hardTarget = internalTarget(hardParts[0]!, '/platform/knowledge-bases');
+    const hardQuery = hardParts[1] ? `?${hardParts[1]}` : '';
+    window.location.replace(`${hardTarget}${hardQuery}`);
+    await navigationTakesOver(abortSignal);
+    throw new Error('unreachable');
+  };
+
   /** Hydrate the bearer session, then run the shared guard for this location. */
-  const protectBeforeLoad = async ({ location, abortSignal }: { location: { href: string }; abortSignal?: AbortSignal }) => {
+  const protectBeforeLoad = async ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
     if (deps.session().credential.kind === 'bearer') {
       const hydrated = await deps.ensureSessionHydrated();
       if (!hydrated.ok) {
-        const nextPath = pathWithQuery(location.href);
-        throw redirect({ to: '/login', search: { next: nextPath }, reloadDocument: false });
+        window.history.replaceState({}, document.title, `/login?next=${encodeURIComponent(locationPathWithQuery(location))}`);
+        await navigationTakesOver(abortSignal);
+        throw new Error('unreachable');
       }
     }
-    const decision = guardRoute(pathWithQuery(location.href), guardContext());
-    if (decision.kind === 'redirect') await applyGuardDecision(decision, abortSignal);
+    const decision = guardRoute(locationPathWithQuery(location), guardContext());
+    if (decision.kind === 'redirect') await runGuardDecision(decision, abortSignal);
   };
 
-  const guardBeforeLoad = async ({ location, abortSignal }: { location: { href: string }; abortSignal?: AbortSignal }) => {
-    const decision = guardRoute(pathWithQuery(location.href), guardContext());
-    if (decision.kind === 'redirect') await applyGuardDecision(decision, abortSignal);
+  const guardBeforeLoad = async ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
+    const decision = guardRoute(locationPathWithQuery(location), guardContext());
+    if (decision.kind === 'redirect') await runGuardDecision(decision, abortSignal);
   };
 
   const shellPage = (page: ReactNode): ReactNode => (
@@ -205,10 +221,18 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ...(typeof search.next === 'string' && search.next !== '' ? { next: search.next } : {}),
   });
 
-  const loginBeforeLoad = async ({ location }: { location: { href: string; search?: unknown } }) => {
+  // beforeLoad hands the invite token / join handoff to the login card through
+  // these slots: without a registered route tree the loaderData hooks fall
+  // back to untyped `{}` contexts, so explicit module slots are dependable.
+  let loginInviteToken = '';
+  let loginRenderJoin = false;
+
+  const loginBeforeLoad = async ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
     // Ported from the pre-router bootstrap(): invite redemption, session
     // validation and lite-edition auto-setup all land on the login entry.
     const token = loginSearch((location.search ?? {}) as Record<string, unknown>).token;
+    loginInviteToken = '';
+    loginRenderJoin = false;
     if (token) {
       if (deps.session().credential.kind === 'bearer') {
         // Vue Login.vue:798-801 — an existing session redeems the token
@@ -216,15 +240,20 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
         try {
           await client.auth.acceptInvitationByToken(token);
         } catch { /* Vue acceptAndEnter */ }
-        throw redirect({ to: '/platform/knowledge-bases', reloadDocument: true });
+        window.location.replace('/platform/knowledge-bases');
+        await navigationTakesOver(abortSignal);
       }
       // Vue Login.vue:803-808 — invite_only stays on the login card; open
-      // deployments render the registration form.
+      // deployments render the registration form (the pre-router app rendered
+      // the JoinPage in place on the /login URL).
       let registrationMode = 'self_serve';
       try { registrationMode = (await client.auth.registrationConfig()).registrationMode; } catch { /* fail open like loadAuthConfig */ }
-      if (registrationMode === 'invite_only') return { inviteToken: token };
-      const joinForward = { token };
-      throw redirect({ to: '/join', search: joinForward, reloadDocument: false });
+      if (registrationMode === 'invite_only') {
+        loginInviteToken = token;
+        return {};
+      }
+      loginRenderJoin = true;
+      return {};
     }
     // Vue router.beforeEach redirects an already-authenticated visitor away
     // from /login; validate the imported session before choosing the
@@ -232,10 +261,8 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     if (deps.session().credential.kind === 'bearer') {
       const hydrated = await deps.ensureSessionHydrated();
       if (hydrated.ok) {
-        if (hydrated.tenantId !== null) {
-          throw redirect({ to: '/platform/knowledge-bases', reloadDocument: true });
-        }
-        throw redirect({ to: '/onboarding/workspace', reloadDocument: true });
+        window.location.replace(hydrated.tenantId !== null ? '/platform/knowledge-bases' : '/onboarding/workspace');
+        await navigationTakesOver(abortSignal);
       }
     }
     // Vue Login.vue:817-831 — lite-edition transparent auto-setup on /login.
@@ -250,14 +277,20 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       if (autoSession !== null) {
         window.localStorage.setItem('weknora_lite_mode', 'true');
         deps.completeAuthentication(autoSession);
-        throw redirect({ to: '/platform/knowledge-bases', reloadDocument: true });
+        await navigationTakesOver(abortSignal);
       }
     }
     return {};
   };
 
-  function LoginCard(props: { initialMode: 'login' | 'register'; useLoaderData: () => unknown }): ReactNode {
-    const data = props.useLoaderData() as { inviteToken?: string };
+  function LoginCard(props: { initialMode: 'login' | 'register' }): ReactNode {
+    if (loginRenderJoin) {
+      return (
+        <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+          <JoinPage client={client} onAuthenticated={deps.completeAuthentication} />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
         <LoginPage
@@ -266,7 +299,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
           apiBaseUrl={apiBaseUrl}
           initialError={deps.initialLoginError()}
           initialMode={props.initialMode}
-          inviteToken={data.inviteToken ?? ''}
+          inviteToken={loginInviteToken}
           onInviteAccepted={() => { window.location.assign('/platform/knowledge-bases'); }}
         />
       </Suspense>
@@ -278,7 +311,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     path: '/login',
     validateSearch: loginSearch,
     beforeLoad: loginBeforeLoad,
-    component: ({ useLoaderData }): ReactNode => <LoginCard initialMode="login" useLoaderData={useLoaderData} />,
+    component: (): ReactNode => <LoginCard initialMode="login" />,
   });
 
   const registerRoute = createRoute({
@@ -286,7 +319,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     path: '/register',
     validateSearch: loginSearch,
     beforeLoad: loginBeforeLoad,
-    component: ({ useLoaderData }): ReactNode => <LoginCard initialMode="register" useLoaderData={useLoaderData} />,
+    component: (): ReactNode => <LoginCard initialMode="register" />,
   });
 
   const joinRoute = createRoute({
@@ -297,7 +330,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       ...(typeof search.code === 'string' && search.code !== '' ? { code: search.code } : {}),
       ...(typeof search.next === 'string' && search.next !== '' ? { next: search.next } : {}),
     }),
-    beforeLoad: ({ location, abortSignal }: { location: { href: string; search?: unknown }; abortSignal?: AbortSignal }) => {
+    beforeLoad: ({ location, abortSignal }: { location: { pathname: string; search?: unknown }; abortSignal?: AbortSignal }) => {
       const search = (location.search ?? {}) as Record<string, string>;
       const joinToken = typeof search.token === 'string' ? search.token : '';
       // Vue share-links land on /login|/register?token — never dead-end /join.
@@ -307,14 +340,14 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
         return navigationTakesOver(abortSignal);
       }
       if (deps.session().credential.kind !== 'bearer') {
-        const nextPath = pathWithQuery(location.href);
+        const nextPath = locationPathWithQuery(location);
         const loginTarget = `/login?next=${encodeURIComponent(nextPath)}`;
         window.location.replace(loginTarget);
         return navigationTakesOver(abortSignal);
       }
       // Authenticated: forward to the invite landing (organizations?invite_code
       // when a code came along), preserving the pre-router hard replace.
-      const decision = guardRoute(pathWithQuery(location.href), guardContext());
+      const decision = guardRoute(locationPathWithQuery(location), guardContext());
       const inviteCode = typeof search.code === 'string' ? search.code : '';
       const fallback = inviteCode !== '' ? `/platform/organizations?invite_code=${encodeURIComponent(inviteCode)}` : '/platform/organizations';
       const decisionTarget = decision.kind === 'redirect' ? decision.to : fallback;
@@ -475,7 +508,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const platformKnowledgeBaseRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'knowledge-bases/$kbId',
-    component: ({ useParams, useLocation }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       const location = useLocation();
       return (
@@ -489,7 +522,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const platformKnowledgeChatRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'knowledge-bases/$kbId/creatChat',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       return <ChatPageSuspensed knowledgeBaseId={decodeURIComponent(kbId ?? '')} />;
     },
@@ -602,7 +635,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const appsAuthorizationRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'apps/authorization/$id',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { id } = useParams({ strict: false }) as { id?: string };
       return (
         <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
@@ -615,7 +648,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const appsActionRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'apps/actions/$id',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { id } = useParams({ strict: false }) as { id?: string };
       return (
         <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
@@ -651,7 +684,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const knowledgeBaseRoute = createRoute({
     getParentRoute: () => knowledgeBaseLayout,
     path: '$kbId',
-    component: ({ useParams, useLocation }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       const location = useLocation();
       return (
@@ -665,7 +698,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const knowledgeBaseDocumentRoute = createRoute({
     getParentRoute: () => knowledgeBaseLayout,
     path: '$kbId/documents/$docId',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId, docId } = useParams({ strict: false }) as { kbId?: string; docId?: string };
       const knowledgeBaseId = decodeURIComponent(kbId ?? '');
       return (
@@ -683,7 +716,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const knowledgeBaseWikiRoute = createRoute({
     getParentRoute: () => knowledgeBaseLayout,
     path: '$kbId/wiki',
-    component: ({ useParams, useLocation }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       const initialDocumentId = new URLSearchParams(searchOf(useLocation().href)).get('knowledge_id')?.trim() || undefined;
       return (
@@ -697,7 +730,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const knowledgeBaseFaqRoute = createRoute({
     getParentRoute: () => knowledgeBaseLayout,
     path: '$kbId/faq',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       return (
         <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
@@ -710,7 +743,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
   const knowledgeBaseSettingsRoute = createRoute({
     getParentRoute: () => knowledgeBaseLayout,
     path: '$kbId/settings',
-    component: ({ useParams }): ReactNode => {
+    component: (): ReactNode => {
       const { kbId } = useParams({ strict: false }) as { kbId?: string };
       const role = scopeRuntime.role();
       return (
@@ -761,11 +794,12 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ]),
   ]);
 
-  return createRouter({
+  const router = createRouter({
     routeTree,
     defaultPreload: false,
     ...(options.history ? { history: options.history } : {}),
   });
+  return router;
 }
 
 export type WeKnoraRouter = ReturnType<typeof createWeKnoraRouter>;

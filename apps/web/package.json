@@ -9,7 +9,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "dependencies": {
-    "@tanstack/react-router": "^1.170.1",
+    "@tanstack/react-router": "^1.170.38",
     "@weknora/api-client": "workspace:*",
     "@weknora/contracts": "workspace:*",
     "@weknora/core": "workspace:*",

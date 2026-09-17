@@ -11,7 +11,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
-import { installNavigationObserver, setNavigationSink } from './platform/navigation.ts';
+import { installNavigationObserver } from './platform/navigation.ts';
 import { resolveRoute } from './routes.tsx';
 import { createWeKnoraRouter } from './router.tsx';
 import './styles.css';
@@ -164,10 +164,12 @@ async function ensureSessionHydrated(): Promise<{ ok: true; tenantId: string | n
   return sessionHydration;
 }
 
-// Route changes stay inside the mounted React tree: page/anchor-driven URL
-// mutations are bridged into the TanStack router (platform/navigation.ts),
-// which owns rendering. Craft and the chat page keep their own internal URL
-// state machines (bridge-excluded there).
+// Route changes stay inside the mounted React tree: every URL mutation
+// (anchor clicks, page search-param writes, guard SPA replaces) lands in the
+// browser history and the navigation observer re-dispatches it as a popstate,
+// so the TanStack router re-matches and re-renders — the same notify →
+// re-render contract the pre-router app used. Craft and the chat page keep
+// their own internal URL state machines (excluded in navigation.ts).
 installNavigationObserver();
 const router = createWeKnoraRouter({
   client,
@@ -183,10 +185,6 @@ const router = createWeKnoraRouter({
   logout,
   switchTenantFromShell,
   completeAuthentication,
-});
-setNavigationSink((url, mode) => {
-  if (mode === 'replace') router.history.replace(url);
-  else router.history.push(url);
 });
 
 root.render(<RouterProvider router={router} />);
