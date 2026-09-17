@@ -311,10 +311,14 @@ function parseChunkingPreview(value: unknown): ChunkingPreviewResult {
   const envelope = record(value, 'chunking preview');
   if (envelope.success !== true) throw new Error('Invalid chunking preview response');
   const body = record(envelope.data, 'chunking preview');
-  if (typeof body.selected_tier !== 'string' || body.selected_tier.trim() === '' || !Array.isArray(body.tier_chain) || body.tier_chain.some((item) => typeof item !== 'string') || !Array.isArray(body.rejected) || !Array.isArray(body.chunks)) throw new Error('Invalid chunking preview response');
+  if (typeof body.selected_tier !== 'string' || body.selected_tier.trim() === '' || !Array.isArray(body.tier_chain) || body.tier_chain.some((item) => typeof item !== 'string') || !Array.isArray(body.chunks)) throw new Error('Invalid chunking preview response');
+  // The live backend sends rejected:null when nothing was rejected (captured
+  // R448 against the Parity KB fixture) — normalize it to an empty list
+  // instead of failing the parse.
+  const rejected = Array.isArray(body.rejected) ? body.rejected : [];
   const stats = record(body.stats, 'chunking preview stats');
   if (Object.values(stats).some((item) => typeof item !== 'number' || !Number.isFinite(item))) throw new Error('Invalid chunking preview stats');
-  return { selected_tier: body.selected_tier, tier_chain: body.tier_chain as string[], rejected: body.rejected, chunks: body.chunks.map((item) => record(item, 'chunking preview chunk')), stats: stats as Record<string, number>, profile: body.profile === null || body.profile === undefined ? body.profile : record(body.profile, 'chunking preview profile') };
+  return { selected_tier: body.selected_tier, tier_chain: body.tier_chain as string[], rejected, chunks: body.chunks.map((item) => record(item, 'chunking preview chunk')), stats: stats as Record<string, number>, profile: body.profile === null || body.profile === undefined ? body.profile : record(body.profile, 'chunking preview profile') };
 }
 
 function parseStorageBackends(value: unknown): { data: StorageBackendView[]; default_storage_backend_id?: string | null } {

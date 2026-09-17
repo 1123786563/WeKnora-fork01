@@ -4,7 +4,9 @@ import { formatMessage, messages, supportedLocales } from '../src/index.ts';
 
 // Representative keys ported from the Vue settings surface (general/retrieval/
 // tenant/user profile). Full parity is asserted per-section as panels land.
-const SAMPLE_KEYS = ['general.title', 'settings.retrieval.title', 'tenant.name', 'user.password.oldPassword', 'settings.title'];
+// general.allSettings (R448-A2) guards the user-menu catch-all entry copy —
+// its presence across all five locales keeps the key-set guard meaningful.
+const SAMPLE_KEYS = ['general.title', 'general.allSettings', 'settings.retrieval.title', 'tenant.name', 'user.password.oldPassword', 'settings.title'];
 
 test('settings messages are present across locales for sampled keys that exist', () => {
   let checked = 0;

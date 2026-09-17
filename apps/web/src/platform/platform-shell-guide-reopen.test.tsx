@@ -128,6 +128,7 @@ test('admin user menu exposes the Vue management shortcuts for members, models a
     '/platform/settings?section=members',
     '/platform/settings?section=models',
     '/platform/settings?section=skills',
+    '/platform/settings',
     'https://github.com/Tencent/WeKnora/tree/main/docs',
     'https://github.com/Tencent/WeKnora',
   ]);

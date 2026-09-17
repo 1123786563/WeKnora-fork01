@@ -3359,11 +3359,6 @@ export function KnowledgeDocumentsPage({
               <span className="warning-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToStorageSettings')} →</span>
             </p>
           ) : null}
-          {!canContribute ? (
-            <Status tone="warning">
-              {t("knowledgeBase.documents.viewerReadonly")}
-            </Status>
-          ) : null}
         </div>
         {/* Vue's document header (KnowledgeBase.vue:2330-2408) has no
             top-right actions: the tab row lives in the breadcrumb and there

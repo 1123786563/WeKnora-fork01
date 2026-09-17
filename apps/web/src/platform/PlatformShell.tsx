@@ -165,6 +165,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     membersSettings: formatMessage(locale, 'tenantMember.title'),
     modelsSettings: formatMessage(locale, 'settings.modelManagement'),
     skillsSettings: formatMessage(locale, 'settings.skills.title'),
+    // Vue UserMenu.vue:96-100 renders the catch-all settings entry with
+    // $t('general.allSettings') below a divider that closes the section
+    // quick-link group.
+    allSettings: formatMessage(locale, 'general.allSettings'),
     // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
     reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Vue UserMenu.vue:115-134 keeps these external help/community entries
@@ -893,6 +897,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
                   {labels.skillsSettings}
                 </a> : null}
+                {/* Vue UserMenu.vue:96-100 — a divider closes the section
+                    quick-link group, then the unconditional 「全部设置」 entry
+                    opens the settings surface WITHOUT a section query
+                    (handleSettings → router.push('/platform/settings')). It
+                    renders for every role so viewer-only users keep a path to
+                    the read-only rosters and model lists. */}
+                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
+                  {labels.allSettings}
+                </a>
                 <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
                   onClick={() => setMenuOpen(false)}>

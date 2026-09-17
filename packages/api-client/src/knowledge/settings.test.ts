@@ -104,6 +104,11 @@ test('loads and updates KB settings through the concrete endpoints', async () =>
       // The Go handler wraps PreviewChunkingResponse in a {success, data} envelope.
       return { success: true, data: { selected_tier: 'recursive', tier_chain: ['recursive'], rejected: [], chunks: [], stats: { count: 0, avg_chars: 0, min_chars: 0, max_chars: 0, stddev_chars: 0 } } };
     }
+    if (input.method === 'POST' && input.path === '/api/v1/chunker/preview-null-rejected') {
+      // Live backend shape (captured R448, Parity KB Demo): `rejected` arrives
+      // as null when nothing was rejected; profile carries nested objects.
+      return { success: true, data: { selected_tier: 'legacy', tier_chain: ['legacy'], rejected: null, profile: { total_chars: 36, has_tables: false, detected_langs: ['zh'] }, chunks: [{ seq: 0, start: 0, end: 36, size_chars: 36, content: 'x' }], stats: { count: 1, avg_chars: 36, min_chars: 36, max_chars: 36, stddev_chars: 0 } } };
+    }
     if (input.method === 'GET' && input.path === '/api/v1/storage-backends') {
       return { success: true, data: [{ id: 'storage-1', name: 'Local', provider: 'local', config: {}, source: 'env', status: 'active' }] };
     }
@@ -143,4 +148,12 @@ test('rejects malformed chunking stats and default storage identifiers', async (
 
   const storage = createKnowledgeSettingsApi(async () => ({ success: true, data: [], default_storage_backend_id: 42 }));
   await assert.rejects(storage.storageBackends(), /Invalid default storage backend/);
+});
+
+test('normalizes the live null rejected field captured from the real chunker preview', async () => {
+  const api = createKnowledgeSettingsApi(async () => ({ success: true, data: { selected_tier: 'legacy', tier_chain: ['legacy'], rejected: null, profile: { total_chars: 36, has_tables: false, detected_langs: ['zh'] }, chunks: [{ seq: 0, start: 0, end: 36, size_chars: 36, content: 'x' }], stats: { count: 1, avg_chars: 36, min_chars: 36, max_chars: 36, stddev_chars: 0 } } }));
+  const preview = await api.previewChunking({ text: 'hello', chunking_config: {} });
+  assert.deepEqual(preview.rejected, [], 'the backend sends rejected:null when nothing was rejected — it must read as an empty list, not a parse failure');
+  assert.equal(preview.selected_tier, 'legacy');
+  assert.equal(preview.chunks.length, 1);
 });

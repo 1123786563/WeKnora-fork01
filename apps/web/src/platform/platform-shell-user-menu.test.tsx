@@ -145,3 +145,55 @@ test('D7: a successful onLogout chain does not double-navigate', async () => {
   await runShellLogout(() => Promise.resolve(), (url) => navigated.push(url), 15);
   assert.deepEqual(navigated, [], 'parent chain owns navigation on success');
 });
+
+// R448-A2 — Vue UserMenu.vue:96-100 renders an unconditional 「全部设置」
+// ($t('general.allSettings')) entry right after the section quick links:
+// handleSettings closes the menu, opens settings and lands on
+// /platform/settings WITHOUT a section query (the ?section= links above it
+// are scoped quick navs; this one is the catch-all entry point).
+test('R448-A2: user menu renders the 全部设置 entry between the quick links and the docs entry', async () => {
+  await mount(() => undefined);
+  await openUserMenu();
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu, 'user dropdown renders');
+  const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+  const allSettings = items.find((el) => (el.textContent ?? '').includes('全部设置'));
+  assert.ok(allSettings, '全部设置 entry renders with translated copy');
+  assert.equal((allSettings as HTMLAnchorElement).getAttribute('href'), '/platform/settings', 'navigates to settings without a section query');
+  const idx = (el: Element | undefined) => (el ? items.indexOf(el) : -1);
+  const personal = items.find((el) => (el.textContent ?? '').includes('个人设置'));
+  const docs = items.find((el) => (el.textContent ?? '').includes('帮助与文档'));
+  assert.ok(personal && docs, 'context entries render');
+  assert.ok(idx(personal) < idx(allSettings), 'ordered after the section quick links');
+  assert.ok(idx(allSettings) < idx(docs), 'ordered before the external docs entry');
+});
+
+test('R448-A2: clicking 全部设置 navigates to /platform/settings without a query and closes the menu', async () => {
+  await mount(() => undefined);
+  await openUserMenu();
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu);
+  const entry = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+    .find((el) => (el.textContent ?? '').includes('全部设置')) as HTMLAnchorElement;
+  assert.ok(entry, 'entry present before the click');
+  await act(async () => entry.click());
+  await settle();
+  assert.equal(window.location.pathname, '/platform/settings', 'lands on the settings surface');
+  assert.equal(window.location.search, '', 'Vue handleSettings semantics: no ?section= query');
+  assert.equal(document.querySelector('[role="menu"]'), null, 'menu closed after navigation');
+});
+
+test('R448-A2: general.allSettings exists with the Vue locale copy in all five locales', () => {
+  // frontend/src/i18n/locales/*.ts general.allSettings (zh-CN:2542 et al).
+  const expected: Record<string, string> = {
+    'zh-CN': '全部设置',
+    'en-US': 'All Settings',
+    'ja-JP': 'すべての設定',
+    'ko-KR': '모든 설정',
+    'ru-RU': 'Все настройки',
+  };
+  for (const locale of supportedLocales) {
+    assert.equal(messages[locale]['general.allSettings'], expected[locale], `${locale} copy matches Vue`);
+    assert.equal(formatMessage(locale, 'general.allSettings'), expected[locale]);
+  }
+});

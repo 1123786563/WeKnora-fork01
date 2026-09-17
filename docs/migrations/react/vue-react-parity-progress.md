@@ -4715,3 +4715,34 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1583/1583, `pnpm test:shared` 602/602, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r447-defect-fix-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R448 — Banner removal, user-menu 全部设置, live D2 rework, isolated-context verification
+
+- Four parallel agents: A1 isolated-context live verification of the R447 fixes, A2 user-menu 全部设置 entry,
+  A3 the R445-blocked read-only banner removal (the external occupation of KnowledgeDocumentsPage.tsx ended
+  this round), A4 verifier (A2/A3 PASS; A1's live evidence invalidated one R447 fix, reworked by the
+  orchestrator in-round). The external process ALSO stash-popped three of its own test files leaving TS1185
+  conflict markers — external-owned, left in place, every gate failure they cause attributed (see below).
+- A1 (atomic-script capture per the R447 rule; 11s sampling, zero pollution): D7 logout VERIFIED — 退出 →
+  /login in 74ms, fallback never fired. D2 INVALIDATED: the live preview still failed because the backend
+  sends `rejected: null` when nothing was rejected and R447's parser demanded an array — orchestrator rework:
+  normalize to [] with a contract test replaying the exact live payload (captured via the real login/preview
+  API before the fix). Product finding: logout revokes ALL devices' sessions (the Vue tab 401'd immediately) —
+  backend/product confirmation queued. Menu state recorded for A2's cross-check.
+- A2: the user menu gains the Vue 「全部设置」 entry (general.allSettings ×5 locale byte-exact; after skills
+  divider, before 帮助文档; unconditional; navigates /platform/settings WITHOUT a section query — distinct
+  from the ⌘1-9 shortcuts). platform 185/185 (+3); i18n 65/65 (each locale exactly +1). Recorded: Vue's
+  isSystemAdmin-gated 系统管理 entry remains unmigrated.
+- A3: the React-only 「查看权限：编辑操作已隐藏。」banner removed (5 lines) — Vue's shared-KB document page has
+  no banner and expresses read-only purely by hiding edit entries; the 20+ other canContribute uses untouched.
+  documents 207/207. Deferred: knowledgeBase.documents.viewerReadonly is now a dead i18n key (outside the
+  file domain).
+- Verification under the external breakage: `pnpm test:shared` 603/603 (includes the new rejected:null
+  contract test); orchestrator scoped run over every domain touched this round — knowledge-settings (13
+  files) + platform (6) + documents page-chrome = 144/144; `pnpm typecheck:web` excluding the three external
+  conflict files reports ZERO further errors. test:web full-suite and build:web stay red SOLELY from the
+  external stash-pop markers (integrations/route.test.ts ×2, knowledge-settings/GraphSettings.test.ts ×1,
+  settings/McpToolsDirectory.test.tsx ×1) — they recover the moment the external process resolves its stash.
+- No Vue, mobile, or Go code was modified by this round. Evidence:
+  `evidence/vue-react-parity/2026-09-17-r448-code-parity-round.md`. Per-agent reports:
+  .omc/state/r448/report-A{1,2,3}.md + report-A4-review.md (session artifacts).
