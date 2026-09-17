@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { AgentSelectorPanel, type AgentSelectorAgent, type AgentSelectorModel } from './agent-selector.tsx';
 
 export interface ChatSubmission {
   content: string;
@@ -68,10 +69,18 @@ export interface ChatComposerProps {
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
-  /** Agent chip (Vue AgentSelector trigger): select options + current value. */
-  agents?: readonly { id: string; name: string; disabled?: boolean }[];
+  /** Agent chip (Vue AgentSelector trigger): selector panel options + current value. */
+  agents?: readonly { id: string; name: string; disabled?: boolean; description?: string; is_builtin?: boolean; config?: Record<string, unknown> }[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
+  /** Models for the chat-readiness gate (upstream AgentSelector allModels). */
+  agentModels?: readonly { id: string; type?: string }[];
+  /** Opens the agents management page (upstream selector header entry). */
+  onManageAgents?(): void;
+  /** Opens the agent editor at the section fixing missing config. */
+  onConfigureAgent?(agent: { id: string }, section: string, highlight?: 'summary_model' | 'rerank_model'): void;
+  /** Vue Input-field surfaces the not-ready block as a toast. */
+  onAgentNotReady?(agent: { id: string; name: string }, labels: string[]): void;
   /** Display-only chat model chip label (Vue model-selector-trigger). */
   modelLabel?: string;
   /** Compact context suffix next to the label (Vue model-selector-ctx, e.g. 200K). */
@@ -96,13 +105,15 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const mentionSearchRef = useRef<HTMLInputElement>(null);
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const agentChipRef = useRef<HTMLButtonElement>(null);
   function submitDraft(): void {
     if (!draft.trim()) return;
     onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
@@ -199,19 +210,39 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
       />
       <div className="wk-chat-control-bar relative mx-[16px] mb-[12px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[8px]">
         <div className="wk-chat-control-left flex min-w-0 flex-1 flex-wrap items-center gap-[8px]">
-          {agents && onAgentChange ? <span className="wk-chat-agent-chip relative inline-flex h-[28px] items-center rounded-[6px] border-[0.5px] border-[#e7e7e7] px-[8px] py-0">
-            <select
-              id="wk-chat-agent"
-              aria-label={t.selectAgent}
-              value={selectedAgentId ?? ''}
-              onChange={(event) => onAgentChange(event.target.value)}
-              className="h-full w-full cursor-pointer appearance-none border-0 bg-transparent py-0 pl-[2px] pr-[14px] text-[13px] font-medium text-[rgba(0,0,0,0.6)] outline-none [&>option]:font-normal [&>option]:text-[rgba(0,0,0,0.9)]"
-            >
-              <option value="">{t.quickAnswer}</option>
-              {agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ` · ${t.disabledAgentSuffix}` : ''}</option>)}
-            </select>
-            <svg className="wk-chat-chip-arrow pointer-events-none absolute right-[8px] shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
-          </span> : null}
+          {agents && onAgentChange ? (() => {
+            const currentAgent = agents.find((agent) => agent.id === selectedAgentId);
+            const chipLabel = currentAgent?.name ?? t.quickAnswer;
+            const panelOpen = agentPanelOpen && typeof document !== 'undefined' && agentChipRef.current;
+            return <>
+              <button
+                type="button"
+                ref={agentChipRef}
+                id="wk-chat-agent"
+                aria-label={t.selectAgent}
+                aria-haspopup="dialog"
+                aria-expanded={agentPanelOpen}
+                disabled={disabled}
+                onClick={() => setAgentPanelOpen((open) => !open)}
+                className="wk-chat-agent-chip relative inline-flex h-[28px] cursor-pointer items-center gap-[2px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{chipLabel}</span>
+                <svg className="shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+              </button>
+              {panelOpen && agentChipRef.current ? <AgentSelectorPanel
+                copy={t}
+                currentAgentId={selectedAgentId ?? ''}
+                agents={agents.filter((agent) => !agent.disabled) as readonly AgentSelectorAgent[]}
+                models={(agentModels ?? []) as readonly AgentSelectorModel[]}
+                anchorRect={agentChipRef.current.getBoundingClientRect()}
+                onSelect={(agentId) => { setAgentPanelOpen(false); onAgentChange(agentId); }}
+                onNotReady={(agent, labels) => { onAgentNotReady?.(agent, labels); }}
+                onManage={() => { onManageAgents?.(); }}
+                onConfigureAgent={(agent, section, highlight) => { onConfigureAgent?.(agent, section, highlight); }}
+                onClose={() => setAgentPanelOpen(false)}
+              /> : null}
+            </>;
+          })() : null}
           <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
           <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

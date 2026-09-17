@@ -102,11 +102,13 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     },
   }));
 
-  // Agent selector lives in the composer control bar (Vue agent-mode chip).
+  // Agent selector lives in the composer control bar (Vue agent-mode chip):
+  // a button trigger (upstream AgentSelector) carrying the current agent
+  // name; the grouped panel itself mounts on click.
   assert.match(html, /id="wk-chat-agent"/);
-  assert.match(html, /value="agent-1"/);
+  assert.match(html, /aria-haspopup="dialog"/);
   assert.match(html, /Research/);
-  assert.match(html, /Disabled · 不可用/);
+  assert.doesNotMatch(html, /Disabled/);
   assert.match(html, /同意/);
   assert.match(html, /去授权 Docs MCP/);
   assert.match(html, /补充当前任务/);
@@ -242,20 +244,19 @@ test('new-conversation view renders the agent picker and the agent suggested que
     onStarterQuestionClick: () => undefined,
     locale: 'zh-CN',
   }));
-  // Agent picker (Vue AgentSelector semantics) renders the available agents.
+  // Agent picker (Vue AgentSelector semantics): button trigger shows the
+  // current agent; disabled agents stay out of the picker panel.
   assert.match(html, /id="wk-chat-agent"/);
-  assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
-  assert.match(html, /value="agent-2"/);
-  assert.match(html, /Disabled agent · 不可用/);
+  assert.doesNotMatch(html, /Disabled agent/);
   // Vue creatChat empty state: welcome heading + suggested question cards.
   assert.match(html, /wk-chat-starters/);
   assert.match(html, /Hi，我是 WeKnora，让你的知识触手可及/);
   assert.match(html, /你可以这样问我/);
   assert.match(html, /What is WeKnora?/);
   assert.match(html, /How do I upload files?/);
-  // Vue composer anatomy: quick-answer chip label, model chip, circular send.
-  assert.match(html, /快速问答/);
+  // Vue composer anatomy: agent chip (current agent label), model chip, send.
+  assert.match(html, /wk-chat-agent-chip/);
   assert.match(html, /wk-chat-model-chip/);
   assert.match(html, /aria-label="发送"/);
 });

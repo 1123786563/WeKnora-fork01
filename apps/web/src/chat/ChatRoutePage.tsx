@@ -146,6 +146,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
+  const [agentToast, setAgentToast] = useState<string | null>(null);
+  const agentToastTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current); }, []);
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
   const storageKey = useMemo(
@@ -276,6 +280,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     void client.configuration.models.list(scope.signal).then(
       (result) => {
         if (active && scopeController.isCurrent(scope.scope)) {
+          // Agent readiness needs every model type (chat + rerank), while the
+          // composer chip keeps the Vue KnowledgeQA-only dropdown.
+          setAgentModels(result.map((model) => ({ id: String(model.id), type: typeof model.type === 'string' ? model.type : undefined })));
           const models = listChatModels(result);
           setChatModels(models);
           setSelectedModelId((current) => current && models.some((model) => String(model.id) === current) ? current : String(models[0]?.id ?? ''));
@@ -612,6 +619,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentId) url.searchParams.set('agentId', agentId);
     else url.searchParams.delete('agentId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    // Vue Input-field toasts 已切换到… after a successful mode switch.
+    const next = agents.find((agent) => agent.id === agentId);
+    const mode = (next?.config as { agent_mode?: unknown } | undefined)?.agent_mode;
+    showAgentToast(mode === 'smart-reasoning' ? copy.agentSwitchedOn : copy.agentSwitchedOff);
+  }
+
+  function showAgentToast(message: string) {
+    setAgentToast(message);
+    if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current);
+    agentToastTimer.current = window.setTimeout(() => setAgentToast(null), 2400);
+  }
+
+  /** SPA navigation to the agents page (manage entry / configure jump). */
+  function navigateToAgentsPage(query?: string) {
+    const target = query ? `/platform/agents?${query}` : '/platform/agents';
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   }
 
   function changeSessionSource(source: string): void {
@@ -1076,7 +1100,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
-  return <ChatPage
+  return <>
+    {agentToast ? (
+      <div role="status" aria-live="polite" className="fixed bottom-[76px] left-1/2 z-[10050] -translate-x-1/2 rounded-[8px] bg-[rgba(0,0,0,0.78)] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+        {agentToast}
+      </div>
+    ) : null}
+    <ChatPage
     sessions={sessions}
     selectedSessionId={selectedSessionId}
     messages={messages}
@@ -1098,9 +1128,26 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onMentionOpen={loadMentionOptions}
     onMentionSelect={selectMention}
     onMentionRemove={removeMention}
-    agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
+    agents={agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      disabled: disabledAgentIds.includes(agent.id),
+      description: typeof agent.description === 'string' ? agent.description : undefined,
+      is_builtin: agent.is_builtin,
+      config: agent.config,
+    }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
+    agentModels={agentModels}
+    onManageAgents={() => navigateToAgentsPage()}
+    onConfigureAgent={(agent, section, highlight) => {
+      const params = new URLSearchParams({ edit: agent.id, section });
+      if (highlight) params.set('highlight', highlight);
+      navigateToAgentsPage(params.toString());
+    }}
+    onAgentNotReady={(_agent, labels) => {
+      showAgentToast(copy.agentNotReadyHint.replace('{items}', labels.join('、')));
+    }}
     modelLabel={modelChipLabel}
     modelContext={modelChipContext}
     modelContextIsDefault={modelChipIsDefault}
@@ -1157,5 +1204,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
     onStopStream={() => void stopStream()}
     send={send}
-  />;
+  />
+  </>;
 }

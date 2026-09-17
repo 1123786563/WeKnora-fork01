@@ -24,6 +24,9 @@ export interface ChatAgentOption {
   id: string;
   name: string;
   disabled?: boolean;
+  description?: string;
+  is_builtin?: boolean;
+  config?: Record<string, unknown>;
 }
 
 export interface ChatToolApprovalPrompt {
@@ -97,6 +100,11 @@ export interface ChatPageProps {
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
+  /** Chat-readiness models + agent-selector host actions (upstream AgentSelector). */
+  agentModels?: readonly { id: string; type?: string }[];
+  onManageAgents?(): void;
+  onConfigureAgent?(agent: { id: string }, section: string, highlight?: 'summary_model' | 'rerank_model'): void;
+  onAgentNotReady?(agent: { id: string; name: string }, labels: string[]): void;
   /** Empty-state suggested questions for the new-conversation view. */
   starterQuestions?: readonly string[];
   /** True while the agent suggested-questions request is in flight (skeleton chips). */
@@ -636,6 +644,10 @@ export function ChatPage(props: ChatPageProps) {
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}
+          agentModels={props.agentModels}
+          onManageAgents={props.onManageAgents}
+          onConfigureAgent={props.onConfigureAgent}
+          onAgentNotReady={props.onAgentNotReady}
           modelLabel={props.modelLabel}
           modelContext={props.modelContext}
           modelContextIsDefault={props.modelContextIsDefault}
