@@ -1288,15 +1288,6 @@
       "source": "task-index",
       "kind_basis": "baseline-ls-tree"
     },
-    "tests/mobile-v2/mx-034.test.ts": {
-      "owners": [
-        "MX-034"
-      ],
-      "kind": "create",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
-    },
     "tests/mobile-v2/mx-035.test.ts": {
       "owners": [
         "MX-035"
@@ -2035,6 +2026,24 @@
       "shared_serialized": false,
       "source": "mx-032-lock-extension",
       "note": "能力三态裁决 Go 测试（frozen）"
+    },
+    "tests/mobile-v2/e2e/mx-034.test.ts": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-034-location",
+      "note": "E2E 门禁独立于单元 glob（显式命令运行；blocked-env 抛错不假绿）"
+    },
+    "tests/mobile-v2/mx-034.test.ts": {
+      "owners": [
+        "MX-034"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-034-location",
+      "note": "规格声明路径；实际落位 tests/mobile-v2/e2e/mx-034.test.ts（E2E 门禁独立于单元 glob）——映射条目"
     }
   }
 }

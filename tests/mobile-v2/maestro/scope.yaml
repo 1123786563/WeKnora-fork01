@@ -1,0 +1,12 @@
+name: mobile-v2-scope-e2e
+# MX-034 空间切换/恢复链（Maestro）
+# 前提同 core.yaml； additionally 需要第二个空间成员资格（受控测试数据）。
+appId:
+  ios: com.weknora.mobile
+  android: com.weknora.mobile
+tags:
+  - scope-recovery
+---
+
+# 切空间：旧数据不可见/迟到响应不覆盖 + 杀进程冷启动恢复
+- runFlow: scope.yaml
