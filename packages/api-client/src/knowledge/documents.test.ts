@@ -144,6 +144,32 @@ test('fetches preview and download bytes through the authenticated binary reques
   assert.equal(requests[0]?.signal, controller.signal);
 });
 
+test('batchDownload posts the selected ids and returns the ZIP blob', async () => {
+  // Upstream api/knowledge-base/index.ts batchDownloadKnowledge: POST
+  // /knowledge-bases/:id/knowledge/batch-download with {ids}, responseType
+  // blob — credentials stay in headers, never in a download link.
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async () => {
+    throw new Error('JSON request was not expected');
+  }, async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return {
+      body: new Blob(['zip-bytes'], { type: 'application/zip' }),
+      contentType: 'application/zip',
+      headers: { 'content-type': 'application/zip' },
+    };
+  });
+
+  const zip = await api.batchDownload('kb/1', ['doc-1', 'doc-2']);
+
+  assert.equal(zip.contentType, 'application/zip');
+  assert.deepEqual(requests, [{
+    method: 'POST',
+    path: '/api/v1/knowledge-bases/kb%2F1/knowledge/batch-download',
+    body: { ids: ['doc-1', 'doc-2'] },
+  }]);
+});
+
 test('supports URL/manual sources and guarded document mutations', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createKnowledgeDocumentsApi(async (request) => {

@@ -92,6 +92,13 @@ import {
   type KnowledgeDocumentListState,
 } from "./list.ts";
 import {
+  batchDownloadKnownBytes,
+  batchDownloadPreflight,
+  batchDownloadZipName,
+  saveBatchDownloadBlob,
+  selectBatchDownloadIds,
+} from "./knowledge-batch-download.ts";
+import {
   computeSupportedFileTypes,
   computeUnsupportedFileTypes,
   dateRangeToTimeParams,
@@ -314,7 +321,10 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
-  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={() => { close(); handler(); }}>{icon}<span>{label}</span></button>;
+  // stopPropagation: the card's onClick opens the document drawer — menu
+  // choices (batch manage/move/delete/…) must not bubble into it (upstream
+  // renders the card menu outside the card's click target).
+  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={(event) => { event.stopPropagation(); close(); handler(); }}>{icon}<span>{label}</span></button>;
   const downloadable = document.source === "file" || document.source === "manual" || !document.source;
   return <span className="relative inline-flex shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
     <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><MoreIcon /></button>
@@ -3080,10 +3090,49 @@ export function KnowledgeDocumentsPage({
     }
   }
 
+  // Vue KnowledgeBase.vue handleBatchDownload (L453-504): filter to entries
+  // with an original file, enforce the 200/512MiB caps with the upstream
+  // warnings, stream the ZIP through the authenticated seam, save via an
+  // object-URL anchor. Aborted on unmount / KB switch like the Vue flow.
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const batchDownloadController = useRef<AbortController | null>(null);
+  useEffect(() => () => batchDownloadController.current?.abort(), []);
+  async function handleBatchDownload() {
+    if (batchDownloading || !selected.size) return;
+    const itemsById = new Map(items.map((item) => [item.id, item]));
+    const selection = selectBatchDownloadIds(selected, itemsById);
+    const warningKey = batchDownloadPreflight(selection, batchDownloadKnownBytes(selection.ids, itemsById));
+    if (warningKey) {
+      showStageNotice(t(warningKey), "warning");
+      return;
+    }
+    if (selection.skipped > 0) {
+      showStageNotice(t("knowledgeBase.batchDownloadSkipped", { count: selection.skipped }), "warning");
+    }
+    const controller = new AbortController();
+    batchDownloadController.current = controller;
+    setBatchDownloading(true);
+    try {
+      const zip = await client.knowledgeBases.documents.batchDownload(knowledgeBaseId, selection.ids, controller.signal);
+      if (controller.signal.aborted) return;
+      const blob = zip.body instanceof Blob ? zip.body : new Blob([zip.body], { type: "application/zip" });
+      saveBatchDownloadBlob(blob, batchDownloadZipName());
+      showStageNotice(t("knowledgeBase.batchDownloadStarted"), "success");
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        showStageNotice(error instanceof Error ? error.message : t("knowledgeBase.batchDownloadFailed"), "error");
+      }
+    } finally {
+      if (batchDownloadController.current === controller) {
+        batchDownloadController.current = null;
+        setBatchDownloading(false);
+      }
+    }
+  }
+
   // Vue's batch popconfirm filters documents that are already being parsed
   // before the batch endpoint is called.
-  function reparseSelected() {
-    if (!selected.size) return;
+  function reparseSelected() {    if (!selected.size) return;
     const ids = filterReparseIds([...selected], items);
     if (!ids.length) {
       setMutationError(t("common.operationFailed"));
@@ -3625,6 +3674,16 @@ export function KnowledgeDocumentsPage({
                 onClick={() => { setSelected(new Set()); setBatchMode(false); }}
               >
                 {t("knowledgeBase.clearSelection")}
+              </Button>
+              {/* Vue DocumentBatchBar primary action: 批量下载 (download stays
+                  available to contributors even without mutate rights). */}
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!selected.size || batchDownloading}
+                onClick={() => void handleBatchDownload()}
+              >
+                {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
               </Button>
               {canContribute ? (
                 <>

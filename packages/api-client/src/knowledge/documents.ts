@@ -362,6 +362,17 @@ export function createKnowledgeDocumentsApi(
       if (!requestBinary) throw new Error('Binary transport is unavailable');
       return requestBinary({ method: 'GET', path: knowledgePath(id, '/download'), signal });
     },
+    /** Upstream batchDownloadKnowledge: POST the ids, receive the ZIP blob. */
+    async batchDownload(knowledgeBaseId: string, ids: readonly string[], signal?: AbortSignal): Promise<ClientBinaryResponse> {
+      if (!requestBinary) throw new Error('Binary transport is unavailable');
+      if (ids.length === 0) throw new Error('batchDownload requires at least one knowledge id');
+      return requestBinary({
+        method: 'POST',
+        path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/batch-download`,
+        body: { ids },
+        signal,
+      });
+    },
     async reparse(id: string, process_config?: unknown): Promise<void> {
       await request({ method: 'POST', path: knowledgePath(id, '/reparse'), body: process_config === undefined ? undefined : { process_config } });
     },
