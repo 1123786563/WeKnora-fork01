@@ -719,6 +719,15 @@ export default {
     selectedCount: '{count} selected',
     clearSelection: 'Deselect all',
     batchDelete: 'Delete selected',
+    batchDownload: 'Download selected',
+    batchDownloading: 'Preparing download…',
+    batchDownloadHint: 'Download a ZIP of up to 200 documents and 512 MiB of original content per batch. Select all includes loaded documents only; web pages without original files are skipped. The ZIP keeps knowledge-base folders.',
+    batchDownloadStarted: 'ZIP saving started. Extract it, then upload the files and folders.',
+    batchDownloadFailed: 'Batch download failed. Please try again.',
+    batchDownloadSkipped: 'Skipped {count} documents that have no original file.',
+    batchDownloadNoFiles: 'None of the selected documents have an original file to download.',
+    batchDownloadTooLarge: 'Selected files total more than 512 MiB. Choose fewer documents and try again.',
+    selectLoaded: 'Select loaded',
     confirmBatchDeleteDocument: 'Delete {count} selected documents? This action cannot be undone.',
     deleteSubmitted: 'Delete request submitted. Waiting for completion.',
     deletePending: 'Deletion is still pending. Refresh later to check the result.',
@@ -786,6 +795,11 @@ export default {
     chunkLoadFailed: 'Failed to load chunks'
   },
   uploadConfirm: {
+    documentSummary: "Document summary",
+    documentSummaryDescription: "Choose whether to automatically summarize documents in this import.",
+    generateSummary: "Generate document summaries",
+    generateSummaryHint: "Enabled by default. Disable to skip summaries while parsing, indexing, and other configured steps continue.",
+
     title: 'Confirm Upload',
     parseConfig: 'Parse settings',
     configNav: 'Parse settings navigation',

@@ -6396,6 +6396,11 @@ export default {
     }
   },
   uploadConfirm: {
+    documentSummary: "문서 요약",
+    documentSummaryDescription: "이번에 가져오는 문서의 요약을 자동으로 생성할지 선택합니다.",
+    generateSummary: "문서 요약 생성",
+    generateSummaryHint: "기본적으로 활성화됩니다. 비활성화하면 요약 생성을 건너뛰며 파싱, 인덱싱 및 기타 단계는 설정대로 진행됩니다.",
+
     title: '문서 업로드 확인',
     parseConfig: '파싱 설정',
     configNav: '파싱 설정 탐색',
@@ -6684,6 +6689,15 @@ export default {
     selectedCount: '{count}개 선택됨',
     clearSelection: '선택 해제',
     batchDelete: '선택 삭제',
+    batchDownload: '일괄 다운로드',
+    batchDownloading: '다운로드 준비 중…',
+    batchDownloadHint: '한 번에 최대 200개 문서, 원본 합계 512 MiB를 ZIP으로 다운로드합니다. 전체 선택은 불러온 문서만 포함하며, 원본이 없는 웹 페이지는 건너뜁니다. ZIP은 폴더 구조를 유지합니다.',
+    batchDownloadStarted: 'ZIP 저장을 시작했습니다. 압축을 푼 후 파일과 폴더를 업로드하세요.',
+    batchDownloadFailed: '일괄 다운로드에 실패했습니다. 다시 시도하세요.',
+    batchDownloadSkipped: '원본 파일이 없는 문서 {count}개를 건너뛰었습니다.',
+    batchDownloadNoFiles: '선택한 문서에 다운로드할 원본 파일이 없습니다.',
+    batchDownloadTooLarge: '선택한 파일 합계가 512 MiB를 초과합니다. 항목을 줄인 뒤 나눠 다운로드하세요.',
+    selectLoaded: '불러온 문서 선택',
     confirmBatchDeleteDocument: '선택한 {count}개 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.',
     deleteSubmitted: '삭제 요청이 제출되었습니다. 완료를 기다리는 중입니다.',
     deletePending: '삭제가 아직 완료되지 않았습니다. 잠시 후 새로고침하여 결과를 확인하세요.',

@@ -128,6 +128,18 @@ type KnowledgeService interface {
 		knowledgeID string,
 		processOverrides *types.KnowledgeProcessOverrides,
 	) (*types.Knowledge, error)
+	// ReplaceKnowledgeFile replaces the source file of an existing file knowledge
+	// while preserving its ID, then re-parses it. A path-qualified customFileName
+	// also sets the folder; a bare filename keeps the current folder. Metadata
+	// entries are merged into the stored metadata. Identical content on this
+	// same path returns a DuplicateKnowledgeError without re-parsing.
+	ReplaceKnowledgeFile(
+		ctx context.Context,
+		knowledgeID string,
+		file *multipart.FileHeader,
+		customFileName string,
+		metadata map[string]string,
+	) (*types.Knowledge, error)
 	// CancelKnowledgeParse marks an in-progress parse as cancelled by the
 	// user. The knowledge row and any partially written chunks/index are
 	// kept; downstream queued tasks for the same knowledge are best-effort
@@ -314,6 +326,9 @@ type KnowledgeRepository interface {
 	// whether the transition took place (false when the row's parse_status
 	// was no longer "processing", e.g. user cancelled / deleted in flight).
 	SetFinalizing(ctx context.Context, id string, expectedSubtasks int) (bool, error)
+	// CompleteProcessingWithoutSubtasks atomically completes a still-processing
+	// document that has no enrichment tasks, without overriding cancel/delete.
+	CompleteProcessingWithoutSubtasks(ctx context.Context, id string) (bool, error)
 	// CountKnowledgeByKnowledgeBaseID counts the number of knowledge items in a knowledge base.
 	CountKnowledgeByKnowledgeBaseID(ctx context.Context, tenantID uint64, kbID string) (int64, error)
 	// CountKnowledgeByStatus counts the number of knowledge items with the specified parse status.

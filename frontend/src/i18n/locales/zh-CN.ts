@@ -6402,6 +6402,11 @@ export default {
     }
   },
   uploadConfirm: {
+    documentSummary: "文档摘要",
+    documentSummaryDescription: "为本次导入的文档选择是否自动生成摘要。",
+    generateSummary: "生成文档摘要",
+    generateSummaryHint: "默认开启。关闭后跳过摘要生成，文档解析、索引及其他处理步骤仍按配置执行。",
+
     title: '上传文档确认',
     parseConfig: '解析配置',
     configNav: '解析配置导航',
@@ -6690,6 +6695,15 @@ export default {
     selectedCount: '已选 {count} 项',
     clearSelection: '取消选择',
     batchDelete: '批量删除',
+    batchDownload: '批量下载',
+    batchDownloading: '正在打包下载…',
+    batchDownloadHint: '下载所选文件为 ZIP，每批最多 200 项、原始文件合计 512 MiB。全选仅包含已加载的文档；没有原始文件的网页条目会自动跳过。ZIP 会保留知识库文件夹。',
+    batchDownloadStarted: '已开始保存 ZIP，解压后即可按文件夹批量上传文件',
+    batchDownloadFailed: '批量下载失败，请稍后重试',
+    batchDownloadSkipped: '已跳过 {count} 个没有原始文件的文档',
+    batchDownloadNoFiles: '所选文档没有可下载的原始文件',
+    batchDownloadTooLarge: '所选文件合计超过 512 MiB，请减少选择后分批下载',
+    selectLoaded: '全选已加载',
     confirmBatchDeleteDocument: '确认删除选中的 {count} 个文档？删除后将无法恢复。',
     deleteSubmitted: '删除任务已提交，正在等待完成。',
     deletePending: '删除尚未完成，请稍后刷新查看结果。',
