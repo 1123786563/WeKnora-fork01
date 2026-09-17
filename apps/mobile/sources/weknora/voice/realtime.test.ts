@@ -213,6 +213,53 @@ test('a replay admission without a fresh token releases the stale row and retrie
   assert.equal(admissions, 2);
 });
 
+test('a connect failure settles the admitted session instead of leaking the hold (fix F-1)', async () => {
+  const log: string[] = [];
+  const session = createRealtimeVoiceSession({
+    port: {
+      async connect() { log.push('connect-attempt'); throw new RealtimeVoiceError('PROVIDER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE'); },
+      async close() { log.push('port.close'); },
+      mute() { /* no media leg */ },
+    },
+    admit: async () => ({ id: 'vs_prod', grant: { token: 'tok-1', expiresAt: '2031-01-01T00:00:00Z' }, tokenIssued: true }),
+    release: async (id) => { log.push(`release:${id}`); },
+  });
+  await session.begin();
+  // The production fail-closed provider port hits exactly this path: the W30
+  // admission already took a durable budget hold, so the failed connect must
+  // close and settle (release) the granted session — never dangle it.
+  assert.equal(session.state(), 'failed');
+  assert.deepEqual(log, ['connect-attempt', 'port.close', 'release:vs_prod']);
+  assert.equal(session.sessionID(), null);
+});
+
+test('a failed renewal connect also settles the freshly admitted session (fix F-1)', async () => {
+  const log: string[] = [];
+  const time = clock(Date.parse('2030-01-01T00:00:00Z'));
+  let admissions = 0;
+  let connectFails = false;
+  const session = createRealtimeVoiceSession({
+    port: {
+      async connect() { if (connectFails) throw new RealtimeVoiceError('PROVIDER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE'); log.push('port.connect'); },
+      async close() { log.push('port.close'); },
+      mute() { /* no media leg */ },
+    },
+    admit: async () => {
+      admissions += 1;
+      return { id: `vs_${admissions}`, grant: { token: `tok_${admissions}`, expiresAt: '2030-01-01T00:00:30Z' }, tokenIssued: true };
+    },
+    release: async (id) => { log.push(`release:${id}`); },
+    now: time.now,
+  });
+  await session.begin();
+  time.advance(60_000);
+  connectFails = true;
+  await session.renewIfExpired();
+  assert.equal(session.state(), 'failed');
+  assert.deepEqual(log, ['port.connect', 'port.close', 'release:vs_1', 'port.close', 'release:vs_2']);
+  assert.equal(admissions, 2);
+});
+
 test('interrupt playback and mute only touch the media surface', async () => {
   const log: string[] = [];
   const session = createRealtimeVoiceSession({

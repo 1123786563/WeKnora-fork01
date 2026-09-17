@@ -260,6 +260,10 @@ export function createRealtimeVoiceSession(input: RealtimeVoiceSessionInput): Re
       await input.port.connect(admitted.grant);
       publish('connected');
     } catch (error) {
+      // F-1 (review round 1): the admission already took a durable W30
+      // budget hold and an open row, so a failed connect must settle the
+      // granted session — never dangle it until the deadline sweeper.
+      await dropCurrent();
       fail(error);
     }
   };
@@ -286,6 +290,9 @@ export function createRealtimeVoiceSession(input: RealtimeVoiceSessionInput): Re
       publish('connected');
       return true;
     } catch (error) {
+      // F-1: same settle-on-failure contract as begin — the fresh admission
+      // from this renewal must not leak its hold either.
+      await dropCurrent();
       fail(error);
       return false;
     }

@@ -9,6 +9,7 @@ import type { ExecutionRecovery } from '../executions/recovery';
 import { DictationError, type DictationPort } from '../voice/dictation';
 import { createRealtimeVoiceSession, type VoiceUtteranceOutcome } from '../voice/realtime';
 import { VoicePanel } from '../voice/VoicePanel';
+import { createRunProgressPresenter } from '../notifications/live-progress';
 
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
@@ -442,6 +443,51 @@ it('closes the grant-backed session on background and never reopens it; foregrou
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   expect(session.state()).toBe('interrupted');
   expect(log.filter((entry) => entry === 'port.connect')).toHaveLength(1);
+  await act(async () => renderer!.unmount());
+});
+
+it('ends and settles the voice session when the screen unmounts mid-call (fix F-2)', async () => {
+  const log: string[] = [];
+  const viewModel = model({ pendingInteractions: [] });
+  const session = realtimeSession(log);
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, voice: { session } })); });
+  await act(async () => { await session.begin(); });
+  expect(session.state()).toBe('connected');
+  // Navigating away must not dangle the paid session until the deadline: the
+  // unmount cleanup closes the provider and settles exactly once.
+  await act(async () => { renderer!.unmount(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(log).toEqual(['port.connect', 'port.close', 'release:vs_1']);
+  expect(log.filter((entry) => entry === 'release:vs_1')).toHaveLength(1);
+});
+
+it('presents run status through the injected progress surface without leaking content (fix F-3)', async () => {
+  const notifications: Array<{ runID: string; title: string; body: string }> = [];
+  const listeners = new Set<() => void>();
+  const viewModel = model({
+    pendingInteractions: [],
+    execution: { runID: 'run-1', requestID: 'q-1', status: 'pending' },
+    messages: [{ id: 'm1', role: 'assistant', text: 'SECRET- conversation content' }],
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+  });
+  const progress = createRunProgressPresenter({
+    isLiveActivityAvailable: () => false,
+    notify: async (request) => { notifications.push({ runID: request.runID, title: request.title, body: request.body }); },
+  });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, progress })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(notifications.map((item) => item.body)).toEqual(['任务排队中']);
+  await act(async () => {
+    (viewModel as { execution: { runID: string; requestID: string; status: string } }).execution = { runID: 'run-1', requestID: 'q-1', status: 'succeeded' };
+    listeners.forEach((listener) => listener());
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  // The terminal status carries one plain notification; the serialized
+  // surface never contains conversation content.
+  expect(notifications.some((item) => item.title === '任务已完成')).toBe(true);
+  expect(JSON.stringify(notifications)).not.toContain('SECRET');
   await act(async () => renderer!.unmount());
 });
 });

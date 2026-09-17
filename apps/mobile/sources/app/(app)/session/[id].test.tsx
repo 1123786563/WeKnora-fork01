@@ -40,6 +40,11 @@ const mocks = vi.hoisted(() => {
     deletedFiles: [] as string[],
     executionStarts: [] as Array<{ url: string; headers: Record<string, string>; body: unknown }>,
     storage: new Map<string, string>(),
+    expoNotify: {
+      getPermissionsAsync: vi.fn(async () => ({ granted: true })),
+      scheduleNotificationAsync: vi.fn(async (_request: { content: { title: string; body: string; data?: Record<string, unknown> } }) => 'notif-1'),
+      dismissNotificationAsync: vi.fn(async (_identifier: string) => undefined),
+    },
   };
 });
 
@@ -99,6 +104,10 @@ vi.mock('@/weknora/voice/product-transcriber', async () => await import('../../.
 // (the alias itself does not resolve under vitest without these mocks).
 vi.mock('@/weknora/voice/realtime', async () => await import('../../../weknora/voice/realtime'));
 vi.mock('@/weknora/platform/protocol-gate', async () => await import('../../../weknora/platform/protocol-gate'));
+// W31 F-3: the run progress presenter's production port (expo-notifications).
+vi.mock('@/weknora/notifications/live-progress', async () => await import('../../../weknora/notifications/live-progress'));
+vi.mock('@/weknora/notifications/native-progress-port', async () => await import('../../../weknora/notifications/native-progress-port'));
+vi.mock('expo-notifications', () => mocks.expoNotify);
 vi.mock('@/weknora/knowledge/api', async () => await import('../../../weknora/knowledge/api'));
 
 vi.mock('@/weknora/platform/execution-storage', async () => {
@@ -217,6 +226,9 @@ beforeEach(() => {
   mocks.requestCameraPermissionsAsync.mockReset().mockResolvedValue({ granted: true, status: 'granted' });
   mocks.launchCameraAsync.mockReset().mockResolvedValue({ canceled: true, assets: null });
   mocks.requestRecordingPermissionsAsync.mockReset().mockResolvedValue({ granted: true, status: 'granted' });
+  mocks.expoNotify.getPermissionsAsync.mockReset().mockResolvedValue({ granted: true });
+  mocks.expoNotify.scheduleNotificationAsync.mockReset().mockResolvedValue('notif-1');
+  mocks.expoNotify.dismissNotificationAsync.mockReset().mockResolvedValue(undefined);
   mocks.fetch = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => {
     const method = init?.method ?? 'GET';
     if (url.startsWith('content://') || url.startsWith('file://')) {
@@ -444,6 +456,32 @@ describe('mounted product session route (W29 dictation assembly)', () => {
     expect(renderer.root.findAllByType('SessionView')).toHaveLength(1);
     expect(renderer.root.findAllByProps({ accessibilityLabel: '按住说话' })).toHaveLength(0);
     expect(mocks.requestRecordingPermissionsAsync).not.toHaveBeenCalled();
+
+    await act(async () => { renderer.unmount(); });
+  });
+});
+
+describe('mounted product session route (W31 background progress)', () => {
+  it('wires the run progress presenter to the plain-notification surface (fix F-3)', async () => {
+    // A durable execution request survives the relaunch (W10 storage), so
+    // the restored run reaches the presenter on mount.
+    mocks.storage.set(
+      'weknora:execution-request:https://api.example:tenant-1:user-1:session-1',
+      JSON.stringify({ requestID: 'q-restore', runID: 'run-1', status: 'succeeded' }),
+    );
+    const renderer = await mountRoute();
+    await waitForRoute(renderer, () => mocks.expoNotify.scheduleNotificationAsync.mock.calls.length >= 1);
+
+    // F-3 closure assertion: the production route mounts the presenter with
+    // the expo-notifications port, and the restored terminal run posts one
+    // status-only local notification — never conversation content.
+    const request = mocks.expoNotify.scheduleNotificationAsync.mock.calls[0][0] as {
+      content: { title: string; body: string; data?: Record<string, unknown> };
+    };
+    expect(request.content.data?.runID).toBe('run-1');
+    expect(request.content.title).toBe('任务已完成');
+    expect(request.content.body).toBe('任务已完成');
+    expect(mocks.expoNotify.getPermissionsAsync).toHaveBeenCalled();
 
     await act(async () => { renderer.unmount(); });
   });

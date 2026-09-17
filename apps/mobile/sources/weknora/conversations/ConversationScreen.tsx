@@ -9,6 +9,7 @@ import { createDictationController, DictationError, type DictationLimits, type D
 import { DictationInput } from '../voice/DictationInput';
 import { createVoiceControls, createVoiceUtteranceHandler, type RealtimeVoiceSession, type VoiceUtteranceOutcome } from '../voice/realtime';
 import { VoicePanel } from '../voice/VoicePanel';
+import type { RunProgressPresenter } from '../notifications/live-progress';
 import { ConversationResultResourcesContext, type ConversationResultResources } from './ProductConversationMessages';
 export { ProductConversationMessages } from './ProductConversationMessages';
 export { selectRenderer } from '../renderers/registry';
@@ -49,6 +50,14 @@ export interface ConversationScreenProps {
    * approve.
    */
   voice?: ConversationVoice;
+  /**
+   * W31 background run progress presenter (F-3): the screen feeds it Run
+   * status changes from the view-model — status-only hints, the presenter
+   * owns no worker and never renders conversation content. Live Activity is
+   * the preferred surface when the port reports it; plain notifications are
+   * the always-available fallback.
+   */
+  progress?: RunProgressPresenter;
   /**
    * W28 authorized resource seam for structured results: citations open and
    * oversized analysis tables / artifact files download by re-requesting
@@ -197,7 +206,7 @@ export function ConversationControlPanel({ viewModel, attachments, dictation }: 
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, voice, resultResources }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, voice, progress, resultResources }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
   // W12: the product conversation resumes executions when the app returns to the
@@ -217,15 +226,31 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
   // closes the provider session and settles billing — the paid session is
   // never reopened automatically; returning to the foreground only renews an
   // expired grant through fresh admission while the W12 controller above
-  // re-attaches to the run.
+  // re-attaches to the run. Unmounting (navigating away) ends the session
+  // the same way so a mid-call navigation never dangles the W30 hold (F-2).
   React.useEffect(() => {
     if (!voice) return;
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'background') void voice.session.interruptedBySystem('background');
       else if (next === 'active') void voice.session.renewIfExpired();
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      voice.session.dispose();
+    };
   }, [voice]);
+  // W31 F-3: run status changes ride the progress presenter — status-only
+  // hints (the presenter's fixed label map), no worker, no content. The
+  // presenter never owns navigation; foreground recovery stays W12's.
+  React.useEffect(() => {
+    if (!progress) return;
+    const report = () => {
+      const execution = viewModel.execution;
+      if (execution?.runID) void progress.onRunStatus(execution.runID, execution.status).catch(() => undefined);
+    };
+    report();
+    return viewModel.subscribe?.(report);
+  }, [progress, viewModel]);
   // The separated W31 controls: stop playback and end voice map onto the
   // realtime session; cancelTask is the explicit product command riding the
   // view-model boundary (the W37 protocol gate stops it there).

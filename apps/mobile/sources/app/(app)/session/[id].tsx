@@ -13,6 +13,8 @@ import { createMobileKnowledgeApi } from '@/weknora/knowledge/api';
 import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
 import { createProductVoiceTranscriber } from '@/weknora/voice/product-transcriber';
 import { createProductVoiceSessionApi, createRealtimeVoiceSession, createUnavailableRealtimeVoicePort } from '@/weknora/voice/realtime';
+import { createRunProgressPresenter } from '@/weknora/notifications/live-progress';
+import { createExpoNotificationsProgressPort } from '@/weknora/notifications/native-progress-port';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
@@ -132,6 +134,14 @@ function ProductSessionRoute() {
       }),
     };
   }, [auth.authSession, auth.credential, host, sessionId, viewModel]);
+  // W31 F-3: background run progress — the presenter consumes Run status
+  // changes (status-only labels, no conversation content) through the
+  // expo-notifications port (Live Activity stays declaration-only until its
+  // native module lands; plain notifications degrade gracefully and a
+  // missing permission posts nothing rather than faking a surface).
+  const progress = React.useMemo(() => (
+    host && viewModel ? createRunProgressPresenter(createExpoNotificationsProgressPort()) : null
+  ), [host, viewModel]);
   // W29 voice chain: the production dictation port (expo-audio capture with
   // permission gating and temp-file cleanup). W30 wires the authenticated
   // transcription call into the port's consumption seam — the capture goes
@@ -171,7 +181,7 @@ function ProductSessionRoute() {
   // (AppState active -> status/history/stream; background closes only the
   // subscription). The controller is per-view-model, i.e. per mount, matching
   // the screen's dispose-on-unmount contract.
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} voice={voice ?? undefined} resultResources={resultResources ?? undefined} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} voice={voice ?? undefined} progress={progress ?? undefined} resultResources={resultResources ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);
