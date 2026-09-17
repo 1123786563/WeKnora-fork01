@@ -45,12 +45,13 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-015 | accepted | 0119d82a→082489e6 | mv2 21/21 · frozen 未就绪 0/保留 · tsc 11 | 规格 PASS · 质量 APPROVED（双突变杀优认证；P3 记录项本批修正） | MX-015.md |
 | MX-018 | accepted | 082489e6→16adf375 | mv2 21/21 · frozen stop_pending/停止待确认/false · tsc 11 | 规格 PASS · 质量 APPROVED（kill1/2b/2c 被抓；P3 观察登记） | MX-018.md |
 | MX-019 | accepted | 16adf375→188da5fd | mv2 22/22（HEAD 集）· frozen 陈旧确认 0/refresh · tsc 11 | 规格 PASS · 质量 APPROVED（双突变被抓；P3 观察登记） | MX-019.md |
-| MX-031 | review | 188da5fd→569eb068 | mv2 23/23 · frozen 120/38/1260/0 · tsc 11 | 待独立review | MX-031.md |
-| MX-024 | review | 569eb068→52a3627d | mv2 24/24 · frozen 0/[] · tsc 11 | 待独立review（与 031 合并） | MX-024.md |
-| MX-021 | review | 52a3627d→c600224e | mv2 25/25 · go 全绿（路由+DI）· shared 590/590 · tsc 11 | 审查进行中（与 024/031 合并） | MX-021.md |
-| MX-020 | review | c600224e→e3639894 | mv2 26/26 · frozen 0/编辑文本/authorizing · tsc 11 | 待独立review（审查代理 TLS 失败重派） | MX-020.md |
-| MX-023 | review | e3639894→0dda83ba | mv2 27/27 · frozen 0/[] · tsc 11 | 审查进行中（五项合并） | MX-023.md |
-| MX-025 | review | 0dda83ba→(待提交) | mv2 28/28 · frozen false/true · tsc 11 | 待独立review | MX-025.md |
+| MX-031 | accepted | 188da5fd→569eb068 | mv2 23/23 · frozen 120/38/1260/0 · tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-031.md |
+| MX-024 | accepted | 569eb068→52a3627d | mv2 24/24 · frozen 0/[] · tsc 11 | 规格 PASS · 质量 APPROVED（2/2 突变红） | MX-024.md |
+| MX-021 | accepted | 52a3627d→c600224e | mv2 25/25 · go 全绿（路由+DI 四环核验）· tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-021.md |
+| MX-020 | accepted | c600224e→e3639894 | mv2 26/26 · frozen 0/编辑文本/authorizing · tsc 11 | 规格 PASS · 质量 APPROVED（双向突变验证） | MX-020.md |
+| MX-023 | accepted | e3639894→0dda83ba | mv2 27/27 · frozen 0/[] · tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-023.md |
+| MX-025 | review | 0dda83ba→e9ce0fc2 | mv2 28/28 · frozen false/true · tsc 11 | 待独立review（随下轮） | MX-025.md |
+| MX-028 | review | e9ce0fc2→(待提交) | mv2 29/29 · frozen 编辑文本/0 · tsc 11 | 待独立review | MX-028.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 
