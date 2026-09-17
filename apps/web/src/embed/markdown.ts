@@ -15,14 +15,25 @@
  *
  * So the answer is: citations are converted BEFORE marked and re-injected
  * AFTER it — markdown never sees the tags, and the pills never get escaped.
- * Vue helpers that guard streaming artifacts the React face does not have
- * (typewriter emphasis balancing, mermaid/katex/image renderers) are omitted;
- * the DOMPurify surface below is the verbatim Vue chat config.
+ * The Vue typewriter-emphasis guards guard streaming artifacts of the Vue
+ * typewriter and are omitted (the React face renders whole messages). Math
+ * uses the same marked-katex-extension call as
+ * chatMarkdownRenderer.configureMarkedForChatMarkdown, on a dedicated Marked
+ * instance so the wiki face's global marked configuration stays untouched;
+ * katex/dist/katex.min.css is imported by EmbedEntryPage.tsx like
+ * EmbedBotMessage.vue does. The DOMPurify surface below is the verbatim Vue
+ * chat config (its math categories cover the KaTeX output).
  */
-import { marked } from 'marked';
+import { Marked } from 'marked';
+import markedKatex from 'marked-katex-extension';
 import DOMPurify from 'dompurify';
 import { domPurifyAllowedUriRegexp, escapeHTML } from '../wiki/markdown.ts';
 import { resolveCitationChunkId } from './chat-data.ts';
+
+// Vue chatMarkdownRenderer.configureMarkedForChatMarkdown:
+//   marked.use({ breaks: true, gfm: true })
+//   marked.use(markedKatex({ throwOnError: false, nonStandard: true }))
+const embedMarked = new Marked(markedKatex({ throwOnError: false, nonStandard: true }));
 
 // ─── citation tag helpers (frontend/src/utils/citationMarkdown.ts) ───
 
@@ -335,7 +346,7 @@ export function renderEmbedChatMarkdown(content: string, refs?: CitationKnowledg
   const inlineTags = joinCitationTagsToPreviousLine(citationSafeText);
   const { content: markdownWithPlaceholders, htmlSnippets } =
     extractCitationHtmlPlaceholders(inlineTags, refs);
-  const html = marked.parse(markdownWithPlaceholders, {
+  const html = embedMarked.parse(markdownWithPlaceholders, {
     breaks: true,
     gfm: true,
     async: false,

@@ -117,6 +117,7 @@ function expectedDateString(iso: string): string {
 const directShareRows = (): SharedRow[] => [
   sharedRow({ share_id: 'share-1', knowledge_base: { id: 'kb-shared-1', name: '共享库一', type: 'document', knowledge_count: 4, creator_id: 'u-2' }, permission: 'editor' }),
   sharedRow({ share_id: 'share-2', knowledge_base: { id: 'kb-shared-2', name: '共享库二', type: 'faq', chunk_count: 9, creator_id: 'u-3' }, permission: 'viewer' }),
+  sharedRow({ share_id: 'share-3', knowledge_base: { id: 'kb-shared-3', name: '共享库三', type: 'document', knowledge_count: 0, creator_id: 'u-4' }, permission: 'viewer' }),
 ];
 
 test('(a) shared cards carry the info-circle 查看详情 entry; owned cards do not', async () => {
@@ -131,10 +132,27 @@ test('(a) shared cards carry the info-circle 查看详情 entry; owned cards do 
   assert.equal(trigger.getAttribute('title'), '查看详情', 'trigger tooltip = knowledgeList.menu.viewDetails');
   assert.ok(trigger.querySelector('svg[data-kb-icon="info-circle"]'), 'trigger uses the info-circle icon');
   assert.equal(ownedCard.querySelector('.kb-shared-detail-trigger'), null, 'owned card must not offer the entry');
+  // R445 item 1 — Vue shared card header (KnowledgeBaseList.vue:304-315) has
+  // ONLY the 查看详情 trigger: no three-dot settings menu on non-own cards.
+  // Boolean form: feeding a live jsdom Element to assert.equal's diff OOMs the runner.
+  assert.ok(!sharedCard.querySelector('.kb-list-card-more'), 'shared card must not offer the three-dot 设置 entry');
+  assert.ok(ownedCard.querySelector('.kb-list-card-more'), 'owned card keeps the three-dot menu control');
   // The trigger must not navigate: card click opens the KB; trigger stops propagation.
   await click(trigger);
   await act(async () => {});
   assert.notEqual(dom.window.location.pathname, '/platform/knowledge-bases/kb-shared-1', 'trigger click is stopPropagation-ed (Vue @click.stop)');
+});
+
+// R445 item 3 — Vue shared card badge (KnowledgeBaseList.vue:336): empty
+// count renders '-' (`kb.knowledge_count || '-'`); own cards keep `|| 0`.
+test('(a) shared card badge shows - for an empty count like Vue', async () => {
+  const container = await mountPage(makeClient({ shared: directShareRows() }));
+  const emptyShared = container.querySelector('[data-kb-id="kb-shared-3"] .kb-list-badge-count');
+  assert.equal(emptyShared?.textContent, '-', 'shared card with knowledge_count 0 renders - (KnowledgeBaseList.vue:336)');
+  const populatedShared = container.querySelector('[data-kb-id="kb-shared-1"] .kb-list-badge-count');
+  assert.equal(populatedShared?.textContent, '4', 'shared card with a real count keeps the number');
+  const owned = container.querySelector('[data-kb-id="kb-mine"] .kb-list-badge-count');
+  assert.equal(owned?.textContent, '2', 'owned card keeps the numeric count');
 });
 
 test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
@@ -166,6 +184,11 @@ test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   assert.ok(closeBtn, 'footer 关闭 button (common.close)');
   assert.ok(goBtn, 'footer 进入知识库 button (knowledgeList.detail.goToKb)');
   assert.ok(goBtn.querySelector('svg[data-kb-icon="browse"]'), 'go button carries the browse icon (Vue t-icon browse)');
+  // R445 item 4 — Vue header close (KnowledgeBaseList.vue:713-716) is the ×
+  // icon button with aria-label $t('general.close') = 「关闭设置」.
+  const headerClose = Array.from(drawer.querySelectorAll('header button, button')).find((b) => (b.textContent ?? '').trim() === '×');
+  assert.ok(headerClose, 'header × close button renders');
+  assert.equal(headerClose.getAttribute('aria-label'), '关闭设置', 'header close aria-label = general.close (关闭设置)');
 });
 
 test('(b) viewer permission renders the read-only role label', async () => {

@@ -112,3 +112,79 @@ test('markdown syntax inside a citation tag is never parsed as markdown', () => 
   assert.match(html, /<h1[^>]*>标题 <span class="citation citation-kb"/);
   assert.match(html, /data-doc="\*\*手册\*\*"/);
 });
+
+// R445/A2 — Vue embed face configures marked-katex-extension
+// (chatMarkdownRenderer.configureMarkedForChatMarkdown:
+// marked.use(markedKatex({ throwOnError: false, nonStandard: true }))) and
+// EmbedBotMessage.vue imports katex/dist/katex.min.css, so $...$ and $$...$$
+// in answers must come out as KaTeX markup, not literal dollars.
+test('inline $...$ math renders as KaTeX like the Vue embed chain', () => {
+  const html = renderEmbedChatMarkdown('质能方程 $E=mc^2$ 成立。', []);
+  assert.match(html, /class="katex"/);
+  // KaTeX emits the MathML + HTML dual output; both spans survive sanitization.
+  assert.match(html, /class="katex-mathml"/);
+  assert.match(html, /class="katex-html"/);
+  assert.match(html, /<math /);
+  // The surrounding text survives.
+  assert.match(html, /质能方程/);
+  assert.match(html, /成立。/);
+});
+
+test('block $$...$$ math renders as display-mode KaTeX like the Vue embed chain', () => {
+  const html = renderEmbedChatMarkdown('积分：\n\n$$\\int_0^1 x\\,dx$$\n\n完毕。', []);
+  assert.match(html, /class="katex-display"/);
+  assert.match(html, /完毕。/);
+});
+
+// Math outside delimiters must stay literal dollars (marked-katex only consumes
+// $...$ / $$...$$), and code spans must not be treated as math.
+test('dollar text and code spans are untouched by the katex extension', () => {
+  const html = renderEmbedChatMarkdown('价格 5 元，`$x$` 与 `code` 保留。', []);
+  assert.match(html, /<code>\$x\$<\/code>/);
+  assert.doesNotMatch(html, /class="katex"/);
+});
+
+test('katex output survives sanitization with the Vue chat DOMPurify config', () => {
+  const html = renderEmbedChatMarkdown('公式 $a_1+b_2=c_3$ 与 $$x^2$$ 结束。', []);
+  // The verbatim Vue config keeps the KaTeX spans (class/style/math categories).
+  // DOMPurify drops <semantics>/<annotation> inside MathML by default and keeps
+  // their text — the identical outcome on the Vue face with the same config and
+  // dompurify ^3.4.11, so the visible KaTeX markup is the parity contract.
+  assert.match(html, /class="katex"/);
+  assert.match(html, /class="katex-html"/);
+  assert.match(html, /<math /);
+  assert.match(html, /<mi>/);
+  assert.match(html, /结束。/);
+});
+
+// R445/A2 item 2 — Vue paints the pill icons through CSS masks of
+// ziliao.svg / websearch-globe.svg (chat-citations.less). R444 shipped the
+// embed face with the icon slot display:none; the assets now ship in the
+// embed domain and the mask rules are restored.
+test('embed css restores the citation pill icon masks with shipped svg assets', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('./embed-chat.css', import.meta.url), 'utf8');
+  // The R444 hiding override is gone.
+  assert.doesNotMatch(css, /\.citation-icon\s*\{[^}]*display:\s*none/);
+  // Each icon variant paints its shipped asset through the mask (both the
+  // standard and -webkit- prefixed properties, like the Vue mixin).
+  assert.match(css, /citation-icon--book[^}]*mask-image:\s*url\([^)]*ziliao\.svg/);
+  assert.match(css, /citation-icon--book[^}]*-webkit-mask-image:\s*url\([^)]*ziliao\.svg/);
+  assert.match(css, /citation-icon--web[^}]*mask-image:\s*url\([^)]*websearch-globe\.svg/);
+  assert.match(css, /citation-icon--web[^}]*-webkit-mask-image:\s*url\([^)]*websearch-globe\.svg/);
+  // The assets themselves ship inside the embed domain.
+  for (const asset of ['ziliao.svg', 'websearch-globe.svg']) {
+    readFileSync(new URL(`./assets/${asset}`, import.meta.url), 'utf8');
+  }
+});
+
+// R445/A2 item 3 verification — Vue embed face renders images via
+// createSafeImage + sanitizeMarkdownHTML; the React embed pipeline must keep
+// passing http(s) images through the sanitizer as <img> (mermaid hydration on
+// the Vue face is a documented follow-up, see report-A2).
+test('http(s) markdown images render as sanitized img like the Vue embed face', () => {
+  const html = renderEmbedChatMarkdown('![架构图](https://cdn.example.com/arch.png)', []);
+  assert.match(html, /<img src="https:\/\/cdn\.example\.com\/arch\.png" alt="架构图"/);
+  const evil = renderEmbedChatMarkdown('![x](javascript:alert(1))', []);
+  assert.doesNotMatch(evil, /<img[^>]*src="javascript:/);
+});

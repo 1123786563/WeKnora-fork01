@@ -165,7 +165,7 @@ test('a KB with files locks the Embedding selector with the Vue warning while RA
   assert.equal((configPut!.body as Record<string, unknown>).embeddingModelId, 'embed-1', 'the save payload keeps the committed embedding model');
 });
 
-test('with every index strategy off the Embedding selector stays editable despite files', async () => {
+test('with every index strategy off the Embedding row disappears (R445 Vue v-if refinement)', async () => {
   const calls: UiCalls = { requests: [] };
   await renderPage(clientFor(calls, { documentsTotal: 7 }), {
     ...knowledgeBase,
@@ -173,9 +173,15 @@ test('with every index strategy off the Embedding selector stays editable despit
   });
   await openSection('models');
 
-  const { embedding } = modelSelectors();
-  assert.equal(embedding.disabled, false, 'the Vue binding ragEnabled && hasFiles is false without vector/keyword indexing');
-  assert.equal(embeddingLockedTip(), null, 'no Embedding warning renders without RAG retrieval');
+  // R445 refinement against KBModelConfig.vue `v-if="ragEnabled !== false ||
+  // wikiEnabled"`: a pure-LLM draft removes the row instead of leaving an
+  // editable selector, so there is nothing to disable and no warning.
+  const llm = [...document.body.querySelectorAll<HTMLSelectElement>('select[aria-label]')].find((candidate) => !/Embedding/i.test(candidate.getAttribute('aria-label') ?? ''));
+  assert.ok(llm, 'the LLM row stays visible');
+  assert.equal(llm!.disabled, false, 'the LLM selector never locks on this signal');
+  const embedding = [...document.body.querySelectorAll<HTMLSelectElement>('select[aria-label]')].find((candidate) => /Embedding/i.test(candidate.getAttribute('aria-label') ?? ''));
+  assert.equal(embedding, undefined, 'the Embedding row is removed for a pure-LLM draft');
+  assert.equal(document.body.querySelector('[data-embedding-locked-tip]'), null, 'no Embedding warning renders without RAG retrieval');
 });
 
 test('an empty KB keeps the Embedding selector editable and hides the warning', async () => {

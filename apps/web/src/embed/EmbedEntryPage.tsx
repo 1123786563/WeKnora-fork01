@@ -40,6 +40,8 @@ import {
 } from './chat-data.ts';
 import { renderEmbedChatMarkdown } from './markdown.ts';
 import './embed-chat.css';
+// Vue EmbedBotMessage.vue imports katex/dist/katex.min.css for the answer face.
+import 'katex/dist/katex.min.css';
 
 // Vue parity for the isolated embed entry:
 // - entry: frontend/embed.html + frontend/src/embed-main.ts (separate document,

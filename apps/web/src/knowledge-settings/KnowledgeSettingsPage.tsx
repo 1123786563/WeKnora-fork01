@@ -431,6 +431,11 @@ export interface KnowledgeSettingsEditorOverrides {
   description?: string;
   indexing?: { vectorEnabled?: boolean; keywordEnabled?: boolean; wikiEnabled?: boolean; graphEnabled?: boolean };
   wiki?: { extractionGranularity?: 'focused' | 'standard' | 'exhaustive'; contentInstructions?: string; extractionInstructions?: string };
+  // R445 storage section (Vue KBStorageSettings handleChange emits the backend
+  // id and its provider; both persist through the config PUT while the KB has
+  // no files — the select locks with the same hasFiles signal otherwise).
+  storageBackendId?: string;
+  storageProvider?: string;
 }
 
 // Builds the exact KBModelConfigRequest body the Vue KnowledgeBaseEditorModal
@@ -544,6 +549,10 @@ export function buildKnowledgeSettingsConfigPayload(
       const modelId = asr.modelId ?? payload.asr_config.model_id;
       payload.asr_config = { enabled, model_id: enabled ? modelId : '', language: payload.asr_config.language };
     }
+    // Vue KBStorageSettings handleChange emits the backend id and its provider
+    // together; the select only unlocks while the KB has no files.
+    if (typeof overrides.storageBackendId === 'string') payload.storageBackendId = overrides.storageBackendId;
+    if (typeof overrides.storageProvider === 'string') payload.storageProvider = overrides.storageProvider;
   }
   return payload;
 }
@@ -1006,9 +1015,22 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <div style={{ display: 'grid', gap: '0.4rem' }}>
           <label style={{ display: 'grid', gap: '0.25rem' }}>
             {t('kbSettings.storage.instanceLabel')}
-            <select value={summaryDetail} disabled aria-label={t('kbSettings.storage.instanceLabel')}>
-              <option value={summaryDetail}>{summaryLabel}</option>
+            {/* Vue KBStorageSettings: the select binds :disabled="!!hasFiles"
+                and handleChange emits the backend id + provider (both persist
+                through the config PUT). The committed value stays selectable
+                even when the loaded backends list no longer contains it. */}
+            <select
+              value={editorDraft.storageBackendId ?? editorPayload.storageBackendId}
+              disabled={indexingLocked}
+              aria-label={t('kbSettings.storage.instanceLabel')}
+              onChange={(event) => {
+                const backendId = event.target.value;
+                const backend = editorOptions.storageBackends.find((candidate) => candidate.id === backendId);
+                onDraftChange({ ...editorDraft, storageBackendId: backendId, storageProvider: backend?.provider ?? editorDraft.storageProvider });
+              }}
+            >
               {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}
+              {editorOptions.storageBackends.every((backend) => backend.id !== editorPayload.storageBackendId) ? <option value={editorPayload.storageBackendId}>{summaryLabel || editorPayload.storageBackendId}</option> : null}
             </select>
           </label>
           {/* Vue KBStorageSettings renders the migrate hint only while the
@@ -1267,10 +1289,11 @@ function ModelsSettingsSection({ editorPayload, knowledgeBase, editorDraft, inde
   const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, editorDraft);
   const ragEnabled = Boolean(indexing.vectorEnabled || indexing.keywordEnabled);
   const embeddingLocked = ragEnabled && indexingLocked;
-  const renderSelector = (type: string, labelKey: string, placeholderKey: string, value: string, onChange: (next: string) => void, required?: boolean, options: { disabled?: boolean; alert?: ReactNode } = {}) => (
+  const renderSelector = (type: string, labelKey: string, placeholderKey: string, value: string, onChange: (next: string) => void, required?: boolean, options: { disabled?: boolean; alert?: ReactNode; description?: string } = {}) => (
     <EditorSettingRow
       label={t(labelKey)}
       alert={options.alert}
+      description={options.description}
       required={required}
       control={(
         <select value={value} aria-label={t(labelKey)} disabled={options.disabled} onChange={(event) => onChange(event.target.value)}>
@@ -1285,12 +1308,18 @@ function ModelsSettingsSection({ editorPayload, knowledgeBase, editorDraft, inde
   return (
     <div>
       {renderSelector('KnowledgeQA', 'knowledgeEditor.models.llmLabel', 'knowledgeEditor.models.llmPlaceholder', editorPayload.llmModelId, (next) => onDraftChange({ ...editorDraft, llmModelId: next }), true)}
-      {renderSelector('Embedding', 'knowledgeEditor.models.embeddingLabel', 'knowledgeEditor.models.embeddingPlaceholder', editorPayload.embeddingModelId, (next) => onDraftChange({ ...editorDraft, embeddingModelId: next }), true, {
-        disabled: embeddingLocked,
-        alert: embeddingLocked ? (
-          <p className="wk-muted" data-embedding-locked-tip="" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>{t('knowledgeEditor.models.embeddingLocked')}</p>
-        ) : undefined,
-      })}
+      {/* Vue KBModelConfig v-if="ragEnabled !== false || wikiEnabled": the row
+          disappears for a pure-LLM draft; wiki-only keeps it with the optional
+          copy and no required mark (clearable, validateForm waives the model). */}
+      {ragEnabled || indexing.wikiEnabled ? (
+        renderSelector('Embedding', 'knowledgeEditor.models.embeddingLabel', 'knowledgeEditor.models.embeddingPlaceholder', editorPayload.embeddingModelId, (next) => onDraftChange({ ...editorDraft, embeddingModelId: next }), ragEnabled, {
+          disabled: embeddingLocked,
+          description: !ragEnabled && indexing.wikiEnabled ? t('knowledgeEditor.models.embeddingWikiOptionalDesc') : undefined,
+          alert: embeddingLocked ? (
+            <p className="wk-muted" data-embedding-locked-tip="" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>{t('knowledgeEditor.models.embeddingLocked')}</p>
+          ) : undefined,
+        })
+      ) : null}
     </div>
   );
 }

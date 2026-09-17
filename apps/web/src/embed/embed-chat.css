@@ -141,11 +141,16 @@
     -webkit-mask-position: center;
   }
 
-  /* Vue paints ziliao.svg / websearch-globe.svg through the mask; the embed
-     face ships without those assets, so the icon slot is hidden and the pill
-     shows the domain / doc label only. */
-  .citation-icon {
-    display: none;
+  /* Vue paints ziliao.svg / websearch-globe.svg through the mask
+     (chat-citations.less); the svg assets ship in embed/assets/. */
+  .citation-icon--book {
+    mask-image: url('./assets/ziliao.svg');
+    -webkit-mask-image: url('./assets/ziliao.svg');
+  }
+
+  .citation-icon--web {
+    mask-image: url('./assets/websearch-globe.svg');
+    -webkit-mask-image: url('./assets/websearch-globe.svg');
   }
 
   .citation-text,

@@ -94,7 +94,10 @@ export function SharedKnowledgeBaseDrawer({ open, shared, onClose, onGoToKb }: S
       onClose={onClose}
       title={t('knowledgeList.detail.title')}
       width="360px"
-      closeLabel={t('common.close')}
+      // Vue header close (KnowledgeBaseList.vue:713-716): × icon button with
+      // aria-label $t('general.close') = 「关闭设置」; the footer text button
+      // below stays on common.close, exactly like the Vue template.
+      closeLabel={t('general.close')}
       className="kb-shared-detail-drawer max-w-[90vw]"
     >
       <div className="kb-shared-detail-rows flex flex-col gap-5">

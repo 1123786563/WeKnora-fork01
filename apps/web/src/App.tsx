@@ -991,16 +991,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                             <KbIcon name="info-circle" size={16} />
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
-                          aria-label={t('common.settings')}
-                          aria-haspopup="menu"
-                          aria-expanded={menuFor === card.id}
-                          onClick={(event) => { event.stopPropagation(); setMenuFor((current) => (current === card.id ? null : card.id)); }}
-                        >
-                          <KbIcon name="dots" size={16} />
-                        </button>
+                        {/* Vue own-card three-dot menu (KnowledgeBaseList.vue) is absent on
+                            shared cards (:304-315): the info-circle trigger above replaces it
+                            as the only header affordance on non-own shared cards. */}
+                        {isSharedCard ? null : (
+                          <button
+                            type="button"
+                            className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
+                            aria-label={t('common.settings')}
+                            aria-haspopup="menu"
+                            aria-expanded={menuFor === card.id}
+                            onClick={(event) => { event.stopPropagation(); setMenuFor((current) => (current === card.id ? null : card.id)); }}
+                          >
+                            <KbIcon name="dots" size={16} />
+                          </button>
+                        )}
                       </div>
                       {menuFor === card.id ? (
                         <div className="kb-list-more-menu absolute right-1.5 top-8 z-30 flex min-w-[132px] flex-col rounded-lg border border-[#e3e7ee] bg-white p-1.5 shadow-[0_8px_24px_rgba(23,35,61,0.12)]" role="menu" onClick={(event) => event.stopPropagation()}>
@@ -1029,7 +1034,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         <div className="kb-list-badges flex min-w-0 items-center gap-1">
                           <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#07c05f]' : 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]')}>
                             <KbIcon name={isFaq ? 'chat' : 'folder'} size={14} />
-                            <span className="kb-list-badge-count">{count}</span>
+                            {/* Vue KnowledgeBaseList.vue:336 shared card badge: `kb.knowledge_count || '-'`
+                                (faq: chunk_count || '-'); own cards keep the numeric `|| 0` fallback (:259). */}
+                            <span className="kb-list-badge-count">{isSharedCard ? (count || '-') : count}</span>
                           </span>
                           {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(124,77,255,0.08)] text-[#07c05f]" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
                           {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(255,152,0,0.08)] text-[#ed7b2f]" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
