@@ -73,7 +73,7 @@
 | C4 | KnowledgeTagFilter 组件化 | ⬜ 等 B13 |
 | C5 | SandboxCommandProgress / pptxPreview / browserToolDisplay | ⬜ 等 A13/A14 |
 | C6 | useCitationPopover / useFloatingPreviewDrag 共享化 | ⬜ 等 B13 |
-| C7 | 批量文件下载 React 侧（apps/web 等价实现：选择多文档→批量下载入口→request blob 拼装） | ⬜ 待办（后端 /knowledge-bases/{kb_id}/knowledge/download 已就绪，上游 Vue 实现在 KnowledgeBase.vue + DocumentBatchBar.vue + request.ts + knowledgeDownloadFileName.ts） |
+| C7 | 批量文件下载 React 侧（apps/web 等价实现：选择多文档→批量下载入口→request blob 拼装） | ✅ 完成（2026-09-18 第 9 轮，worktree 2c9cd480：决策层+api-client+批量条按钮+8×5 i18n；后端路由从 main 38dc29bc 移植到 worktree 分支并重建镜像，端到端 200/zip+toast 逐字验证；上游 UI 截图未采集、以上游源码为基线） |
 
 ## D. 运行时对照（双栈实测）
 
@@ -176,6 +176,18 @@
 - **浏览器复验**（fork :5181）：面板结构=上游（分组/图标/⚠ 提示语义）；未就绪项（维基问答/数据分析师 缺对话模型——真实数据状态）点击被拦+toast，chip 不变；智能推理（第 6 轮配过 rerank）就绪可切，toast「已切换到智能推理」+chip+?agentId 三态同步；hover 详情卡内容与上游结构一致（网络搜索状态值差异为两侧 agent 配置数据差异，非代码差异）；「+管理」SPA 导航 /platform/agents 生效。证据 `evidence/browser-agent-chat/fk-07`（面板+详情卡）、`fk-08`（切换 toast）。
 - **门禁**：typecheck:web 0 错、test:web **1677/1677**（+5：readiness 4+selector 4，2 条旧 select 断言按面板契约更新）。jsdom 坑备忘：无 innerText 用 textContent；React onMouseEnter/Leave 需派发冒泡 mouseover/mouseout。
 - **已知余差**（记录不修）：共享智能体分组（上游「共享给我」组，fork 聊天侧尚无 shared-agents 数据管道，待 org 域接入）；网络搜索「未配置」三态（上游需 webSearchProviders 就绪判定，fork 无该数据源，暂两态）；详情卡浮层定位为简化版（上游有 zoom 修正与视口翻转精细逻辑）。
+
+### 2026-09-18 第 9 轮（C7 批量文件下载：React 侧落地 + 后端路由移植本分支）✅
+
+> worktree 提交 `2c9cd480`（12 文件）。**C7 前提修正**：第 1 轮的后端 batch-download 只落在 main——worktree 分支（React 所在）没有该路由，本轮把 38dc29bc 的后端补丁（handler 361 行+service/repository+路由注册+测试）干净应用到 worktree，镜像重建后 200/zip 验证通过。
+
+- **决策层** `apps/web/src/documents/knowledge-batch-download.ts`：移植上游 handleBatchDownload 语义——isBatchDownloadableKnowledge（manual 或有 file_path）、200 文件/512 MiB 上限与上游警告顺序（noFiles→hint→tooLarge）、跳过计数、`knowledge-files-<ts>.zip` 命名、object-URL 锚点保存+60s 延迟 revoke。6 条单测。
+- **api-client**：`documents.batchDownload(kbId, ids, signal)` POST `/knowledge-bases/:id/knowledge/batch-download` → ZIP blob（与上游 batchDownloadKnowledge 同构，凭据走请求头）。
+- **页面**：批量条新增主按钮「批量下载」（独立于 mutate 权限，同 Vue bar）；handleBatchDownload 过滤→警告 toast→流式下载→保存→成功 toast「已开始保存 ZIP…」（与上游逐字）。i18n：8 键 ×5 语言逐字镜像（generated knowledgeSurfaces 手工补——worktree 的 Vue locale 无第 1 轮键，再生成会丢，已在提交说明记录）。
+- **顺带修复（浏览器实测发现）**：文档卡操作菜单点击冒泡到卡片 onClick 误开文档抽屉——menu item 现在 stopPropagation（上游菜单与卡片点击目标分离）。
+- **端到端复验**（fork :5181 + 新镜像后端）：勾选 parity-doc → 批量下载 → API 200 application/zip（404 字节真 ZIP，curl 直验）→ toast 与上游逐字一致；不存在 id 返回业务 404（同上游）。证据 `evidence/browser-c7/fk-01`。上游 UI 截图未采集（hover 菜单入口自动化定位超预算）——基线以上游源码为准（DocumentBatchBar.vue/handleBatchDownload L453-504）。
+- **门禁**：go build ./internal/... 0、go test BatchDownload ok、typecheck 0、test:web **1683/1683**（+6）、i18n 73/73。
+- **C7 状态：✅ 完成**（本轮 React 侧+本分支后端就绪；main 的 Vue 侧第 1 轮已有）。
 
 ## G. 纪律与教训
 
