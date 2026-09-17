@@ -81,10 +81,19 @@
 |---|---|---|
 | D1 | fork 栈启动（OrbStack WeKnora-app :8080 + React :5181 + Vue :5180） | ✅ 完成（后端健康；注意镜像滞后于 main，验证本轮新功能需重建镜像） |
 | D2 | 上游栈启动（weknora-upstream compose + override：`Up-WeKnora-*` 容器名，app :18080 / UI :18081 / minio :19000-19001；.env 由 example 生成+JWT_SECRET 随机+端口 sed；账号 parity-up@local.dev / Parity123456! tenant 10000） | ✅ 完成 |
-| D3 | 核心流程一一对照逐项记录 | 🔄 进行中。已完成：注册/登录（上游返回 `token`+`refresh_token`+`memberships`+`active_tenant`）双栈可用；KB 创建/列表双栈可用。**发现有意分歧 D3-1**：KB 响应信封 fork 用 `success+data`，上游用 `success+knowledge_base`/`knowledge_bases`——fork 三端（React/Vue/mobile）已适配自有信封，判定 ⛔ 不改。待做：模型配置同步后对照上传/解析/检索/聊天/流式；浏览器级页面对照 |
-| D4 | 对照账号 | fork 栈：parity-test@local.dev / Parity123456!（tenant 10000）；上游栈需新建 |
+| D3 | 核心流程一一对照逐项记录 | 🔄 进行中（API 级已完成）。已完成：注册/登录/KB 创建列表/上传→解析→分块→启用/混合检索/聊天流式 SSE。**结论汇总**：①信封分歧 D3-1（`success+data` vs `knowledge_base(s)`，fork 三端已适配，⛔ 不改）；②聊天事件序列 fork=上游超集：fork 多发 `session_title` 流内标题事件——**D3-2 fork 有意扩展**，Vue(index.vue:1525) 与 React(ChatRoutePage.tsx:345) 均已消费，⛔ 不改；③SSE 安全防护双栈一致（host.docker.internal / 直连 IP / 解析到私网的域名全部拒绝——白名单走 system_settings `ssrf.whitelist` 键，两栈已写入 `[parity-mock, 192.168.3.32]`）；④检索响应结构逐键一致、同一文档同一查询双栈命中一致。待做：浏览器级页面一一对照、agent-chat（智能体模式流）、更多知识格式 |
+| D4 | 对照账号 | fork 栈：parity-test@local.dev / Parity123456!（**实际 tenant 10001，记忆中 10000 已过时**）；上游栈：parity-up@local.dev / Parity123456!（tenant 10000） |
+| D5 | 双栈共享 mock 模型服务 | ✅ 完成：容器 `parity-mock`（python:3.12-alpine 跑 /Users/wuyongjun/trea/parity-mock/mock_server.py，同时接入 weknora-upstream_WeKnora-network 与 react-multiclient_WeKnora-network 两网），OpenAI 兼容 /v1/embeddings(1024 维确定性)+/v1/chat/completions(流式 SSE)。两栈 DB 已插 mock-llm(KnowledgeQA)/mock-embed(Embedding,1024) 并 is_default；fork tenant 10001 旧 rig 模型(parity-llm-mock 等)已同指 parity-mock。SSRF 白名单经 system_settings `ssrf.whitelist`（重启 app 生效）。**复跑入口：两栈 KB `parity-smoke*` 各传 parity-doc.md → batch-reparse → hybrid-search/knowledge-chat** |
 
 ## E. 完成记录
+
+### 2026-09-17 第 3 轮（D3 深流程 API 级对照）✅
+- **mock 基建（D5）**：本地 OpenAI 兼容 mock 容器 `parity-mock` 双网接入；两栈 DB 插入相同模型行；SSRF 白名单经 system_settings 运行时键（重启 app 生效）。期间实测两栈 SSRF 防护行为完全一致（host.docker.internal/直连 IP/私网解析域名全拦）。
+- **上传→解析→分块→启用**：同一 parity-doc.md 双栈 parse_status=completed、enable_status=enabled。
+- **混合检索**：POST /knowledge-bases/:id/hybrid-search（body: query_text）同一查询双栈各命中 1 条，响应键逐一同构、内容命中一致。
+- **聊天流式**：POST /knowledge-chat/:session_id SSE。上游 `agent_query→answer×2→complete`；fork `agent_query→answer×2→session_title→complete`。**D3-2：session_title 为 fork 有意扩展**（Vue/React 前端均消费，React SSE 解析为上游超集：tool_call/approval/steer/artifacts），⛔ 不改。内容差异为 mock 回声伪影（两侧 QA 提示词长度不同），非缺陷。
+- **故障排查记录**：fork 对照账号实际 tenant=10001（记忆 10000 过时，已修正）；会话默认绑定旧 rig 模型（parity-llm-mock），需连同旧模型一起改 base_url。
+- 遗留：浏览器级页面一一对照（双 UI 已可达：上游 :18081、fork React :5181 需起 dev server）、agent-chat 智能体流对照、更多文档格式。
 
 ### 2026-09-17 第 2 轮（B8 完整移植 + 双栈就绪 + D3 冒烟）
 - **B8 完整移植**（`5780cb0` 文件访问与 artifact 发布分离）：18/22 文件补丁直用；prompts.go（ArtifactOutputDir 动态化 + artifact 链接指引两条新增）、sandbox_ls.go（移除 /workspace 白名单强制 + 描述/schema/注释同步 + 删 inspectablePathError/inspectableRootsDescription + path import）、session_manager.go（cleanSessionWorkspaceWritePath 放宽到整沙箱保留 input 只读；cleanSessionWorkDir 改绝对路径语义 + install 模式保留 workspace/skills 范围）三处手工改写；三个旧行为测试按上游重写（AcceptsSandboxSkillRoot/AllowsTemporaryWorkDir/SandboxPaths 写入矩阵）+ prompts_shell_test 增补 + registry_journal_test 用例更新。
