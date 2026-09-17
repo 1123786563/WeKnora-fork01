@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => {
     resourceRows,
     resourceGets: [] as Array<{ url: string; headers: Record<string, string> }>,
     uploadPosts: [] as Array<{ url: string; headers: Record<string, string>; body: unknown }>,
+    snapshotGets: [] as Array<{ url: string; headers: Record<string, string> }>,
+    commandPosts: [] as Array<{ url: string; headers: Record<string, string>; body: unknown }>,
     routeParams: {} as Record<string, string | undefined>,
     fetch: null as null | ((url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => Promise<unknown>),
     getDocumentAsync: vi.fn(),
@@ -41,7 +43,19 @@ const mocks = vi.hoisted(() => {
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   const host = (name: string) => (props: { children?: unknown }) => ReactModule.createElement(name, props, props.children as never);
-  return { View: host('View'), Text: host('Text'), Pressable: host('Pressable'), TextInput: host('TextInput'), ScrollView: host('ScrollView') };
+  const listeners = new Set<(state: string) => void>();
+  return {
+    View: host('View'), Text: host('Text'), Pressable: host('Pressable'), TextInput: host('TextInput'), ScrollView: host('ScrollView'),
+    AppState: {
+      currentState: 'active',
+      addEventListener: (type: string, listener: (state: string) => void) => {
+        if (type !== 'change') return { remove: () => undefined };
+        listeners.add(listener);
+        return { remove: () => { listeners.delete(listener); } };
+      },
+      emitForTest: (state: string) => { listeners.forEach((listener) => listener(state)); },
+    },
+  };
 });
 
 vi.mock('@/-session/SessionView', async () => {
@@ -55,6 +69,10 @@ vi.mock('@react-navigation/native', () => ({
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
+    // The route's request storage uses the callback-era getItem/setItem
+    // surface; the upload path uses the *Async names. Provide both.
+    getItem: async (key: string) => mocks.storage.get(key) ?? null,
+    setItem: async (key: string, value: string) => { mocks.storage.set(key, value); },
     getItemAsync: async (key: string) => mocks.storage.get(key) ?? null,
     setItemAsync: async (key: string, value: string) => { mocks.storage.set(key, value); },
     deleteItemAsync: async (key: string) => { mocks.storage.delete(key); },
@@ -135,6 +153,8 @@ function jsonResponse(body: unknown, status = 200) {
 beforeEach(() => {
   mocks.resourceGets.length = 0;
   mocks.uploadPosts.length = 0;
+  mocks.snapshotGets.length = 0;
+  mocks.commandPosts.length = 0;
   mocks.routeParams = {
     id: 'session-1',
     spaceId: 'space-1',
@@ -166,6 +186,19 @@ beforeEach(() => {
     if (url.includes('/api/v1/agents/')) { mocks.resourceGets.push(record); return jsonResponse({ success: true, data: mocks.resourceRows.agent }); }
     if (url.includes('/api/v1/execution-targets/')) { mocks.resourceGets.push(record); return jsonResponse({ success: true, data: mocks.resourceRows.target }); }
     if (url.includes('/api/v1/execution-workspaces/')) { mocks.resourceGets.push(record); return jsonResponse({ success: true, data: mocks.resourceRows.workspace }); }
+    if (url.includes('/workbench/executions/run-1/snapshot')) {
+      mocks.snapshotGets.push(record);
+      return jsonResponse({ success: true, data: {
+        execution: { schema_version: 1, run_id: 'run-1', session_id: 'session-1', revision: 2, driver: 'platform', run_status: 'succeeded', execution_status: 'succeeded', settlement_status: 'settled', seq: 0, capabilities: {} },
+        watermark: 0,
+        events: [],
+      } });
+    }
+    if (url.includes('/workbench/executions/requests/')) { return jsonResponse({ success: true, data: { state: 'admitted', run_id: 'run-1' } }); }
+    if (method === 'POST' && url.includes('/workbench/executions/run-1/commands')) {
+      mocks.commandPosts.push({ url, headers: init?.headers ?? {}, body: init?.body });
+      return jsonResponse({ success: true, data: { run_id: 'run-1', action: 'cancel' } });
+    }
     if (method === 'POST' && url.endsWith('/attachments')) {
       mocks.uploadPosts.push({ url, headers: init?.headers ?? {}, body: init?.body });
       return jsonResponse({ success: true, data: { id: `attachment-${mocks.uploadPosts.length}` } });
@@ -268,6 +301,34 @@ describe('mounted product session route (W25 attachments assembly)', () => {
     expect(renderer.root.findAllByType('SessionView')).toHaveLength(1);
     expect(renderer.root.findAllByProps({ accessibilityLabel: '附件' })).toHaveLength(0);
     expect(mocks.uploadPosts).toHaveLength(0);
+
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('mounts the lifecycle recovery pipeline: AppState active reaches the snapshot API with the auth bearer (W12 I-1)', async () => {
+    // A durable execution request survives the relaunch (W10 storage).
+    mocks.storage.set(
+      'weknora:execution-request:https://api.example:tenant-1:user-1:session-1',
+      JSON.stringify({ requestID: 'q-restore', runID: 'run-1', status: 'succeeded' }),
+    );
+    const reactNative = await import('react-native');
+    const appState = (reactNative as unknown as { AppState: { emitForTest(state: string): void } }).AppState;
+    const renderer = await mountRoute();
+    await waitForRoute(renderer, () => renderer.root.findAllByProps({ accessibilityLabel: '附件' }).length >= 1);
+
+    // I-1 closure assertion: the production route mounts a real recovery
+    // controller, so a foreground transition runs a recovery pass whose
+    // status port hits the snapshot endpoint again (the W10 remount restore
+    // may already have hit it once).
+    const restoreSnapshotGets = mocks.snapshotGets.length;
+    await act(async () => { appState.emitForTest('active'); });
+    await waitForRoute(renderer, () => mocks.snapshotGets.length >= restoreSnapshotGets + 1);
+    expect(mocks.snapshotGets.at(-1)?.url).toBe(`${mocks.ORIGIN}/api/v1/workbench/executions/run-1/snapshot`);
+    expect(mocks.snapshotGets.at(-1)?.headers.authorization).toBe('Bearer token-1');
+
+    // Background closes the subscription only: no cancel command is ever issued.
+    await act(async () => { appState.emitForTest('background'); });
+    expect(mocks.commandPosts).toHaveLength(0);
 
     await act(async () => { renderer.unmount(); });
   });

@@ -178,3 +178,49 @@ test('product command and approval controls use the real authenticated API adapt
     { path: '/api/v1/agent/tool-approvals/p-1', body: { decision: 'approve', expected_revision: 6 }, authorization: 'Bearer access' },
   ]);
 });
+
+test('product VM exposes a lifecycle recovery controller wired to real ports (fix I-1)', async () => {
+  const snapshotCalls: string[] = [];
+  const streamCalls: string[] = [];
+  let loads = 0;
+  const executions = {
+    start: async () => ({ run_id: 'run-1', request_id: 'q1', status: 'unknown' }),
+    lookup: async () => ({ state: 'unknown' as const, reason: 'timeout' }),
+    command: async () => ({}),
+    snapshot: async (runID: string) => {
+      snapshotCalls.push(runID);
+      return {
+        execution: { schema_version: 1 as const, run_id: runID, session_id: 's1', revision: 1, driver: 'platform' as const, run_status: 'succeeded' as const, execution_status: 'succeeded', settlement_status: 'settled', seq: 0, capabilities: {} },
+        watermark: 0,
+        events: [],
+      };
+    },
+    stream: async (runID: string, lastEventID?: string) => { streamCalls.push(`${runID}@${lastEventID ?? 'none'}`); },
+  };
+  const scope = {
+    identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }),
+    capture: () => ({ generation: 1, signal: new AbortController().signal }),
+    accept: () => true,
+    subscribe: () => () => undefined,
+  } as any;
+  const projection = {
+    load: async () => {
+      loads += 1;
+      return loads === 1
+        ? { messages: [], pendingInteractions: [], execution: { runID: 'run-1', requestID: 'q1', status: 'succeeded', revision: 1 }, watermark: 0 }
+        : { messages: [{ id: 'restored-1', role: 'assistant' as const, text: 'restored answer' }], pendingInteractions: [], execution: { runID: 'run-1', requestID: 'q1', status: 'succeeded', revision: 1 }, watermark: 0 };
+    },
+  };
+  const requestStorage = { getLatest: async () => ({ requestID: 'q1', runID: 'run-1', status: 'succeeded' }), set: async () => undefined };
+  const model = createProductConversationViewModel({ scope, spaceId: 's1', sessionId: 's1', agent: { id: 'a1', name: 'Agent' }, targetId: 't1', workspaceRef: 'w1', budgetUpper: 1, executions, requestStorage, projection });
+  assert.ok(model.recovery, 'recovery controller must be exposed for the route to mount');
+  // Let the W10 remount restore settle first.
+  await new Promise<void>((done) => { setTimeout(done, 0); });
+  const streamAfterRestore = streamCalls.length;
+  snapshotCalls.length = 0;
+  model.recovery!.appStateChange('active');
+  await new Promise<void>((done) => { setTimeout(done, 0); });
+  assert.deepEqual(snapshotCalls, ['run-1']);
+  assert.ok(model.messages.some((message) => message.id === 'restored-1'), 'refreshHistory must re-project the durable snapshot');
+  assert.equal(streamCalls.length, streamAfterRestore, 'terminal run must not open a stream');
+});

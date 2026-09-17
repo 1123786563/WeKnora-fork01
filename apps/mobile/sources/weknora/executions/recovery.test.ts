@@ -39,6 +39,37 @@ test('concurrent active events are single-flighted onto one recovery pass', asyn
   assert.deepEqual(calls, ['status', 'history']);
 });
 
+test('sequential foreground events each run a full pass on the same controller (fix C-1)', async () => {
+  const calls: string[] = [];
+  const ports: RecoveryPorts = {
+    status: async () => { calls.push('status'); return { terminal: true }; },
+    subscribe: async () => { calls.push('stream'); },
+    refreshHistory: async () => { calls.push('history'); },
+  };
+  const controller = createExecutionRecovery({ ports });
+  controller.appStateChange('active');
+  await new Promise<void>((done) => { setImmediate(done); });
+  controller.appStateChange('active');
+  await new Promise<void>((done) => { setImmediate(done); });
+  assert.deepEqual(calls, ['status', 'history', 'status', 'history']);
+});
+
+test('retry after a failed pass starts a new pass and clears the failure (fix C-1)', async () => {
+  let failures = 1;
+  const calls: string[] = [];
+  const ports: RecoveryPorts = {
+    status: async () => { calls.push('status'); if (failures > 0) { failures -= 1; throw new Error('execution stream HTTP 503'); } return { terminal: true }; },
+    subscribe: async () => { calls.push('stream'); },
+    refreshHistory: async () => { calls.push('history'); },
+  };
+  const controller = createExecutionRecovery({ ports });
+  await controller.recover();
+  assert.equal(controller.getState().state, 'failed');
+  await controller.recover();
+  assert.deepEqual(calls, ['status', 'status', 'history']);
+  assert.equal(controller.getState().state, 'idle');
+});
+
 test('scope switch cancels the in-flight recovery and never resumes its steps', async () => {
   const calls: string[] = [];
   let release!: () => void;

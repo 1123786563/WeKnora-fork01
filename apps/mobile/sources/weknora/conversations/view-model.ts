@@ -4,6 +4,7 @@ import type { ProductScope } from '../platform/product-session';
 import { projectExecutionEvent, type ProductConversationProjection } from './execution-projection';
 import { executionEventsRequest } from '@weknora/api-client';
 import { ExecutionSSEParser } from '../platform/stream-transport';
+import { createExecutionRecovery, isTerminalExecutionStatus, subscribeFromLastCommittedCursor, type ExecutionRecovery } from '../executions/recovery';
 
 export interface ExecutionApi {
   start(input: StartExecutionInput, signal?: AbortSignal): Promise<{ run_id: string; request_id: string; status: string }>;
@@ -99,6 +100,8 @@ export interface ConversationViewModel {
   send?: SendController;
   subscribe?: (listener: () => void) => () => void;
   getSnapshot?: () => ConversationViewModel;
+  /** W12 lifecycle recovery controller; mounted by the conversation screen. */
+  recovery?: ExecutionRecovery;
 }
 
 
@@ -148,45 +151,68 @@ export function createProductConversationViewModel(input: {
     if (!input.requestStorage) return;
     await input.requestStorage.set({ requestID: execution.requestID, runID: execution.runID || undefined, status: execution.status, ...(execution.reason ? { reason: execution.reason } : {}) });
   };
-  const loadProjection = async (runID: string, signal?: AbortSignal) => {
-    if (!input.projection) return;
-    const captured = input.scope.capture();
-    const storedEvents = input.eventStorage ? await input.eventStorage.read(runID) : [];
-    const projection = await input.projection.load(runID, signal ?? captured.signal);
-    if (!input.scope.accept(captured.generation)) return;
-    projectionState = storedEvents.length > 0 ? projectExecutionSnapshotFromStored(projection, storedEvents) : projection;
+  let lastLoadedProjection: ProductConversationProjection | undefined;
+  const applySnapshotProjection = (projection: ProductConversationProjection) => {
     model.messages = projection.messages;
     model.pendingInteractions = projection.pendingInteractions;
     if (projection.execution) {
       model.execution = { ...projection.execution, requestID: model.execution?.requestID ?? projection.execution.requestID };
     }
     notify();
-    if (input.executions.stream && !streamingRuns.has(runID)) {
-      streamingRuns.add(runID);
-      void input.executions.stream(runID, String(projectionState?.watermark ?? projection.watermark), (event) => {
+  };
+  const applyEventToProjection = (event: ExecutionEvent) => {
+    const baseline = projectionState ?? lastLoadedProjection;
+    if (!baseline) return;
+    projectionState = projectExecutionEvent(baseline, event);
+    model.messages = projectionState.messages;
+    model.pendingInteractions = projectionState.pendingInteractions;
+    model.execution = projectionState.execution
+      ? { ...projectionState.execution, requestID: model.execution?.requestID ?? '' }
+      : model.execution;
+    notify();
+  };
+  const consumeStreamEvent = (captured: { generation: number }, event: ExecutionEvent) => {
+    if (!input.scope.accept(captured.generation)) return;
+    if (input.eventStorage) {
+      void input.eventStorage.commit(event).then(() => {
         if (!input.scope.accept(captured.generation)) return;
-        if (input.eventStorage) {
-          void input.eventStorage.commit(event).then(() => {
-            if (!input.scope.accept(captured.generation)) return;
-            projectionState = projectExecutionEvent(projectionState ?? projection, event);
-            model.messages = projectionState.messages;
-            model.pendingInteractions = projectionState.pendingInteractions;
-            model.execution = projectionState.execution
-              ? { ...projectionState.execution, requestID: model.execution?.requestID ?? '' }
-              : model.execution;
-            notify();
-          }).catch(() => undefined);
-          return;
-        }
-        projectionState = projectExecutionEvent(projectionState ?? projection, event);
-        model.messages = projectionState.messages;
-        model.pendingInteractions = projectionState.pendingInteractions;
-        model.execution = projectionState.execution
-          ? { ...projectionState.execution, requestID: model.execution?.requestID ?? '' }
-          : model.execution;
-        notify();
-      }, captured.signal).catch(() => undefined).finally(() => streamingRuns.delete(runID));
+        applyEventToProjection(event);
+      }).catch(() => undefined);
+      return;
     }
+    applyEventToProjection(event);
+  };
+  /** Re-reads the durable snapshot into the visible history (no stream). W12 recovery step 1. */
+  const reloadProjection = async (runID: string, signal?: AbortSignal, preCaptured?: { generation: number; signal: AbortSignal }): Promise<ProductConversationProjection | undefined> => {
+    if (!input.projection) return undefined;
+    const captured = preCaptured ?? input.scope.capture();
+    const storedEvents = input.eventStorage ? await input.eventStorage.read(runID) : [];
+    const projection = await input.projection.load(runID, signal ?? captured.signal);
+    if (!input.scope.accept(captured.generation)) return undefined;
+    lastLoadedProjection = projection;
+    projectionState = storedEvents.length > 0 ? projectExecutionSnapshotFromStored(projection, storedEvents) : projection;
+    applySnapshotProjection(projection);
+    return projection;
+  };
+  /** Opens (or reopens) the event stream. W12 recovery step 2; single-flighted per run. */
+  const openStream = (runID: string, captured: { generation: number; signal: AbortSignal }) => {
+    if (!input.executions.stream || streamingRuns.has(runID)) return;
+    streamingRuns.add(runID);
+    // With durable storage the subscription resumes from the last committed
+    // W09 cursor; without it the loaded snapshot watermark is the cursor.
+    const open = input.eventStorage
+      ? subscribeFromLastCommittedCursor({
+          read: (id) => input.eventStorage!.read(id),
+          stream: (id, lastEventID, _onEvent, signal) => input.executions.stream!(id, lastEventID, (event) => consumeStreamEvent(captured, event), signal ?? captured.signal),
+        })(runID, undefined, captured.signal)
+      : input.executions.stream(runID, String(projectionState?.watermark ?? lastLoadedProjection?.watermark ?? 0), (event) => consumeStreamEvent(captured, event), captured.signal);
+    void Promise.resolve(open).catch(() => undefined).finally(() => streamingRuns.delete(runID));
+  };
+  const loadProjection = async (runID: string, signal?: AbortSignal) => {
+    const captured = input.scope.capture();
+    const projection = await reloadProjection(runID, signal ?? captured.signal, captured);
+    if (projection === undefined) return;
+    openStream(runID, captured);
   };
   const send = createSendController(async (text, requestID) => {
     latestRequestID = requestID;
@@ -283,6 +309,32 @@ export function createProductConversationViewModel(input: {
   });
   model.subscribe = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
   model.getSnapshot = () => model;
+  // W12 lifecycle recovery (production assembly): the controller is built on
+  // the same ports the screen drives through AppState. status consults the
+  // durable snapshot API; refreshHistory re-projects it; subscribe reopens
+  // the stream from the last committed W09 cursor. A missing run is already
+  // terminal, and there is no start port anywhere, so a 404 can never create
+  // a replacement session.
+  model.recovery = createExecutionRecovery({
+    ports: {
+      status: async () => {
+        const runID = model.execution?.runID;
+        if (!runID) return { terminal: true };
+        if (!input.executions.snapshot) return { terminal: false };
+        const snapshot = await input.executions.snapshot(runID, input.scope.capture().signal);
+        return { terminal: isTerminalExecutionStatus(snapshot.execution.execution_status) };
+      },
+      refreshHistory: async () => {
+        const runID = model.execution?.runID;
+        if (runID) await reloadProjection(runID).catch(() => undefined);
+      },
+      subscribe: async () => {
+        const runID = model.execution?.runID;
+        if (runID) openStream(runID, input.scope.capture());
+      },
+    },
+    scope: input.scope,
+  });
   if (input.requestStorage) {
     void input.requestStorage.getLatest().then((record) => {
       if (!record) return;

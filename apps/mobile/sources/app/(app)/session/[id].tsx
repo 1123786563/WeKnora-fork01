@@ -95,7 +95,11 @@ function ProductSessionRoute() {
   if (resourceError) return <View><Text accessibilityRole="alert">产品资源不可用：{resourceError}</Text></View>;
   if (!eventStorage) return <View><Text accessibilityRole="alert">产品会话需要原生加密事件存储，当前设备尚未完成初始化。</Text></View>;
   if (!viewModel) return <View><Text accessibilityRole="alert">正在验证产品会话资源…</Text></View>;
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} />;
+  // W12: the product conversation mounts its lifecycle recovery controller
+  // (AppState active -> status/history/stream; background closes only the
+  // subscription). The controller is per-view-model, i.e. per mount, matching
+  // the screen's dispose-on-unmount contract.
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} />;
 }
 
 export default React.memo(ProductSessionRoute);

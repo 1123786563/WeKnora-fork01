@@ -43,11 +43,22 @@ export function isRecoveryNotFound(error: unknown): boolean {
 
 export type RecoveryState = 'idle' | 'recovering' | 'failed';
 
+/**
+ * Maps a W06 execution status onto the terminal verdict. Everything else —
+ * including `unknown` — stays non-terminal so the run remains visible and
+ * the subscription path stays eligible.
+ */
+const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+
+export function isTerminalExecutionStatus(status: string): boolean {
+  return TERMINAL_EXECUTION_STATUSES.has(status.trim().toLowerCase());
+}
+
 /** The scope seam already owned by the product session (W07). */
 export interface RecoveryScope {
   capture(): { generation: number; signal: AbortSignal };
   accept(generation: number): boolean;
-  subscribe(listener: () => void): () => void;
+  subscribe?(listener: () => void): () => void;
 }
 
 export interface ExecutionRecoveryInput {
@@ -155,7 +166,7 @@ export function createExecutionRecovery(input: ExecutionRecoveryInput): Executio
   };
 
   if (input.scope) {
-    unsubscribeScope = input.scope.subscribe(() => {
+    unsubscribeScope = input.scope.subscribe?.(() => {
       // Identity transition: cancel the current pass; late responses are
       // fenced by the generation check inside the pass as well.
       activeAborts.forEach((close) => close());
@@ -167,9 +178,15 @@ export function createExecutionRecovery(input: ExecutionRecoveryInput): Executio
       if (disposed) return Promise.resolve();
       if (inFlight) return inFlight;
       let settle!: () => void;
-      inFlight = new Promise<void>((done) => { settle = done; });
-      run().then(() => settle(), () => settle());
-      return inFlight;
+      const current = new Promise<void>((done) => { settle = done; });
+      inFlight = current;
+      // Single-flight is scoped to the in-flight pass only: the slot is
+      // released BEFORE settling so the next foreground transition or
+      // retry-button press observably starts a fresh pass (review C-1; a
+      // `.finally` cleanup would run after awaiting continuations resume).
+      const finish = () => { if (inFlight === current) inFlight = undefined; settle(); };
+      run().then(finish, finish);
+      return current;
     },
     appStateChange(next: string): void {
       if (disposed) return;
