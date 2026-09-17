@@ -16,6 +16,17 @@ import { createScopeController } from '@weknora/domain';
 //       10px/600, 16px tall, 3px radius, 6px x-padding)
 //   (c) the description textarea carries the TDesign "0/200" limit counter
 //       (right-aligned, 12px/20px placeholder gray, native maxlength=200)
+// R463 kb-editor submit-structure slice (same Vue authority):
+//   (d) the editor dialog renders NO wrapping <form> — the Vue modal has
+//       zero native form elements (footer buttons are plain @click handlers,
+//       :448-455), so the wk-form grid is carried by a plain <div> and the
+//       nested-form hydration error source is gone at the root
+//   (e) the save button submits through onClick into the same save pipeline
+//       (Vue :451 `<t-button @click="handleSubmit">`), not type="submit"
+//   (f) Enter in the name input does NOT submit (Vue has no form → no
+//       implicit-submission contract) and the name input carries no native
+//       `required` attribute (Vue t-input :165-169 is maxlength-only; blank
+//       names are blocked by the JS pipeline, `if (!name.trim()) return`)
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg?raw') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
@@ -51,7 +62,7 @@ afterEach(async () => {
   dom.window.localStorage.clear();
 });
 
-function makeClient(): WeKnoraClient {
+function makeClient(calls: string[] = []): WeKnoraClient {
   return {
     auth: {
       me: async () => ({ user: { id: 'u-1', is_system_admin: false }, memberships: [{ tenant_id: 't-1', role: 'contributor' }] }),
@@ -63,8 +74,8 @@ function makeClient(): WeKnoraClient {
       togglePin: async () => ({ is_pinned: true }),
       duplicate: async () => ({}),
       remove: async () => ({}),
-      create: async () => ({ id: 'kb-new' }),
-      update: async () => ({}),
+      create: async () => { calls.push('create'); return { id: 'kb-new' }; },
+      update: async () => { calls.push('update'); return {}; },
       settings: {
         parserEngines: async () => ({ data: [] }),
         storageBackends: async () => ({ data: [] }),
@@ -75,13 +86,13 @@ function makeClient(): WeKnoraClient {
   } as unknown as WeKnoraClient;
 }
 
-async function mountPage(): Promise<void> {
+async function mountPage(calls: string[] = []): Promise<void> {
   const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' });
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<KnowledgeBasesPage client={makeClient()} scopeController={scopeController} />);
+    mountedRoot?.render(<KnowledgeBasesPage client={makeClient(calls)} scopeController={scopeController} />);
   });
   await act(async () => {});
   await act(async () => {
@@ -170,4 +181,100 @@ test('(c) the description textarea carries the live 0/200 limit counter', async 
   });
   await act(async () => {});
   assert.equal(counter.textContent, '4/200', 'counter follows the input value');
+});
+
+test('(d) the editor dialog renders no wrapping form — Vue KnowledgeBaseEditorModal has zero <form> elements', async () => {
+  await mountPage();
+  assert.equal(document.body.querySelectorAll('form').length, 0, 'no native form wraps the editor sections (removes the form-in-form hydration error source)');
+  const wrapper = document.body.querySelector('.wk-kb-editor-dialog .wk-form');
+  assert.ok(wrapper, 'the wk-form grid wrapper still renders for section layout');
+  assert.equal(wrapper.tagName, 'DIV', 'the wk-form grid is carried by a plain div like the Vue settings-body');
+});
+
+test('(d-edit) edit mode: visiting every section (share included) keeps the DOM form-free', async () => {
+  await mountPage();
+  // Card settings menu → 知识库设置 opens the editor in edit mode.
+  await act(async () => {
+    document.body.querySelector<HTMLButtonElement>('.kb-list-card-more')?.click();
+  });
+  await act(async () => {});
+  const settingsItem = Array.from(document.body.querySelectorAll('[role="menuitem"]'))
+    .find((el) => (el.textContent ?? '') === '设置');
+  assert.ok(settingsItem, 'card settings menu item rendered');
+  await act(async () => {
+    (settingsItem as HTMLButtonElement).click();
+  });
+  await act(async () => {});
+  const navButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-guide^="kb-editor-nav-"]'))
+    // The datasource section mounts DataSourcesPage, whose client mock surface
+    // (datasource types etc.) is out of scope for this anatomy slice.
+    .filter((button) => button.dataset.guide !== 'kb-editor-nav-datasource');
+  assert.ok(navButtons.length > 0, 'editor sidebar nav rendered');
+  assert.ok(navButtons.some((button) => button.dataset.guide === 'kb-editor-nav-share'), 'the share section (the R462 nested-form site) is visitable');
+  for (const button of navButtons) {
+    await act(async () => {
+      button.click();
+    });
+    await act(async () => {});
+    assert.equal(document.body.querySelectorAll('form').length, 0, `section ${button.dataset.guide} renders no form — nested-form hydration errors are structurally impossible`);
+  }
+});
+
+test('(e) the save button submits the create pipeline via onClick like Vue @click="handleSubmit"', async () => {
+  const calls: string[] = [];
+  await mountPage(calls);
+  const button = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  assert.ok(button, 'save button rendered');
+  assert.notEqual(button.type, 'submit', 'Vue footer buttons are plain @click handlers, not type="submit"');
+
+  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  assert.ok(nameInput, 'name input rendered on the default basic section');
+  const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  await act(async () => {
+    setInputValue?.call(nameInput, 'R463 提交结构');
+    nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {});
+  // The embedding field lives on the models section — navigate there like a
+  // user would before filling it.
+  await act(async () => {
+    document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]')?.click();
+  });
+  await act(async () => {});
+  const embeddingInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-embedding"]');
+  assert.ok(embeddingInput, 'embedding input rendered after switching to the models section');
+  const summaryInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-llm"]');
+  assert.ok(summaryInput, 'summary model input rendered on the models section');
+  await act(async () => {
+    setInputValue?.call(embeddingInput, 'm-embed');
+    embeddingInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    setInputValue?.call(summaryInput, 'm-summary');
+    summaryInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {});
+  await act(async () => {
+    button.click();
+  });
+  await act(async () => {});
+  assert.deepEqual(calls, ['create'], 'the save pipeline reaches knowledgeBases.create exactly once');
+});
+
+test('(f) Enter in the name input does not submit and the input carries no native required attribute', async () => {
+  const calls: string[] = [];
+  await mountPage(calls);
+  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  assert.ok(nameInput);
+  assert.equal(nameInput.required, false, 'Vue t-input (:165-169) is maxlength-only; blank names are blocked in the JS pipeline');
+  assert.equal(nameInput.getAttribute('maxlength'), '50');
+
+  const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  await act(async () => {
+    setInputValue?.call(nameInput, 'R463 回车不提交');
+    nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    nameInput.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  await act(async () => {});
+  assert.deepEqual(calls, [], 'no implicit Enter submission contract — Vue has no form to submit');
 });

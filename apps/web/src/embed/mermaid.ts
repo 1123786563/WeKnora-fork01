@@ -15,7 +15,11 @@
  * hydrateMermaidBlocksWithBrowserDefaults, which dynamic-imports mermaid +
  * dompurify and injects the sanitized SVG container (.wk-chat-mermaid).
  */
-import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
+import {
+  hydrateMermaidBlocksWithBrowserDefaults,
+  attachMermaidViewerToolbar,
+  type MermaidViewerToolbarLabels,
+} from '@weknora/views/chat/mermaid';
 
 /** Render-id namespace for embed answers (Vue prefix: 'mermaid-embed-botmsg'). */
 export const EMBED_MERMAID_PREFIX = 'wk-embed-mermaid';
@@ -26,7 +30,7 @@ export const defaultEmbedMermaidLoader = hydrateMermaidBlocksWithBrowserDefaults
 type EmbedMermaidLoader = typeof hydrateMermaidBlocksWithBrowserDefaults;
 
 /** Header/viewer copy for the embed mermaid chrome (Vue mermaid.* labels). */
-export interface EmbedMermaidLabels {
+export interface EmbedMermaidLabels extends MermaidViewerToolbarLabels {
   badge: string;
   expand: string;
   close: string;
@@ -39,8 +43,10 @@ const CLOSE_ICON =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
 /**
- * Fullscreen viewer for one embed diagram (Vue openMermaidFullscreen, minimal
- * face): a fixed overlay dialog that shows the sanitized SVG and dismisses on
+ * Fullscreen viewer for one embed diagram (Vue openMermaidFullscreen): a fixed
+ * overlay dialog showing the sanitized SVG with the shared views-engine
+ * toolbar — zoomIn/zoomOut/reset/download (Vue zoom stepping, wheel anchoring,
+ * drag panning, Blob download) — followed by the close control. Dismisses on
  * the close button, an overlay click, or Escape.
  */
 export function openEmbedMermaidFullscreen(svgHtml: string, labels: EmbedMermaidLabels): void {
@@ -49,6 +55,7 @@ export function openEmbedMermaidFullscreen(svgHtml: string, labels: EmbedMermaid
   overlay.className = 'embed-mermaid-viewer';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-label', labels.expand);
+  overlay.style.cursor = 'grab';
 
   const stage = document.createElement('div');
   stage.className = 'embed-mermaid-viewer__stage';
@@ -61,6 +68,10 @@ export function openEmbedMermaidFullscreen(svgHtml: string, labels: EmbedMermaid
   closeBtn.setAttribute('title', labels.close);
   closeBtn.innerHTML = CLOSE_ICON;
 
+  // Vue order (mermaidViewer.ts L103): zoomIn, zoomOut, reset, download, close.
+  const { toolbar, detach } = attachMermaidViewerToolbar(overlay, stage, labels);
+  toolbar.appendChild(closeBtn);
+
   const onKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.stopPropagation();
@@ -68,6 +79,7 @@ export function openEmbedMermaidFullscreen(svgHtml: string, labels: EmbedMermaid
     }
   };
   const close = () => {
+    detach();
     overlay.remove();
     document.removeEventListener('keydown', onKeydown, true);
   };
@@ -80,7 +92,7 @@ export function openEmbedMermaidFullscreen(svgHtml: string, labels: EmbedMermaid
   });
   document.addEventListener('keydown', onKeydown, true);
 
-  overlay.append(stage, closeBtn);
+  overlay.append(toolbar, stage);
   document.body.appendChild(overlay);
 }
 

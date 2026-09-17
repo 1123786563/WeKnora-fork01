@@ -298,9 +298,9 @@
   border-radius: 0;
 }
 
-/* Fullscreen viewer overlay (Vue openMermaidFullscreen minimal face): fixed
- * dialog showing the diagram svg, dismissed by the close button, an overlay
- * click, or Escape. */
+/* Fullscreen viewer overlay (Vue openMermaidFullscreen): fixed dialog showing
+ * the diagram svg with the shared zoom/reset/download toolbar, dismissed by
+ * the close button, an overlay click, or Escape. Drag pans, wheel zooms. */
 .embed-mermaid-viewer {
   position: fixed;
   inset: 0;
@@ -310,7 +310,6 @@
   justify-content: center;
   padding: 24px;
   background: rgba(15, 18, 25, 0.72);
-  cursor: zoom-out;
 }
 
 .embed-mermaid-viewer__stage {
@@ -328,18 +327,18 @@
   height: auto;
 }
 
+/* R463: the close control rides inside the shared toolbar
+ * (packages/views/src/chat/mermaid-viewer.ts) as its last item, so it no
+ * longer pins itself to the corner — the toolbar does. */
 .embed-mermaid-viewer__close {
-  position: fixed;
-  top: 20px;
-  right: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
   padding: 0;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.92);
   color: #1f2329;
   cursor: pointer;

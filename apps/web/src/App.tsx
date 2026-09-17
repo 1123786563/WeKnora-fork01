@@ -621,8 +621,11 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     setDialogOpen(true);
   }
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Vue KnowledgeBaseEditorModal.vue:1335-1365 handleSubmit → doSubmit: the
+  // footer button is a plain @click handler (no native form), so the save
+  // pipeline is entered from onClick and guards itself (double-submit,
+  // blank-name, section-jumping validation all live here).
+  async function save() {
     if (saving) return; // double-submit guard
     if (!name.trim()) return; // blank names are blocked
     if (type === 'document' && !Object.values(indexingStrategy).some(Boolean)) {
@@ -1057,7 +1060,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       </div>
 
       <Dialog className="wk-kb-editor-dialog h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]!" open={dialogOpen} title={editingId ? t('knowledgeEditor.titleEdit') : t('knowledgeList.create')} closeLabel={editingId ? t('common.cancel') : undefined} onClose={() => setDialogOpen(false)}>
-        <form className="wk-form mb-4 grid gap-4" onSubmit={save}>
+        {/* Vue KnowledgeBaseEditorModal.vue has no native form element: the
+            settings body is a plain div and the footer buttons are @click
+            handlers (:447-455). Keeping this wrapper a div (not a form)
+            removes the form-in-form hydration error the share section used
+            to trigger and drops the implicit Enter-submit contract Vue
+            never had. */}
+        <div className="wk-form mb-4 grid gap-4">
           <div className="grid min-h-[360px] grid-cols-[minmax(132px,0.34fr)_minmax(0,1fr)] gap-5 max-[680px]:grid-cols-1">
             <nav aria-label={t('common.settings')} data-guide="kb-editor-sidebar" className="flex flex-col gap-2 border-r border-line-soft pr-3 max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pb-3">
               {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="grid gap-1">
@@ -1097,7 +1106,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.wiki_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.wiki_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, wiki_enabled: event.target.checked }))} />{/* Vue KnowledgeBaseEditorModal.vue:106-109 indexing-check-title + :1972-1984 indexing-new-badge */}
                     <strong className="inline-flex items-center gap-[6px] text-[13px] font-medium">{t('knowledgeEditor.indexing.wikiTitle')}<span className="kb-editor-new-badge inline-flex h-4 items-center rounded-[3px] bg-[var(--color-brand-light)] px-[6px] text-[10px] font-semibold leading-none tracking-[0.4px] text-accent">NEW</span></strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.wikiDesc')}</small></label>
                 </div></fieldset> : null}
-                <label className="grid gap-1"><span>{t('knowledgeEditor.basic.nameLabel')}<span className="ml-1 text-[#e34d59]">*</span></span> <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} required maxLength={50} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+                <label className="grid gap-1"><span>{t('knowledgeEditor.basic.nameLabel')}<span className="ml-1 text-[#e34d59]">*</span></span> {/* Vue t-input :165-169 is maxlength-only; blank names are blocked by the JS save pipeline */}<Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} maxLength={50} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
                 <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} />{/* Vue KnowledgeBaseEditorModal.vue:171-179 t-textarea maxlength=200 → .t-textarea__limit counter (12px/20px, placeholder gray, right-aligned) */}
                   <span className="kb-editor-desc-count justify-self-end text-xs leading-5 text-[var(--color-text-placeholder)]" aria-live="polite">{description.length}/200</span></label>
               </div> : null}
@@ -1118,9 +1127,10 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           </div>
           <div className="mt-3 flex justify-end gap-2">
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
+            {/* Vue :451 `<t-button @click="handleSubmit" :loading="saving">` */}
+            <Button type="button" data-guide="kb-create-submit" loading={saving} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
           </div>
-        </form>
+        </div>
       </Dialog>
 
       <Dialog

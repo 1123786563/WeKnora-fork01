@@ -768,12 +768,19 @@ function EmbedMessageContent(props: {
   // Vue EmbedBotMessage watch/onUpdated: renderMermaidDiagrams runs only when
   // session.is_completed — streaming keeps the escaped source block, and
   // engine failures stay contained (apps/web/src/embed/mermaid.ts). The labels
-  // port the mermaid.diagram/expand header chrome (buildMermaidBlockHtml).
+  // port the mermaid.diagram/expand header chrome (buildMermaidBlockHtml) plus
+  // the fullscreen viewer toolbar copy (Vue mermaid.zoomIn/zoomOut/reset/
+  // download/downloading).
   const mermaidLabels = useMemo(
     () => ({
       badge: embedText(props.locale, 'mermaidDiagram'),
       expand: embedText(props.locale, 'mermaidExpand'),
       close: embedText(props.locale, 'close'),
+      zoomIn: embedText(props.locale, 'mermaidZoomIn'),
+      zoomOut: embedText(props.locale, 'mermaidZoomOut'),
+      reset: embedText(props.locale, 'mermaidReset'),
+      download: embedText(props.locale, 'mermaidDownload'),
+      downloading: embedText(props.locale, 'mermaidDownloading'),
     }),
     [props.locale],
   );

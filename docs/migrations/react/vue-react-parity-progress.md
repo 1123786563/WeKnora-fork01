@@ -5049,6 +5049,34 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1683/1683, `pnpm test:shared` 756/756, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r462-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-18 Round R463 — App form structure aligned, mermaid viewer toolbar, four-surface sweep (1 P1 found)
+
+- Four parallel agents (A1 App.tsx form structure, A2 four-surface browser sweep, A3 mermaid viewer toolbar,
+  A4 verifier). Verdict: A1/A3 PASS, A2's sweep queued 1 P1 + 5 P2 + 4 P3; gates on the merged state:
+  test:web 1689/1689 (+15 all this round), test:shared 765/765 (+9 viewer tests), typecheck 0, build ✓,
+  integrity 0 P0 after staging.
+- A1: Vue's editor modal has ZERO native forms (footer buttons @click, no Enter semantics, name
+  maxlength-only) — the React wrapping form became a div, the save button type=button onClick with the R437
+  pipeline byte-identical, name required removed (JS guard). +4 anatomy tests incl. an all-sections form=0
+  walk; hydration nesting structurally gone. Left: save button :disabled=loading (Vue) unmirrored; storage
+  change confirm branch (pre-existing).
+- A3: mermaid fullscreen viewer toolbar per Vue mermaidViewer.ts — 5 controls (zoomIn/out/reset/download/close),
+  STEP 0.2 clamp [0.2,10], wheel zoom anchored + preventDefault, drag pan, reset clears pan, PNG download
+  (white-backed canvas, mermaid-diagram.png, 1.5s downloading flash; SVG-Blob fallback under jsdom). Shared
+  engine attachMermaidViewerToolbar with injected labels (views stays i18n-free) re-exported via mermaid.ts;
+  embed wired (+5 keys ×5 locale in embed messages only). 11 new tests; embed 68/68, views chat 100/100.
+  Left: wiki/documents faces unwired (domains closed this round; toolbar ready).
+- A2 sweep (27 screenshots): knowledge-search — both ends redirect to ?cmdk=, but the React palette lacks
+  knowledge content search entirely (P1: zero knowledge-search requests, no chunk cards, no KB scope filter —
+  while command-palette-search.ts wiring exists unused, "intentionally out of scope S03"); FAQ route lacks the
+  document-type gate (P2: empty state + 14 rapid 400s); chat — React-only reasoning collapse block, missing
+  image placeholder text, session-header model naming mismatch (P2×3); agents main view near-perfect (P3
+  favorite-count badge text only).
+- Gates: `pnpm test:web` 1689/1689, `pnpm test:shared` 765/765, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r463-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round. Next-round queue head: the P1 palette knowledge search (wiring exists, needs the UI
+  caller).
 __zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-a9fd5be9-a4f2-4fd7-af1e-af3e95610d96-cwd'; fi
+if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-694a9cba-15c2-4428-b8c0-f7103e5c2c2e-cwd'; fi
 exit "$__zcode_status"

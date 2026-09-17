@@ -23,7 +23,12 @@ export type EmbedTextKey =
   | 'refreshSuggestedQuestions'
   | 'close'
   | 'mermaidDiagram'
-  | 'mermaidExpand';
+  | 'mermaidExpand'
+  | 'mermaidZoomIn'
+  | 'mermaidZoomOut'
+  | 'mermaidReset'
+  | 'mermaidDownload'
+  | 'mermaidDownloading';
 
 export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
   'zh-CN': {
@@ -48,6 +53,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     close: '关闭',
     mermaidDiagram: '图表',
     mermaidExpand: '全屏查看',
+    mermaidZoomIn: '放大',
+    mermaidZoomOut: '缩小',
+    mermaidReset: '重置',
+    mermaidDownload: '下载图片',
+    mermaidDownloading: '下载中...',
   },
   'en-US': {
     loadError: 'Failed to load',
@@ -71,6 +81,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     close: 'Close',
     mermaidDiagram: 'Diagram',
     mermaidExpand: 'Expand',
+    mermaidZoomIn: 'Zoom In',
+    mermaidZoomOut: 'Zoom Out',
+    mermaidReset: 'Reset',
+    mermaidDownload: 'Download Image',
+    mermaidDownloading: 'Downloading...',
   },
   'ja-JP': {
     loadError: '読み込みに失敗しました',
@@ -94,6 +109,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     close: '閉じる',
     mermaidDiagram: '図',
     mermaidExpand: '全画面表示',
+    mermaidZoomIn: '拡大',
+    mermaidZoomOut: '縮小',
+    mermaidReset: 'リセット',
+    mermaidDownload: '画像をダウンロード',
+    mermaidDownloading: 'ダウンロード中...',
   },
   'ko-KR': {
     loadError: '로드 실패',
@@ -117,6 +137,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     close: '닫기',
     mermaidDiagram: '다이어그램',
     mermaidExpand: '전체 화면',
+    mermaidZoomIn: '확대',
+    mermaidZoomOut: '축소',
+    mermaidReset: '초기화',
+    mermaidDownload: '이미지 다운로드',
+    mermaidDownloading: '다운로드 중...',
   },
   'ru-RU': {
     loadError: 'Не удалось загрузить',
@@ -140,6 +165,11 @@ export const embedTexts: Record<Locale, Record<EmbedTextKey, string>> = {
     close: 'Закрыть',
     mermaidDiagram: 'Диаграмма',
     mermaidExpand: 'На весь экран',
+    mermaidZoomIn: 'Увеличить',
+    mermaidZoomOut: 'Уменьшить',
+    mermaidReset: 'Сброс',
+    mermaidDownload: 'Скачать изображение',
+    mermaidDownloading: 'Загрузка...',
   },
 };
 
