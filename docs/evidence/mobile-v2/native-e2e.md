@@ -24,7 +24,7 @@ pnpm exec expo prebuild -p android && ./android/gradlew assembleDebug  # 成功�
 maestro test tests/mobile-v2/maestro --platform ios
 maestro test tests/mobile-v2/maestro --platform android
 # 4. frozen 链
-pnpm exec tsx --test tests/mobile-v2/mx-034.test.ts
+pnpm exec tsx --test tests/mobile-v2/e2e/mx-034.test.ts
 ```
 
 ## 套件内容（Maestro 配置已交付）

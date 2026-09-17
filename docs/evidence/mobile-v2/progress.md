@@ -50,15 +50,15 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-021 | accepted | 52a3627d→c600224e | mv2 25/25 · go 全绿（路由+DI 四环核验）· tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-021.md |
 | MX-020 | accepted | c600224e→e3639894 | mv2 26/26 · frozen 0/编辑文本/authorizing · tsc 11 | 规格 PASS · 质量 APPROVED（双向突变验证） | MX-020.md |
 | MX-023 | accepted | e3639894→0dda83ba | mv2 27/27 · frozen 0/[] · tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-023.md |
-| MX-025 | fixing→review | 0dda83ba→e9ce0fc2(+fix) | mv2 frozen false/true（杀伤复验：双守卫突变被抓） | R1 probe 缺陷（accidental pass）→已修→待复核 | MX-025.md |
+| MX-025 | accepted | 0dda83ba→ddfe1831(含fix) | mv2 frozen false/true（杀伤复验：双守卫突变被抓） | R1→修复→复核 PASS（变异验证） | MX-025.md |
 | MX-028 | accepted | e9ce0fc2→339bea50 | mv2 29/29 · frozen 编辑文本/0 · tsc 11 | 规格 PASS · 质量 APPROVED（突变被杀） | MX-028.md |
 | MX-026 | accepted | 339bea50→b9e00fda | mv2 30/30 · frozen platform/0 · tsc 11 | 规格 PASS · 质量 APPROVED（突变被杀） | MX-026.md |
-| MX-029 | fixing→review | b9e00fda→9496ec29(+fix) | frozen true/0（ports 级断言补实）· go ok | R1 TS 断言缺失→已修→待复核 | MX-029.md |
-| MX-032 | review | 9496ec29→1e015177 | mv2 32/32 · go caps ok · frozen unavailable/missing_cancel_evidence | 待独立review（与 033 批） | MX-032.md / profile-gates.md |
-| MX-033 | review | 1e015177→32786008 | mv2 40/40（recovery 3+security 4）· frozen 1/1 · go admission ok | 待独立review（收尾批） | MX-033.md / fault-matrix.md |
+| MX-029 | accepted | b9e00fda→ddfe1831(含fix) | frozen true/0（ports 级断言+变异验证）· go ok | R1→修复→复核 PASS | MX-029.md |
+| MX-032 | accepted | 9496ec29→1e015177 | mv2 32/32 · go caps ok · frozen unavailable/missing_cancel_evidence | 终审 PASS/APPROVED（收尾批） | MX-032.md / profile-gates.md |
+| MX-033 | accepted | 1e015177→32786008 | mv2 40/40（recovery 3+security 4）· frozen 1/1 · go admission ok | 终审 PASS/APPROVED（收尾批） | MX-033.md / fault-matrix.md |
 | MX-034 | blocked-env | ddfe1831→09b56a52 | 显式命令 exit=1 blocked-env（正确的红）· mv2 40/40（E2E 独立） | 待独立review（收尾批） | MX-034.md / native-e2e.md |
 | MX-035 | partial | 09b56a52→a799d30c | 静态层 frozen 双空（41/41，含真缺口修复）· 设备层 pending · tsc 11 | 待独立review（收尾批） | MX-035.md / accessibility-performance.md |
-| MX-036 | review | a799d30c→74d3337b | frozen core=releasable/remote=blocked-env/false（回归真实执行）· mv2 42/42 | 收尾批复核进行中（7 项批） | MX-036.md / release-report.md |
+| MX-036 | fixing→review | a799d30c→74d3337b(+fix) | frozen 真实回归（~16s）· mv2 42/42 | R1 空门 P1→已修（杀伤验证）→待终核 | MX-036.md / release-report.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

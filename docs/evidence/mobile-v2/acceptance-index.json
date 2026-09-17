@@ -2,49 +2,201 @@
   "schema_version": 1,
   "generated_by": "MX-036",
   "base": "6a70c35a",
-  "head": "PENDING_FINAL_SHA",
+  "head": "PENDING-FINAL",
   "note": "发布验收索引：逐 MX 任务终态 + 证据路径 + 发布裁决。globalAllPassed=false（remote/blocked-env 项如实）——不以 core 通过冒充全量。",
   "tasks": {
-    "MX-001": {"status": "accepted", "evidence": "MX-001.md", "sha": "04176329"},
-    "MX-002": {"status": "accepted", "evidence": "MX-002.md", "sha": "52c87b1c"},
-    "MX-003": {"status": "accepted", "evidence": "MX-003.md", "sha": "2bd4c682"},
-    "MX-004": {"status": "accepted", "evidence": "MX-004.md", "sha": "98002709"},
-    "MX-005": {"status": "accepted", "evidence": "MX-005.md", "sha": "c9505e26"},
-    "MX-006": {"status": "accepted", "evidence": "MX-006.md", "sha": "6d94a204"},
-    "MX-007": {"status": "accepted", "evidence": "MX-007.md", "sha": "12a9c4da"},
-    "MX-008": {"status": "accepted", "evidence": "MX-008.md", "sha": "12a9c4da"},
-    "MX-009": {"status": "accepted", "evidence": "MX-009.md", "sha": "12a9c4da"},
-    "MX-010": {"status": "accepted", "evidence": "MX-010.md", "sha": "95973585"},
-    "MX-011": {"status": "accepted", "evidence": "MX-011.md", "sha": "95973585"},
-    "MX-012": {"status": "accepted", "evidence": "MX-012.md", "sha": "6d94a204"},
-    "MX-013": {"status": "accepted", "evidence": "MX-013.md", "sha": "0ff12076"},
-    "MX-014": {"status": "accepted", "evidence": "MX-014.md", "sha": "964bf811"},
-    "MX-015": {"status": "accepted", "evidence": "MX-015.md", "sha": "082489e6"},
-    "MX-016": {"status": "accepted", "evidence": "MX-016.md", "sha": "424cfe97"},
-    "MX-017": {"status": "accepted", "evidence": "MX-017.md", "sha": "5e53cb6c"},
-    "MX-018": {"status": "accepted", "evidence": "MX-018.md", "sha": "16adf375"},
-    "MX-019": {"status": "accepted", "evidence": "MX-019.md", "sha": "188da5fd"},
-    "MX-020": {"status": "accepted", "evidence": "MX-020.md", "sha": "e3639894"},
-    "MX-021": {"status": "accepted", "evidence": "MX-021.md", "sha": "c600224e"},
-    "MX-022": {"status": "accepted", "evidence": "MX-022.md", "sha": "620ddcb8"},
-    "MX-023": {"status": "accepted", "evidence": "MX-023.md", "sha": "0dda83ba"},
-    "MX-024": {"status": "accepted", "evidence": "MX-024.md", "sha": "52a3627d"},
-    "MX-025": {"status": "accepted-with-review-pending", "evidence": "MX-025.md", "sha": "ddfe1831", "note": "实现验证+杀伤复验完成；scoped 复核在收尾批"},
-    "MX-026": {"status": "accepted", "evidence": "MX-026.md", "sha": "b9e00fda"},
-    "MX-027": {"status": "not-activated", "evidence": null, "sha": null, "note": "remote 条件边未激活（无 live Paseo 环境/授权）；remote profile 在 MX-032 保持 unavailable"},
-    "MX-028": {"status": "accepted", "evidence": "MX-028.md", "sha": "339bea50"},
-    "MX-029": {"status": "accepted-with-review-pending", "evidence": "MX-029.md", "sha": "ddfe1831", "note": "同 MX-025"},
-    "MX-030": {"status": "accepted", "evidence": "MX-030.md", "sha": "5cf0789c"},
-    "MX-031": {"status": "accepted", "evidence": "MX-031.md", "sha": "569eb068"},
-    "MX-032": {"status": "accepted-with-review-pending", "evidence": "MX-032.md", "sha": "1e015177", "note": "收尾批复核"},
-    "MX-033": {"status": "accepted-with-review-pending", "evidence": "MX-033.md", "sha": "32786008", "note": "同上"},
-    "MX-034": {"status": "blocked-env", "evidence": "native-e2e.md", "sha": "09b56a52", "note": "E2E 编排+探测交付；三要素缺失（dev client 构建/adb/受控账户）——配方就绪"},
-    "MX-035": {"status": "partial", "evidence": "accessibility-performance.md", "sha": "a799d30c", "note": "静态层 frozen 通过；截图/性能矩阵 pending（设备）"},
-    "MX-036": {"status": "accepted-with-review-pending", "evidence": "release-report.md", "sha": "PENDING", "note": "本任务"}
+    "MX-001": {
+      "status": "accepted",
+      "evidence": "MX-001.md",
+      "sha": "04176329"
+    },
+    "MX-002": {
+      "status": "accepted",
+      "evidence": "MX-002.md",
+      "sha": "52c87b1c"
+    },
+    "MX-003": {
+      "status": "accepted",
+      "evidence": "MX-003.md",
+      "sha": "2bd4c682"
+    },
+    "MX-004": {
+      "status": "accepted",
+      "evidence": "MX-004.md",
+      "sha": "98002709"
+    },
+    "MX-005": {
+      "status": "accepted",
+      "evidence": "MX-005.md",
+      "sha": "c9505e26"
+    },
+    "MX-006": {
+      "status": "accepted",
+      "evidence": "MX-006.md",
+      "sha": "6d94a204"
+    },
+    "MX-007": {
+      "status": "accepted",
+      "evidence": "MX-007.md",
+      "sha": "12a9c4da"
+    },
+    "MX-008": {
+      "status": "accepted",
+      "evidence": "MX-008.md",
+      "sha": "12a9c4da"
+    },
+    "MX-009": {
+      "status": "accepted",
+      "evidence": "MX-009.md",
+      "sha": "12a9c4da"
+    },
+    "MX-010": {
+      "status": "accepted",
+      "evidence": "MX-010.md",
+      "sha": "95973585"
+    },
+    "MX-011": {
+      "status": "accepted",
+      "evidence": "MX-011.md",
+      "sha": "95973585"
+    },
+    "MX-012": {
+      "status": "accepted",
+      "evidence": "MX-012.md",
+      "sha": "6d94a204"
+    },
+    "MX-013": {
+      "status": "accepted",
+      "evidence": "MX-013.md",
+      "sha": "0ff12076"
+    },
+    "MX-014": {
+      "status": "accepted",
+      "evidence": "MX-014.md",
+      "sha": "964bf811"
+    },
+    "MX-015": {
+      "status": "accepted",
+      "evidence": "MX-015.md",
+      "sha": "082489e6"
+    },
+    "MX-016": {
+      "status": "accepted",
+      "evidence": "MX-016.md",
+      "sha": "424cfe97"
+    },
+    "MX-017": {
+      "status": "accepted",
+      "evidence": "MX-017.md",
+      "sha": "5e53cb6c"
+    },
+    "MX-018": {
+      "status": "accepted",
+      "evidence": "MX-018.md",
+      "sha": "16adf375"
+    },
+    "MX-019": {
+      "status": "accepted",
+      "evidence": "MX-019.md",
+      "sha": "188da5fd"
+    },
+    "MX-020": {
+      "status": "accepted",
+      "evidence": "MX-020.md",
+      "sha": "e3639894"
+    },
+    "MX-021": {
+      "status": "accepted",
+      "evidence": "MX-021.md",
+      "sha": "c600224e"
+    },
+    "MX-022": {
+      "status": "accepted",
+      "evidence": "MX-022.md",
+      "sha": "620ddcb8"
+    },
+    "MX-023": {
+      "status": "accepted",
+      "evidence": "MX-023.md",
+      "sha": "0dda83ba"
+    },
+    "MX-024": {
+      "status": "accepted",
+      "evidence": "MX-024.md",
+      "sha": "52a3627d"
+    },
+    "MX-025": {
+      "status": "accepted",
+      "evidence": "MX-025.md",
+      "sha": "ddfe1831"
+    },
+    "MX-026": {
+      "status": "accepted",
+      "evidence": "MX-026.md",
+      "sha": "b9e00fda"
+    },
+    "MX-027": {
+      "status": "not-activated",
+      "evidence": null,
+      "sha": null,
+      "note": "remote 条件边未激活（无 live Paseo 环境/授权）；remote profile 在 MX-032 保持 unavailable"
+    },
+    "MX-028": {
+      "status": "accepted",
+      "evidence": "MX-028.md",
+      "sha": "339bea50"
+    },
+    "MX-029": {
+      "status": "accepted",
+      "evidence": "MX-029.md",
+      "sha": "ddfe1831"
+    },
+    "MX-030": {
+      "status": "accepted",
+      "evidence": "MX-030.md",
+      "sha": "5cf0789c"
+    },
+    "MX-031": {
+      "status": "accepted",
+      "evidence": "MX-031.md",
+      "sha": "569eb068"
+    },
+    "MX-032": {
+      "status": "accepted",
+      "evidence": "MX-032.md",
+      "sha": "1e015177"
+    },
+    "MX-033": {
+      "status": "accepted",
+      "evidence": "MX-033.md",
+      "sha": "32786008"
+    },
+    "MX-034": {
+      "status": "blocked-env",
+      "evidence": "native-e2e.md",
+      "sha": "09b56a52",
+      "note": "E2E 编排+探测交付；三要素缺失（dev client 构建/adb/受控账户）——配方就绪"
+    },
+    "MX-035": {
+      "status": "partial",
+      "evidence": "accessibility-performance.md",
+      "sha": "a799d30c",
+      "note": "静态层 frozen 通过；截图/性能矩阵 pending（设备）"
+    },
+    "MX-036": {
+      "status": "accepted-with-review-pending",
+      "evidence": "release-report.md",
+      "sha": "PENDING-FINAL",
+      "note": "本任务"
+    }
   },
   "release_ruling": {
     "core": "releasable-with-conditions",
-    "conditions": ["native-e2e device evidence pending (MX-034)", "visual/performance matrix pending (MX-035)", "review closure for 025/029/032/033/035/036 batch"],
+    "conditions": [
+      "native-e2e device evidence pending (MX-034)",
+      "visual/performance matrix pending (MX-035)",
+      "review closure for 025/029/032/033/035/036 batch"
+    ],
     "remote": "blocked-env (capability closed by MX-032 manifest)",
     "personal_node": "deploy-disabled",
     "full_happy": "deploy-disabled",
@@ -54,5 +206,11 @@
     "strategy": "能力开关回退： CapabilityService RevokeCapability + profile-manifest deploy_enabled=false（新版本先关新准入，保留旧运行清理/结算——旧 Run 不中断）",
     "data_safety": "无破坏性迁移；回退不修改服务端 Run/结算状态"
   },
-  "separate_authorizations": ["支付/商户通道（不纳入本轮）", "公开个人节点", "E2EE", "真实 Provider 写入", "push/production"]
+  "separate_authorizations": [
+    "支付/商户通道（不纳入本轮）",
+    "公开个人节点",
+    "E2EE",
+    "真实 Provider 写入",
+    "push/production"
+  ]
 }

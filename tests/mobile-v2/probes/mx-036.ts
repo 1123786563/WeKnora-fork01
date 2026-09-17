@@ -59,17 +59,32 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     .filter((name) => name.endsWith('.test.ts') && name !== 'mx-036.test.ts')
     .map((name) => path.join('tests/mobile-v2', name));
   const outcome = await new Promise<{ code: number; output: string }>((resolve) => {
+    // NODE_TEST_CONTEXT 必须 delete：置空字符串仍会被子进程 node:test 判定为递归
+    // 上下文而静默跳过全部文件（终审实证的空门——exit 0 但零执行）。
+    const env = { ...process.env, NODE_OPTIONS: '' };
+    delete env.NODE_TEST_CONTEXT;
     const child = spawn(process.execPath, ['--import', 'tsx', '--test', ...files], {
       cwd: repoRoot,
-      env: { ...process.env, NODE_OPTIONS: '', NODE_TEST_CONTEXT: '' },
+      env,
     });
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
     child.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
     child.on('close', (code) => resolve({ code: code ?? -1, output }));
   });
-  if (outcome.code !== 0 || /\bfail [1-9]/.test(outcome.output)) {
-    throw new Error(`mobile-v2 regression must be green for a release ruling (exit ${outcome.code}): ${outcome.output.slice(0, 300)}`);
+  // 双保险：退出码 + 解析通过/失败计数（静默跳过时 pass=0，此处即红）
+  // node:test 汇总行形如「ℹ pass 42」「ℹ fail 0」——取最后一次匹配（全局汇总在末尾）
+  const summary = /(?:^|\s)(?:pass|fail) (\d+)(?:\s|$)/gm;
+  const numbers: Array<{ kind: 'pass' | 'fail'; n: number }> = [];
+  for (const line of outcome.output.split('\n')) {
+    const m = /^\s*\S*\s*(pass|fail) (\d+)\s*$/.exec(line.trim());
+    if (m) numbers.push({ kind: m[1] as 'pass' | 'fail', n: Number(m[2]) });
+  }
+  void summary;
+  const passCount = numbers.filter((x) => x.kind === 'pass').at(-1)?.n ?? 0;
+  const failCount = numbers.filter((x) => x.kind === 'fail').at(-1)?.n ?? 99;
+  if (outcome.code !== 0 || failCount !== 0 || passCount < 40) {
+    throw new Error('mobile-v2 regression must genuinely run green for a release ruling: exit=' + outcome.code + ' pass=' + passCount + ' fail=' + failCount + ' :: ' + outcome.output.slice(0, 240));
   }
 
   const ruling = index.release_ruling;
