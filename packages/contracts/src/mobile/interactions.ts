@@ -19,7 +19,8 @@ export interface InteractionRecord {
   id: string;
   decision_id: string;
   kind: InteractionKind;
-  action: InteractionAction;
+  /** pending 项为空串（真实 wire：服务端落库时 action 尚未决定）；已决定项必须是矩阵内动作。 */
+  action: InteractionAction | '';
   args_hash: string;
   expected_revision: number;
 }
@@ -49,16 +50,27 @@ export function interactionActionAllowed(value: InteractionKind, act: Interactio
   return INTERACTION_ACTIONS_BY_KIND[value].includes(act);
 }
 
-/** 列表项解析：结构完整 + kind/action 矩阵一致；decision_id/args_hash 允许为空串（pending 项）。 */
+/** 列表项解析：结构完整 + kind/action 矩阵一致；pending 项（decision_id 空）action 亦为空串。 */
 export function parseInteraction(value: unknown): InteractionRecord {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new ContractError('', 'expected an object');
   }
   const row = value as Record<string, unknown>;
   const parsedKind = kind(row.kind, 'kind');
-  const parsedAction = action(row.action, 'action');
-  if (!interactionActionAllowed(parsedKind, parsedAction)) {
-    throw new ContractError('action', `action ${parsedAction} is not valid for kind ${parsedKind}`);
+  const decisionID = typeof row.decision_id === 'string' ? row.decision_id : (() => { throw new ContractError('decision_id', 'expected a string'); })();
+  const isPending = decisionID.trim() === '';
+  let parsedAction: InteractionAction | '';
+  if (isPending) {
+    // pending wire：action 为空串；若携带非空动作则仍须合法（防御性收紧，不放宽）
+    parsedAction = row.action === '' ? '' : action(row.action, 'action');
+    if (parsedAction !== '' && !interactionActionAllowed(parsedKind, parsedAction)) {
+      throw new ContractError('action', `action ${parsedAction} is not valid for kind ${parsedKind}`);
+    }
+  } else {
+    parsedAction = action(row.action, 'action');
+    if (!interactionActionAllowed(parsedKind, parsedAction)) {
+      throw new ContractError('action', `action ${parsedAction} is not valid for kind ${parsedKind}`);
+    }
   }
   const revision = row.expected_revision;
   if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
@@ -74,10 +86,11 @@ export function parseInteraction(value: unknown): InteractionRecord {
   };
 }
 
-/** 决定 body 解析：decision_id 与 args_hash 必填非空（镜像 workbench_commands.go handler 校验）。 */
+/** 决定 body 解析：decision_id/args_hash 必填非空，且 action 必须是矩阵内具体动作（镜像 handler 校验）。 */
 export function parseInteractionDecision(value: unknown): InteractionRecord {
   const record = parseInteraction(value);
   if (record.decision_id.trim() === '') throw new ContractError('decision_id', 'decision_id is required');
   if (record.args_hash.trim() === '') throw new ContractError('args_hash', 'args_hash is required');
+  if (record.action === '') throw new ContractError('action', 'a concrete decision action is required');
   return record;
 }

@@ -19,7 +19,10 @@ export interface Observation {
   conflictCount: number;
 }
 
-export async function runProbe(_input: ProbeInput): Promise<Observation> {
+export async function runProbe(input: ProbeInput): Promise<Observation> {
+  if (input.fixture !== 'same-interaction-revision4' || input.fault !== 'two-concurrent-approve') {
+    throw new Error(`unsupported fixture/fault: ${input.fixture}/${input.fault}`);
+  }
   const { stdout, stderr } = await execFileAsync(
     'go',
     ['test', './internal/application/service/workbench/', '-run', 'TestGormInteractionStoreScopesOwnerAndCASesDecision', '-count=1', '-v'],

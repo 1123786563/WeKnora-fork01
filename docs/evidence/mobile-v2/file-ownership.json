@@ -833,12 +833,13 @@
     },
     "packages/contracts/src/mobile/interactions.ts": {
       "owners": [
-        "MX-003"
+        "MX-003",
+        "MX-005"
       ],
-      "kind": "create",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "kind": "modify",
+      "shared_serialized": true,
+      "source": "mx-005-fix-round",
+      "note": "锁转移（MX-005 R1 P1-1）：pending wire action 空串契约"
     },
     "packages/contracts/src/mobile/read-models.ts": {
       "owners": [
@@ -1832,6 +1833,15 @@
       "shared_serialized": false,
       "source": "mx-005-lock-extension",
       "note": "SDK 测试（test:shared 纳入）"
+    },
+    "packages/contracts/test/mobile-interactions.test.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-005-fix-round",
+      "note": "真实 Go pending wire 回归测试（P1-1）"
     }
   }
 }

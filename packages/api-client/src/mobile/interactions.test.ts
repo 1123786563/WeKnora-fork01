@@ -15,13 +15,16 @@ test('interactions list unwraps and validates pending records', async () => {
     return {
       success: true,
       data: [
-        { id: 'i-1', decision_id: '', kind: 'tool_approval', action: 'approve', args_hash: 'sha256:aa', expected_revision: 4 },
+        // 真实服务端 pending wire：decision_id 与 action 均为空串
+        { id: 'i-1', decision_id: '', kind: 'tool_approval', action: '', args_hash: 'sha256:aa', expected_revision: 4 },
       ],
     };
   });
   const items = await api.list('run/1');
   assert.equal(items.length, 1);
   assert.equal(items[0].kind, 'tool_approval');
+  assert.equal(items[0].action, '');
+  assert.equal(items[0].decision_id, '');
   assert.deepEqual(seen[0].path, '/workbench/executions/run%2F1/interactions');
 });
 
