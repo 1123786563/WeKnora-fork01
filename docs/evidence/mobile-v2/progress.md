@@ -54,7 +54,8 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-028 | review | e9ce0fc2→339bea50 | mv2 29/29 · frozen 编辑文本/0 · tsc 11 | 待独立review（随下轮） | MX-028.md |
 | MX-026 | review | 339bea50→b9e00fda | mv2 30/30 · frozen platform/0 · tsc 11 | 待独立review（随下轮） | MX-026.md |
 | MX-029 | review | b9e00fda→9496ec29 | mv2 31/31 · go voice ok · frozen true/0 · tsc 11 | 审查进行中（四项合并） | MX-029.md |
-| MX-032 | review | 9496ec29→(待提交) | mv2 32/32 · go caps ok · frozen unavailable/missing_cancel_evidence | 待独立review | MX-032.md / profile-gates.md |
+| MX-032 | review | 9496ec29→1e015177 | mv2 32/32 · go caps ok · frozen unavailable/missing_cancel_evidence | 待独立review（与 033 批） | MX-032.md / profile-gates.md |
+| MX-033 | review | 1e015177→(待提交) | mv2 40/40（recovery 3+security 4）· frozen 1/1 · go admission ok | 待独立review | MX-033.md / fault-matrix.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

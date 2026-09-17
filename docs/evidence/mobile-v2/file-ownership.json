@@ -1646,7 +1646,7 @@
       "kind": "create",
       "shared_serialized": false,
       "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "note": "恢复故障注入套件"
     },
     "tests/mobile-v2/security.test.ts": {
       "owners": [
@@ -1655,7 +1655,7 @@
       "kind": "create",
       "shared_serialized": false,
       "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "note": "安全故障注入套件"
     },
     "tests/mobile-v2/visual-baseline.json": {
       "owners": [
