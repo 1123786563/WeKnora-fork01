@@ -155,6 +155,9 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const timeoutMs = options.timeoutMs ?? 30_000;
 
   async function request(input: ClientRequest): Promise<unknown> {
+    if (input.nativeFile && !options.transport.sendMultipartFile) {
+      throw new Error('Native multipart transport is unavailable');
+    }
     const controller = new AbortController();
     let timedOut = false;
     const cancel = () => controller.abort();
@@ -165,7 +168,8 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       method: input.method,
       url: joinURL(options.baseURL, input.path),
       headers: { accept: 'application/json', ...input.headers },
-      body: input.body ?? (input.multipartFields === undefined ? undefined : multipartBody(input.multipartFields)),
+      // Native uploads must not instantiate browser FormData before transport selection.
+      body: input.nativeFile ? undefined : input.body ?? (input.multipartFields === undefined ? undefined : multipartBody(input.multipartFields)),
       signal: controller.signal,
     };
     try {
