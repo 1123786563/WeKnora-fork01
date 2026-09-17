@@ -1,19 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   missingEvidence,
   validateEvidenceRecord,
   validateAcceptance,
   collectGateFailures,
+  realDeps,
 } from './check-acceptance.mjs';
 
 // Fixed dependencies for the pure validators: the filesystem and git object
 // database are injected so every rule below is a decision about THIS task's
 // behaviour, never about the machine the test happens to run on.
+// `commitExists` (object database) is kept only so tests can construct the
+// "object exists but is NOT on the candidate history" situation; the gate
+// itself must consult `commitInCandidateHistory`.
 const deps = (overrides = {}) => ({
   fileExists: () => true,
   readFile: () => '',
   commitExists: () => true,
+  commitInCandidateHistory: () => true,
   repoRoot: '/repo',
   ...overrides,
 });
@@ -64,9 +73,22 @@ test('a pass row whose artifact file is missing is rejected', () => {
 test('a pass row whose baseline SHA left the candidate history (stale SHA) is rejected', () => {
   const violations = validateEvidenceRecord(
     { kind: 'unit', status: 'pass', baseline_sha: 'deadbeef', command: 'pnpm test:shared', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W06-rereview.md', review_independent: true },
-    deps({ commitExists: (sha) => sha !== 'deadbeef' }),
+    deps({ commitInCandidateHistory: (sha) => sha !== 'deadbeef' }),
   );
   assert.ok(violations.some((v) => v.includes('baseline_sha')));
+});
+
+test('a pass row anchored to a lane-branch or dangling commit (object exists, NOT an ancestor of the candidate HEAD) is rejected', () => {
+  const violations = validateEvidenceRecord(
+    { kind: 'security', status: 'pass', baseline_sha: '661a7b7c', command: 'go test ./internal/handler -count=1', exit_code: 0, artifact_path: 'docs/evidence/x.md', artifact_hash: 'sha256:1', observed_at: '2026-09-17T00:00:00Z', review_ref: 'task-W13-review.md', review_independent: true },
+    // The commit OBJECT exists in the database (cat-file would find it), but
+    // it never merged into the candidate: object presence must NOT pass.
+    deps({ commitExists: () => true, commitInCandidateHistory: () => false }),
+  );
+  assert.ok(
+    violations.some((v) => v.includes('baseline_sha') && v.includes('ancestor')),
+    `expected an ancestor violation, got: ${JSON.stringify(violations)}`,
+  );
 });
 
 test('skip and mock statuses can never be recorded as accepted evidence', () => {
@@ -184,4 +206,62 @@ test('a delivered profile with gaps fails the gate; not_in_release is an explici
     deps(),
   );
   assert.ok(silent.violations.some((v) => v.includes('not_in_release_reason')));
+});
+
+// Builds a throwaway git repository:
+//   main: A --- C (HEAD)
+//            \
+//   lane:      B   (commit object exists, branch ref keeps it alive)
+//   dangling:  D   (commit object exists, no ref at all)
+function buildLaneRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'w37-gate-repo-'));
+  const git = (...args) => execFileSync('git', ['-C', dir, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const commit = (name) => {
+    fs.writeFileSync(path.join(dir, `${name}.txt`), name);
+    git('add', '.');
+    git('commit', '-q', '-m', name);
+  };
+  git('init', '-q');
+  git('config', 'user.email', 'gate@example.invalid');
+  git('config', 'user.name', 'gate test');
+  commit('A');
+  git('checkout', '-q', '-b', 'lane');
+  commit('B');
+  const laneSha = git('rev-parse', 'HEAD').toString().trim();
+  git('checkout', '-q', '-');
+  commit('C');
+  const headSha = git('rev-parse', 'HEAD').toString().trim();
+  // A dangling commit: parented on HEAD, referenced by nothing.
+  const danglingSha = execFileSync(
+    'git',
+    ['-C', dir, 'commit-tree', `HEAD^{tree}`, '-p', 'HEAD', '-m', 'D'],
+    { stdio: ['ignore', 'pipe', 'ignore'] },
+  ).toString().trim();
+  return { dir, headSha, laneSha, danglingSha };
+}
+
+test('realDeps: an object-database existence check is NOT enough — only ancestors of the candidate HEAD count', () => {
+  const { dir, headSha, laneSha, danglingSha } = buildLaneRepo();
+  try {
+    const deps = realDeps(dir);
+    // All three commits exist as objects (cat-file finds them)…
+    for (const sha of [headSha, laneSha, danglingSha]) {
+      execFileSync('git', ['-C', dir, 'cat-file', '-e', `${sha}^{commit}`], { stdio: 'ignore' });
+    }
+    // …but only the candidate HEAD itself (and its ancestors) passes the gate.
+    assert.equal(deps.commitInCandidateHistory(headSha), true);
+    assert.equal(deps.commitInCandidateHistory(laneSha), false, 'lane-branch commit must be rejected');
+    assert.equal(deps.commitInCandidateHistory(danglingSha), false, 'dangling commit must be rejected');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('realDeps: a SHA that is not a commit at all is rejected', () => {
+  const { dir } = buildLaneRepo();
+  try {
+    assert.equal(realDeps(dir).commitInCandidateHistory('0'.repeat(40)), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

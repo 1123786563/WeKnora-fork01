@@ -3,9 +3,11 @@
 //
 // A release capability may only be claimed "delivered" when its required
 // evidence KINDS each have a passing, independently reviewed record whose
-// command, exit code, artifact file and baseline SHA all check out against
-// the candidate commit history. Mock and skipped runs never satisfy a kind,
-// an implementer's own report is never a review, and the release report
+// command, exit code, artifact file and baseline SHA all check out — the
+// baseline must be an ANCESTOR of the candidate HEAD, so a commit that only
+// lives on a lane branch or survives as a dangling object can never anchor
+// acceptance evidence. Mock and skipped runs never satisfy a kind, an
+// implementer's own report is never a review, and the release report
 // itself must not contain skip wording. Every gap — including honest
 // not_in_release / pending declarations — stays visible; only an explicit
 // not_in_release declaration stops a gap from failing the gate, and that
@@ -46,7 +48,7 @@ export function missingEvidence(rows, required) {
 }
 
 function isSha(value) {
-  return typeof value === 'string' && /^([0-9a-f]{7,40}|[0-9a-f]{40})$/i.test(value.trim()) && value.trim() !== '';
+  return typeof value === 'string' && /^[0-9a-f]{7,40}$/i.test(value.trim());
 }
 
 /**
@@ -92,8 +94,8 @@ export function validateEvidenceRecord(record, deps, index = 0) {
   if (typeof record.observed_at !== 'string' || record.observed_at.trim() === '') {
     violations.push(`${at}: observed_at is required for pass rows`);
   }
-  if (!isSha(record.baseline_sha ?? '') || !deps.commitExists(record.baseline_sha)) {
-    violations.push(`${at}: baseline_sha '${record.baseline_sha}' is not a commit on the candidate history (stale SHA?)`);
+  if (!isSha(record.baseline_sha ?? '') || !deps.commitInCandidateHistory(record.baseline_sha)) {
+    violations.push(`${at}: baseline_sha '${record.baseline_sha}' is not an ancestor of the candidate HEAD (lane-branch or dangling SHA?)`);
   }
   // Only an INDEPENDENT review backs a pass. An implementer's own task report
   // (task-*-report.md) is never a review.
@@ -126,8 +128,8 @@ export function validateAcceptance(doc, deps) {
   const missing = {};
   const profile_status = {};
   if (!doc || typeof doc !== 'object') return { violations: ['acceptance document must be an object'], missing, profile_status };
-  if (!isSha(doc.baseline_sha ?? '') || !deps.commitExists(doc.baseline_sha)) {
-    violations.push(`baseline_sha '${doc.baseline_sha}' is not a commit on the candidate history`);
+  if (!isSha(doc.baseline_sha ?? '') || !deps.commitInCandidateHistory(doc.baseline_sha)) {
+    violations.push(`baseline_sha '${doc.baseline_sha}' is not an ancestor of the candidate HEAD`);
   }
   const evidence = Array.isArray(doc.evidence) ? doc.evidence : [];
   evidence.forEach((record, index) => violations.push(...validateEvidenceRecord(record, deps, index)));
@@ -178,16 +180,22 @@ export function collectGateFailures(result) {
   return failures;
 }
 
-/** Real dependency set: filesystem + git object database of this worktree. */
-export function realDeps(repoRoot = process.cwd()) {
+/**
+ * Real dependency set: filesystem + git history of this worktree. A baseline
+ * only counts when it is an ANCESTOR of the candidate (`HEAD` by default):
+ * `git merge-base --is-ancestor` returns non-zero for stale SHAs, for commits
+ * confined to a lane branch, and for dangling objects alike, so mere
+ * presence in the object database (cat-file) is never acceptance-grade.
+ */
+export function realDeps(repoRoot = process.cwd(), candidate = 'HEAD') {
   return {
     repoRoot,
     fileExists: (p) => fs.existsSync(p),
     readFile: (p) => fs.readFileSync(p, 'utf8'),
-    commitExists: (sha) => {
+    commitInCandidateHistory: (sha) => {
       if (!isSha(sha)) return false;
       try {
-        execFileSync('git', ['-C', repoRoot, 'cat-file', '-e', `${sha}^{commit}`], { stdio: 'ignore' });
+        execFileSync('git', ['-C', repoRoot, 'merge-base', '--is-ancestor', sha, candidate], { stdio: 'ignore' });
         return true;
       } catch {
         return false;
