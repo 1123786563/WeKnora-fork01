@@ -71,7 +71,7 @@
 | W24 | [受控工具、可信用量与预算树接线](2026-09-12-mobile-workbench-04-paseo.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W25 | [会话附件上传、取消和校验](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 >>>>>>> Stashed changes
-| W26 | [远程文件导入与不可变产物版本](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
+| W26 | [远程文件导入与不可变产物版本](2026-09-12-mobile-workbench-05-resources-voice.md) | accepted-with-blockers | resources | `3b67d429`, `f4f8a7f9` | 32 新测试+paseo-adapter 35/35+tsc 0；四包 vet/build 全绿；真实 Paseo/PG/对象存储 blocked-env | review FAIL(I-1 接线+I-2 handle)→fix1→rereview1 Spec PASS / Quality APPROVED | 不可变版本/双方言迁移 000067+000142/symlink 逃逸防护/能力令牌/路由+容器接线+契约锁定 | W27/W28 解锁；M-1..M-5 deferred |
 | W27 | [隔离预览与 AWS 组件来源](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W28 | [知识引用与专业结果注册器](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
 | W29 | [按住说话、转写确认与文本提交](2026-09-12-mobile-workbench-05-resources-voice.md) | pending | 尚未执行 | 无实现提交 | 未执行 | 未执行 | 未审查 | 核对依赖后开始本任务 |
