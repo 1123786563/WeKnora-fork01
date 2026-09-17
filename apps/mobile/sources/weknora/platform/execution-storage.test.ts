@@ -46,7 +46,7 @@ describe('execution storage', () => {
     const events = new Map<string, string>();
     const cursors = new Map<string, number>();
     const db: ExpoSQLiteDatabase = {
-      withTransactionAsync: async (work) => work(),
+      withTransactionAsync: async (work: () => Promise<void>) => { await work(); },
       runAsync: async (sql, ...params) => {
         if (sql.startsWith('INSERT INTO execution_events')) events.set(`${params[0]}:${params[1]}:${params[2]}`, String(params[3]));
         if (sql.startsWith('INSERT INTO execution_cursors')) cursors.set(`${params[0]}:${params[1]}`, Number(params[2]));

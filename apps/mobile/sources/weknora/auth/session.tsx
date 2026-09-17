@@ -1,5 +1,5 @@
 import { createAuthApi, createJsonTransport, createProductAuthSession, type BearerCredential } from '@weknora/api-client';
-import { createBootstrapPort } from './bootstrap';
+import { createBootstrapPort, type MembershipSummary } from './bootstrap';
 import * as SecureStore from 'expo-secure-store';
 import * as React from 'react';
 import { useMobileHost } from '@/weknora/platform/host';
@@ -24,6 +24,8 @@ type ProductAuthContextValue = {
   /** 冷启动/换取后的身份引导：凭据有效但 scope 未定时取 user/memberships（G04）。 */
   bootstrapScope: () => Promise<void>;
   bootstrapError: string | null;
+  /** 最近一次身份引导取得的空间成员关系（冷启动/SSO 共用；MX-011 选择屏消费）。 */
+  bootstrapMemberships: MembershipSummary[];
 };
 const ProductAuthContext = React.createContext<ProductAuthContextValue | null>(null);
 
@@ -63,6 +65,8 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     }) as never));
   }, [adapter, host]);
   const [bootstrapError, setBootstrapError] = React.useState<string | null>(null);
+  const [bootstrapMemberships, setBootstrapMemberships] = React.useState<MembershipSummary[]>([]);
+  const bootstrapErrorRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!authSession) return;
@@ -87,11 +91,15 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     if (!host || !bootstrap) return;
     try {
       const outcome = await bootstrap.run(scope.identity().tenantId);
+      bootstrapErrorRef.current = null;
       setBootstrapError(null);
+      setBootstrapMemberships(outcome.memberships);
       scope.switchTo({ origin: host.origin, userId: outcome.userId, tenantId: outcome.tenantId ?? '' });
     } catch (error) {
       // 保留凭据；scope 维持未定（登录门可达），错误暴露给 UI 层
-      setBootstrapError(error instanceof Error ? error.message : 'identity bootstrap failed');
+      const message = error instanceof Error ? error.message : 'identity bootstrap failed';
+      bootstrapErrorRef.current = message;
+      setBootstrapError(message);
     }
   }, [bootstrap, host, scope]);
 
@@ -131,11 +139,12 @@ export function ProductAuthProvider({ children, teardown = defaultTeardown }: Re
     if (!host || !authSession) throw new Error('SERVER_REQUIRED');
     await authSession.refreshCoordinator.replace(next);
     setCredential(next);
-    // SSO 换取成功同样必须补齐身份/成员关系，再进入产品 scope
+    // SSO 换取成功同样必须补齐身份/成员关系，再进入产品 scope；失败上抛由回跳页决策
     await bootstrapScopeNow();
+    if (bootstrapErrorRef.current) throw new Error(bootstrapErrorRef.current);
   }, [authSession, bootstrapScopeNow, host]);
 
-  return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout, replaceCredential, bootstrapScope: bootstrapScopeNow, bootstrapError }}>{children}</ProductAuthContext.Provider>;
+  return <ProductAuthContext.Provider value={{ credential, loading, scope, login, logout, replaceCredential, bootstrapScope: bootstrapScopeNow, bootstrapError, bootstrapMemberships }}>{children}</ProductAuthContext.Provider>;
 }
 
 export function useProductAuth(): ProductAuthContextValue {

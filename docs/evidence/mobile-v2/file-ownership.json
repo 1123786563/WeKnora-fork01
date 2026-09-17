@@ -1805,7 +1805,8 @@
     "packages/domain/src/mobile/index.ts": {
       "owners": [
         "MX-004",
-        "MX-006"
+        "MX-006",
+        "MX-011"
       ],
       "kind": "modify",
       "shared_serialized": true,

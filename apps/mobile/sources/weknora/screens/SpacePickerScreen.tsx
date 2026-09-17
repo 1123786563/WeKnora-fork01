@@ -22,17 +22,14 @@ export interface SpacePickerScreenProps {
 
 export function SpacePickerScreen({ memberships, currentTenantId, onSelect, onSignOut, testID }: SpacePickerScreenProps) {
   const { theme } = useWeknoraTheme();
-  const [busyTenant, setBusyTenant] = useState<string | null>(null);
+  const [submittedTenant, setSubmittedTenant] = useState<string | null>(null);
   const active = useMemo(() => memberships.filter((row) => !row.status || row.status === 'active'), [memberships]);
-
+  // 异步宿主防重复：提交后保持禁用，直到 currentTenantId 追上（或切换被显式放弃）
+  const effectiveTenant = currentTenantId ?? submittedTenant;
   const pick = (tenantId: string) => {
-    if (busyTenant || tenantId === currentTenantId) return;
-    setBusyTenant(tenantId);
-    try {
-      onSelect(tenantId);
-    } finally {
-      setBusyTenant(null);
-    }
+    if (tenantId === effectiveTenant) return;
+    setSubmittedTenant(tenantId);
+    onSelect(tenantId);
   };
 
   return (
@@ -54,7 +51,7 @@ export function SpacePickerScreen({ memberships, currentTenantId, onSelect, onSi
             <Card
               onPress={() => pick(item.tenantId)}
               accessibilityLabel={`进入空间 ${item.tenantName ?? item.tenantId}`}
-              tone={item.tenantId === currentTenantId ? 'hero' : 'surface'}
+              tone={item.tenantId === effectiveTenant ? 'hero' : 'surface'}
             >
               <View style={styles.row}>
                 <View style={styles.grow}>
@@ -65,7 +62,7 @@ export function SpacePickerScreen({ memberships, currentTenantId, onSelect, onSi
                     {item.role ? `角色：${item.role}` : ''}
                   </Text>
                 </View>
-                {item.tenantId === currentTenantId ? <StatusBadge tone="brand" label="当前空间" /> : null}
+                {item.tenantId === currentTenantId ? <StatusBadge tone="brand" label="当前空间" /> : item.tenantId === submittedTenant ? <StatusBadge tone="neutral" label="切换中" /> : null}
               </View>
             </Card>
           )}

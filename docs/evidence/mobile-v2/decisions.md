@@ -95,3 +95,9 @@ MX-004（fixtures/*.bin 忽略）与 MX-006（`!apps/mobile/sources/weknora/` �
 ## D-023 · 产品入口接线的锁账落点（2026-09-18，MX-009 审查 P2 澄清）
 
 MX-009 裁决「入口接线随 MX-010 落地」在锁账上不闭合：`_layout.tsx` 写锁仅 MX-009 持有，MX-010 写集不含 layout，且产品壳作为屏幕需要 /product 文件路由（无文件则不可达）。修正落点：**入口接线归 MX-013**（其交付 HomeScreen + /product 路由文件，届时以锁转移取得 app/_layout.tsx 与 (app)/_layout.tsx 完成入口切换）；MX-010 交付身份正确性（bootstrap/登录屏/SSO 换取后补身份），LoginScreen 以 onAuthenticated 回调解耦宿主。在此之前不制造无鉴权壳、不破坏 legacy Happy 流。
+
+## D-024 · MX-011 P2 补登记与 MX-010 修复轮（2026-09-18）
+
+- MX-011 P2-1：domain/mobile/index.ts 追加 MX-011 owners（query-scope 导出，漏登记补齐）。
+- MX-011 P2-3 措辞拆分：切空间不取消服务端 Run=[x]（probe 观测）；退后台/断流=[~]（原语层结构保证，设备级复验 MX-034）。
+- MX-010 R1 修复：P1-1 SSO state 落盘形状对齐回跳契约（{state,redirect_uri,issued_at}+失败清理）；P2-1 probe 普通存储计数器接真实写入路径；P2-2 bootstrapMemberships 入 context；P3（死代码移除/SSO host 缺失反馈/replaceCredential bootstrap 失败上抛）。

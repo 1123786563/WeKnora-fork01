@@ -1,4 +1,4 @@
-import { createAuthApi, type AuthApi, type AuthMe, type ClientRequest } from '@weknora/api-client';
+import type { AuthApi, AuthMe } from '@weknora/api-client';
 
 /**
  * 冷启动身份引导（MX-010，关闭 G04 身份面）。
@@ -63,18 +63,4 @@ export function createBootstrapPort(authApi: AuthApi): BootstrapPort {
       return resolveScopeFromMe(me, preferredTenantId);
     },
   };
-}
-
-/** 由 origin 直接构建（产品会话冷启动路径）。 */
-export function createTransportBootstrap(origin: string, fetcher: typeof fetch = fetch): BootstrapPort {
-  const authApi = createAuthApi((async (input: ClientRequest) => {
-    const response = await fetcher(`${origin}${input.path}`, {
-      method: input.method,
-      headers: { 'content-type': 'application/json', ...(input.headers ?? {}) },
-      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    });
-    return (await response.json()) as unknown;
-  }) as (input: ClientRequest) => Promise<unknown>);
-  return createBootstrapPort(authApi);
 }

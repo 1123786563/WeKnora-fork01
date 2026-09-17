@@ -31,9 +31,13 @@ export interface ExecutionStorageDriver {
   clearScope(scopeKey: string): Promise<void>;
 }
 
-/** Minimal Expo SQLite surface, kept injectable for native and restart tests. */
+/**
+ * Expo SQLite surface mirroring the official expo-sqlite API (withTransactionAsync
+ * resolves Promise<void> — the transaction result is NOT returned by the SDK), kept
+ * injectable for restart tests (G06: never fake the native return type).
+ */
 export interface ExpoSQLiteDatabase {
-  withTransactionAsync<T>(work: () => Promise<T>): Promise<T>;
+  withTransactionAsync(work: () => Promise<void>): Promise<void>;
   runAsync(sql: string, ...params: unknown[]): Promise<unknown>;
   getFirstAsync<T extends Record<string, unknown>>(sql: string, ...params: unknown[]): Promise<T | null>;
   getAllAsync<T extends Record<string, unknown>>(sql: string, ...params: unknown[]): Promise<T[]>;
@@ -52,7 +56,11 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
   return {
     async transaction<T>(work: (tx: ExecutionStorageTransaction) => Promise<T>) {
       await initialized;
-      return db.withTransactionAsync(() => work({
+      // Official expo-sqlite withTransactionAsync resolves void: capture the
+      // work result through a closure instead of trusting a fabricated return.
+      let result: T | undefined;
+      await db.withTransactionAsync(async () => {
+        result = await work({
         getCursor: async (scope, run) => (await db.getFirstAsync<{ seq: number }>('SELECT seq FROM execution_cursors WHERE scope_key = ? AND run_id = ?', scope, run))?.seq ?? 0,
         findEvent: async (scope, run, seq) => {
           const row = await db.getFirstAsync<{ event_json: string }>('SELECT event_json FROM execution_events WHERE scope_key = ? AND run_id = ? AND seq = ?', scope, run, seq);
@@ -65,7 +73,9 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
         setCursor: async (scope, run, seq) => {
           await db.runAsync('INSERT INTO execution_cursors(scope_key, run_id, seq) VALUES (?, ?, ?) ON CONFLICT(scope_key, run_id) DO UPDATE SET seq = excluded.seq', scope, run, seq);
         },
-      }));
+        });
+      });
+      return result as T;
     },
     async clearScope(scope) {
       await initialized;

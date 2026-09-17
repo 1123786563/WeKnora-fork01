@@ -55,7 +55,10 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated?: () 
   };
 
   const startNativeOIDC = async () => {
-    if (!host) return;
+    if (!host) {
+      setError('尚未连接服务器，请先完成服务器配置');
+      return;
+    }
     setSsoBusy(true);
     setError(null);
     try {
@@ -69,11 +72,15 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated?: () 
         return (await response.json()) as unknown;
       });
       const state = await api.startNative(AUTH_RETURN_REDIRECT, challenge);
+      if (!state.authorization_url || !state.state) throw new Error('authorization_url/state missing');
+      // 落盘形状与 AuthReturnScreen 恢复契约一致：{state, redirect_uri, issued_at}
       await SecureStore.setItemAsync(NATIVE_PKCE_VERIFIER_KEY, verifier);
-      await SecureStore.setItemAsync(NATIVE_OIDC_STATE_KEY, JSON.stringify(state));
-      if (!state.authorization_url) throw new Error('authorization_url missing');
+      await SecureStore.setItemAsync(NATIVE_OIDC_STATE_KEY, JSON.stringify({ state: state.state, redirect_uri: AUTH_RETURN_REDIRECT, issued_at: Date.now() }));
       await Linking.openURL(state.authorization_url);
     } catch {
+      // 失败清理残留（一次性 state 不得残留导致下次回跳误判）
+      await SecureStore.deleteItemAsync(NATIVE_PKCE_VERIFIER_KEY).catch(() => undefined);
+      await SecureStore.deleteItemAsync(NATIVE_OIDC_STATE_KEY).catch(() => undefined);
       setError('无法开始单点登录，请稍后重试或使用邮箱登录');
     } finally {
       setSsoBusy(false);

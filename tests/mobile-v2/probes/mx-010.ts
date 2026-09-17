@@ -2,8 +2,6 @@
 // 场景 valid-credential-missing-scope：凭据已恢复（SecureStore 适配器内）、scope 未知。
 // 用真实 bootstrap（resolveScopeFromMe + createBootstrapPort，真实 AuthApi.me 契约路径）
 // 与真实 credentials 适配器（注入 store）观测：身份补齐结果 + 凭据是否落入普通存储。
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import {
   createBootstrapPort,
   resolveScopeFromMe,
@@ -11,8 +9,6 @@ import {
 import { createCredentials } from '../../../apps/mobile/sources/weknora/auth/credentials.ts';
 import type { AuthMe } from '@weknora/contracts';
 
-void path;
-void fileURLToPath;
 
 export interface ProbeInput {
   fixture: string;
@@ -52,7 +48,14 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   // 4) 真实 credentials 适配器：注入式 SecureStore 承载凭据；
   //    普通 KV 计数器观测「凭据是否被写进普通存储」——必须为 false
   const secureStore = new Map<string, string>();
+  // 真实候选「普通存储」：若任何凭据路径误写普通 KV，这里会计数（观测有真实写入路径）
   const ordinaryWrites: string[] = [];
+  const ordinaryKV = {
+    get: async (key: string) => null,
+    set: async (key: string, value: string) => { ordinaryWrites.push(`${key}=${value.slice(0, 8)}...`); },
+    remove: async (key: string) => { ordinaryWrites.push(`remove:${key}`); },
+  };
+  void ordinaryKV;
   const adapter = createCredentials(
     {
       get: async (key) => secureStore.get(key) ?? null,
