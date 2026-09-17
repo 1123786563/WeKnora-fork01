@@ -112,3 +112,22 @@ SDD 台账（progress.md，协调者单写）：W27 rereview1 PASS、W30 review 
 7. **测试回归**：`node --test scripts/mobile-workbench/check-acceptance.test.mjs` → **17/17 pass，exit 0**。
 8. **release-report.md 同步**：Delivered 表重排（notifications 行移除、remote 改 W17–W23、resources/voice 补 W28/W30/W31、新增 W32 行）；Not delivered 增设两条 lane-only 集成缺口声明（部署本候选将得不到 notifications 服务端与 W24 usage binding——风险第 1 条）；W30 双计费风险改写为已修复+费率漂移保守拒收边界；full_happy 维持 not_in_release（核心能力口径，H27–H33 管理屏/H33 WS 桥未实现，78 行矩阵 66 open 如实）；backend_model 空洞声明维持；回退命令补三个具体 revert SHA；取消后结算链如实改写为「语音段闭合（W30）、远程段 lane-only 不在候选」。
 9. **约束遵守**：`git commit --only` 恰两文件；W37 报告（本文件）在 SDD 区不入库（工作树保留）；并发 parity 进程脏文件（apps/web/*、i18n 等）未触碰；两台账未改（W 台账现存 merge 冲突标记为协调者域，事实以冲突区外最终行 + SDD 台账 451 行「全部 37 任务已验收」为准）。
+
+## 11. 最终重生成轮 2 — 五 lane 集成后收口（FINAL_BASE `72abc128`，提交 `982c5acc`）
+
+前置：五 lane 集成（lane-integration-report.md：W13=`71294f7b`、W14=`b6a701e9`、W15=`061a442a`、W16=`0d9baebd`、W24=`05725468`，另含修复 `a6adf7a1`/`44710c6e`/`96efa90c`）与 W16 集成测试修复均已在主线。仅改 `docs/evidence/mobile-workbench/acceptance.json` + `release-report.md`（`git commit --only`，2 files +104/−65）。
+
+1. **W13-W16/W24 翻转回 pass**（五个 baseline 全部 `git merge-base --is-ancestor` 验证为 `72abc128` 祖先）：
+   - W13：blocked→pass/unit，baseline `71294f7b`，review `task-W13-final-review.md`。
+   - W14：accepted-ledger-only→pass/**database**（域跨 unit/database，以迁移背书的 outbox repository 套件锚定 database kind），baseline `b6a701e9`，review `task-W14-retry-error-review.md`。
+   - W15：accepted-ledger-only→pass/unit，baseline `061a442a`，review `task-W15-empty-token-review.md`（该 10 文件集已在集成时归位 SDD 目录且入库）。
+   - W16：accepted-ledger-only→pass/unit，baseline `0d9baebd`，review `task-W16-rereview.md`。
+   - W24：blocked→pass/**database**（域跨 database/billing），baseline `05725468`，review `task-W24-final3-review.md`。
+2. **W16 附加行**：`96efa90c` 集成后测试修复（10 例 Vitest 真实通过）作补证行，kind unit，artifact=`task-W16-integration-fix-report.md`，review_ref 复用 W16 接受审查 `task-W16-rereview.md`（其行为契约即这些套件所断言）。
+3. **review 文件找回**：W14/W16 的接受审查原仅存于 lane worktree（`.sdd-worktrees/w14`、`.sdd-worktrees/w16`）——已复制到规范 SDD 目录（磁盘态，gitignore 区，与其他审查文件同状态）。注意甄别：`task-W14-final-review.md` 与 `task-W16-final-review.md` 均为 FAIL 轮，非接受审查；W14 唯一 PASS 审查 = retry-error review（scoped Spec PASS / Quality APPROVED，与台账引用一致）。
+4. **pass 行命令在最终 HEAD `72abc128` 真实复跑**（全部 exit 0）：W13 repository `TestMobileDevice` ok；W14 repository `TestMobileDevice|TestNotification` ok；W15 `go test -race ./internal/notification` ok（该包在 lane 上从未编译通过过，集成后首跑即绿）；W16 deep-link 2/2；W16 补证 vitest session+NotificationRouter **11/11**（10 例原失败 + 1 原通过）；W24 两个 usage-binding 持久化测试 PASS（-v 逐名确认）。
+5. **哈希与 baseline**：25 个 artifact 哈希全部重算（两台账活文件哈希变化：SDD progress `4d5eac28…`、W 台账 `e4aec403…`；19 个审查/证据文件不变；新增 4 个）；doc baseline=`72abc128`；`regeneration_provenance` 记录两轮演进。
+6. **release-report.md 同步**：Delivered 表恢复 Notifications lane（W13–W16）行、Remote 行改 W17–W24；Not delivered 移除两条 lane-only 行；风险 1 改写为「RESOLVED (integrated)」+ 残余风险（vitest `@/` alias 解析缺失为潜在陷阱）；风险 2 ledger-only 收窄为 W01–W06/W18–W22（11 行）；取消后结算链双段（voice+remote）均闭合（代码级）；W30 费率漂移边界、full_happy 核心口径、backend_model 空洞维持如实。
+7. **CLI 最终结果**：`exit 1`，6 条 profile 级 blocking（core: backend_model/ios_native/android_native；oidc: ios_native；remote: remote/recovery；resources: ios_native/android_native；voice: ios_native；governance: recovery）+ 0 evidence-record violation + 7 条 STAGED REPORT。翻转不改变 gate 缺项集合（unit/database 两 kind 此前已有 pass 行）——非零=分阶段门禁对 native/真机/live/真实部署/backend_model 空洞的如实行为。转录 `/tmp/w37-final-cli-out.txt`、`/tmp/w37-final-cli-err.txt`；提交后新 HEAD 复跑同结果。
+8. **测试回归**：`node --test scripts/mobile-workbench/check-acceptance.test.mjs` → **17/17 pass，exit 0**。
+9. **提交**：`982c5acc`（`git commit --only` 恰两文件；并发 parity 未跟踪目录未卷入；证据两文件工作树 clean）。
