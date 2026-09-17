@@ -1,15 +1,18 @@
 {
-  "generated_at": "2026-09-17T11:12:02Z",
-  "generated_by": "W37 regeneration round (final state: all 37 tasks W01-W37 accepted in both ledgers; evidence re-collected from the two ledgers and on-disk independent review files; pass-row commands re-run at the generation HEAD; no pass row is created for plan-writing itself)",
-  "baseline_sha": "46427a9e",
+  "generated_at": "2026-09-17T12:11:42Z",
+  "generated_by": "W37 final regeneration round (five lanes integrated: W13/W14/W15/W16/W24 lane merges are ancestors of the final HEAD — see lane-integration-report.md; evidence re-collected from the two ledgers and on-disk independent review files; every pass-row command re-run at the final HEAD; no pass row is created for plan-writing itself)",
+  "baseline_sha": "72abc128",
   "regeneration_provenance": {
     "original_generated_at": "2026-09-17T07:26:06.996Z",
     "original_baseline_sha": "f0f39fa0",
-    "round": "regenerate-after-all-lanes-closed",
+    "previous_regenerated_at": "2026-09-17T11:12:02Z",
+    "previous_baseline_sha": "46427a9e",
+    "round": "regenerate-final-after-five-lane-integration",
     "changes": [
-      "W28/W30/W31/W32 flipped to accepted pass rows (final reviews task-W28-review / task-W30-rereview2 / task-W31-rereview1 / task-W32-review)",
-      "W37-review F1 three-line disposition: W08 re-anchored to an in-ancestor commit; W13 and W24 downgraded to blocked (lane-only integration, content absent from the candidate tree)",
-      "artifact hashes recomputed at generation time; doc baseline set to generation HEAD"
+      "previous round: W28/W30/W31/W32 flipped to accepted pass rows; W37-review F1 disposition re-anchored W08 and downgraded W13/W24 to blocked (lane-only at that time)",
+      "final round: the five lanes merged into the candidate (W13=71294f7b, W14=b6a701e9, W15=061a442a, W16=0d9baebd, W24=05725468, all merge-base verified as ancestors of 72abc128) — W13/W24 restored from blocked to pass, W14/W15/W16 upgraded from accepted-ledger-only to pass with the lane merge commits as baselines",
+      "final round: W16 gained a supplementary vitest row for the post-integration test fix 96efa90c (the review-time Vitest evidence was blocked-env and had never executed)",
+      "artifact hashes recomputed for every row at the final HEAD; doc baseline set to 72abc128"
     ]
   },
   "release_report": "docs/evidence/mobile-workbench/release-report.md",
@@ -31,7 +34,7 @@
         "security"
       ],
       "scope": "W01–W07, W09–W16 (+W08 OIDC)",
-      "note": "Unit/security/database slices are independently reviewed and anchored in the candidate; native layers and backend_model evidence are not closed, six early-task reviews survive only as ledger text, and the W13–W16 notifications server lane never merged into the candidate — the release claim stays pending."
+      "note": "Unit/security/database slices are independently reviewed and anchored in the candidate — the W13–W16 notifications server lane is now integrated (merges 71294f7b/b6a701e9/061a442a/0d9baebd are ancestors of the final HEAD); native layers and backend_model evidence are not closed, and six early-task reviews survive only as ledger text — the release claim stays pending."
     },
     {
       "profile": "oidc",
@@ -54,7 +57,7 @@
         "recovery"
       ],
       "scope": "W17–W24",
-      "note": "Code-level lanes accepted; the live Paseo/PG/container layer never left blocked-env, and the W24 usage-binding lane (all seven commits on codex/mobile-w24) never merged into the candidate."
+      "note": "Code-level lanes accepted; the W24 usage-binding lane is integrated in the final round (merge 05725468 is an ancestor of the final HEAD) and its persistence evidence now runs in the candidate; the live Paseo/PG/container layer never left blocked-env."
     },
     {
       "profile": "resources",
@@ -192,7 +195,7 @@
       "command": "",
       "exit_code": null,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/progress.md",
-      "artifact_hash": "sha256:f89051c992c605091634a77781d2dd55ce795f3358ed51df852f89593be42beb",
+      "artifact_hash": "sha256:4d5eac28f692f13a6c79863cb7c7d03b680f2a7b5f696932e19643cf7d6483b3",
       "observed_at": "2026-09-17",
       "review_independent": true,
       "note": "Native Expo/iOS/Android runtime evidence blocked-env per ledger; code-level Vitest 10/10 was accepted, the native layer was not."
@@ -241,49 +244,73 @@
     },
     {
       "task": "W13",
-      "kind": "security",
-      "status": "blocked",
-      "command": "",
-      "exit_code": null,
+      "kind": "unit",
+      "status": "pass",
+      "baseline_sha": "71294f7b",
+      "command": "go test ./internal/application/repository -run 'TestMobileDevice' -count=1",
+      "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W13-final-review.md",
       "artifact_hash": "sha256:fd230809d25de6cd383e9adfe73a632dc1e1827c1c8e130cef9f0add8e4a389a",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W13-final-review.md",
       "review_independent": true,
-      "note": "Regeneration downgrade (W37 review F1 disposition): all seven W13 implementation commits (a71f1128, ffd1b2bc, d06ffe0d, 44107dc3, 31016abe, e73f6edd, 696de738) live only on the codex/mobile-w13 lane branch — verified non-ancestors of the candidate HEAD; the W33 whole-chain merge c6d78821 carried only the W33 chain. The server-side content (internal/application/repository mobile_device tests, registration intents, notifications delivery) is absent from the candidate tree, so the review-verified command cannot be anchored to any candidate commit. The independent final review (PASS/APPROVED) is real and on disk, but the pass record is downgraded to blocked and the slice is not counted as delivered in this candidate."
+      "note": "Final-round restoration: this row was downgraded to blocked at 46427a9e because all seven lane commits (a71f1128..696de738) were non-ancestors of that HEAD; the five-lane integration then merged the W13 lane into the candidate — merge 71294f7b is an ancestor of the final HEAD (merge-base verified). The independent final review (PASS/APPROVED: lifecycle fencing, queue isolation, deterministic races) is unchanged on disk. Focused command re-run at the final HEAD 72abc128: ok, exit 0 (repository TestMobileDevice family; handler TestMobileDevice also green at merge time)."
     },
     {
       "task": "W14",
-      "kind": "unit",
-      "status": "accepted-ledger-only",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "kind": "database",
+      "status": "pass",
+      "baseline_sha": "b6a701e9",
+      "command": "go test ./internal/application/repository -run 'TestMobileDevice|TestNotification' -count=1",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W14-retry-error-review.md",
+      "artifact_hash": "sha256:96138d3b49a54befdec1185515427bb71ec2c4ce36d393dbdf693cc176629fc6",
       "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W14-retry-error-review.md",
       "review_independent": true,
-      "note": "Scoped retry-error review PASS per ledger; review file lost (early session). Regeneration note: the W14 outbox content is part of the same notifications lane and is likewise absent from the candidate tree (spot-checked commits are non-ancestors)."
+      "note": "Final-round upgrade from accepted-ledger-only: the W14 lane merged into the candidate — merge b6a701e9 (17 commits, ancestor-verified) with the versioned migration renumbered 000137→000146 and the duplicate 000136_mobile_devices dropped. The accepting review is the scoped retry-error review (Spec PASS / Quality APPROVED — exactly the review the ledger cites; recovered to the canonical SDD directory from the lane worktree .sdd-worktrees/w14; the file named task-W14-final-review.md is a FAIL round, not the acceptance). Domain spans unit/database; the database kind is anchored by the migration-backed outbox repository suites (sqlite 000059 / versioned 000146). At merge time the suite needed a test adaptation (four INSERTs completed with platform/token columns once the full 000058 mobile_devices table arrived) plus the 44710c6e FK fixture fix; command re-run at the final HEAD 72abc128: ok, exit 0."
     },
     {
       "task": "W15",
       "kind": "unit",
-      "status": "accepted-ledger-only",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "status": "pass",
+      "baseline_sha": "061a442a",
+      "command": "go test -race ./internal/notification -count=1",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W15-empty-token-review.md",
+      "artifact_hash": "sha256:1deb22c1f2f17c6cdc65856fc62589e7e05368d46a7c1c1a3adcfdc926b1674a",
       "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W15-empty-token-review.md",
       "review_independent": true,
-      "note": "Empty-token review PASS per ledger; review file lost (early session). Regeneration note: provider-delivery content is lane-only and absent from the candidate tree (same notifications lane as W13/W14)."
+      "note": "Final-round upgrade from accepted-ledger-only: the W15 lane merged into the candidate — merge 061a442a (27 commits, ancestor-verified) with provider-state/delivery migrations renumbered to 000070/000147/000148 to break golang-migrate version collisions. The ledger-cited empty-token review (Spec PASS / Quality APPROVED) is on disk and tracked in the candidate — the lane's docs commit was relocated into the SDD directory during integration (ten review files). The notification package never ran on the lane (blocked by a lane-local compile defect); it compiled and passed only after integration. Command re-run with -race at the final HEAD 72abc128: ok, exit 0. Provider live-delivery remains blocked-env."
     },
     {
       "task": "W16",
       "kind": "unit",
-      "status": "accepted-ledger-only",
-      "command": "",
-      "exit_code": null,
-      "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
+      "status": "pass",
+      "baseline_sha": "0d9baebd",
+      "command": "pnpm exec tsx --test apps/mobile/sources/weknora/notifications/deep-link.test.ts",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W16-rereview.md",
+      "artifact_hash": "sha256:9c825a1aa67cafbe16b42d82ae0313a00dc1515230b4a15706bdfeaa56ea5d62",
       "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W16-rereview.md",
       "review_independent": true,
-      "note": "Final re-review PASS per ledger; review file lost (early session). Regeneration note: deep-link/pending-card content is lane-only and absent from the candidate tree (same notifications lane as W13–W15); the mobile-side routing that W16 verified in isolation is not reachable without the server lane."
+      "note": "Final-round upgrade from accepted-ledger-only: the W16 lane merged into the candidate — merge 0d9baebd (ancestor-verified) mounts PendingNotificationCard on the W11 WorkbenchScreen and keeps the native execution storage gate. The accepting review is the fix-round rereview (Spec PASS / Quality APPROVED — the ledger's 'final re-review'; recovered to the canonical SDD directory from the lane worktree .sdd-worktrees/w16; task-W16-final-review.md is the preceding FAIL round). Deep-link parser suite re-run at the final HEAD 72abc128: 2 pass / 0 fail, exit 0. The Vitest router suites the rereview could not execute (blocked-env) are carried by the supplementary W16 row below."
+    },
+    {
+      "task": "W16",
+      "kind": "unit",
+      "status": "pass",
+      "baseline_sha": "96efa90c",
+      "command": "pnpm --filter @weknora/mobile exec vitest run sources/weknora/auth/session.test.tsx sources/weknora/notifications/NotificationRouter.test.tsx",
+      "exit_code": 0,
+      "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W16-integration-fix-report.md",
+      "artifact_hash": "sha256:d72a5df56b20b322dba8606bc4596279e800956a92592a14f986071d3a249499",
+      "observed_at": "2026-09-17",
+      "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W16-rereview.md",
+      "review_independent": true,
+      "note": "Supplementary W16 row (final round): the rereview's Vitest evidence was blocked-env on the lane (no runnable jsdom environment) and the suites had never actually executed; after integration they failed on first real run and the post-integration fix 96efa90c made them genuinely pass — 10 previously failing cases (6 alias-mock specifier mismatches, 1 offline-contract mock violating the verified queue-and-return contract, 3 NotificationRouter source defects: double navigation after authorization, startup-event replay after auth change, expired-intent resurrection) with zero assertion changes, plus the WorkbenchScreen adapter stub and 9 pre-existing typecheck errors cleared. Command re-run at the final HEAD 72abc128: 11/11 (session 7 + NotificationRouter 4), exit 0. review_ref points to the W16 accepting rereview whose behavior contracts these suites assert."
     },
     {
       "task": "core-native",
@@ -379,15 +406,16 @@
     {
       "task": "W24",
       "kind": "database",
-      "status": "blocked",
-      "command": "",
-      "exit_code": null,
+      "status": "pass",
+      "baseline_sha": "05725468",
+      "command": "go test ./internal/application/repository -run 'TestExecutionTargetStorePersistsServerUsageBinding|TestPersistUsageBindingOverridesUntrustedSnapshotFields' -count=1",
+      "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W24-final3-review.md",
       "artifact_hash": "sha256:2264b0e756429d717c897729d09825b04f2f7b2c220dd2fdd553dfd0f94277fa",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W24-final3-review.md",
       "review_independent": true,
-      "note": "Regeneration downgrade (W37 review F1 disposition): all seven W24 implementation commits (a9404191, 622048e9, 16209fce, 027bec1e, 8f312787, fa597bf5, d19b0b1a) live only on the codex/mobile-w24 lane branch — verified non-ancestors of the candidate HEAD. The final usage-binding round (TestExecutionTargetStorePersistsServerUsageBinding, target.go usage parsing) is absent from the candidate tree, so the reviewed command cannot be anchored. Some W24-domain surfaces exist in the candidate via later work (cbbc04b4 rename fix, W30 commercial settlement consumption), but the reviewed persistence evidence is lane-only. The independent final3 review (PASS/APPROVED) is real and on disk; the pass record is downgraded to blocked and the slice is not counted as delivered in this candidate."
+      "note": "Final-round restoration: this row was downgraded to blocked at 46427a9e because all seven lane commits (a9404191..d19b0b1a) were non-ancestors of that HEAD; the five-lane integration then merged the W24 lane into the candidate — merge 05725468 (ancestor-verified) with usage-binding migrations renumbered to 000071/000149 and the admission coordinator fused with the W34 capability gate (NewAdmissionCoordinatorWithBinding + SetAdmissionGate). The independent final3 review (PASS/APPROVED: trusted target policy, platform/BYOK/parent admission, durable budget, late/replay settlement) is unchanged on disk. Domain spans database/billing; the database kind is anchored by the usage-binding persistence suites. Command re-run at the final HEAD 72abc128: both tests PASS, exit 0."
     },
     {
       "task": "remote-live",
@@ -396,7 +424,7 @@
       "command": "",
       "exit_code": null,
       "artifact_path": "docs/superpowers/plans/mobile-workbench-progress.md",
-      "artifact_hash": "sha256:a7d0e1125bd8d2e69bc35614280c6ef240b9f82b35328df826b913a8fbe65ec8",
+      "artifact_hash": "sha256:e4aec403e82652af48cac0870ecc17b32bea6fa253e164885355b886a39e50c8",
       "observed_at": "2026-09-17",
       "review_independent": true,
       "note": "Live Paseo/PG/container evidence for the whole remote lane stayed blocked-env across W17–W24 per ledger."
