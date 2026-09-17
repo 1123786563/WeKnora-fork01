@@ -127,6 +127,13 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		return agentruntime.Run{}, err
 	}
 	in.Driver = driver
+	// Merge the server-owned usage binding into the immutable snapshot at the
+	// repository boundary. Provider or client payloads can still be stored as
+	// ordinary remote observations, but they cannot replace these fields.
+	in.Snapshot, err = persistUsageBinding(in.Snapshot, in)
+	if err != nil {
+		return agentruntime.Run{}, err
+	}
 	user, err := admissionMessage(in.UserMessage, "user", in)
 	if err != nil {
 		return agentruntime.Run{}, err
@@ -227,6 +234,57 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 	return result, err
 }
 
+func persistUsageBinding(raw json.RawMessage, in agentruntime.Admission) (json.RawMessage, error) {
+	var snapshot map[string]any
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, fmt.Errorf("%w: invalid snapshot", agentruntime.ErrConflict)
+	}
+	if snapshot == nil {
+		snapshot = make(map[string]any)
+	}
+	// Remove any client-supplied copies first, then write only the values
+	// carried by this trusted admission object. Empty values are intentionally
+	// absent so Fence construction applies its fail-closed defaults.
+	for _, key := range []string{"parent_run_id", "credential_version", "usage_source", "usage_funding", "usage_service", "price_version", "usage_upper", "usage_revision", "usage_status", "usage_dimensions"} {
+		delete(snapshot, key)
+	}
+	if in.ParentRunID != "" {
+		snapshot["parent_run_id"] = in.ParentRunID
+	}
+	if in.UsageCredentialVersion > 0 {
+		snapshot["credential_version"] = in.UsageCredentialVersion
+	}
+	if in.UsageSource != "" {
+		snapshot["usage_source"] = in.UsageSource
+	}
+	if in.UsageFunding != "" {
+		snapshot["usage_funding"] = in.UsageFunding
+	}
+	if in.UsageService != "" {
+		snapshot["usage_service"] = in.UsageService
+	}
+	if in.UsagePriceVersion != "" {
+		snapshot["price_version"] = in.UsagePriceVersion
+	}
+	if in.UsageUpper > 0 {
+		snapshot["usage_upper"] = in.UsageUpper
+	}
+	if in.UsageRevision > 0 {
+		snapshot["usage_revision"] = in.UsageRevision
+	}
+	if in.UsageStatus != "" {
+		snapshot["usage_status"] = in.UsageStatus
+	}
+	if in.UsageDimensions != nil {
+		snapshot["usage_dimensions"] = in.UsageDimensions
+	}
+	out, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: usage binding", agentruntime.ErrConflict)
+	}
+	return out, nil
+}
+
 func admissionMessage(raw json.RawMessage, role string, in agentruntime.Admission) (types.Message, error) {
 	var message types.Message
 	if len(raw) == 0 || json.Unmarshal(raw, &message) != nil || message.Role != role {
@@ -307,10 +365,20 @@ func (s *AgentRunStore) ClaimDriver(
 			return e
 		}
 		var snapshot struct {
-			Prompt       string `json:"prompt"`
-			Text         string `json:"text"`
-			WorkspaceRef string `json:"workspaceRef"`
-			Provider     string `json:"provider"`
+			Prompt            string           `json:"prompt"`
+			Text              string           `json:"text"`
+			WorkspaceRef      string           `json:"workspaceRef"`
+			Provider          string           `json:"provider"`
+			ParentRunID       string           `json:"parent_run_id"`
+			UsageSource       string           `json:"usage_source"`
+			CredentialVersion int64            `json:"credential_version"`
+			UsageFunding      string           `json:"usage_funding"`
+			UsageService      string           `json:"usage_service"`
+			PriceVersion      string           `json:"price_version"`
+			UsageUpper        int64            `json:"usage_upper"`
+			UsageRevision     int64            `json:"usage_revision"`
+			UsageStatus       string           `json:"usage_status"`
+			UsageDimensions   map[string]int64 `json:"usage_dimensions"`
 		}
 		_ = json.Unmarshal([]byte(row.Snapshot), &snapshot)
 		prompt := snapshot.Prompt
@@ -325,7 +393,10 @@ func (s *AgentRunStore) ClaimDriver(
 		if provider == "" {
 			provider = driver
 		}
-		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider}
+		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider,
+			ParentRunID: snapshot.ParentRunID, UsageCredentialVersion: snapshot.CredentialVersion, UsageSource: snapshot.UsageSource, UsageFunding: snapshot.UsageFunding,
+			UsageService: snapshot.UsageService, UsagePriceVersion: snapshot.PriceVersion, UsageUpper: snapshot.UsageUpper,
+			UsageRevision: snapshot.UsageRevision, UsageStatus: snapshot.UsageStatus, UsageDimensions: snapshot.UsageDimensions}
 		return nil
 	})
 	return fence, err

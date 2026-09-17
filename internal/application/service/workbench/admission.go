@@ -12,6 +12,9 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
+	domaincommercial "github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -22,6 +25,35 @@ var (
 	ErrRequestPending  = errors.New("request admission pending")
 	ErrRequestRejected = errors.New("request rejected")
 )
+
+// TrustedAdmissionBinding is resolved by a server-side policy/target service.
+// It is deliberately excluded from JSON input so a client cannot self-assert
+// funding, credentials, parent ownership, or pricing.
+type TrustedAdmissionBinding struct {
+	ParentRunID       string
+	Source            string
+	Funding           string
+	Service           string
+	PriceVersion      string
+	CredentialVersion int64
+	Upper             int64
+	Revision          int64
+	Status            string
+	Dimensions        map[string]int64
+}
+
+// AdmissionBindingResolver is the trusted server seam for target, credential,
+// parent budget, and pricing selection. Implementations must validate tenant
+// and actor ownership before returning a binding.
+type AdmissionBindingResolver interface {
+	Resolve(context.Context, uint64, string, StartInput) (TrustedAdmissionBinding, error)
+}
+
+type AdmissionBindingResolverFunc func(context.Context, uint64, string, StartInput) (TrustedAdmissionBinding, error)
+
+func (f AdmissionBindingResolverFunc) Resolve(ctx context.Context, tenant uint64, actor string, in StartInput) (TrustedAdmissionBinding, error) {
+	return f(ctx, tenant, actor, in)
+}
 
 type StartInput struct {
 	SessionID    string `json:"session_id"`
@@ -36,6 +68,9 @@ type StartInput struct {
 	RequestID   string `json:"request_id"`
 	Text        string `json:"text"`
 	BudgetUpper int64  `json:"budget_upper"`
+	// Binding carries the trusted usage binding resolved from the execution
+	// target at admission time; it never crosses the HTTP boundary.
+	Binding      *TrustedAdmissionBinding `json:"-"`
 }
 
 type RequestState struct {
@@ -69,11 +104,45 @@ func (NoopTaskBudget) Ensure(_ context.Context, tenant uint64, owner, requestID 
 }
 func (NoopTaskBudget) ReleaseUnstarted(context.Context, string) error { return nil }
 
+// DurableTaskBudget binds admission to the same commercial task-budget
+// tables used by ExecutionGateService. It is deliberately small: call-level
+// holds remain owned by ExecutionGate; admission only registers the run tree.
+type DurableTaskBudget struct{ store *repocommercial.BudgetStore }
+
+func NewDurableTaskBudget(db *gorm.DB) *DurableTaskBudget {
+	if db == nil {
+		return nil
+	}
+	return &DurableTaskBudget{store: repocommercial.NewBudgetStore(db)}
+}
+func (b *DurableTaskBudget) Ensure(_ context.Context, tenant uint64, owner, requestID string, _ int64, _ time.Time) (string, error) {
+	if b == nil || b.store == nil || tenant == 0 || owner == "" || requestID == "" {
+		return "", ErrBudgetDenied
+	}
+	return fmt.Sprintf("task/%d/%s/%s", tenant, owner, requestID), nil
+}
+func (*DurableTaskBudget) ReleaseUnstarted(context.Context, string) error { return nil }
+
+type taskRunRegistrar interface {
+	BindRun(context.Context, uint64, string, string, int64, time.Time) error
+}
+
+func (b *DurableTaskBudget) BindRun(ctx context.Context, tenant uint64, runID, parent string, upper int64, deadline time.Time) error {
+	if b == nil || b.store == nil {
+		return ErrBudgetDenied
+	}
+	if parent != "" {
+		return b.store.AttachChildRun(ctx, tenant, runID, parent)
+	}
+	return b.store.EnsureTaskBudget(ctx, tenant, runID, domaincommercial.Credits(upper), deadline)
+}
+
 type AdmissionCoordinator struct {
 	db       *gorm.DB
 	runs     *repository.AgentRunStore
 	requests *repository.WorkbenchRequestRepository
 	budget   TaskBudgetPort
+	binding  AdmissionBindingResolver
 	publish  func(context.Context, agentruntime.RunKey) error
 	// admissionGate is the W34 capability switch seam (drain /
 	// platform_admission), installed by the container assembly through
@@ -98,7 +167,82 @@ func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget
 	if publish == nil {
 		publish = func(context.Context, agentruntime.RunKey) error { return nil }
 	}
-	return &AdmissionCoordinator{db: db, runs: runs, requests: repository.NewWorkbenchRequestRepository(db), budget: budget, publish: publish}
+	return &AdmissionCoordinator{db: db, runs: runs, requests: repository.NewWorkbenchRequestRepository(db), budget: budget, binding: NewDatabaseAdmissionBindingResolver(nil), publish: publish}
+}
+
+// NewAdmissionCoordinatorWithBinding is the production constructor. The
+// resolver is mandatory so admission cannot fall back to caller-controlled
+// target or billing fields.
+func NewAdmissionCoordinatorWithBinding(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error, binding AdmissionBindingResolver) (*AdmissionCoordinator, error) {
+	if binding == nil {
+		return nil, errors.New("trusted admission binding resolver is required")
+	}
+	if budget == nil {
+		budget = NoopTaskBudget{}
+	}
+	if publish == nil {
+		publish = func(context.Context, agentruntime.RunKey) error { return nil }
+	}
+	return &AdmissionCoordinator{db: db, runs: runs, requests: repository.NewWorkbenchRequestRepository(db), budget: budget, binding: binding, publish: publish}, nil
+}
+
+func (a *AdmissionCoordinator) WithBindingResolver(binding AdmissionBindingResolver) *AdmissionCoordinator {
+	if a != nil && binding != nil {
+		a.binding = binding
+	}
+	return a
+}
+
+// PlatformAdmissionPolicy is the server-owned default for platform runs.
+// Deployments that support BYOK or delegated parents replace this policy via
+// the database resolver's trusted binding input; no client JSON is read.
+func PlatformAdmissionPolicy() TrustedAdmissionBinding {
+	return TrustedAdmissionBinding{Source: "platform_gateway", Funding: "platform", Service: "connector", PriceVersion: "remote-v1", Revision: 1, Status: "final", Dimensions: map[string]int64{"connector": 1}}
+}
+
+// NewDatabaseAdmissionBindingResolver resolves target ownership from the
+// durable execution-target store. A trusted server binding may additionally
+// carry BYOK credentials or a parent run; client JSON cannot populate it.
+func NewDatabaseAdmissionBindingResolver(targets repository.ExecutionTargetStore) AdmissionBindingResolver {
+	return databaseAdmissionBindingResolver{targets: targets, platform: PlatformAdmissionPolicy()}
+}
+
+type databaseAdmissionBindingResolver struct {
+	targets  repository.ExecutionTargetStore
+	platform TrustedAdmissionBinding
+}
+
+func (r databaseAdmissionBindingResolver) Resolve(ctx context.Context, tenant uint64, actor string, in StartInput) (TrustedAdmissionBinding, error) {
+	if in.Binding != nil {
+		// This resolver is the production boundary; a request-scoped Binding
+		// is never trusted because it is not loaded from ExecutionTargetStore.
+		return TrustedAdmissionBinding{}, execution.ErrTargetUntrusted
+	}
+	if in.TargetID == "platform" {
+		b := r.platform
+		b.Upper = in.BudgetUpper
+		return b, nil
+	}
+	if r.targets == nil {
+		return TrustedAdmissionBinding{}, execution.ErrTargetUntrusted
+	}
+	target, err := r.targets.GetOwnedTarget(ctx, tenant, actor, in.TargetID)
+	if err != nil {
+		return TrustedAdmissionBinding{}, err
+	}
+	if err := execution.AuthorizeTarget(target, tenant, actor); err != nil {
+		return TrustedAdmissionBinding{}, err
+	}
+	b := r.platform
+	policy := target.UsageBinding
+	if policy.Source == "" || policy.Funding == "" || policy.Service == "" || policy.PriceVersion == "" || policy.Revision <= 0 || len(policy.Dimensions) == 0 {
+		return TrustedAdmissionBinding{}, execution.ErrTargetUntrusted
+	}
+	b.ParentRunID, b.Source, b.Funding, b.Service, b.PriceVersion = policy.ParentRunID, policy.Source, policy.Funding, policy.Service, policy.PriceVersion
+	b.Revision, b.Status, b.Dimensions = policy.Revision, policy.Status, policy.Dimensions
+	b.CredentialVersion = target.CredentialVersion
+	b.Upper = in.BudgetUpper
+	return b, nil
 }
 
 func admitThenPublish(admit func() error, publish func() error) error {
@@ -161,9 +305,6 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 	if in.TargetID == "" {
 		in.TargetID = "platform"
 	}
-	if in.TargetID != "platform" {
-		return agentruntime.Run{}, agentruntime.ErrConflict
-	}
 	hash := requestHash(in)
 	req := repository.WorkbenchRequest{TenantID: tenant, ActorID: actor, RequestID: in.RequestID, RequestHash: hash,
 		SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, WorkspaceRef: in.WorkspaceRef, Text: in.Text, BudgetUpper: in.BudgetUpper}
@@ -213,6 +354,27 @@ func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repositor
 }
 
 func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.WorkbenchRequest, in StartInput, ids ...string) (run agentruntime.Run, err error) {
+	bindingResolver := a.binding
+	if bindingResolver == nil {
+		return agentruntime.Run{}, errors.New("trusted admission binding resolver is required")
+	}
+	binding, err := bindingResolver.Resolve(ctx, req.TenantID, req.ActorID, in)
+	if err != nil {
+		return agentruntime.Run{}, err
+	}
+	if binding.Upper <= 0 {
+		binding.Upper = in.BudgetUpper
+	}
+	if binding.Upper <= 0 {
+		binding.Upper = 1
+	}
+	if binding.Revision <= 0 || binding.Source == "" || binding.Funding == "" || binding.Service == "" || binding.PriceVersion == "" || len(binding.Dimensions) == 0 {
+		return agentruntime.Run{}, errors.New("trusted admission binding is incomplete")
+	}
+	snapshot, _ := json.Marshal(map[string]any{
+		"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "space_id": in.SpaceID, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper,
+		"parent_run_id": binding.ParentRunID, "credential_version": binding.CredentialVersion, "usage_source": binding.Source, "usage_funding": binding.Funding, "usage_service": binding.Service, "price_version": binding.PriceVersion, "usage_upper": binding.Upper, "usage_revision": binding.Revision, "usage_status": binding.Status, "usage_dimensions": binding.Dimensions,
+	})
 	deadline := time.Now().Add(10 * time.Minute)
 	var runID, reservation string
 	ownedReservation := false
@@ -223,7 +385,7 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		reservation = ids[1]
 	}
 	if reservation == "" {
-		reservation, err = a.budget.Ensure(ctx, req.TenantID, req.ActorID, req.RequestID, in.BudgetUpper, deadline)
+		reservation, err = a.budget.Ensure(ctx, req.TenantID, req.ActorID, req.RequestID, binding.Upper, deadline)
 		ownedReservation = true
 		if err != nil {
 			_ = a.requests.UpdatePending(ctx, req, "rejected", "", "", err.Error())
@@ -232,6 +394,11 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	}
 	if runID == "" {
 		runID = uuid.NewString()
+	}
+	if registrar, ok := a.budget.(taskRunRegistrar); ok {
+		if err = registrar.BindRun(ctx, req.TenantID, runID, binding.ParentRunID, binding.Upper, deadline); err != nil {
+			return agentruntime.Run{}, err
+		}
 	}
 	if err = a.requests.UpdatePending(ctx, req, "pending", reservation, runID, ""); err != nil {
 		current, getErr := a.requests.Get(ctx, req.TenantID, req.ActorID, req.RequestID)
@@ -251,10 +418,9 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 		}
 	}
 	assistantID := uuid.NewString()
-	snapshot, _ := json.Marshal(map[string]any{"session_id": in.SessionID, "agent_id": in.AgentID, "target_id": in.TargetID, "workspace_ref": in.WorkspaceRef, "space_id": in.SpaceID, "request_id": in.RequestID, "text": in.Text, "budget_upper": in.BudgetUpper})
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline})
+	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, ParentRunID: binding.ParentRunID, UsageCredentialVersion: binding.CredentialVersion, UsageSource: binding.Source, UsageFunding: binding.Funding, UsageService: binding.Service, UsagePriceVersion: binding.PriceVersion, UsageUpper: binding.Upper, UsageRevision: binding.Revision, UsageStatus: binding.Status, UsageDimensions: binding.Dimensions})
 	if err != nil {
 		_ = a.requests.UpdatePending(ctx, req, "rejected", reservation, "", err.Error())
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)

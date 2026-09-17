@@ -37,20 +37,33 @@ func (p *paseoRemoteProvider) Start(context.Context, agentruntime.RunKey, string
 }
 
 func (p *paseoRemoteProvider) StartCommand(ctx context.Context, request agentruntime.RemoteStartRequest) (string, error) {
+	result, err := p.startCommandWithUsage(ctx, request)
+	return result.ExternalID, err
+}
+
+func (p *paseoRemoteProvider) StartCommandWithUsage(ctx context.Context, request agentruntime.RemoteStartRequest) (agentruntime.RemoteStartResult, error) {
+	return p.startCommandWithUsage(ctx, request)
+}
+
+func (p *paseoRemoteProvider) startCommandWithUsage(ctx context.Context, request agentruntime.RemoteStartRequest) (agentruntime.RemoteStartResult, error) {
 	if p == nil || p.client == nil {
-		return "", errors.New("paseo remote provider is unavailable")
+		return agentruntime.RemoteStartResult{}, errors.New("paseo remote provider is unavailable")
 	}
 	if request.CommandID == "" || request.Fence.RunID == "" || request.AttemptID == "" || request.TargetID == "" || request.WorkspaceRef == "" || request.Prompt == "" || request.Provider == "" || request.Fence.Epoch < 1 {
-		return "", errors.New("paseo remote provider requires a complete fenced command")
+		return agentruntime.RemoteStartResult{}, errors.New("paseo remote provider requires a complete fenced command")
 	}
 	if request.PayloadHash == "" {
-		return "", errors.New("paseo remote provider requires payload hash")
+		return agentruntime.RemoteStartResult{}, errors.New("paseo remote provider requires payload hash")
 	}
 	command := execution.StartCommand{CommandID: request.CommandID, RunID: request.Fence.RunID, AttemptID: request.AttemptID, TargetID: request.TargetID, WorkspaceRef: request.WorkspaceRef, Prompt: request.Prompt, Provider: request.Provider, Epoch: request.Fence.Epoch, PayloadHash: request.PayloadHash, ExpiresAt: time.Now().Add(30 * time.Second).UnixMilli()}
 	admission := execution.AdmissionContext{ServiceIdentity: p.identity, Signature: execution.CommandSignature(command, p.signingSecret), AuthorizationVersion: 1, CommandHash: execution.CommandHash(command), TargetID: command.TargetID, WorkspaceRef: command.WorkspaceRef, WorkspaceTargetID: command.TargetID, Epoch: command.Epoch}
 	response, err := p.client.StartWithAdmission(ctx, command, admission)
 	if err != nil {
-		return "", fmt.Errorf("paseo bridge start: %w", err)
+		return agentruntime.RemoteStartResult{}, fmt.Errorf("paseo bridge start: %w", err)
 	}
-	return response.ID, nil
+	result := agentruntime.RemoteStartResult{ExternalID: response.ID}
+	if response.Usage != nil {
+		result.Usage = &agentruntime.RemoteUsageObservation{Service: response.Usage.Service, Status: response.Usage.Status, PriceVersion: response.Usage.PriceVersion, Revision: response.Usage.Revision, OccurredAt: response.Usage.OccurredAt, Dimensions: response.Usage.Dimensions}
+	}
+	return result, nil
 }

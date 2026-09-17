@@ -619,6 +619,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// an explicit SetCommercialGate by the commercial request path, so
 	// non-commercial behavior is unchanged.
 	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
+	// W24: all remote usage settlement is constructed behind the trusted
+	// gateway identity seam; callers never inject a client-reported fact.
+	must(container.Provide(workbenchservice.NewRemoteUsageServiceWithDB))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
 	// execution gate above arms budget reservation. The provider-specific

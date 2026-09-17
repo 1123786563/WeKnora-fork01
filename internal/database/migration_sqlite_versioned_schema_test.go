@@ -49,7 +49,7 @@ var versionedSQLiteColumns = map[string][]string{
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
 	"tenant_skill_snapshots":      {"planned_name"},                                   // 000086, 000088
-	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id"}, // 000057
+	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id", "usage_binding_json"}, // 000057, 000071
 	"execution_target_identities": {"credential_version", "external_target_id"},       // 000057
 	"execution_workspaces":        {"target_id", "root_ref"},                          // 000057
 }
@@ -65,8 +65,9 @@ var versionedSQLiteColumns = map[string][]string{
 // registry at 000058, the notification outbox at 000059, notification
 // delivery columns at 000060, the cleanup ledger and artifact receipts at
 // 000061-000066, artifact versions at 000067, the mobile voice plane at
-// 000068-000069 and the notification provider pause state at 000070.
-const expectedSQLiteMigrationVersion = 70
+// 000068-000069, the notification provider pause state at 000070 and the
+// execution target usage binding at 000071.
+const expectedSQLiteMigrationVersion = 71
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

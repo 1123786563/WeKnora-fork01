@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -139,4 +140,27 @@ func TestReadRunSnapshotConcurrentAppendRemainsConsistent(t *testing.T) {
 		}
 	}
 	writer.Wait()
+}
+
+func TestPersistUsageBindingOverridesUntrustedSnapshotFields(t *testing.T) {
+	admission := agentruntime.Admission{
+		ParentRunID: "root", UsageSource: "platform_gateway", UsageFunding: "byok",
+		UsageService: "model", UsagePriceVersion: "pv-1", UsageUpper: 99,
+		UsageRevision: 3, UsageStatus: "final", UsageDimensions: map[string]int64{"model": 7},
+	}
+	got, err := persistUsageBinding(json.RawMessage(`{"usage_funding":"platform","usage_revision":1,"usage_dimensions":{"model":1}}`), admission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(got, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot["usage_funding"] != "byok" || snapshot["usage_revision"] != float64(3) {
+		t.Fatalf("binding was not server-owned: %#v", snapshot)
+	}
+	dims, ok := snapshot["usage_dimensions"].(map[string]any)
+	if !ok || dims["model"] != float64(7) {
+		t.Fatalf("dimensions=%#v", snapshot["usage_dimensions"])
+	}
 }

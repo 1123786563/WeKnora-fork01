@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -65,6 +66,7 @@ type executionTargetRow struct {
 	CredentialVersion int64      `gorm:"column:credential_version"`
 	RuntimeID         string     `gorm:"column:runtime_id"`
 	ExternalTargetID  string     `gorm:"column:external_target_id"`
+	UsageBindingJSON  string     `gorm:"column:usage_binding_json;not null;default:'{}'"`
 	RootRef           string     `gorm:"column:root_ref"`
 	RevokedAt         *time.Time `gorm:"column:revoked_at"`
 }
@@ -87,11 +89,20 @@ func NewExecutionTargetStore(db *gorm.DB) ExecutionTargetStore {
 }
 
 func toTarget(row executionTargetRow) execution.Target {
-	return execution.Target{ID: row.ID, TenantID: row.TenantID, OwnerID: row.OwnerID, Kind: row.Kind, State: row.State, CredentialVersion: row.CredentialVersion, RuntimeID: row.RuntimeID, ExternalTargetID: row.ExternalTargetID, RevokedAt: row.RevokedAt}
+	target := execution.Target{ID: row.ID, TenantID: row.TenantID, OwnerID: row.OwnerID, Kind: row.Kind, State: row.State, CredentialVersion: row.CredentialVersion, RuntimeID: row.RuntimeID, ExternalTargetID: row.ExternalTargetID, RevokedAt: row.RevokedAt}
+	if row.UsageBindingJSON != "" {
+		_ = json.Unmarshal([]byte(row.UsageBindingJSON), &target.UsageBinding)
+	}
+	return target
+}
+
+func targetBindingJSON(target execution.Target) string {
+	b, _ := json.Marshal(target.UsageBinding)
+	return string(b)
 }
 
 func (s *executionTargetStore) CreateTarget(ctx context.Context, target execution.Target, rootRef string) error {
-	return s.db.WithContext(ctx).Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, RootRef: rootRef}).Error
+	return s.db.WithContext(ctx).Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, UsageBindingJSON: targetBindingJSON(target), RootRef: rootRef}).Error
 }
 
 func (s *executionTargetStore) CreateTargetIfTrusted(ctx context.Context, target execution.Target, rootRef string) error {
@@ -106,7 +117,7 @@ func (s *executionTargetStore) CreateTargetIfTrusted(ctx context.Context, target
 		} else if err != nil {
 			return err
 		}
-		return tx.Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, RootRef: rootRef}).Error
+		return tx.Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, UsageBindingJSON: targetBindingJSON(target), RootRef: rootRef}).Error
 	})
 }
 

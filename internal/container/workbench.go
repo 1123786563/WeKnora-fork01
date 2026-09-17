@@ -37,9 +37,14 @@ func NewWorkbenchListHandler(lists *repository.WorkbenchListStore) *session.Work
 // The W34 capability gate (workbench.worker_drain / platform_admission) is
 // installed here so every NEW admission consults the switches before any
 // budget reservation or durable write; already-admitted runs and cleanup
-// stay untouched (drain semantics).
-func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
-	coordinator := workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+// stay untouched (drain semantics). W24 additionally wires the durable
+// credit budget and the database-backed admission binding resolver so only
+// trusted execution-target usage binds at admission time.
+func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore) *workbenchservice.AdmissionCoordinator {
+	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(targets))
+	if err != nil {
+		panic(err)
+	}
 	coordinator.SetAdmissionGate(workbenchservice.NewWorkbenchCapabilityGate(cfg))
 	return coordinator
 }

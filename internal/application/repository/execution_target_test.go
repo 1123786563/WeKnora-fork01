@@ -113,3 +113,18 @@ func TestCreateTargetIfTrustedConcurrentCredentialRotation(t *testing.T) {
 		require.ErrorIs(t, createErr, execution.ErrTargetUntrusted)
 	}
 }
+
+func TestExecutionTargetStorePersistsServerUsageBinding(t *testing.T) {
+	store := NewExecutionTargetStore(openExecutionTargetTestDB(t))
+	target := execution.Target{ID: "byok-target", TenantID: 1, OwnerID: "u1", Kind: "managed_node", State: "active", CredentialVersion: 7, RuntimeID: "r-byok", ExternalTargetID: "x-byok", UsageBinding: execution.UsageBinding{ParentRunID: "root-run", Source: "platform_gateway", Funding: "byok", Service: "model", PriceVersion: "pv-byok", Revision: 2, Status: "final", Dimensions: map[string]int64{"model": 8}}}
+	if err := store.CreateTarget(context.Background(), target, "root"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetOwnedTarget(context.Background(), 1, "u1", "byok-target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UsageBinding.Funding != "byok" || got.UsageBinding.ParentRunID != "root-run" || got.UsageBinding.Revision != 2 || got.UsageBinding.Dimensions["model"] != 8 {
+		t.Fatalf("binding=%+v", got.UsageBinding)
+	}
+}
