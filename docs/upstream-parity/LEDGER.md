@@ -212,6 +212,18 @@
 - **门禁**：go build ./internal/... 0；TestFork 6/6；handler/session+container 包 ok。
 - **剩余**：阶段 3（沙箱 git checkpoint 基建 + trpc 挂点 + 快照 port 接线，使有沙箱会话 fork 可携带状态）、阶段 4（React 入口 C1 forkPoint.ts 等价实现）、上游 fork.go 测试 135 行可再移植。
 
+### 2026-09-18 第 12 轮（A11 阶段 3：沙箱 git checkpoint 基建 + trpc 完成挂点）✅
+
+> worktree 提交 `732c717c`（27 文件 +1372/-36）。沙箱基建全量落地；trpc-agent-go 每轮完成挂点接通（fork 特有适配点）；**快照 port 有意保持 nil**（上游语义=降级），真实接线依赖 A17 会话解析链（见余差）。
+
+- **沙箱基建**（上游补丁干净应用）：docker_snapshot fork 命名空间（weknora-fork/ 提交）、session_bootstrapper（首次开沙箱时 bootstrap 钩子+188 行测试）、session_manager fork 面（BoundSandboxID 不触发 provision / HasActiveTurn 走 turn-lease / CreateForkSnapshot 优先 provider fork commit / DeleteForkSnapshot）、session_lifecycle 接线、filesystem_identity/remote_errors/docker template catalog。
+- **service 层**：workspace_checkpointer.go（166 行——每轮 git init+commit 幂等脚本、SHA 校验、日志截断）；fork_bootstrapper.go（分叉 workspace 还原：快照启动+commit 回滚+mtime 盖章，依赖 RecordRestoredArtifactMtime 已补到 repo/接口/store 适配器）。
+- **trpc 挂点**（AgentStreamHandler）：完成路径在 artifact 收集前对绑定沙箱 /workspace 打 checkpoint 并写入 assistantMessage.SandboxCheckpoint——**nil-safe**（checkpointer/lookup 任一 nil 即跳过，等同上游无沙箱部署）。
+- **container**：WorkspaceCheckpointer/SandboxIDLookup provider 适配进程级 Manager（本部署 DisabledManager→nil，挂点自动 no-op）；**SessionForkSandboxPort 维持 nil**——真实快照需要 per-session SessionBoundManager 解析链（A17 家族，fork 无 pinned-session 基建），上游 nil 语义=沙箱承载型 fork 降级、消息型 fork 完整可用。
+- **余差记录**：① artifact_collector content-hash 重写未取（与本分支 ReferencedHistory 自有演进冲突，回滚保留 fork 现状）；② 上游 session_manager_test 新增 8 测试补丁冲突未移植（fork 测试文件分歧）；③ langfuse_test 依赖 cube_mock 补丁同弃。三者均记账待后续。
+- **门禁与复验**：go build ./... 0；**sandbox 包全量 PASS**（含新 docker_snapshot/session_bootstrapper/lifecycle 测试）；service Fork/Checkpoint 系列绿（Craft 失败=stash 基线预存）；镜像重建 healthy，boot 无 DI panic，fork 端点 200 降级语义不变（验证行已清理）。
+- **A11 状态：阶段 1-3 完成（port 真实接线挂 A17）**；阶段 4（React C1）为最后一块。
+
 ## G. 纪律与教训
 
 1. 本任务在**主仓库 main** 工作；绝不触碰 worktree `codex/react-vue-parity-align`（cron 自动化每 30 分钟一轮在跑，提交纪律：只 add 自己的文件，绝不 `git add -A`）。
