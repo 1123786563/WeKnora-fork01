@@ -316,3 +316,42 @@ it('hides the voice entry when the capability is off or no dictation surface is 
   await act(async () => renderer!.unmount());
 });
 });
+
+// ---------------------------------------------------------------------------
+// W28 — knowledge citations and specialist result registry on the screen.
+// ---------------------------------------------------------------------------
+
+describe('ConversationScreen result resources (W28)', () => {
+it('provides the authorized resource seam to the mounted message surface', async () => {
+  const openCitation = vi.fn(async () => undefined);
+  const viewModel = model({ pendingInteractions: [], messages: [
+    { id: 'm1', role: 'assistant', text: '', blocks: [
+      { id: 'b1', kind: 'tool', text: JSON.stringify({ type: 'knowledge.citation', data: { document_id: 'doc-1', chunk_ids: ['c1'] } }) },
+    ] },
+  ] });
+  const SessionRenderer = ({ viewModel: current }: { id: string; viewModel: ConversationViewModel }) => React.createElement(ProductConversationMessages, { viewModel: current });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, {
+    sessionId: 's1', viewModel, sessionRenderer: SessionRenderer,
+    resultResources: { openCitation, openFile: async () => undefined },
+  })); });
+  expect(renderer!.root.findByProps({ accessibilityLabel: 'knowledge-citation-doc-1' })).toBeDefined();
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '打开引用 知识引用' }).props.onPress(); });
+  expect(openCitation).toHaveBeenCalledTimes(1);
+  await act(async () => renderer!.unmount());
+});
+
+it('keeps mounting safely without the resource seam (entries explain, no fake opens)', async () => {
+  const viewModel = model({ pendingInteractions: [], messages: [
+    { id: 'm1', role: 'assistant', text: '', blocks: [
+      { id: 'b1', kind: 'tool', text: JSON.stringify({ type: 'knowledge.citation', data: { document_id: 'doc-2', chunk_ids: ['c1'] } }) },
+    ] },
+  ] });
+  const SessionRenderer = ({ viewModel: current }: { id: string; viewModel: ConversationViewModel }) => React.createElement(ProductConversationMessages, { viewModel: current });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, sessionRenderer: SessionRenderer })); });
+  expect(renderer!.root.findByProps({ accessibilityLabel: 'knowledge-citation-doc-2' })).toBeDefined();
+  expect(renderer!.root.findAllByProps({ accessibilityRole: 'button', accessibilityLabel: '打开引用 知识引用' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+});
+});

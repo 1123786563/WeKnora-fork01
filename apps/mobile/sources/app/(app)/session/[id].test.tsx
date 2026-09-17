@@ -91,6 +91,8 @@ vi.mock('@/weknora/conversations/resources', async () => await import('../../../
 vi.mock('@/weknora/conversations/execution-projection', async () => await import('../../../weknora/conversations/execution-projection'));
 vi.mock('@/weknora/resources/product-session-attachments', async () => await import('../../../weknora/resources/product-session-attachments'));
 vi.mock('@/weknora/voice/native-dictation-port', async () => await import('../../../weknora/voice/native-dictation-port'));
+vi.mock('@/weknora/voice/product-transcriber', async () => await import('../../../weknora/voice/product-transcriber'));
+vi.mock('@/weknora/knowledge/api', async () => await import('../../../weknora/knowledge/api'));
 
 vi.mock('@/weknora/platform/execution-storage', async () => {
   const actual = await import('../../../weknora/platform/execution-storage');

@@ -7,7 +7,10 @@ import type { AttachmentEntryActions, SessionUploadRecord, SessionUploadStatus }
 import { isRecoveryNotFound, type ExecutionRecovery } from '../executions/recovery';
 import { createDictationController, DictationError, type DictationLimits, type DictationPort, type DictationScope } from '../voice/dictation';
 import { DictationInput } from '../voice/DictationInput';
+import { ConversationResultResourcesContext, type ConversationResultResources } from './ProductConversationMessages';
 export { ProductConversationMessages } from './ProductConversationMessages';
+export { selectRenderer } from '../renderers/registry';
+export type { ConversationResultResources } from './ProductConversationMessages';
 
 export interface ConversationScreenProps {
   sessionId: string;
@@ -35,6 +38,15 @@ export interface ConversationScreenProps {
    * surfaces a typed failure while the text input stays usable.
    */
   dictation?: ConversationDictation;
+  /**
+   * W28 authorized resource seam for structured results: citations open and
+   * oversized analysis tables / artifact files download by re-requesting
+   * authorization through the product knowledge/attachment interfaces on
+   * every click. Renderers are never the authorization layer; without this
+   * seam the structured cards explain the product entry instead of faking
+   * an authorized open.
+   */
+  resultResources?: ConversationResultResources;
 }
 
 /** Attachment surface the conversation input box consumes. */
@@ -164,7 +176,7 @@ export function ConversationControlPanel({ viewModel, attachments, dictation }: 
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, resultResources }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
   // W12: the product conversation resumes executions when the app returns to
@@ -188,6 +200,10 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
       : null;
   return (
     <ConversationViewModelContext.Provider value={viewModel}>
+      {/* W28: the authorized resource seam rides a context so the message
+          surface mounted inside the Happy renderer reaches it without
+          prop-drilling through SessionView. */}
+      <ConversationResultResourcesContext.Provider value={resultResources ?? null}>
       <View style={{ flex: 1 }}>
         {executionNotice && (
           <View accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
@@ -205,6 +221,7 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
         <ConversationControlPanel viewModel={viewModel} attachments={attachments} dictation={dictation} />
         <SessionRenderer id={sessionId} viewModel={viewModel} />
       </View>
+      </ConversationResultResourcesContext.Provider>
     </ConversationViewModelContext.Provider>
   );
 }

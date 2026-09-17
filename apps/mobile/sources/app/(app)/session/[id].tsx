@@ -7,6 +7,9 @@ import { ConversationScreen } from '@/weknora/conversations/ConversationScreen';
 import { createProductConversationViewModel, createProductExecutionApi } from '@/weknora/conversations/view-model';
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
+import { createMobileKnowledgeApi } from '@/weknora/knowledge/api';
+import type { ArtifactFileData, KnowledgeCitationData } from '@/weknora/renderers/registry';
+import type { ConversationResultResources } from '@/weknora/conversations/ProductConversationMessages';
 import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
 import { createProductVoiceTranscriber } from '@/weknora/voice/product-transcriber';
 import { useProductAuth } from '@/weknora/auth/session';
@@ -104,6 +107,22 @@ function ProductSessionRoute() {
         }), scope: auth.scope }
       : null
   ), [auth.authSession, auth.credential, auth.scope, host, viewModel]);
+  // W28 result resources: citations open and oversized analysis tables /
+  // artifact files download by re-requesting authorization through the
+  // product knowledge/attachment interfaces on every click (revocation
+  // denies on the spot). Cross-space knowledge keeps the server's existing
+  // share authorization and execution-space cost attribution — the client
+  // never switches commercial accounts for a link.
+  const resultResources = React.useMemo(() => {
+    const credential = auth.credential;
+    if (!host || credential?.kind !== 'bearer') return null;
+    const knowledge = createMobileKnowledgeApi(host, credential);
+    return {
+      // 每次点击都重新走产品知识接口的授权链（服务端逐次校验，撤销即拒绝）。
+      openCitation: async (citation: KnowledgeCitationData) => { await knowledge.detail(citation.documentID); },
+      openFile: async (file: ArtifactFileData) => { await knowledge.download(file.ref); },
+    } satisfies ConversationResultResources;
+  }, [auth.credential, host]);
   // Sessions without explicit product resource metadata remain the retained Happy route.
   // Product sessions never receive defaults: they wait for all server ownership checks.
   if (!productRoute) return <SessionView id={sessionId} />;
@@ -114,7 +133,7 @@ function ProductSessionRoute() {
   // (AppState active -> status/history/stream; background closes only the
   // subscription). The controller is per-view-model, i.e. per mount, matching
   // the screen's dispose-on-unmount contract.
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} resultResources={resultResources ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);
