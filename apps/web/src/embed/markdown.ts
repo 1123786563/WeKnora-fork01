@@ -24,7 +24,7 @@
  * EmbedBotMessage.vue does. The DOMPurify surface below is the verbatim Vue
  * chat config (its math categories cover the KaTeX output).
  */
-import { Marked } from 'marked';
+import { Marked, type Tokens } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import DOMPurify from 'dompurify';
 import { domPurifyAllowedUriRegexp, escapeHTML } from '../wiki/markdown.ts';
@@ -34,6 +34,23 @@ import { resolveCitationChunkId } from './chat-data.ts';
 //   marked.use({ breaks: true, gfm: true })
 //   marked.use(markedKatex({ throwOnError: false, nonStandard: true }))
 const embedMarked = new Marked(markedKatex({ throwOnError: false, nonStandard: true }));
+
+// Vue EmbedBotMessage: createMermaidCodeRenderer('mermaid-embed-botmsg') —
+// ```mermaid blocks are stamped as diagram nodes (id prefix + data-mermaid
+// ="false") that apps/web/src/embed/mermaid.ts hydrates once the answer
+// completes. The data-markdown-diagram attribute is the shared views-engine
+// contract (packages/views/src/chat/mermaid.ts hydrateMermaidBlocks). Every
+// other language keeps the default marked code block.
+let embedMermaidBlockCount = 0;
+embedMarked.use({
+  renderer: {
+    code({ text, lang }: Tokens.Code): string | false {
+      if ((lang || '').trim().toLowerCase() !== 'mermaid') return false;
+      const id = `mermaid-embed-botmsg-${++embedMermaidBlockCount}`;
+      return `<pre data-markdown-diagram="mermaid" data-mermaid="false" id="${id}"><code class="language-mermaid">${escapeHTML(text)}</code></pre>`;
+    },
+  },
+});
 
 // ─── citation tag helpers (frontend/src/utils/citationMarkdown.ts) ───
 
@@ -256,6 +273,7 @@ const markdownDomPurifyConfig = {
     'data-chunk-id', 'data-doc', 'data-slug', 'class', 'role', 'tabindex', 'src', 'alt', 'data-protected-src', 'data-img-loading',
     'data-artifact-index', 'data-protected-resource', 'download',
     'width', 'height', 'style', 'id', 'type', 'aria-label', 'data-mermaid', 'disabled',
+    'data-markdown-diagram',
     'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
     'stroke-dasharray', 'stroke-dashoffset', 'stroke-miterlimit', 'stroke-opacity',
     'fill-opacity', 'opacity', 'transform', 'viewbox', 'preserveaspectratio',

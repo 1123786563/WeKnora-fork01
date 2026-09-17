@@ -39,6 +39,7 @@ import {
   type EmbedSuggestionItem,
 } from './chat-data.ts';
 import { renderEmbedChatMarkdown } from './markdown.ts';
+import { hydrateEmbedAnswerMermaid } from './mermaid.ts';
 import './embed-chat.css';
 // Vue EmbedBotMessage.vue imports katex/dist/katex.min.css for the answer face.
 import 'katex/dist/katex.min.css';
@@ -448,6 +449,15 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         }
       });
       if (answer) postToHost(embedMessageReceivedPayload(channelId, session.id, answer), { sensitive: true });
+      // Vue useChatStreamHandler closes the turn with session.is_completed;
+      // the flag is what releases mermaid hydration on the live answer row
+      // (EmbedBotMessage renderMermaidDiagrams runs only when is_completed).
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next.length - 1;
+        if (next[last]?.role === 'assistant') next[last] = { ...next[last], is_completed: true };
+        return next;
+      });
       // Vue onTurnComplete -> loadFollowUpSuggestions(message, ensure=true).
       if (assistantMessageId) void loadFollowUpsFor(assistantMessageId, { ensure: true });
     } catch {
@@ -656,6 +666,7 @@ export function EmbedChatSurface(props: {
             <EmbedMessageContent
               content={entry.content}
               references={entry.references}
+              isCompleted={entry.is_completed === true}
               onCitation={openCitation}
             />
             {entry.references && entry.references.length > 0 ? <EmbedReferences references={entry.references} locale={props.locale} /> : null}
@@ -743,15 +754,25 @@ function EmbedFollowUps(props: {
 function EmbedMessageContent(props: {
   content: string;
   references?: EmbedReference[];
+  /** Vue session.is_completed: mermaid hydration waits for the finished turn. */
+  isCompleted?: boolean;
   onCitation: (doc: string, chunkId: string, el: HTMLElement) => void;
 }) {
   const html = useMemo(
     () => renderEmbedChatMarkdown(props.content, (props.references ?? []) as unknown as Record<string, unknown>[]),
     [props.content, props.references],
   );
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // Vue EmbedBotMessage watch/onUpdated: renderMermaidDiagrams runs only when
+  // session.is_completed — streaming keeps the escaped source block, and
+  // engine failures stay contained (apps/web/src/embed/mermaid.ts).
+  useEffect(() => {
+    void hydrateEmbedAnswerMermaid(rootRef.current, props.isCompleted === true);
+  }, [html, props.isCompleted]);
   if (!html) return null;
   return (
     <div
+      ref={rootRef}
       className="embed-chat-markdown"
       onClick={(event) => {
         const target = event.target as Element | null;

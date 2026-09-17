@@ -215,3 +215,36 @@
     text-decoration: none;
   }
 }
+
+/*
+ * Mermaid diagram container (R446/A3 — EmbedBotMessage.vue mermaid hydration).
+ * The shared views engine (packages/views/src/chat/mermaid.ts) swaps the
+ * ```mermaid <pre> for a .wk-chat-mermaid figure once is_completed fires; the
+ * card below ports the Vue chat-mermaid-block canvas look on the light embed
+ * tokens already used in this file (chat-markdown.less chat-mermaid-block).
+ */
+.embed-chat-markdown .wk-chat-mermaid {
+  margin: 8px 0;
+  border: 1px solid #e7eaef;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 18px 16px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.embed-chat-markdown .wk-chat-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Pre-hydration the escaped source block renders like the plain code blocks
+ * (Vue shows the same source inside the mermaid card while streaming). */
+.embed-chat-markdown pre[data-markdown-diagram="mermaid"] {
+  background: #f5f7fa;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
