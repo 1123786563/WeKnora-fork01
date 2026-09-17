@@ -1,0 +1,11 @@
+{
+  "scope": "最小等价算法复现；未运行仓库测试",
+  "contiguous": [
+    "{\"a\":\n1}"
+  ],
+  "fragmented": [
+    "{\"a\":",
+    "1}"
+  ],
+  "crlfBoundaryRiskReproduced": true
+}

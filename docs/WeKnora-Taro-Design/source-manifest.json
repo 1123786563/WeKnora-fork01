@@ -1,0 +1,159 @@
+{
+  "repository": "1123786563/WeKnora-fork01",
+  "ref": "main",
+  "commit": "9cc91c31ef7853fb50073f92edd92807817c9259",
+  "review_date": "2026-09-17",
+  "acquisition": "GitHub connector file reads; local git clone failed due to DNS; no full local checkout",
+  "limitations": [
+    "静态选读，不是全仓逐文件审计",
+    "未启动现有后端、Web、Expo 或微信真机",
+    "源码存在不等于部署已开通",
+    "未更改或推送仓库"
+  ],
+  "sources": [
+    {
+      "id": "R01",
+      "path": "package.json",
+      "scope": "根 pnpm 工作区与 Web、Mobile、共享包脚本",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/package.json"
+    },
+    {
+      "id": "R02",
+      "path": "apps/web/package.json",
+      "scope": "Vite、React 19.3、Tailwind 4 与共享包依赖",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/apps/web/package.json"
+    },
+    {
+      "id": "R03",
+      "path": "apps/web/src/main.tsx",
+      "scope": "1–240 行；Web 入口、路由组装、刷新与租户切换",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/apps/web/src/main.tsx"
+    },
+    {
+      "id": "R04",
+      "path": "apps/web/src/App.tsx",
+      "scope": "1–190 行；KnowledgeBasesPage、浏览器依赖",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/apps/web/src/App.tsx"
+    },
+    {
+      "id": "R05",
+      "path": "apps/mobile/package.json",
+      "scope": "Expo / React Native 与共享包依赖",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/apps/mobile/package.json"
+    },
+    {
+      "id": "R06",
+      "path": "go.mod",
+      "scope": "1–120 行；Go、Gin、GORM、tRPC-Agent-Go 等依赖",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/go.mod"
+    },
+    {
+      "id": "R07",
+      "path": "internal/router/router.go",
+      "scope": "1–430 行；路由组装、鉴权顺序、可选 handler",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/router.go"
+    },
+    {
+      "id": "R08",
+      "path": "internal/router/routes_auth_tenant.go",
+      "scope": "1–310 行；认证、空间、成员、邀请路由",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/routes_auth_tenant.go"
+    },
+    {
+      "id": "R09",
+      "path": "internal/middleware/auth.go",
+      "scope": "1–230 行；公开路径白名单、JWT、租户解析",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/middleware/auth.go"
+    },
+    {
+      "id": "R10",
+      "path": "internal/router/routes_workbench.go",
+      "scope": "执行、启动、查询请求、交互决策、命令路由",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/routes_workbench.go"
+    },
+    {
+      "id": "R11",
+      "path": "internal/router/routes_chat.go",
+      "scope": "1–180 行；会话、附件、聊天、产物与运行控制",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/routes_chat.go"
+    },
+    {
+      "id": "R12",
+      "path": "internal/router/routes_commercial.go",
+      "scope": "报价、订单、用量、退款、预算扩展与回调",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/routes_commercial.go"
+    },
+    {
+      "id": "R13",
+      "path": "internal/payment/wechat.go",
+      "scope": "1–225、290–455 行；APIv3 验签与 Native 下单",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/payment/wechat.go"
+    },
+    {
+      "id": "R14",
+      "path": "internal/router/deployment_capabilities.go",
+      "scope": "实际部署能力由 handler 组装推导",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/internal/router/deployment_capabilities.go"
+    },
+    {
+      "id": "R15",
+      "path": "packages/api-client/src/ports.ts",
+      "scope": "HTTP、流、文件、凭证与请求作用域接口",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/api-client/src/ports.ts"
+    },
+    {
+      "id": "R16",
+      "path": "packages/api-client/src/client.ts",
+      "scope": "1–260 行；共享客户端、超时、提前构造 FormData",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/api-client/src/client.ts"
+    },
+    {
+      "id": "R17",
+      "path": "packages/api-client/src/chat/stream.ts",
+      "scope": "SSE parser、knowledge-chat / agent-chat 请求",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/api-client/src/chat/stream.ts"
+    },
+    {
+      "id": "R18",
+      "path": "packages/api-client/src/mobile/executions.ts",
+      "scope": "启动契约、request_id 对账、revision、回放游标",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/api-client/src/mobile/executions.ts"
+    },
+    {
+      "id": "R19",
+      "path": "packages/contracts/src/mobile/execution.ts",
+      "scope": "执行 DTO、状态、事件、快照与验证器",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/contracts/src/mobile/execution.ts"
+    },
+    {
+      "id": "R20",
+      "path": "packages/contracts/src/commercial.ts",
+      "scope": "订单付款/履约双状态、金额字符串、报价契约",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/contracts/src/commercial.ts"
+    },
+    {
+      "id": "R21",
+      "path": "packages/domain/package.json",
+      "scope": "domain 的公开子路径与依赖边界",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/domain/package.json"
+    },
+    {
+      "id": "R22",
+      "path": "packages/domain/src/mobile/index.ts",
+      "scope": "移动域导出",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/domain/src/mobile/index.ts"
+    },
+    {
+      "id": "R23",
+      "path": "packages/domain/src/mobile/execution-cache.ts",
+      "scope": "租户/用户/来源隔离、连续序号与先存事件后游标",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/packages/domain/src/mobile/execution-cache.ts"
+    },
+    {
+      "id": "R24",
+      "path": "miniprogram/README.md",
+      "scope": "原生小程序的 API Key、知识库、URL 导入与聊天说明",
+      "url": "https://github.com/1123786563/WeKnora-fork01/blob/9cc91c31ef7853fb50073f92edd92807817c9259/miniprogram/README.md"
+    }
+  ]
+}

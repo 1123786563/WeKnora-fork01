@@ -1,0 +1,206 @@
+{
+  "scope": "仅离线HTML原型与模拟交互；不是Taro编译、微信真机或后端测试",
+  "loader": "浏览器受管策略阻止file/http导航；通过set_content加载原HTML字节",
+  "pages": [
+    {
+      "id": "login",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "workspace",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "home",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "agents",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "agent",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "chat",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "tasks",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "execution",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "approval",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "artifact",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "knowledge",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "kb",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "upload",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "document",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "me",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "usage",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "checkout",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "order",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "invitations",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    },
+    {
+      "id": "states",
+      "standalone_initial_ok": true,
+      "horizontal_overflow": false,
+      "script_errors": []
+    }
+  ],
+  "flows": [
+    {
+      "name": "未同意隐私说明阻止模拟登录",
+      "passed": true
+    },
+    {
+      "name": "微信登录模拟进入空间选择",
+      "passed": true
+    },
+    {
+      "name": "空间切换与初始隔离",
+      "passed": true
+    },
+    {
+      "name": "模拟任务启动",
+      "passed": true
+    },
+    {
+      "name": "断线状态",
+      "passed": true
+    },
+    {
+      "name": "恢复不新建任务",
+      "passed": true
+    },
+    {
+      "name": "追加指令模拟",
+      "passed": true
+    },
+    {
+      "name": "本次审批二次确认",
+      "passed": true
+    },
+    {
+      "name": "审批版本冲突阻断",
+      "passed": true
+    },
+    {
+      "name": "取消任务需确认",
+      "passed": true
+    },
+    {
+      "name": "模拟中文增量回复",
+      "passed": true
+    },
+    {
+      "name": "上传与解析状态分离",
+      "passed": true
+    },
+    {
+      "name": "默认通道待核验不允许购买",
+      "passed": true
+    },
+    {
+      "name": "模拟支付回调不自动发权益",
+      "passed": true
+    },
+    {
+      "name": "付款与履约两阶段",
+      "passed": true
+    },
+    {
+      "name": "后端确认模拟完成履约",
+      "passed": true
+    },
+    {
+      "name": "任务筛选",
+      "passed": true
+    },
+    {
+      "name": "Agent搜索",
+      "passed": true
+    },
+    {
+      "name": "退出清理对话状态",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "passed": true
+}
