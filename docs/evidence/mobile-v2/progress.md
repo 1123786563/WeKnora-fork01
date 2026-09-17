@@ -15,9 +15,9 @@
 | MX-007 | review | c9505e26→5e6e3c29 | mv2 8/8 · shared 589/589 · 对比率 ACTIVE 全过(disabled 豁免) · typecheck 14=基线 | 审查进行中 | MX-007.md |
 | MX-008 | accepted | 5e6e3c29→12a9c4da(含fix) | mv2 10/10 · 挂载 4/4 · typecheck 14=基线 | R1(2×P1)→修复→复核 PASS | MX-008.md |
 | MX-009 | accepted | 08a5c9cb→12a9c4da | mv2 10/10 · 挂载 4/4 · happyAuthRequests=0 | 规格 PASS · 质量 APPROVED（P2 锁账澄清→D-023） | MX-009.md |
-| MX-010 | fixing→review | 12a9c4da→35ad2c0d(+fix) | mv2 12/12 · tsc 14=基线 | R1 FAIL(P1-1 SSO state 契约)→已修复→待复核 | MX-010.md |
+| MX-010 | accepted | 12a9c4da→95973585(+fix2) | mv2 13/13 · tsc 14=基线 | R1 FAIL→修复→复核 PASS（P2-1 probe 二修随 MX-012 R1 批次） | MX-010.md |
 | MX-011 | accepted | 35ad2c0d→95973585(含fix) | mv2 12/12 · shared 590/590 · frozen B/false/0 | 规格 PASS 7/7 · 质量 APPROVED（P2 已处置，D-024） | MX-011.md |
-| MX-012 | review | 95973585→(待提交) | mv2 13/13 · shared 590/590 · platform vitest 12/12 · tsc 14=基线 | 待独立review | MX-012.md |
+| MX-012 | fixing→review | 95973585→202225bb(+fix) | mv2 13/13 · 挂载 6/6（含 single-flight 竞态回归） · tsc 14=基线 | R1 FAIL(P1 密钥竞态)→已修复→待复核 | MX-012.md |
 
 ## 首次更新（2026-09-18，MX-001）
 

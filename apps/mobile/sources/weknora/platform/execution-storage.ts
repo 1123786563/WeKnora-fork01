@@ -24,6 +24,7 @@ export interface ExecutionStorageTransaction {
   findEvent(scopeKey: string, runID: string, seq: number): Promise<ExecutionStorageRow | undefined>;
   insertEvent(row: ExecutionStorageRow): Promise<void>;
   setCursor(scopeKey: string, runID: string, seq: number): Promise<void>;
+  deleteRun(scopeKey: string, runID: string): Promise<void>;
 }
 
 export interface ExecutionStorageDriver {
@@ -73,6 +74,10 @@ export function createExpoSQLiteExecutionDriver(db: ExpoSQLiteDatabase): Executi
         setCursor: async (scope, run, seq) => {
           await db.runAsync('INSERT INTO execution_cursors(scope_key, run_id, seq) VALUES (?, ?, ?) ON CONFLICT(scope_key, run_id) DO UPDATE SET seq = excluded.seq', scope, run, seq);
         },
+        deleteRun: async (scope, run) => {
+          await db.runAsync('DELETE FROM execution_events WHERE scope_key = ? AND run_id = ?', scope, run);
+          await db.runAsync('DELETE FROM execution_cursors WHERE scope_key = ? AND run_id = ?', scope, run);
+        },
         });
       });
       return result as T;
@@ -111,13 +116,23 @@ const unb64 = (value: string): Uint8Array => Uint8Array.from(atob(value), (char)
 /** SecureStore-backed key with an injected libsodium XChaCha20-Poly1305 implementation. */
 export function createSecureStoreAeadCipher(store: SecureKeyStore, aead: AeadBox, keyName = 'weknora.execution.key.v1'): PayloadCipher {
   let cached: Uint8Array | undefined;
-  async function key(): Promise<Uint8Array> {
-    if (cached) return cached;
-    const existing = await store.getItemAsync(keyName);
-    cached = existing ? unb64(existing) : aead.randomBytes(32);
-    if (!existing) await store.setItemAsync(keyName, b64(cached));
-    if (cached.length !== 32) throw new Error('execution encryption key must be 32 bytes');
-    return cached;
+  // single-flight（G06/MX-012 R1）：密钥初始化以 in-flight promise 共享——并发首次加密
+  // 必须用同一把密钥；失败时清空以便重试（不留半初始化状态）。
+  let keyInFlight: Promise<Uint8Array> | undefined;
+  function key(): Promise<Uint8Array> {
+    if (cached) return Promise.resolve(cached);
+    keyInFlight ??= (async () => {
+      const existing = await store.getItemAsync(keyName);
+      const value = existing ? unb64(existing) : aead.randomBytes(32);
+      if (!existing) await store.setItemAsync(keyName, b64(value));
+      if (value.length !== 32) throw new Error('execution encryption key must be 32 bytes');
+      cached = value;
+      return value;
+    })().catch((error: unknown) => {
+      keyInFlight = undefined;
+      throw error;
+    });
+    return keyInFlight;
   }
   return {
     async encrypt(payload, aad) {
@@ -188,6 +203,26 @@ export function createExecutionStorage(driver: ExecutionStorageDriver, cipher: P
     },
     async readCursor(runID: string): Promise<number> {
       return driver.transaction(async (tx) => tx.getCursor(key, runID));
+    },
+    /**
+     * cursor_expired 原子替换（MX-012 R1 P2-1）：单事务内清空该 Run 的本地事件与
+     * cursor，按快照事件重建并推进到末位 seq。要么整体成功，要么保持旧本地底。
+     */
+    async replaceRun(runID: string, events: readonly ExecutionEvent[]): Promise<number> {
+      if (events.length === 0) return 0;
+      let last = 0;
+      await driver.transaction(async (tx) => {
+        await tx.deleteRun(key, runID);
+        for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+          if (event.run_id !== runID) throw new Error('replaceRun event run_id mismatch');
+          if (event.seq <= last) continue;
+          const encrypted = await cipher.encrypt(event.payload, aad(key, runID, event.seq));
+          await tx.insertEvent({ scopeKey: key, runID, seq: event.seq, event: { ...event, payload: encrypted } });
+          last = event.seq;
+        }
+        await tx.setCursor(key, runID, last);
+      });
+      return last;
     },
     clear: () => driver.clearScope(key),
   };

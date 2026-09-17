@@ -1,7 +1,12 @@
 // MX-010 probe · 冷启动身份引导观察器
 // 场景 valid-credential-missing-scope：凭据已恢复（SecureStore 适配器内）、scope 未知。
 // 用真实 bootstrap（resolveScopeFromMe + createBootstrapPort，真实 AuthApi.me 契约路径）
-// 与真实 credentials 适配器（注入 store）观测：身份补齐结果 + 凭据是否落入普通存储。
+// 与真实 credentials 适配器（注入 store）观测：身份补齐结果 + 凭据存储通道隔离。
+// 存储通道隔离为双层真实观察：①动态——凭据经适配器写入/读回仅发生在注入的 SecureStore 通道；
+// ②源级——凭据模块图（session.tsx/credentials.ts）不含任何普通存储 API（源文件实读检查）。
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createBootstrapPort,
   resolveScopeFromMe,
@@ -9,6 +14,7 @@ import {
 import { createCredentials } from '../../../apps/mobile/sources/weknora/auth/credentials.ts';
 import type { AuthMe } from '@weknora/contracts';
 
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 export interface ProbeInput {
   fixture: string;
@@ -19,6 +25,8 @@ export interface Observation {
   tenantId: string;
   credentialInOrdinaryStorage: boolean;
 }
+
+const ORDINARY_STORAGE_APIS = ['AsyncStorage', 'localStorage', 'react-native-mmkv', 'MMKV'];
 
 export async function runProbe(input: ProbeInput): Promise<Observation> {
   if (input.fixture !== 'valid-credential-missing-scope') {
@@ -32,10 +40,8 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     tenant_required: false,
   } as unknown as AuthMe;
 
-  // 2) 纯解析：scope 从身份事实推导（非 Token 臆造）
+  // 2) 纯解析 + 真实端口（脚本化 transport 只替换网络边界）
   const resolved = resolveScopeFromMe(me, null);
-
-  // 3) 端口走真实 AuthApi.me 路径（脚本化 transport 只替换网络边界）
   const seen: string[] = [];
   const port = createBootstrapPort({
     async me(): Promise<AuthMe> {
@@ -45,17 +51,8 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
   } as never);
   const outcome = await port.run(null);
 
-  // 4) 真实 credentials 适配器：注入式 SecureStore 承载凭据；
-  //    普通 KV 计数器观测「凭据是否被写进普通存储」——必须为 false
+  // 3) 动态观察：凭据写入与读回全部经由注入的 SecureStore 通道
   const secureStore = new Map<string, string>();
-  // 真实候选「普通存储」：若任何凭据路径误写普通 KV，这里会计数（观测有真实写入路径）
-  const ordinaryWrites: string[] = [];
-  const ordinaryKV = {
-    get: async (key: string) => null,
-    set: async (key: string, value: string) => { ordinaryWrites.push(`${key}=${value.slice(0, 8)}...`); },
-    remove: async (key: string) => { ordinaryWrites.push(`remove:${key}`); },
-  };
-  void ordinaryKV;
   const adapter = createCredentials(
     {
       get: async (key) => secureStore.get(key) ?? null,
@@ -65,10 +62,17 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     'weknora.product.credential',
   );
   await adapter.write({ kind: 'bearer', accessToken: 'at-cold-start', refreshToken: 'rt' });
-  if (!secureStore.get('weknora.product.credential')) {
-    throw new Error('credential must persist through the secure store adapter');
-  }
-  const credentialInOrdinaryStorage = ordinaryWrites.length > 0;
+  const roundTrip = await adapter.read();
+  if (roundTrip.kind !== 'bearer') throw new Error('credential round-trip through the secure channel failed');
+  if (!secureStore.has('weknora.product.credential')) throw new Error('credential must live in the injected secure store');
+
+  // 4) 源级观察：凭据模块图不含普通存储 API（读真实源文件）
+  const credentialSources = await Promise.all([
+    readFile(path.join(repoRoot, 'apps/mobile/sources/weknora/auth/credentials.ts'), 'utf8'),
+    readFile(path.join(repoRoot, 'apps/mobile/sources/weknora/auth/session.tsx'), 'utf8'),
+  ]);
+  const ordinaryHits = ORDINARY_STORAGE_APIS.filter((api) => credentialSources.some((source) => source.includes(api)));
+  const credentialInOrdinaryStorage = ordinaryHits.length > 0;
 
   if (seen[0] !== '/api/v1/auth/me') throw new Error('bootstrap must call auth me');
   if (resolved.tenantId !== outcome.tenantId) throw new Error('port and pure resolution disagree');

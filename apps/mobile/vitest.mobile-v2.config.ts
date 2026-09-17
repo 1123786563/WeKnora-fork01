@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['sources/**/*.mobilev2.spec.tsx'],
+    include: ['sources/**/*.mobilev2.spec.{ts,tsx}'],
     environment: 'node',
   },
 });

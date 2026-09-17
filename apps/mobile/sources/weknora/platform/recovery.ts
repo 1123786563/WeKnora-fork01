@@ -33,17 +33,37 @@ export interface RecoveryStorageView {
   readCursor(runID: string): Promise<number>;
 }
 
-/** 快照水合：事件按 seq 逐条提交（同 seq 幂等跳过），随后 cursor 停在 watermark。 */
+/** 快照水合：事件按 seq 逐条提交（同 seq 幂等跳过），随后 cursor 停在末位 seq。incomplete 快照 fail-closed。 */
 export async function hydrateFromSnapshot(
   storage: SnapshotCommitTarget,
   snapshot: ExecutionSnapshot,
 ): Promise<number> {
+  if (snapshot.incomplete) throw new Error('snapshot is incomplete: refuse partial hydration');
   for (const event of snapshot.events) {
     await storage.commit(event);
   }
-  return snapshot.watermark;
+  return snapshot.events.length > 0 ? snapshot.events[snapshot.events.length - 1]!.seq : 0;
 }
 
 export interface SnapshotCommitTarget {
   commit(event: ExecutionEvent): Promise<void>;
+}
+
+export interface ReplaceRunTarget {
+  replaceRun(runID: string, events: readonly ExecutionEvent[]): Promise<number>;
+}
+
+/**
+ * cursor_expired 恢复（MX-012 R1 P2-1）：服务端历史已裁剪时，以新快照原子替换本地底
+ * （replaceRun 单事务），替换后从快照末位 seq 续订；不重启 Run、不重复消费。
+ */
+export async function recoverFromExpiredCursor(
+  storage: ReplaceRunTarget,
+  runID: string,
+  snapshots: SnapshotSource,
+): Promise<{ cursor: number; snapshot: ExecutionSnapshot }> {
+  const snapshot = await snapshots.snapshot(runID);
+  if (snapshot.incomplete) throw new Error('snapshot is incomplete: retry with a complete snapshot');
+  const cursor = await storage.replaceRun(runID, snapshot.events);
+  return { cursor, snapshot };
 }
