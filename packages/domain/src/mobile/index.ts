@@ -7,3 +7,4 @@ export * from './session-list.ts';
 export * from './agent-options.ts';
 export * from './resource-presentation.ts';
 export * from './task-form.ts';
+export * from './execution-presentation.ts';
