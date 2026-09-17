@@ -73,16 +73,14 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     child.on('close', (code) => resolve({ code: code ?? -1, output }));
   });
   // 双保险：退出码 + 解析通过/失败计数（静默跳过时 pass=0，此处即红）
-  // node:test 汇总行形如「ℹ pass 42」「ℹ fail 0」——取最后一次匹配（全局汇总在末尾）
-  const summary = /(?:^|\s)(?:pass|fail) (\d+)(?:\s|$)/gm;
-  const numbers: Array<{ kind: 'pass' | 'fail'; n: number }> = [];
-  for (const line of outcome.output.split('\n')) {
-    const m = /^\s*\S*\s*(pass|fail) (\d+)\s*$/.exec(line.trim());
-    if (m) numbers.push({ kind: m[1] as 'pass' | 'fail', n: Number(m[2]) });
+  // node:test 汇总行形如「ℹ pass 42」「ℹ fail 0」——逐行 split 解析，取最后一次
+  let passCount = 0;
+  let failCount = 99; // 未解析到 fail 计数视为异常（保守红）
+  for (const rawLine of outcome.output.split('\n')) {
+    const line = rawLine.trim().replace(/^[^A-Za-z]*/, '');
+    if (line.startsWith('pass ')) passCount = Number(line.slice('pass '.length)) || 0;
+    if (line.startsWith('fail ')) failCount = Number(line.slice('fail '.length)) || 0;
   }
-  void summary;
-  const passCount = numbers.filter((x) => x.kind === 'pass').at(-1)?.n ?? 0;
-  const failCount = numbers.filter((x) => x.kind === 'fail').at(-1)?.n ?? 99;
   if (outcome.code !== 0 || failCount !== 0 || passCount < 40) {
     throw new Error('mobile-v2 regression must genuinely run green for a release ruling: exit=' + outcome.code + ' pass=' + passCount + ' fail=' + failCount + ' :: ' + outcome.output.slice(0, 240));
   }

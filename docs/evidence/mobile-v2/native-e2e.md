@@ -2,7 +2,7 @@
 
 ## 状态：blocked-env（如实记录，不以降级替代记通过）
 
-`tests/mobile-v2/mx-034.test.ts`（frozen）已就位：真实探测三要素（dev client 构建产物标记、平台设备/模拟器、后端环境变量），任一缺失即抛 `blocked-env`。**当前缺失项**：
+`tests/mobile-v2/e2e/mx-034.test.ts`（frozen）已就位：真实探测三要素（dev client 构建产物标记、平台设备/模拟器、后端环境变量），任一缺失即抛 `blocked-env`。**当前缺失项**：
 
 | 要素 | 状态 |
 |---|---|

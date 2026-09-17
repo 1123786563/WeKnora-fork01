@@ -4,7 +4,7 @@
 
 ## 发布前置（按序核验）
 
-1. `pnpm run test:mobile-v2` 41/41；`pnpm run test:shared` 590/590；`go test ./internal/...` 全绿。
+1. `pnpm run test:mobile-v2` 42/42；`pnpm run test:shared` 590/590；`go test ./internal/...` 全绿。
 2. 收尾批复核闭环（acceptance-index.json 中 review-pending 项）。
 3. MX-034 设备证据采集（native-e2e.md 配方）+ MX-035 视觉/性能矩阵回填——或按裁决保留 conditions 发布 core。
 4. 能力门禁核对：deploy/mobile-workbench/profile-manifest.json 与 CapabilityService 一致（probe 已钉）。
