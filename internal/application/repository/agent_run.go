@@ -17,12 +17,26 @@ import (
 // Every mutation of an executing run must lock its row with a valid fence in
 // the same transaction as the mutation. Checking a fence and then writing in
 // a separate transaction would let a superseded worker commit stale state.
-type AgentRunStore struct{ db *gorm.DB }
+type AgentRunStore struct {
+	db            *gorm.DB
+	cleanupSource CleanupObservationSource
+	cleanupFiles  CleanupFilePurger
+}
 
 var _ agentruntime.RunStore = (*AgentRunStore)(nil)
 
 // NewAgentRunStore constructs a store backed by the migrated business database.
-func NewAgentRunStore(db *gorm.DB) *AgentRunStore { return &AgentRunStore{db: db} }
+func NewAgentRunStore(db *gorm.DB) *AgentRunStore {
+	return &AgentRunStore{db: db, cleanupSource: NewDurableCleanupObservationSource(db)}
+}
+
+// DB exposes the already-scoped business DB for container-owned adapters.
+func (s *AgentRunStore) DB() *gorm.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
 
 type agentRunRow struct {
 	TenantID                                                              uint64

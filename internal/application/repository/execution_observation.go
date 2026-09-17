@@ -24,6 +24,9 @@ type SourceObservation struct {
 	BindingID, Generation, EventID, AttemptID, Type, PayloadHash string
 	Payload                                                      json.RawMessage
 	SourceSeq                                                    int64
+	// DeletionRevision is required for observations arriving after a session
+	// tombstone; active runs may leave it zero.
+	DeletionRevision int64
 }
 
 type executionObservationRow struct {
@@ -33,6 +36,7 @@ type executionObservationRow struct {
 	Payload                               []byte
 	ProductSeq                            int64
 	SourceSeq                             int64
+	DeletionRevision                      int64 `gorm:"column:deletion_revision"`
 	HistoryIncomplete                     bool
 	ConfirmedSnapshot                     []byte
 	CreatedAt                             time.Time
@@ -108,6 +112,22 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		if err != nil {
 			return err
 		}
+		var identity struct{ SessionID, OwnerID string }
+		if err := tx.Table("agent_runs").Select("session_id, owner_id").Where("tenant_id=? AND run_id=?", key.TenantID, key.RunID).Take(&identity).Error; err != nil {
+			return err
+		}
+		var tombstone struct{ DeletionRevision int64 }
+		tombErr := tx.Table("execution_cleanup").Select("deletion_revision").Where("tenant_id=? AND session_id=? AND owner_id=? AND state <> 'purged'", key.TenantID, identity.SessionID, identity.OwnerID).Take(&tombstone).Error
+		if tombErr == nil {
+			if source.DeletionRevision <= 0 || source.DeletionRevision != tombstone.DeletionRevision {
+				return agentruntime.ErrLeaseLost
+			}
+		} else if !errors.Is(tombErr, gorm.ErrRecordNotFound) {
+			if strings.Contains(strings.ToLower(tombErr.Error()), "no such table") {
+				return agentruntime.ErrConflict
+			}
+			return tombErr
+		}
 		lock := tx.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID)
 		if tx.Dialector.Name() == "postgres" {
 			lock = lock.Clauses(clause.Locking{Strength: "UPDATE"})
@@ -119,7 +139,7 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		var existing executionObservationRow
 		err = tx.WithContext(ctx).Where("tenant_id = ? AND binding_id = ? AND generation = ? AND event_id = ?", key.TenantID, bindingID, source.Generation, source.EventID).Take(&existing).Error
 		if err == nil {
-			if existing.PayloadHash != source.PayloadHash {
+			if existing.PayloadHash != source.PayloadHash || existing.DeletionRevision != source.DeletionRevision {
 				return ErrSourceConflict
 			}
 			result = toExecutionEvent(existing)
@@ -152,7 +172,7 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 		}
 		incomplete := source.SourceSeq > 0 && source.SourceSeq > sourceCursor.LastConfirmedSeq+1
 		confirmedSnapshot := append([]byte(`[]`), sourceCursor.ConfirmedSnapshot...)
-		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
+		row := executionObservationRow{TenantID: key.TenantID, RunID: key.RunID, BindingID: bindingID, Generation: source.Generation, EventID: source.EventID, AttemptID: source.AttemptID, EventType: typ, PayloadHash: source.PayloadHash, Payload: payload, ProductSeq: seq, SourceSeq: source.SourceSeq, DeletionRevision: source.DeletionRevision, HistoryIncomplete: incomplete, ConfirmedSnapshot: confirmedSnapshot, CreatedAt: now}
 		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}
