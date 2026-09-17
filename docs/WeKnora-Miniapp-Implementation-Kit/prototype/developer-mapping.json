@@ -1,0 +1,206 @@
+{
+  "login": {
+    "route": "subpackages/auth/pages/login/index",
+    "viewModel": "AuthStateMachine",
+    "components": "BrandIntro / FormField / ConsentRow",
+    "tasks": [
+      "MP01-T03-02",
+      "MP01-T03-03",
+      "MP01-T03-04"
+    ],
+    "api": "E auth/login、auth/refresh、auth/me；N auth/wechat/mini/login/bind"
+  },
+  "workspace": {
+    "route": "subpackages/auth/pages/workspace/index",
+    "viewModel": "WorkspaceSelection",
+    "components": "WorkspaceCard / RadioIndicator / Notice",
+    "tasks": [
+      "MP01-T03-04",
+      "MP01-T02-06"
+    ],
+    "api": "E auth/me、auth/switch-tenant、tenants、me/invitations"
+  },
+  "home": {
+    "route": "pages/home/index",
+    "viewModel": "HomeViewModel",
+    "components": "IntentComposer / AgentCard / AttentionCard / RecentConversation",
+    "tasks": [
+      "MP01-T01-05",
+      "MP03-T01-03"
+    ],
+    "api": "E 会话/Agent/商业API；N inbox；home聚合可选，不强制新增"
+  },
+  "agents": {
+    "route": "subpackages/agents/pages/list/index",
+    "viewModel": "AgentCatalogViewModel",
+    "components": "SearchField / SegmentedControl / AgentCard",
+    "tasks": [
+      "MP01-T01-05",
+      "MP03-T01-04"
+    ],
+    "api": "E 共享Agent配置API；N launch-options；具体既有URL由MP00固定"
+  },
+  "agent": {
+    "route": "subpackages/agents/pages/detail/index",
+    "viewModel": "LaunchStateMachine",
+    "components": "AgentHero / TaskForm / ScopeSummary / BudgetInput",
+    "tasks": [
+      "MP03-T02-01",
+      "MP03-T01-04",
+      "MP01-T02-07"
+    ],
+    "api": "E POST workbench/executions、GET executions/requests/:request_id；N launch-options"
+  },
+  "chat": {
+    "route": "subpackages/chat/pages/thread/index",
+    "viewModel": "ChatViewModel",
+    "components": "AssistantMessage / CitationCard / ChatComposer / AttachmentItem",
+    "tasks": [
+      "MP02-T01-01",
+      "MP02-T01-02",
+      "MP02-T01-03"
+    ],
+    "api": "E sessions、messages、knowledge-chat/agent-chat、attachments"
+  },
+  "tasks": {
+    "route": "pages/tasks/index",
+    "viewModel": "TaskPageViewModel",
+    "components": "TaskStats / StatusFilter / TaskCard",
+    "tasks": [
+      "MP03-T01-02",
+      "MP03-T01-03",
+      "MP03-T02-04"
+    ],
+    "api": "N GET workbench/executions；N inbox；E 单run详情"
+  },
+  "execution": {
+    "route": "subpackages/execution/pages/detail/index",
+    "viewModel": "ExecutionViewModel",
+    "components": "ExecutionHero / Timeline / ApprovalCard / CommandSheet",
+    "tasks": [
+      "MP03-T02-03",
+      "MP03-T02-04",
+      "MP03-T02-06"
+    ],
+    "api": "E run/get、snapshot、events、interactions、commands"
+  },
+  "approval": {
+    "route": "subpackages/execution/pages/approval/index",
+    "viewModel": "DecisionViewModel",
+    "components": "RiskIntro / ActionSummary / ParameterPreview / ConfirmSheet",
+    "tasks": [
+      "MP03-T02-05"
+    ],
+    "api": "E 单run interactions；POST interactions/:id/decisions"
+  },
+  "artifact": {
+    "route": "subpackages/execution/pages/artifact/index",
+    "viewModel": "ArtifactViewModel",
+    "components": "FileCover / SafeTextPreview / DownloadAction",
+    "tasks": [
+      "MP03-T02-07",
+      "MP01-T02-04"
+    ],
+    "api": "E sessions/message artifacts及授权download，关联按实际schema"
+  },
+  "knowledge": {
+    "route": "pages/knowledge/index",
+    "viewModel": "KnowledgeListViewModel",
+    "components": "KnowledgeSearch / KnowledgeCard / RecentDocument",
+    "tasks": [
+      "MP02-T02-01"
+    ],
+    "api": "E 知识库共享API与domain筛选"
+  },
+  "kb": {
+    "route": "subpackages/documents/pages/kb/index",
+    "viewModel": "KnowledgeDetailViewModel",
+    "components": "KnowledgeHeader / DocumentRow / ProcessingBadge",
+    "tasks": [
+      "MP02-T02-01",
+      "MP02-T02-03"
+    ],
+    "api": "E 库内文档与处理状态API"
+  },
+  "upload": {
+    "route": "subpackages/documents/pages/import/index",
+    "viewModel": "UploadStateMachine",
+    "components": "TargetCard / FilePicker / URLField / ProcessingCard",
+    "tasks": [
+      "MP02-T02-02",
+      "MP02-T02-03",
+      "MP01-T02-04"
+    ],
+    "api": "E 知识upload/import；A Taro.uploadFile/native port"
+  },
+  "document": {
+    "route": "subpackages/documents/pages/detail/index",
+    "viewModel": "DocumentReferenceViewModel",
+    "components": "DocumentMeta / HighlightQuote / SafePreview",
+    "tasks": [
+      "MP02-T02-04"
+    ],
+    "api": "E 授权文档/preview与引用领域映射"
+  },
+  "me": {
+    "route": "pages/me/index",
+    "viewModel": "ProfileViewModel",
+    "components": "ProfileHeader / WorkspaceRow / UsageSummary / AccountMenu",
+    "tasks": [
+      "MP04-T01-01",
+      "MP01-T03-05"
+    ],
+    "api": "E auth/me、commercial/summary、orders、me/invitations"
+  },
+  "usage": {
+    "route": "subpackages/account/pages/usage/index",
+    "viewModel": "UsageAndPlansViewModel",
+    "components": "UsageCard / UsageTrend / PlanCard / AvailabilityNotice",
+    "tasks": [
+      "MP04-T01-01",
+      "MP04-T01-02"
+    ],
+    "api": "E summary/plans/usage/quotes；N 通道可用性"
+  },
+  "checkout": {
+    "route": "subpackages/account/pages/checkout/index",
+    "viewModel": "CheckoutViewModel",
+    "components": "PlanSummary / QuoteDetails / PurchaseAvailability / PayCTA",
+    "tasks": [
+      "MP04-T01-02",
+      "MP04-T01-03",
+      "MP04-T01-04"
+    ],
+    "api": "E quotes/orders；N 严格typed channel checkout"
+  },
+  "order": {
+    "route": "subpackages/account/pages/order/index",
+    "viewModel": "OrderViewModel",
+    "components": "PaymentStep / FulfillmentStep / OrderDetails",
+    "tasks": [
+      "MP04-T01-04",
+      "MP04-T01-05"
+    ],
+    "api": "E commercial/orders/:id；OrderView.payment/fulfillment"
+  },
+  "invitations": {
+    "route": "subpackages/account/pages/invitations/index",
+    "viewModel": "InvitationsViewModel",
+    "components": "InviteCard / RoleSummary / AcceptDecline",
+    "tasks": [
+      "MP01-T03-05",
+      "MP04-T02-03"
+    ],
+    "api": "E me/invitations、accept/decline、accept-by-token"
+  },
+  "states": {
+    "route": "subpackages/system/pages/state/index",
+    "viewModel": "AppStateViewModel",
+    "components": "StateIllustration / ReasonText / RecoveryAction",
+    "tasks": [
+      "MP01-T01-04",
+      "MP04-T03-03"
+    ],
+    "api": "E ApiError和capabilities；N完整原因码映射"
+  }
+}

@@ -1,0 +1,11 @@
+# 契约边界
+
+`mini-read-models.ts`是N类增量契约设计，不是已存在的仓库代码，也未证明与当前Go封装完成联调。
+
+旧StartExecutionInput、ExecutionDTO、事件/快照、decision、command、CommercialSummary、OrderView必须从现有contracts复用；不在此重复定义两份相似模型。
+
+InboxItem.current_revision为只读投影建议值，提交时必须从真实interaction转换为原契约的版本类型，不得直接以任意string覆盖已有expected_revision类型。最稳妥的生产实现是引用原类型别名。
+
+支付只在方案中定义可用性及渠道边界。未核实主体、商品、终端与SDK参数版本前，不输出可直接传给微信SDK的虚构payload。MP04-T01-02负责生成精确渠道DTO与运行时validator，旧Native code_url不能代替它。
+
+后端保留原API envelope，前端adapter只映射payload。当前文件是类型草案，生产validator、错误码与契约测试由对应59子任务建立。

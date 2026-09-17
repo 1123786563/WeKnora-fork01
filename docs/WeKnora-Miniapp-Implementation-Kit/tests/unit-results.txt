@@ -1,0 +1,19 @@
+test_doc_set (test_integrity.DeliveryTests.test_doc_set) ... ok
+test_pages (test_integrity.DeliveryTests.test_pages) ... ok
+test_tasks (test_integrity.DeliveryTests.test_tasks) ... ok
+test_tokens (test_integrity.DeliveryTests.test_tokens) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK
+test_all_tasks_reach_release (__main__.DesignTests.test_all_tasks_reach_release) ... ok
+test_contrast_pairs (__main__.DesignTests.test_contrast_pairs) ... ok
+test_page_task_mapping (__main__.DesignTests.test_page_task_mapping) ... ok
+test_standalone_no_remote_assets (__main__.DesignTests.test_standalone_no_remote_assets) ... ok
+test_token_generation (__main__.DesignTests.test_token_generation) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.010s
+
+OK

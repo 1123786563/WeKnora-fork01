@@ -1,0 +1,82 @@
+[
+  {
+    "pair": "正文/白卡",
+    "foreground": "#172B27",
+    "background": "#FFFFFF",
+    "ratio": 14.88,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "正文/画布",
+    "foreground": "#172B27",
+    "background": "#F5F7F2",
+    "ratio": 13.795,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "次文字/白卡",
+    "foreground": "#566B63",
+    "background": "#FFFFFF",
+    "ratio": 5.708,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "第三级/画布",
+    "foreground": "#61746C",
+    "background": "#F5F7F2",
+    "ratio": 4.61,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "主按钮白文字",
+    "foreground": "#FFFFFF",
+    "background": "#176B52",
+    "ratio": 6.439,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "深色卡白文字",
+    "foreground": "#FFFFFF",
+    "background": "#103D32",
+    "ratio": 12.1,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "成功状态",
+    "foreground": "#176B52",
+    "background": "#EDF6EE",
+    "ratio": 5.831,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "警告状态",
+    "foreground": "#84520C",
+    "background": "#FBF0DC",
+    "ratio": 5.824,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "错误状态",
+    "foreground": "#AF4039",
+    "background": "#FFF0EE",
+    "ratio": 5.242,
+    "threshold": 4.5,
+    "passed": true
+  },
+  {
+    "pair": "信息状态",
+    "foreground": "#315F91",
+    "background": "#EAF1FA",
+    "ratio": 5.812,
+    "threshold": 4.5,
+    "passed": true
+  }
+]

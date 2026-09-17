@@ -1,0 +1,45 @@
+test_doc_set (test_integrity.DeliveryTests.test_doc_set) ... FAIL
+test_pages (test_integrity.DeliveryTests.test_pages) ... FAIL
+test_tasks (test_integrity.DeliveryTests.test_tasks) ... FAIL
+test_tokens (test_integrity.DeliveryTests.test_tokens) ... FAIL
+
+======================================================================
+FAIL: test_doc_set (test_integrity.DeliveryTests.test_doc_set)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/WeKnora-Miniapp-Implementation-Kit/tests/test_integrity.py", line 27, in test_doc_set
+    self.assertTrue((R/'docs'/n).exists(),n)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : 01-前端详细设计.md
+
+======================================================================
+FAIL: test_pages (test_integrity.DeliveryTests.test_pages)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/WeKnora-Miniapp-Implementation-Kit/tests/test_integrity.py", line 6, in test_pages
+    p=R/'prototype/page-manifest.json';self.assertTrue(p.exists())
+                                       ~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_tasks (test_integrity.DeliveryTests.test_tasks)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/WeKnora-Miniapp-Implementation-Kit/tests/test_integrity.py", line 12, in test_tasks
+    p=R/'tasks/task-index.json';self.assertTrue(p.exists())
+                                ~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_tokens (test_integrity.DeliveryTests.test_tokens)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/WeKnora-Miniapp-Implementation-Kit/tests/test_integrity.py", line 10, in test_tokens
+    for n in ['tokens.json','tokens.css','_tokens.taro.scss','tokens.ts','components.html']:self.assertTrue((R/'design'/n).exists(),n)
+                                                                                            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : tokens.json
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=4)

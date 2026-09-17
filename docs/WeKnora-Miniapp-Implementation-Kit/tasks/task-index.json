@@ -1,0 +1,2306 @@
+[
+  {
+    "id": "MP00-T01-01",
+    "parent": "MP00-T01",
+    "stage": "MP00",
+    "title": "固定源码与差异台账",
+    "track": "BASE",
+    "role": "技术负责人",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "baseline",
+    "files": [
+      "N: docs/miniprogram/baseline.md",
+      "N: docs/miniprogram/source-diff.json"
+    ],
+    "produces": "固定commit、目录/接口E-A-N-V台账",
+    "steps": [
+      "取得只读工作副本并记录HEAD",
+      "对照上版24个源码索引",
+      "逐项记录路由、DTO、装配与依赖差异",
+      "冻结此次实施基线"
+    ],
+    "acceptance": [
+      "所有现有能力能定位固定源码",
+      "新增接口不标为已实现",
+      "阻断差异有负责人和对应任务"
+    ],
+    "dependencies": [],
+    "locks": [
+      "baseline"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 1
+  },
+  {
+    "id": "MP00-T01-02",
+    "parent": "MP00-T01",
+    "stage": "MP00",
+    "title": "Taro工作区与版本矩阵",
+    "track": "BASE",
+    "role": "技术负责人",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.config",
+    "files": [
+      "N: apps/miniprogram/package.json",
+      "N: apps/miniprogram/config/index.ts",
+      "A: pnpm-workspace.yaml",
+      "A: pnpm-lock.yaml"
+    ],
+    "produces": "可编译最小工程与build/typecheck/test脚本",
+    "steps": [
+      "使用官方React模板锁定兼容组合",
+      "只新增小程序workspace",
+      "注册固定环境与最小页面",
+      "运行Web/Expo回归和Taro启动实验"
+    ],
+    "acceptance": [
+      "全部@tarojs包补丁一致",
+      "不整体降级Web/Expo",
+      "包中无AppSecret或租户API Key"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "workspace.root",
+      "mini.config"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP00-T01-03",
+    "parent": "MP00-T01",
+    "stage": "MP00",
+    "title": "真机流传输能力实验",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.probe",
+    "files": [
+      "N: apps/miniprogram/tests/device/transport-probe.ts",
+      "N: docs/miniprogram/device-probe.md"
+    ],
+    "produces": "HTTP状态、headers、chunk、abort能力矩阵",
+    "steps": [
+      "准备SSE和401/403测试响应",
+      "观察headers/status可得时点",
+      "分片发送中文emoji并取消请求",
+      "锁定真实元信息扩展或有界降级方案"
+    ],
+    "acceptance": [
+      "不伪造HTTP200",
+      "401正文不变成模型输出",
+      "首事件前后重试行为分开验证"
+    ],
+    "dependencies": [
+      "MP00-T01-02"
+    ],
+    "locks": [
+      "mini.probe",
+      "sdk.ports"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 3
+  },
+  {
+    "id": "MP00-T01-04",
+    "parent": "MP00-T01",
+    "stage": "MP00",
+    "title": "共享导出与依赖边界",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "shared.exports",
+    "files": [
+      "A: packages/api-client/package.json",
+      "A: packages/domain/package.json",
+      "N: apps/miniprogram/tests/boundary.test.ts"
+    ],
+    "produces": "允许导入清单与包体基线",
+    "steps": [
+      "扫描DOM/RN全局与副作用",
+      "补必要深路径导出",
+      "阻止大barrel导入",
+      "生成主包/分包依赖报告"
+    ],
+    "acceptance": [
+      "小程序无Radix/RN运行节点",
+      "domain不依赖Taro",
+      "可定位每个大依赖来源"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "shared.exports"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP00-T02-01",
+    "parent": "MP00-T02",
+    "stage": "MP00",
+    "title": "身份、成员与资源授权核查",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "auth.audit",
+    "files": [
+      "A: internal/middleware/auth.go",
+      "A: internal/router/routes_auth_tenant.go",
+      "N: internal/handler/mini_auth_scope_test.go"
+    ],
+    "produces": "tenantless与owner权限测试矩阵",
+    "steps": [
+      "核对匿名/tenantless入口",
+      "创建双租户三用户测试数据",
+      "校验成员、角色、资源所有者",
+      "冻结403与TENANT_REQUIRED映射"
+    ],
+    "acceptance": [
+      "伪造tenant不能授权",
+      "Owner不默认看到他人私有任务",
+      "无空间用户可走me/邀请/创建"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "auth.audit"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP00-T02-02",
+    "parent": "MP00-T02",
+    "stage": "MP00",
+    "title": "支付回调鉴权接线核验",
+    "track": "PAY",
+    "role": "商业化工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "payment.callback",
+    "files": [
+      "A: internal/router/routes_commercial.go",
+      "A: internal/middleware/auth.go",
+      "N: internal/router/mini_callback_auth_test.go"
+    ],
+    "produces": "最小公开回调入口与真实Router测试",
+    "steps": [
+      "构造无JWT合法签名回调",
+      "构造伪签名和普通商业写请求",
+      "仅修精确公开路径",
+      "回归provider验签和普通API鉴权"
+    ],
+    "acceptance": [
+      "合法签名到达处理器",
+      "伪签名无账务副作用",
+      "不开放整个commercial路由"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "router.root",
+      "auth.middleware",
+      "payment.callback"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP00-T02-03",
+    "parent": "MP00-T02",
+    "stage": "MP00",
+    "title": "支付资格与商品分类门禁",
+    "track": "OPS",
+    "role": "发布/运营负责人",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "payment.qualification",
+    "files": [
+      "N: docs/miniprogram/payment-qualification.md",
+      "N: docs/miniprogram/channel-decision.json"
+    ],
+    "produces": "逐商品逐终端的通道可用矩阵",
+    "steps": [
+      "收集真实主体和商品描述",
+      "核对官方规则与后台开通状态",
+      "记录审核证据和复核日期",
+      "未核验通道保持关闭"
+    ],
+    "acceptance": [
+      "未获准不能调起购买",
+      "无外部跳转绕过限制",
+      "Native二维码不被当作小程序支付"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "payment.qualification"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP01-T01-01",
+    "parent": "MP01-T01",
+    "stage": "MP01",
+    "title": "设计令牌与构建生成",
+    "track": "DESIGN",
+    "role": "设计系统工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "design.tokens",
+    "files": [
+      "N: packages/design-tokens/src/miniapp.tokens.json",
+      "N: packages/design-tokens/scripts/build-miniapp-tokens.ts",
+      "N: apps/miniprogram/src/styles/_tokens.scss"
+    ],
+    "produces": "106个令牌及CSS/SCSS/TS同源输出",
+    "steps": [
+      "导入本交付token源",
+      "解析别名并验证无环",
+      "逻辑375到750输入尺寸单次换算",
+      "生成组件基线及对比度结果"
+    ],
+    "acceptance": [
+      "16逻辑px只转为32设计px",
+      "安全区运行值不翻倍",
+      "主要文字/状态组合达到项目对比度目标"
+    ],
+    "dependencies": [
+      "MP00-T01-01"
+    ],
+    "locks": [
+      "design.tokens"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 2
+  },
+  {
+    "id": "MP01-T01-02",
+    "parent": "MP01-T01",
+    "stage": "MP01",
+    "title": "基础组件与状态样式",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.primitives",
+    "files": [
+      "N: apps/miniprogram/src/components/primitives/Button.tsx",
+      "N: apps/miniprogram/src/components/primitives/FormField.tsx",
+      "N: apps/miniprogram/src/components/primitives/StatusBadge.tsx"
+    ],
+    "produces": "Button/Field/Badge/Notice/EmptyState",
+    "steps": [
+      "先写默认禁用加载错误用例",
+      "用Taro原生节点实现",
+      "补label与操作反馈",
+      "处理长中文及字号变化"
+    ],
+    "acceptance": [
+      "禁用按钮不触发操作",
+      "状态含文字及图形",
+      "组件中无wx.request或DOM依赖"
+    ],
+    "dependencies": [
+      "MP01-T01-01",
+      "MP00-T01-02"
+    ],
+    "locks": [
+      "mini.primitives"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 3
+  },
+  {
+    "id": "MP01-T01-03",
+    "parent": "MP01-T01",
+    "stage": "MP01",
+    "title": "四Tab、导航与安全区",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.layout",
+    "files": [
+      "N: apps/miniprogram/src/app.config.ts",
+      "N: apps/miniprogram/src/components/layout/MiniNav.tsx",
+      "N: apps/miniprogram/src/platform/metrics.ts",
+      "N: apps/miniprogram/src/custom-tab-bar/index.tsx"
+    ],
+    "produces": "MiniNav/AppFrame/SafeBottom",
+    "steps": [
+      "登记四Tab与业务分包",
+      "读取真实胶囊/窗口尺寸",
+      "区分页面滚动和固定操作区",
+      "校验键盘与前后台布局"
+    ],
+    "acceptance": [
+      "业务操作不覆盖胶囊",
+      "聊天无Tab重叠",
+      "320到430宽度无横向溢出"
+    ],
+    "dependencies": [
+      "MP01-T01-02",
+      "MP00-T01-02"
+    ],
+    "locks": [
+      "mini.navigation",
+      "mini.layout"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP01-T01-04",
+    "parent": "MP01-T01",
+    "stage": "MP01",
+    "title": "路由守卫与六类异常",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.guards",
+    "files": [
+      "N: apps/miniprogram/src/platform/navigation.ts",
+      "N: apps/miniprogram/src/features/system/capability.ts",
+      "N: apps/miniprogram/src/subpackages/system/pages/state/index.tsx"
+    ],
+    "produces": "resolveEntry/guardCapability/errorToState",
+    "steps": [
+      "建立六类异常输入输出",
+      "依次校验登录租户能力",
+      "保存白名单返回目标",
+      "恢复动作不产生隐式写请求"
+    ],
+    "acceptance": [
+      "403不显示空数据",
+      "未装配不显示暂无任务",
+      "登录回跳不允许任意URL"
+    ],
+    "dependencies": [
+      "MP01-T01-02",
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "mini.guards"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP01-T01-05",
+    "parent": "MP01-T01",
+    "stage": "MP01",
+    "title": "首页与Agent浏览",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.home",
+    "files": [
+      "N: apps/miniprogram/src/pages/home/index.tsx",
+      "N: apps/miniprogram/src/subpackages/agents/pages/list/index.tsx",
+      "N: apps/miniprogram/src/features/agents/view-model.ts"
+    ],
+    "produces": "P03/P04与AgentCard/AttentionCard",
+    "steps": [
+      "读取授权Agent和近期会话",
+      "实现意图草稿与搜索筛选",
+      "待办卡定位可处理资源",
+      "各卡片独立加载和降级"
+    ],
+    "acceptance": [
+      "不出现API Key配置表单",
+      "意图先确认再执行",
+      "单卡错误不拖垮整页"
+    ],
+    "dependencies": [
+      "MP01-T01-03",
+      "MP01-T01-04",
+      "MP01-T02-01"
+    ],
+    "locks": [
+      "mini.home",
+      "mini.agents"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 5
+  },
+  {
+    "id": "MP01-T02-01",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "普通HTTP适配",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.http",
+    "files": [
+      "N: apps/miniprogram/src/platform/http.ts",
+      "N: apps/miniprogram/tests/platform/http.test.ts"
+    ],
+    "produces": "createMiniHttpTransport().send",
+    "steps": [
+      "覆盖JSON与字符串body",
+      "归一header与ApiError",
+      "映射timeout/AbortSignal",
+      "仅明确幂等读取允许自动重试"
+    ],
+    "acceptance": [
+      "非2xx不丢错误码",
+      "普通POST不自动重放",
+      "取消只影响当前请求"
+    ],
+    "dependencies": [
+      "MP00-T01-03",
+      "MP00-T01-04"
+    ],
+    "locks": [
+      "mini.http"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP01-T02-02",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "SSE跨块分帧修复",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "sdk.chat.parser",
+    "files": [
+      "A: packages/api-client/src/chat/stream.ts",
+      "N: packages/api-client/src/chat/stream.boundary.test.ts"
+    ],
+    "produces": "跨chunk一致的SSE parser",
+    "steps": [
+      "先复现CR与LF拆块错误",
+      "保留pendingCR与行缓存",
+      "覆盖多data/注释/空id/EOF",
+      "任意字节分片回归两类消费者"
+    ],
+    "acceptance": [
+      "分片方式不改变事件序列",
+      "中文emoji无乱码",
+      "心跳不生成业务消息"
+    ],
+    "dependencies": [
+      "MP00-T01-04"
+    ],
+    "locks": [
+      "sdk.chat.parser"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 3
+  },
+  {
+    "id": "MP01-T02-03",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "流式端口与生命周期",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.stream",
+    "files": [
+      "N: apps/miniprogram/src/platform/stream.ts",
+      "N: apps/miniprogram/src/platform/utf8.ts",
+      "A: packages/api-client/src/ports.ts"
+    ],
+    "produces": "sendStream和可验证元信息",
+    "steps": [
+      "实现增量解码与有界队列",
+      "绑定headers/chunk/fail/complete",
+      "绑定abort并彻底释放监听",
+      "非SSE和未知状态走明确错误路径"
+    ],
+    "acceptance": [
+      "首帧无需等待连接结束",
+      "缓冲溢出停止并提示恢复",
+      "onHide不发送cancel任务命令"
+    ],
+    "dependencies": [
+      "MP00-T01-03",
+      "MP01-T02-02"
+    ],
+    "locks": [
+      "sdk.ports",
+      "mini.stream"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP01-T02-04",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "NativeFile上传提前分流",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.files",
+    "files": [
+      "A: packages/api-client/src/client.ts",
+      "N: apps/miniprogram/src/platform/files.ts",
+      "N: apps/miniprogram/tests/platform/files.test.ts"
+    ],
+    "produces": "native multipart/binary下载适配",
+    "steps": [
+      "先写无FormData环境失败测试",
+      "native分支前移",
+      "映射filePath/formname/进度",
+      "封装授权下载与临时文件预览"
+    ],
+    "acceptance": [
+      "原生分支不构造FormData",
+      "Web上传回归通过",
+      "无权文件不进入系统预览"
+    ],
+    "dependencies": [
+      "MP01-T02-01",
+      "MP00-T01-04"
+    ],
+    "locks": [
+      "sdk.client",
+      "mini.files"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 5
+  },
+  {
+    "id": "MP01-T02-05",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "凭证与刷新单飞",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.credentials",
+    "files": [
+      "N: apps/miniprogram/src/platform/credentials.ts",
+      "N: apps/miniprogram/src/platform/refresh.ts",
+      "N: apps/miniprogram/tests/platform/refresh.test.ts"
+    ],
+    "produces": "CredentialAdapter和refresh coordinator",
+    "steps": [
+      "建立唯一凭证读写入口",
+      "同scope并发刷新single-flight",
+      "刷新失败清理并触发重新登录",
+      "脱敏日志并限制存储范围"
+    ],
+    "acceptance": [
+      "并发401只刷新一次",
+      "旧scope刷新不能覆盖新token",
+      "日志无token/session_key/AppSecret"
+    ],
+    "dependencies": [
+      "MP01-T02-01",
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "mini.credentials"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 5
+  },
+  {
+    "id": "MP01-T02-06",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "原子切租户与旧回包隔离",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.scope",
+    "files": [
+      "N: apps/miniprogram/src/platform/scope.ts",
+      "N: apps/miniprogram/tests/platform/scope.test.ts"
+    ],
+    "produces": "ScopeCoordinator.switchTenant",
+    "steps": [
+      "冻结写请求并结束旧订阅",
+      "请求现有switch-tenant",
+      "原子安装token/scope并递增generation",
+      "失败回滚并恢复旧合法视图"
+    ],
+    "acceptance": [
+      "旧流和旧回包不能落到新空间",
+      "失败不丢原空间",
+      "缓存键包含origin/user/tenant"
+    ],
+    "dependencies": [
+      "MP01-T02-03",
+      "MP01-T02-05"
+    ],
+    "locks": [
+      "mini.scope"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 6
+  },
+  {
+    "id": "MP01-T02-07",
+    "parent": "MP01-T02",
+    "stage": "MP01",
+    "title": "有界缓存与待确认意图存储",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.storage",
+    "files": [
+      "N: apps/miniprogram/src/platform/storage.ts",
+      "N: apps/miniprogram/src/features/execution/intent-store.ts"
+    ],
+    "produces": "ScopedStore与PendingIntentStore",
+    "steps": [
+      "定义存储记录schema和TTL",
+      "验证容量与写入结果",
+      "发送前保存request_id及scope摘要",
+      "退出撤权过期均可清理"
+    ],
+    "acceptance": [
+      "存储失败不声称可恢复",
+      "缓存不含永久下载地址",
+      "不同用户租户键不碰撞"
+    ],
+    "dependencies": [
+      "MP01-T02-06"
+    ],
+    "locks": [
+      "mini.storage"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 7
+  },
+  {
+    "id": "MP01-T03-01",
+    "parent": "MP01-T03",
+    "stage": "MP01",
+    "title": "微信外部身份唯一性",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "identity.schema",
+    "files": [
+      "N: internal/identity/wechat_identity.go",
+      "N: migrations/mini_external_identity.sql",
+      "N: internal/identity/wechat_identity_test.go"
+    ],
+    "produces": "ExternalIdentity repository与唯一索引",
+    "steps": [
+      "优先扩展现有provider模型",
+      "定义appid/openid/user唯一性",
+      "测试并发插入绑定冲突",
+      "设计可回滚迁移与审计字段"
+    ],
+    "acceptance": [
+      "同openid不能绑定两个用户",
+      "无unionid仍可登录",
+      "session_key不明文存身份表"
+    ],
+    "dependencies": [
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "identity.schema",
+      "migrations.identity"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 3
+  },
+  {
+    "id": "MP01-T03-02",
+    "parent": "MP01-T03",
+    "stage": "MP01",
+    "title": "微信code登录桥接",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "auth.wechat",
+    "files": [
+      "N: internal/handler/auth_wechat_mini.go",
+      "A: internal/router/routes_auth_tenant.go",
+      "N: internal/handler/auth_wechat_mini_test.go"
+    ],
+    "produces": "POST auth/wechat/mini/login",
+    "steps": [
+      "限流并固定服务端appid配置",
+      "用code交换真实微信身份",
+      "复用平台用户与token签发服务",
+      "返回登录态或短期绑定挑战"
+    ],
+    "acceptance": [
+      "客户端自报openid不可信",
+      "无空间返回tenant-required",
+      "微信机密不进入客户端响应"
+    ],
+    "dependencies": [
+      "MP01-T03-01",
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "auth.wechat",
+      "router.auth"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP01-T03-03",
+    "parent": "MP01-T03",
+    "stage": "MP01",
+    "title": "双侧验证账号绑定",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "auth.binding",
+    "files": [
+      "N: internal/handler/auth_wechat_bind.go",
+      "N: internal/identity/binding_challenge.go",
+      "N: internal/handler/auth_wechat_bind_test.go"
+    ],
+    "produces": "一次性绑定挑战消费与冲突响应",
+    "steps": [
+      "挑战绑定微信subject及有效期",
+      "校验平台已有登录或近期证明",
+      "事务写入唯一身份映射",
+      "消费挑战并记录脱敏审计"
+    ],
+    "acceptance": [
+      "不能凭同邮箱自动合并",
+      "挑战重放不能二次绑定",
+      "并发冲突不改变原账号归属"
+    ],
+    "dependencies": [
+      "MP01-T03-01",
+      "MP01-T03-02"
+    ],
+    "locks": [
+      "auth.binding"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 5
+  },
+  {
+    "id": "MP01-T03-04",
+    "parent": "MP01-T03",
+    "stage": "MP01",
+    "title": "登录绑定和空间选择UI",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.auth",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/auth/pages/login/index.tsx",
+      "N: apps/miniprogram/src/subpackages/auth/pages/workspace/index.tsx",
+      "N: apps/miniprogram/src/features/auth/controller.ts"
+    ],
+    "produces": "P01/P02与AuthStateMachine",
+    "steps": [
+      "接协议阅读与主动登录",
+      "分流已绑定/需绑定/tenantless",
+      "读取真实membership列表",
+      "显式选择并进入空间"
+    ],
+    "acceptance": [
+      "不强制手机号作为登录前提",
+      "无任意origin输入",
+      "切换失败保持原合法空间"
+    ],
+    "dependencies": [
+      "MP01-T01-03",
+      "MP01-T03-02",
+      "MP01-T03-03",
+      "MP01-T02-06"
+    ],
+    "locks": [
+      "mini.auth"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 7
+  },
+  {
+    "id": "MP01-T03-05",
+    "parent": "MP01-T03",
+    "stage": "MP01",
+    "title": "邀请接受与加入",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.invitations",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/account/pages/invitations/index.tsx",
+      "N: apps/miniprogram/src/features/invitations/controller.ts"
+    ],
+    "produces": "P19与邀请状态流",
+    "steps": [
+      "读取本人邀请",
+      "匿名先登录再校验token",
+      "接受拒绝均确认当前身份",
+      "刷新membership后让用户选空间"
+    ],
+    "acceptance": [
+      "过期撤销邀请不可接受",
+      "他人邀请不可操作",
+      "接受不自动授权私有任务"
+    ],
+    "dependencies": [
+      "MP01-T03-04",
+      "MP01-T01-04"
+    ],
+    "locks": [
+      "mini.invitations"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP02-T01-01",
+    "parent": "MP02-T01",
+    "stage": "MP02",
+    "title": "普通聊天用例控制器",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.chat.domain",
+    "files": [
+      "N: apps/miniprogram/src/features/chat/controller.ts",
+      "N: apps/miniprogram/src/features/chat/view-model.ts"
+    ],
+    "produces": "ChatViewModel与send/stop",
+    "steps": [
+      "读取session及消息分页",
+      "分开知识/Agent聊天协议",
+      "投影文本引用和脱敏工具摘要",
+      "中断消息明确标记未完成"
+    ],
+    "acceptance": [
+      "不隐式重复POST",
+      "旧scope消息不写新页",
+      "普通聊天不承诺durable恢复"
+    ],
+    "dependencies": [
+      "MP01-T02-03",
+      "MP01-T02-06"
+    ],
+    "locks": [
+      "mini.chat.domain"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 7
+  },
+  {
+    "id": "MP02-T01-02",
+    "parent": "MP02-T01",
+    "stage": "MP02",
+    "title": "对话渲染与引用卡",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.chat.ui",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/chat/pages/thread/index.tsx",
+      "N: apps/miniprogram/src/components/chat/AssistantMessage.tsx",
+      "N: apps/miniprogram/src/components/chat/CitationCard.tsx"
+    ],
+    "produces": "P06与受限Markdown渲染",
+    "steps": [
+      "流阶段节流更新轻文本",
+      "完成后受限节点格式化",
+      "引用跳内部授权资源",
+      "长对话分页保持锚点"
+    ],
+    "acceptance": [
+      "不执行模型HTML/JS",
+      "不显示私有推理或秘密工具参数",
+      "阅读历史时不强制跳底"
+    ],
+    "dependencies": [
+      "MP02-T01-01",
+      "MP01-T01-02"
+    ],
+    "locks": [
+      "mini.chat.ui"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP02-T01-03",
+    "parent": "MP02-T01",
+    "stage": "MP02",
+    "title": "临时附件历史与键盘输入",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.chat.composer",
+    "files": [
+      "N: apps/miniprogram/src/components/chat/ChatComposer.tsx",
+      "N: apps/miniprogram/src/features/chat/attachments.ts",
+      "N: apps/miniprogram/src/features/chat/history.ts"
+    ],
+    "produces": "附件状态与历史选择器",
+    "steps": [
+      "按session上传临时附件",
+      "显示失败进度和移除",
+      "切会话处理草稿与附件归属",
+      "真机检查键盘与安全区"
+    ],
+    "acceptance": [
+      "临时附件不自动入库",
+      "不同session不串附件",
+      "停止输出不等于取消任务"
+    ],
+    "dependencies": [
+      "MP02-T01-01",
+      "MP01-T02-04",
+      "MP01-T01-03"
+    ],
+    "locks": [
+      "mini.chat.composer"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP02-T01-04",
+    "parent": "MP02-T01",
+    "stage": "MP02",
+    "title": "聊天弱网安全回归",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.chat",
+    "files": [
+      "N: apps/miniprogram/tests/chat/chat.integration.test.ts",
+      "N: docs/miniprogram/evidence/chat.md"
+    ],
+    "produces": "流中断与撤权证据",
+    "steps": [
+      "使用中文emoji多行响应",
+      "首帧前后注入断网和401",
+      "撤销引用/会话权限重入",
+      "检查请求计数和监听释放"
+    ],
+    "acceptance": [
+      "无乱码重复消息",
+      "引用撤权不读旧缓存",
+      "未发生隐式第二次模型调用"
+    ],
+    "dependencies": [
+      "MP02-T01-02",
+      "MP02-T01-03"
+    ],
+    "locks": [
+      "qa.chat"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 9
+  },
+  {
+    "id": "MP02-T02-01",
+    "parent": "MP02-T02",
+    "stage": "MP02",
+    "title": "知识库文档列表与权限",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.knowledge.list",
+    "files": [
+      "N: apps/miniprogram/src/pages/knowledge/index.tsx",
+      "N: apps/miniprogram/src/subpackages/documents/pages/kb/index.tsx",
+      "N: apps/miniprogram/src/features/knowledge/list.ts"
+    ],
+    "produces": "P11/P12与KnowledgeViewModel",
+    "steps": [
+      "按scope读取库和文档",
+      "映射我的空间共享筛选",
+      "基于capabilities显示操作",
+      "缓存带时点且不可作授权真值"
+    ],
+    "acceptance": [
+      "共享只读无上传入口",
+      "接口错误不显示空库",
+      "分页搜索保留scope"
+    ],
+    "dependencies": [
+      "MP01-T02-01",
+      "MP01-T02-06",
+      "MP01-T01-03"
+    ],
+    "locks": [
+      "mini.knowledge.list"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 7
+  },
+  {
+    "id": "MP02-T02-02",
+    "parent": "MP02-T02",
+    "stage": "MP02",
+    "title": "文件与URL知识导入",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.knowledge.import",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/documents/pages/import/index.tsx",
+      "N: apps/miniprogram/src/features/knowledge/import.ts"
+    ],
+    "produces": "P13与UploadStateMachine",
+    "steps": [
+      "展示目标及授权",
+      "校验允许类型和地址格式",
+      "复用upload/import记录knowledge_id",
+      "未知结果按既有幂等约定对账"
+    ],
+    "acceptance": [
+      "上传成功不等于ready",
+      "不偷偷再建重复条目",
+      "服务端最终防护URL抓取"
+    ],
+    "dependencies": [
+      "MP02-T02-01",
+      "MP01-T02-04"
+    ],
+    "locks": [
+      "mini.knowledge.import"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP02-T02-03",
+    "parent": "MP02-T02",
+    "stage": "MP02",
+    "title": "解析状态与重入刷新",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.knowledge.processing",
+    "files": [
+      "N: apps/miniprogram/src/features/knowledge/processing.ts",
+      "N: apps/miniprogram/tests/knowledge/processing.test.ts"
+    ],
+    "produces": "ParsingStateMapper与前台轮询",
+    "steps": [
+      "映射真实处理枚举",
+      "前台可见列表有界轮询",
+      "隐藏停止回前台重读",
+      "失败提示真实原因和授权重试"
+    ],
+    "acceptance": [
+      "退出页面不重新上传",
+      "ready只由服务器确认",
+      "换空间释放旧轮询"
+    ],
+    "dependencies": [
+      "MP02-T02-02",
+      "MP01-T02-06"
+    ],
+    "locks": [
+      "mini.knowledge.processing"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 9
+  },
+  {
+    "id": "MP02-T02-04",
+    "parent": "MP02-T02",
+    "stage": "MP02",
+    "title": "引用定位与受控预览",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.knowledge.preview",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/documents/pages/detail/index.tsx",
+      "N: apps/miniprogram/src/features/knowledge/reference.ts"
+    ],
+    "produces": "P14与AuthorizedDocumentPreview",
+    "steps": [
+      "校验内部doc/reference参数",
+      "重读授权原文及位置",
+      "展示真实来源或位置缺失",
+      "获准文件调用系统预览"
+    ],
+    "acceptance": [
+      "不伪造页码",
+      "撤权不以缓存绕过",
+      "模型URL不直接当可信下载"
+    ],
+    "dependencies": [
+      "MP02-T02-01",
+      "MP01-T02-04"
+    ],
+    "locks": [
+      "mini.knowledge.preview"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP03-T01-01",
+    "parent": "MP03-T01",
+    "stage": "MP03",
+    "title": "本人任务读模型与索引",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "go.execution.query",
+    "files": [
+      "N: internal/application/workbench/list_executions.go",
+      "N: internal/infrastructure/repository/execution_list.go",
+      "N: migrations/mini_execution_list_index.sql"
+    ],
+    "produces": "ListOwnedExecutions和稳定游标",
+    "steps": [
+      "从现有任务投影摘要",
+      "以created_at加id稳定排序",
+      "按当前tenant和owner过滤",
+      "校验查询计划和跨scope游标"
+    ],
+    "acceptance": [
+      "不信任前端owner参数",
+      "相同时间无漏项重复",
+      "不以updated_at可变排序制造漂移"
+    ],
+    "dependencies": [
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "go.execution.query",
+      "migrations.execution"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 3
+  },
+  {
+    "id": "MP03-T01-02",
+    "parent": "MP03-T01",
+    "stage": "MP03",
+    "title": "任务列表API与客户端契约",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "go.execution.list",
+    "files": [
+      "N: internal/handler/workbench_list.go",
+      "A: internal/router/routes_workbench.go",
+      "N: packages/contracts/src/miniprogram/execution-list.ts",
+      "N: packages/api-client/src/miniprogram/execution-list.ts"
+    ],
+    "produces": "GET workbench/executions及TaskPage",
+    "steps": [
+      "定义cursor/status/limit校验",
+      "调用查询与现有权限服务",
+      "校验响应schema并新增client",
+      "覆盖分页错误和兼容样例"
+    ],
+    "acceptance": [
+      "新字段不冒充旧ExecutionDTO",
+      "limit有上限",
+      "统计列表权限范围一致"
+    ],
+    "dependencies": [
+      "MP03-T01-01",
+      "MP00-T01-04"
+    ],
+    "locks": [
+      "go.execution.list",
+      "contracts.mini",
+      "sdk.mini"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP03-T01-03",
+    "parent": "MP03-T01",
+    "stage": "MP03",
+    "title": "待办与能力聚合",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "go.inbox",
+    "files": [
+      "N: internal/handler/workbench_inbox.go",
+      "A: internal/router/deployment_capabilities.go",
+      "N: packages/contracts/src/miniprogram/capabilities.ts"
+    ],
+    "produces": "GET workbench/inbox与能力原因码",
+    "steps": [
+      "查询本人可处理交互",
+      "投影脱敏摘要及版本",
+      "组合部署租户权限终端能力",
+      "输出不可用原因并保留服务端校验"
+    ],
+    "acceptance": [
+      "不可审批者看不到敏感待办",
+      "未装配返回unavailable",
+      "能力声明不是写操作授权凭证"
+    ],
+    "dependencies": [
+      "MP03-T01-01",
+      "MP00-T02-01"
+    ],
+    "locks": [
+      "go.inbox",
+      "capabilities",
+      "contracts.mini"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 4
+  },
+  {
+    "id": "MP03-T01-04",
+    "parent": "MP03-T01",
+    "stage": "MP03",
+    "title": "授权启动选项与预算单位",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "go.launch",
+    "files": [
+      "N: internal/handler/workbench_launch_options.go",
+      "N: packages/contracts/src/miniprogram/launch-options.ts",
+      "N: packages/api-client/src/miniprogram/launch-options.ts"
+    ],
+    "produces": "GET workbench/launch-options?agent_id=",
+    "steps": [
+      "解析授权Agent",
+      "返回target/workspace组合及时点",
+      "锁定budget显示单位和换算",
+      "提交时再次校验选项有效性"
+    ],
+    "acceptance": [
+      "任填target不能获权",
+      "积分换算有精确合同测试",
+      "选项失效不能静默换执行目标"
+    ],
+    "dependencies": [
+      "MP00-T02-01",
+      "MP03-T01-02"
+    ],
+    "locks": [
+      "go.launch",
+      "contracts.mini",
+      "sdk.mini"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 5
+  },
+  {
+    "id": "MP03-T02-01",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "一次业务意图发起与对账",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.launch",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/agents/pages/detail/index.tsx",
+      "N: apps/miniprogram/src/features/execution/launch.ts"
+    ],
+    "produces": "P05和LaunchStateMachine",
+    "steps": [
+      "用户确认后生成request_id",
+      "发送前持久化最小意图",
+      "提交现有StartExecutionInput",
+      "超时查询原request并使用同ID重试"
+    ],
+    "acceptance": [
+      "双击不生成两份意图",
+      "不私加attachment_ids",
+      "unknown不等于可以换ID"
+    ],
+    "dependencies": [
+      "MP03-T01-04",
+      "MP01-T02-07",
+      "MP01-T01-05"
+    ],
+    "locks": [
+      "mini.execution.launch"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP03-T02-02",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "快照安装与水位提交",
+    "track": "SDK",
+    "role": "共享SDK工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "domain.execution-cache",
+    "files": [
+      "A: packages/domain/src/mobile/execution-cache.ts",
+      "N: packages/domain/src/mobile/execution-cache.snapshot.test.ts"
+    ],
+    "produces": "installSnapshot与有序提交",
+    "steps": [
+      "核实watermark保留窗口语义",
+      "验证scope/run/schema后安装快照",
+      "投影与游标一条记录原子提交",
+      "测试重复gap未知schema与存储失败"
+    ],
+    "acceptance": [
+      "不可对空缓存直接commit大于1序号",
+      "游标不先于投影",
+      "未知schema停流并同步"
+    ],
+    "dependencies": [
+      "MP00-T01-04",
+      "MP01-T02-07",
+      "MP03-T01-02"
+    ],
+    "locks": [
+      "domain.execution-cache"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP03-T02-03",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "前后台恢复同一执行",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.recovery",
+    "files": [
+      "N: apps/miniprogram/src/features/execution/recovery.ts",
+      "N: apps/miniprogram/src/platform/lifecycle.ts"
+    ],
+    "produces": "ExecutionRecoveryController",
+    "steps": [
+      "进入页先快照后流",
+      "隐藏断开订阅保存最小状态",
+      "回前台按原run恢复",
+      "gap/过期游标回快照并有界降级"
+    ],
+    "acceptance": [
+      "恢复不调用startExecution",
+      "列表卡片不各开长流",
+      "连接状态和任务状态分离"
+    ],
+    "dependencies": [
+      "MP03-T02-02",
+      "MP01-T02-03",
+      "MP01-T02-06"
+    ],
+    "locks": [
+      "mini.execution.recovery"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 9
+  },
+  {
+    "id": "MP03-T02-04",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "任务中心与详情页面",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.ui",
+    "files": [
+      "N: apps/miniprogram/src/pages/tasks/index.tsx",
+      "N: apps/miniprogram/src/subpackages/execution/pages/detail/index.tsx",
+      "N: apps/miniprogram/src/components/execution/Timeline.tsx"
+    ],
+    "produces": "P07/P08与TaskCard/Timeline",
+    "steps": [
+      "列表分页筛选前台刷新",
+      "渲染脱敏执行步骤",
+      "独立显示连接执行结算",
+      "按单run capabilities开放操作"
+    ],
+    "acceptance": [
+      "不编造AI进度百分比",
+      "缓存状态有时点",
+      "未开通无权空态区分"
+    ],
+    "dependencies": [
+      "MP03-T01-02",
+      "MP03-T01-03",
+      "MP03-T02-03",
+      "MP01-T01-03"
+    ],
+    "locks": [
+      "mini.execution.ui"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 10
+  },
+  {
+    "id": "MP03-T02-05",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "一次审批与版本冲突",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.decisions",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/execution/pages/approval/index.tsx",
+      "N: apps/miniprogram/src/features/execution/decisions.ts"
+    ],
+    "produces": "P09和DecisionController",
+    "steps": [
+      "展示动作对象与影响",
+      "确认前核对有效性版本",
+      "按真实decision类型提交",
+      "冲突刷新并禁止旧决定"
+    ],
+    "acceptance": [
+      "无永久允许默认项",
+      "双击或他端处理不重复写入",
+      "充值不自动批准外部动作"
+    ],
+    "dependencies": [
+      "MP03-T01-03",
+      "MP03-T02-04"
+    ],
+    "locks": [
+      "mini.execution.decisions"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP03-T02-06",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "取消与追加指令",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.commands",
+    "files": [
+      "N: apps/miniprogram/src/features/execution/commands.ts",
+      "N: apps/miniprogram/src/components/execution/CommandSheet.tsx"
+    ],
+    "produces": "sendCancel/sendSteer",
+    "steps": [
+      "确认取消不撤销既有副作用",
+      "校验steer并带当前revision",
+      "409刷新后重新由用户确认",
+      "仅合法非终态开放命令"
+    ],
+    "acceptance": [
+      "onHide不发送cancel",
+      "终态不重发命令",
+      "冲突不能自动带新版本重试危险动作"
+    ],
+    "dependencies": [
+      "MP03-T02-04"
+    ],
+    "locks": [
+      "mini.execution.commands"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP03-T02-07",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "任务产物安全预览",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.execution.artifacts",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/execution/pages/artifact/index.tsx",
+      "N: apps/miniprogram/src/features/execution/artifacts.ts"
+    ],
+    "produces": "P10与SafeArtifactViewer",
+    "steps": [
+      "核实run到session/message产物关联",
+      "限制可渲染类型",
+      "下载前重新鉴权",
+      "清除临时文件及过期地址"
+    ],
+    "acceptance": [
+      "生成HTML不运行",
+      "不同租户产物被拒",
+      "无永久公开下载缓存"
+    ],
+    "dependencies": [
+      "MP01-T02-04",
+      "MP03-T02-04"
+    ],
+    "locks": [
+      "mini.execution.artifacts"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP03-T02-08",
+    "parent": "MP03-T02",
+    "stage": "MP03",
+    "title": "恢复、审批与幂等集成验收",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.execution",
+    "files": [
+      "N: apps/miniprogram/tests/execution/recovery.integration.test.ts",
+      "N: internal/handler/mini_execution_security_test.go",
+      "N: docs/miniprogram/evidence/execution.md"
+    ],
+    "produces": "服务端证明同意图同run的证据",
+    "steps": [
+      "提交响应丢失后杀进程重入",
+      "注入重复gap与快照变化",
+      "另一设备处理同一审批",
+      "检查外部工具及用量ledger次数"
+    ],
+    "acceptance": [
+      "同request只对应同run",
+      "冲突不重复执行外部写",
+      "取消和结算各自正确"
+    ],
+    "dependencies": [
+      "MP03-T02-01",
+      "MP03-T02-05",
+      "MP03-T02-06",
+      "MP03-T02-07"
+    ],
+    "locks": [
+      "qa.execution"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 12
+  },
+  {
+    "id": "MP04-T01-01",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "商业摘要与套餐只读页",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.commercial.read",
+    "files": [
+      "N: apps/miniprogram/src/pages/me/index.tsx",
+      "N: apps/miniprogram/src/subpackages/account/pages/usage/index.tsx",
+      "N: apps/miniprogram/src/features/commercial/view-model.ts"
+    ],
+    "produces": "P15/P16与BalanceDisplay",
+    "steps": [
+      "按权限读取summary/plans/usage",
+      "金额字符串确定性格式化",
+      "分开展示available/held/refund_locked",
+      "无购买权限保持只读"
+    ],
+    "acceptance": [
+      "stale与as_of可见",
+      "预占不被当可用余额",
+      "示例价格不进入生产常量"
+    ],
+    "dependencies": [
+      "MP01-T02-01",
+      "MP01-T02-06",
+      "MP01-T01-03"
+    ],
+    "locks": [
+      "mini.commercial.read"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 7
+  },
+  {
+    "id": "MP04-T01-02",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "通道能力与严格支付契约",
+    "track": "PAY",
+    "role": "商业化工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "payment.policy",
+    "files": [
+      "N: internal/payment/mini_checkout_policy.go",
+      "N: packages/contracts/src/miniprogram/checkout.ts",
+      "N: packages/api-client/src/miniprogram/checkout.ts"
+    ],
+    "produces": "CheckoutAvailability与获准渠道DTO",
+    "steps": [
+      "组合商品终端主体权限",
+      "默认unavailable并提供原因",
+      "仅注册经核验渠道精确参数",
+      "兼容旧Native/Web消费者"
+    ],
+    "acceptance": [
+      "未核验前后端均拒买",
+      "没有any强转执行载荷",
+      "旧订单契约仍可读"
+    ],
+    "dependencies": [
+      "MP00-T02-03",
+      "MP04-T01-01"
+    ],
+    "locks": [
+      "payment.policy",
+      "contracts.checkout",
+      "sdk.checkout"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 8
+  },
+  {
+    "id": "MP04-T01-03",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "获准微信渠道服务端适配",
+    "track": "PAY",
+    "role": "商业化工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "payment.mini-provider",
+    "files": [
+      "N: internal/payment/wechat_mini_provider.go",
+      "N: internal/payment/wechat_mini_provider_test.go"
+    ],
+    "produces": "经核验provider及参数校验器",
+    "steps": [
+      "从绑定身份取正确appid下openid",
+      "按获准通道下单并签名",
+      "保留业务订单与provider幂等关系",
+      "严格校验返回参数和签名一致性"
+    ],
+    "acceptance": [
+      "不拿code_url代替小程序参数",
+      "AppKey等机密不外泄",
+      "未知结果对账原订单"
+    ],
+    "dependencies": [
+      "MP04-T01-02",
+      "MP01-T03-02"
+    ],
+    "locks": [
+      "payment.mini-provider"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 9
+  },
+  {
+    "id": "MP04-T01-04",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "报价支付与订单状态页",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.commercial.checkout",
+    "files": [
+      "N: apps/miniprogram/src/subpackages/account/pages/checkout/index.tsx",
+      "N: apps/miniprogram/src/subpackages/account/pages/order/index.tsx",
+      "N: apps/miniprogram/src/platform/payment.ts"
+    ],
+    "produces": "P17/P18与PaymentAdapter",
+    "steps": [
+      "服务端报价确认空间金额有效期",
+      "quote_id和稳定幂等键下单",
+      "严格分发获准渠道参数",
+      "收银返回只查询原订单"
+    ],
+    "acceptance": [
+      "SDK成功不加余额",
+      "过期必须重报价",
+      "取消超时不自动再建单"
+    ],
+    "dependencies": [
+      "MP04-T01-02",
+      "MP04-T01-03",
+      "MP04-T01-01"
+    ],
+    "locks": [
+      "mini.commercial.checkout"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 10
+  },
+  {
+    "id": "MP04-T01-05",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "回调对账与幂等履约",
+    "track": "PAY",
+    "role": "商业化工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "commercial.fulfillment",
+    "files": [
+      "A: internal/router/routes_commercial.go",
+      "N: internal/payment/mini_reconcile_test.go",
+      "N: internal/commercial/mini_fulfillment_test.go"
+    ],
+    "produces": "回调/主动查单/履约一致性",
+    "steps": [
+      "校验订单金额币种和渠道身份",
+      "支付事实交现有订单服务",
+      "paid未履约保留并可靠重试",
+      "测试重复乱序回调退款回收"
+    ],
+    "acceptance": [
+      "重复通知只发一次权益",
+      "延迟回调可主动对账恢复",
+      "金额不符即使签名正确也不履约"
+    ],
+    "dependencies": [
+      "MP00-T02-02",
+      "MP04-T01-03"
+    ],
+    "locks": [
+      "payment.callback",
+      "commercial.fulfillment"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 10
+  },
+  {
+    "id": "MP04-T01-06",
+    "parent": "MP04-T01",
+    "stage": "MP04",
+    "title": "支付异常与旧渠道回归",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.payment",
+    "files": [
+      "N: apps/miniprogram/tests/commercial/payment.integration.test.ts",
+      "N: docs/miniprogram/evidence/payment-matrix.md"
+    ],
+    "produces": "支付负向矩阵与证据",
+    "steps": [
+      "无资格无权终端不支持",
+      "过期取消未知结果",
+      "延迟回调和履约失败恢复",
+      "重复通知退款后校验权益"
+    ],
+    "acceptance": [
+      "无资格不能真实收银",
+      "客户端不是权益真值",
+      "旧Web/Native无退化"
+    ],
+    "dependencies": [
+      "MP04-T01-04",
+      "MP04-T01-05"
+    ],
+    "locks": [
+      "qa.payment"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP04-T02-01",
+    "parent": "MP04-T02",
+    "stage": "MP04",
+    "title": "订阅授权与通知偏好",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.notifications",
+    "files": [
+      "N: apps/miniprogram/src/platform/notifications.ts",
+      "N: apps/miniprogram/src/features/notifications/preferences.ts"
+    ],
+    "produces": "最小授权记录与用户偏好",
+    "steps": [
+      "用户主动动作后请求订阅",
+      "区分允许拒绝失败",
+      "记录模板范围及有效语义",
+      "撤销过期不再假定可发送"
+    ],
+    "acceptance": [
+      "启动页不批量索权",
+      "拒绝不阻断执行",
+      "本地偏好不等于微信授权额度"
+    ],
+    "dependencies": [
+      "MP01-T03-04",
+      "MP03-T02-04"
+    ],
+    "locks": [
+      "mini.notifications"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP04-T02-02",
+    "parent": "MP04-T02",
+    "stage": "MP04",
+    "title": "去重出站通知投递",
+    "track": "BE",
+    "role": "Go后端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "go.notifications",
+    "files": [
+      "N: internal/notification/mini_dispatch.go",
+      "N: internal/notification/mini_outbox.go",
+      "N: internal/notification/mini_dispatch_test.go"
+    ],
+    "produces": "授权通知outbox与失败追踪",
+    "steps": [
+      "权威事件写现有可靠队列或outbox",
+      "用户租户事件模板版本去重",
+      "发送前重核授权和资源",
+      "失败按分类重试或关闭"
+    ],
+    "acceptance": [
+      "通知失败不回滚任务",
+      "重复事件不重复发送",
+      "正文不含敏感文档工具参数"
+    ],
+    "dependencies": [
+      "MP04-T02-01",
+      "MP03-T01-03"
+    ],
+    "locks": [
+      "go.notifications"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 12
+  },
+  {
+    "id": "MP04-T02-03",
+    "parent": "MP04-T02",
+    "stage": "MP04",
+    "title": "通知邀请深链安全回跳",
+    "track": "FE",
+    "role": "Taro前端工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "mini.deeplink",
+    "files": [
+      "N: apps/miniprogram/src/platform/deep-link.ts",
+      "N: apps/miniprogram/tests/platform/deep-link.test.ts"
+    ],
+    "produces": "parseEntryIntent/resolveEntryTarget",
+    "steps": [
+      "白名单解析内部资源目标",
+      "拒绝任意origin及脚本URL",
+      "登录后选择有权空间",
+      "服务端重新验证资源或邀请"
+    ],
+    "acceptance": [
+      "跨租户不先展示缓存",
+      "任意外部URL不进入路由",
+      "拒绝邀请不留授权"
+    ],
+    "dependencies": [
+      "MP01-T01-04",
+      "MP01-T03-05",
+      "MP03-T02-04"
+    ],
+    "locks": [
+      "mini.deeplink"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 11
+  },
+  {
+    "id": "MP04-T03-01",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "三端契约与构建回归",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.shared",
+    "files": [
+      "N: tests/miniprogram/shared-contract-regression.test.ts",
+      "N: .github/workflows/miniprogram-shared-regression.yml"
+    ],
+    "produces": "Web/Expo/Taro兼容报告",
+    "steps": [
+      "保留既有DTO回归样例",
+      "运行parser及两条上传分支",
+      "三端typecheck与构建",
+      "校验导出和可选字段兼容"
+    ],
+    "acceptance": [
+      "旧客户端可忽略新增字段",
+      "原上传流消费者不退化",
+      "CI命令对应真实脚本"
+    ],
+    "dependencies": [
+      "MP02-T01-04",
+      "MP02-T02-03",
+      "MP03-T02-08",
+      "MP04-T01-06"
+    ],
+    "locks": [
+      "qa.shared",
+      "ci.shared"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 13
+  },
+  {
+    "id": "MP04-T03-02",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "跨租户与秘密数据验收",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.security",
+    "files": [
+      "N: internal/handler/mini_security_matrix_test.go",
+      "N: docs/miniprogram/evidence/security.md"
+    ],
+    "produces": "接口级多租户安全矩阵",
+    "steps": [
+      "替换tenant/run/session/file/order ID",
+      "切空间延迟旧异步回包",
+      "扫描包日志缓存中的秘密",
+      "测试绑定重放撤权下载"
+    ],
+    "acceptance": [
+      "请求头不能自行授权",
+      "Owner不默认读私有资源",
+      "清缓存不是唯一安全控制"
+    ],
+    "dependencies": [
+      "MP03-T02-08",
+      "MP04-T01-06"
+    ],
+    "locks": [
+      "qa.security"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 13
+  },
+  {
+    "id": "MP04-T03-03",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "视觉还原和可访问性验收",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.visual",
+    "files": [
+      "N: apps/miniprogram/tests/visual/page-matrix.json",
+      "N: docs/miniprogram/evidence/visual.md"
+    ],
+    "produces": "20页真实Taro截图与差异清单",
+    "steps": [
+      "逐页正常和关键异常截图",
+      "320/375/390/430及大字体",
+      "测触点对比度截断安全区",
+      "核对token与危险按钮语义"
+    ],
+    "acceptance": [
+      "不拿截图当整页实现",
+      "状态不只靠颜色",
+      "胶囊键盘不遮挡主操作"
+    ],
+    "dependencies": [
+      "MP02-T01-04",
+      "MP02-T02-04",
+      "MP03-T02-08",
+      "MP04-T01-06"
+    ],
+    "locks": [
+      "qa.visual"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 13
+  },
+  {
+    "id": "MP04-T03-04",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "真机性能弱网与后台",
+    "track": "QA",
+    "role": "测试工程师",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "qa.device",
+    "files": [
+      "N: docs/miniprogram/evidence/device-matrix.md",
+      "N: apps/miniprogram/tests/device/scenarios.json"
+    ],
+    "produces": "设备/基础库/性能证据",
+    "steps": [
+      "固定冷启动与首帧测量条件",
+      "跑长对话大列表文件弱网",
+      "隐藏杀进程重新登录恢复",
+      "记录包体内存监听队列"
+    ],
+    "acceptance": [
+      "流缓冲不无限增长",
+      "返回前台不重启任务",
+      "阈值由基线设定并实际测量通过"
+    ],
+    "dependencies": [
+      "MP04-T03-01",
+      "MP04-T03-03"
+    ],
+    "locks": [
+      "qa.device"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 14
+  },
+  {
+    "id": "MP04-T03-05",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "隐私内容和上线资格",
+    "track": "OPS",
+    "role": "发布/运营负责人",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "ops.compliance",
+    "files": [
+      "N: docs/miniprogram/release-compliance.md",
+      "N: apps/miniprogram/src/config/legal.ts"
+    ],
+    "produces": "正式条款、审核证据与开关",
+    "steps": [
+      "核实主体类目备案及适用运营要求",
+      "上线真实隐私服务删除举报入口",
+      "验证按需权限用途",
+      "支付未获资格保持关闭"
+    ],
+    "acceptance": [
+      "占位条款不进入生产",
+      "拒绝非必要授权仍可基本使用",
+      "不确定资格关闭而非绕过"
+    ],
+    "dependencies": [
+      "MP00-T02-03",
+      "MP04-T03-02"
+    ],
+    "locks": [
+      "ops.compliance"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 14
+  },
+  {
+    "id": "MP04-T03-06",
+    "parent": "MP04-T03",
+    "stage": "MP04",
+    "title": "灰度发布与回滚演练",
+    "track": "OPS",
+    "role": "发布/运营负责人",
+    "repository": "1123786563/WeKnora-fork01",
+    "module": "ops.release",
+    "files": [
+      "N: .github/workflows/miniprogram-release.yml",
+      "N: docs/miniprogram/release-runbook.md",
+      "N: apps/miniprogram/src/config/environment.ts"
+    ],
+    "produces": "受控发布包与回滚手册",
+    "steps": [
+      "隔离dev/staging/prod固定域名",
+      "检查SSE缓冲和空闲超时",
+      "小范围灰度观察错误恢复指标",
+      "演练关闭写功能与保留对账"
+    ],
+    "acceptance": [
+      "机密只在服务端受控CI",
+      "关购买不关已付订单对账",
+      "回滚兼容已有端与进行中任务"
+    ],
+    "dependencies": [
+      "MP04-T03-04",
+      "MP04-T03-05",
+      "MP04-T02-02",
+      "MP04-T02-03"
+    ],
+    "locks": [
+      "ops.release",
+      "ci.mini"
+    ],
+    "status": "planned",
+    "evidence": [],
+    "pr": null,
+    "merged_commit": null,
+    "wave": 15
+  }
+]

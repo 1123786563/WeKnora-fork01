@@ -1,0 +1,1123 @@
+{
+  "scope": "Standalone HTML bytes loaded using Chromium set_content; no WeChat/backend",
+  "pages": [
+    {
+      "page": "login",
+      "passed": true,
+      "current": "login",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "workspace",
+      "passed": true,
+      "current": "workspace",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "home",
+      "passed": true,
+      "current": "home",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "agents",
+      "passed": true,
+      "current": "agents",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "agent",
+      "passed": true,
+      "current": "agent",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "chat",
+      "passed": true,
+      "current": "chat",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "tasks",
+      "passed": true,
+      "current": "tasks",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "execution",
+      "passed": true,
+      "current": "execution",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "approval",
+      "passed": true,
+      "current": "approval",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "artifact",
+      "passed": true,
+      "current": "artifact",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "knowledge",
+      "passed": true,
+      "current": "knowledge",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "kb",
+      "passed": true,
+      "current": "kb",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "upload",
+      "passed": true,
+      "current": "upload",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "document",
+      "passed": true,
+      "current": "document",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "me",
+      "passed": true,
+      "current": "me",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "usage",
+      "passed": true,
+      "current": "usage",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "checkout",
+      "passed": true,
+      "current": "checkout",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "order",
+      "passed": true,
+      "current": "order",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "invitations",
+      "passed": true,
+      "current": "invitations",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    },
+    {
+      "page": "states",
+      "passed": true,
+      "current": "states",
+      "overflow": {
+        "body": false,
+        "content": false
+      },
+      "errors": []
+    }
+  ],
+  "layouts": [
+    {
+      "width": 320,
+      "page": "login",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "workspace",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "home",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "agents",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "agent",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "chat",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "tasks",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "execution",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "approval",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "artifact",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "knowledge",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "kb",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "upload",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "document",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "me",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "usage",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "checkout",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "order",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "invitations",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 320,
+      "page": "states",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "login",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "workspace",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "home",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "agents",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "agent",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "chat",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "tasks",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "execution",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "approval",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "artifact",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "knowledge",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "kb",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "upload",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "document",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "me",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "usage",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "checkout",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "order",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "invitations",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 375,
+      "page": "states",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "login",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "workspace",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "home",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "agents",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "agent",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "chat",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "tasks",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "execution",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "approval",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "artifact",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "knowledge",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "kb",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "upload",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "document",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "me",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "usage",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "checkout",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "order",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "invitations",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 390,
+      "page": "states",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "login",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "workspace",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "home",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "agents",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "agent",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "chat",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "tasks",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "execution",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "approval",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "artifact",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "knowledge",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "kb",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "upload",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "document",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "me",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "usage",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "checkout",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "order",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "invitations",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    },
+    {
+      "width": 430,
+      "page": "states",
+      "passed": true,
+      "overflow": {
+        "body": false,
+        "content": false
+      }
+    }
+  ],
+  "flows": [
+    {
+      "case": "未勾选协议不能登录",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "微信模拟登录进入空间选择",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "显式进入个人空间",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "首页示例意图可填入",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "首页不直接提交执行",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "确认后模拟创建一次任务",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "断网不把任务取消",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "恢复不创建新意图",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "审批需要二次确认",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "仅本次审批成功",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "旧版本审批被阻断",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "取消前状态未被修改",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "确认取消后状态变化",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "输入与中文增量回答",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "停止输出停止本地增量",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "Agent搜索空结果",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "Agent按关键词过滤",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "任务完成筛选",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "知识共享筛选",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "上传与解析分离",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "解析完成单独确认",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "默认购买通道关闭",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "显式演示开关开启",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "过期报价不能支付",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "支付操作后只进入待确认",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "未付款不能模拟发放权益",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "已付款但未履约",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "履约独立完成",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "下载仅生成本地示例",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "接受邀请刷新空间选项",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-empty",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-offline",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-forbidden",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-unavailable",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-expired",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "异常状态-syncing",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "case": "退出清理示例消息与意图",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "script_errors": [],
+  "summary": {
+    "pages": 20,
+    "layouts": 80,
+    "flows": 37,
+    "pages_total": 20,
+    "layouts_total": 80,
+    "flows_total": 37
+  }
+}
