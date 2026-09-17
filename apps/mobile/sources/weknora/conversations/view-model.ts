@@ -232,7 +232,10 @@ export function createProductConversationViewModel(input: {
     scope: { ...identity, spaceId: input.spaceId },
     messages: input.messages,
     pendingInteractions: input.pendingInteractions,
-    capabilities: { canCancel: true, canSteer: true },
+    // W25: the product conversation always assembles the attachment pipeline
+    // when the route can authenticate; ConversationScreen still hides the
+    // entries whenever no `attachments` prop reaches it.
+    capabilities: { canCancel: true, canSteer: true, canAttach: true },
     commands: {
       cancel: async (runID, expectedRevision = 0) => {
         const captured = input.scope.capture();

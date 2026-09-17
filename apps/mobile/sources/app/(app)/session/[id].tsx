@@ -6,6 +6,7 @@ import { SessionView } from '@/-session/SessionView';
 import { ConversationScreen } from '@/weknora/conversations/ConversationScreen';
 import { createProductConversationViewModel, createProductExecutionApi } from '@/weknora/conversations/view-model';
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
+import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
@@ -73,13 +74,28 @@ function ProductSessionRoute() {
       } : undefined,
     });
   }, [auth.scope, executionApi, requestStorage, resources, sessionId]);
+  // W25 upload chain (I-1 fix): the production assembly point. The pipeline
+  // exists exactly when a bearer-authenticated product conversation does;
+  // ConversationScreen keeps its own capability gate, so a route that cannot
+  // assemble simply passes undefined and the entry stays hidden.
+  const attachments = React.useMemo(() => {
+    const credential = auth.credential;
+    if (!host || !viewModel || !sessionId || credential?.kind !== 'bearer' || !auth.authSession) return null;
+    return createProductSessionAttachments({
+      origin: host.origin,
+      credential,
+      authSession: auth.authSession,
+      scope: auth.scope,
+      sessionID: sessionId,
+    });
+  }, [auth.authSession, auth.credential, auth.scope, host, sessionId, viewModel]);
   // Sessions without explicit product resource metadata remain the retained Happy route.
   // Product sessions never receive defaults: they wait for all server ownership checks.
   if (!productRoute) return <SessionView id={sessionId} />;
   if (resourceError) return <View><Text accessibilityRole="alert">产品资源不可用：{resourceError}</Text></View>;
   if (!eventStorage) return <View><Text accessibilityRole="alert">产品会话需要原生加密事件存储，当前设备尚未完成初始化。</Text></View>;
   if (!viewModel) return <View><Text accessibilityRole="alert">正在验证产品会话资源…</Text></View>;
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);

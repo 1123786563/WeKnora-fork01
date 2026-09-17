@@ -283,3 +283,41 @@ export function createAttachmentEntryActions(deps: {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Production assembly primitive (W25 I-1 fix): composes the port, manager,
+// late-result remover and entry actions into the exact surface the
+// ConversationScreen `attachments` prop consumes. Platform layers inject the
+// transport and the native source; this function stays environment-free.
+// ---------------------------------------------------------------------------
+
+/** Structural match of ConversationScreen's ConversationAttachments prop. */
+export interface SessionAttachmentsPipeline {
+  entries: AttachmentEntryActions;
+  records(): SessionUploadRecord[];
+  cancel(id: string): void;
+  remove(id: string): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export function createSessionAttachments(deps: {
+  baseURL: string;
+  transport: UploadTransport;
+  scope: UploadScope;
+  limits?: UploadLimits;
+  sessionID: string;
+  source: NativeAttachmentSource;
+}): SessionAttachmentsPipeline {
+  const port = createSessionUploadPort({ baseURL: deps.baseURL, transport: deps.transport, limits: deps.limits ?? defaultUploadLimits });
+  // The remover speaks (sessionID, attachmentID, signal) while the manager's
+  // seam expects (attachmentID, signal); the adapter is centralized here so
+  // assemblers never hand-write it and cleanup still targets this session.
+  const removeAttachment = createSessionAttachmentRemover({ baseURL: deps.baseURL, transport: deps.transport });
+  const uploads = createSessionUploads({
+    port,
+    scope: deps.scope,
+    removeAttachment: (attachmentID, signal) => removeAttachment(deps.sessionID, attachmentID, signal),
+  });
+  const entries = createAttachmentEntryActions({ source: deps.source, uploads, sessionID: deps.sessionID });
+  return { entries, records: uploads.records, cancel: uploads.cancel, remove: uploads.remove, subscribe: uploads.subscribe };
+}

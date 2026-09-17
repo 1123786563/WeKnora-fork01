@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createAttachmentEntryActions,
+  createSessionAttachments,
   createSessionUploadPort,
   createSessionUploads,
   defaultUploadLimits,
@@ -310,4 +311,51 @@ test('share entry attaches a shared file with its session scope', async () => {
   await actions.acceptSharedFile();
   assert.equal(attached.length, 1);
   assert.equal((attached[0] as { sessionID?: string }).sessionID, 'sess-7');
+});
+
+test('assembled session attachments expose the manager surface and adapt the remover signature', async () => {
+  const sent: UploadFileRequest[] = [];
+  const deletes: string[] = [];
+  let generation = 1;
+  const transport: UploadTransport = {
+    async sendMultipartFile(request) {
+      sent.push(request);
+      if (sent.length === 2) generation = 3; // late invalidation before the manager accepts
+      return { status: 200, body: { success: true, data: { id: `att-${sent.length}` } } };
+    },
+    async send(request) { deletes.push(`${request.method} ${request.url}`); return { status: 204 }; },
+  };
+  const scope: UploadScope = {
+    capture: () => ({ generation, signal: new AbortController().signal }),
+    accept: (captured) => captured === generation,
+  };
+  const picks: Array<AttachmentCandidate[]> = [[{ uri: 'content://x/a.pdf', name: 'a.pdf', mime: 'application/pdf', size: 4 }]];
+  const pipeline = createSessionAttachments({
+    baseURL: 'https://api.example',
+    transport,
+    scope,
+    sessionID: 's-1',
+    source: {
+      async pickDocuments() { return picks.length > 0 ? (picks.shift() ?? null) : null; },
+      async capturePhoto() { return null; },
+      async consumeSharedFile() { return null; },
+    },
+  });
+  assert.equal(typeof pipeline.entries.chooseFromLibrary, 'function');
+  assert.deepEqual(pipeline.records(), []);
+  const notified: number[] = [];
+  pipeline.subscribe(() => notified.push(pipeline.records().length));
+  await pipeline.entries.chooseFromLibrary();
+  assert.equal(pipeline.records().length, 1);
+  assert.equal(pipeline.records()[0].status, 'uploaded');
+  assert.equal(pipeline.records()[0].attachmentID, 'att-1');
+  assert.equal(sent[0].url, 'https://api.example/api/v1/sessions/s-1/attachments');
+  assert.deepEqual(notified, [1, 1]);
+  // A late result after a scope switch is discarded server-side through the
+  // remover whose (sessionID, attachmentID, signal) signature is adapted at
+  // this assembly point (review M-2), targeting the same session route.
+  picks.push([{ uri: 'content://x/b.pdf', name: 'b.pdf', mime: 'application/pdf', size: 5 }]);
+  await pipeline.entries.chooseFromLibrary();
+  assert.equal(pipeline.records().length, 1); // the late upload never surfaced
+  assert.deepEqual(deletes, ['DELETE https://api.example/api/v1/sessions/s-1/attachments/att-2']);
 });
