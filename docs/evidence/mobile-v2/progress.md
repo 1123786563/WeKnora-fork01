@@ -56,7 +56,8 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-029 | fixing→review | b9e00fda→9496ec29(+fix) | frozen true/0（ports 级断言补实）· go ok | R1 TS 断言缺失→已修→待复核 | MX-029.md |
 | MX-032 | review | 9496ec29→1e015177 | mv2 32/32 · go caps ok · frozen unavailable/missing_cancel_evidence | 待独立review（与 033 批） | MX-032.md / profile-gates.md |
 | MX-033 | review | 1e015177→32786008 | mv2 40/40（recovery 3+security 4）· frozen 1/1 · go admission ok | 待独立review（收尾批） | MX-033.md / fault-matrix.md |
-| MX-034 | blocked-env | ddfe1831→(待提交) | 显式命令 exit=1 blocked-env（正确的红）· mv2 40/40（E2E 独立） | 待独立review | MX-034.md / native-e2e.md |
+| MX-034 | blocked-env | ddfe1831→09b56a52 | 显式命令 exit=1 blocked-env（正确的红）· mv2 40/40（E2E 独立） | 待独立review（收尾批） | MX-034.md / native-e2e.md |
+| MX-035 | partial | 09b56a52→(待提交) | 静态层 frozen 双空（41/41）· 设备层 pending（baseline 如实）· tsc 11 | 待独立review | MX-035.md / accessibility-performance.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

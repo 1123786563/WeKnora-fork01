@@ -54,6 +54,7 @@ export function VoiceInputScreen({ controller: injected, onStartListening, onSto
           草稿（编辑后将以你的最终文本提交）
         </Text>
         <Pressable
+          accessibilityRole="text"
           accessibilityLabel={`听写草稿，当前内容：${session.draft || '（空）'}`}
           style={[styles.draftBox, { borderColor: theme.colors['control-line'], borderRadius: theme.radius.control, padding: theme.spacing[12], marginTop: theme.spacing[12] }]}
         >
