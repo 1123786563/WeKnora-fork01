@@ -188,6 +188,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewExecutionDispatchStore))
 	must(container.Provide(repository.NewExecutionObservationStore))
 	must(container.Provide(newPaseoRemoteProvider))
+	// Commercial execution-gate chain (gateway → gate → remote usage). These
+	// providers must precede the craft Invoke below: dig resolves lazily at
+	// Invoke time, so any provider registered after Invoke(registerCraftHTTPHandlers)
+	// leaves newAgentRuntime's *RemoteUsageService missing and panics boot.
+	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	// U05 execution gate: the billable outbound boundary (Begin reserves and
+	// persists dispatched intent before dispatch, Finish settles trusted
+	// usage). Registered only — no Invoke: arming an engine turn with it is
+	// an explicit SetCommercialGate by the commercial request path, so
+	// non-commercial behavior is unchanged.
+	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
+	// W24: all remote usage settlement is constructed behind the trusted
+	// gateway identity seam; callers never inject a client-reported fact.
+	must(container.Provide(workbenchservice.NewRemoteUsageServiceWithDB))
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
@@ -611,18 +625,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Commercial fulfillment: the V03-selected gateway (family official_v3;
 	// unconfigured env stays legal as blocked-env) and the background worker
 	// that drains paid orders' fulfillment outbox events into benefits.
-	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	// (The gateway/execution-gate/remote-usage providers this drains through
+	// are registered earlier, before the craft Invoke that first resolves
+	// newAgentRuntime.)
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
-	// U05 execution gate: the billable outbound boundary (Begin reserves and
-	// persists dispatched intent before dispatch, Finish settles trusted
-	// usage). Registered only — no Invoke: arming an engine turn with it is
-	// an explicit SetCommercialGate by the commercial request path, so
-	// non-commercial behavior is unchanged.
-	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
-	// W24: all remote usage settlement is constructed behind the trusted
-	// gateway identity seam; callers never inject a client-reported fact.
-	must(container.Provide(workbenchservice.NewRemoteUsageServiceWithDB))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
 	// execution gate above arms budget reservation. The provider-specific

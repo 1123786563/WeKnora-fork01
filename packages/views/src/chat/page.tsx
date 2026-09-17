@@ -342,6 +342,16 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   const renameSubmittingRef = useRef(false);
   const renameDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const renameTriggerRef = useRef<HTMLElement | null>(null);
+  // The rename-focus effect must run before the !session bail-out: when the
+  // selected session id points at a list entry that has not loaded yet (the
+  // immediate post-send jump), the first render returns null after the refs
+  // and the next render mounts this effect — React aborts the tree with
+  // "Rendered more hooks than during the previous render".
+  useEffect(() => {
+    if (!renameOpen) return;
+    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
+    return () => window.cancelAnimationFrame(frame);
+  }, [renameOpen]);
   if (!session) return null;
   const pinned = session.is_pinned === true;
   const openRename = () => {
@@ -355,11 +365,6 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
     setRenameError(null);
     window.setTimeout(() => renameTriggerRef.current?.focus(), 0);
   };
-  useEffect(() => {
-    if (!renameOpen) return;
-    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
-    return () => window.cancelAnimationFrame(frame);
-  }, [renameOpen]);
   const submitRename = async () => {
     if (renameSubmittingRef.current || !props.onRenameSession) return;
     const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);
