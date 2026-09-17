@@ -196,7 +196,7 @@ func (s *AgentRunStore) claimReadyForPurge(ctx context.Context, claim CleanupCla
 	}
 	updated := s.db.WithContext(ctx).Model(&executionCleanupRow{}).
 		Where("tenant_id=? AND session_id=? AND owner_id=? AND deletion_revision=? AND worker=? AND epoch=? AND state='cleanup_ready' AND stopped=? AND settled=? AND retention_elapsed=? AND backup_reconciled=? AND retention_until IS NOT NULL AND retention_until <= ?", claim.TenantID, claim.SessionID, claim.OwnerID, claim.DeletionRevision, claim.Worker, claim.Epoch, true, true, true, true, time.Now()).
-		Updates(map[string]any{"state": "cleanup_claimed", "lease_until": time.Now().Add(lease)})
+		Updates(map[string]any{"state": "cleanup_claimed", "lease_until": time.Now().Add(lease), "updated_at": s.cleanupNowExpr()})
 	if updated.Error != nil {
 		return updated.Error
 	}
@@ -294,13 +294,18 @@ type idempotentFileDeleter interface {
 }
 
 var (
-	ErrCleanupFilesUnavailable       = errors.New("execution cleanup file purger unavailable")
-	ErrCleanupObservationUnavailable = errors.New("execution cleanup observation unavailable")
-	ErrCleanupSharedReference        = errors.New("execution cleanup shared reference still live")
+	ErrCleanupFilesUnavailable         = errors.New("execution cleanup file purger unavailable")
+	ErrCleanupObservationUnavailable   = errors.New("execution cleanup observation unavailable")
+	ErrCleanupSharedReference          = errors.New("execution cleanup shared reference still live")
+	ErrCleanupFileDeleterNotIdempotent = errors.New("execution cleanup file deleter does not support idempotent deletion")
 )
 
 // FileCleanupPurger is the production object-store adapter. It removes only
 // refs with no remaining live owner and keeps artifact rows as audit receipts.
+// The wrapped FileService must implement the idempotent deleter protocol
+// (DeleteFileIdempotent with the persisted provider idempotency key); a
+// legacy FileService fails closed with ErrCleanupFileDeleterNotIdempotent and
+// no external delete is attempted.
 type FileCleanupPurger struct {
 	db    *gorm.DB
 	files interfaces.FileService
@@ -313,6 +318,16 @@ func NewFileCleanupPurger(db *gorm.DB, files interfaces.FileService) *FileCleanu
 func (p *FileCleanupPurger) PurgeSessionFiles(ctx context.Context, claim CleanupClaim) error {
 	if p == nil || p.db == nil || p.files == nil {
 		return ErrCleanupFilesUnavailable
+	}
+	deleter, idempotent := p.files.(idempotentFileDeleter)
+	if !idempotent {
+		// Fail closed: a legacy DeleteFile call cannot carry the persisted
+		// provider idempotency key or honor the delete lease, so an external
+		// delete must not be attempted. The claim keeps its lease and every
+		// artifact row stays pending with its previous receipt, so the purge
+		// retries once a W26-capable deleter is installed instead of silently
+		// succeeding through the non-idempotent path.
+		return ErrCleanupFileDeleterNotIdempotent
 	}
 	var refs []struct {
 		Ref  string
@@ -344,12 +359,7 @@ func (p *FileCleanupPurger) PurgeSessionFiles(ctx context.Context, claim Cleanup
 	}
 	for _, item := range refs {
 		key := fmt.Sprintf("cleanup:%d:%s:%d:%s", claim.TenantID, claim.SessionID, claim.DeletionRevision, item.Ref)
-		var deleteErr error
-		if deleter, ok := p.files.(idempotentFileDeleter); ok {
-			deleteErr = deleter.DeleteFileIdempotent(ctx, item.Ref, key)
-		} else {
-			deleteErr = p.files.DeleteFile(ctx, item.Ref)
-		}
+		deleteErr := deleter.DeleteFileIdempotent(ctx, item.Ref, key)
 		if deleteErr != nil {
 			return deleteErr
 		}

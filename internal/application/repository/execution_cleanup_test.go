@@ -20,10 +20,30 @@ type recordingCleanupFiles struct {
 	deleted []string
 }
 
+// idempotentRecordingCleanupFiles implements the idempotent deleter protocol
+// and records the provider idempotency key each delete was fenced with.
+// recordingCleanupFiles above deliberately stays legacy-only (bare DeleteFile),
+// matching the current production FileService backends.
+type idempotentRecordingCleanupFiles struct {
+	interfaces.FileService
+	deleted []string
+	keys    []string
+}
+
+func (f *idempotentRecordingCleanupFiles) DeleteFileIdempotent(_ context.Context, ref, key string) error {
+	f.deleted = append(f.deleted, ref)
+	f.keys = append(f.keys, key)
+	return nil
+}
+
 type crashCleanupFiles struct {
 	interfaces.FileService
 	attempts  int
 	failFirst bool
+}
+
+func (f *crashCleanupFiles) DeleteFileIdempotent(ctx context.Context, ref, _ string) error {
+	return f.DeleteFile(ctx, ref)
 }
 
 func (f *crashCleanupFiles) DeleteFile(_ context.Context, _ string) error {
@@ -99,7 +119,7 @@ func TestExecutionCleanupFactsAreMonotonicAndRevisionFenced(t *testing.T) {
 
 func TestFileCleanupPurgerPreservesSharedRefsAndIsIdempotent(t *testing.T) {
 	db := openRunTestDB(t)
-	files := &recordingCleanupFiles{}
+	files := &idempotentRecordingCleanupFiles{}
 	purger := NewFileCleanupPurger(db, files)
 	require.NoError(t, db.Exec("INSERT INTO execution_cleanup (tenant_id, owner_id, session_id, deletion_revision, state) VALUES (1,'u1','s1',1,'cleanup_ready'),(1,'u1','s2',1,'tombstoned')").Error)
 	require.NoError(t, db.Exec("INSERT INTO execution_cleanup_artifacts (tenant_id,session_id,deletion_revision,ref,kind) VALUES (1,'s1',1,'blob://shared','file'),(1,'s2',1,'blob://shared','file')").Error)
@@ -109,8 +129,29 @@ func TestFileCleanupPurgerPreservesSharedRefsAndIsIdempotent(t *testing.T) {
 	require.NoError(t, db.Exec("DELETE FROM execution_cleanup_artifacts WHERE session_id='s2'").Error)
 	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
 	require.Equal(t, []string{"blob://shared"}, files.deleted)
+	require.Equal(t, []string{"cleanup:1:s1:1:blob://shared"}, files.keys)
 	require.NoError(t, purger.PurgeSessionFiles(context.Background(), claim))
 	require.Equal(t, []string{"blob://shared"}, files.deleted)
+}
+
+func TestFileCleanupPurgerFailsClosedOnLegacyFileService(t *testing.T) {
+	db := openRunTestDB(t)
+	files := &recordingCleanupFiles{}
+	purger := NewFileCleanupPurger(db, files)
+	require.NoError(t, db.Exec("INSERT INTO execution_cleanup_artifacts (tenant_id,session_id,deletion_revision,ref,kind) VALUES (1,'s1',1,'blob://legacy','file')").Error)
+	claim := CleanupClaim{TenantID: 1, OwnerID: "u1", SessionID: "s1", DeletionRevision: 1, Worker: "w", Epoch: 1}
+	err := purger.PurgeSessionFiles(context.Background(), claim)
+	require.ErrorIs(t, err, ErrCleanupFileDeleterNotIdempotent)
+	require.Empty(t, files.deleted)
+	var artifact struct {
+		State        string
+		ReceiptState string
+		Attempt      int
+	}
+	require.NoError(t, db.Table("execution_cleanup_artifacts").Select("state, receipt_state, attempt").Where("tenant_id=1 AND session_id='s1'").Scan(&artifact).Error)
+	require.Equal(t, "pending", artifact.State)
+	require.Equal(t, "none", artifact.ReceiptState)
+	require.Zero(t, artifact.Attempt)
 }
 
 func TestFileCleanupPurgerRecoversUncertainReceipt(t *testing.T) {
