@@ -87,23 +87,38 @@ export interface ChatModelChip {
 /**
  * Resolve the chip content the way the Vue new-conversation view does.
  *
- * Selection priority (the React chat has no model picker yet, so the Vue
- * localStorage last-pick / store selectedChatModelId inputs do not exist):
- * 1. the selected agent's config.model_id (Input-field.vue agent-model watch,
- *    lines 1001-1024) — when bound but missing from the list the chip stays
- *    未配置 exactly like the find() miss at lines 1067-1078;
- * 2. the first available chat model (ensureModelSelection, lines 982-994).
+ * Selection priority mirrors the Vue chat input chain
+ * (frontend/src/components/Input-field.vue):
+ * 1. the user's persisted pick (ensureModelSelection's readLastChatModelID
+ *    branch) — an explicit pick that differs from the agent binding also wins
+ *    over it (agent-model watch keep-pick branch, lines 1001-1024);
+ * 2. the selected agent's config.model_id (agent-model watch binding);
+ * 3. the first available chat model (ensureModelSelection fallback).
+ * A resolved id that is missing from the list renders 未配置 exactly like
+ * the Vue find() miss (lines 1067-1078); the shared-agent
+ * input.sharedAgentModelLabel variant has no React surface yet.
  */
 export function resolveChatModelChip(options: {
   models: readonly ChatModelLike[];
   agentModelId?: unknown;
+  /** The persisted in-session model pick (Vue readLastChatModelID). */
+  selectedModelId?: unknown;
   notConfiguredLabel?: string;
 }): ChatModelChip {
   const notConfiguredLabel = options.notConfiguredLabel ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'];
   const agentModelId = typeof options.agentModelId === 'string' ? options.agentModelId.trim() : '';
+  const selectedModelId = typeof options.selectedModelId === 'string' ? options.selectedModelId.trim() : '';
+  const findById = (id: string) => options.models.find((model) => model.id === id);
   let selected: ChatModelLike | undefined;
   if (agentModelId) {
-    selected = options.models.find((model) => model.id === agentModelId);
+    // Vue agent-model watch: a differing explicit user pick is kept; otherwise
+    // the agent's model binds the conversation.
+    selected = findById(selectedModelId && selectedModelId !== agentModelId ? selectedModelId : agentModelId);
+  } else if (selectedModelId) {
+    // Vue ensureModelSelection: the stored last pick seeds the selection; a
+    // pick that no longer exists in the list stays 未配置 (no first-model
+    // fallback).
+    selected = findById(selectedModelId);
   } else {
     selected = options.models[0];
   }

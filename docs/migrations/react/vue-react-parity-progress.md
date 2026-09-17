@@ -5077,6 +5077,32 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   Evidence: `evidence/vue-react-parity/2026-09-18-r463-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round. Next-round queue head: the P1 palette knowledge search (wiring exists, needs the UI
   caller).
+
+## 2026-09-18 Round R464 — Palette knowledge search (P1 closed), FAQ type gate, chat P2s
+
+- Four parallel agents (A1 P1 palette knowledge search, A2 FAQ type gate + loading reset, A3 chat P2×3, A4
+  verifier with live verification) + orchestrator scope-path fix. Verdict: all PASS; gates test:web 1704/1704
+  (+15), test:shared 776/776 (+6), typecheck 0, build ✓, integrity 0 P0 after staging.
+- A1 (the R463 P1 closed): the ⌘K palette now runs live knowledge search per Vue's useSearch contract (350ms
+  debounce, chunks≤5→messages≤4→kbs→agents→sessions→commands group order, per-knowledgeId file cards with
+  vector/keyword badges + score + highlight, route-inferred KB scope chip with placeholder switching and
+  scoped chunks-only mode, chunk click → ?knowledge_id= navigation, errors degrade to empty) — reusing the
+  existing command-palette-search wiring and R447 api-client search verbatim. +10 keys ×5 locale; platform
+  207/207. Deferred: empty-state askAi/settings buttons, same-KB fast path, agentsEnabled gate.
+- A4 live-verified all of the above (debounce single-request, full group order, document-open navigation,
+  scoped request shape) AND found the scope regex only matched the Vue-form alias path — orchestrator fixed
+  kbScopeFromLocation to match both /knowledgeBase/:id and /platform/knowledge-bases/:id with a pinning test.
+- A2: the FAQ 400-storm was a double defect (catch never reset hasMore + a dependency-less fill-viewport
+  effect re-triggering loadMore every render); a Vue-exact faqGate ((type||'')==='faq', settings-failure
+  degrades allowed) replaces blocked visits to the documents view with ZERO FAQ requests for document KBs;
+  the retry chain structurally severed. faq 92/92 (+3).
+- A3: reasoning collapse removed (verified Vue subtraction — main-face thinking renders only via inline
+  <think>); invalid-image placeholder ported (five-locale byte-exact + per-language guards); model chip fixed
+  at the root (Vue's explicit-pick priority; the loader's synthetic default no longer pollutes). views 111/111,
+  apps 121/121. Deferred: live thinking-block adjudication, scoped-pick key sharing.
+- Gates: `pnpm test:web` 1704/1704, `pnpm test:shared` 776/776, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r464-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
 __zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-694a9cba-15c2-4428-b8c0-f7103e5c2c2e-cwd'; fi
+if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-ac64d725-b138-400b-af03-ce3ff05ba709-cwd'; fi
 exit "$__zcode_status"

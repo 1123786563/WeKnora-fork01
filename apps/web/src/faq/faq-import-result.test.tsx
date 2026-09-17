@@ -134,7 +134,7 @@ function fakeClient(options: { progressData?: Record<string, unknown>; onPut?: (
     calls,
     client: {
       knowledgeBases: {
-        settings: { get: async () => ({ id: 'kb-1', name: 'KB One', type: 'KnowledgeQA' }) },
+        settings: { get: async () => ({ id: 'kb-1', name: 'KB One', type: 'faq' }) },
         list: async () => [],
       },
       knowledge: {

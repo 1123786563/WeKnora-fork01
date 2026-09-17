@@ -94,6 +94,27 @@ const KB_ACTIVE = (pathname: string): boolean =>
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
   /^\/knowledgeBase(\/|$)/.test(pathname);
 
+/**
+ * R464-A1 — seed the command palette's KB scope chip from the KB detail
+ * route, mirroring Vue GlobalCommandPalette.vue's `route.params.kbId`
+ * inference on open. The palette resolves the display name from the KB list
+ * once it loads; the raw id is the fallback (Vue parity).
+ */
+// Both path forms reach the KB detail surface: the React-native
+// /knowledgeBase/:id(…) routes and the Vue-form alias
+// /platform/knowledge-bases/:id — the scope chip must seed on the user's
+// primary path too, not only the alias (R464 A4 live finding).
+export function kbScopeFromLocation(): { id: string; name: string } | null {
+  const match = window.location.pathname.match(/^\/(?:knowledgeBase|platform\/knowledge-bases)\/([^/]+)/);
+  if (!match) return null;
+  try {
+    const id = decodeURIComponent(match[1]!).trim();
+    return id ? { id, name: id } : null;
+  } catch {
+    return null;
+  }
+}
+
 function Icon({ path }: { path: string | string[] }): ReactNode {
   const paths = Array.isArray(path) ? path : [path];
   return (
@@ -1044,6 +1065,8 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         onNavigate={navigateFromPalette}
         onSearch={recordPaletteSearch}
         onClearRecent={clearPaletteRecent}
+        searchClient={client}
+        initialKbScope={kbScopeFromLocation()}
       />
       {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
       <NewUserGuide locale={locale} actions={guideActions} />

@@ -78,6 +78,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // KnowledgeQA filter lives in model-chip.ts like the Vue store.
   const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(() => readStoredChatModelId(scope.scope));
+  // Vue readLastChatModelID: the chip resolves the user's *explicit* pick, not
+  // the synthetic first-model default the loader seeds selectedModelId with.
+  const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope));
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -128,8 +131,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelChip = useMemo(() => resolveChatModelChip({
     models: chatModels,
     agentModelId,
+    selectedModelId: userModelPick,
     notConfiguredLabel: MODEL_CHIP_NOT_CONFIGURED[readStoredLocale()] ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'],
-  }), [agentModelId, chatModels]);
+  }), [agentModelId, chatModels, userModelPick]);
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
@@ -1208,7 +1212,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelContextIsDefault={modelChipIsDefault}
     modelOptions={modelOptions}
     selectedModelId={selectedModelId}
-    onModelChange={setSelectedModelId}
+    onModelChange={(modelId) => { setUserModelPick(modelId); setSelectedModelId(modelId); }}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}

@@ -51,7 +51,7 @@ function fakeClient(importProgressResults: Array<Record<string, unknown>>) {
   return {
     client: {
       knowledgeBases: {
-        settings: { get: async () => ({ id: 'kb-1', user_id: 'u1', name: 'KB One', type: 'KnowledgeQA' }) },
+        settings: { get: async () => ({ id: 'kb-1', user_id: 'u1', name: 'KB One', type: 'faq' }) },
         list: async () => [],
       },
       knowledge: {

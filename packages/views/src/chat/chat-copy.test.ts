@@ -142,8 +142,7 @@ test('resolveChatLocale ignores navigator.language like the Vue deployment defau
   }
 });
 
-test('resolveChatCopy exposes the Vue tool-approval args editing labels in every locale', () => {
-  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts agentStream.toolApproval.
+test('resolveChatCopy exposes the Vue tool-approval args editing labels in every locale', () => {  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts agentStream.toolApproval.
   const modified = {
     'zh-CN': '已修改',
     'en-US': 'Modified',
@@ -161,5 +160,21 @@ test('resolveChatCopy exposes the Vue tool-approval args editing labels in every
   for (const locale of CHAT_COPY_LOCALES) {
     assert.equal(resolveChatCopy(locale).approvalArgsModified, modified[locale]);
     assert.equal(resolveChatCopy(locale).approvalRejectedReason, rejected[locale]);
+  }
+});
+
+test('resolveChatCopy exposes the Vue invalid-image placeholder in every locale', () => {
+  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts error.invalidImageLink
+  // (botmsg.vue renders `<p>${t('error.invalidImageLink')}</p>` for images that
+  // fail isValidImageURL). ru-RU ships the English string upstream — copied as-is.
+  const expected = {
+    'zh-CN': '无效的图片链接',
+    'en-US': 'Invalid image link',
+    'ja-JP': '無効な画像リンクです',
+    'ko-KR': '유효하지 않은 이미지 링크',
+    'ru-RU': 'Invalid image link',
+  } as const;
+  for (const locale of CHAT_COPY_LOCALES) {
+    assert.equal(resolveChatCopy(locale).invalidImageLink, expected[locale]);
   }
 });

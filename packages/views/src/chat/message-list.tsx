@@ -37,7 +37,6 @@ const USER_BUBBLE = "ml-auto box-border w-max max-w-[min(76%,820px)] rounded-[8p
 export const TOOL_LIST_ITEM = "flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]";
 
 export type AssistantTimelineItem =
-  | { kind: 'thinking'; text: string }
   | { kind: 'tool'; id: string; name?: string; status: 'pending' | 'completed' | 'failed'; result?: unknown }
   | { kind: 'finish' };
 
@@ -78,8 +77,8 @@ export function messageArtifactItems(message: Record<string, unknown>): ChatArti
   return normalizeArtifactList(Array.isArray(message.artifacts) ? message.artifacts : undefined);
 }
 
-export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
-  return renderChatMarkdown(message.content);
+export function renderMessageHtml(message: Pick<ChatMessage, 'content'>, invalidImageLabel?: string): string {
+  return renderChatMarkdown(message.content, invalidImageLabel ? { invalidImageLabel } : {});
 }
 
 export async function writeClipboardText(text: string, clipboard?: { writeText(t: string): Promise<void> }): Promise<void> {
@@ -155,11 +154,17 @@ function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable;
   </button>;
 }
 
-/** Vue AgentStreamDisplay order: reasoning first, tool calls next, finish last. */
+/*
+ * Vue AgentStreamDisplay order: reasoning first, tool calls next, finish last.
+ * R464: the reasoning item itself is gone — the Vue main chat face never
+ * renders the `thinking` field or the persisted `agent_steps` reasoning text
+ * (botmsg.vue only shows `<think>`-tag content via deepThink and the agent
+ * timeline is a separate surface), so the simplified React timeline keeps
+ * only the tool calls and the finish node.
+ */
 export function assistantTimelineItems(message: ChatMessage): AssistantTimelineItem[] {
   const extras = assistantMessageExtras(message);
   const items: AssistantTimelineItem[] = [];
-  if (extras.thinking) items.push({ kind: 'thinking', text: extras.thinking });
   for (const call of extras.toolCalls) items.push({ kind: 'tool', ...call });
   if (message.is_completed === true && items.length > 0) items.push({ kind: 'finish' });
   return items;
@@ -176,12 +181,7 @@ function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
   if (items.length === 0) return null;
   return <section className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]' aria-label={props.copy.thinkingAndTools}>
     <ol className='wk-chat-agent-timeline m-0 list-none p-[6px]'>
-      {items.map((item, index) => item.kind === 'thinking' ? <li key={`thinking-${index}`} className='wk-chat-agent-timeline-item border-b border-[#edf0f5] py-[6px] last:border-b-0'>
-        <details>
-          <summary className='cursor-pointer text-[rgba(0,0,0,0.6)]'>{props.copy.thinkingAndTools}</summary>
-          <pre className='mx-0 mb-0 mt-[6px] max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{item.text}</pre>
-        </details>
-      </li> : item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
+      {items.map((item) => item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
         <details className='min-w-0'>
           <summary className='cursor-pointer truncate'>{item.name ?? item.id}</summary>
           {item.result !== undefined ? <pre className='mt-[6px] max-h-[180px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2)}</pre> : null}
@@ -375,7 +375,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         {showSeparator ? <li className="wk-chat-timestamp block list-none select-none border-b border-[#edf0f5] px-0 py-[0.8rem] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
         <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]'}>
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
           {!isAssistant && onForkMessage && canForkMessage?.(message.id) === true ? (
             <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>⑂</button>
           ) : null}
