@@ -759,21 +759,23 @@
     },
     "internal/workbench/contracts.go": {
       "owners": [
-        "MX-003"
+        "MX-003",
+        "MX-005"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-005-lock-extension",
+      "note": "锁转移（MX-003 review P2-1）：ConfirmedWatermark 上界校验补齐"
     },
     "internal/workbench/interaction.go": {
       "owners": [
-        "MX-003"
+        "MX-003",
+        "MX-005"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-005-lock-extension",
+      "note": "锁转移（MX-003 review P2-3）：Validate 注释精确化"
     },
     "package.json": {
       "owners": [
@@ -1803,6 +1805,33 @@
       "shared_serialized": false,
       "source": "mx-004-lock-extension",
       "note": "锁扩展：domain/mobile 出口（execution-frames 导出）"
+    },
+    "internal/application/service/workbench/interaction_test.go": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-005-lock-extension",
+      "note": "锁扩展：CAS 测试追加 MX005-OBSERVATION 结构化观测行"
+    },
+    "packages/api-client/src/index.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-005-lock-extension",
+      "note": "锁扩展：api-client 出口（createInteractionsApi）"
+    },
+    "packages/api-client/src/mobile/interactions.test.ts": {
+      "owners": [
+        "MX-005"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-005-lock-extension",
+      "note": "SDK 测试（test:shared 纳入）"
     }
   }
 }

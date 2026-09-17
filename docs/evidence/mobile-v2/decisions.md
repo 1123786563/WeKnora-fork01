@@ -64,3 +64,14 @@ Mimosa 预提交扫描曾以「硬编码凭据」拦截提交，所指均为既�
 ## D-015 · 跨语言字节 fixture 策略（2026-09-18，MX-004）
 
 tests/mobile-v2/fixtures/*.bin 为 `go test -run TestMX004Emit` 用真实 writer 原语再生的构建产物，gitignore 不入库；TS probe 每次运行前重新生成，保证两端消费的是当前代码输出而非陈旧快照。
+
+## D-016 · MX-003 审查 P2 承接（2026-09-18，MX-005）
+
+- P2-1（锁转移）：Go ExecutionSnapshot.Validate 补 ConfirmedWatermark 上界校验，与 TS parseExecutionSnapshot 对称。
+- P2-3（锁转移）：InteractionDecision.Validate 注释精确化（有意严于 wire：id 由 URL 提供、service 覆写）。
+- P2-2（read-models run_status 枚举收紧）：归 MX-013/021 接通 B 类时执行，不在本轮抢先收紧提案形状。
+- P2-4（Go 快照 Incomplete 布尔无校验需求）无需动作。
+
+## D-017 · handler 决定接线的单一规则源（2026-09-18，MX-005）
+
+DecideInteraction 以 `input.ID = c.Param("id"); input.Validate()` 替换手工 decision_id/args_hash 检查：wire 的 id 来自 URL 参数（body 内 id 不必填），绑定后再走 MX-003 冻结的同一 admission 规则；本地自检（SDK parseInteractionDecision）与服务器规则一致且有意更严。

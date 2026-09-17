@@ -75,6 +75,8 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
 	}
 	require.Equal(t, 1, success)
 	require.Equal(t, 1, conflict)
+	// MX-005 结构化观测：跨语言 probe 解析这一行真实结果，不各自断言。
+	t.Logf("MX005-OBSERVATION accepted=%d conflict=%d", success, conflict)
 }
 
 func (s *interactionStoreStub) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {

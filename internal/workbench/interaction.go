@@ -46,9 +46,10 @@ func ValidateInteractionAction(kind, action string) error {
 	return nil
 }
 
-// Validate mirrors the wire-level admission requirements (handler checks in
-// workbench_commands.go) so service and tests share one rule: identity fields
-// non-empty, kind/action matrix holds, revision stays in the safe range.
+// Validate is the shared admission rule: identity fields non-empty, kind/action
+// matrix holds, revision stays in the safe range. It is intentionally stricter
+// than the wire (the handler takes id from the URL param and the service layer
+// overwrites input.ID) so client-side self-checks fail closed.
 func (d InteractionDecision) Validate() error {
 	if strings.TrimSpace(d.ID) == "" {
 		return invalid("id", "required")

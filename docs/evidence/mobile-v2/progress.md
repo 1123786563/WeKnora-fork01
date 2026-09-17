@@ -8,8 +8,9 @@
 |---|---|---|---|---|---|
 | MX-001 | accepted | 6a70c35a→04176329 | tsx --test mx-001.test.ts · RED exit1 → GREEN exit0 · 1/1（含基线 kind 不变量） | R1 FAIL(2×P1)→修复→复核 PASS | MX-001.md |
 | MX-002 | accepted | 64b8da68→52c87b1c | test:mobile-v2 · RED exit1(13+真实偏差) → GREEN exit0 · 2/2；test:shared 579/579；prebuild 双平台 exit0 | 规格 PASS 6/6 · 质量 APPROVED（4×P2 非阻塞，见注） | MX-002.md / native-baseline.md |
-| MX-003 | review | 52c87b1c→2bd4c682 | mv2 3/3 · shared 579/579 · go workbench+handler ok · RED=3 真实断言失败 | 审查进行中 | MX-003.md |
-| MX-004 | review | 2bd4c682→(待提交) | mv2 5/5 · go handler 全绿 · RED=parser 对真实 v2 字节崩溃 | 待独立review | MX-004.md |
+| MX-003 | accepted | 52c87b1c→2bd4c682 | mv2 3/3 · shared 579/579 · go workbench+handler ok · RED=3 真实断言失败 | 规格 PASS 5/5 · 质量 APPROVED（3×P2 已承接，D-016） | MX-003.md |
+| MX-004 | review | 2bd4c682→98002709 | mv2 5/5 · go handler 全绿 · RED=parser 对真实 v2 字节崩溃 | 审查进行中 | MX-004.md |
+| MX-005 | review | 98002709→(待提交) | mv2 6/6 · shared 582/582 · go 三包 ok · probe 解析真实 CAS 观测 | 待独立review | MX-005.md |
 
 ## 首次更新（2026-09-18，MX-001）
 

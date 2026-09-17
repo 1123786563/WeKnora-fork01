@@ -163,6 +163,9 @@ func (s ExecutionSnapshot) Validate() error {
 	if s.Watermark < 0 || s.Watermark > MaxSafeInteger {
 		return fmt.Errorf("%w: watermark", ErrSequenceOverflow)
 	}
+	if s.ConfirmedWatermark < 0 || s.ConfirmedWatermark > MaxSafeInteger {
+		return fmt.Errorf("%w: confirmed_watermark", ErrSequenceOverflow)
+	}
 	for index, event := range s.Events {
 		if err := event.Validate(); err != nil {
 			return fmt.Errorf("events[%d]: %w", index, err)
