@@ -70,9 +70,11 @@ test('summarizes parser, vector, storage, and activity state from the existing K
 
 test('represents absent bindings and activity without inventing configuration', () => {
   assert.deepEqual(summarizeKnowledgeSettings({ id: 'kb-3', name: 'Empty', type: 'document' }), {
-    parser: { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides' },
-    vectorStore: { kind: 'default', label: 'System default', detail: 'No explicit binding' },
-    storage: { kind: 'default', label: 'System default', detail: 'No explicit instance' },
+    // R456: the fallback branches of the parser/vectorStore/storage tiles
+    // carry summary keys; data-driven literals stay key-free.
+    parser: { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides', labelKey: 'kbSettings.summary.parser.defaultLabel', detailKey: 'kbSettings.summary.parser.noOverridesDetail' },
+    vectorStore: { kind: 'default', label: 'System default', detail: 'No explicit binding', labelKey: 'kbSettings.summary.vectorStore.defaultLabel', detailKey: 'kbSettings.summary.vectorStore.noBindingDetail' },
+    storage: { kind: 'default', label: 'System default', detail: 'No explicit instance', labelKey: 'kbSettings.summary.storage.defaultLabel', detailKey: 'kbSettings.summary.storage.noInstanceDetail' },
     activity: { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here', labelKey: 'kbSettings.summary.activity.emptyLabel', detailKey: 'kbSettings.summary.activity.emptyDetail' },
     datasource: { kind: 'empty', label: 'No data sources', detail: 'Add an external connector', labelKey: 'kbSettings.summary.datasource.emptyLabel', detailKey: 'kbSettings.summary.datasource.emptyDetail' },
     share: { kind: 'empty', label: 'Not shared', detail: 'No spaces have access', labelKey: 'kbSettings.summary.share.emptyLabel', detailKey: 'kbSettings.summary.share.emptyDetail' },
@@ -91,6 +93,7 @@ test('surfaces unavailable vector bindings and uses the existing activity endpoi
     kind: 'unavailable',
     label: 'Search vectors',
     detail: 'Check the global vector-store settings',
+    detailKey: 'kbSettings.summary.vectorStore.unavailableDetail',
   });
 });
 

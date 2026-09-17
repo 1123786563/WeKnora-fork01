@@ -341,17 +341,45 @@ export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput
   const graphEnabled = knowledgeBase.extract_config?.enabled === true;
 
   return {
+    // R456: the data-driven literals (joined engine names, uppercased
+    // extensions, store names, ids) stay key-free en-US fallbacks; the
+    // hardcoded English fallback branches carry summary keys resolved by
+    // the section renderer through the locale translator.
     parser: rules.length > 0
-      ? { kind: 'configured', label: engines.length > 0 ? engines.map(parserLabel).join(', ') : 'Custom rules', detail: extensions.length > 0 ? extensions.map((value) => value.toUpperCase()).join(', ') : 'File-type overrides' }
-      : { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides' },
+      ? {
+        kind: 'configured' as const,
+        label: engines.length > 0 ? engines.map(parserLabel).join(', ') : 'Custom rules',
+        detail: extensions.length > 0 ? extensions.map((value) => value.toUpperCase()).join(', ') : 'File-type overrides',
+        ...(engines.length > 0 ? {} : { labelKey: 'kbSettings.summary.parser.customRulesLabel' }),
+        ...(extensions.length > 0 ? {} : { detailKey: 'kbSettings.summary.parser.overridesDetail' }),
+      }
+      : { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides', labelKey: 'kbSettings.summary.parser.defaultLabel', detailKey: 'kbSettings.summary.parser.noOverridesDetail' },
     vectorStore: vectorUnavailable
-      ? { kind: 'unavailable', label: vectorName || 'Vector store unavailable', detail: 'Check the global vector-store settings' }
+      ? {
+        kind: 'unavailable' as const,
+        label: vectorName || 'Vector store unavailable',
+        detail: 'Check the global vector-store settings',
+        detailKey: 'kbSettings.summary.vectorStore.unavailableDetail',
+        ...(vectorName ? {} : { labelKey: 'kbSettings.summary.vectorStore.unavailableLabel' }),
+      }
       : vectorBound
-        ? { kind: 'ready', label: vectorName || 'Bound vector store', detail: [vectorEngine, vectorSource].filter(Boolean).join(' · ') || 'Explicit binding' }
-        : { kind: 'default', label: 'System default', detail: 'No explicit binding' },
+        ? {
+          kind: 'ready' as const,
+          label: vectorName || 'Bound vector store',
+          detail: [vectorEngine, vectorSource].filter(Boolean).join(' · ') || 'Explicit binding',
+          ...(vectorName ? {} : { labelKey: 'kbSettings.summary.vectorStore.boundLabel' }),
+          ...([vectorEngine, vectorSource].filter(Boolean).length > 0 ? {} : { detailKey: 'kbSettings.summary.vectorStore.explicitDetail' }),
+        }
+        : { kind: 'default', label: 'System default', detail: 'No explicit binding', labelKey: 'kbSettings.summary.vectorStore.defaultLabel', detailKey: 'kbSettings.summary.vectorStore.noBindingDetail' },
     storage: storageId || storageProvider
-      ? { kind: 'configured', label: storageProvider ? titleCase(storageProvider) : 'Storage instance', detail: storageId || 'Provider configured' }
-      : { kind: 'default', label: 'System default', detail: 'No explicit instance' },
+      ? {
+        kind: 'configured' as const,
+        label: storageProvider ? titleCase(storageProvider) : 'Storage instance',
+        detail: storageId || 'Provider configured',
+        ...(storageProvider ? {} : { labelKey: 'kbSettings.summary.storage.instanceLabel' }),
+        ...(storageId ? {} : { detailKey: 'kbSettings.summary.storage.providerDetail' }),
+      }
+      : { kind: 'default', label: 'System default', detail: 'No explicit instance', labelKey: 'kbSettings.summary.storage.defaultLabel', detailKey: 'kbSettings.summary.storage.noInstanceDetail' },
     activity: (() => {
       if (activityCount <= 0) return { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here', labelKey: 'kbSettings.summary.activity.emptyLabel', detailKey: 'kbSettings.summary.activity.emptyDetail' };
       const activityDetail = [latestAction, latestOutcome].filter(Boolean).join(' · ');
@@ -690,9 +718,9 @@ function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
 }
 
 // R455: resolves the overview-tile copy through the locale translator when the
-// summary carries a message key (activity/datasource/share/graph tiles); the
-// English label/detail text stays the literal fallback for data-driven tiles
-// (parser/vectorStore/storage) and en-US.
+// summary carries a message key. R456 extends this to the parser/vectorStore/
+// storage tiles' fallback branches; their data-driven literals (engine and
+// store names, ids) stay key-free English fallbacks and en-US copy.
 function localizedSummaryField(summary: SettingSummary, field: 'label' | 'detail', t: (key: string, values?: Record<string, string | number>) => string): string {
   if (field === 'label' && summary.labelKey) return t(summary.labelKey, summary.labelParams);
   if (field === 'detail' && summary.detailKey) return t(summary.detailKey);
@@ -986,8 +1014,11 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
   // card at all — its empty state lives inside the table — so the empty
   // summary card is dropped here while a data-backed one (available) stays.
   const showSummary = summary !== undefined && !(section === 'activity' && summary.kind === 'empty');
-  const summaryLabel = summary?.label ?? '';
-  const summaryDetail = summary?.detail ?? '';
+  // R456: section controls that echo the summary copy (the disabled vector
+  // store select, the missing-storage option) render the localized label
+  // instead of the raw en-US fallback literal.
+  const summaryLabel = summary ? localizedSummaryField(summary, 'label', t) : '';
+  const summaryDetail = summary ? localizedSummaryField(summary, 'detail', t) : '';
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
       {showSummary ? (

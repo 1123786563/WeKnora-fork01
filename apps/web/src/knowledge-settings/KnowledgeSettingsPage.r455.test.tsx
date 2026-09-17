@@ -68,11 +68,15 @@ test('summarizeKnowledgeSettings exposes summary message keys with {count} param
   assert.equal(empty.share.detailKey, 'kbSettings.summary.share.emptyDetail');
   assert.equal(empty.graph.labelKey, 'kbSettings.summary.graph.disabledLabel');
   assert.equal(empty.graph.detailKey, 'kbSettings.summary.graph.disabledDetail');
-  // parser/vectorStore/storage tiles stay data-driven literals (dynamic store
-  // and engine names) — out of R455 scope.
-  assert.equal(empty.parser.labelKey, undefined);
-  assert.equal(empty.vectorStore.detailKey, undefined);
-  assert.equal(empty.storage.labelKey, undefined);
+  // R456: the parser/vectorStore/storage tiles gained summary keys for the
+  // non-data branches (the data-driven literals stay the en-US fallbacks).
+  // The empty KB below resolves every tile to its default/empty branch.
+  assert.equal(empty.parser.labelKey, 'kbSettings.summary.parser.defaultLabel');
+  assert.equal(empty.parser.detailKey, 'kbSettings.summary.parser.noOverridesDetail');
+  assert.equal(empty.vectorStore.labelKey, 'kbSettings.summary.vectorStore.defaultLabel');
+  assert.equal(empty.vectorStore.detailKey, 'kbSettings.summary.vectorStore.noBindingDetail');
+  assert.equal(empty.storage.labelKey, 'kbSettings.summary.storage.defaultLabel');
+  assert.equal(empty.storage.detailKey, 'kbSettings.summary.storage.noInstanceDetail');
 
   const populated = summarizeKnowledgeSettings({
     ...baseKnowledgeBase,

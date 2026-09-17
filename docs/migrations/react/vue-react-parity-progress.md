@@ -4890,3 +4890,22 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1643/1643, `pnpm test:shared` 747/747, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r455-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R456 — Summary-tile details finished + 21-round cumulative health audit
+
+- Three parallel agents (A1 the last settings-tile detail strings, A2 21-round cumulative health audit, A3
+  verifier). Verdict: A1 PASS, A2 audit PASS (21 rounds, zero regressions) — the R435-R455 code base
+  confirmed healthy at scale. Final gates: test:web 1649/1649 (+6), test:shared 747/747, typecheck clean,
+  build ✓.
+- A1: the R455 leftover closed — all 14 remaining English strings across the parser/vectorStore/storage tiles
+  ported into kbSettings.summary.* (guard 22→36; zh-CN idiomatic). One bypass fixed: the vector-store select
+  and storage option rendered raw summary.label directly — now through localizedSummaryField (zh-CN showed
+  'System default' inside the select). knowledge-settings 104/104; en-US render byte-identical. Deferred:
+  the sections array titles/descriptions are a separate batch.
+- A2: full gates identical to the R455 baseline; 16-point cross-domain spot-check all green (zero
+  regressions across 21 rounds); hardcoded-string scan over every frontend source changed ca059689..HEAD
+  (17 non-test sources) — candidate list EMPTY. External WIP committed by the external process during the
+  window; OrbStack suspend/restore no visible effect.
+- Gates: `pnpm test:web` 1649/1649, `pnpm test:shared` 747/747, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r456-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
