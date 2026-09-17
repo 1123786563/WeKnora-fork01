@@ -354,7 +354,7 @@ func (urlPathEscaper) escape(s string) string {
 // when the deployment stores artifacts without a resource catalog.
 func artifactHandle(artifact types.MessageArtifact) string {
 	if handle, ok := types.ParseResourcePath(artifact.URL); ok {
-		return handle
+		return types.BuildResourcePath(handle)
 	}
 	return ""
 }
@@ -399,6 +399,24 @@ func NewArtifactVersionDownloadHandler(
 	versions ArtifactVersionSource,
 ) *ArtifactVersionDownloadHandler {
 	return &ArtifactVersionDownloadHandler{sessions: sessions, tenants: tenants, files: files, storage: storage, versions: versions}
+}
+
+// registeredArtifactVersionDownloadHandler is installed by the container
+// assembly (internal/container) and consumed by routes_chat.go at mounting
+// time — the same fail-closed registration pattern the craft routes use.
+var registeredArtifactVersionDownloadHandler *ArtifactVersionDownloadHandler
+
+// RegisterArtifactVersionDownloadHandler installs the W26 versioned download
+// handler for route mounting.
+func RegisterArtifactVersionDownloadHandler(h *ArtifactVersionDownloadHandler) {
+	registeredArtifactVersionDownloadHandler = h
+}
+
+// RegisteredArtifactVersionDownloadHandler returns the registered handler
+// (nil when the assembly is not wired — then no version route is mounted at
+// all, matching the craft mounting pattern).
+func RegisteredArtifactVersionDownloadHandler() *ArtifactVersionDownloadHandler {
+	return registeredArtifactVersionDownloadHandler
 }
 
 // DownloadArtifactVersion streams one immutable artifact version by its

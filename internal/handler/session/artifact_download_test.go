@@ -371,6 +371,48 @@ func TestBuildAttachmentHeader_CJK(t *testing.T) {
 	}
 }
 
+// TestArtifactHandleKeepsResourcePrefix pins the front-end handle contract:
+// the handle field on the wire must stay a `resource://<handle>` reference.
+// packages/domain (RESOURCE_HANDLE = /^resource:\/\/[A-Za-z0-9_-]+$/) and
+// resolveArtifactReference's exact `resource://...` matching both silently
+// drop a bare handle, breaking body-reference resolution in web/mobile.
+func TestArtifactHandleKeepsResourcePrefix(t *testing.T) {
+	const ref = "resource://AbCdEfGhIjKlMnOpQrStUv"
+	if got := artifactHandle(types.MessageArtifact{URL: ref}); got != ref {
+		t.Fatalf("artifactHandle = %q, want %q", got, ref)
+	}
+	if got := artifactHandle(types.MessageArtifact{URL: "local://42/exports/a.txt"}); got != "" {
+		t.Fatalf("artifactHandle = %q, want empty for non-resource URLs", got)
+	}
+
+	// Wire-level lock: the message-artifact list response carries the same
+	// prefixed handle.
+	h := &Handler{
+		sessionService: &stubSessionServiceForArtifacts{
+			getSession: func(_ context.Context, _ string) (*types.Session, error) {
+				return &types.Session{ID: "sess-1", TenantID: 42}, nil
+			},
+		},
+		messageService: &stubMessageServiceForArtifacts{
+			getMessage: func(_ context.Context, _, _ string) (*types.Message, error) {
+				return &types.Message{
+					ID: "msg-1", SessionID: "sess-1",
+					Artifacts: types.MessageArtifacts{{URL: ref, FileName: "report.pdf"}},
+				}, nil
+			},
+		},
+	}
+	router := newArtifactTestRouter(h)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/sessions/sess-1/messages/msg-1/artifacts", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"handle":"`+ref+`"`) {
+		t.Fatalf("list response must carry the resource://-prefixed handle, got %s", w.Body.String())
+	}
+}
+
 func (s *artifactCatalogStub) GetMessageFileBindings(
 	_ context.Context,
 	_ uint64,

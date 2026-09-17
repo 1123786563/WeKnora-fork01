@@ -164,6 +164,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	// W26: immutable artifact version rows live in the same business database
+	// scope as the run store so imports and downloads share one fence.
+	must(container.Provide(repository.NewArtifactVersionStore))
 	must(container.Provide(repository.NewMobileExchangeStore))
 	// The dispatch intent/receipt log is a first-class dependency of the
 	// durable worker. Keep it in the same database scope as AgentRunStore so
@@ -486,6 +489,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Craft handler registration now that its full dependency set exists
 	// (W03's eager Invoke position is moved here — see the craft block above).
 	must(container.Invoke(registerCraftHTTPHandlers))
+	// W26: the versioned artifact download entry mounts on the sessions route
+	// table through the package-level registration (routes_chat.go).
+	must(container.Invoke(registerArtifactVersionHTTPHandlers))
 	// C02: interaction decide surface + outbox redelivery sweep, plus the
 	// post-construction registrar wiring that breaks the provider cycle
 	// (see wireCraftInteractionRegistrar).
@@ -2205,4 +2211,18 @@ func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *servi
 	if snapshots != nil {
 		session.RegisterCraftSnapshotHandler(snapshots)
 	}
+}
+
+// registerArtifactVersionHTTPHandlers installs the W26 immutable artifact
+// version download handler for route mounting. The store scopes every read
+// to (tenant, session, ready version); routes_chat.go mounts the route only
+// when this registration ran (fail-closed).
+func registerArtifactVersionHTTPHandlers(
+	sessions interfaces.SessionService,
+	tenants interfaces.TenantService,
+	files interfaces.FileService,
+	storage interfaces.StorageBackendResolver,
+	versions *repository.ArtifactVersionStore,
+) {
+	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions))
 }

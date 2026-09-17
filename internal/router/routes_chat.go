@@ -109,6 +109,16 @@ func RegisterSessionRoutes(
 		sessions.GET("/:id/artifacts", handler.ListSessionArtifacts)
 		sessions.GET("/:id/messages/:message_id/artifacts", handler.ListMessageArtifacts)
 		sessions.GET("/:id/messages/:message_id/artifacts/:index/download", handler.DownloadMessageArtifact)
+
+		// W26 immutable artifact version downloads. The explicit version ID
+		// (instead of the message index above) keeps a regenerated message
+		// from resolving a stale index to different bytes. Mounted only when
+		// the container-level assembly registered a version source
+		// (fail-closed: without wiring no route exists, like the craft
+		// routes below). Same :id wildcard as the sibling GET routes.
+		if artifactVersions := session.RegisteredArtifactVersionDownloadHandler(); artifactVersions != nil {
+			sessions.GET("/:id/artifact-versions/:version_id/download", artifactVersions.DownloadArtifactVersion)
+		}
 	}
 
 	// Craft workbench API (W03): the create/list group carries the same
