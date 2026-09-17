@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_by": "MX-036",
   "base": "6a70c35a",
-  "head": "PENDING-FINAL",
+  "head": "fa407feda893e8a1d40302a7a4a5a001a6e2437d",
   "note": "发布验收索引：逐 MX 任务终态 + 证据路径 + 发布裁决。globalAllPassed=false（remote/blocked-env 项如实）——不以 core 通过冒充全量。",
   "tasks": {
     "MX-001": {
@@ -184,10 +184,9 @@
       "note": "静态层 frozen 通过；截图/性能矩阵 pending（设备）"
     },
     "MX-036": {
-      "status": "accepted-with-review-pending",
+      "status": "accepted",
       "evidence": "release-report.md",
-      "sha": "PENDING-FINAL",
-      "note": "本任务"
+      "sha": "fa407feda893e8a1d40302a7a4a5a001a6e2437d"
     }
   },
   "release_ruling": {
