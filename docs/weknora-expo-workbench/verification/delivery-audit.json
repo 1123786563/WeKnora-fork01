@@ -1,0 +1,11 @@
+{
+  "requested_reference_files": 15,
+  "requested_files_located_and_relevant_sections_read": 15,
+  "full_repo_clone": false,
+  "full_read_of_all_large_reference_files": false,
+  "static_read_limitations_documented": true,
+  "prototype_checks_passed": 34,
+  "prototype_checks_total": 34,
+  "native_or_backend_tests_run": false,
+  "internal_markdown_link_targets_valid": true
+}

@@ -1,0 +1,203 @@
+{
+  "artifact": "wireframes.html",
+  "scope": "HTML wireframe only; no Expo/Go/backend/Provider verification",
+  "method": "Chromium Playwright set_content of self-contained HTML; file URL navigation is restricted in this container",
+  "checked_at": "2026-09-17T15:45:36.052382+00:00",
+  "browser": "144.0.7559.96",
+  "passed": true,
+  "checks": [
+    {
+      "name": "18 screen definitions and navigation entries",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "desktop document has no horizontal overflow",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "all 18 screens fit horizontally at 1440px",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "all 18 screens fit horizontally at 390px",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "all 18 screens fit horizontally at 360px",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "empty prompt blocked",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "invalid budget blocked",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Agent chooser returns with selection",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "task text and budget carried into conversation",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "offline disables send but retains draft",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "editable follow-up appears in local message model",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "approval requires confirmation first",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Escape dismisses without approval",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "approval recorded without declaring task succeeded",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "conflict view hides stale approve button",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "conflict refresh loads existing decision",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "permission denial hides sensitive target/account",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "uncertain start reuses original request",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "reconcile keeps request identity",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "cancel shows pending stop rather than confirmed stop",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "space change produces isolated empty state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "old artifact not exposed after space switch",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "voice generates editable draft",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "voice sends edited text, not original transcript",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "revoke requires confirmation and updates demo state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "notification preference independent of task state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "all-page gallery contains 18 wireframes",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "gallery links back to interactive screen",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "user text escaped, not interpreted as markup",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "demo login only navigates without credentials",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "logout returns to login",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "no runtime JavaScript page errors",
+      "passed": true,
+      "detail": "[]"
+    },
+    {
+      "name": "no network requests from self-contained prototype",
+      "passed": true,
+      "detail": "[]"
+    },
+    {
+      "name": "18 core screen screenshots generated",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "horizontal_overflows": [],
+  "page_errors": [],
+  "network_requests": [],
+  "screenshots": [
+    "M01-login.png",
+    "M02-spaces.png",
+    "M03-home.png",
+    "M04-sessions.png",
+    "M05-new.png",
+    "M06-agents.png",
+    "M07-conversation.png",
+    "M08-run.png",
+    "M09-approval.png",
+    "M10-inbox.png",
+    "M11-resources.png",
+    "M12-knowledge.png",
+    "M13-connector.png",
+    "M14-artifact.png",
+    "M15-targets.png",
+    "M16-voice.png",
+    "M17-profile.png",
+    "M18-usage.png"
+  ]
+}
