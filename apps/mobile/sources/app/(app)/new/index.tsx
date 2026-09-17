@@ -42,7 +42,7 @@ import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToProductSession } from '@/hooks/useNavigateToSession';
-import { navigateCreatedProductSession } from '@/utils/productSessionEntry';
+import { completeProductSessionCreation } from '@/utils/productSessionEntry';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useWorktrees } from '@/hooks/useWorktrees';
 import { useShallow } from 'zustand/react/shallow';
@@ -1525,48 +1525,56 @@ export function NewSessionScreen() {
             if (!isMountedRef.current) return;
 
             switch (result.type) {
-                case 'success':
+                case 'success': {
                     // The idempotency key did its job; the next Start is a new session.
                     completeSpawnRequest();
-                    await sync.refreshSessions();
 
                     const currentEffortKey = currentEffort?.key ?? null;
-                    // Pin the actual launch selection to this session. A
-                    // later settings/default change must not silently rewrite
-                    // an existing session's permission, model, or effort.
-                    if (!spawnRigCreation) {
-                        sessionSetAgentModes(result.sessionId, {
-                            permissionMode: permissionKey,
-                            modelMode: currentModelKey,
-                            effortLevel: currentEffortKey,
-                        });
-                    }
+                    // Everything the spawned session still needs before it can be
+                    // opened: the durable session list refresh, the launch-mode pin,
+                    // and the first message. Handed to the creation seam below so
+                    // the durable read and the product navigation always run after
+                    // it, in that order, on the real session record.
+                    const persistSpawnedSession = async () => {
+                        await sync.refreshSessions();
+                        // Pin the actual launch selection to this session. A
+                        // later settings/default change must not silently rewrite
+                        // an existing session's permission, model, or effort.
+                        if (!spawnRigCreation) {
+                            sessionSetAgentModes(result.sessionId, {
+                                permissionMode: permissionKey,
+                                modelMode: currentModelKey,
+                                effortLevel: currentEffortKey,
+                            });
+                        }
 
-                    // Pull live prompt and clear it. We read via getState() so this
-                    // callback doesn't have to subscribe to `input` (which would
-                    // re-render the screen on every keystroke).
-                    const draftState = useNewSessionDraft.getState();
-                    const trimmedPrompt = draftState.input.trim();
-                    const attachments = draftState.attachments;
-                    draftState.setInput('');
-                    draftState.setAttachments([]);
+                        // Pull live prompt and clear it. We read via getState() so this
+                        // callback doesn't have to subscribe to `input` (which would
+                        // re-render the screen on every keystroke).
+                        const draftState = useNewSessionDraft.getState();
+                        const trimmedPrompt = draftState.input.trim();
+                        const attachments = draftState.attachments;
+                        draftState.setInput('');
+                        draftState.setAttachments([]);
 
-                    // Send initial message if provided
-                    if (trimmedPrompt || attachments.length > 0) {
-                        await sync.sendMessage(result.sessionId, trimmedPrompt, { source: 'new_session', attachments });
-                    }
+                        // Send initial message if provided
+                        if (trimmedPrompt || attachments.length > 0) {
+                            await sync.sendMessage(result.sessionId, trimmedPrompt, { source: 'new_session', attachments });
+                        }
+                    };
 
-                    const createdSession = storage.getState().sessions[result.sessionId];
-                    const navigated = navigateCreatedProductSession({
+                    // The shared production seam: refresh (via
+                    // `persistSpawnedSession`), read the durable session record,
+                    // then navigate through the fail-closed product router.
+                    await completeProductSessionCreation({
                         sessionId: result.sessionId,
-                        session: createdSession,
+                        refreshSessions: persistSpawnedSession,
+                        readSession: (sessionId) => storage.getState().sessions[sessionId],
                         navigateProduct: navigateToProduct,
                         onUnavailable: () => Modal.alert(t('common.error'), 'The new product session is not ready yet. Please retry after synchronization.'),
                     });
-                    if (!navigated) {
-                        break;
-                    }
                     break;
+                }
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(
                         'Create Directory?',
