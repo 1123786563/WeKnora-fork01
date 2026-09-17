@@ -86,5 +86,73 @@
       "upstreamCommitCheckedVia": "GitHub API /repos/KaTeX/KaTeX/commits/90de97946bb60aa82108d6dbb217cf10602d8709",
       "distNotInGitCheckedVia": "raw.githubusercontent.com 对 dist/katex.min.js 于该 commit 返回 404（产物只存在于 npm tarball）"
     }
-  }
+  },
+  "addenda": [
+    {
+      "task": "W31 — 实时语音、打断与后台进度展示（mobile-ai-saas-workbench）",
+      "generatedAt": "2026-09-17",
+      "policy": {
+        "declarationOnly": true,
+        "noFetch": "与 W27 主清单同一策略：本任务不拉取、不 vendor 任何外部仓库内容；仓库内没有任何字节来源于下列清单项。AWS 示例仅作为展示能力选型参考。",
+        "portingRule": "只移植『展示能力』的形态与原生依赖清单（Live Activity 进度卡、前台进度通知）；产品语义按本仓架构分册执行（Run 状态-only 提示、不泄露内容、不持有 worker、不以后台音频保活）。"
+      },
+      "source": {
+        "repository": "https://github.com/aws-samples/sample-mobile-ai-assistant",
+        "defaultBranch": "main",
+        "referenceCommit": "a356f7adbbe6dddebd7b8b0672064f9dea4243fc",
+        "referenceCommitDate": "2026-07-24",
+        "license": "MIT-0",
+        "verifiedVia": "GitHub API（repo 元数据 + /commits?per_page=1 + git/trees recursive）于 2026-09-17 实时核实；license 字段 spdx_id=MIT-0。"
+      },
+      "capabilities": [
+        {
+          "name": "iOS Live Activity 进度展示",
+          "role": "Run 执行状态在锁屏/灵动岛的常驻进度提示（仅状态标签，无对话内容）",
+          "awsReferencePaths": [
+            "react-native/ios/SwiftChatLiveActivity/LiveActivityAttributes.swift",
+            "react-native/ios/SwiftChatLiveActivity/SwiftChatLiveActivity.swift",
+            "react-native/ios/SwiftChatLiveActivity/SwiftChatLiveActivityBundle.swift",
+            "react-native/ios/SwiftChatLiveActivityExtension.entitlements"
+          ],
+          "nativeDependencies": [
+            "iOS ActivityKit（iOS 16.1+）+ WidgetKit/SwiftUI Widget Extension（上列 SwiftChatLiveActivity 形态）",
+            "Expo 接入面：app.config.ts 需增加 Widget Extension target/config-plugin（Expo 无官方 Live Activity 插件，需社区模块或自写 Expo Module；apps/mobile 当前未引入，落地时按本清单另行审查）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/notifications/live-progress.ts（LiveProgressPorts.setLiveActivity/clearLiveActivity 为 seam；缺失时降级普通通知，harness 测试覆盖）",
+          "divergence": "AWS 示例的 Live Activity 内容由其自有会话流驱动；WeKnora 仅消费 Run 状态映射的固定标签（runProgressStatusLabel），消息/工具内容结构性不可达通知面。"
+        },
+        {
+          "name": "Android/iOS 普通前台进度通知（Live Activity 缺失时的降级面）",
+          "role": "Run 状态变化的普通通知提示与点按回前台恢复",
+          "awsReferencePaths": [
+            "react-native/src/chat/service/BackgroundTaskService.ts"
+          ],
+          "nativeDependencies": [
+            "expo-notifications ~55.0.0（apps/mobile 已有依赖，node_modules package.json 核实）",
+            "Android 13+ POST_NOTIFICATIONS 运行时权限（真机验收 blocked-env）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/notifications/live-progress.ts（LiveProgressPorts.notify；前台恢复由 W12 恢复控制器负责，presenter 不持有导航）",
+          "divergence": "AWS 示例 BackgroundTaskService 在端侧驱动/持有后台任务；WeKnora 的 presenter 是纯订阅面（结构上仅有 onRunStatus/clear），Run 执行在服务端。"
+        },
+        {
+          "name": "实时语音媒体面（参考声明，本任务未接入）",
+          "role": "实时语音连接、打断播放与麦克风静音的原生媒体 leg",
+          "awsReferencePaths": [
+            "react-native/ios/Modules/VoiceChat/VoiceChatModule.swift",
+            "react-native/ios/Modules/VoiceChat/VoiceChatModule.m"
+          ],
+          "nativeDependencies": [
+            "真实供应商媒体传输（WebRTC/实时供应商 SDK；W30 已定产品侧 grant/转写端点，媒体接入为后续任务+blocked-env）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/voice/realtime.ts（RealtimeVoicePort seam；生产装配 createUnavailableRealtimeVoicePort fail-closed）",
+          "divergence": "AWS 示例直接持有供应商连接与本地历史；WeKnora 连接按 W30 短期 grant 创建、过期重新准入、系统断开走 W12 恢复查询。"
+        }
+      ],
+      "explicitExclusions": [
+        "react-native/ios/Services/BackgroundAudioService.swift 与 react-native/ios/Modules/BackgroundKeepAlive/、react-native/patches/@sayem314+react-native-keep-awake+1.4.0.patch：AWS 示例以后台音频/保活维持端侧执行——WeKnora 明确不移植（Run 在服务端执行，live-progress 只订阅状态，不得以后台音频保活）。",
+        "AWS 示例的本地会话历史/个人模型配置与导航结构：整体不合并（分册边界）。",
+        "react-native/src/chat/service/BackgroundStreamManager.ts 的端侧流管理工作形态：WeKnora 的流订阅归 W09/W10 事件存储与 W12 恢复控制器。"
+      ]
+    }
+  ]
 }

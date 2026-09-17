@@ -12,6 +12,7 @@ import { createProductSessionAttachments } from '@/weknora/resources/product-ses
 import { createMobileKnowledgeApi } from '@/weknora/knowledge/api';
 import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
 import { createProductVoiceTranscriber } from '@/weknora/voice/product-transcriber';
+import { createProductVoiceSessionApi, createRealtimeVoiceSession, createUnavailableRealtimeVoicePort } from '@/weknora/voice/realtime';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
@@ -111,6 +112,26 @@ function ProductSessionRoute() {
       sessionID: sessionId,
     });
   }, [auth.authSession, auth.credential, auth.scope, host, sessionId, viewModel]);
+  // W31 realtime voice chain: the session rides the W30 grant endpoints
+  // (admission + idempotent settle) behind the product bearer, and a system
+  // disconnect re-attaches through the W12 recovery controller instead of
+  // reopening the paid session. The realtime media provider seam fails
+  // closed (typed PROVIDER_UNAVAILABLE) until the native provider module
+  // lands — the W29 pre-W30 typed-failure pattern — so controls, renewal
+  // and approval policy ship behind a real grant lifecycle today.
+  const voice = React.useMemo(() => {
+    const credential = auth.credential;
+    if (!host || !viewModel || credential?.kind !== 'bearer' || !auth.authSession) return null;
+    const api = createProductVoiceSessionApi({ origin: host.origin, credential, authSession: auth.authSession });
+    return {
+      session: createRealtimeVoiceSession({
+        port: createUnavailableRealtimeVoicePort(),
+        admit: () => api.admit(sessionId, viewModel.execution?.runID ?? undefined),
+        release: (id) => api.release(id),
+        recover: () => viewModel.recovery?.recover() ?? Promise.resolve(),
+      }),
+    };
+  }, [auth.authSession, auth.credential, host, sessionId, viewModel]);
   // W29 voice chain: the production dictation port (expo-audio capture with
   // permission gating and temp-file cleanup). W30 wires the authenticated
   // transcription call into the port's consumption seam — the capture goes
@@ -150,7 +171,7 @@ function ProductSessionRoute() {
   // (AppState active -> status/history/stream; background closes only the
   // subscription). The controller is per-view-model, i.e. per mount, matching
   // the screen's dispose-on-unmount contract.
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} resultResources={resultResources ?? undefined} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} voice={voice ?? undefined} resultResources={resultResources ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);

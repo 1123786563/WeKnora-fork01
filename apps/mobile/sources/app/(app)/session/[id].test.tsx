@@ -92,6 +92,13 @@ vi.mock('@/weknora/conversations/execution-projection', async () => await import
 vi.mock('@/weknora/resources/product-session-attachments', async () => await import('../../../weknora/resources/product-session-attachments'));
 vi.mock('@/weknora/voice/native-dictation-port', async () => await import('../../../weknora/voice/native-dictation-port'));
 vi.mock('@/weknora/voice/product-transcriber', async () => await import('../../../weknora/voice/product-transcriber'));
+// W31: the realtime voice assembly rides the same alias-mock pattern as the
+// other runtime imports of the route. The protocol-gate line below also
+// repairs the pre-existing gap: W37 added the route's gate import without a
+// matching mock, so this suite failed at HEAD before W31 touched anything
+// (the alias itself does not resolve under vitest without these mocks).
+vi.mock('@/weknora/voice/realtime', async () => await import('../../../weknora/voice/realtime'));
+vi.mock('@/weknora/platform/protocol-gate', async () => await import('../../../weknora/platform/protocol-gate'));
 vi.mock('@/weknora/knowledge/api', async () => await import('../../../weknora/knowledge/api'));
 
 vi.mock('@/weknora/platform/execution-storage', async () => {

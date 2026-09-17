@@ -4,9 +4,11 @@ import { SessionView } from '@/-session/SessionView';
 import { ConversationViewModelContext } from './context';
 import { createRequestID, type ConversationViewModel } from './view-model';
 import type { AttachmentEntryActions, SessionUploadRecord, SessionUploadStatus } from '../resources/upload';
-import { isRecoveryNotFound, type ExecutionRecovery } from '../executions/recovery';
+import { isRecoveryNotFound, isTerminalExecutionStatus, type ExecutionRecovery } from '../executions/recovery';
 import { createDictationController, DictationError, type DictationLimits, type DictationPort, type DictationScope } from '../voice/dictation';
 import { DictationInput } from '../voice/DictationInput';
+import { createVoiceControls, createVoiceUtteranceHandler, type RealtimeVoiceSession, type VoiceUtteranceOutcome } from '../voice/realtime';
+import { VoicePanel } from '../voice/VoicePanel';
 import { ConversationResultResourcesContext, type ConversationResultResources } from './ProductConversationMessages';
 export { ProductConversationMessages } from './ProductConversationMessages';
 export { selectRenderer } from '../renderers/registry';
@@ -39,6 +41,15 @@ export interface ConversationScreenProps {
    */
   dictation?: ConversationDictation;
   /**
+   * W31 realtime voice surface: the W30-grant-backed session (admission,
+   * bounded renewal, system-disconnect handling). The screen derives the
+   * three separated controls (stop playback / end voice / explicit product
+   * cancel) and the utterance policy handler from it; high-risk approvals
+   * stay on the pending-interaction card below — spoken answers never
+   * approve.
+   */
+  voice?: ConversationVoice;
+  /**
    * W28 authorized resource seam for structured results: citations open and
    * oversized analysis tables / artifact files download by re-requesting
    * authorization through the product knowledge/attachment interfaces on
@@ -63,6 +74,16 @@ export interface ConversationDictation {
   port: DictationPort;
   limits?: Partial<DictationLimits>;
   scope?: DictationScope;
+}
+
+/**
+ * W31 realtime voice surface: only the session is injected — the screen owns
+ * the composition so the separated controls and the utterance policy always
+ * ride the live view-model (runID/revision, pending approvals, the W37-gated
+ * cancel capability).
+ */
+export interface ConversationVoice {
+  session: RealtimeVoiceSession;
 }
 
 const uploadStatusText: Record<SessionUploadStatus, string> = {
@@ -176,11 +197,11 @@ export function ConversationControlPanel({ viewModel, attachments, dictation }: 
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, resultResources }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, voice, resultResources }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
-  // W12: the product conversation resumes executions when the app returns to
-  // the foreground and closes only its subscription when it leaves. Unmount
+  // W12: the product conversation resumes executions when the app returns to the
+  // foreground and closes only its subscription when it leaves. Unmount
   // removes the AppState listener and disposes the per-mount recovery handle.
   React.useEffect(() => {
     if (!recovery) return;
@@ -192,6 +213,40 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
       recovery.dispose();
     };
   }, [recovery, redraw]);
+  // W31: the realtime voice session follows the app lifecycle. Backgrounding
+  // closes the provider session and settles billing — the paid session is
+  // never reopened automatically; returning to the foreground only renews an
+  // expired grant through fresh admission while the W12 controller above
+  // re-attaches to the run.
+  React.useEffect(() => {
+    if (!voice) return;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'background') void voice.session.interruptedBySystem('background');
+      else if (next === 'active') void voice.session.renewIfExpired();
+    });
+    return () => subscription.remove();
+  }, [voice]);
+  // The separated W31 controls: stop playback and end voice map onto the
+  // realtime session; cancelTask is the explicit product command riding the
+  // view-model boundary (the W37 protocol gate stops it there).
+  const voiceControls = React.useMemo(() => (voice ? createVoiceControls({
+    stopAudio: () => voice.session.interruptPlayback(),
+    closeVoice: () => voice.session.end(),
+    cancelRun: async () => {
+      const execution = viewModel.execution;
+      if (!execution?.runID) return;
+      await viewModel.commands.cancel(execution.runID, execution.revision ?? 0);
+    },
+  }) : null), [voice, viewModel]);
+  // Utterance policy: audio intents ride the controls above; approval
+  // answers — ambiguous or not — only surface the W05 card. There is no
+  // approve path anywhere on the voice surface.
+  const [voiceNotice, setVoiceNotice] = React.useState<string | null>(null);
+  const voiceUtterance = React.useMemo(() => ((voice && voiceControls) ? createVoiceUtteranceHandler({
+    controls: voiceControls,
+    hasPendingApproval: () => viewModel.pendingInteractions.some((item) => item.status === 'pending'),
+    surfaceApprovalCard: () => setVoiceNotice('高风险操作请在审批卡上手动确认'),
+  }) : undefined), [voice, voiceControls, viewModel]);
   const recoveryState = recovery?.getState();
   // W37 protocol gate: present exactly when the compatibility verdict is not
   // 'full'. The safe surface — login, reads and this explanation — stays
@@ -228,6 +283,16 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
           </View>
         )}
         <ConversationControlPanel viewModel={viewModel} attachments={attachments} dictation={dictation} />
+        {voice && voiceControls ? (
+          <VoicePanel
+            session={voice.session}
+            controls={voiceControls}
+            canCancel={viewModel.capabilities.canCancel}
+            runActive={viewModel.execution !== null && !isTerminalExecutionStatus(viewModel.execution.status)}
+            utterance={voiceUtterance}
+            notice={voiceNotice}
+          />
+        ) : null}
         <SessionRenderer id={sessionId} viewModel={viewModel} />
       </View>
       </ConversationResultResourcesContext.Provider>

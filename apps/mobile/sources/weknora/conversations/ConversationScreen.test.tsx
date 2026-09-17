@@ -7,6 +7,8 @@ import { ConversationScreen, ProductConversationMessages } from './ConversationS
 import type { ConversationViewModel } from './view-model';
 import type { ExecutionRecovery } from '../executions/recovery';
 import { DictationError, type DictationPort } from '../voice/dictation';
+import { createRealtimeVoiceSession, type VoiceUtteranceOutcome } from '../voice/realtime';
+import { VoicePanel } from '../voice/VoicePanel';
 
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
@@ -352,6 +354,94 @@ it('keeps mounting safely without the resource seam (entries explain, no fake op
   await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, sessionRenderer: SessionRenderer })); });
   expect(renderer!.root.findByProps({ accessibilityLabel: 'knowledge-citation-doc-2' })).toBeDefined();
   expect(renderer!.root.findAllByProps({ accessibilityRole: 'button', accessibilityLabel: '打开引用 知识引用' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+});
+});
+
+// ---------------------------------------------------------------------------
+// W31 — realtime voice surface: separated controls, utterance policy and the
+// app-lifecycle handling of the grant-backed session.
+// ---------------------------------------------------------------------------
+
+function realtimePort(log: string[]) {
+  return {
+    async connect() { log.push('port.connect'); },
+    async close() { log.push('port.close'); },
+    mute(value: boolean) { log.push(`mute:${value}`); },
+    stopAudio() { log.push('stopAudio'); },
+  };
+}
+
+function realtimeSession(log: string[], admitError?: () => Error) {
+  return createRealtimeVoiceSession({
+    port: realtimePort(log),
+    admit: async () => {
+      if (admitError) throw admitError();
+      return { id: 'vs_1', grant: { token: 'tok-1', expiresAt: '2031-01-01T00:00:00Z' }, tokenIssued: true };
+    },
+    release: async (id) => { log.push(`release:${id}`); },
+  });
+}
+
+describe('ConversationScreen realtime voice (W31)', () => {
+it('composes the separated controls and keeps spoken approvals on the pending-interaction card', async () => {
+  const decisions: string[] = [];
+  const cancels: Array<[string, number]> = [];
+  const log: string[] = [];
+  const viewModel = model({
+    pendingInteractions: [{ id: 'p1', kind: 'approval', status: 'pending', label: 'Run tool', revision: 7 }],
+    capabilities: { canCancel: true, canSteer: false, canAttach: false, canVoice: true },
+    commands: {
+      cancel: async (runID, revision) => { cancels.push([runID, revision ?? -1]); },
+      steer: async () => undefined,
+      approve: async (id) => { decisions.push(`approve:${id}`); },
+      reject: async (id) => { decisions.push(`reject:${id}`); },
+    },
+  });
+  const session = realtimeSession(log);
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, voice: { session } })); });
+  await act(async () => { await session.begin(); });
+  const panel = renderer!.root.findByType(VoicePanel);
+  expect(panel).toBeDefined();
+  // Spoken approval answers — ambiguous or explicit — never approve: the W05
+  // card stays the only decision surface and the notice says so.
+  const utterance = renderer!.root.findByType(VoicePanel).props.utterance as (text: string) => VoiceUtteranceOutcome;
+  await act(async () => { utterance('嗯'); });
+  await act(async () => { utterance('批准'); });
+  expect(decisions).toEqual([]);
+  expect(renderer!.root.findByProps({ accessibilityLabel: 'voice-utterance-notice' }).props.children).toBe('高风险操作请在审批卡上手动确认');
+  // The card's own buttons still work.
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '批准 Run tool' }).props.onPress(); });
+  expect(decisions).toEqual(['approve:p1']);
+  // An explicit spoken cancel rides the product command with the live
+  // runID/revision; a playback stop stays on the audio surface.
+  await act(async () => { utterance('取消任务'); });
+  await act(async () => { utterance('停止播放'); });
+  expect(cancels).toEqual([['run-1', 0]]);
+  expect(log).toEqual(['port.connect', 'stopAudio']);
+  await act(async () => renderer!.unmount());
+});
+
+it('closes the grant-backed session on background and never reopens it; foreground only renews admission', async () => {
+  const log: string[] = [];
+  const viewModel = model({ pendingInteractions: [] });
+  const session = realtimeSession(log);
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, voice: { session } })); });
+  await act(async () => { await session.begin(); });
+  const appState = AppState as unknown as { emitForTest(state: string): void };
+  await act(async () => { appState.emitForTest('background'); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(session.state()).toBe('interrupted');
+  expect(log).toEqual(['port.connect', 'port.close', 'release:vs_1']);
+  // Foreground does not reopen the paid session: only the (here refused)
+  // renewal path could ever admit again, and the panel offers an explicit
+  // reconnect instead.
+  await act(async () => { appState.emitForTest('active'); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(session.state()).toBe('interrupted');
+  expect(log.filter((entry) => entry === 'port.connect')).toHaveLength(1);
   await act(async () => renderer!.unmount());
 });
 });
