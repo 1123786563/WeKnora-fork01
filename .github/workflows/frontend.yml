@@ -121,3 +121,41 @@ jobs:
 
       - name: Test, type-check, and build Desktop renderer
         run: pnpm test:desktop && pnpm typecheck:desktop && pnpm build:desktop-renderer
+
+  miniprogram:
+    name: WeChat miniprogram gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install React workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check design tokens
+        run: pnpm --filter @weknora/miniprogram run tokens:check
+
+      - name: Run miniprogram tests
+        run: pnpm --filter @weknora/miniprogram run test
+
+      - name: Type-check miniprogram
+        run: pnpm --filter @weknora/miniprogram run typecheck
+
+      # 占位 origin 仅作产物构建校验（config/index.ts 强制 HTTPS 形制）；
+      # 真实联调构建由发布流程注入 WEKNORA_API_ORIGIN，不在 CI 存放。
+      - name: Build weapp bundle (placeholder origin)
+        run: pnpm --filter @weknora/miniprogram run build:weapp
+        env:
+          WEKNORA_API_ORIGIN: https://placeholder.invalid
+
+      - name: Shared mini regression suite
+        run: pnpm exec tsx --test packages/api-client/src/chat/mini-regression.test.ts
