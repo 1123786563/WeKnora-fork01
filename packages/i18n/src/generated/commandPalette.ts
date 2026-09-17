@@ -1,10 +1,11 @@
 // AUTO-PORTED from frontend/src/i18n/locales/*.ts commandPalette block.
 // Only the keys used by the React GlobalCommandPalette (apps/web/src/platform)
 // are ported: placeholder, recent/quick-actions group labels, quick command
-// labels, clear-recent, no-results empty state, and the Esc hotkey hint used
-// for the close button's aria-label. Chunk/message/KB/agent search result
-// groups, the retrieval-settings drawer, and the KB-scope chip are not ported
-// in this slice (S03) — see command-palette.ts for the scope rationale.
+// labels, clear-recent, no-results empty state, the Esc hotkey hint used
+// for the close button's aria-label, the live-search result groups
+// (chunks/messages/KBs/agents/sessions, R464), and the retrieval-settings
+// drawer triggers + empty-state actions (R465-A2) — see command-palette.ts
+// for the scope rationale.
 import type { Locale } from '../index.ts';
 
 export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
@@ -30,6 +31,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "打开共享空间",
     "commandPalette.quick.settings": "打开设置",
     "commandPalette.empty.noResults": "没有找到匹配结果",
+    "commandPalette.empty.askAi": "直接向 AI 提问",
+    "commandPalette.empty.adjustRetrieval": "调整检索参数",
+    "commandPalette.retrieval": "检索参数",
     "commandPalette.hotkey.select": "选择",
     "commandPalette.hotkey.enter": "打开",
     "commandPalette.hotkey.cmdNumber": "直接打开",
@@ -58,6 +62,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "Open shared spaces",
     "commandPalette.quick.settings": "Open settings",
     "commandPalette.empty.noResults": "No matches found",
+    "commandPalette.empty.askAi": "Ask the AI directly",
+    "commandPalette.empty.adjustRetrieval": "Adjust retrieval",
+    "commandPalette.retrieval": "Retrieval settings",
     "commandPalette.hotkey.select": "Navigate",
     "commandPalette.hotkey.enter": "Open",
     "commandPalette.hotkey.cmdNumber": "Jump to",
@@ -86,6 +93,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "共有スペースを開く",
     "commandPalette.quick.settings": "設定を開く",
     "commandPalette.empty.noResults": "一致する項目がありません",
+    "commandPalette.empty.askAi": "AIに直接質問する",
+    "commandPalette.empty.adjustRetrieval": "検索設定を調整",
+    "commandPalette.retrieval": "検索設定",
     "commandPalette.hotkey.select": "移動",
     "commandPalette.hotkey.enter": "開く",
     "commandPalette.hotkey.cmdNumber": "直接開く",
@@ -114,6 +124,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "공유 공간 열기",
     "commandPalette.quick.settings": "설정 열기",
     "commandPalette.empty.noResults": "일치하는 결과 없음",
+    "commandPalette.empty.askAi": "AI에게 직접 질문하기",
+    "commandPalette.empty.adjustRetrieval": "검색 설정 조정",
+    "commandPalette.retrieval": "검색 설정",
     "commandPalette.hotkey.select": "이동",
     "commandPalette.hotkey.enter": "열기",
     "commandPalette.hotkey.cmdNumber": "바로 이동",
@@ -142,6 +155,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "Открыть общие пространства",
     "commandPalette.quick.settings": "Открыть настройки",
     "commandPalette.empty.noResults": "Совпадений не найдено",
+    "commandPalette.empty.askAi": "Спросить ИИ",
+    "commandPalette.empty.adjustRetrieval": "Настроить поиск",
+    "commandPalette.retrieval": "Параметры поиска",
     "commandPalette.hotkey.select": "Навигация",
     "commandPalette.hotkey.enter": "Открыть",
     "commandPalette.hotkey.cmdNumber": "Быстрый переход",

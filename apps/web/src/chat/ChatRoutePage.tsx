@@ -6,7 +6,7 @@ import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
-import { ChatPage } from '@weknora/views/chat/page';
+import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
@@ -24,7 +24,7 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
-import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
@@ -348,10 +348,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const runId = ++chatRunIdRef.current;
     setStreamState(initialChatStreamState());
     const feed = createStreamFeed(sessionId, runId, resumeId);
-    void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch(() => {
+    void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch((cause: unknown) => {
       // Non-IM resume failures surface as errors; the partial answer stays.
+      // Vue parity: the localized stream prefix plus the HTTP status, not a
+      // generic 「操作失败」.
       if (runId === chatRunIdRef.current && selectedSessionIdRef.current === sessionId) {
-        setError(copy.operationFailed);
+        setError(streamFailureMessage(cause, copy.streamFailed));
       }
     }).finally(() => {
       if (streamAbortRef.current === controller) streamAbortRef.current = null;
@@ -1047,7 +1049,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       if (hasLiveAssistant || injectedRows.length > 0) {
         const injectedIds = new Set(injectedRows.map((row) => row.id));
         setMessages((current) => [...current.filter((item) => item.id !== transientId && !injectedIds.has(item.id)), ...injectedRows, ...(hasLiveAssistant ? [{
-          id: transientId, session_id: sessionId, role: 'assistant' as const, content: runState.answer,
+          id: transientId, session_id: sessionId, role: 'assistant' as const,
+          // Vue processStreamChunk holds the answer back while `<think>` is
+          // open; the reasoning renders through the live deepThink block only.
+          content: splitLiveThinking(runState.answer).answer,
           is_completed: runState.phase === 'completed',
           thinking: runState.thinking,
           tool_calls: Object.values(runState.toolCalls),
@@ -1129,9 +1134,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         } catch (retryCause) {
           if (runController.signal.aborted) return;
           if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
-            setStreamState((current) => ({ ...current, phase: 'error', error: retryCause instanceof Error ? retryCause.message : copy.operationFailed, artifactsPending: false }));
+            setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
           }
-          throw retryCause;
+          // Application errors keep the server-provided message (Vue renders
+          // the SSE error event content); transport errors carry the copy.
+          throw isChatStreamApplicationError(retryCause) ? retryCause : new Error(streamFailureMessage(retryCause, copy.streamFailed));
         }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
@@ -1262,7 +1269,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onTerminalInput={selectedSessionId ? terminalInput : undefined}
     onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
-    stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    stream={{ phase: streamState.phase, thinking: streamState.thinking, answer: streamState.answer, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
     onStopStream={() => void stopStream()}
     send={send}
   />

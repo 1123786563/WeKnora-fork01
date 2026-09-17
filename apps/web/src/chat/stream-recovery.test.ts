@@ -1,7 +1,34 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
+
+/*
+ * Vue stream failure copy (frontend/src/api/chat/streame.ts): a failed
+ * handshake throws `HTTP ${status}` and onerror surfaces
+ * `${error.streamFailed}: ${message}` — the localized prefix plus the HTTP
+ * status, e.g. 「流式连接失败: HTTP 404」. The api-client raises
+ * `Chat stream failed with HTTP 404`, so the React wrapper extracts the
+ * status instead of embedding the whole English sentence.
+ */
+test('streamFailureMessage surfaces the localized prefix with the HTTP status', () => {
+  assert.equal(
+    streamFailureMessage(new Error('Chat stream failed with HTTP 404'), '流式连接失败'),
+    '流式连接失败: HTTP 404',
+  );
+  assert.equal(
+    streamFailureMessage(new Error('HTTP 502'), 'Stream connection failed'),
+    'Stream connection failed: HTTP 502',
+  );
+});
+
+test('streamFailureMessage keeps non-HTTP transport reasons after the prefix like Vue', () => {
+  assert.equal(
+    streamFailureMessage(new Error('Failed to fetch'), '流式连接失败'),
+    '流式连接失败: Failed to fetch',
+  );
+  assert.equal(streamFailureMessage('socket hang up', '流式连接失败'), '流式连接失败: socket hang up');
+});
 
 test('application stream errors are terminal and must not be retried as transport failures', () => {
   const error = new ChatStreamApplicationError('quota exceeded');

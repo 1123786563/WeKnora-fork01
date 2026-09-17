@@ -186,3 +186,21 @@ test('keeps zh-CN knowledge-settings headings and navigation free of hardcoded E
     assert.doesNotMatch(value, /[a-z]/, `zh-CN ${key} must not embed lowercase English residue`);
   }
 });
+
+// R465-A2 — command-palette empty-state actions + retrieval drawer triggers
+// (Vue GlobalCommandPalette.vue:126-138 + 22-26). All five locales carry the
+// keys with byte-exact Vue copies; the en-US fallback stays authoritative.
+test('keeps the command palette empty-state action keys aligned across every locale', () => {
+  const keys = ['commandPalette.empty.askAi', 'commandPalette.empty.adjustRetrieval', 'commandPalette.retrieval'];
+  for (const locale of supportedLocales) {
+    for (const key of keys) {
+      assert.ok(typeof messages[locale][key] === 'string' && messages[locale][key]!.length > 0, `${locale} is missing ${key}`);
+    }
+  }
+  assert.equal(formatMessage('en-US', 'commandPalette.empty.askAi'), 'Ask the AI directly');
+  assert.equal(formatMessage('en-US', 'commandPalette.empty.adjustRetrieval'), 'Adjust retrieval');
+  assert.equal(formatMessage('en-US', 'commandPalette.retrieval'), 'Retrieval settings');
+  assert.equal(formatMessage('zh-CN', 'commandPalette.empty.askAi'), '直接向 AI 提问');
+  assert.equal(formatMessage('zh-CN', 'commandPalette.empty.adjustRetrieval'), '调整检索参数');
+  assert.equal(formatMessage('zh-CN', 'commandPalette.retrieval'), '检索参数');
+});

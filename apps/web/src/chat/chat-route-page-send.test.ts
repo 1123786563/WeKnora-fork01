@@ -47,9 +47,19 @@ async function renderChatRoutePage(input: {
             export function openContextualGuide() {
               return false;
             }
-            export function resolveChatCopy() {
-              return { deleteConfirmBody: 'Delete this conversation? This cannot be undone.', knowledgeBasesLoadFailed: 'Failed to load knowledge bases' };
-            }
+        export function resolveChatCopy() {
+          return { deleteConfirmBody: 'Delete this conversation? This cannot be undone.', knowledgeBasesLoadFailed: 'Failed to load knowledge bases', streamFailed: '流式连接失败' };
+        }
+        export function splitLiveThinking(content) {
+          if (!content || !content.includes('<think>')) {
+            return { showThink: false, thinking: false, thinkContent: '', answer: content ?? '' };
+          }
+          if (!content.includes('</think>')) {
+            return { showThink: true, thinking: true, thinkContent: content.replace('<think>', '').trim(), answer: '' };
+          }
+          const index = content.lastIndexOf('</think>');
+          return { showThink: true, thinking: false, thinkContent: content.substring(0, index).replace('<think>', ''), answer: content.substring(index + 8).trim() };
+        }
             export function resolveForkAffordance() {
               return { canFork: false };
             }
@@ -181,4 +191,47 @@ test('ChatRoutePage first creatChat send opens the stream request after session 
     'stream-request:session-created',
     'messages:session-created',
   ]);
+});
+
+/*
+ * Vue stream 404 copy (streame.ts onopen/onerror): a failed handshake rejects
+ * with 「流式连接失败: HTTP 404」 — the localized prefix plus the HTTP status —
+ * instead of a generic 「操作失败」. The pending row keeps its retry entry.
+ */
+test('a 404 stream handshake rejects with the Vue-localized stream failure message', async () => {
+  const scopeController = {
+    current: () => ({ scope: { tenantId: 'tenant-1' }, signal: undefined }),
+    isCurrent: () => true,
+  };
+  const client = {
+    sessions: {
+      create: async ({ title }: { title: string }) => ({ id: 'session-404', title, is_pinned: false }),
+      messages: async () => [],
+    },
+    configuration: {
+      agents: { listWithState: async () => ({ items: [], disabledOwnAgentIds: [] }) },
+      mcp: { oauth: {} },
+    },
+    chat: {
+      // No event was received, so no Last-Event-ID resume is offered: the
+      // single transport failure must surface with the localized wording.
+      stream: async () => { throw new Error('Chat stream failed with HTTP 404'); },
+      suggestions: { get: async () => ({ id: 'suggestions-1', questions: [] }), recordEvent: async () => undefined },
+      approvals: { resolveTool: async () => undefined, cancelOAuth: async () => undefined, resolveOAuth: async () => undefined },
+      artifacts: { message: async () => [], download: async () => ({ body: new Blob(), contentType: 'application/octet-stream' }) },
+      steer: { enqueue: async () => undefined },
+      stop: async () => undefined,
+    },
+  };
+  (globalThis.window as { history: { pushState: (...args: unknown[]) => void } }).history.pushState = () => undefined;
+  const props = await renderChatRoutePage({
+    client,
+    scopeController,
+    location: 'http://weknora.test/platform/creatChat',
+  });
+
+  await assert.rejects(
+    () => props.send({ content: 'hello', status: 'pending' }),
+    /流式连接失败: HTTP 404/,
+  );
 });

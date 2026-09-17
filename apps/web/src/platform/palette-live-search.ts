@@ -73,10 +73,17 @@ export interface UsePaletteLiveSearchOptions {
   scopeKbIds: readonly string[];
   /** Debounce in ms — Vue default 350; tests shrink it. */
   debounceMs: number;
+  /**
+   * R465-A2 — Vue useCmdkSearch `agentsEnabled`:
+   * deploymentCapabilities.isSupported('agents'). When false the agent list
+   * is never fetched and the agent name-match group stays empty. Defaults to
+   * true (fail-open like the Vue capability store).
+   */
+  agentsEnabled?: boolean;
 }
 
 export function usePaletteLiveSearch(options: UsePaletteLiveSearchOptions): PaletteLiveSearchState {
-  const { client, query, enabled, scopeKbIds, debounceMs } = options;
+  const { client, query, enabled, scopeKbIds, debounceMs, agentsEnabled = true } = options;
   const [state, setState] = useState<PaletteLiveSearchState>(EMPTY_STATE);
   const seqRef = useRef(0);
   const kbCacheRef = useRef(createKbCache());
@@ -122,7 +129,7 @@ export function usePaletteLiveSearch(options: UsePaletteLiveSearchOptions): Pale
             searchKnowledgeChunks(client, { query: trimmed, knowledgeBaseIds: kbIds }),
             scoped ? Promise.resolve({ items: [], total: 0 }) : searchMessagesByQuery(client, { query: trimmed, limit: 30 }),
             scoped ? Promise.resolve([] as CmdkSessionSummary[]) : searchSessionsByKeyword(client, { query: trimmed, limit: 20 }),
-            scoped ? Promise.resolve([] as CmdkAgent[]) : ensureAgentsLoaded(client, agentCacheRef.current),
+            scoped || !agentsEnabled ? Promise.resolve([] as CmdkAgent[]) : ensureAgentsLoaded(client, agentCacheRef.current),
           ]);
           if (seq !== seqRef.current) return; // stale response guard
 
@@ -150,7 +157,7 @@ export function usePaletteLiveSearch(options: UsePaletteLiveSearchOptions): Pale
     }, debounceMs);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, enabled, trimmed, scopeSignature, debounceMs]);
+  }, [client, enabled, trimmed, scopeSignature, debounceMs, agentsEnabled]);
 
   return state;
 }

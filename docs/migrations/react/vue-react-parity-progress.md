@@ -5103,6 +5103,31 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1704/1704, `pnpm test:shared` 776/776, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r464-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-18 Round R465 — Documents mermaid viewer, palette empty-state + capability gate, live-thinking contract
+
+- Four parallel agents (A1 mermaid viewer wiring, A2 palette empty-state + agentsEnabled, A3 live-thinking +
+  stream-404, A4 verifier) + orchestrator 3-line whitelist fix. Verdict: all PASS (A3 after the fix); gates
+  test:web 1730/1730, test:shared 782/782, typecheck 0, build ✓, integrity 0 P0 after staging.
+- A1: wiki face CLOSED as no-op (Vue's wiki chain has zero mermaid hydration — contracts already equal);
+  documents preview face WIRED (Vue doc-content→document-preview full chain: click-to-fullscreen with the
+  five-control toolbar via the R463 shared engine, Vue overlay details, per-locale labels byte-exact; no-op
+  without SVG mirrors Vue's guard). documents 216/216. Left: merged-view inline mermaid hydration gap queued.
+- A2: empty-state 问 AI (recent+close+startChat(query)) and 调整检索参数 (420px drawer reusing
+  ConfigSettingsPanel('retrieval'), input-row ⚙ opens it, Esc closes drawer first); agentsEnabled from
+  GET /system/capabilities fail-open (supported:false hides; organizations needs non-lite+admin) gating the
+  agent fan-out AND quick actions (visibleCommands finally wired); capabilities() already on the client.
+  +16 tests; palette 80/80. Left: chat consuming ?q= prefill.
+- A3: live thinking = Vue deepThink contract (pulsing dot + 思考中... + live content auto-collapsing, driven
+  by <think> tags NOT SSE events; SSE thinking only feeds the agent timeline) — splitLiveThinking ported,
+  React-only SSE-thinking collapse removed; stream-404 unified to 流式连接失败: HTTP <status> (streamFailed
+  ×5 locale byte-exact; server-side SSE errors pass through; retry kept). chat 244/244. A4 caught the
+  live-thinking subpath missing from the 3 whitelists (sole cause of interim typecheck/build ✗) — fixed by
+  the orchestrator (one line ×3: package.json exports / tsconfig paths / vite alias).
+- Gates: `pnpm test:web` 1730/1730, `pnpm test:shared` 782/782, `pnpm typecheck:web` 0, `pnpm build:web` ✓
+  (interim 4+2 failures were load flakes under a 50-60 machine). Evidence:
+  `evidence/vue-react-parity/2026-09-18-r465-code-parity-round.md`. No Vue, mobile, or Go code was modified
+  by this round.
 __zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-ac64d725-b138-400b-af03-ce3ff05ba709-cwd'; fi
+if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-76ee4977-d4b5-4762-b253-fe07a60efb30-cwd'; fi
 exit "$__zcode_status"

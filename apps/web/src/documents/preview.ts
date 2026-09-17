@@ -1,7 +1,7 @@
 import type { KnowledgeDocument } from '@weknora/api-client';
-import { createElement, useEffect, useRef, type ReactElement } from 'react';
+import { createElement, useEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import * as XLSX from 'xlsx';
-import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
+import { attachMermaidViewerToolbar, hydrateMermaidBlocksWithBrowserDefaults, type MermaidViewerToolbarLabels } from '@weknora/views/chat/mermaid';
 import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
 export interface KnowledgeDocumentPreviewModel {
@@ -85,12 +85,16 @@ export function DocumentPreviewContent({
   url,
   fileName,
   spreadsheet,
+  mermaidLabels,
+  mermaidLoader,
 }: {
   kind: InlinePreviewKind | 'mermaid';
   text?: string;
   url?: string;
   fileName?: string;
   spreadsheet?: SpreadsheetPreviewModel;
+  mermaidLabels?: DocumentMermaidLabels;
+  mermaidLoader?: DocumentMermaidLoader;
 }): ReactElement {
   if (kind === 'spreadsheet') {
     return createElement('div', { className: 'wk-preview-spreadsheet', 'aria-label': `${fileName || 'Document'} content` },
@@ -119,7 +123,7 @@ export function DocumentPreviewContent({
   if (kind === 'video') {
     return createElement('video', { className: 'wk-preview-video block max-h-[calc(100vh-240px)] max-w-full', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
-  if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName });
+  if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName, labels: mermaidLabels, loader: mermaidLoader });
   return createElement('iframe', {
     className: 'wk-preview-pdf',
     src: url,
@@ -127,7 +131,107 @@ export function DocumentPreviewContent({
   });
 }
 
-function MermaidPreview({ text, fileName }: { text: string; fileName?: string }): ReactElement {
+// ─── R465/A1 — mermaid fullscreen viewer (Vue document-preview parity) ───────
+//
+// Vue frontend/src/components/document-preview.vue renders .mmd/.mermaid files
+// as a sanitized SVG and opens utils/mermaidViewer.ts openMermaidFullscreen on
+// a click: a fixed overlay with the toolbar zoomIn/zoomOut/reset/download plus
+// a close control (Vue order), 0.2 zoom stepping, drag panning and Escape /
+// overlay-click dismissal. The zoom/download mechanics ride the shared views
+// engine (packages/views/src/chat/mermaid-viewer.ts, R463) so this face only
+// owns the overlay, the close control and the locale labels.
+
+/** Toolbar + close + dialog-name copy (Vue i18n mermaid.* strings). */
+export interface DocumentMermaidLabels extends MermaidViewerToolbarLabels {
+  close: string;
+  /** Vue mermaid.expand — used as the fullscreen dialog's accessible name. */
+  expand: string;
+}
+
+/** Injectable hydrator for tests (defaults to the shared views loader). */
+export type DocumentMermaidLoader = typeof hydrateMermaidBlocksWithBrowserDefaults;
+
+// Vue close icon (frontend/src/utils/mermaidViewer.ts L102).
+const MERMAID_CLOSE_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+/**
+ * Open the fullscreen mermaid viewer for one diagram (Vue
+ * openMermaidFullscreen): overlay + centered stage carrying the sanitized SVG,
+ * shared-engine toolbar (zoomIn, zoomOut, reset, download) with the close
+ * control appended last. Dismiss on close, overlay click, or Escape.
+ */
+export function openDocumentMermaidFullscreen(svgHtml: string, labels: DocumentMermaidLabels): void {
+  if (typeof document === 'undefined') return;
+  const overlay = document.createElement('div');
+  overlay.className = 'wk-document-mermaid-viewer';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', labels.expand);
+  // Vue overlay chrome (mermaidViewer.ts L81) with the engine's flex-centered
+  // stage layout (the toolbar transforms the stage from its centered slot).
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,0.65);overflow:hidden;cursor:grab;';
+
+  const stage = document.createElement('div');
+  stage.className = 'wk-document-mermaid-viewer__stage';
+  stage.innerHTML = svgHtml;
+  const svgEl = stage.querySelector('svg');
+  if (svgEl) {
+    // Vue content chrome (mermaidViewer.ts L107-113).
+    svgEl.style.display = 'block';
+    svgEl.setAttribute('draggable', 'false');
+  }
+  stage.style.cssText =
+    'max-width:100%;max-height:100%;overflow:auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,0.2);cursor:default;';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'wk-document-mermaid-viewer__close';
+  closeBtn.setAttribute('aria-label', labels.close);
+  closeBtn.setAttribute('title', labels.close);
+  closeBtn.innerHTML = MERMAID_CLOSE_ICON;
+  closeBtn.style.cssText =
+    'display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid #e5e7eb;border-radius:6px;background:rgba(255,255,255,0.95);color:#6b7280;cursor:pointer;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+
+  // Vue order (mermaidViewer.ts L103): zoomIn, zoomOut, reset, download, close.
+  const { toolbar, detach } = attachMermaidViewerToolbar(overlay, stage, labels);
+  toolbar.appendChild(closeBtn);
+
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      close();
+    }
+  };
+  const close = () => {
+    detach();
+    overlay.remove();
+    document.removeEventListener('keydown', onKeydown, true);
+  };
+  closeBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    close();
+  });
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKeydown, true);
+
+  overlay.append(toolbar, stage);
+  document.body.appendChild(overlay);
+}
+
+function MermaidPreview({
+  text,
+  fileName,
+  labels,
+  loader = hydrateMermaidBlocksWithBrowserDefaults,
+}: {
+  text: string;
+  fileName?: string;
+  labels?: DocumentMermaidLabels;
+  loader?: DocumentMermaidLoader;
+}): ReactElement {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!root.current || typeof document === 'undefined') return;
@@ -137,9 +241,24 @@ function MermaidPreview({ text, fileName }: { text: string; fileName?: string })
     source.dataset.markdownDiagram = 'mermaid';
     source.append(code);
     root.current.replaceChildren(source);
-    void hydrateMermaidBlocksWithBrowserDefaults(root.current, 'wk-document-mermaid').catch(() => {});
-  }, [text]);
-  return createElement('div', { ref: root, className: 'wk-preview-mermaid min-h-16 overflow-auto', 'aria-label': `${fileName || 'Document'} Mermaid diagram` });
+    void loader(root.current, 'wk-document-mermaid').catch(() => {});
+  }, [text, loader]);
+  // Vue document-preview.vue: the whole .preview-mermaid surface is clickable
+  // (@click="openMermaid") and opens the fullscreen viewer only when a
+  // rendered svg exists (`if (!svg) return`).
+  const openViewer = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!labels) return;
+    const svg = event.currentTarget.querySelector('svg');
+    if (!svg) return;
+    openDocumentMermaidFullscreen((svg as SVGElement).outerHTML, labels);
+  };
+  return createElement('div', {
+    ref: root,
+    className: 'wk-preview-mermaid min-h-16 cursor-pointer overflow-auto',
+    'aria-label': `${fileName || 'Document'} Mermaid diagram`,
+    tabIndex: 0,
+    onClick: openViewer,
+  });
 }
 
 const AUDIO_PREVIEW_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac']);

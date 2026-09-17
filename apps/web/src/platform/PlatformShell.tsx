@@ -22,6 +22,12 @@ import {
 import { readReactPlatformState } from './legacy-session.ts';
 import { InvitationInbox } from './InvitationInbox.tsx';
 import { navigate, subscribeNavigation } from './navigation.ts';
+import {
+  loadPaletteDeploymentCapabilities,
+  paletteAccessFromCapabilities,
+  type PaletteDeploymentCapabilities,
+} from './deployment-capabilities.ts';
+import { PaletteRetrievalSettings } from './retrieval-settings-panel.tsx';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
@@ -393,6 +399,37 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // gating (and persists the key) even on a first session where the key was
   // never written; a non-lite probe never downgrades it.
   const isLiteEdition = liteEditionProbed || window.localStorage.getItem('weknora_lite_mode') === 'true';
+  // R465-A2 — deployment capabilities for the command palette (Vue
+  // deploymentCapabilities store): the open-agents / open-organizations
+  // quick actions and the palette's agent search group follow
+  // GET /api/v1/system/capabilities. Fail-open like Vue: a missing
+  // administration namespace (bare test fakes / embed mounts) or a failed
+  // probe leaves everything visible; the backend still guards the routes.
+  const [paletteCapabilities, setPaletteCapabilities] = useState<PaletteDeploymentCapabilities | null>(null);
+  useEffect(() => {
+    let active = true;
+    const adminApi = (client as unknown as {
+      administration?: { capabilities?: (signal?: AbortSignal) => Promise<PaletteDeploymentCapabilities> };
+    }).administration;
+    const fetchCapabilities = adminApi?.capabilities?.bind(adminApi);
+    if (!fetchCapabilities) return;
+    void loadPaletteDeploymentCapabilities(fetchCapabilities).then((probed) => {
+      if (active) setPaletteCapabilities(probed);
+    });
+    return () => { active = false; };
+  }, [client]);
+  const paletteAccess = useMemo(
+    () => paletteAccessFromCapabilities(paletteCapabilities, {
+      liteMode: isLiteEdition,
+      // Vue authStore.hasRole('admin'): owner also passes.
+      isAdmin: user.role === 'admin' || user.role === 'owner',
+    }),
+    [paletteCapabilities, isLiteEdition, user.role],
+  );
+  const paletteRetrievalSettings = useMemo(
+    () => <PaletteRetrievalSettings client={client} locale={locale} />,
+    [client, locale],
+  );
   const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
     canAccessAllTenants: user.canAccessAllTenants,
     collapsed,
@@ -1067,6 +1104,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         onClearRecent={clearPaletteRecent}
         searchClient={client}
         initialKbScope={kbScopeFromLocation()}
+        access={paletteAccess}
+        agentsEnabled={paletteAccess.canOpenAgents}
+        retrievalSettings={paletteRetrievalSettings}
       />
       {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
       <NewUserGuide locale={locale} actions={guideActions} />

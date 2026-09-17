@@ -8,7 +8,13 @@ import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
 import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
+import { splitLiveThinking, type LiveThinkingState } from './live-thinking.ts';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+
+// Re-exported for route hosts on the mapped ./chat/page subpath: the
+// ChatRoutePage transient row strips `<think>` content with the same Vue
+// processStreamChunk split that drives the live deepThink block.
+export { splitLiveThinking };
 
 function mentionMarker(type: ChatMentionView['type']): string {
   switch (type) {
@@ -62,6 +68,12 @@ export interface ChatToolCallView {
 export interface ChatStreamPresentation {
   phase: 'idle' | 'streaming' | 'completed' | 'stopped' | 'error';
   thinking: string;
+  /**
+   * Raw accumulated answer content. Vue's main face drives its deepThink
+   * streaming indicator from `<think>` tags in this buffer, not from the SSE
+   * `thinking` field (agent timeline only).
+   */
+  answer?: string;
   references: readonly unknown[];
   toolCalls: readonly ChatToolCallView[];
   artifactsPending?: boolean;
@@ -180,12 +192,38 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
   return references;
 }
 
+/*
+ * Vue deepThink.vue live indicator: while the streamed answer holds an open
+ * `<think>` tag the header pulses with chat.thinking「思考中...」 and the
+ * reasoning streams inline (forced open, answer held back); once the tag
+ * closes the block auto-folds under chat.deepThoughtCompleted「已深度思考」.
+ * The SSE `thinking` field itself never renders here — on the Vue main face
+ * it only feeds the agent timeline surface.
+ */
+function LiveThinking({ copy, live }: { copy: ChatCopyTable; live: LiveThinkingState }) {
+  if (!live.showThink) return null;
+  if (live.thinking) {
+    return <section className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copy.thinkingAlt}>
+      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
+        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+        {copy.thinking}
+      </p>
+      {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+    </section>;
+  }
+  return <details className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
+    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copy.deepThoughtCompleted}</summary>
+    {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+  </details>;
+}
+
 function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
+  const live = splitLiveThinking(stream.answer ?? '');
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
   return <section aria-label={copy.streamStatus} className="wk-chat-live-response mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px] text-[13px]">
     <p role="status" className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.streamStatus}: {stream.phase}</p>
     {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.artifactsPending}</p> : null}
-    {stream.phase === 'streaming' && stream.thinking ? <details open className="my-[6px]"><summary className="cursor-pointer text-[rgba(0,0,0,0.6)]">{copy.thinkingAlt}</summary><p className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{stream.thinking}</p></details> : null}
+    {stream.phase === 'streaming' ? <LiveThinking copy={copy} live={live} /> : null}
     {stream.toolCalls.length > 0 ? <div><h2 className="mt-[8px] mb-[4px] text-[13px]">{copy.toolCallsTitle}</h2><ul className="wk-list m-0 list-none p-0">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="text-[rgba(0,0,0,0.4)]">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
   </section>;
 }
@@ -503,6 +541,10 @@ export function ChatPage(props: ChatPageProps) {
   })();
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
+  // Vue parity: once deepThink streams the typing dots are replaced by the
+  // live thinking block (shouldShowGlobalTypingIndicator turns false when the
+  // assistant message exists).
+  const liveThinking = splitLiveThinking(props.stream?.answer ?? '');
 
   /* main.wk-chat-page utilities carry the chat.css parity values; the
      retained guard block in chat.css keeps beating the legacy styles.css
@@ -614,7 +656,7 @@ export function ChatPage(props: ChatPageProps) {
           hasMore={props.hasMoreMessages}
           onLoadOlder={props.onLoadOlderMessages}
           sessionId={props.selectedSessionId}
-          typingIndicator={streaming && !props.stream!.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
+          typingIndicator={streaming && !props.stream!.thinking && !liveThinking.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
           suggestions={props.suggestions}
           onSuggestionClick={props.onSuggestionClick}
           onRefreshSuggestions={props.onRefreshSuggestions}

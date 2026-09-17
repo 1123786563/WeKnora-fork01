@@ -8,6 +8,7 @@
     "./chat/chat-copy": "./src/chat/chat-copy.ts",
     "./chat/composer": "./src/chat/composer.tsx",
     "./chat/markdown": "./src/chat/markdown.ts",
+    "./chat/live-thinking": "./src/chat/live-thinking.ts",
     "./chat/mermaid": "./src/chat/mermaid.ts",
     "./chat/page": "./src/chat/page.tsx",
     "./craft/document": "./src/craft/document.tsx",

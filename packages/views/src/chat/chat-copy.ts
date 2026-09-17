@@ -209,6 +209,8 @@ deleteConfirmBody: '确认删除当前对话？删除后将无法恢复。',
 /** knowledgeList.loadFailed */
 knowledgeBasesLoadFailed: '加载知识库失败',
 operationFailed: '操作失败',
+/** error.streamFailed (Vue streame.ts onerror prefix) */
+streamFailed: '流式连接失败',
 /** agent.copy */
 copy: '复制',
 /** common.copied */
@@ -516,6 +518,8 @@ renameTitleFailed: 'Unable to rename conversation',
   deleteConfirmBody: 'Delete this conversation? This cannot be undone.',
   knowledgeBasesLoadFailed: 'Failed to load knowledge bases',
 operationFailed: 'Operation failed',
+/** error.streamFailed */
+streamFailed: 'Stream connection failed',
   copy: 'Copy',
   copied: 'Copied',
   addToKnowledgeBase: 'Add to Knowledge Base',
@@ -762,6 +766,8 @@ renameTitleFailed: 'タイトルを変更できません',
   deleteConfirmBody: 'この会話を削除しますか？この操作は取り消せません。',
   knowledgeBasesLoadFailed: 'ナレッジベースの読み込みに失敗しました',
 operationFailed: '操作に失敗しました',
+/** error.streamFailed */
+streamFailed: 'ストリーム接続に失敗しました',
   copy: 'コピー',
   copied: 'コピーしました',
   addToKnowledgeBase: 'ナレッジベースに追加',
@@ -1008,6 +1014,8 @@ renameTitleFailed: '대화 제목을 수정할 수 없습니다',
   deleteConfirmBody: '현재 대화를 삭제할까요? 삭제 후에는 복구할 수 없습니다.',
   knowledgeBasesLoadFailed: '지식베이스 로드 실패',
 operationFailed: '작업에 실패했습니다',
+/** error.streamFailed */
+streamFailed: '스트림 연결 실패',
   copy: '복사',
   copied: '복사됨',
   addToKnowledgeBase: '지식 베이스에 추가',
@@ -1254,6 +1262,8 @@ renameTitleFailed: 'Не удалось переименовать диалог'
   deleteConfirmBody: 'Удалить этот диалог? Это действие нельзя отменить.',
   knowledgeBasesLoadFailed: 'Не удалось загрузить базы знаний',
 operationFailed: 'Не удалось выполнить операцию',
+/** error.streamFailed */
+streamFailed: 'Ошибка потокового соединения',
   copy: 'Копировать',
   copied: 'Скопировано',
   addToKnowledgeBase: 'Добавить в базу знаний',

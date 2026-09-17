@@ -3,7 +3,7 @@ import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, WeKnora
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Sheet, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
-import { buildDocumentPreview, canPreviewDocument, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
+import { buildDocumentPreview, canPreviewDocument, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
 import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
@@ -57,6 +57,17 @@ const CONTENT_TABS: Record<Locale, { preview: string; merged: string; chunks: st
   'ja-JP': { preview: 'プレビュー', merged: '全文', chunks: 'チャンクを表示' },
   'ko-KR': { preview: '미리보기', merged: '전체 텍스트', chunks: '청크 보기' },
   'ru-RU': { preview: 'Предпросмотр', merged: 'Полный текст', chunks: 'Просмотр фрагментов' },
+};
+
+// R465/A1 — the mermaid fullscreen viewer copy for the preview tab, verbatim
+// from the Vue i18n mermaid.* strings (frontend/src/i18n/locales/*.ts); the
+// Record<Locale, …> shape keeps all five locales present at typecheck time.
+const MERMAID_VIEWER_COPY: Record<Locale, DocumentMermaidLabels> = {
+  'zh-CN': { zoomIn: '放大', zoomOut: '缩小', reset: '重置', download: '下载图片', downloading: '下载中...', close: '关闭', expand: '全屏查看' },
+  'en-US': { zoomIn: 'Zoom In', zoomOut: 'Zoom Out', reset: 'Reset', download: 'Download Image', downloading: 'Downloading...', close: 'Close', expand: 'Expand' },
+  'ja-JP': { zoomIn: '拡大', zoomOut: '縮小', reset: 'リセット', download: '画像をダウンロード', downloading: 'ダウンロード中...', close: '閉じる', expand: '全画面表示' },
+  'ko-KR': { zoomIn: '확대', zoomOut: '축소', reset: '초기화', download: '이미지 다운로드', downloading: '다운로드 중...', close: '닫기', expand: '전체 화면' },
+  'ru-RU': { zoomIn: 'Увеличить', zoomOut: 'Уменьшить', reset: 'Сброс', download: 'Скачать изображение', downloading: 'Загрузка...', close: 'Закрыть', expand: 'На весь экран' },
 };
 
 export type MetadataValueType = 'text' | 'number' | 'boolean' | 'null';
@@ -496,7 +507,7 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
         files (audio-player-section), since canPreview() keeps them off the
         preview tab; the blob is already fetched by the preview effect. */}
     {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
-    {showPreview ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
+    {showPreview ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
     {canDownload && downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}
   </Card>;
 }

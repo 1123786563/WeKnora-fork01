@@ -23,6 +23,20 @@ export function isChatStreamApplicationError(error: unknown): error is ChatStrea
 }
 
 /**
+ * Vue stream failure copy (frontend/src/api/chat/streame.ts): a failed
+ * handshake throws `HTTP ${status}` and the onerror fail path surfaces
+ * `${error.streamFailed}: ${message}` — the localized prefix followed by the
+ * transport reason, e.g. 「流式连接失败: HTTP 404」. The api-client raises
+ * `Chat stream failed with HTTP <status>`, so the HTTP status is extracted
+ * instead of embedding the whole English sentence.
+ */
+export function streamFailureMessage(cause: unknown, streamFailedLabel: string): string {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  const httpStatus = reason.match(/HTTP (\d{3})/);
+  return `${streamFailedLabel}: ${httpStatus ? `HTTP ${httpStatus[1]}` : reason}`;
+}
+
+/**
  * Returns the retry stream options for a failed stream, or null when a resume
  * is not possible (no events received, or a resume was already attempted).
  */

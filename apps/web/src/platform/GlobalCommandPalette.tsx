@@ -8,6 +8,7 @@ import {
   nextSelectedIndex,
   paletteShortcutDigit,
   shortcutDigitFor,
+  visibleCommands,
   type CommandDescriptor,
 } from './command-palette.ts';
 import {
@@ -48,6 +49,37 @@ export interface GlobalCommandPaletteProps {
   initialKbScope?: { id: string; name: string } | null;
   /** Debounce for live search; Vue default 350ms. Overridable for tests. */
   searchDebounceMs?: number;
+  /**
+   * R465-A2 — deployment-capability gating for the static quick actions
+   * (Vue GlobalCommandPalette.vue:262-270 filters open-agents /
+   * open-organizations through the deploymentCapabilities store). Defaults
+   * to both-visible so callers that have not probed capabilities yet keep
+   * the fail-open behaviour.
+   */
+  access?: { canOpenAgents: boolean; canOpenOrganizations: boolean };
+  /**
+   * R465-A2 — Vue useCmdkSearch `agentsEnabled`. When false the agent list
+   * is never fetched and the agent name-match group stays hidden. Defaults
+   * to true (fail-open).
+   */
+  agentsEnabled?: boolean;
+  /**
+   * R465-A2 — Vue empty-state askAi(): record the query as a recent search,
+   * close the palette and start a new chat seeded with the query. When the
+   * prop is absent the palette falls back to navigating to
+   * /platform/creatChat?q=… (the chat composer does not consume the prefill
+   * yet — see the R465 report), so shell-owned startChat wiring can replace
+   * it later without touching this component again.
+   */
+  onAskAi?: (query: string) => void;
+  /**
+   * R465-A2 — retrieval-settings drawer content (Vue lines 153-157 host
+   * RetrievalSettings inside a 420px t-drawer layered over the palette).
+   * Provide a ReactNode to render both the drawer and its two triggers (the
+   * input-row settings icon and the empty-state "Adjust retrieval" button);
+   * absent keeps both hidden.
+   */
+  retrievalSettings?: ReactNode;
 }
 
 /** Per-group display caps — keep the palette compact (Vue CHUNK_LIMIT/MSG_LIMIT). */
@@ -121,11 +153,16 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
   const {
     open, initialQuery, recentQueries, locale, onClose, onNavigate, onSearch, onClearRecent,
     searchClient = null, initialKbScope = null, searchDebounceMs = 350,
+    access = { canOpenAgents: true, canOpenOrganizations: true },
+    agentsEnabled = true,
+    onAskAi,
+    retrievalSettings = null,
   } = props;
   const t = (key: string): string => formatMessage(locale, key);
   const [query, setQuery] = useState(initialQuery);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [kbScope, setKbScope] = useState<{ id: string; name: string } | null>(initialKbScope);
+  const [retrievalDrawerVisible, setRetrievalDrawerVisible] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,6 +172,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     enabled: open,
     scopeKbIds: useMemo(() => (kbScope ? [kbScope.id] : []), [kbScope]),
     debounceMs: searchDebounceMs,
+    agentsEnabled,
   });
 
   useEffect(() => {
@@ -142,6 +180,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     setQuery(initialQuery);
     setSelectedIndex(0);
     setKbScope(initialKbScope);
+    setRetrievalDrawerVisible(false);
     const raf = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,10 +196,14 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
   }, [live.knowledgeBases]);
 
   const trimmed = query.trim();
+  // R465-A2 — deployment capability gating (Vue allCommands filter):
+  // open-agents / open-organizations come and go with the deployment
+  // capabilities; everything else is always visible.
+  const baseCommands = useMemo(() => visibleCommands(COMMANDS, access), [access]);
   const items: CommandDescriptor[] = useMemo(
-    () => (trimmed ? filterCommands(COMMANDS, trimmed, t) : [...COMMANDS]),
+    () => (trimmed ? filterCommands(baseCommands, trimmed, t) : [...baseCommands]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trimmed, locale],
+    [trimmed, locale, baseCommands],
   );
   const recentCount = trimmed ? 0 : recentQueries.length;
   const scoped = kbScope !== null;
@@ -189,6 +232,22 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     if (trimmed) onSearch(trimmed);
     onClose();
     onNavigate(path);
+  };
+
+  /**
+   * R465-A2 — Vue askAi() (GlobalCommandPalette.vue:459-464): record the
+   * query as a recent search, close the palette and start a new chat with
+   * the query pre-filled. The shell can inject its own startChat via
+   * `onAskAi`; the default navigates to /platform/creatChat?q=… so the
+   * prefill survives the SPA navigation (the React composer does not
+   * consume it yet — see the R465-A2 report for the cross-domain blocker).
+   */
+  const askAi = (): void => {
+    if (!trimmed) return;
+    onSearch(trimmed);
+    onClose();
+    if (onAskAi) onAskAi(trimmed);
+    else onNavigate(`/platform/creatChat?q=${encodeURIComponent(trimmed)}`);
   };
 
   const runFlat = (index: number, fromKeyboard = false): void => {
@@ -280,7 +339,11 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
       runFlat(index);
     } else if (event.key === 'Escape') {
       event.preventDefault();
-      onClose();
+      // The retrieval drawer is layered on top of the palette (Vue renders
+      // the t-drawer inside the t-dialog): the first Escape dismisses the
+      // drawer and leaves the palette open.
+      if (retrievalDrawerVisible && retrievalSettings !== null) setRetrievalDrawerVisible(false);
+      else onClose();
     } else if (event.key === 'Backspace' && !query && kbScope) {
       // Escape the scope chip from the keyboard, mirroring Vue's
       // onInputKeyDown Backspace-on-empty rule.
@@ -360,6 +423,11 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
           />
           {live.loading && (
             <span data-cmdk-loading aria-live="polite" className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#d7dde5] border-t-[#2f6fed]" />
+          )}
+          {retrievalSettings !== null && (
+            <button type="button" data-cmdk-retrieval-trigger className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-base leading-none hover:bg-[#f2f5f9] ${retrievalDrawerVisible ? 'bg-[#f2f5f9] text-[#1f2733]' : 'text-[#8a94a3] hover:text-[#1f2733]'}`} title={t('commandPalette.retrieval')} aria-label={t('commandPalette.retrieval')} onClick={() => setRetrievalDrawerVisible(true)}>
+              ⚙
+            </button>
           )}
           <button type="button" className="cursor-pointer rounded-md border-none bg-transparent px-1.5 py-1 text-lg leading-none text-[#8a94a3] hover:bg-[#f2f5f9] hover:text-[#1f2733]" aria-label={t('commandPalette.hotkey.esc')} onClick={onClose}>
             ×
@@ -548,7 +616,33 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
               })}
             </div>
           )}
-          {showEmpty && <p className="px-3.5 py-4 text-[13px] text-[#8a94a3]">{t('commandPalette.empty.noResults')}</p>}
+          {showEmpty && (
+            <div className="cmdk__empty px-3.5 py-4">
+              <p className="text-[13px] text-[#8a94a3]">{t('commandPalette.empty.noResults')}</p>
+              {/* Vue GlobalCommandPalette.vue:128-137 — empty-state actions:
+                  ask AI with the current query / adjust retrieval settings. */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  data-cmdk-ask-ai
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-[#2f6fed] bg-transparent px-2.5 py-1 text-xs font-medium text-[#2f6fed] hover:bg-[#eaf1fe]"
+                  onClick={askAi}
+                >
+                  {t('commandPalette.empty.askAi')}
+                </button>
+                {retrievalSettings !== null && (
+                  <button
+                    type="button"
+                    data-cmdk-adjust-retrieval
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-[#d7dde5] bg-transparent px-2.5 py-1 text-xs font-medium text-[#5f6b7a] hover:bg-[#f2f5f9]"
+                    onClick={() => setRetrievalDrawerVisible(true)}
+                  >
+                    {t('commandPalette.empty.adjustRetrieval')}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {/* Vue GlobalCommandPalette.vue:142-150 — hotkey hint footer. */}
           <div className="flex flex-wrap gap-4 border-t border-[#e7e7e7] px-3.5 py-2 text-[11px] text-[rgba(0,0,0,0.4)]">
             <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
@@ -559,6 +653,39 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
           </div>
         </div>
       </div>
+      {/* R465-A2 — retrieval-settings drawer (Vue lines 153-157): a 420px
+          right panel layered on top of the palette, hosting the shell-provided
+          RetrievalSettings surface. Overlay click / Esc / ✕ dismiss the drawer
+          without closing the palette underneath. */}
+      {retrievalDrawerVisible && retrievalSettings !== null && (
+        <div
+          data-testid="cmdk-retrieval-overlay"
+          className="fixed inset-0 z-[1000] bg-[rgba(15,23,32,0.35)]"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setRetrievalDrawerVisible(false); }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            setRetrievalDrawerVisible(false);
+          }}
+        >
+          <aside
+            data-testid="cmdk-retrieval-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('retrievalSettings.title')}
+            className="absolute right-0 top-0 flex h-full w-[420px] max-w-[calc(100vw-32px)] flex-col bg-white shadow-[-10px_0_60px_rgba(15,23,32,0.3)]"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-[#eef1f5] px-4 py-3">
+              <span className="text-sm font-semibold text-[#1f2733]">{t('retrievalSettings.title')}</span>
+              <button type="button" className="cursor-pointer rounded-md border-none bg-transparent px-1.5 py-1 text-lg leading-none text-[#8a94a3] hover:bg-[#f2f5f9] hover:text-[#1f2733]" aria-label={t('commandPalette.hotkey.esc')} onClick={() => setRetrievalDrawerVisible(false)}>
+                ×
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">{retrievalSettings}</div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
