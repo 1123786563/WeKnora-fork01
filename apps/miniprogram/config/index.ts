@@ -16,15 +16,17 @@ export default defineConfig({
   mini:{
     postcss:{pxtransform:{enable:true,config:{}},url:{enable:true,config:{limit:1024}}},
     // Workspace 包以 .ts 源码直出（exports 指向 src/*.ts），真实路径在仓库 packages/ 下，
-    // 不命中 Taro script rule 默认 include（sourceDir + *taro*）。注意：Taro 转译执行本配置时
-    // __dirname 指向临时产物目录，路径必须基于 process.cwd()（即 apps/miniprogram）计算。
+    // 不命中 Taro script rule 默认 include（sourceDir + *taro*）。用单个判定函数接管：
+    // 仓库内 packages/ 目录、小程序自身 src/ 目录、以及 node_modules 里路径含 *taro* 的文件。
+    // 注意不要用 path.resolve 拼 include 前缀——Taro 转译执行本配置时相对基准不可靠。
     webpackChain(chain){
-      const cwd=process.cwd();
-      chain.module.rule('script').include.clear().add([
-        resolve(cwd,'src'),
-        resolve(cwd,'../packages'),
-        (filename:string)=>/(?<=node_modules[\\/]).*taro/.test(filename),
-      ]);
+      chain.module.rule('script').include.clear()
+        .add((filename:string)=>{
+          return filename.includes('/packages/')
+            || filename.includes('\\packages\\')
+            || /(^|[\\/])src[\\/]/.test(filename)
+            || /(?<=node_modules[\\/]).*taro/.test(filename);
+        });
     },
   },
 });
