@@ -11,5 +11,20 @@ export default defineConfig({
   sourceRoot:'src',outputRoot:'dist',framework:'react',compiler:'webpack5',
   plugins:['@tarojs/plugin-platform-weapp'],
   defineConstants:{__API_ORIGIN__:JSON.stringify(origin)},
-  mini:{postcss:{pxtransform:{enable:true,config:{}},url:{enable:true,config:{limit:1024}}}},
+  // watch 构建本身很快；显式关闭持久化缓存，避免规则调整后坏模块被缓存复活。
+  cache:{enable:false},
+  mini:{
+    postcss:{pxtransform:{enable:true,config:{}},url:{enable:true,config:{limit:1024}}},
+    // Workspace 包以 .ts 源码直出（exports 指向 src/*.ts），真实路径在仓库 packages/ 下，
+    // 不命中 Taro script rule 默认 include（sourceDir + *taro*）。注意：Taro 转译执行本配置时
+    // __dirname 指向临时产物目录，路径必须基于 process.cwd()（即 apps/miniprogram）计算。
+    webpackChain(chain){
+      const cwd=process.cwd();
+      chain.module.rule('script').include.clear().add([
+        resolve(cwd,'src'),
+        resolve(cwd,'../packages'),
+        (filename:string)=>/(?<=node_modules[\\/]).*taro/.test(filename),
+      ]);
+    },
+  },
 });
