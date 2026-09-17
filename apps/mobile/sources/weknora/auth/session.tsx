@@ -43,7 +43,7 @@ function deviceEpochKey(origin: string, deviceId: string): string {
 /** Server epoch is authoritative, while local values protect against a
  * restart that occurs between revoke and SecureStore persistence. */
 export function mergeDeviceScopeHighWater(...values: Array<number | undefined>): number {
-  return values.reduce((highWater, value) => Number.isSafeInteger(value) && (value as number) >= 0 ? Math.max(highWater, value as number) : highWater, 0);
+  return values.reduce<number>((highWater, value) => Number.isSafeInteger(value) && (value as number) >= 0 ? Math.max(highWater, value as number) : highWater, 0);
 }
 
 type ProductAuthContextValue = {

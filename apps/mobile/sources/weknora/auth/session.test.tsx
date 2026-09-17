@@ -8,9 +8,9 @@ const mocks = vi.hoisted(() => {
   const session = {
     me: vi.fn(async () => ({ userId: 'user-a', tenantId: 'tenant-a' })),
     login: vi.fn(async () => ({ credential: { kind: 'bearer', accessToken: 'new-token' }, userId: 'user-a', tenantId: 'tenant-a' })),
-    refreshCoordinator: { replace: vi.fn(async () => undefined), invalidate: vi.fn(async () => undefined), advanceGeneration: vi.fn() },
+    refreshCoordinator: { replace: vi.fn(async (): Promise<void> => { }), invalidate: vi.fn(async () => undefined), advanceGeneration: vi.fn() },
   };
-  return { secure, session, host: { backend: 'weknora' as const, origin: 'https://api.example.test' }, revoke: vi.fn(), register: vi.fn(async () => ({ revision: 4 })), issue: vi.fn(async () => ({ registrationIntent: 'signed', scopeGeneration: 8 })), flush: vi.fn(async () => 0), permission: vi.fn(async () => ({ granted: true })), pushToken: vi.fn(async () => 'push-token'), scopeGeneration: 0 };
+  return { secure, session, host: { backend: 'weknora' as const, origin: 'https://api.example.test' }, revoke: vi.fn(), register: vi.fn(async (_input: Record<string, unknown>) => ({ revision: 4 })), issue: vi.fn(async () => ({ registrationIntent: 'signed', scopeGeneration: 8 })), flush: vi.fn(async () => 0), permission: vi.fn(async () => ({ granted: true })), pushToken: vi.fn(async () => 'push-token'), scopeGeneration: 0 };
 });
 
 vi.mock('expo-secure-store', () => ({
@@ -48,7 +48,7 @@ vi.mock('@weknora/api-client', () => ({
   createJsonTransport: vi.fn(),
   createProductAuthSession: vi.fn(() => mocks.session),
 }));
-vi.mock('@/weknora/auth/credentials', () => ({
+vi.mock('./credentials', () => ({
   createCredentials: vi.fn(() => ({
     read: async () => ({ kind: 'bearer', accessToken: 'stored-token' }),
     clear: async () => undefined,
@@ -154,7 +154,15 @@ describe('ProductAuthProvider device lifecycle', () => {
   it('flushes an offline logout intent after the same account logs in again', async () => {
     await act(async () => { create(<ProductAuthProvider><Harness /></ProductAuthProvider>); await Promise.resolve(); await Promise.resolve(); });
     await vi.waitFor(() => expect(mocks.register).toHaveBeenCalled());
-    mocks.revoke.mockRejectedValueOnce(new Error('offline'));
+    // Mirror the verified revokeOnLogout seam contract (registration.test.ts
+    // "keeps a minimal pending revocation on offline logout"): a failed revoke
+    // queues a pending revocation instead of rejecting, so logout completes
+    // and the next same-owner login can flush the queued intent.
+    mocks.revoke.mockImplementationOnce(async (input: { origin: string; deviceId: string; tenantId: string; ownerId: string; revision?: number; pending: { read(): Promise<unknown[]>; write(rows: unknown[]): Promise<void> } }) => {
+      const rows = await input.pending.read();
+      await input.pending.write([...rows, { origin: input.origin, deviceId: input.deviceId, tenantId: input.tenantId, ownerId: input.ownerId, ...(input.revision === undefined ? {} : { revision: input.revision }) }]);
+      return {};
+    });
     await act(async () => { await auth?.logout(); });
     await act(async () => { await auth?.login('user-a@example.test', 'secret'); });
     expect(mocks.flush).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ accessToken: 'new-token' }), { tenantId: 'tenant-a', ownerId: 'user-a' });

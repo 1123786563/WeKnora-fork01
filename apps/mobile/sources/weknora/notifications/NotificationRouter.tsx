@@ -64,6 +64,10 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
   const [error, setError] = React.useState<string | null>(null);
   const seen = React.useRef(new Map<string, number>());
   const processing = React.useRef(new Set<string>());
+  // Startup events describe one launch. Re-running the listener effect after an
+  // auth change must not replay them: past the intent TTL the seen map no
+  // longer deduplicates, which would resurrect an expired launch intent.
+  const consumedStartupEvents = React.useRef({ initialURL: false, lastResponse: false });
   const abortRef = React.useRef<AbortController | null>(null);
   const current = auth.scope.identity;
 
@@ -155,14 +159,22 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
 
   React.useEffect(() => {
     let active = true;
-    void Linking.getInitialURL().then((raw) => { if (active) acceptRaw(raw); }).catch(() => undefined);
+    void Linking.getInitialURL().then((raw) => {
+      if (!active || consumedStartupEvents.current.initialURL) return;
+      consumedStartupEvents.current.initialURL = true;
+      acceptRaw(raw);
+    }).catch(() => undefined);
     const urlSubscription = Linking.addEventListener('url', ({ url }) => acceptRaw(url));
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener((response) => acceptRaw(notificationURL(response)));
     // A notification tap can launch a terminated app before the response
     // listener is installed. Expo exposes that response separately; feed it
     // through the same parser/deduplication path as foreground taps.
     void Notifications.getLastNotificationResponseAsync()
-      .then((response) => { if (active && response) acceptRaw(notificationURL(response)); })
+      .then((response) => {
+        if (!active || !response || consumedStartupEvents.current.lastResponse) return;
+        consumedStartupEvents.current.lastResponse = true;
+        acceptRaw(notificationURL(response));
+      })
       .catch(() => undefined);
     return () => {
       active = false;
@@ -173,7 +185,10 @@ export function NotificationRouter({ children, resolveTenant, verifyExecution }:
   }, [acceptRaw]);
 
   React.useEffect(() => {
-    if (intent && auth.credential) void openIntent(intent);
+    // Retry while the intent is still unverified (login recovery). An already
+    // authorized intent has navigated at authorization time; replaying it here
+    // would navigate twice for a single accepted notification.
+    if (intent && !intent.authorizedAt && auth.credential) void openIntent(intent);
   }, [auth.credential, intent, openIntent]);
 
   const value = React.useMemo<NotificationRouterContextValue>(() => ({

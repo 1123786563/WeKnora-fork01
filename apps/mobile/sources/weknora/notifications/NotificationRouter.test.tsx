@@ -30,7 +30,13 @@ vi.mock('expo-notifications', () => ({
   },
   getLastNotificationResponseAsync: () => Promise.resolve(mocks.lastResponse),
 }));
-vi.mock('expo-router', () => ({ useRouter: () => ({ replace: mocks.replace }) }));
+// expo-router's useRouter returns a stable router reference across renders; an
+// unstable mock would change openIntent/acceptRaw identities every render and
+// re-run the listener effects on each state update.
+vi.mock('expo-router', () => {
+  const router = { replace: mocks.replace };
+  return { useRouter: () => router };
+});
 vi.mock('@/weknora/auth/session', () => ({ useProductAuth: () => mocks.auth }));
 
 import { NotificationRouter, useNotificationIntent } from './NotificationRouter';

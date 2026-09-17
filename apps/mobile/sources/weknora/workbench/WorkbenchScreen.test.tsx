@@ -28,6 +28,12 @@ vi.mock('@/weknora/auth/session', () => ({
     scope: { identity: () => ({ origin: 'https://api.example', userId: 'u1', tenantId: 't1' }), subscribe: () => () => undefined },
   }),
 }));
+// The workbench renders the W16 pending-notification card above its sections.
+// This suite asserts grouping/navigation only, so stub the card (which needs
+// the full router provider) rather than mounting it.
+vi.mock('@/weknora/notifications/NotificationRouter', () => ({
+  PendingNotificationCard: () => null,
+}));
 // The workbench consumes the W10 navigation producer; run the real validator
 // (a dependency-free module) so the asserted destinations match production.
 vi.mock('@/hooks/useNavigateToSession', async () => {
