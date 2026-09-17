@@ -16,6 +16,7 @@ export interface InteractionDecisionInput {
   id: string;
   decision_id: string;
   kind: string;
+  /** 必须是对应 kind 的矩阵动作（本地 parseInteractionDecision 强校验，空串拒绝）。 */
   action: string;
   args_hash: string;
   expected_revision: number;
