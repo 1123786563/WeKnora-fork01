@@ -52,7 +52,8 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-023 | accepted | e3639894→0dda83ba | mv2 27/27 · frozen 0/[] · tsc 11 | 规格 PASS · 质量 APPROVED（突变红） | MX-023.md |
 | MX-025 | review | 0dda83ba→e9ce0fc2 | mv2 28/28 · frozen false/true · tsc 11 | 待独立review（随下轮） | MX-025.md |
 | MX-028 | review | e9ce0fc2→339bea50 | mv2 29/29 · frozen 编辑文本/0 · tsc 11 | 待独立review（随下轮） | MX-028.md |
-| MX-026 | review | 339bea50→(待提交) | mv2 30/30 · frozen platform/0 · tsc 11 | 待独立review | MX-026.md |
+| MX-026 | review | 339bea50→b9e00fda | mv2 30/30 · frozen platform/0 · tsc 11 | 待独立review（随下轮） | MX-026.md |
+| MX-029 | review | b9e00fda→(待提交) | mv2 31/31 · go voice ok · frozen true/0 · tsc 11 | 待独立review | MX-029.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

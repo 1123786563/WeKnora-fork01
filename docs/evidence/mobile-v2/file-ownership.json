@@ -2017,6 +2017,15 @@
       "shared_serialized": false,
       "source": "mx-021-lock-extension",
       "note": "frozen Go 测试（跨账户投递+handler 谓词）"
+    },
+    "internal/application/service/workbench/voice_session_mx029_test.go": {
+      "owners": [
+        "MX-029"
+      ],
+      "kind": "create",
+      "note": "服务端语音生命周期 Go 测试",
+      "shared_serialized": false,
+      "source": "mx-029-lock-extension"
     }
   }
 }
