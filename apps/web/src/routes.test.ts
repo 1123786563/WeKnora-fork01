@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { authNavigationTarget, guardRoute, nextPathAfterAuth, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, shouldReloadOnPopState, type RouteGuardContext } from './routes.tsx';
+import { authNavigationTarget, guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, shouldReloadOnPopState, type RouteGuardContext } from './routes.tsx';
 
 const authenticated: RouteGuardContext = {
   authenticated: true,
@@ -64,12 +64,13 @@ test('does not treat embed or missing capability paths as authenticated platform
   assert.equal(resolveRoute('/platform/system/queue').kind, 'not-found');
 });
 
-test('restores only safe auth next paths and prioritizes invite completion', () => {
-  assert.equal(nextPathAfterAuth('?next=%2Fplatform%2Fapps%3Ftab%3Dconnections'), '/platform/apps?tab=connections');
-  assert.equal(nextPathAfterAuth('?next=https%3A%2F%2Fevil.example'), '/platform/knowledge-bases');
-  assert.equal(nextPathAfterAuth('?next=%2F%2Fevil.example'), '/platform/knowledge-bases');
-  assert.equal(authNavigationTarget('?token=invite&next=%2Fplatform%2Fapps', true), '/platform/knowledge-bases');
-  assert.equal(authNavigationTarget('?next=%2Fplatform%2Fapps', false), '/platform/apps');
+test('auth navigation ignores ?next and lands on the fixed workspace home (Vue parity)', () => {
+  // Vue Login.vue persistLoginResponse always lands on the fixed workspace
+  // home (hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
+  // and never consumes a ?next return URL. The onboarding split is owned by
+  // guardRoute, so the React target is a zero-argument constant — there is no
+  // search parameter left that could influence it.
+  assert.equal(authNavigationTarget(), '/platform/knowledge-bases');
 });
 
 test('maps the canonical knowledge-base platform route to the list page', () => {

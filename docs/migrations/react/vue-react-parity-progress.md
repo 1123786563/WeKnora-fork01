@@ -4982,3 +4982,26 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1665/1665, `pnpm test:shared` 749/749, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r459-router-regression-round.md`. No Vue, mobile, or Go code
   was modified by this round.
+## 2026-09-18 Round R460 — AuthPages de-next completed, integrity self-check script, source-doc paired evidence
+
+- Four parallel agents (A1 AuthPages cleanup, A2 integrity script, A3 browser catch-up, A4 verifier). Verdict:
+  A1 PASS, A2 PASS, A3 partial (environment-limited); A3 discovered the backend in a crash loop. Gates:
+  test:web 1665/1665, test:shared 749/749, typecheck 0, build ✓ (code gates unaffected — tests mocked).
+- A1: Vue verified zero ?next consumption across all six auth flows (login/register-by-invite/OIDC all land
+  fixed); React's 3 residual next consumers converged to the constant authNavigationTarget(), dead
+  nextPathAfterAuth/inviteNavigationAfterAuth removed; /register authenticated bounce ruled already-equivalent
+  (loginBeforeLoad shared on both routes; Vue's requiresTenant guard produces the same end state). Scoped
+  85/85. Deferred: legacy AuthPages stack is dead code — deletion queued.
+- A2: scripts/check-commit-integrity.mjs (pnpm check:integrity) — P0 import resolvability vs git index (the
+  R442/R444/R451 missed-file shape), WARN test-glob coverage (322 files), INFO dirty shared packages; 9/9
+  self-tests + end-to-end incident replay on a mini repo; current tree 0 P0. Pre-push hook wiring suggested.
+- A3: source-doc paired evidence COMPLETED (carrier page concept/source-doc-traceability: Vue opens the
+  card-details drawer URL-unchanged vs React navigates to the document route — full pair per established
+  designs). Embed mermaid still untestable (no channels). **BACKEND CRASH-LOOP DISCOVERED**: WeKnora-app
+  restarts with a DI panic (BuildContainer missing *workbench.RemoteUsageService, container.go:849/507) —
+  from the external process's recent backend commits; attributed to them; blocks browser verification
+  (settings flicker regression untested). New gap candidate: React wiki edit button missing under
+  canContribute where Vue shows it — queued post-recovery.
+- Gates: `pnpm test:web` 1665/1665, `pnpm test:shared` 749/749, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r460-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

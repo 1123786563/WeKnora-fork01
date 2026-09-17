@@ -4,7 +4,6 @@ import {
   decodeOIDCResult,
   getOnboardingPresentation,
   getInviteToken,
-  inviteNavigationAfterAuth,
   oidcErrorMessage,
   shouldShowRegistration,
   validateLoginForm,
@@ -58,10 +57,9 @@ test('auth adapter preserves the Vue endpoint paths and login persistence contra
   assert.equal(values.get('weknora_selected_tenant_id'), '7');
 });
 
-test('auth state preserves invite token and sends invite users to the workspace', () => {
+test('auth state reads the invite token without ever consulting ?next', () => {
   assert.equal(getInviteToken('?token=invite%2F123'), 'invite/123');
   assert.equal(getInviteToken('?next=%2Fplatform%2Fapps'), null);
-  assert.equal(inviteNavigationAfterAuth('/login?next=%2Fplatform%2Fapps', true), '/platform/knowledge-bases');
 });
 
 test('OIDC callback decodes the Vue-compatible base64url JSON payload', () => {

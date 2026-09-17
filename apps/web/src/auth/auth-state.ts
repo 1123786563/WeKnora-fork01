@@ -18,12 +18,6 @@ export function getInviteToken(search: string): string | null {
   return token || null;
 }
 
-export function inviteNavigationAfterAuth(search: string, invited: boolean): string {
-  if (invited) return '/platform/knowledge-bases';
-  const next = new URLSearchParams(search).get('next');
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
-}
-
 export function shouldShowRegistration(registrationMode: string | undefined, hasValidInvite: boolean, explicitlyRequested = false): boolean {
   if (!explicitlyRequested && !hasValidInvite) return false;
   return registrationMode === undefined ? false : registrationMode !== 'invite_only' || hasValidInvite;

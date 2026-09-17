@@ -115,13 +115,12 @@ export function organizationInviteCode(pathname: string): string | undefined {
   return code || undefined;
 }
 
-export function nextPathAfterAuth(search: string): string {
-  const next = new URLSearchParams(search).get('next');
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
-}
-
-export function authNavigationTarget(search: string, invited: boolean): string {
-  return invited ? '/platform/knowledge-bases' : nextPathAfterAuth(search);
+export function authNavigationTarget(): string {
+  // Vue parity: Login.vue persistLoginResponse always lands on the fixed
+  // workspace home (hasValidTenant ? '/platform/knowledge-bases' :
+  // '/onboarding/workspace') and never consumes a ?next return URL. The
+  // onboarding split is owned by guardRoute, so the auth target is constant.
+  return '/platform/knowledge-bases';
 }
 
 /**
