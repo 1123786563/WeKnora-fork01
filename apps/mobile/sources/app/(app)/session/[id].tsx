@@ -7,6 +7,7 @@ import { ConversationScreen } from '@/weknora/conversations/ConversationScreen';
 import type { ArtifactFileData, KnowledgeCitationData } from '@/weknora/renderers/registry';
 import type { ConversationResultResources } from '@/weknora/conversations/ProductConversationMessages';
 import { createProductConversationViewModel, createProductExecutionApi } from '@/weknora/conversations/view-model';
+import { createSandboxTerminalOperation } from '@/weknora/conversations/advanced';
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
 import { createMobileKnowledgeApi } from '@/weknora/knowledge/api';
@@ -142,6 +143,22 @@ function ProductSessionRoute() {
   const progress = React.useMemo(() => (
     host && viewModel ? createRunProgressPresenter(createExpoNotificationsProgressPort()) : null
   ), [host, viewModel]);
+  // W32 advanced interaction seam: the product terminal reuses the verified
+  // sandbox terminal-ticket entry with the product bearer; the issued ticket
+  // is one-time and short-term and never a generic shell RPC credential. The
+  // six Happy-origin operations have no product endpoints and are not wired
+  // here — they refuse at the gate instead of falling back to remote drivers.
+  const advanced = React.useMemo(() => {
+    const credential = auth.credential;
+    if (!host || !viewModel || credential?.kind !== 'bearer' || !auth.authSession) return null;
+    return {
+      terminal: createSandboxTerminalOperation({
+        origin: host.origin,
+        sessionId,
+        credential,
+      }),
+    };
+  }, [auth.authSession, auth.credential, host, sessionId, viewModel]);
   // W29 voice chain: the production dictation port (expo-audio capture with
   // permission gating and temp-file cleanup). W30 wires the authenticated
   // transcription call into the port's consumption seam — the capture goes
@@ -181,7 +198,7 @@ function ProductSessionRoute() {
   // (AppState active -> status/history/stream; background closes only the
   // subscription). The controller is per-view-model, i.e. per mount, matching
   // the screen's dispose-on-unmount contract.
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} voice={voice ?? undefined} progress={progress ?? undefined} resultResources={resultResources ?? undefined} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} voice={voice ?? undefined} progress={progress ?? undefined} resultResources={resultResources ?? undefined} advanced={advanced ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);

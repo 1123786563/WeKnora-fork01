@@ -9,7 +9,11 @@
       "destination": "app navigation",
       "service": "navigation",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.html",
@@ -19,7 +23,11 @@
       "destination": "web shell",
       "service": "platform",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.permission.allow",
@@ -29,7 +37,11 @@
       "destination": "permission operation",
       "service": "sync",
       "task": "H13",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H13",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.permission.deny",
@@ -39,7 +51,11 @@
       "destination": "permission operation",
       "service": "sync",
       "task": "H13",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H13",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.permission.switch",
@@ -49,7 +65,11 @@
       "destination": "permission operation",
       "service": "sync",
       "task": "H13",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H13",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.effort",
@@ -59,7 +79,11 @@
       "destination": "effort operation",
       "service": "sync",
       "task": "H14",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H14",
+      "nativeEvidence": "open: ported UI is capability-gated (isRigReasoningSelectionEnabled); product conversation exposes no model/effort endpoint and inherits no unauthorized Happy default; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.goal.accept",
@@ -69,7 +93,11 @@
       "destination": "goal action handler",
       "service": "agent",
       "task": "H15",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H15",
+      "nativeEvidence": "harness: apps/mobile/sources/-session/agentGoalActionHandler.spec.ts (6/6), weknora/conversations/advanced.test.ts (capability gate; product flavor refuses without endpoint); remote driver sessionGoalAction ported; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.goal.reject",
@@ -79,7 +107,11 @@
       "destination": "goal action handler",
       "service": "agent",
       "task": "H15",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H15",
+      "nativeEvidence": "harness: apps/mobile/sources/-session/agentGoalActionHandler.spec.ts (6/6), weknora/conversations/advanced.test.ts (capability gate); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.resume",
@@ -89,7 +121,11 @@
       "destination": "resume operation",
       "service": "sync",
       "task": "H17",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H17",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.archive",
@@ -99,7 +135,11 @@
       "destination": "lifecycle operation",
       "service": "sync",
       "task": "H18",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H18",
+      "nativeEvidence": "harness (refusal path only): apps/mobile/sources/sync/ops.rig.test.ts (rig sessions refuse archive with a message, never fake success), advanced.test.ts (archive driver is sync.sessionArchive, never a cancel); happy-path archive RPC untested in repo; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.delete",
@@ -109,7 +149,11 @@
       "destination": "lifecycle operation",
       "service": "sync",
       "task": "H18",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H18",
+      "nativeEvidence": "harness (refusal path only): apps/mobile/sources/sync/ops.rig.test.ts (rig sessions refuse delete); happy-path delete RPC untested in repo; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.fork",
@@ -119,7 +163,11 @@
       "destination": "new session",
       "service": "sync",
       "task": "H18",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H18",
+      "nativeEvidence": "harness: apps/mobile/sources/sync/ops.codexFork.test.ts (forkAndSpawn + codex-duplicate-thread drivers), advanced.test.ts (gate; copies approved history only, never approvals/budget/leases); product fork endpoint does not exist -> product layer stays open; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.sidechat.open",
@@ -129,7 +177,11 @@
       "destination": "side chat",
       "service": "session",
       "task": "H12",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H12",
+      "nativeEvidence": "open: ported panel UI (SessionView); no repo-automated evidence for this row; W32 gate harness in advanced.test.ts; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.home.1",
@@ -139,7 +191,11 @@
       "destination": "home navigation and session list",
       "service": "navigation/session",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.home.2",
@@ -149,7 +205,11 @@
       "destination": "home navigation and session list",
       "service": "navigation/session",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.home.3",
@@ -159,7 +219,11 @@
       "destination": "home navigation and session list",
       "service": "navigation/session",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.1",
@@ -169,7 +233,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.2",
@@ -179,7 +247,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.3",
@@ -189,7 +261,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.4",
@@ -199,7 +275,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.5",
@@ -209,7 +289,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.settings.6",
@@ -219,7 +303,11 @@
       "destination": "settings routes",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.new.1",
@@ -229,7 +317,11 @@
       "destination": "session composer",
       "service": "session",
       "task": "H04",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H04",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.new.2",
@@ -239,7 +331,11 @@
       "destination": "session composer",
       "service": "session",
       "task": "H04",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H04",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.restore",
@@ -249,7 +345,11 @@
       "destination": "restore/manual",
       "service": "sync",
       "task": "H05",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H05",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.send",
@@ -259,7 +359,11 @@
       "destination": "sync operation",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/workbench/executions",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W10/H06",
+      "nativeEvidence": "harness: apps/mobile/sources/weknora/conversations/view-model.test.ts (single-flight send), ConversationScreen.test.tsx (mounted send); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.stop",
@@ -269,7 +373,11 @@
       "destination": "sync operation",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/workbench/executions/{run_id}/commands (action=cancel)",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W31/H06",
+      "nativeEvidence": "harness: apps/mobile/sources/weknora/voice/realtime.test.ts (explicit cancel control), view-model-protocol.test.ts (W37 gate stops cancel); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.retry",
@@ -279,7 +387,11 @@
       "destination": "sync operation",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H06",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.attach",
@@ -289,7 +401,11 @@
       "destination": "attachment upload",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/sessions/{session_id}/attachments",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W25/H06",
+      "nativeEvidence": "harness: apps/mobile/sources/app/(app)/session/[id].test.tsx (mounted upload chain); native picker/camera blocked-env"
     },
     {
       "id": "session.openChanges",
@@ -299,7 +415,11 @@
       "destination": "changes route",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.openFiles",
@@ -309,7 +429,11 @@
       "destination": "files route",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.openInfo",
@@ -319,7 +443,11 @@
       "destination": "info route",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H06",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.share",
@@ -329,7 +457,11 @@
       "destination": "share sheet",
       "service": "system",
       "task": "H24",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H24",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.sidechat.create",
@@ -339,7 +471,11 @@
       "destination": "side chat session",
       "service": "session",
       "task": "H12",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H12",
+      "nativeEvidence": "open: spawnSideChat driver ported but untested in repo; W32 capability gate harness in advanced.test.ts (copies approved history only); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.sidechat.select",
@@ -349,7 +485,11 @@
       "destination": "side chat session",
       "service": "session",
       "task": "H12",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H12",
+      "nativeEvidence": "open: ported tab selection; no repo-automated evidence; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.sidechat.close",
@@ -359,7 +499,11 @@
       "destination": "parent session",
       "service": "session",
       "task": "H12",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H12",
+      "nativeEvidence": "open: close = kill then gated archive (archive is never a cancel); no repo-automated evidence; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.voice.start",
@@ -369,7 +513,11 @@
       "destination": "voice adapter",
       "service": "voice",
       "task": "H21",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/mobile/voice/sessions",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W29/W31 (H21)",
+      "nativeEvidence": "harness: weknora/voice/dictation.test.ts (20/20), realtime.test.ts (21/21 incl. R-1), VoicePanel.test.tsx; native media leg blocked-env"
     },
     {
       "id": "session.voice.stop",
@@ -379,7 +527,11 @@
       "destination": "voice adapter",
       "service": "voice",
       "task": "H21",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "DELETE /api/v1/mobile/voice/sessions/{id}",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W29/W31 (H21)",
+      "nativeEvidence": "harness: realtime.test.ts (end/interrupt settle exactly once, background/unmount close+release); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.question",
@@ -389,7 +541,11 @@
       "destination": "question response operation",
       "service": "agent",
       "task": "H16",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/agent/tool-approvals/{id}",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W05+W10/H16",
+      "nativeEvidence": "harness: ConversationScreen.test.tsx (approve/reject with typed revision); spoken answers never approve (W31); blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.changes.1",
@@ -399,7 +555,11 @@
       "destination": "diff/file routes",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.changes.2",
@@ -409,7 +569,11 @@
       "destination": "diff/file routes",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.files",
@@ -419,7 +583,11 @@
       "destination": "file route",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.artifacts.1",
@@ -429,7 +597,11 @@
       "destination": "artifact detail/edit",
       "service": "artifacts",
       "task": "H08",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H08",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.artifacts.2",
@@ -439,7 +611,11 @@
       "destination": "artifact detail/edit",
       "service": "artifacts",
       "task": "H08",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H08",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.friends.1",
@@ -449,7 +625,11 @@
       "destination": "friends/search",
       "service": "social",
       "task": "H09",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H09",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.friends.2",
@@ -459,7 +639,11 @@
       "destination": "friends/search",
       "service": "social",
       "task": "H09",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H09",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.inbox",
@@ -469,7 +653,11 @@
       "destination": "inbox",
       "service": "notifications",
       "task": "H10",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H10",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.voice.1",
@@ -479,7 +667,11 @@
       "destination": "voice adapter",
       "service": "voice",
       "task": "H21",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W29/W31 (H21)",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.voice.2",
@@ -489,7 +681,11 @@
       "destination": "voice adapter",
       "service": "voice",
       "task": "H21",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W29/W31 (H21)",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.terminal.1",
@@ -499,7 +695,11 @@
       "destination": "terminal service",
       "service": "remote",
       "task": "H22",
-      "status": "pending"
+      "status": "harness",
+      "productEndpoint": "POST /api/v1/sessions/{id}/sandbox/terminal-ticket",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H22",
+      "nativeEvidence": "harness: weknora/conversations/advanced.test.ts (ticket issued over product bearer, one-time short-term, scoped WS url, no shell RPC passthrough), ConversationScreen.test.tsx W32 (entry gated); terminal WS bridge/WebView (H33) open; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.terminal.2",
@@ -509,7 +709,11 @@
       "destination": "terminal service",
       "service": "remote",
       "task": "H22",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": "wss /api/v1/sessions/{id}/sandbox/terminal?ticket=...",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H22",
+      "nativeEvidence": "open: the product ticket entry is harness-verified (advanced.test.ts) but the mobile terminal WS bridge/controlled WebView (H33 terminal-bridge/TerminalScreen) is not implemented; Happy deep-link screens ported untested; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.machine.1",
@@ -519,7 +723,11 @@
       "destination": "machine/session",
       "service": "remote",
       "task": "H23",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H23",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.machine.2",
@@ -529,7 +737,11 @@
       "destination": "machine/session",
       "service": "remote",
       "task": "H23",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H23",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.user",
@@ -539,7 +751,11 @@
       "destination": "user profile",
       "service": "social",
       "task": "H09",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H09",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.message",
@@ -549,7 +765,11 @@
       "destination": "message detail",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H06",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.textSelection.1",
@@ -559,7 +779,11 @@
       "destination": "share sheet",
       "service": "system",
       "task": "H24",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H24",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.textSelection.2",
@@ -569,7 +793,11 @@
       "destination": "share sheet",
       "service": "system",
       "task": "H24",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H24",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.recent",
@@ -579,7 +807,11 @@
       "destination": "session route",
       "service": "session",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.layout",
@@ -589,7 +821,11 @@
       "destination": "app navigation",
       "service": "navigation",
       "task": "H02",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H02",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.artifactDetail",
@@ -599,7 +835,11 @@
       "destination": "artifact detail",
       "service": "artifacts",
       "task": "H08",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H08",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.artifactEdit",
@@ -609,7 +849,11 @@
       "destination": "artifact save",
       "service": "artifacts",
       "task": "H08",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H08",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.artifactNew",
@@ -619,7 +863,11 @@
       "destination": "artifact save",
       "service": "artifacts",
       "task": "H08",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H08",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.changelog",
@@ -629,7 +877,11 @@
       "destination": "changelog",
       "service": "content",
       "task": "H25",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H25",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.friendSearch",
@@ -639,7 +891,11 @@
       "destination": "friend profile",
       "service": "social",
       "task": "H09",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H09",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.restoreManual",
@@ -649,7 +905,11 @@
       "destination": "restore session",
       "service": "sync",
       "task": "H05",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H05",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.server",
@@ -659,7 +919,11 @@
       "destination": "server connection",
       "service": "remote",
       "task": "H23",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H23",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.file",
@@ -669,7 +933,11 @@
       "destination": "file viewer",
       "service": "session",
       "task": "H07",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H07",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.info",
@@ -679,7 +947,11 @@
       "destination": "session metadata",
       "service": "session",
       "task": "H06",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H06",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.account",
@@ -689,7 +961,11 @@
       "destination": "account service",
       "service": "account",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.agents",
@@ -699,7 +975,11 @@
       "destination": "agent settings",
       "service": "agents",
       "task": "H20",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H20",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.appearance",
@@ -709,7 +989,11 @@
       "destination": "theme store",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.claude",
@@ -719,7 +1003,11 @@
       "destination": "Claude connector",
       "service": "agents",
       "task": "H20",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H20",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.language",
@@ -729,7 +1017,11 @@
       "destination": "locale store",
       "service": "settings",
       "task": "H03",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H03",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.usage",
@@ -739,7 +1031,11 @@
       "destination": "usage service",
       "service": "billing",
       "task": "H26",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H26",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.voiceLanguage",
@@ -749,7 +1045,11 @@
       "destination": "voice adapter",
       "service": "voice",
       "task": "H21",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W29/W31 (H21)",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "app.terminalConnect",
@@ -759,7 +1059,11 @@
       "destination": "terminal service",
       "service": "remote",
       "task": "H22",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": "POST /api/v1/sessions/{id}/sandbox/terminal-ticket",
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "W32/H22",
+      "nativeEvidence": "open: Happy deep-link connect screen ported untested; product flavor issues the verified ticket via advanced.ts but has no bridge yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.model.select",
@@ -769,7 +1073,11 @@
       "destination": "model operation",
       "service": "sync",
       "task": "H14",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H14",
+      "nativeEvidence": "open: ported UI is capability-gated (isRigModelSelectionEnabled); product conversation exposes no model endpoint; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     },
     {
       "id": "session.resume.copy",
@@ -779,7 +1087,11 @@
       "destination": "clipboard",
       "service": "system",
       "task": "H17",
-      "status": "pending"
+      "status": "open",
+      "productEndpoint": null,
+      "sourceCommit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+      "implementationTask": "H17",
+      "nativeEvidence": "open: ported Happy source present in apps/mobile; no repo-automated evidence for this row yet; blocked-env: native iOS/Android acceptance pending (no device/signing/lived backend in this environment)"
     }
   ],
   "expectedIds": [
@@ -861,5 +1173,27 @@
     "app.terminalConnect",
     "session.model.select",
     "session.resume.copy"
-  ]
+  ],
+  "statusLegend": {
+    "native": "device-verified on iOS and/or Android with recorded artifacts (none in this environment: blocked-env)",
+    "harness": "repo-automated evidence (unit/component) for the ported interaction; native device acceptance still pending; productEndpoint null means the interaction rides the verified remote driver and no product endpoint exists",
+    "open": "no repo-automated evidence yet (or the product endpoint does not exist); not acceptable as complete preservation"
+  },
+  "w32": {
+    "advancedOperationRows": [
+      "session.goal.accept",
+      "session.goal.reject",
+      "session.fork",
+      "session.sidechat.open",
+      "session.sidechat.create",
+      "session.sidechat.select",
+      "session.sidechat.close",
+      "session.archive",
+      "app.terminal.1",
+      "app.terminal.2",
+      "app.terminalConnect"
+    ],
+    "rewindDuplicateNote": "rewind/duplicate have no dedicated matrix rows; their flows live in the ported DuplicateSheet (sync.listRewindPoints + forkAndSpawn, non-destructive new-session semantics) and are recorded in docs/evidence/mobile-workbench/W32-interaction-parity.md",
+    "driverMap": "apps/mobile/sources/weknora/conversations/advanced.ts REMOTE_ADVANCED_DRIVER"
+  }
 }

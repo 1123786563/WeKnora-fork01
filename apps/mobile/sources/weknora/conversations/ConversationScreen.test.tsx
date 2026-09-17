@@ -491,3 +491,35 @@ it('presents run status through the injected progress surface without leaking co
   await act(async () => renderer!.unmount());
 });
 });
+
+// ---------------------------------------------------------------------------
+// W32 — advanced interaction surface: the product terminal rides the
+// capability gate; the six Happy-origin operations stay unavailable here.
+// ---------------------------------------------------------------------------
+
+describe('ConversationScreen advanced operations (W32)', () => {
+it('hides the terminal entry without the assembled seam; with the seam it invokes the fixed terminal operation once', async () => {
+  const viewModel = model({ pendingInteractions: [] });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel })); });
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: '终端' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+  const operations: string[] = [];
+  const advanced = { terminal: async (operation: string) => { operations.push(operation); } };
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, advanced })); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '终端' }).props.onPress(); });
+  expect(operations).toEqual(['terminal']);
+  expect(renderer!.root.findAllByProps({ accessibilityRole: 'alert' }).some((node: { props: { children: unknown } }) => String(node.props.children).includes('终端票据已签发'))).toBe(true);
+  await act(async () => renderer!.unmount());
+});
+
+it('surfaces a refused or failing terminal operation as a typed notice instead of faking success', async () => {
+  const viewModel = model({ pendingInteractions: [] });
+  let renderer: ReturnType<typeof create>;
+  const advanced = { terminal: async () => { throw new Error('CAPABILITY_UNAVAILABLE'); } };
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, advanced })); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '终端' }).props.onPress(); });
+  expect(renderer!.root.findAllByProps({ accessibilityRole: 'alert' }).some((node: { props: { children: unknown } }) => node.props.children === 'CAPABILITY_UNAVAILABLE')).toBe(true);
+  await act(async () => renderer!.unmount());
+});
+});

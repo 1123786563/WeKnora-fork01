@@ -253,7 +253,14 @@ export function createRealtimeVoiceSession(input: RealtimeVoiceSessionInput): Re
     try {
       await dropCurrent();
       const admitted = await admitFresh();
-      if (disposed) return;
+      if (disposed) {
+        // R-1 (W31 review residue): dispose() ran while the admit round-trip
+        // was in flight — its dropCurrent saw sessionID === null and could
+        // not settle this row. Release the granted admission here so the W30
+        // hold never waits for the server deadline sweeper.
+        await input.release(admitted.id).catch(() => undefined);
+        return;
+      }
       grant = admitted.grant;
       sessionID = admitted.id;
       renewals = 0;
@@ -282,7 +289,12 @@ export function createRealtimeVoiceSession(input: RealtimeVoiceSessionInput): Re
     try {
       await dropCurrent();
       const admitted = await admitFresh();
-      if (disposed) return false;
+      if (disposed) {
+        // R-1: same raced-dispose contract as begin — settle the freshly
+        // granted row instead of dropping the reference.
+        await input.release(admitted.id).catch(() => undefined);
+        return false;
+      }
       grant = admitted.grant;
       sessionID = admitted.id;
       await input.port.connect(admitted.grant);

@@ -92,6 +92,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 vi.mock('@/weknora/platform/host', async () => await import('../../../weknora/platform/host'));
 vi.mock('@/weknora/conversations/ConversationScreen', async () => await import('../../../weknora/conversations/ConversationScreen'));
 vi.mock('@/weknora/conversations/view-model', async () => await import('../../../weknora/conversations/view-model'));
+vi.mock('@/weknora/conversations/advanced', async () => await import('../../../weknora/conversations/advanced'));
 vi.mock('@/weknora/conversations/resources', async () => await import('../../../weknora/conversations/resources'));
 vi.mock('@/weknora/conversations/execution-projection', async () => await import('../../../weknora/conversations/execution-projection'));
 vi.mock('@/weknora/resources/product-session-attachments', async () => await import('../../../weknora/resources/product-session-attachments'));

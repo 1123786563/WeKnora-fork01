@@ -260,6 +260,26 @@ test('a failed renewal connect also settles the freshly admitted session (fix F-
   assert.equal(admissions, 2);
 });
 
+test('dispose racing the admit round-trip still settles the granted session (fix R-1)', async () => {
+  const log: string[] = [];
+  let resolveAdmit!: (value: VoiceSessionAdmission) => void;
+  const session = createRealtimeVoiceSession({
+    port: fakePort(log),
+    admit: () => new Promise<VoiceSessionAdmission>((resolve) => { resolveAdmit = resolve; }),
+    release: async (id) => { log.push(`release:${id}`); },
+  });
+  const pending = session.begin();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Unmount lands while the admission network round-trip is still in flight:
+  // dispose()'s dropCurrent sees sessionID === null and cannot settle the row.
+  session.dispose();
+  resolveAdmit(admission('vs_midflight', 'tok-1', '2031-01-01T00:00:00Z'));
+  await pending;
+  // The granted admission must not dangle until the server deadline sweeper.
+  assert.ok(log.includes('release:vs_midflight'), `expected the raced admission to be released, got ${JSON.stringify(log)}`);
+  assert.equal(log.filter((entry) => entry.startsWith('release:')).length, 1, 'exactly one settle, no double release');
+});
+
 test('interrupt playback and mute only touch the media surface', async () => {
   const log: string[] = [];
   const session = createRealtimeVoiceSession({

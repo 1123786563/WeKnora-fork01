@@ -10,6 +10,7 @@ import { DictationInput } from '../voice/DictationInput';
 import { createVoiceControls, createVoiceUtteranceHandler, type RealtimeVoiceSession, type VoiceUtteranceOutcome } from '../voice/realtime';
 import { VoicePanel } from '../voice/VoicePanel';
 import type { RunProgressPresenter } from '../notifications/live-progress';
+import { deriveProductAdvancedCapabilities, invokeAdvanced, type AdvancedOperationCall } from './advanced';
 import { ConversationResultResourcesContext, type ConversationResultResources } from './ProductConversationMessages';
 export { ProductConversationMessages } from './ProductConversationMessages';
 export { selectRenderer } from '../renderers/registry';
@@ -67,6 +68,17 @@ export interface ConversationScreenProps {
    * an authorized open.
    */
   resultResources?: ConversationResultResources;
+  /**
+   * W32 advanced interaction surface. Today the product flavor exposes
+   * exactly one verified advanced entry: the sandbox terminal, reusing the
+   * existing ticket endpoint (POST /api/v1/sessions/:id/sandbox/
+   * terminal-ticket) with a one-time short-term ticket — the bearer never
+   * travels past the ticket call and no generic shell RPC is exposed. The
+   * six Happy-origin operations (goal/fork/side_chat/archive/rewind/
+   * duplicate) have no product endpoints and stay CAPABILITY_UNAVAILABLE
+   * here instead of falling back to the remote drivers.
+   */
+  advanced?: ConversationAdvanced;
 }
 
 /** Attachment surface the conversation input box consumes. */
@@ -95,13 +107,22 @@ export interface ConversationVoice {
   session: RealtimeVoiceSession;
 }
 
+/**
+ * W32 advanced interaction surface (product flavor): the terminal operation
+ * is assembled where the product bearer lives (the session route) and only
+ * ever receives its fixed operation.
+ */
+export interface ConversationAdvanced {
+  terminal: AdvancedOperationCall;
+}
+
 const uploadStatusText: Record<SessionUploadStatus, string> = {
   uploading: '上传中',
   uploaded: '已附加',
   failed: '上传失败',
 };
 
-export function ConversationControlPanel({ viewModel, attachments, dictation }: { viewModel: ConversationViewModel; attachments?: ConversationAttachments; dictation?: ConversationDictation }) {
+export function ConversationControlPanel({ viewModel, sessionId, attachments, dictation, advanced }: { viewModel: ConversationViewModel; sessionId?: string; attachments?: ConversationAttachments; dictation?: ConversationDictation; advanced?: ConversationAdvanced }) {
   const [draft, setDraftState] = React.useState('');
   // The dictation controller writes and reads the draft outside React's
   // render cycle, so the state travels through a synchronous ref mirror.
@@ -149,12 +170,34 @@ export function ConversationControlPanel({ viewModel, attachments, dictation }: 
     );
   }, [applyDraft, canVoice, dictation, redrawDictation]);
   const canAttach = viewModel.capabilities.canAttach && Boolean(attachments);
+  // W32: the product advanced surface. Capabilities come from the assembled
+  // seam — without it every advanced operation refuses at the gate and the
+  // entry stays hidden rather than faking availability.
+  const advancedCapabilities = deriveProductAdvancedCapabilities({ authenticated: Boolean(advanced), sessionId: sessionId ?? '' });
+  const [advancedNotice, setAdvancedNotice] = React.useState<string | null>(null);
+  const openTerminal = React.useCallback(async () => {
+    if (!advanced) return;
+    try {
+      await invokeAdvanced('terminal', advancedCapabilities, advanced.terminal);
+      setAdvancedNotice('终端票据已签发（短期一次性授权，请使用终端连接）。');
+    } catch (error) {
+      setAdvancedNotice(error instanceof Error ? error.message : 'CAPABILITY_UNAVAILABLE');
+    }
+  }, [advanced, advancedCapabilities]);
   return (
     <View accessibilityLabel="conversation-controls">
       <TextInput accessibilityLabel="conversation-draft" value={draft} onChangeText={applyDraft} />
       <Pressable accessibilityRole="button" accessibilityLabel="发送" disabled={busy} onPress={() => void (dictationController ? dictationController.confirm().catch(() => undefined) : submit())}>
         <Text>{busy ? '发送中' : '发送'}</Text>
       </Pressable>
+      {advanced ? (
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="终端" onPress={() => void openTerminal()}>
+            <Text>终端</Text>
+          </Pressable>
+          {advancedNotice ? <Text accessibilityRole="alert">{advancedNotice}</Text> : null}
+        </View>
+      ) : null}
       {canVoice && dictationController ? <DictationInput controller={dictationController} /> : null}
       {canAttach && attachments ? (
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -206,7 +249,7 @@ export function ConversationControlPanel({ viewModel, attachments, dictation }: 
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, voice, progress, resultResources }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation, voice, progress, resultResources, advanced }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
   // W12: the product conversation resumes executions when the app returns to the
@@ -307,7 +350,7 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
             </Pressable>
           </View>
         )}
-        <ConversationControlPanel viewModel={viewModel} attachments={attachments} dictation={dictation} />
+        <ConversationControlPanel viewModel={viewModel} sessionId={sessionId} attachments={attachments} dictation={dictation} advanced={advanced} />
         {voice && voiceControls ? (
           <VoicePanel
             session={voice.session}
