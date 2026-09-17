@@ -21,7 +21,8 @@ import {
 import "./wiki-reader.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
-import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
+import { wikiEditPermission } from "./edit-permission.ts";
+import type { KBSurfaceKB, KBSurfaceMe } from "../knowledge/permissions.ts";
 
 const WIKI_PAGE_SIZE = 50;
 
@@ -341,10 +342,13 @@ export function WikiPage({
     void Promise.all([
       client.knowledgeBases.settings.get(knowledgeBaseId),
       client.auth.me().catch(() => null),
-    ] as const).then(([kb, me]) => {
+      // Vue canEdit consults the org shared-knowledge-bases list as the
+      // authoritative share-grant signal; the probe mirrors those inputs.
+      client.identity.organizations.knowledgeBaseShares.listShared().catch(() => null),
+    ] as const).then(([kb, me, sharedRows]) => {
       if (!active || !me) return;
       setCanContribute(
-        computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe).canContribute,
+        wikiEditPermission(kb as KBSurfaceKB, me as KBSurfaceMe, sharedRows),
       );
     }).catch(() => {
       // Keep the caller's role gate when the optional permission probe fails.

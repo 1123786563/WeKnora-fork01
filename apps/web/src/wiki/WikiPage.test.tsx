@@ -101,6 +101,16 @@ test('Wiki editor exposes a cancel action that exits edit mode without saving', 
   assert.match(source, /t\("common\.cancel"\)/);
 });
 
+// Vue KnowledgeBase.vue canEdit contract: the wiki edit entry consults the
+// org share list (authoritative share-grant signal), the KB creator_id owner
+// check, and the active-tenant admin role — not just the caller's tenant role
+// prop. The permission probe must feed all three inputs into wikiEditPermission.
+test('Wiki edit permission probe follows the Vue canEdit contract inputs', () => {
+  const source = WikiPage.toString();
+  assert.match(source, /wikiEditPermission\(/);
+  assert.match(source, /knowledgeBaseShares\.listShared\(/);
+});
+
 // Vue WikiBrowser.vue `overwriteSavePage`: on a 409 conflict the editor offers
 // "覆盖保存" (overwrite) in addition to reloading the latest version.
 test('Wiki conflict state exposes the Vue overwrite action backed by the latest version', () => {

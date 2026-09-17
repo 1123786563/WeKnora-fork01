@@ -5005,3 +5005,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1665/1665, `pnpm test:shared` 749/749, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r460-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-18 Round R461 — Wiki edit-permission contract, AuthPages dead-stack removal, creator_id fix
+
+- Four parallel agents (A1 post-recovery browser evidence, A2 AuthPages dead-stack deletion, A3 wiki
+  edit-permission contract, A4 verifier) + orchestrator cross-domain fix. Verdict: all PASS; gates test:web
+  1673/1673, test:shared 751/751, typecheck 0, build ✓, integrity 0 P0 after staging. Backend had recovered
+  (5e382d0b fixed the container DI boot order).
+- A1 (12 screenshots): the wiki edit-button gap CONFIRMED with a live root cause — the KB payload carries
+  ONLY creator_id (no user_id/created_by/my_permission) so permissions.ts isCreator never matched; Vue isOwner
+  matches creator_id. Settings flicker regression PASS (external 59c9dd88; new queued: nested form in share
+  section). agent-chat crash regression PASS. embed-channels still empty.
+- A3: Vue canEdit mirrored branch-for-branch in wiki/edit-permission.ts (org-share grant admin/editor from
+  the authoritative shared-KB list React never queried, creator via creator_id, tenant role ≥ admin with
+  contributor EXPLICITLY excluded); WikiPage probe fans into three inputs. wiki 59/59 (+12). Left: router
+  initial prop one-frame flip (router domain).
+- A2: AuthPages dead stack deleted (net −203; reachability re-verified — the new router lazy-loads standalone
+  auth pages, zero external references); 2 live auth/api contract tests migrated. scoped 78/78. Left:
+  createAuthApi now test-only — next-round adjudication.
+- Orchestrator: permissions.ts isCreator now matches kb.creator_id first (the only creator field the live
+  backend sends; user_id/created_by kept as legacy fallbacks) — fixes the same gap for every
+  computeKBPermissions consumer (FAQ/documents). TDD red→green; permissions 11/11.
+- Gates: `pnpm test:web` 1673/1673, `pnpm test:shared` 751/751, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r461-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

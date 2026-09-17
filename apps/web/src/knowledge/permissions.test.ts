@@ -16,6 +16,17 @@ test('creator, system admin and contributor roles keep editing', () => {
   assert.equal(computeKBPermissions(kb, { user: { id: 'u-9', role: 'admin' } }).canContribute, true);
 });
 
+// The live backend KB payload carries ONLY creator_id (R461 browser evidence;
+// internal/types/knowledgebase.go) — isCreator must match it exactly like
+// Vue's isOwner (KnowledgeBase.vue:250-258). user_id/created_by never arrive
+// from this backend, so without creator_id the creator's edit/upload controls
+// vanish (the wiki edit-button gap root cause).
+test('creator_id (the only field the live backend sends) grants editing', () => {
+  const kb = { id: 'kb-1', creator_id: 'u-1' };
+  assert.equal(computeKBPermissions(kb, { user: { id: 'u-1' } }).canContribute, true, 'creator_id match must count as creator');
+  assert.equal(computeKBPermissions({ id: 'kb-2', creator_id: 'someone-else' }, { user: { id: 'u-1' } }).canContribute, false, 'creator_id mismatch stays non-contributor for a plain member');
+});
+
 test('tenant admin and contributor memberships can use an independently opened home-tenant KB', () => {
   assert.deepEqual(computeKBPermissions(
     { id: 'kb-1', user_id: 'owner-1' },

@@ -53,7 +53,11 @@ function isSystemAdmin(me: KBSurfaceMe): boolean {
 function isCreator(kb: KBSurfaceKB, me: KBSurfaceMe): boolean {
   const userId = me.user?.id;
   if (userId === undefined || userId === null) return false;
-  return kb.user_id !== undefined && String(kb.user_id) === String(userId)
+  // Vue isOwner (KnowledgeBase.vue:250-258) matches creator_id — the only
+  // creator field the live KB payload carries (internal/types/knowledgebase.go);
+  // user_id/created_by are legacy fallbacks kept for older snapshots.
+  return kb.creator_id !== undefined && String(kb.creator_id) === String(userId)
+    || kb.user_id !== undefined && String(kb.user_id) === String(userId)
     || kb.created_by !== undefined && String(kb.created_by) === String(userId);
 }
 
