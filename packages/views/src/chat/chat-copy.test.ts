@@ -115,6 +115,33 @@ test('resolveChatLocale stays within the supported locale set', () => {
   assert.ok(CHAT_COPY_LOCALES.includes(resolveChatLocale()));
 });
 
+test('resolveChatLocale ignores navigator.language like the Vue deployment default', () => {
+  // Upstream i18n/index.ts resolves localStorage['locale'] || deployment
+  // default (zh-CN) — it never sniffs the browser language, so an English
+  // browser still gets the Chinese deployment default. The chat view must
+  // follow the same convention (browser sniffing here produced an English
+  // chat page inside an otherwise-Chinese app — 2026-09-18 round 7).
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalNavigator = globalThis.navigator;
+  try {
+    (globalThis as { window?: unknown }).window = {
+      navigator: { language: 'en-US' },
+      localStorage: { getItem: () => null },
+    };
+    // No stored preference: deployment default wins over the browser locale.
+    assert.equal(resolveChatLocale(), 'zh-CN');
+    // Explicit stored choice still wins.
+    (globalThis as { window?: unknown }).window = {
+      navigator: { language: 'en-US' },
+      localStorage: { getItem: (key: string) => (key === 'locale' ? 'ja-JP' : null) },
+    };
+    assert.equal(resolveChatLocale(), 'ja-JP');
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: originalNavigator });
+  }
+});
+
 test('resolveChatCopy exposes the Vue tool-approval args editing labels in every locale', () => {
   // Byte-exact mirrors of frontend/src/i18n/locales/*.ts agentStream.toolApproval.
   const modified = {

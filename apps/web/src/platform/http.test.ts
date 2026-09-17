@@ -450,3 +450,43 @@ test('stop() releases a progress observer before the upload runs', async () => {
   stop();
   assert.equal(uploadProgressListener('blob:doc-3'), undefined);
 });
+
+test('accept-language defaults to the app locale convention, never the browser language', async () => {
+  // Upstream request.ts sends getCurrentLanguage() (i18n locale || localStorage
+  // 'locale' || zh-CN) — the browser language is never sniffed. The transport
+  // must default the same way so server-localized payloads (builtin agent
+  // names) follow the UI language; main.tsx used to pass locale:
+  // navigator.language, which forced en-US inside a Chinese deployment
+  // (2026-09-18 round 7).
+  const seen: Array<string | undefined> = [];
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const fetcher = (async (_url: unknown, init: { headers?: Record<string, string> } | undefined) => {
+    seen.push(init?.headers?.['accept-language']);
+    return { status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ success: true, data: [] }), text: async () => '' };
+  }) as unknown as FetchLike;
+
+  try {
+    // No options.locale and no stored preference: zh-CN deployment default.
+    (globalThis as { window?: unknown }).window = { localStorage: { getItem: () => null } };
+    const transport = createBrowserTransport({ fetcher });
+    await transport.send({ method: 'GET', url: 'https://api.test/api/v1/agents', headers: { accept: 'application/json' } });
+    assert.equal(seen.at(-1), 'zh-CN');
+
+    // Stored language switch wins.
+    (globalThis as { window?: unknown }).window = { localStorage: { getItem: (key: string) => (key === 'locale' ? 'ja-JP' : null) } };
+    await transport.send({ method: 'GET', url: 'https://api.test/api/v1/agents', headers: { accept: 'application/json' } });
+    assert.equal(seen.at(-1), 'ja-JP');
+
+    // A reactive provider (function) re-resolves per request, matching the
+    // upstream interceptor that reads the live i18n locale.
+    let current = 'zh-CN';
+    const reactive = createBrowserTransport({ locale: () => current, fetcher });
+    await reactive.send({ method: 'GET', url: 'https://api.test/api/v1/agents', headers: { accept: 'application/json' } });
+    assert.equal(seen.at(-1), 'zh-CN');
+    current = 'ko-KR';
+    await reactive.send({ method: 'GET', url: 'https://api.test/api/v1/agents', headers: { accept: 'application/json' } });
+    assert.equal(seen.at(-1), 'ko-KR');
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+  }
+});

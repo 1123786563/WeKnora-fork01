@@ -1210,22 +1210,22 @@ export function resolveChatCopy(locale?: string | null): ChatCopyTable {
 
 /**
  * App locale convention: the language switch stores localStorage['locale']
- * (GeneralPreferencesPanel), otherwise navigator.language resolves like
- * App.tsx resolveLocale(); zh-CN remains the final fallback so Node runtimes
- * and storage-less embeds keep today's rendering.
+ * (GeneralPreferencesPanel), otherwise the deployment default applies — the
+ * same resolution as upstream i18n/index.ts (localStorage || BUILT_IN_DEFAULT)
+ * and apps/web readStoredLocale(). The browser language is deliberately NOT
+ * sniffed: an English browser must still see the Chinese deployment default,
+ * matching the Vue app and keeping the chat view in the same locale as the
+ * rest of this app.
  */
 export function resolveChatLocale(): ChatCopyLocale {
   try {
     const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('locale') : null;
     if (isChatCopyLocale(stored)) return stored;
   } catch {
-    // Storage can be unavailable (sandboxed iframes); fall through.
+    // Storage can be unavailable (sandboxed iframes); the deployment default
+    // applies.
   }
-  const language = typeof navigator !== 'undefined' ? navigator.language : '';
-  if (isChatCopyLocale(language)) return language;
-  const base = language.split('-')[0] ?? '';
-  const baseMatch = CHAT_COPY_LOCALES.find((locale) => locale.split('-')[0] === base);
-  return baseMatch ?? 'zh-CN';
+  return 'zh-CN';
 }
 
 /** formatMessage-style {name} interpolation against a resolved table. */

@@ -8,6 +8,7 @@ import { computeAuthLanding } from './auth/session-persist.ts';
 import { readPendingInviteToken, clearPendingInviteToken } from './auth/invite-flow.ts';
 import { importLegacyPlatformState, persistSelectedTenant, readReactPlatformState, type ReactPlatformState } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
+import { readStoredLocale } from './i18n.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
@@ -65,7 +66,10 @@ client = createWeKnoraClient({
   transport: createBrowserTransport({
     credential: currentCredential,
     tenantId: () => scopeController.current().scope.tenantId,
-    locale: navigator.language,
+    // Accept-Language resolves per request from the app locale convention
+    // (Vue request.ts:86 getCurrentLanguage) — never navigator.language,
+    // which pinned an English UI language inside a Chinese deployment.
+    locale: () => readStoredLocale(),
     shouldRefresh: (request) => !request.url.endsWith('/api/v1/auth/refresh'),
     refresh: refreshCoordinator ? async () => {
       try {

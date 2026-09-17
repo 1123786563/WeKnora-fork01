@@ -154,6 +154,22 @@ function parseKnowledgeChunkSearchResponse(value: unknown): KnowledgeChunkSearch
 export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const timeoutMs = options.timeoutMs ?? 30_000;
 
+  // Upstream frontend/src/utils/request.ts injects Accept-Language:
+  // getCurrentLanguage() on every call so server-localized payloads (builtin
+  // agent names, error copy) follow the UI language rather than the
+  // browser's default header. Same convention here: localStorage['locale']
+  // from the language switch, deployment default zh-CN otherwise — the
+  // browser language is never sniffed.
+  function requestLocale(): string {
+    try {
+      const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('locale') : null;
+      if (typeof stored === 'string' && /^[a-z]{2}-[A-Z]{2}$/.test(stored)) return stored;
+    } catch {
+      // Storage can be unavailable (sandboxed iframes); the default applies.
+    }
+    return 'zh-CN';
+  }
+
   async function request(input: ClientRequest): Promise<unknown> {
     const controller = new AbortController();
     let timedOut = false;
@@ -164,7 +180,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     const request: HttpRequest = {
       method: input.method,
       url: joinURL(options.baseURL, input.path),
-      headers: { accept: 'application/json', ...input.headers },
+      headers: { accept: 'application/json', 'accept-language': requestLocale(), ...input.headers },
       body: input.body ?? (input.multipartFields === undefined ? undefined : multipartBody(input.multipartFields)),
       signal: controller.signal,
     };
@@ -212,7 +228,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     const binaryRequest: HttpRequest = {
       method: input.method,
       url: joinURL(options.baseURL, input.path),
-      headers: { accept: '*/*', ...input.headers },
+      headers: { accept: '*/*', 'accept-language': requestLocale(), ...input.headers },
       body: input.body ?? (input.multipartFields === undefined ? undefined : multipartBody(input.multipartFields)),
       signal: controller.signal,
     };
