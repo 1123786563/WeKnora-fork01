@@ -2,6 +2,11 @@ import type { DataSource } from '@weknora/api-client';
 
 export interface HeaderRow { key: string; value: string }
 
+// Vue DataSourceEditorDialog GitLabProjectInput: each projects row is edited as
+// { project_id, ref, pathsText } where pathsText joins the stored paths array
+// with newlines for the textarea.
+export interface GitLabProjectInput { project_id: string; ref: string; pathsText: string }
+
 export interface DataSourceFormValues {
   name: string;
   type: string;
@@ -15,6 +20,38 @@ export interface DataSourceFormValues {
   // rss custom auth headers (Vue fieldType 'custom_headers'): edited as
   // key-value rows, serialized into config.credentials.auth_headers.
   authHeaders?: HeaderRow[];
+  // gitlab projects (Vue gitlabProjects ref): edited as structured rows and
+  // injected into config.settings.projects on save — the key=value settingsText
+  // protocol cannot carry an array of objects.
+  gitlabProjects?: GitLabProjectInput[];
+}
+
+// Vue syncGitLabProjectsToSettings: drop rows without a project_id, trim
+// project_id/ref (an empty ref survives as ''), split paths on newlines or
+// commas and drop blank entries.
+export function serializeGitLabProjects(projects: GitLabProjectInput[]): Array<{ project_id: string; ref: string; paths: string[] }> {
+  return projects
+    .filter((project) => project.project_id.trim())
+    .map((project) => ({
+      project_id: project.project_id.trim(),
+      ref: project.ref.trim(),
+      paths: project.pathsText.split(/[\n,]/).map((path) => path.trim()).filter(Boolean),
+    }));
+}
+
+// Vue openEditor edit branch: hydrate the row editor from the saved
+// settings.projects, rejoining the paths array into textarea text. A malformed
+// (non-array) value degrades to no rows.
+export function gitlabProjectsFromSettings(settings: Record<string, unknown>): GitLabProjectInput[] {
+  const saved = Array.isArray(settings.projects) ? settings.projects : [];
+  return saved.map((project) => {
+    const row = (project && typeof project === 'object' ? project : {}) as Record<string, unknown>;
+    return {
+      project_id: String(row.project_id ?? ''),
+      ref: String(row.ref ?? ''),
+      pathsText: Array.isArray(row.paths) ? row.paths.filter((path): path is string => typeof path === 'string').join('\n') : '',
+    };
+  });
 }
 
 export function parseCredentialLines(text: string): Record<string, string> {
@@ -46,6 +83,15 @@ export function buildDataSourceInput(values: DataSourceFormValues): Partial<Data
     const serialized = serializeAuthHeaders(values.authHeaders ?? []);
     if (serialized) credentials.auth_headers = serialized;
   }
+  // Vue buildConfigPayload runs syncGitLabProjectsToSettings on every save:
+  // for gitlab the structured rows own settings.projects (a stale hand-typed
+  // `projects = ...` line in settingsText is overridden), while scalar
+  // settingsText keys survive untouched. Other connectors never grow the key.
+  const settings: Record<string, unknown> = parseCredentialLines(values.settingsText);
+  if (type === 'gitlab') {
+    delete settings.projects;
+    settings.projects = serializeGitLabProjects(values.gitlabProjects ?? []);
+  }
   return {
     name,
     type,
@@ -53,7 +99,7 @@ export function buildDataSourceInput(values: DataSourceFormValues): Partial<Data
     sync_mode: values.mode,
     conflict_strategy: values.conflict,
     sync_deletions: values.deletions,
-    config: { credentials, settings: parseCredentialLines(values.settingsText), resource_ids: values.resourceIds },
+    config: { credentials, settings, resource_ids: values.resourceIds },
   };
 }
 
@@ -74,6 +120,10 @@ export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
     // Vue resets rssAuthHeaders to [] on dialog open: stored auth_headers stay
     // server-side untouched unless the user opts in to Replace and retypes rows.
     authHeaders: [],
+    // Vue openEditor edit branch: settings.projects (an array of objects) never
+    // round-trips through the scalar settingsText lines — it hydrates the
+    // structured gitlab row editor instead.
+    gitlabProjects: gitlabProjectsFromSettings(settings),
   };
 }
 

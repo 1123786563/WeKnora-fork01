@@ -4822,3 +4822,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1626/1626, `pnpm test:shared` 606/606, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-17-r451-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-17 Round R452 — GitLab projects landed, R449-R451 browser regression
+
+- Three parallel agents (A2 GitLab projects, A1 browser regression, A3 verifier; an earlier dispatch was
+  interrupted pre-execution and re-dispatched). Verdict: A2 PASS with source-level three-way shape
+  verification (the R451 lesson applied — Vue source AND backend parseConfig compared, not mock-trusting);
+  gates: test:web 1634/1634 (+8), test:shared 606/606, typecheck clean, build ✓.
+- A2: the last datasource backlog item — structured-channel GitLab projects (`config.settings.projects`
+  serialized character-identical to Vue syncGitLabProjectsToSettings; hand-typed projects rows overridden and
+  deleted, scalars survive, non-gitlab connectors untouched). UI rows (必填 project_id/ref/paths, seed on type
+  select, projectRequired save block). api-client zero changes; data-sources 51/51; gitlab i18n keys already
+  ×5 locale (guard 183).
+- A1 (18 screenshots): lite gating VERIFIED LIVE both ends (key write → sidebar/组织 hidden + Lite badge +
+  menu shortcuts hidden; key removed → restored; localStorage cleaned null on both ends); datasource gitlab/
+  feishu hints match Vue verbatim; user menus match for the parity account. New diffs queued: React datasource
+  empty-state untranslated English; Vue feishu 配置指引 prereq block missing; React-only 新手引导 menu entry;
+  four-step wizard vs inline editor (arch-level). Configured-state/lite switcher/admin source untestable —
+  recorded.
+- Commit-integrity follow-up: the verifier caught R451's i18n files as uncommitted leftovers — HEAD's guard
+  read 180 while R451's committed code consumes 183 (fresh checkout of c8f3f13f would fail). Committed as
+  311abf5d. Third occurrence of the missed-file pattern — the per-round check now covers MODIFIED shared
+  files, not only untracked ones.
+- Gates: `pnpm test:web` 1634/1634, `pnpm test:shared` 606/606, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r452-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.

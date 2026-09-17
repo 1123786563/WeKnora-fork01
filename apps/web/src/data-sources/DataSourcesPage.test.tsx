@@ -202,3 +202,36 @@ test('credential fields render Vue hints and the input placeholder fallback', ()
   assert.match(page, /placeholder=\{field\.placeholder \|\| t\('dataSource\.credential\.inputPlaceholder'\)\}/);
   assert.match(page, /\{field\.hint \? <small className="text-muted">\{t\(field\.hint\)\}<\/small> : null\}/);
 });
+
+// R452 A2: Vue DataSourceEditorDialog renders the gitlab projects editor as
+// structured multi-row list (gitlab-project-list rows: project N + delete,
+// project_id / ref inputs, paths textarea, add-project button) instead of the
+// generic settingsText textarea; nextStep blocks the submit with
+// datasource.gitlab.projectRequired until a row carries a project_id.
+test('renders the Vue gitlab projects multi-row editor in the settings fieldset', () => {
+  assert.match(page, /data-kind="gitlab-projects"/);
+  assert.match(page, /t\('dataSource\.gitlab\.projects'\)/);
+  assert.match(page, /t\('dataSource\.gitlab\.projectsHint'\)/);
+  assert.match(page, /t\('dataSource\.gitlab\.addProject'\)/);
+  assert.match(page, /data-kind="gitlab-project-row"/);
+  assert.match(page, /\{t\('dataSource\.gitlab\.project'\)\} \{index \+ 1\}/);
+  assert.match(page, /placeholder=\{t\('dataSource\.gitlab\.projectIdPlaceholder'\)\}/);
+  assert.match(page, /placeholder=\{t\('dataSource\.gitlab\.refPlaceholder'\)\}/);
+  assert.match(page, /placeholder=\{t\('dataSource\.gitlab\.pathsPlaceholder'\)\}/);
+  assert.match(page, /updateForm\('gitlabProjects', \(form\.gitlabProjects \?\? \[\]\)\.filter\(\(_, at\) => at !== index\)\)/, 'each row has a remove action');
+  assert.match(page, /updateForm\('gitlabProjects', \[\.\.\.\(form\.gitlabProjects \?\? \[\]\), \{ \.\.\.emptyGitLabProject \}\]\)/, 'the add button appends an empty row');
+});
+
+test('blocks the gitlab save with the Vue projectRequired warning', () => {
+  assert.match(page, /if \(form\.type === 'gitlab' && !\(form\.gitlabProjects \?\? \[\]\)\.some\(\(project\) => project\.project_id\.trim\(\)\)\)/);
+  assert.match(page, /tone: 'warning', text: t\('dataSource\.gitlab\.projectRequired'\)/);
+});
+
+// Vue openEditor def branch seeds one empty row when creating a gitlab
+// connector (addGitLabProject); edits hydrate rows from settings.projects.
+test('creating a gitlab connector seeds one empty project row', () => {
+  assert.match(page, /type === 'gitlab' && \(current\.gitlabProjects \?\? \[\]\)\.length === 0 \? \[\{ \.\.\.emptyGitLabProject \}\] : current\.gitlabProjects/);
+  // edits hydrate through dataSourceFormFrom, whose structured gitlabProjects
+  // channel is covered by gitlab-projects.test.ts.
+  assert.match(page, /setForm\(dataSourceFormFrom\(source\)\)/);
+});
