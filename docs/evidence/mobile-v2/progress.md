@@ -38,9 +38,9 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-014 | review | cd10655d→(待提交) | mv2 15/15 · shared 590/590 · tsc 14=基线 | 待独立review | MX-014.md |
 
 | MX-014 | accepted | cd10655d→964bf811(+fix2) | mv2 18/18（含真实翻页/重放去重断言） | R1→修复→PASS/APPROVED（证据缺口 R2 补齐：frozen 补真实翻页+重放页） | MX-014.md |
-| MX-017 | fixing→review | 336b0ffb→d782cc4f(+fix) | mv2 18/18 · tsc 11=基线 | 规格 PASS · 质量 CR(P2 屏造 request_id)→已修→待复核 | MX-017.md |
-| MX-016 | review | 964bf811→424cfe97 | mv2 17/17 · shared 590/590 · tsc 11=基线 | 待独立review | MX-016.md |
-| MX-022 | review | 424cfe97→620ddcb8 | mv2 18/18 · frozen 撤权零可见/禁问 | 审查进行中（与 016/017 复核合并） | MX-022.md |
+| MX-017 | accepted | 336b0ffb→5e53cb6c(含fix) | mv2 19/19 · tsc 11=基线 | R1 P2→修复→复核 PASS（类型层防回归设计获确认） | MX-017.md |
+| MX-016 | accepted | 964bf811→424cfe97 | mv2 17/17 · shared 590/590 · tsc 11=基线 | 规格 PASS · 质量 APPROVED（双突变杀优认证） | MX-016.md |
+| MX-022 | accepted | 424cfe97→620ddcb8 | mv2 19/19 · frozen 撤权零可见/禁问 | 规格 PASS · 质量 APPROVED（突变杀优认证） | MX-022.md |
 | MX-030 | review | 620ddcb8→(待提交) | mv2 19/19 · shared 590/590 · tsc 11=基线 | 待独立review | MX-030.md |
 
 ## 接续说明（2026-09-18 本轮收口）
@@ -55,7 +55,7 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 ## 接续说明（2026-09-18 第二轮收口）
 
 - HEAD `463a61db`（MX-030），工作区干净，未 push。**已提交 18/36**：MX-001–014 accepted（014 证据补齐后视为 accepted）；MX-016（424cfe97）/MX-017（d782cc4f+fix 5e53cb6c）/MX-022（620ddcb8）审查代理已派（结论到达后按 R1 模式处置）；MX-030（463a61db）待派审查。
-- **下一就绪**（依赖闭包已满足，按序实施）：MX-018（执行详情/保守取消）→ MX-019（工具审批+二次确认）→ MX-024（成果预览）→ MX-031（空间用量）；MX-015 待 MX-016 accepted；MX-021 需 MX-019。
+- **下一就绪**（016/017/022 已 accepted）：**MX-015**（新建任务流，deps 全满足——含 M05/M06 路由挂载与提交协调器接线）→ MX-018 → MX-019 → MX-024 → MX-031；MX-021 需 MX-019。
 - 回归基线：mv2 **19/19**、shared **590/590**、挂载 9/9、apps/mobile tsc **11=新基线**（D-026；app/5、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1 为 legacy 遗留）、go 全量 100 包 ok。
 - 纪律重申：注册表变更后必跑 test:mobile-v2（mx-001 守护已两次抓住回归）；证据命令全量计数禁 tail；提交被 Mimosa 全项目 i18n 误报拦截时按 D-022 重试（本轮 1-3 次重试均通过）。
 - 修复轮历史：审查体系已抓 6 个 P1（pending wire 空 action、注册表 kind 回归、Sheet 键盘/返回焦点、SSO state 契约、AEAD 密钥竞态、overview 虚构列）——全部修复并有回归测试。
