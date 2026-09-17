@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	stderrors "errors"
 	"mime"
 	"net/http"
@@ -9,12 +10,14 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/access"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/filetransport"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -351,7 +354,168 @@ func (urlPathEscaper) escape(s string) string {
 // when the deployment stores artifacts without a resource catalog.
 func artifactHandle(artifact types.MessageArtifact) string {
 	if handle, ok := types.ParseResourcePath(artifact.URL); ok {
-		return types.BuildResourcePath(handle)
+		return handle
 	}
 	return ""
+}
+
+// -----------------------------------------------------------------------------
+// Immutable artifact version downloads (W26)
+//
+// The message-indexed DownloadMessageArtifact above stays unchanged for
+// compatibility: legacy clients keep addressing artifacts by their message
+// index. Imported execution outputs are addressed instead by an explicit
+// version ID on a dedicated handler, so a stale index can never resolve to a
+// different file after a message is regenerated.
+// -----------------------------------------------------------------------------
+
+// ArtifactVersionSource reads published (scan-state ready) immutable artifact
+// versions. The repository's *repository.ArtifactVersionStore satisfies it.
+type ArtifactVersionSource interface {
+	ReadableArtifactVersion(ctx context.Context, tenantID uint64, sessionID, versionID string) (repository.ArtifactVersion, error)
+}
+
+// ArtifactVersionDownloadHandler streams one published artifact version.
+// Session ownership is checked exactly like the legacy handle (GetSession
+// covers tenant and owner scoping), and the version row is additionally
+// scoped to the caller's tenant and session, so an unpublishable (pending,
+// quarantined) or foreign-workspace version is indistinguishable from a
+// missing one.
+type ArtifactVersionDownloadHandler struct {
+	sessions interfaces.SessionService
+	tenants  interfaces.TenantService
+	files    interfaces.FileService
+	storage  interfaces.StorageBackendResolver
+	versions ArtifactVersionSource
+}
+
+// NewArtifactVersionDownloadHandler constructs the versioned download
+// endpoint. A nil version source fails closed on every request.
+func NewArtifactVersionDownloadHandler(
+	sessions interfaces.SessionService,
+	tenants interfaces.TenantService,
+	files interfaces.FileService,
+	storage interfaces.StorageBackendResolver,
+	versions ArtifactVersionSource,
+) *ArtifactVersionDownloadHandler {
+	return &ArtifactVersionDownloadHandler{sessions: sessions, tenants: tenants, files: files, storage: storage, versions: versions}
+}
+
+// DownloadArtifactVersion streams one immutable artifact version by its
+// explicit version ID.
+//
+// @Router /sessions/{session_id}/artifact-versions/{version_id}/download [get]
+func (h *ArtifactVersionDownloadHandler) DownloadArtifactVersion(c *gin.Context) {
+	ctx := c.Request.Context()
+	sessionID := secutils.SanitizeForLog(paramSessionID(c))
+	versionID := secutils.SanitizeForLog(c.Param("version_id"))
+	if sessionID == "" || versionID == "" {
+		c.Error(errors.NewBadRequestError("session_id and version_id are required"))
+		return
+	}
+	tenantID, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenantID == 0 {
+		c.Error(errors.NewUnauthorizedError("Unauthorized"))
+		return
+	}
+
+	// Ownership check: identical to the legacy handle — GetSession returns
+	// ErrSessionNotFound when the session is outside the calling tenant/user,
+	// so a 404 covers both "missing" and "forbidden" without leaking existence.
+	if _, err := h.sessions.GetSession(ctx, sessionID); err != nil {
+		if stderrors.Is(err, errors.ErrSessionNotFound) {
+			c.Error(errors.NewNotFoundError(err.Error()))
+			return
+		}
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+
+	if h.versions == nil {
+		c.Error(errors.NewServiceUnavailableError("artifact versions unavailable"))
+		return
+	}
+	// Only published (ready) versions scoped to this tenant and session are
+	// readable; everything else is a 404 with no state disclosure.
+	version, err := h.versions.ReadableArtifactVersion(ctx, tenantID, sessionID, versionID)
+	if err != nil {
+		_ = c.Error(errors.NewNotFoundError("artifact version not accessible"))
+		return
+	}
+	if h.files == nil {
+		c.Error(errors.NewInternalServerError("file service unavailable"))
+		return
+	}
+
+	// Resolve the owning tenant's storage, mirroring the legacy handle's
+	// backend selection. Version objects are session-scoped to the caller's
+	// tenant, so the execution tenant is the caller's own tenant.
+	ctx = types.WithExecutionTenant(ctx, tenantID)
+	fileService := h.files
+	if h.tenants != nil {
+		tenant, lookupErr := h.tenants.GetTenantByID(ctx, tenantID)
+		if lookupErr != nil || tenant == nil {
+			_ = c.Error(errors.NewNotFoundError("artifact workspace unavailable"))
+			return
+		}
+		backendID, providerPath, scoped := types.ParseStorageBackendPath(version.ObjectKey)
+		if !scoped {
+			providerPath = version.ObjectKey
+		}
+		var resolveOK bool
+		fileService, _, resolveOK = filesvc.ResolveTenantFileServiceWithFallback(
+			ctx,
+			"artifact version download",
+			tenant,
+			backendID,
+			types.ParseProviderScheme(providerPath),
+			storageurl.LocalStorageBaseDir(),
+			h.storage,
+			h.files,
+		)
+		if !resolveOK {
+			_ = c.Error(errors.NewNotFoundError("artifact storage unavailable"))
+			return
+		}
+	}
+	reader, err := fileService.GetFile(ctx, version.ObjectKey)
+	if err != nil {
+		logger.Warnf(ctx, "artifact version download read failed: session=%s version=%s err=%v", sessionID, versionID, err)
+		_ = c.Error(errors.NewNotFoundError("artifact blob missing"))
+		return
+	}
+	name := artifactVersionFileName(version)
+	if err := filetransport.Serve(c.Writer, c.Request, reader, filetransport.Options{
+		Filename:    name,
+		Download:    true,
+		ContentType: version.MIME,
+		Disposition: buildAttachmentHeader(name),
+		Size:        version.Size,
+		CacheControl: "private, no-store",
+	}); err != nil {
+		logger.Warnf(ctx, "artifact version download stream failed: session=%s version=%s err=%v", sessionID, versionID, err)
+	}
+}
+
+// artifactVersionFileName derives a stable download filename from the version
+// identity and its server-validated MIME type.
+func artifactVersionFileName(version repository.ArtifactVersion) string {
+	ext := ".bin"
+	switch strings.ToLower(strings.TrimSpace(version.MIME)) {
+	case "text/plain":
+		ext = ".txt"
+	case "text/csv":
+		ext = ".csv"
+	case "application/json":
+		ext = ".json"
+	case "application/pdf":
+		ext = ".pdf"
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/gif":
+		ext = ".gif"
+	}
+	return "artifact-" + version.ID + ext
 }
