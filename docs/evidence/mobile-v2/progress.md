@@ -33,3 +33,12 @@
 ## 注记（2026-09-18，注册表回归教训）
 
 mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线守护（该文件相对基线 6a70c35a 恒为 create）；复核代理实跑抓获。R2 已修复并复跑 7/7。纪律固化：**任何 file-ownership.json 变更后必须重跑 test:mobile-v2**（守护测试就是为此存在）。
+
+## 接续说明（2026-09-18 本轮收口）
+
+- 分支 codex/expo-mobile-v2（worktree .worktrees/expo-mobile-v2），HEAD `202225bb`，工作区干净，未 push。
+- MX-001–012 全部提交；accepted：001–009、011；**review 在途**：MX-010（P1 修复待复核）、MX-012（待审查）——复核代理已派发，结论到达后按 R1 模式处置并更新本表。
+- 下一就绪（依赖全满足）：**MX-013**（工作台聚合读模型+首页+入口接线：Go service/handler/路由/DI + SDK + HomeScreen + 按 D-023 锁转移完成 _layout 入口切换）；随后 MX-014/016/017/022/030。
+- 常用命令：`pnpm run test:mobile-v2`（13/13 基线）、`pnpm run test:shared`（590/590）、`cd apps/mobile && pnpm exec tsc --noEmit | grep -c "error TS"`（14=基线）、挂载套件 `pnpm --filter @weknora/mobile exec vitest run -c vitest.mobile-v2.config.ts`（4/4）、Go `go test ./internal/workbench/ ./internal/handler/session/ ./internal/application/service/workbench/`。
+- 纪律提醒：file-ownership.json 任何变更后必须重跑 test:mobile-v2（mx-001 基线守护）；typecheck 证据用全量 grep -c 禁止 tail；提交被 Mimosa 全项目误报间歇拦截时按 D-022 处置（重试，不改文案换绿灯）。
+- 证据索引：本目录 progress.md（唯一进度事实）、decisions.md D-001–D-024、current-state-matrix.md、file-ownership.json（~200 锁）。
