@@ -89,10 +89,11 @@ describe('W27 ArtifactPreview WebView hardening', () => {
     expect(props.domStorageEnabled).toBe(false);
   });
 
-  it('blocks product API, file URIs and foreign origins; hands external links to the system browser', () => {
+  it('blocks product API, file URIs and foreign origins; never auto-opens the system browser', () => {
     const renderer = mountPreview({ initiallyDeferred: false });
     const guard = webviewsOf(renderer)[0].props.onShouldStartLoadWithRequest as (r: {
       url: string;
+      isTopLevel?: boolean;
     }) => boolean;
 
     expect(guard({ url: PRODUCT_API })).toBe(false);
@@ -104,10 +105,61 @@ describe('W27 ArtifactPreview WebView hardening', () => {
     expect(guard({ url: PREVIEW_URL })).toBe(true); // 预览 origin 自身放行
 
     expect(guard({ url: 'https://docs.example.com/guide' })).toBe(false); // 外链不进 WebView
-    // 危险 scheme（file/content/intent/javascript）绝不外抛；http(s) 外链
-    // （含产品 API——WebView 内已拒，凭据无从携带）交系统浏览器打开。
-    const handedOut = openURL.mock.calls.map((call: unknown[]) => call[0]);
-    expect(handedOut).toEqual([PRODUCT_API, 'https://docs.example.com/guide']);
+
+    // F2: 被拦截导航绝不自动外抛——预览内容不能让设备自动打开任意 URL
+    // （含产品 origin：系统浏览器持有产品 cookie，自动外抛即 GET-CSRF/钓鱼面）。
+    // 系统浏览器只能经由用户显式手势（「在浏览器打开」按钮）触达。
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a blocked external link as an explicit user-gated affordance, not an auto-open', () => {
+    const renderer = mountPreview({ initiallyDeferred: false });
+    const guard = webviewsOf(renderer)[0].props.onShouldStartLoadWithRequest as (r: {
+      url: string;
+      isTopLevel?: boolean;
+    }) => boolean;
+
+    // 恶意预览内容尝试把 WebView 顶层导航到产品 API：被拦截、被记录为候选。
+    let allowed: boolean | undefined;
+    act(() => {
+      allowed = guard({ url: PRODUCT_API, isTopLevel: true });
+    });
+    expect(allowed).toBe(false);
+    // 脚本连发多个外链：仅记录最新候选，仍然零外抛。
+    act(() => {
+      allowed = guard({ url: 'https://docs.example.com/guide' });
+    });
+    expect(allowed).toBe(false);
+    expect(openURL).not.toHaveBeenCalled();
+
+    // 显式入口出现，展示外链 host（用户可辨识目标），未点按前不打开。
+    const row = renderer.root.findByProps({ testID: 'artifact-preview-external-row' });
+    const rowText = row
+      .findAllByType('Text')
+      .map((node: any) => (Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
+      .join(' ');
+    expect(rowText).toContain('docs.example.com');
+
+    // 用户点按「在浏览器打开」——唯一的 Linking.openURL 路径，且仅一次、仅该 URL。
+    act(() => {
+      renderer.root.findByProps({ testID: 'artifact-preview-external-open' }).props.onPress();
+    });
+    expect(openURL).toHaveBeenCalledTimes(1);
+    expect(openURL).toHaveBeenCalledWith('https://docs.example.com/guide');
+
+    // 打开后候选清空（入口消失）。
+    expect(() => renderer.root.findByProps({ testID: 'artifact-preview-external-row' })).toThrow();
+
+    // 再次被拦截导航重新出现候选；用户可以只关闭、不打开。
+    act(() => {
+      allowed = guard({ url: 'https://other.example.net/x' });
+    });
+    expect(allowed).toBe(false);
+    act(() => {
+      renderer.root.findByProps({ testID: 'artifact-preview-external-dismiss' }).props.onPress();
+    });
+    expect(openURL).toHaveBeenCalledTimes(1); // 关闭不打开
+    expect(() => renderer.root.findByProps({ testID: 'artifact-preview-external-row' })).toThrow();
   });
 
   it('fails closed on an unparseable ticket URL', () => {

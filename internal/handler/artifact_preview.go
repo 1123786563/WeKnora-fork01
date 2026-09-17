@@ -58,6 +58,13 @@ import (
 // issuance, where revocation is re-checked (craft preview parity).
 const ArtifactPreviewTicketTTL = 5 * time.Minute
 
+// maxArtifactPreviewGrants bounds the in-memory ticket table (craft parity:
+// maxCraftPreviewGrants). Expired-but-never-redeemed tickets are only
+// reclaimable through the issuance-time sweep, so without a cap a runaway
+// issuer could convert authenticated requests into unbounded memory; a full
+// table refuses new tickets instead of evicting live ones.
+const maxArtifactPreviewGrants = 1 << 16
+
 // ArtifactPreviewOriginEnv configures the isolated preview origin (a bare
 // https origin, no path). Unset or invalid values disable the feature
 // fail-closed: issuance answers 400 and the preview path 404s.
@@ -141,6 +148,9 @@ type ArtifactPreviewHandler struct {
 	previewOrigin string
 	ttl           time.Duration
 	now           func() time.Time
+	// maxGrants caps len(tickets); only tests lower it from the production
+	// maxArtifactPreviewGrants default.
+	maxGrants int
 
 	mu      sync.Mutex
 	tickets map[string]artifactPreviewGrant
@@ -180,8 +190,31 @@ func newArtifactPreviewHandler(
 		previewOrigin: validPreviewOrigin(origin),
 		ttl:           ttl,
 		now:           now,
+		maxGrants:     maxArtifactPreviewGrants,
 		tickets:       map[string]artifactPreviewGrant{},
 	}
+}
+
+// putTicket stores one ticket grant, purging expired entries first and
+// refusing when the table is at capacity — the craft putGrant semantics. A
+// never-redeemed ticket is only reclaimable here: redemption deletes lazily,
+// so without this sweep expired grants would accumulate for the process
+// lifetime; the cap turns a runaway issuer into visible 503s instead of
+// unbounded memory.
+func (h *ArtifactPreviewHandler) putTicket(digest string, grant artifactPreviewGrant) error {
+	now := h.now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for d, g := range h.tickets {
+		if now.After(g.expiresAt) {
+			delete(h.tickets, d)
+		}
+	}
+	if len(h.tickets) >= h.maxGrants {
+		return fmt.Errorf("artifact preview: too many live grants")
+	}
+	h.tickets[digest] = grant
+	return nil
 }
 
 // validPreviewOrigin accepts only a bare https origin (no userinfo, path,
@@ -325,9 +358,12 @@ func (h *ArtifactPreviewHandler) IssueArtifactPreviewTicket(c *gin.Context) {
 		return
 	}
 	expiresAt := h.now().Add(h.ttl)
-	h.mu.Lock()
-	h.tickets[digest] = artifactPreviewGrant{tenantID: tenantID, sessionID: sessionID, versionID: version.ID, expiresAt: expiresAt}
-	h.mu.Unlock()
+	if err := h.putTicket(digest, artifactPreviewGrant{tenantID: tenantID, sessionID: sessionID, versionID: version.ID, expiresAt: expiresAt}); err != nil {
+		// Craft parity: a full table answers ErrBusy/503 — a runaway issuer
+		// surfaces as visible failures, never as unbounded memory.
+		c.Error(apperrors.NewServiceUnavailableError("artifact preview ticket capacity exhausted"))
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

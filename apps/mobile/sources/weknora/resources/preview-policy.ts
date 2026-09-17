@@ -10,7 +10,8 @@
  *      「客户端自带一份不生效的头」的路径。
  *   2. `decidePreviewNavigation` / `buildPreviewWebViewConfig` — WebView 的
  *      纯函数配置来源（`ArtifactPreview.tsx` 消费）：originAllowList 仅
- *      预览 origin、外链交系统浏览器、关闭任意文件访问与原生桥。
+ *      预览 origin、被拦截外链仅记录候选并经显式用户手势入口外抛、
+ *      关闭任意文件访问与原生桥。
  *
  * 本文件不得 import react-native / react-native-webview —— 它同时被
  * `tsx --test`（node:test）与 vitest 复用，必须保持纯模块。
@@ -80,7 +81,11 @@ export interface PreviewNavigationRequest {
 
 export interface PreviewNavigationDecision {
   allow: boolean;
-  /** 非空表示该 URL 应交给系统浏览器打开（外链），不在 WebView 内导航。 */
+  /**
+   * 非空表示该被拦截导航携带一个外链候选（http(s) 非预览 origin）。
+   * 候选不自动外抛：消费方必须经显式用户手势入口（「在浏览器打开」
+   * 按钮）才交系统浏览器（F2）。
+   */
   external?: string;
 }
 
@@ -88,9 +93,14 @@ export interface PreviewNavigationDecision {
  * 判定一次 WebView 导航：
  *
  *   - 仅 http(s) 进入后续判定，file:/content:/intent:/javascript:/data:
- *     等危险 scheme 一律拒绝且不外抛（不能借系统浏览器触发 intent）；
+ *     等危险 scheme 一律拒绝且不产生候选（不能借系统浏览器触发 intent）；
  *   - 与预览 origin 同源 → 放行（票据路径本身）；
- *   - 其他 http(s) origin → 拒绝并在 WebView 内导航的同时交系统浏览器。
+ *   - 其他 http(s) origin → 拒绝，并标记为外链候选。
+ *
+ * `external` 只是「候选标记」：被拦截导航本身绝不触发系统浏览器——系统
+ * 浏览器持有产品站点 cookie，预览内容若能自动打开任意 URL（含产品
+ * origin）即构成 GET-CSRF/钓鱼面（F2）。消费方必须把候选呈现为显式
+ * 用户手势入口（如「在浏览器打开」按钮），点按后才调用 Linking。
  */
 export function decidePreviewNavigation(
   request: PreviewNavigationRequest,

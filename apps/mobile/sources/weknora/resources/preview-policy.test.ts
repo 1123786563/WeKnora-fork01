@@ -86,7 +86,8 @@ test('navigation to anything but the isolated preview origin is denied', () => {
     decidePreviewNavigation({ url: 'https://preview.example.com/ap/TOKEN', isTopLevel: true }, origin),
     { allow: true },
   );
-  // 跨 origin 的 http 链接交系统浏览器，不在 WebView 内导航
+  // 跨 origin 的 http 链接：拒绝导航并标记候选——候选只表示「可经显式
+  // 用户手势入口外抛」，被拦截导航本身绝不自动打开系统浏览器（F2）。
   assert.deepEqual(decidePreviewNavigation({ url: 'https://docs.example.com/guide' }, origin), {
     allow: false,
     external: 'https://docs.example.com/guide',

@@ -327,6 +327,63 @@ func TestIssueArtifactPreviewTicket_DisabledOriginIsRejected(t *testing.T) {
 	}
 }
 
+// F1: issuance must sweep expired grants (craft putGrant parity) — a
+// never-redeemed ticket expires silently, so the only place its memory can
+// be reclaimed is a later issuance sweep. Without it the table grows without
+// bound under authenticated traffic.
+func TestIssueArtifactPreviewTicket_SweepsExpiredGrantsOnIssue(t *testing.T) {
+	source := &stubPreviewVersionSource{tenant: 42, session: "sess-1", version: previewTestVersion("image/svg+xml", 25)}
+	clock := &mutablePreviewClock{now: time.Now()}
+	h := newPreviewTestHandler(source, ownedPreviewSessions(), previewTestOrigin, ArtifactPreviewTicketTTL, clock.Now)
+	r := newArtifactPreviewTestRouter(t, 42, h)
+
+	issuePreviewTicket(t, r, "sess-1", "v1") // first mint
+	clock.Advance(ArtifactPreviewTicketTTL + time.Second)
+	issuePreviewTicket(t, r, "sess-1", "v1") // second mint after the first expired
+
+	now := clock.Now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.tickets) != 1 {
+		t.Fatalf("live grants = %d, want 1: the expired, never-redeemed grant must be swept at issue time", len(h.tickets))
+	}
+	for digest, grant := range h.tickets {
+		if now.After(grant.expiresAt) {
+			t.Fatalf("expired grant %q survived an issuance sweep", digest)
+		}
+	}
+}
+
+// F1: the grant table is capped (craft maxCraftPreviewGrants parity); a full
+// table refuses new tickets instead of growing, and the refusal never evicts
+// still-live grants.
+func TestIssueArtifactPreviewTicket_CapRefusesWithoutEvictingLiveGrants(t *testing.T) {
+	source := &stubPreviewVersionSource{tenant: 42, session: "sess-1", version: previewTestVersion("image/svg+xml", 25)}
+	h := newPreviewTestHandler(source, ownedPreviewSessions(), previewTestOrigin, ArtifactPreviewTicketTTL, time.Now)
+	r := newArtifactPreviewTestRouter(t, 42, h)
+
+	// One still-live grant issued through the real endpoint.
+	liveDigest := artifactPreviewTokenDigest(previewTokenFromURL(t, issuePreviewTicket(t, r, "sess-1", "v1").Data.URL))
+	h.mu.Lock()
+	h.maxGrants = 1 // the table already holds exactly one live grant
+	h.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/sess-1/artifact-versions/v1/preview-ticket", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 when the grant table is at capacity", w.Code)
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.tickets) != 1 {
+		t.Fatalf("live grants = %d, want 1: a capacity refusal must not evict the still-live grant", len(h.tickets))
+	}
+	if _, ok := h.tickets[liveDigest]; !ok {
+		t.Fatal("the grant issued before the cap was reached must survive the refusal")
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Redemption (isolated origin, ticket-only authorization)
 // -----------------------------------------------------------------------------
