@@ -16,6 +16,7 @@ import { createProductSessionNavigation, type ProductSessionNavigation } from '@
 import { storage } from '@/sync/storage';
 import { useMobileHost } from '@/weknora/platform/host';
 import { useProductAuth } from '@/weknora/auth/session';
+import { PendingNotificationCard } from '@/weknora/notifications/NotificationRouter';
 
 /** The four product workbench sections, in display order. */
 export const WORKBENCH_GROUPS = [
@@ -168,6 +169,7 @@ export function WorkbenchScreen() {
 
   return (
     <View style={styles.container} accessibilityLabel="workbench-screen">
+      <PendingNotificationCard />
       <View style={styles.header} accessibilityLabel="workbench-space">
         <Text style={styles.title}>工作台</Text>
         <Text style={styles.muted}>空间 {identity.tenantId ?? '未选择'} · 用户 {identity.userId ?? '未登录'}</Text>

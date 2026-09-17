@@ -10,6 +10,7 @@ import { createMobileHost, MobileHostProvider, useMobileHost, useSetMobileHost }
 import { ProductAuthProvider, useProductAuth } from '@/weknora/auth/session';
 import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
 import { hasNativeExecutionStorageProvider } from '@/weknora/platform/native-execution-storage';
+import { NotificationRouter } from '@/weknora/notifications/NotificationRouter';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -56,7 +57,7 @@ function ProductHostBootstrap() {
   }, [current, setHost]);
   if (restoring) return null;
   if (!storageReady && Platform.OS !== 'web') return <Text accessibilityRole="alert">Native encrypted execution storage is unavailable on this build.</Text>;
-  return <ProductAuthProvider><ProductHostGate /></ProductAuthProvider>;
+  return <ProductAuthProvider><NotificationRouter><ProductHostGate /></NotificationRouter></ProductAuthProvider>;
 }
 
 /** Native shell boundary. Product identity and network clients are connected explicitly. */
