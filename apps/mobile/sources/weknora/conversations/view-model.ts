@@ -1,4 +1,9 @@
-import type { ExecutionDTO } from '@weknora/contracts';
+import {
+  evaluateCommand,
+  type ExecutionDTO,
+  type ExecutionEvent,
+  type InteractionRecord,
+} from '@weknora/contracts';
 import type { ProductScope } from '../platform/product-session';
 
 export interface ExecutionApi {
@@ -78,41 +83,149 @@ export interface ConversationViewModelInput {
 
 export interface ProductAgentOption { id: string; name: string; }
 
-/** Builds the product conversation from W07 scope and the W06 execution SDK. */
+// ─────────────────────────────────────────────────────────────────────────────
+// 产品会话投影（MX-017）：事件驱动、零 Happy 依赖。
+// - 同一 (run_id, seq) 事件只应用一次（重复投递/重放不产生重复消息）；
+// - 消息稳定 id：text.delta 以 payload.message_id 为准（缺失回退 seq）；
+// - 三态分离（run/execution/settlement，G08 消费）；
+// - 命令准入消费 evaluateCommand（D-013，G03 消费），不再硬编码布尔；
+// - pendingInteractions 来自真实 interactions 列表（kind 语义映射）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ProductConversationState {
+  messages: ConversationMessage[];
+  runStatus: string;
+  executionStatus: string;
+  settlementStatus: string;
+  revision: number;
+  capabilities: ConversationCapabilities;
+  pendingInteractions: PendingInteraction[];
+}
+
+export interface ProductConversationViewModel {
+  readonly runID: string;
+  state(): ProductConversationState;
+  /** 幂等应用事件批次（同 seq 跳过）；返回应用后的只读快照。 */
+  applyEvents(events: readonly ExecutionEvent[]): ProductConversationState;
+  /** 服务端执行 DTO 刷新三态/能力/revision（与事件投影同源）。 */
+  applyExecution(execution: ExecutionDTO): ProductConversationState;
+  /** 真实交互列表 → pending 投影。 */
+  applyInteractions(records: readonly InteractionRecord[]): ProductConversationState;
+  commands: ConversationCommands;
+}
+
+const INTERACTION_KIND_MAP: Record<string, PendingInteraction['kind']> = {
+  tool_approval: 'approval',
+  budget: 'permission',
+  recovery: 'question',
+};
+
 export function createProductConversationViewModel(input: {
   scope: ProductScope;
   spaceId: string | null;
   sessionId: string;
-  agent: ProductAgentOption;
-  targetId: string;
-  workspaceRef: string;
-  budgetUpper: number;
+  runID: string;
   executions: ExecutionApi;
-}): ConversationViewModel {
+}): ProductConversationViewModel {
   const identity = input.scope.identity();
-  let latestRequestID: string | undefined;
-  const send = createSendController(async (text, requestID) => {
-    latestRequestID = requestID;
-    await input.executions.start({
-      request_id: requestID,
-      session_id: input.sessionId,
-      agent_id: input.agent.id,
-      target_id: input.targetId,
-      workspace_ref: input.workspaceRef,
-      text,
-      budget_upper: input.budgetUpper,
-    });
-  });
-  return createConversationViewModel({
-    scope: { ...identity, spaceId: input.spaceId },
-    capabilities: { canCancel: true, canSteer: true },
-    commands: {
-      cancel: async (runID, expectedRevision = 0) => { await input.executions.command(runID, { action: 'cancel', expected_revision: expectedRevision }); },
-      steer: async (runID, text, expectedRevision = 0) => { await input.executions.command(runID, { action: 'steer', text, expected_revision: expectedRevision }); },
-      refreshPending: async (interactionID) => { await input.executions.lookup(latestRequestID ?? interactionID); },
+  let state: ProductConversationState = {
+    messages: [],
+    runStatus: 'queued',
+    executionStatus: 'unknown',
+    settlementStatus: 'unknown',
+    revision: 0,
+    capabilities: { canCancel: false, canSteer: false, canAttach: false, canVoice: false },
+    pendingInteractions: [],
+  };
+  const appliedSeqs = new Set<number>();
+  const messageOrder: string[] = [];
+  const messagesById = new Map<string, ConversationMessage>();
+  let execution: ExecutionDTO | null = null;
+
+  function capabilitiesFromExecution(): ConversationCapabilities {
+    if (!execution) return { canCancel: false, canSteer: false, canAttach: false, canVoice: false };
+    return {
+      canCancel: evaluateCommand(execution, 'cancel').allowed,
+      canSteer: evaluateCommand(execution, 'steer').allowed,
+      canAttach: false,
+      canVoice: false,
+    };
+  }
+
+  function upsertMessage(message: ConversationMessage): void {
+    const existing = messagesById.get(message.id);
+    if (existing) {
+      existing.text = message.text;
+      return;
+    }
+    messagesById.set(message.id, message);
+    messageOrder.push(message.id);
+  }
+
+  return {
+    runID: input.runID,
+    state: () => ({
+      ...state,
+      messages: messageOrder.map((id) => ({ ...messagesById.get(id)! })),
+    }),
+    applyEvents(events) {
+      for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+        if (event.run_id !== input.runID) continue;
+        if (appliedSeqs.has(event.seq)) continue; // 同 seq 重复投递：跳过（frozen 场景）
+        appliedSeqs.add(event.seq);
+        if (event.type === 'text.delta') {
+          const payload = event.payload as { message_id?: string; text?: string };
+          const id = typeof payload.message_id === 'string' && payload.message_id !== '' ? payload.message_id : `seq:${event.seq}`;
+          const existing = messagesById.get(id);
+          const text = (existing?.text ?? '') + (typeof payload.text === 'string' ? payload.text : '');
+          upsertMessage({ id, role: 'assistant', text, createdAt: event.occurred_at });
+        }
+        // 未知事件类型：保留 seq（已应用）不丢弃语义；渲染层安全降级（MX-003 冻结规则）
+      }
+      state = { ...state, messages: messageOrder.map((id) => ({ ...messagesById.get(id)! })) };
+      return this.state();
     },
-    send,
-  });
+    applyExecution(next) {
+      execution = next;
+      state = {
+        ...state,
+        runStatus: next.run_status,
+        executionStatus: next.execution_status,
+        settlementStatus: next.settlement_status,
+        revision: next.revision,
+        capabilities: capabilitiesFromExecution(),
+      };
+      return this.state();
+    },
+    applyInteractions(records) {
+      state = {
+        ...state,
+        pendingInteractions: records.map((record) => ({
+          id: record.id,
+          kind: INTERACTION_KIND_MAP[record.kind] ?? 'unknown',
+          status: record.decision_id === '' ? 'pending' : record.action === 'reject' ? 'rejected' : 'approved',
+          label: record.kind,
+        })),
+      };
+      return this.state();
+    },
+    commands: {
+      cancel: async (runID, expectedRevision) => {
+        const revision = expectedRevision ?? state.revision;
+        if (revision <= 0) throw new Error('CANCEL_REQUIRES_SNAPSHOT_REVISION');
+        await input.executions.command(runID, { action: 'cancel', expected_revision: revision });
+      },
+      steer: async (runID, text, expectedRevision) => {
+        const revision = expectedRevision ?? state.revision;
+        if (revision <= 0) throw new Error('STEER_REQUIRES_SNAPSHOT_REVISION');
+        await input.executions.command(runID, { action: 'steer', text, expected_revision: revision });
+      },
+      refreshPending: async () => {
+        // 交互刷新与提交状态刷新分离（G02 语义）：交互列表由宿主经 interactions API 拉取后 apply
+        throw new Error('REFRESH_INTERACTIONS_VIA_INTERACTIONS_API');
+      },
+    },
+  };
 }
 
 /**
