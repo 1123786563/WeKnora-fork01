@@ -4957,3 +4957,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   external router WIP files, contextual-guide scoped 14/14. No Vue, mobile, or Go code was modified by this
   round. The external router refactor should land with its own resolution; R459 should re-run full gates
   after it settles.
+
+## 2026-09-18 Round R459 — Post-refactor navigation regression, join invite_code fix, wiki source-doc end-to-end
+
+- Four parallel agents (A1 browser navigation regression, A2 router URL contract audit/fix, A3 wiki
+  source_refs fixture + click test, A4 verifier) — the external TanStack Router refactor (07d07a75) received
+  its first browser-level navigation regression. Verdict: all PASS; gates test:web 1665/1665 (+3), test:shared
+  749/749, typecheck 0, build ✓.
+- A1 (14 screenshots): six guarded routes render zero console errors; sidebar/tab/back-forward semantics
+  intact; 全部设置 normalization unchanged by the refactor; Vue sidebar round-trip matches. The bare-/login
+  redirect (no next) CLOSED as Vue-aligned (Vue router/index.ts:368 does the same). Pre-existing contract
+  notes restated (React /knowledgeBase/:id vs Vue /platform/knowledge-bases/:id).
+- A2: 28 legacy URL classes audited against routes.tsx + bootstrap + Vue router; ONE real drift fixed TDD —
+  /join?code for authenticated users stripped invite_code on hard-replace (violating exact query
+  preservation); fix threads internalTarget allowlist + query re-append. Assembly hard-replace coverage gap
+  closed (+3 tests: 7 legacy platform redirects with param folding, join handoff, kb view query). CONCERNS
+  queued: AuthPages 3 residual ?next consumers (parity superset, no open-redirect risk). The concurrent
+  external de-next login work adopted as contract (verified Vue-aligned).
+- A3: source_refs mechanism root-caused (ingest pipeline only; fixture pages were API-created — hence R458
+  all-null). Fixture page r459-source-doc-fixture created (refs → document 2dc2b763-…). React end-to-end
+  PASSES — footer row renders, click navigates to the document route and renders: the R457 wiring's first
+  live verification. Vue comparison at source level (browser contention): card-drawer vs route = established
+  architecture difference.
+- Gates: `pnpm test:web` 1665/1665, `pnpm test:shared` 749/749, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r459-router-regression-round.md`. No Vue, mobile, or Go code
+  was modified by this round.
