@@ -837,10 +837,10 @@
         "MX-003",
         "MX-005"
       ],
-      "kind": "modify",
+      "kind": "create",
       "shared_serialized": true,
       "source": "mx-005-fix-round",
-      "note": "锁转移（MX-005 R1 P1-1）：pending wire action 空串契约"
+      "note": "基线不存在（MX-003 创建，MX-005 锁转移修复 pending 契约）；kind 相对基线 6a70c35a 恒为 create"
     },
     "packages/contracts/src/mobile/read-models.ts": {
       "owners": [

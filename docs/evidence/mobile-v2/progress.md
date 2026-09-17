@@ -10,8 +10,8 @@
 | MX-002 | accepted | 64b8da68→52c87b1c | test:mobile-v2 · RED exit1(13+真实偏差) → GREEN exit0 · 2/2；test:shared 579/579；prebuild 双平台 exit0 | 规格 PASS 6/6 · 质量 APPROVED（4×P2 非阻塞，见注） | MX-002.md / native-baseline.md |
 | MX-003 | accepted | 52c87b1c→2bd4c682 | mv2 3/3 · shared 579/579 · go workbench+handler ok · RED=3 真实断言失败 | 规格 PASS 5/5 · 质量 APPROVED（3×P2 已承接，D-016） | MX-003.md |
 | MX-004 | accepted | 2bd4c682→98002709 | mv2 5/5 · go handler 全绿 · RED=parser 对真实 v2 字节崩溃 | 规格 PASS 5/5 · 质量 APPROVED（4×P2：3 项由 MX-006 承接） | MX-004.md |
-| MX-005 | fixing→review | 98002709→d8550bde | mv2 7/7 · shared 589/589 · go 三包 ok · probe 解析真实 CAS 观测 | R1 FAIL(P1-1 pending wire)→修复复核进行中 | MX-005.md |
-| MX-006 | review | d8550bde→(待提交) | mv2 7/7 · shared 589/589 · domain 4/4 · adapter 2/2 · go 含协商/保留名测试 | 待独立review | MX-006.md |
+| MX-005 | fixing→review | 98002709→d8550bde+R2 | mv2 复跑 7/7（R1 后曾因注册表 kind 回归短暂 6/7，R2 修复）· shared 589/589 | R1 FAIL→修复→复核 FAIL(注册表回归)→R2 修复→待终核 | MX-005.md |
+| MX-006 | review | d8550bde→d9cfc83c | mv2 7/7（终态复验）· shared 589/589 · domain 4/4 · adapter 2/2 · go 含协商/保留名测试 | 待独立review | MX-006.md |
 
 ## 首次更新（2026-09-18，MX-001）
 
@@ -23,3 +23,7 @@
 - P2-3「test:shared 偶发失败」已定位：审查代理运行时段恰逢 MX-003 并发修改 snapshot 契约与消费方 fixture（同一批失败断言随后在 2bd4c682 修复）。非 flaky，登记澄清。
 - P2-1 probe 自研 satisfies 的 ^0.x 语义：当前矩阵无 ^0.x range 不触发；若未来出现 0.x 期望再修（记录于本注）。
 - P2-2 libsodium 包名精确为 @more-tech/react-native-libsodium@1.5.6；P2-4 RED 阶段平台顺序为过程笔误。均不阻塞。
+
+## 注记（2026-09-18，注册表回归教训）
+
+mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线守护（该文件相对基线 6a70c35a 恒为 create）；复核代理实跑抓获。R2 已修复并复跑 7/7。纪律固化：**任何 file-ownership.json 变更后必须重跑 test:mobile-v2**（守护测试就是为此存在）。
