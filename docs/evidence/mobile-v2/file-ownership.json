@@ -36,21 +36,23 @@
     },
     "apps/mobile/sources/app/(app)/_layout.tsx": {
       "owners": [
-        "MX-009"
+        "MX-009",
+        "MX-013"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-013-lock-transfer",
+      "note": "D-023 锁转移：产品入口接线（MX-009 原持）"
     },
     "apps/mobile/sources/app/_layout.tsx": {
       "owners": [
-        "MX-009"
+        "MX-009",
+        "MX-013"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-013-lock-transfer",
+      "note": "D-023 锁转移：认证用户索引定向产品壳"
     },
     "apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx": {
       "owners": [
@@ -847,12 +849,13 @@
     },
     "packages/contracts/src/mobile/read-models.ts": {
       "owners": [
-        "MX-003"
+        "MX-003",
+        "MX-013"
       ],
       "kind": "create",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
+      "shared_serialized": true,
+      "source": "mx-013-lock-transfer",
+      "note": "B 类未发布前 InteractionSummary.title 放宽为可选（服务端现无该字段）；相对基线恒为 create（MX-003 创建）"
     },
     "packages/design-tokens/src/mobile/native-tokens.ts": {
       "owners": [
@@ -1825,12 +1828,13 @@
     },
     "packages/api-client/src/index.ts": {
       "owners": [
-        "MX-005"
+        "MX-005",
+        "MX-013"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "mx-005-lock-extension",
-      "note": "锁扩展：api-client 出口（createInteractionsApi）"
+      "shared_serialized": true,
+      "source": "mx-013-lock-extension",
+      "note": "出口追加 createOverviewApi"
     },
     "packages/api-client/src/mobile/interactions.test.ts": {
       "owners": [
@@ -1970,6 +1974,33 @@
       "shared_serialized": false,
       "source": "mx-012-lock-extension",
       "note": "fake 对齐官方 void 事务 API"
+    },
+    "internal/handler/session/workbench_overview_mx013_test.go": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-013-lock-extension",
+      "note": "frozen 场景 Go 测试（属主隔离观测）"
+    },
+    "apps/mobile/sources/app/(app)/product.tsx": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-013-lock-extension",
+      "note": "产品入口路由（D-023 落地）"
+    },
+    "apps/mobile/sources/weknora/screens/home.mobilev2.spec.tsx": {
+      "owners": [
+        "MX-013"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-013-lock-extension",
+      "note": "首页挂载 spec"
     }
   }
 }

@@ -43,7 +43,8 @@ export interface ExecutionSummary {
 export interface InteractionSummary {
   id: string;
   kind: string;
-  title: string;
+  /** 标题可缺省（服务端当前仅提供 kind+created_at；展示层以 kind 语义兜底）。 */
+  title?: string;
   created_at: string;
 }
 
@@ -129,7 +130,7 @@ export function parseWorkbenchOverview(value: unknown): WorkbenchOverview {
       return {
         id: nonEmpty(r.id, `pending_interactions[${i}].id`),
         kind: nonEmpty(r.kind, `pending_interactions[${i}].kind`),
-        title: nonEmpty(r.title, `pending_interactions[${i}].title`),
+        title: typeof r.title === 'string' ? r.title : '',
         created_at: nonEmpty(r.created_at, `pending_interactions[${i}].created_at`),
       };
     }) : (() => { throw new ContractError('pending_interactions', 'expected an array'); })(),

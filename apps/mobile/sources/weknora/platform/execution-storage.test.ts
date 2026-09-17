@@ -96,4 +96,18 @@ describe('execution storage', () => {
     expect(encrypted.ciphertext.length).toBeGreaterThan(200_000);
     expect(await cipher.decrypt(encrypted, 'scope\u0000run\u00001')).toEqual(payload);
   });
+
+  it('replaceRun atomically rebuilds a run from a snapshot (cursor_expired path)', async () => {
+    const storage = createExecutionStorage(driver(), cipher, { origin: 'https://a', tenantID: 't', userID: 'u' });
+    // 旧底：1..2
+    await storage.commit(event(1));
+    await storage.commit(event(2));
+    // cursor_expired：以快照 1..4 原子替换
+    const cursor = await storage.replaceRun('r', [event(4), event(3), event(1), event(2)]);
+    expect(cursor).toBe(4);
+    const events = await storage.read('r');
+    expect(events.map((row) => row.seq)).toEqual([1, 2, 3, 4]);
+    expect(await storage.readCursor('r')).toBe(4);
+  });
+
 });

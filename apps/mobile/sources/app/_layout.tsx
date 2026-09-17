@@ -38,6 +38,13 @@ function ProductHostGate() {
     return <Redirect href="/(app)/server" />;
   }
   if (host && !auth.loading && !auth.credential && !isAuthEntry) return <Redirect href="/(app)/login" />;
+  // 产品落地页（MX-013/D-023）：认证且身份已引导的用户访问索引时进入产品壳
+  const identity = auth.scope.identity();
+  // typed-routes 将 segments 收窄为具体元组联合；以 string[] 视图判定索引路由
+  const atIndex = (segments as string[]).length === 0;
+  if (host && !auth.loading && auth.credential && identity.userId && atIndex) {
+    return <Redirect href="/(app)/product" />;
+  }
   return <Slot key={scopeGeneration} />;
 }
 

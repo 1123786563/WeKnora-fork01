@@ -104,6 +104,7 @@ export type {
 } from './configuration.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
+export { createOverviewApi } from './mobile/overview.ts';
 export type {
   ExecutionsApi,
   CommandAck,

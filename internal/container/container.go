@@ -192,6 +192,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchInteractionStore))
 	must(container.Provide(NewWorkbenchInteractionService))
 	must(container.Provide(NewWorkbenchCommandHandler))
+	must(container.Provide(NewWorkbenchOverviewService))
+	must(container.Provide(NewWorkbenchOverviewHandler))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
