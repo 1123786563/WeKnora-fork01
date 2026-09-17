@@ -166,9 +166,111 @@ func (s *VoiceSessionStore) PendingUnknownVoiceSession(ctx context.Context, tena
 	return count > 0, nil
 }
 
-// RecordVoiceSessionUsage accumulates trusted provider-reported usage
-// (transcription durations, provider callbacks) onto a still-live session
-// row. Closed rows take no further usage — their settlement is final.
+// Voice transcription result statuses.
+const (
+	VoiceTranscriptionSucceeded = "succeeded"
+	VoiceTranscriptionFailed     = "failed"
+)
+
+var (
+	// ErrVoiceTranscriptionInvalid rejects structurally invalid rows.
+	ErrVoiceTranscriptionInvalid = errors.New("voice transcription row invalid")
+	// ErrVoiceTranscriptionNotFound answers a missing row AND a row owned
+	// by another owner (indistinguishable, like voice sessions).
+	ErrVoiceTranscriptionNotFound = errors.New("voice transcription not found")
+	// ErrVoiceTranscriptionExists reports an idempotent save hitting an
+	// already-recorded request id.
+	ErrVoiceTranscriptionExists = errors.New("voice transcription already exists")
+)
+
+// VoiceTranscriptionRow is the durable result of one request-id'd
+// transcription (I-2, review round 1): the W04-style request
+// reconciliation record that lets a replay of the same request id be
+// answered with the ORIGINAL result instead of a second charged call. The
+// row is written only AFTER the commercial settlement committed, so a row's
+// presence also proves its usage settled exactly once.
+type VoiceTranscriptionRow struct {
+	TenantID     uint64    `gorm:"column:tenant_id;not null;uniqueIndex:uq_voice_transcription_request,priority:1"`
+	RequestID    string    `gorm:"column:request_id;not null;uniqueIndex:uq_voice_transcription_request,priority:2"`
+	CallID       string    `gorm:"column:call_id;not null;index:idx_voice_transcription_call,priority:2"`
+	OwnerID      string    `gorm:"column:owner_id;not null"`
+	Status       string    `gorm:"column:status;not null"`
+	Text         string    `gorm:"column:text;not null;default:''"`
+	AudioSeconds int64     `gorm:"column:audio_seconds;not null;default:0"`
+	CreatedAt    time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
+}
+
+func (VoiceTranscriptionRow) TableName() string { return "voice_transcriptions" }
+
+// VoiceTranscriptionStore persists transcription results in the business
+// database scope.
+type VoiceTranscriptionStore struct{ db *gorm.DB }
+
+// NewVoiceTranscriptionStore builds the store over the business database.
+func NewVoiceTranscriptionStore(db *gorm.DB) *VoiceTranscriptionStore {
+	return &VoiceTranscriptionStore{db: db}
+}
+
+// SaveVoiceTranscription records one request id's outcome exactly once: a
+// replay of the same (tenant, request id) is refused with
+// ErrVoiceTranscriptionExists instead of overwriting the original result.
+func (s *VoiceTranscriptionStore) SaveVoiceTranscription(ctx context.Context, row VoiceTranscriptionRow) error {
+	if s == nil || s.db == nil || row.TenantID == 0 ||
+		strings.TrimSpace(row.RequestID) == "" || strings.TrimSpace(row.OwnerID) == "" ||
+		strings.TrimSpace(row.CallID) == "" || row.AudioSeconds < 0 {
+		return ErrVoiceTranscriptionInvalid
+	}
+	switch row.Status {
+	case VoiceTranscriptionSucceeded, VoiceTranscriptionFailed:
+	default:
+		return ErrVoiceTranscriptionInvalid
+	}
+	err := s.db.WithContext(ctx).Create(&row).Error
+	if err != nil && isUniqueViolation(err) {
+		return ErrVoiceTranscriptionExists
+	}
+	return err
+}
+
+// GetOwnedVoiceTranscription resolves one request id under the ownership
+// predicate: a missing row and another owner's row both answer
+// ErrVoiceTranscriptionNotFound.
+func (s *VoiceTranscriptionStore) GetOwnedVoiceTranscription(ctx context.Context, tenantID uint64, ownerID, requestID string) (VoiceTranscriptionRow, error) {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(requestID) == "" {
+		return VoiceTranscriptionRow{}, ErrVoiceTranscriptionInvalid
+	}
+	var row VoiceTranscriptionRow
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND request_id = ?", tenantID, ownerID, requestID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return VoiceTranscriptionRow{}, ErrVoiceTranscriptionNotFound
+	}
+	if err != nil {
+		return VoiceTranscriptionRow{}, err
+	}
+	return row, nil
+}
+
+// isUniqueViolation reports a unique-index violation across the sqlite and
+// postgres drivers the business database uses.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "duplicate key value") ||
+		strings.Contains(msg, "23505")
+}
+
+// RecordVoiceSessionUsage accumulates trusted provider-reported usage of
+// the REALTIME session plane (provider usage callbacks) onto a still-live
+// session row; it settles at stop under the session's own reservation.
+// Transcription seconds are deliberately NOT recorded here — they settle
+// immediately under their own voice_tx reservation (I-1: exactly once).
+// Closed rows take no further usage — their settlement is final.
 func (s *VoiceSessionStore) RecordVoiceSessionUsage(ctx context.Context, tenantID uint64, id string, audioSeconds int64) error {
 	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(id) == "" || audioSeconds < 0 {
 		return ErrVoiceSessionInvalid

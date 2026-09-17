@@ -33,6 +33,15 @@ func (routesVoiceStore) CloseVoiceSessionWithUsage(context.Context, uint64, stri
 	return true, nil
 }
 
+type routesVoiceTranscriptions struct{}
+
+func (routesVoiceTranscriptions) SaveVoiceTranscription(context.Context, repository.VoiceTranscriptionRow) error {
+	return nil
+}
+func (routesVoiceTranscriptions) GetOwnedVoiceTranscription(context.Context, uint64, string, string) (repository.VoiceTranscriptionRow, error) {
+	return repository.VoiceTranscriptionRow{}, nil
+}
+
 type routesVoiceGate struct{}
 
 func (routesVoiceGate) Begin(context.Context, domain.BudgetRequest) (domain.Reservation, error) {
@@ -54,7 +63,7 @@ func TestRegisterMobileVoiceRoutesDeclaresTheThreeEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	g := &rbacGuards{cfg: &config.Config{}}
-	h, err := handler.NewMobileVoiceHandler(nil, nil, nil, nil, nil)
+	h, err := handler.NewMobileVoiceHandler(nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "incomplete wiring must fail closed")
 	require.Nil(t, h)
 	RegisterMobileVoiceRoutes(r.Group("/api/v1"), nil, g)
@@ -62,7 +71,7 @@ func TestRegisterMobileVoiceRoutesDeclaresTheThreeEndpoints(t *testing.T) {
 
 	provider, err := voice.NewManagedProvider(voice.Config{})
 	require.NoError(t, err)
-	voiceHandler, err := handler.NewMobileVoiceHandler(routesVoiceStore{}, provider, provider, routesVoiceGate{}, routesVoiceRates{})
+	voiceHandler, err := handler.NewMobileVoiceHandler(routesVoiceStore{}, routesVoiceTranscriptions{}, provider, provider, routesVoiceGate{}, routesVoiceRates{})
 	require.NoError(t, err)
 	r2 := gin.New()
 	RegisterMobileVoiceRoutes(r2.Group("/api/v1"), voiceHandler, g)

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -24,21 +26,27 @@ import (
 
 // ---- harness doubles -------------------------------------------------------
 
-// fakeVoiceGate records the admission/settlement traffic. Finish mirrors the
+// fakeVoiceGate records the admission/settlement traffic. Begin mirrors the
+// REAL commercial semantics the review round exposed (I-2): a reservation
+// key replays idempotently only while its state is still `held`, and the
+// execution gate marks Begin's outcome `dispatched` immediately — so any
+// Begin replay of an already-used key conflicts and must surface as
+// ErrInsufficientBudgetGate, never a silent second hold. Finish mirrors the
 // commercial revision idempotency: replaying the same (call, attempt,
-// revision) is a no-op, so "settled exactly once" is decidable from the
-// recorded facts.
+// revision) is a no-op.
 type fakeVoiceGate struct {
 	mu        sync.Mutex
 	denyBegin bool
+	finishErr error
 	begins    int
 	finishes  int
 	beginKeys map[string]int
+	held      map[string]bool // reservation keys already dispatched
 	settled   map[string]domain.UsageFact
 }
 
 func newFakeVoiceGate() *fakeVoiceGate {
-	return &fakeVoiceGate{beginKeys: map[string]int{}, settled: map[string]domain.UsageFact{}}
+	return &fakeVoiceGate{beginKeys: map[string]int{}, held: map[string]bool{}, settled: map[string]domain.UsageFact{}}
 }
 
 func (g *fakeVoiceGate) Begin(_ context.Context, req domain.BudgetRequest) (domain.Reservation, error) {
@@ -47,14 +55,23 @@ func (g *fakeVoiceGate) Begin(_ context.Context, req domain.BudgetRequest) (doma
 	if g.denyBegin {
 		return domain.Reservation{}, fmt.Errorf("%w: denied", domain.ErrInsufficientBudgetGate)
 	}
+	// Real replay semantics: an existing key whose state is no longer held
+	// (our Begin dispatches immediately) answers a conflict.
+	if _, exists := g.held[req.Key]; exists {
+		return domain.Reservation{}, fmt.Errorf("%w: reservation_key_conflict", domain.ErrInsufficientBudgetGate)
+	}
 	g.begins++
 	g.beginKeys[req.Key]++
+	g.held[req.Key] = true
 	return domain.Reservation{ID: req.Key, RunID: req.RunID, Upper: req.Upper, Deadline: req.Deadline}, nil
 }
 
 func (g *fakeVoiceGate) Finish(_ context.Context, reservationID string, fact domain.UsageFact) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if g.finishErr != nil {
+		return g.finishErr
+	}
 	g.finishes++
 	key := fmt.Sprintf("%d|%s|%s|%d", fact.TenantID, fact.CallID, fact.AttemptID, fact.Revision)
 	if _, replay := g.settled[key]; replay {
@@ -74,6 +91,18 @@ func (g *fakeVoiceGate) settledFacts() []domain.UsageFact {
 	return out
 }
 
+// totalSettledAudioSeconds sums the settled facts: the exactly-once money
+// invariant the review round demanded (I-1).
+func (g *fakeVoiceGate) totalSettledAudioSeconds() int64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var total int64
+	for _, f := range g.settled {
+		total += f.Dimensions[domain.DimensionAudioSeconds]
+	}
+	return total
+}
+
 func (g *fakeVoiceGate) beginCount() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -84,6 +113,31 @@ func (g *fakeVoiceGate) finishCount() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.finishes
+}
+
+// fakeVoiceReleaser spies the hold-release seam (I-3).
+type fakeVoiceReleaser struct {
+	mu     sync.Mutex
+	calls  int
+	keys   []string
+	ignore bool
+}
+
+func (r *fakeVoiceReleaser) ReleaseReservation(_ context.Context, _ uint64, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ignore {
+		return nil
+	}
+	r.calls++
+	r.keys = append(r.keys, key)
+	return nil
+}
+
+func (r *fakeVoiceReleaser) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
 // fakeVoiceProvider counts provider calls — the acceptance matrix asserts
@@ -145,14 +199,16 @@ func (r fakeVoiceRates) VoiceAdmission(context.Context, int64) (string, domain.C
 // ---- harness assembly ------------------------------------------------------
 
 type voiceHarness struct {
-	store       *repository.VoiceSessionStore
-	provider    *fakeVoiceProvider
-	transcriber *fakeVoiceTranscriber
-	gate        *fakeVoiceGate
-	handler     *MobileVoiceHandler
-	router      *gin.Engine
-	clock       time.Time
-	logs        *bytes.Buffer
+	store          *repository.VoiceSessionStore
+	transcriptions *repository.VoiceTranscriptionStore
+	provider       *fakeVoiceProvider
+	transcriber    *fakeVoiceTranscriber
+	gate           *fakeVoiceGate
+	releaser       *fakeVoiceReleaser
+	handler        *MobileVoiceHandler
+	router         *gin.Engine
+	clock          time.Time
+	logs           *bytes.Buffer
 }
 
 func newVoiceHarness(t *testing.T) *voiceHarness {
@@ -161,18 +217,20 @@ func newVoiceHarness(t *testing.T) *voiceHarness {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&repository.VoiceSessionRow{}); err != nil {
+	if err := db.AutoMigrate(&repository.VoiceSessionRow{}, &repository.VoiceTranscriptionRow{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	h := &voiceHarness{
-		store:       repository.NewVoiceSessionStore(db),
-		provider:    &fakeVoiceProvider{},
-		transcriber: &fakeVoiceTranscriber{},
-		gate:        newFakeVoiceGate(),
-		clock:       time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC),
-		logs:        &bytes.Buffer{},
+		store:          repository.NewVoiceSessionStore(db),
+		transcriptions: repository.NewVoiceTranscriptionStore(db),
+		provider:       &fakeVoiceProvider{},
+		transcriber:    &fakeVoiceTranscriber{},
+		gate:           newFakeVoiceGate(),
+		releaser:       &fakeVoiceReleaser{},
+		clock:          time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC),
+		logs:           &bytes.Buffer{},
 	}
-	handler, err := NewMobileVoiceHandler(h.store, h.provider, h.transcriber, h.gate, fakeVoiceRates{version: "voice-test-v1", upper: 1000})
+	handler, err := NewMobileVoiceHandler(h.store, h.transcriptions, h.provider, h.transcriber, h.gate, fakeVoiceRates{version: "voice-test-v1", upper: 1000}, h.releaser)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -348,7 +406,7 @@ func TestVoiceChargingUnconfiguredRefused(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup create failed: %d %s", w.Code, w.Body.String())
 	}
-	handler, err := NewMobileVoiceHandler(h.store, h.provider, h.transcriber, h.gate, fakeVoiceRates{err: ErrVoiceChargingUnconfigured})
+	handler, err := NewMobileVoiceHandler(h.store, h.transcriptions, h.provider, h.transcriber, h.gate, fakeVoiceRates{err: ErrVoiceChargingUnconfigured})
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -476,30 +534,37 @@ func TestTranscriptionBudgetDeniedProviderUntouched(t *testing.T) {
 	}
 }
 
-// Session-bound usage accumulates and settles on stop (disconnect still
-// settles the real consumed cost).
+// Session-own usage (realtime/callback plane, recorded via the trusted
+// callback path) settles at stop — a disconnect (provider close failing)
+// still settles the real consumed cost exactly once.
 func TestVoiceSessionStopSettlesAccumulatedUsage(t *testing.T) {
 	h := newVoiceHarness(t)
 	w := h.postSession(t, `{"session_id":"sess-1","max_seconds":30}`)
 	id := voiceSessionIDOf(t, w)
-	h.transcriber.result = voice.TranscriptionResult{Text: "a", AudioSeconds: 5}
-	if w = h.postTranscription(t, "owner-a", "req-1", id, []byte("audio")); w.Code != http.StatusOK {
-		t.Fatalf("bound transcription: %d %s", w.Code, w.Body.String())
+	// Provider usage callback of the realtime plane: 5 seconds of session
+	// audio (NOT transcription seconds — those settle under their own
+	// voice_tx reservation per I-1).
+	if err := h.store.RecordVoiceSessionUsage(context.Background(), 7, id, 5); err != nil {
+		t.Fatalf("callback usage: %v", err)
 	}
 	h.provider.closeErr = errors.New("already gone") // disconnect: close fails
 	w = h.stopSession(t, id, "owner-a")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":true") {
 		t.Fatalf("stop with usage: %d %s", w.Code, w.Body.String())
 	}
-	for _, f := range h.gate.settledFacts() {
-		if f.CallID == voice.SessionCallID(7, id) {
-			if f.Dimensions[domain.DimensionAudioSeconds] != 5 {
-				t.Fatalf("session settled seconds = %v, want 5", f.Dimensions)
-			}
-			return
-		}
+	if total := h.gate.totalSettledAudioSeconds(); total != 5 {
+		t.Fatalf("total settled seconds = %d, want exactly 5", total)
 	}
-	t.Fatal("session settlement fact missing")
+	// The whole plane settles exactly once overall: a bound transcription
+	// of another 3 seconds adds its own single settlement.
+	h.transcriber.result = voice.TranscriptionResult{Text: "a", AudioSeconds: 3}
+	w2 := h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w2.Code != http.StatusOK {
+		t.Fatalf("independent transcription: %d %s", w2.Code, w2.Body.String())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 8 {
+		t.Fatalf("total settled seconds = %d, want exactly 8 (5 session + 3 transcription, each once)", total)
+	}
 }
 
 // Voice bills under its own gating dimension: the commercial whitelist maps
@@ -544,5 +609,287 @@ func TestPriceVersionVoiceAdmission(t *testing.T) {
 	// 61 * 1001 / 60 = 1017.68... -> hold 1018 (round up).
 	if upper != 1018 {
 		t.Fatalf("upper = %d, want 1018 (rounded up)", upper)
+	}
+}
+
+// ---- review round 1 (I-1..I-4) ------------------------------------------------
+
+// I-1: a bound transcription's seconds settle EXACTLY ONCE overall. The
+// transcription settles under its own voice_tx reservation at request time;
+// the session stop settles only the session's own (realtime/callback)
+// usage. Total settled audio across ALL facts must equal what the provider
+// actually reported — never twice.
+func TestBoundTranscriptionSettlesExactlyOnce(t *testing.T) {
+	h := newVoiceHarness(t)
+	w := h.postSession(t, `{"session_id":"sess-1","max_seconds":30}`)
+	id := voiceSessionIDOf(t, w)
+	h.transcriber.result = voice.TranscriptionResult{Text: "a", AudioSeconds: 5}
+	if w = h.postTranscription(t, "owner-a", "req-1", id, []byte("audio")); w.Code != http.StatusOK {
+		t.Fatalf("bound transcription: %d %s", w.Code, w.Body.String())
+	}
+	if w = h.stopSession(t, id, "owner-a"); w.Code != http.StatusOK {
+		t.Fatalf("stop: %d %s", w.Code, w.Body.String())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 5 {
+		t.Fatalf("total settled audio seconds = %d, want exactly 5 (the provider-reported amount, once)", total)
+	}
+}
+
+// I-3: a DEFINITE provider open failure (not the unknown timeout) must
+// release the budget hold it just took — repeated failures may not
+// accumulate dangling holds (budget-consuming DoS).
+func TestVoiceOpenDefiniteFailureReleasesHold(t *testing.T) {
+	h := newVoiceHarness(t)
+	h.provider.openErr = errors.New("provider refused")
+	w := h.postSession(t, `{"session_id":"sess-1","max_seconds":30}`)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("definite open failure: %d %s", w.Code, w.Body.String())
+	}
+	if h.gate.beginCount() != 1 {
+		t.Fatalf("begins = %d, want 1", h.gate.beginCount())
+	}
+	if h.releaser.count() != 1 {
+		t.Fatalf("hold releases = %d, want exactly 1 (the unusable hold must be released)", h.releaser.count())
+	}
+	if opens, _ := h.provider.counts(); opens != 1 {
+		t.Fatalf("provider opens = %d, want 1", opens)
+	}
+	// A follow-up create for another product session is unaffected.
+	h.provider.openErr = nil
+	w = h.postSession(t, `{"session_id":"sess-2","max_seconds":30}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("recovery create: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// I-4: a settlement failure at stop must NOT close the session row — the
+// row stays settleable, the response reports settled:false, and a retried
+// stop completes the settlement and then closes.
+func TestVoiceStopSettlementFailureKeepsRowSettleable(t *testing.T) {
+	h := newVoiceHarness(t)
+	w := h.postSession(t, `{"session_id":"sess-1","max_seconds":30}`)
+	id := voiceSessionIDOf(t, w)
+	h.gate.finishErr = errors.New("settlement db hiccup")
+	w = h.stopSession(t, id, "owner-a")
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("stop with settle failure: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "\"settled\":true") {
+		t.Fatalf("response must not claim settled:true on a failed settlement: %s", w.Body.String())
+	}
+	row, err := h.store.GetOwnedVoiceSession(context.Background(), 7, "owner-a", id)
+	if err != nil {
+		t.Fatalf("row read: %v", err)
+	}
+	if row.State == repository.VoiceSessionStateClosed {
+		t.Fatal("row was closed despite failed settlement — the settlement is now unreachable")
+	}
+	// Retry the stop once the settlement layer recovers.
+	h.gate.finishErr = nil
+	w = h.stopSession(t, id, "owner-a")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":true") {
+		t.Fatalf("retry stop: %d %s", w.Code, w.Body.String())
+	}
+	row, err = h.store.GetOwnedVoiceSession(context.Background(), 7, "owner-a", id)
+	if err != nil {
+		t.Fatalf("row read: %v", err)
+	}
+	if row.State != repository.VoiceSessionStateClosed {
+		t.Fatalf("row state = %s, want closed after successful settlement", row.State)
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 0 {
+		t.Fatalf("total settled = %d, want 0 (no usage reported)", total)
+	}
+}
+
+// I-2: replaying the same transcription request id is idempotent under the
+// REAL Begin semantics — a dispatched reservation key conflicts, so the
+// replay must be answered from the persisted result row (W04 request
+// reconciliation shape: same id returns the same result) BEFORE any new
+// Begin/provider call. The harness fake now mirrors the real conflict, so
+// this test fails against any implementation that re-Begins on replay.
+func TestTranscriptionReplayServedFromResultRow(t *testing.T) {
+	h := newVoiceHarness(t)
+	h.transcriber.result = voice.TranscriptionResult{Text: "hello", AudioSeconds: 12}
+	w := h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("first transcription: %d %s", w.Code, w.Body.String())
+	}
+	callsAfterFirst := h.transcriber.calls
+	w = h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay: %d %s (the real Begin conflicts on a dispatched key; the replay must be served from the result row)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "hello") {
+		t.Fatalf("replay must return the ORIGINAL text: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "\"replay\":true") {
+		t.Fatalf("replay response must be marked as one: %s", w.Body.String())
+	}
+	if h.transcriber.calls != callsAfterFirst {
+		t.Fatalf("transcriber calls = %d, the replay must not reach the provider", h.transcriber.calls)
+	}
+	if h.gate.beginCount() != 1 {
+		t.Fatalf("begins = %d, the replay must not take a second hold", h.gate.beginCount())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 12 {
+		t.Fatalf("total settled audio seconds = %d, want exactly 12", total)
+	}
+	// A failed first attempt is equally replayable with its failure.
+	h.transcriber.err = voice.ErrTranscriptionFailed
+	h.transcriber.result = voice.TranscriptionResult{AudioSeconds: 3}
+	w = h.postTranscription(t, "owner-a", "req-fail", "", []byte("audio"))
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("failing first attempt: %d %s", w.Code, w.Body.String())
+	}
+	w = h.postTranscription(t, "owner-a", "req-fail", "", []byte("audio"))
+	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "\"replay\":true") {
+		t.Fatalf("failing replay: %d %s", w.Code, w.Body.String())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 15 {
+		t.Fatalf("total settled = %d, want 15 (12 + 3, each exactly once)", total)
+	}
+}
+
+// ---- I-2 integration: the REAL ExecutionGateService --------------------------
+
+// integrationVoiceGateway satisfies domain.CommercialGateway minimally:
+// Finalize only persists local rows (the settlement record and outbox
+// event); the remote dispatch loop these tests never run owns the gateway.
+type integrationVoiceGateway struct{}
+
+func (integrationVoiceGateway) ApplyBenefit(context.Context, domain.BenefitRequest) (domain.BenefitReceipt, error) {
+	return domain.BenefitReceipt{}, nil
+}
+func (integrationVoiceGateway) FindBenefit(context.Context, string) (domain.BenefitReceipt, error) {
+	return domain.BenefitReceipt{}, nil
+}
+func (integrationVoiceGateway) RevokeBenefit(context.Context, string, domain.Credits) error {
+	return nil
+}
+func (integrationVoiceGateway) Settle(context.Context, domain.Settlement) (domain.SettlementReceipt, error) {
+	return domain.SettlementReceipt{ExternalID: "ext-1", Watermark: "wm-1"}, nil
+}
+func (integrationVoiceGateway) ConfirmSettlement(context.Context, string) (domain.SettlementReceipt, error) {
+	return domain.SettlementReceipt{ExternalID: "ext-1", Watermark: "wm-1"}, nil
+}
+
+// TestTranscriptionReplayAgainstRealExecutionGate runs the replay case
+// against the REAL commercial ExecutionGateService over sqlite: a dispatched
+// reservation key conflicts on Begin (the exact production semantics the
+// harness fake now mirrors), so the replay MUST be served from the durable
+// result row. The second POST answers 200 with the original text, exactly
+// one usage fact exists for the call, and exactly one reservation was ever
+// taken.
+func TestTranscriptionReplayAgainstRealExecutionGate(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&repocommercial.BudgetAccountRow{},
+		&repocommercial.TaskBudgetRow{},
+		&repocommercial.ReservationRow{},
+		&repocommercial.BudgetLotRow{},
+		&repocommercial.BudgetLotAllocationRow{},
+		&repocommercial.UsageRow{},
+		&repocommercial.UsageCurrentRow{},
+		&repocommercial.OutboxEvent{},
+		&commercialsvc.SettlementRecord{},
+		&repository.VoiceSessionRow{},
+		&repository.VoiceTranscriptionRow{},
+	); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&repocommercial.BudgetAccountRow{TenantID: 7, VerifiedMicro: 10_000_000, VerifiedUntil: now.Add(time.Hour), Version: 1}).Error; err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	if err := db.Create(&repocommercial.TaskBudgetRow{TenantID: 7, RunID: "voice:", LimitMicro: 10_000_000, Deadline: now.Add(time.Hour), Version: 1}).Error; err != nil {
+		t.Fatalf("task budget: %v", err)
+	}
+	if err := db.Create(&repocommercial.BudgetLotRow{TenantID: 7, LotID: "lot-1", RemainingMicro: 10_000_000, IssuedAt: now}).Error; err != nil {
+		t.Fatalf("lot: %v", err)
+	}
+	gate, err := commercialsvc.NewExecutionGateService(db, integrationVoiceGateway{})
+	if err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	if _, err := gate.WithRates(func(string) (domain.PriceVersionRates, error) {
+		return domain.PriceVersionRates{Version: "voice-it-v1", Rates: map[string]domain.DimensionRate{
+			domain.DimensionAudioSeconds: {RateMicro: 100, Units: 1},
+		}}, nil
+	}); err != nil {
+		t.Fatalf("rates: %v", err)
+	}
+	transcriber := &fakeVoiceTranscriber{result: voice.TranscriptionResult{Text: "real-gate", AudioSeconds: 12}}
+	voiceHandler, err := NewMobileVoiceHandler(
+		repository.NewVoiceSessionStore(db),
+		repository.NewVoiceTranscriptionStore(db),
+		&fakeVoiceProvider{},
+		transcriber,
+		gate,
+		fakeVoiceRates{version: "voice-it-v1", upper: 1200},
+	)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	identity := func(c *gin.Context) {
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(7))
+		ctx = context.WithValue(ctx, types.UserIDContextKey, "owner-a")
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+	group := r.Group("/mobile/voice", identity)
+	group.POST("/transcriptions", voiceHandler.TranscribeAudio)
+
+	post := func(requestID string) *httptest.ResponseRecorder {
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		_ = writer.WriteField("request_id", requestID)
+		part, _ := writer.CreateFormFile("audio", "capture.m4a")
+		_, _ = part.Write([]byte("audio"))
+		_ = writer.Close()
+		req := httptest.NewRequest(http.MethodPost, "/mobile/voice/transcriptions", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	w := post("req-9")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "real-gate") {
+		t.Fatalf("first: %d %s", w.Code, w.Body.String())
+	}
+	w = post("req-9")
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay under the real gate: %d %s (a dispatched key conflicts on Begin; the result row must answer)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "real-gate") || !strings.Contains(w.Body.String(), "\"replay\":true") {
+		t.Fatalf("replay body: %s", w.Body.String())
+	}
+	var facts, reservations int64
+	callID := voice.TranscriptionCallID(7, "req-9")
+	if err := db.Model(&repocommercial.UsageRow{}).Where("tenant_id = ? AND call_id = ?", uint64(7), callID).Count(&facts).Error; err != nil {
+		t.Fatalf("facts: %v", err)
+	}
+	if err := db.Model(&repocommercial.ReservationRow{}).Where("tenant_id = ? AND key = ?", uint64(7), "voice_tx:"+callID).Count(&reservations).Error; err != nil {
+		t.Fatalf("reservations: %v", err)
+	}
+	if facts != 1 {
+		t.Fatalf("usage facts = %d, want exactly 1", facts)
+	}
+	if reservations != 1 {
+		t.Fatalf("reservations = %d, want exactly 1", reservations)
+	}
+	// The settle-charged delta equals the provider's 12 seconds at 100
+	// micro/second — charged once, from the one durable settlement record.
+	var record commercialsvc.SettlementRecord
+	if err := db.Where("tenant_id = ? AND call_id = ?", uint64(7), callID).First(&record).Error; err != nil {
+		t.Fatalf("settlement record: %v", err)
+	}
+	if record.AmountMicro != 1200 {
+		t.Fatalf("settled micro = %d, want 1200 (12s x 100, once)", record.AmountMicro)
 	}
 }

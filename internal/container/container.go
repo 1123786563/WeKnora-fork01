@@ -2169,6 +2169,7 @@ func newMobileVoiceHandler(
 	}
 	return handler.NewMobileVoiceHandler(
 		repository.NewVoiceSessionStore(db),
+		repository.NewVoiceTranscriptionStore(db),
 		provider,
 		provider,
 		gate,

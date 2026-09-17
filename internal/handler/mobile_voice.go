@@ -68,6 +68,14 @@ type VoiceSessionRepository interface {
 	CloseVoiceSessionWithUsage(ctx context.Context, tenantID uint64, id string, audioSeconds int64, settledAt time.Time) (bool, error)
 }
 
+// VoiceTranscriptionRepository persists request-id'd transcription results
+// (the W04-style request reconciliation record of the replay path);
+// repository.VoiceTranscriptionStore satisfies it.
+type VoiceTranscriptionRepository interface {
+	SaveVoiceTranscription(ctx context.Context, row repository.VoiceTranscriptionRow) error
+	GetOwnedVoiceTranscription(ctx context.Context, tenantID uint64, ownerID, requestID string) (repository.VoiceTranscriptionRow, error)
+}
+
 // VoiceRateSource resolves the charged-voice admission numbers: the price
 // version in force and the upper-bound credits for a requested audio
 // window. An unconfigured source refuses charged voice.
@@ -86,13 +94,14 @@ type VoiceReservationReleaser interface {
 // MobileVoiceHandler serves POST /mobile/voice/sessions,
 // DELETE /mobile/voice/sessions/:id and POST /mobile/voice/transcriptions.
 type MobileVoiceHandler struct {
-	sessions    VoiceSessionRepository
-	provider    voice.VoiceProvider
-	transcriber voice.Transcriber
-	gate        domain.ExecutionGate
-	rates       VoiceRateSource
-	releases    VoiceReservationReleaser
-	now         func() time.Time
+	sessions       VoiceSessionRepository
+	transcriptions VoiceTranscriptionRepository
+	provider       voice.VoiceProvider
+	transcriber    voice.Transcriber
+	gate           domain.ExecutionGate
+	rates          VoiceRateSource
+	releases       VoiceReservationReleaser
+	now            func() time.Time
 }
 
 // NewMobileVoiceHandler validates the wiring. Every dependency is required:
@@ -100,13 +109,14 @@ type MobileVoiceHandler struct {
 // the W26 craft assembly rule. The reservation releaser is optional.
 func NewMobileVoiceHandler(
 	sessions VoiceSessionRepository,
+	transcriptions VoiceTranscriptionRepository,
 	provider voice.VoiceProvider,
 	transcriber voice.Transcriber,
 	gate domain.ExecutionGate,
 	rates VoiceRateSource,
 	releasers ...VoiceReservationReleaser,
 ) (*MobileVoiceHandler, error) {
-	if sessions == nil || provider == nil || transcriber == nil || gate == nil || rates == nil {
+	if sessions == nil || transcriptions == nil || provider == nil || transcriber == nil || gate == nil || rates == nil {
 		return nil, errors.New("mobile voice handler wiring incomplete")
 	}
 	var releases VoiceReservationReleaser
@@ -114,13 +124,14 @@ func NewMobileVoiceHandler(
 		releases = releasers[0]
 	}
 	return &MobileVoiceHandler{
-		sessions:    sessions,
-		provider:    provider,
-		transcriber: transcriber,
-		gate:        gate,
-		rates:       rates,
-		releases:    releases,
-		now:         time.Now,
+		sessions:       sessions,
+		transcriptions: transcriptions,
+		provider:       provider,
+		transcriber:    transcriber,
+		gate:           gate,
+		rates:          rates,
+		releases:       releases,
+		now:            time.Now,
 	}, nil
 }
 
@@ -265,6 +276,11 @@ func (h *MobileVoiceHandler) CreateVoiceSession(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "voice_open_unknown", "data": gin.H{"id": sessionID, "state": repository.VoiceSessionStateUnknown}})
 			return
 		}
+		// I-3 (review round 1): a DEFINITE provider refusal (as opposed to
+		// the unknown timeout above) means no session exists — the hold it
+		// took is unusable and must be released immediately, so repeated
+		// failures can never accumulate dangling holds.
+		h.releaseHold(c.Request.Context(), tenantID, reservationKey)
 		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"success": false, "error": "voice_provider_unavailable"})
 		return
 	}
@@ -374,20 +390,30 @@ func (h *MobileVoiceHandler) StopVoiceSession(c *gin.Context) {
 		return
 	}
 
-	settleErr := h.settleVoiceUsage(c.Request.Context(), tenantID, row)
-	closed, closeRowErr := h.sessions.CloseVoiceSessionWithUsage(c.Request.Context(), tenantID, row.ID, 0, h.now().UTC())
+	// I-4 (review round 1): a settlement failure must NOT close the row —
+	// closing here would make the settlement permanently unreachable (the
+	// closed replay branch answers before ever retrying Finish). The row
+	// keeps its settleable state, the response reports settled:false, and a
+	// retried stop runs the settlement again (the fact's revision identity
+	// keeps the eventual settlement exactly-once).
+	if settleErr := h.settleVoiceUsage(c.Request.Context(), tenantID, row); settleErr != nil {
+		c.AbortWithStatusJSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{
+			"id":      row.ID,
+			"state":   row.State,
+			"settled": false,
+			"reason":  "settlement_retry_required",
+		}})
+		return
+	}
+	_, closeRowErr := h.sessions.CloseVoiceSessionWithUsage(c.Request.Context(), tenantID, row.ID, 0, h.now().UTC())
 	if closeRowErr != nil && !errors.Is(closeRowErr, repository.ErrVoiceSessionStateConflict) {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": "voice_session_close_failed"})
 		return
 	}
-	if settleErr != nil {
-		c.AbortWithStatusJSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{"id": row.ID, "state": repository.VoiceSessionStateClosed, "settled": closed, "warning": "settlement_replay_required"}})
-		return
-	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"id":           row.ID,
-		"state":        repository.VoiceSessionStateClosed,
-		"settled":      true,
+		"id":            row.ID,
+		"state":         repository.VoiceSessionStateClosed,
+		"settled":       true,
 		"audio_seconds": row.AudioSeconds,
 	}})
 }
@@ -425,6 +451,27 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 	locale := strings.TrimSpace(c.PostForm("locale"))
 	if requestID == "" {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "missing_request_id"})
+		return
+	}
+	// I-2 (review round 1): request-id replay reconciliation, the W04 shape.
+	// The REAL ExecutionGate conflicts on any Begin replay of an already
+	// dispatched reservation key, so a replay can never be answered by
+	// re-running the charged pipeline. The durable result row — written only
+	// AFTER the settlement committed — answers the replay with the ORIGINAL
+	// outcome before any new budget, provider or settlement call.
+	if existing, replayErr := h.transcriptions.GetOwnedVoiceTranscription(c.Request.Context(), tenantID, ownerID, requestID); replayErr == nil {
+		if existing.Status == repository.VoiceTranscriptionSucceeded {
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+				"text": existing.Text, "audio_seconds": existing.AudioSeconds, "settled": true, "replay": true,
+			}})
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"success": false, "error": "transcribe_failed", "data": gin.H{
+			"audio_seconds": existing.AudioSeconds, "settled": true, "replay": true,
+		}})
+		return
+	} else if !errors.Is(replayErr, repository.ErrVoiceTranscriptionNotFound) && !errors.Is(replayErr, repository.ErrVoiceTranscriptionInvalid) {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": "voice_transcription_store_unavailable"})
 		return
 	}
 	file, header, err := c.Request.FormFile("audio")
@@ -491,9 +538,13 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 	if usage < 0 {
 		usage = 0
 	}
-	// Settlement runs on every terminal path — a failed transcription with
-	// provider-reported partial usage still settles the real cost; the
-	// revision identity makes callback/retry replays no-ops.
+	// I-1 (review round 1): these seconds settle EXACTLY ONCE, here, under
+	// the transcription's own voice_tx reservation — the settlement fact's
+	// (call, attempt, revision) identity makes callback/retry replays
+	// no-ops. They are deliberately NOT accumulated onto the bound session
+	// row: the session's stop settlement bills only the session's own
+	// (realtime/callback) usage, so one physical consumption can never be
+	// billed under both identities.
 	settleErr := h.gate.Finish(c.Request.Context(), reservationKey, domain.UsageFact{
 		TenantID:     tenantID,
 		RunID:        bound.RunID,
@@ -507,12 +558,26 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 		Dimensions:   map[string]int64{domain.DimensionAudioSeconds: usage},
 		Status:       domain.UsageStatusFinal,
 	})
-	if voiceSessionID != "" && usage > 0 {
-		if err := h.sessions.RecordVoiceSessionUsage(c.Request.Context(), tenantID, voiceSessionID, usage); err != nil && !errors.Is(err, repository.ErrVoiceSessionNotFound) {
-			// Usage accounting on the bound row is best-effort; the
-			// commercial settlement above is the charging record.
-			_ = err
-		}
+	// Persist the request id's outcome AFTER the settlement committed (a
+	// row's presence proves its usage settled exactly once). A persist
+	// failure is answered 500 — the charge stands, but this request id can
+	// no longer be replayed (its reservation is already dispatched); the
+	// client retries with a NEW request id.
+	resultRow := repository.VoiceTranscriptionRow{
+		TenantID:     tenantID,
+		RequestID:    requestID,
+		CallID:       callID,
+		OwnerID:      ownerID,
+		Status:       repository.VoiceTranscriptionFailed,
+		AudioSeconds: usage,
+	}
+	if transcribeErr == nil {
+		resultRow.Status = repository.VoiceTranscriptionSucceeded
+		resultRow.Text = result.Text
+	}
+	if saveErr := h.transcriptions.SaveVoiceTranscription(c.Request.Context(), resultRow); saveErr != nil && !errors.Is(saveErr, repository.ErrVoiceTranscriptionExists) {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": "voice_transcription_persist_failed"})
+		return
 	}
 	if transcribeErr != nil {
 		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"success": false, "error": "transcribe_failed", "data": gin.H{"audio_seconds": usage, "settled": settleErr == nil}})
