@@ -24,7 +24,7 @@
 | Slice | Tasks | Strongest evidence pointer |
 | --- | --- | --- |
 | Core execution lane | W01–W07, W09–W12 | W10 final14 review (mounted send → durable read → product navigation, 28/28), W11 review (keyset list on real SQLite harness), W12 re-review (recovery 24/24 + mounted 10/10); W01–W06 survive as ledger-text acceptances (see blocked-env) |
-| Native OIDC exchange | W08 | seam review (PASS/APPROVED): POST `/auth/mobile/exchange` verified in the test router; baseline re-anchored in the regeneration round to `bd624219` (the original `661a7b7c` is a dangling object); the router suite re-run at the final HEAD is green (the historical W20 compile blocker was repaired by `cbbc04b4`) |
+| Native OIDC exchange | W08 | seam review (PASS/APPROVED): POST `/auth/mobile/exchange` verified in the test router; baseline re-anchored in the regeneration round to `bd624219` (the original `661a7b7c` is a dangling object); the W08 handler test family (`go test ./internal/handler -run 'TestOIDCMobile' -count=1`, 5/5) is green at the final HEAD — the full-chain test was repaired by the final-review F1 fix (see Known risks #5) |
 | Notifications server lane | W13–W16 | Lane integrated in the final round (merges `71294f7b`/`b6a701e9`/`061a442a`/`0d9baebd`, ancestor-verified): W13 final review (device registration, lifecycle fencing, deterministic races; repository suite green at the final HEAD), W14 scoped retry-error review (Spec PASS / Quality APPROVED — the ledger's cited review; outbox migrations renumbered 000146, repository suites green), W15 empty-token review (provider lifecycle/pause/batch retry/revoke revision; `-race ./internal/notification` green at the final HEAD — the package never compiled on its lane), W16 rereview (deep-link parser 2/2; the Vitest suites the review could not execute were made genuinely passing by the post-integration fix `96efa90c`, 11/11) |
 | Remote lane (code) | W17–W24 | W17 static contract probe + W18–W23 ledger acceptances; W24 final3 review (trusted target policy, platform/BYOK/parent admission, durable budget, late/replay settlement) — lane merged in the final round (`05725468`, usage-binding migrations renumbered 000071/000149, admission coordinator fused with the W34 capability gate; persistence suites re-run green at the final HEAD) |
 | Resources | W25–W28 | W25 re-review (mounted upload chain), W26 re-review (immutable artifact versions + wiring), W27 re-review (preview CSP parity, bounded tickets, user-gesture external opens), W28 review (citation registrar 6/6 + component suites 27/27 — flipped to delivered in this round) |
@@ -88,13 +88,56 @@
    possible under-report until reconciled).
 4. Preview ticket store is process-internal (bounded at 65536 with
    full-table sweep, W27); multi-instance deployments need a shared store.
-5. `internal/handler` has one pre-existing failing test
-   (`TestOIDCMobileStartCallbackExchangeIsOneTime`, reproduced on the clean
-   BASE `f0f39fa0` snapshot) unrelated to the mobile-workbench lanes;
-   SQLite migration 000055-family failures also pre-exist in
-   repository/handler suites.
+5. RESOLVED (attribution erratum, final-review F1): the previously reported
+   `internal/handler` failure (`TestOIDCMobileStartCallbackExchangeIsOneTime`)
+   was described as "pre-existing ... unrelated to the mobile-workbench
+   lanes" — that attribution was wrong. Both the test and the
+   signed-state contract it exercises were introduced by the W08 lane
+   (first W08 commit `708132ae`), and the test had never been green on any
+   compilable point of the candidate (the handler package could not compile
+   until the W20 `remote_dispatch` defect was repaired by `cbbc04b4`; the
+   first compilable point already failed). Root cause: the test stub
+   returned a bare provider state while `decorateOIDCMobileAuthorization`
+   requires a signed state, and the test router never mounted the real
+   `/auth/mobile/exchange` route — a test defect, not an implementation
+   defect. Fixed in the final review wave: signed-state stub + real route
+   mount; the family is 5/5 green at the fix HEAD. Separately, the SQLite
+   000055-family failures (repository 2 + session 19 = 21 tests) are
+   W02-lane legacy debt (migration `000055_workbench_runs` was introduced
+   by the W02 merge `391a4ac2`, inside the recovery baseline): zero new
+   failures appeared in `edc853b2..HEAD`, but under the full-plan scope
+   this is W02-domain red debt that has never been fixed — tracked below
+   as proposed issue M-2.
 6. Shared worktree: a concurrent parity automation lane still has in-flight
    edits; this report only covers accepted commits.
+
+## Known debt & proposed issues (issue creation pending authorization)
+
+Recorded per the final review (M-2 + four B-table items); issues should be
+filed once the coordinator authorizes creation.
+
+1. M-2 — SQLite 000055-family red tests (21: repository 2 + handler/session
+   19). W02-lane legacy: `000055_workbench_runs` was introduced by the W02
+   merge `391a4ac2` and predates the recovery baseline `edc853b2`. Zero new
+   failures in `edc853b2..HEAD`, but the debt has been carried as
+   "pre-existing baseline" since the plan's second week and pollutes CI
+   signal. Proposed issue: fix the 000055-family migration semantics (down
+   path / numbering) or re-anchor the suites.
+2. W25 M-1 — cancel / late-success race can orphan attachments (no
+   permission or correctness risk; slow storage leak only). Proposed issue:
+   reference-counting TTL sweeper as the architectural backstop.
+3. W30 — rate-version drift window: deferred re-settlement under a changed
+   rate version is conservatively rejected (no mischarge, possible
+   under-report until reconciled). Proposed issue: a reconciliation
+   adjudication flow.
+4. W33 — production ingest lacks the `deletion_revision` field (out of
+   scope at W33); purge stops at `cleanup_pending`, which is the fail-closed
+   direction. Proposed issue: assign to the W21/W22 domain owners.
+5. W31 — real-provider ownership of the realtime media face remains a
+   blocked-env boundary (no provider environment existed in this plan);
+   accepted as the B-table Ruling stands. Proposed issue only if/when a
+   provider environment lands.
+
 
 ## Rollback commands (per reviewed capability)
 

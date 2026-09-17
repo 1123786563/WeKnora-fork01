@@ -179,14 +179,14 @@
       "kind": "security",
       "status": "pass",
       "baseline_sha": "bd624219",
-      "command": "go test ./internal/router -count=1",
+      "command": "go test ./internal/handler -run 'TestOIDCMobile' -count=1",
       "exit_code": 0,
       "artifact_path": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W08-seam-review.md",
       "artifact_hash": "sha256:5cb7a26dfbc0909762b32e4aa35ca4afaadac17af4e4a98957baeb0acd749143",
       "observed_at": "2026-09-17",
       "review_ref": ".superpowers/sdd/2026-09-12-mobile-ai-saas-workbench/task-W08-seam-review.md",
       "review_independent": true,
-      "note": "Regeneration re-anchor (W37 review F1): the original baseline 661a7b7c is a dangling object outside the candidate history; the seam content lives in the candidate — 58858403 (ancestor) introduced the POST /auth/mobile/exchange router mount and bd624219 (ancestor, last W08 commit touching internal/handler/auth_oidc_mobile_test.go) is the new anchor. The command was blocked-dependency on the W20 remote_dispatch compile defect at seam-review time; that defect was repaired by cbbc04b4 (ancestor) and the suite was re-run at the regeneration HEAD 46427a9e: ok, exit 0."
+      "note": "Regeneration re-anchor (W37 review F1): the original baseline 661a7b7c is a dangling object outside the candidate history; the seam content lives in the candidate — 58858403 (ancestor) introduced the POST /auth/mobile/exchange router mount and bd624219 (ancestor, last W08 commit touching internal/handler/auth_oidc_mobile_test.go) is the new anchor. Final-review F1 fix: the previous regeneration command targeted ./internal/router, which contains no OIDC/mobile-exchange assertions (zero coverage of the W08 deliverable). The command now runs the W08 handler test family directly. The full-chain test TestOIDCMobileStartCallbackExchangeIsOneTime had never been green — the stub returned a bare provider state while the implementation contract (decorateOIDCMobileAuthorization -> secutils.VerifyOIDCState) requires a signed state, and the test router never mounted the real /auth/mobile/exchange route; both stub defects were fixed in the final review wave and the family is 5/5 green (exit 0) at the fix HEAD."
     },
     {
       "task": "W09",

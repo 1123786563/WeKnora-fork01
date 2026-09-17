@@ -77,6 +77,7 @@ func mobileOIDCTestRouter(h *AuthHandler) *gin.Engine {
 	r.GET("/auth/oidc/url", h.GetOIDCAuthorizationURL)
 	r.GET("/auth/oidc/callback", h.OIDCRedirectCallback)
 	r.POST("/auth/oidc/exchange", h.OIDCExchange)
+	r.POST("/auth/mobile/exchange", h.MobileOIDCExchange)
 	return r
 }
 
@@ -130,9 +131,19 @@ func TestOIDCMobileStartCallbackExchangeIsOneTime(t *testing.T) {
 	verifier := "mobile-verifier-value-abcdefghijklmnopqrstuvwxyz123456"
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	// The provider-issued state must already be a signed state: the handler's
+	// mobile decoration (decorateOIDCMobileAuthorization) verifies the
+	// provider state before re-signing it with the mobile handoff fields, so
+	// a bare string is rejected (mirrors mobileOIDCTestState / the signed-
+	// state contract in TestOIDCMobileExchangeUsesSignedStateAndReturnsSessionJSON).
+	providerState, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
+		Nonce: "provider-nonce", RedirectURI: "https://api.example.test/api/v1/auth/oidc/callback",
+		IssuedAt: time.Now().Unix(),
+	})
+	require.NoError(t, err)
 	service := &stubOIDCMobileUserService{
 		authorizationURL: func(context.Context, string) (*types.OIDCAuthURLResponse, error) {
-			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://idp.example/authorize", State: "provider-state", Nonce: "nonce"}, nil
+			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://idp.example/authorize", State: providerState, Nonce: "provider-nonce"}, nil
 		},
 		loginWithOIDC: func(_ context.Context, code, redirect string, _ types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error) {
 			if code != "provider-code" || redirect != "https://api.example.test/api/v1/auth/oidc/callback" {

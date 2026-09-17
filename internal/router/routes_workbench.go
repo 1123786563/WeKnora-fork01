@@ -45,7 +45,12 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 		workbench.GET("/:run_id", h.GetWorkbenchExecution)
 		workbench.GET("/:run_id/snapshot", h.GetWorkbenchSnapshot)
 		workbench.GET("/:run_id/events", h.StreamWorkbenchEvents)
-		workbench.POST("/:run_id/source-events", h.IngestWorkbenchSourceEvent)
+		// source-events is the Paseo bridge's authenticated write callback
+		// (remote nodes reporting events back), not a read: mounting it in
+		// the gated group would let WEKNORA_WORKBENCH_READ_ENABLED=false
+		// sever remote event ingestion — the read gate never gates writes.
+		writes := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+		writes.POST("/:run_id/source-events", h.IngestWorkbenchSourceEvent)
 	}
 	var targetHandler *handler.ExecutionTargetHandler
 	if len(targetHandlers) > 0 {

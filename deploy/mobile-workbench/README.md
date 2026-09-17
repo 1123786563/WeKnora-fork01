@@ -98,7 +98,10 @@ Runtime consumption (as of the W34 fix round):
   BEFORE identity, budget reservation or any durable write: drain closes
   every target lane, `platform_admission` closes only the platform target.
 - `workbenchReadGate` on the read route groups answers 503 while
-  `read_enabled` is off; it never gates writes, admission or cleanup.
+  `read_enabled` is off; it never gates writes, admission or cleanup. The
+  Paseo bridge's source-event write callback
+  (`POST /workbench/executions/:run_id/source-events`) is mounted outside
+  the gated group, so remote event ingestion survives a closed read lane.
 - `WorkbenchPlatformAdmissionEnabled(cfg)` / `WorkbenchPaseoAdmissionEnabled(cfg)`
   (`internal/container/agent_runtime.go`) remain the assembly-level
   predicates; `AgentRecoveryAdmissionEnabled(cfg)` is false while draining.
