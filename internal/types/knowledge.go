@@ -33,6 +33,7 @@ const (
 	ChannelSlack            = "slack"             // Slack
 	ChannelIM               = "im"                // Generic IM channel
 	ChannelNotion           = "notion"            // Notion
+	ChannelConfluence       = "confluence"        // Atlassian Confluence
 	ChannelYuque            = "yuque"             // Yuque (语雀)
 	ChannelRSS              = "rss"               // RSS / Atom feed
 	ChannelIMA              = "ima"               // Tencent IMA (ima.qq.com)
@@ -488,6 +489,12 @@ type KnowledgeCheckParams struct {
 	FileType string
 	FileSize int64
 	FileHash string
+	// Source-identity scoping: same-bytes files from different source
+	// identities are distinct documents (GitLab repo paths, copied Confluence
+	// pages). Non-empty values narrow the hash check so retries stay
+	// idempotent without collapsing distinct sources.
+	DataSourceID string
+	ExternalID   string
 	// URL parameters
 	URL string
 	// Text passage parameters

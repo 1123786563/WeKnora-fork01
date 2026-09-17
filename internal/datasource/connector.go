@@ -93,6 +93,16 @@ type StreamingConnector interface {
 	) (*types.SyncCursor, error)
 }
 
+// FullStreamingConnector lets a streaming connector re-fetch every item while
+// retaining the previous cursor exclusively for safe deletion reconciliation.
+type FullStreamingConnector interface {
+	StreamingConnector
+	FetchFullStream(
+		ctx context.Context, config *types.DataSourceConfig,
+		cursor *types.SyncCursor, h StreamHandler,
+	) (*types.SyncCursor, error)
+}
+
 // ConnectorRegistry manages the registration and lookup of available connectors
 type ConnectorRegistry struct {
 	connectors map[string]Connector
@@ -195,7 +205,7 @@ var ConnectorMetadataRegistry = map[string]ConnectorMetadata{
 		Description:  "Sync spaces and pages from Atlassian Confluence",
 		Priority:     2,
 		AuthType:     "api_key",
-		Capabilities: []string{"incremental"},
+		Capabilities: []string{"incremental", "deletion_sync"},
 	},
 	types.ConnectorTypeYuque: {
 		Type:         types.ConnectorTypeYuque,

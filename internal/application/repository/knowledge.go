@@ -375,6 +375,13 @@ func (r *knowledgeRepository) CheckKnowledgeExists(
 
 	switch params.Type {
 	case "file":
+		// Source-identity scoping (GitLab repo paths, copied Confluence pages):
+		// same-bytes files from different sources stay distinct while retries
+		// against the same source identity still deduplicate.
+		if params.DataSourceID != "" && params.ExternalID != "" {
+			query = query.Where("metadata->>'datasource_id' = ? AND metadata->>'external_id' = ?",
+				params.DataSourceID, params.ExternalID)
+		}
 		// File content is only a duplicate within the same file type. This keeps
 		// same-content documents with distinct formats (for example, .md and
 		// .txt) available as separate knowledge items.
