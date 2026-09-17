@@ -112,3 +112,8 @@ MX-009 裁决「入口接线随 MX-010 落地」在锁账上不闭合：`_layout
 ## D-026 · typecheck 基线更新（2026-09-18，MX-017）
 
 MX-017 产品对话重写消除了 ConversationScreen 的 3 个 G02/G04 继承错误（createRequestID 悬空导入/approve·reject 不在命令类型）——typecheck 基线由 14 降为 **11**（app/5、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1，均 legacy 归属 MX-009 后续/其他）。此后基线=11。
+
+## D-027 · 静默替换纪律与锁路径偏离披露（2026-09-18，MX-030 R2/MX-015 R1）
+
+- python str.replace 无 assert 时静默无操作——曾导致 5cf0789c 提交信息与 diff 不符（声称清除 probe 参数实际未清除）。纪律固化：**一切脚本化替换必须 assert 命中或事后 grep 验证**；记录失实由复核抓获即真实修正+披露，不二次粉饰。
+- MX-015 锁路径偏离（weknora/workbench/task-form.ts → packages/domain/src/mobile/task-form.ts）已披露登记：纯领域模型落位 domain 使 node probe 可直接消费；无并发冲突（原路径无其他声明者）。

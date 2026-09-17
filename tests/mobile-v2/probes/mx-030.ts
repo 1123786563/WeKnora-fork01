@@ -50,7 +50,6 @@ export async function runProbe(input: ProbeInput): Promise<Observation> {
     clearCredentials: async (target) => {
       storage.delete(`${target.origin}:${target.userId}:credential`);
     },
-    credentialWriteGuard: () => null,
   });
 
   if (activeStreams !== 0) throw new Error('logout must close active streams');

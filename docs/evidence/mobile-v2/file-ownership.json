@@ -550,15 +550,6 @@
       "source": "task-index",
       "kind_basis": "baseline-ls-tree"
     },
-    "apps/mobile/sources/weknora/workbench/task-form.ts": {
-      "owners": [
-        "MX-015"
-      ],
-      "kind": "create",
-      "shared_serialized": false,
-      "source": "task-index",
-      "kind_basis": "baseline-ls-tree"
-    },
     "deploy/mobile-workbench/mobile-release.md": {
       "owners": [
         "MX-036"
@@ -2007,6 +1998,24 @@
       "shared_serialized": false,
       "source": "mx-013-lock-extension",
       "note": "首页挂载 spec"
+    },
+    "packages/domain/src/mobile/task-form.ts": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-015-lock-deviation",
+      "note": "规格写锁路径为 weknora/workbench/task-form.ts；实际落位 domain（纯领域模型无 RN 依赖可被 probe 直接消费）——偏离已披露（D-027）"
+    },
+    "apps/mobile/sources/weknora/workbench/task-form.ts": {
+      "owners": [
+        "MX-015"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-015-lock-deviation",
+      "note": "规格声明路径；实际落位 packages/domain/src/mobile/task-form.ts（D-027 偏离披露，映射条目防覆盖缺口）"
     }
   }
 }
