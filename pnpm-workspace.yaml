@@ -12,6 +12,7 @@ packages:
   - apps/embed
   - apps/desktop
   - apps/mobile
+  - apps/miniprogram
   - packages/happy-wire
 
 onlyBuiltDependencies:

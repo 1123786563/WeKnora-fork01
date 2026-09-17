@@ -205,13 +205,9 @@ export function createKnowledgeDocumentsApi(
       return parseKnowledgeDocumentListResponse(await request({ method: 'GET', path }));
     },
     async upload(knowledgeBaseId: string, input: KnowledgeDocumentUploadInput, signal?: AbortSignal): Promise<KnowledgeDocument> {
-      const form = new FormData();
       const nativeFile = isNativeFileSource(input.file) ? input.file : undefined;
-      if (nativeFile) {
-        form.append('file', nativeFile as unknown as Blob);
-      } else {
-        form.append('file', input.file as Blob, input.fileName);
-      }
+      const form = nativeFile ? undefined : new FormData();
+      if (form) form.append('file', input.file as Blob, input.fileName);
       const multipartFields: Record<string, string> = {};
       if (input.fileName) multipartFields.fileName = input.fileName;
       if (input.tag_ids) multipartFields.tag_ids = input.tag_ids.join(',');
@@ -219,7 +215,7 @@ export function createKnowledgeDocumentsApi(
       if (input.process_config !== undefined) multipartFields.process_config = JSON.stringify(input.process_config);
       if (input.enable_multimodel !== undefined) multipartFields.enable_multimodel = String(input.enable_multimodel);
       if (input.channel) multipartFields.channel = input.channel;
-      for (const [key, value] of Object.entries(multipartFields)) form.append(key, value);
+      if (form) for (const [key, value] of Object.entries(multipartFields)) form.append(key, value);
       const response = await request({
         method: 'POST',
         path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/file`,

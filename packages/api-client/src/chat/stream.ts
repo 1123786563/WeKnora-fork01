@@ -13,6 +13,7 @@ export type ServerSentEventHandler = (event: ParsedServerSentEvent) => void;
 /** Incremental SSE parser; callers decide how JSON data maps to ChatStreamEvent. */
 export function createServerSentEventParser(onEvent: ServerSentEventHandler) {
   let buffer = '';
+  let previousWasCR = false;
   let id: string | undefined;
   let event: string | undefined;
   let data: string[] = [];
@@ -42,15 +43,27 @@ export function createServerSentEventParser(onEvent: ServerSentEventHandler) {
 
   return {
     push(chunk: string) {
-      buffer += chunk.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) consumeLine(line);
+      // A CRLF pair may straddle network chunks. Consume CR immediately,
+      // then suppress only the immediately following LF, even in the next push.
+      for (const character of chunk) {
+        if (previousWasCR) {
+          previousWasCR = false;
+          if (character === '\n') continue;
+        }
+        if (character === '\r' || character === '\n') {
+          consumeLine(buffer);
+          buffer = '';
+          previousWasCR = character === '\r';
+        } else {
+          buffer += character;
+        }
+      }
     },
     finish() {
       if (buffer) consumeLine(buffer);
       dispatch();
       buffer = '';
+      previousWasCR = false;
     },
   };
 }
