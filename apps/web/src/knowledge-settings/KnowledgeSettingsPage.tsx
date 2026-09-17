@@ -142,6 +142,14 @@ interface SettingSummary {
   kind: 'configured' | 'ready' | 'unavailable' | 'default' | 'empty' | 'available';
   label: string;
   detail: string;
+  // R455: the activity/datasource/share/graph overview tiles are a React-side
+  // addition (Vue's nav groups carry no such tiles), so their copy is
+  // localized through fresh kbSettings.summary.* keys present in all five
+  // locales. label/detail keep the en-US fallback text; when the keys are
+  // present the section renderer resolves them through the locale translator.
+  labelKey?: string;
+  labelParams?: Record<string, string | number>;
+  detailKey?: string;
 }
 
 const sections: KnowledgeSettingsSection[] = [
@@ -344,18 +352,29 @@ export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput
     storage: storageId || storageProvider
       ? { kind: 'configured', label: storageProvider ? titleCase(storageProvider) : 'Storage instance', detail: storageId || 'Provider configured' }
       : { kind: 'default', label: 'System default', detail: 'No explicit instance' },
-    activity: activityCount > 0
-      ? { kind: 'available', label: `${activityCount} recent ${activityCount === 1 ? 'event' : 'events'}`, detail: [latestAction, latestOutcome].filter(Boolean).join(' · ') || 'Open to inspect changes' }
-      : { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' },
+    activity: (() => {
+      if (activityCount <= 0) return { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here', labelKey: 'kbSettings.summary.activity.emptyLabel', detailKey: 'kbSettings.summary.activity.emptyDetail' };
+      const activityDetail = [latestAction, latestOutcome].filter(Boolean).join(' · ');
+      return {
+        kind: 'available',
+        label: `${activityCount} recent ${activityCount === 1 ? 'event' : 'events'}`,
+        detail: activityDetail || 'Open to inspect changes',
+        labelKey: activityCount === 1 ? 'kbSettings.summary.activity.countOne' : 'kbSettings.summary.activity.countOther',
+        labelParams: { count: activityCount },
+        // The detail is either live activity data (action · outcome, locale
+        // neutral) or the translatable "open to inspect" fallback.
+        ...(activityDetail ? {} : { detailKey: 'kbSettings.summary.activity.inspect' as const }),
+      };
+    })(),
     datasource: dataSourceCount > 0
-      ? { kind: 'available', label: `${dataSourceCount} data source${dataSourceCount === 1 ? '' : 's'}`, detail: 'Open to inspect sync status' }
-      : { kind: 'empty', label: 'No data sources', detail: 'Add an external connector' },
+      ? { kind: 'available', label: `${dataSourceCount} data source${dataSourceCount === 1 ? '' : 's'}`, detail: 'Open to inspect sync status', labelKey: dataSourceCount === 1 ? 'kbSettings.summary.datasource.countOne' : 'kbSettings.summary.datasource.countOther', labelParams: { count: dataSourceCount }, detailKey: 'kbSettings.summary.datasource.inspect' }
+      : { kind: 'empty', label: 'No data sources', detail: 'Add an external connector', labelKey: 'kbSettings.summary.datasource.emptyLabel', detailKey: 'kbSettings.summary.datasource.emptyDetail' },
     share: shareCount > 0
-      ? { kind: 'available', label: `${shareCount} shared space${shareCount === 1 ? '' : 's'}`, detail: 'Access is managed per share' }
-      : { kind: 'empty', label: 'Not shared', detail: 'No spaces have access' },
+      ? { kind: 'available', label: `${shareCount} shared space${shareCount === 1 ? '' : 's'}`, detail: 'Access is managed per share', labelKey: shareCount === 1 ? 'kbSettings.summary.share.countOne' : 'kbSettings.summary.share.countOther', labelParams: { count: shareCount }, detailKey: 'kbSettings.summary.share.managed' }
+      : { kind: 'empty', label: 'Not shared', detail: 'No spaces have access', labelKey: 'kbSettings.summary.share.emptyLabel', detailKey: 'kbSettings.summary.share.emptyDetail' },
     graph: graphEnabled
-      ? { kind: 'configured', label: 'Knowledge graph enabled', detail: 'Entity and relationship extraction' }
-      : { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled' },
+      ? { kind: 'configured', label: 'Knowledge graph enabled', detail: 'Entity and relationship extraction', labelKey: 'kbSettings.summary.graph.enabledLabel', detailKey: 'kbSettings.summary.graph.enabledDetail' }
+      : { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled', labelKey: 'kbSettings.summary.graph.disabledLabel', detailKey: 'kbSettings.summary.graph.disabledDetail' },
   };
 }
 
@@ -670,6 +689,16 @@ function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
   return 'neutral';
 }
 
+// R455: resolves the overview-tile copy through the locale translator when the
+// summary carries a message key (activity/datasource/share/graph tiles); the
+// English label/detail text stays the literal fallback for data-driven tiles
+// (parser/vectorStore/storage) and en-US.
+function localizedSummaryField(summary: SettingSummary, field: 'label' | 'detail', t: (key: string, values?: Record<string, string | number>) => string): string {
+  if (field === 'label' && summary.labelKey) return t(summary.labelKey, summary.labelParams);
+  if (field === 'detail' && summary.detailKey) return t(summary.detailKey);
+  return summary[field];
+}
+
 interface KnowledgeSettingsPageProps {
   knowledgeBase?: KnowledgeSettingsInput;
   knowledgeBaseId?: string;
@@ -940,7 +969,7 @@ interface SettingsSectionProps {
   configuredParserEngine: string;
   indexingLocked: boolean;
   onPendingParserEngine: (value: string) => void;
-  t: (key: string) => string;
+  t: (key: string, values?: Record<string, string | number>) => string;
   StatusComponent: ElementType;
   onGraphChange: (value: GraphExtractConfig) => void;
   editorPayload: KnowledgeSettingsSavePayload;
@@ -963,8 +992,8 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
     <div style={{ display: 'grid', gap: '0.9rem' }}>
       {showSummary ? (
         <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
-          <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
-          <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
+          <StatusComponent tone={summaryTone(summary)}>{localizedSummaryField(summary, 'label', t)}</StatusComponent>
+          <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{localizedSummaryField(summary, 'detail', t)}</p>
         </div>
       ) : null}
       {section === 'basic' ? (
@@ -1048,17 +1077,17 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
       {section === 'activity' ? (
         client && knowledgeBaseId
           ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={knowledgeBaseId} />
-          : <p className="wk-muted" style={{ margin: 0 }}>No recorded changes for this knowledge base.</p>
+          : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.activity.sectionEmpty')}</p>
       ) : null}
       {section === 'datasource' ? (
         client && knowledgeBaseId
           ? <div style={{ maxHeight: '34rem', overflow: 'auto' }}><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={canManage} /></div>
-          : <p className="wk-muted" style={{ margin: 0 }}>No data sources configured.</p>
+          : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.datasource.sectionEmpty')}</p>
       ) : null}
       {section === 'share' ? (
         client && knowledgeBaseId
           ? <KnowledgeBaseShareDialog client={client} knowledgeBaseId={knowledgeBaseId} knowledgeBaseName={knowledgeBaseName} open inline onClose={() => undefined} onChanged={() => undefined} />
-          : <p className="wk-muted" style={{ margin: 0 }}>This knowledge base is not shared.</p>
+          : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.share.sectionEmpty')}</p>
       ) : null}
       {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
     </div>

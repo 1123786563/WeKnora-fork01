@@ -4875,3 +4875,18 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   modified by this round. Deferred queue: KnowledgeSettingsPage summary-tile i18n (knowledge-settings domain);
   platform-shell.css orphan deletion; pre-push import-resolvability + test-glob self-check script (A2
   suggestion).
+## 2026-09-17 Round R455 — Settings summary-tile i18n wired
+
+- Two parallel agents (A1 implementation, A2 verifier; the R453-queued item executed directly). Verdict: A1
+  PASS (7-point review). Final gates: test:web 1643/1643 (+5), test:shared 747/747 (+1), typecheck clean,
+  build ✓, zero new failures.
+- A1: the four summary tiles (activity/datasource/share/graph) plus three section empty-state sentences
+  (including "This knowledge base is not shared." — same class, found during the sweep) wired through
+  `kbSettings.summary.*` — 22 keys ×5 locale self-translated (the Vue nav has no such tile copy; React-side
+  overview component, self-translation sanctioned). `summarizeKnowledgeSettings` keeps English fallback and
+  adds structured labelKey/labelParams/detailKey; en-US output byte-identical to before (regression-locked);
+  count plurals preserved. Red 1/5 → green 5/5; knowledge-settings 98/98; i18n 71/71 (new keys guard:
+  22×5, placeholder alignment, en/zh spot-checks). Deferred: parser/vectorStore/storage tile detail strings.
+- Gates: `pnpm test:web` 1643/1643, `pnpm test:shared` 747/747, `pnpm typecheck:web` clean, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-17-r455-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
