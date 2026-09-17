@@ -195,6 +195,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
 	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
+	must(container.Provide(NewMobileDeviceStore))
+	must(container.Provide(NewMobileDeviceHandler))
 	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(repository.NewWorkbenchListStore))
 	must(container.Provide(NewWorkbenchListHandler))

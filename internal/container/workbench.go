@@ -1,10 +1,14 @@
 package container
 
 import (
+	"os"
+	"strings"
+
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -66,4 +70,22 @@ func storeDB(store *workbenchservice.GormInteractionStore) *gorm.DB {
 
 func NewWorkbenchCommandHandler(interactions *workbenchservice.Service) *session.WorkbenchCommandHandler {
 	return session.NewWorkbenchCommandHandler(interactions)
+}
+
+func mobileEnvironment() string {
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_MOBILE_ENVIRONMENT")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(os.Getenv("APP_ENV")); value != "" {
+		return value
+	}
+	return "development"
+}
+
+func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
+	return repository.NewMobileDeviceStore(db, mobileEnvironment())
+}
+
+func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
+	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
 }

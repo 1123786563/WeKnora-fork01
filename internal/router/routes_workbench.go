@@ -108,3 +108,22 @@ func RegisterMobileVoiceRoutes(r *gin.RouterGroup, h *handler.MobileVoiceHandler
 	voice.DELETE("/sessions/:id", h.StopVoiceSession)
 	voice.POST("/transcriptions", h.TranscribeAudio)
 }
+
+// RegisterMobileDeviceRoutes keeps device registration under the same
+// authenticated API boundary as the workbench. The handler derives owner and
+// tenant from the auth context; neither route parameter nor body can rewrite
+// that scope.
+func RegisterMobileDeviceRoutes(r *gin.RouterGroup, h *handler.MobileDeviceHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	devices := g.apiKeyGroup(r.Group("/mobile/devices", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	devices.GET("", h.List)
+	devices.POST("/:id/registration-intent", h.IssueIntent)
+	devices.PUT("/:id", h.Register)
+	devices.DELETE("/:id", h.Revoke)
+	devices.POST("/:id/presence", h.Presence)
+	devices.GET("/:id/presence", h.GetPresence)
+	devices.PUT("/:id/presence", h.PutPresence)
+	devices.DELETE("/:id/presence", h.DeletePresence)
+}
