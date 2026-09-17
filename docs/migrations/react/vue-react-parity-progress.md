@@ -4624,3 +4624,37 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1545/1545, `pnpm test:shared` 600/600, `pnpm typecheck:web` clean, `pnpm build:web` ✓
   (A5 final run on the merged state; +19 all accounted). Evidence:
   `evidence/vue-react-parity/2026-09-17-r444-code-parity-round.md`. No Vue, mobile, or Go code was modified.
+
+## 2026-09-17 Round R445 — Shared-drawer diffs, embed rich rendering, storage editability, embedding visibility
+
+- Infrastructure incident: three parallel-dispatch attempts (5/5/5 agents) were interrupted before resume; the
+  round completed under the relaxed 2-agent minimum — A1 (shared drawer) + A2 (embed rich rendering) dispatched,
+  A3 executed directly by the orchestrator on the interrupted partial's red tests, and a dispatched reviewer
+  (A5v) audited all three change sets: all PASS. Commit-integrity incident found and fixed: R442/R444 had each
+  missed one file (`chunkingSamples.ts`, `embed/markdown.ts` were untracked while referenced by committed code
+  — a fresh checkout of those commits would not build); fixed by `ca059689` (+637). Every round commit now
+  sanity-checks untracked files referenced by committed code.
+- A1: shared cards converge their actions on `isSharedCard` (Vue renders only the info-circle detail trigger
+  for non-owned shared cards); shared document-count badge uses Vue's `knowledge_count || '-'`; drawer close
+  re-audit — Vue's header is an × icon with `aria-label=general.close`, so only React's closeLabel changed.
+  knowledge-bases 113/113 (also fixed an interrupted-session test that OOM-killed the runner by deep-diffing a
+  jsdom Element). BLOCKED: the React-only read-only banner's deletion point is inside the externally occupied
+  `KnowledgeDocumentsPage.tsx:3362-3366` — exact location recorded.
+- A2: KaTeX wired with the Vue frontend's literal pins (katex ^0.16.45, marked-katex-extension ^5.1.8,
+  throwOnError:false/nonStandard:true) on a dedicated Marked instance (a global marked.use would leak into the
+  wiki face); citation icons restored (ziliao.svg/websearch-globe.svg); mermaid assumption REVERSED by
+  verification — the Vue embed face DOES hydrate mermaid, recorded as a real gap with the reuse path (views
+  chat mermaid engine, mermaid 11.15.0). embed suites 50/50 (+6); build emits the katex chunk.
+- A3 (orchestrator-executed on the interrupted partial's red tests): storage instance select binds Vue
+  KBStorageSettings semantics — `disabled` only while the KB has files, editable otherwise, handleChange emits
+  backend id + provider into the draft, both persist through the config PUT; the committed backend stays
+  selectable when absent from the live list. Embedding row visibility per KBModelConfig
+  `v-if="ragEnabled !== false || wikiEnabled"` — pure-LLM drafts remove the row, wiki-only keeps it without the
+  required star and with `embeddingWikiOptionalDesc`; R444's all-off test rewritten to the Vue-accurate
+  contract. r445 tests 5/5; directory 74/74.
+- Auth slice (interrupted-session continuation, separate commit `2f0fc5ef`): login language switch confirms
+  with `language.languageSaved` in the new locale (Vue Login.vue:522-528); OIDC-entry failures use
+  `auth.oidcLoginFailed` (Vue Login.vue:636/647). auth suites 22/22.
+- Gates: `pnpm test:web` 1560/1560, `pnpm test:shared` 600/600, `pnpm typecheck:web` clean, `pnpm build:web` ✓
+  (dispatched reviewer's and orchestrator's runs agree; +15 vs R444). Evidence:
+  `evidence/vue-react-parity/2026-09-17-r445-code-parity-round.md`. No Vue, mobile, or Go code was modified.
