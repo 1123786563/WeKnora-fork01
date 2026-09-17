@@ -5,6 +5,8 @@ import { ConversationViewModelContext } from './context';
 import { createRequestID, type ConversationViewModel } from './view-model';
 import type { AttachmentEntryActions, SessionUploadRecord, SessionUploadStatus } from '../resources/upload';
 import { isRecoveryNotFound, type ExecutionRecovery } from '../executions/recovery';
+import { createDictationController, DictationError, type DictationLimits, type DictationPort, type DictationScope } from '../voice/dictation';
+import { DictationInput } from '../voice/DictationInput';
 export { ProductConversationMessages } from './ProductConversationMessages';
 
 export interface ConversationScreenProps {
@@ -26,6 +28,13 @@ export interface ConversationScreenProps {
    * disposes the handle, so the assembler passes a per-mount instance.
    */
   recovery?: ExecutionRecovery;
+  /**
+   * W29 hold-to-talk dictation surface: the native audio port plus optional
+   * capability limits and the product scope seam. The transcription itself
+   * is the port's W30 consumption point; until it lands the voice flow
+   * surfaces a typed failure while the text input stays usable.
+   */
+  dictation?: ConversationDictation;
 }
 
 /** Attachment surface the conversation input box consumes. */
@@ -37,34 +46,74 @@ export interface ConversationAttachments {
   subscribe?(listener: () => void): () => void;
 }
 
+/** Voice surface the conversation input box consumes (W29). */
+export interface ConversationDictation {
+  port: DictationPort;
+  limits?: Partial<DictationLimits>;
+  scope?: DictationScope;
+}
+
 const uploadStatusText: Record<SessionUploadStatus, string> = {
   uploading: '上传中',
   uploaded: '已附加',
   failed: '上传失败',
 };
 
-export function ConversationControlPanel({ viewModel, attachments }: { viewModel: ConversationViewModel; attachments?: ConversationAttachments }) {
-  const [draft, setDraft] = React.useState('');
+export function ConversationControlPanel({ viewModel, attachments, dictation }: { viewModel: ConversationViewModel; attachments?: ConversationAttachments; dictation?: ConversationDictation }) {
+  const [draft, setDraftState] = React.useState('');
+  // The dictation controller writes and reads the draft outside React's
+  // render cycle, so the state travels through a synchronous ref mirror.
+  const draftRef = React.useRef('');
+  const applyDraft = React.useCallback((text: string) => {
+    draftRef.current = text;
+    setDraftState(text);
+  }, []);
   const [busy, setBusy] = React.useState(false);
   const [, redrawAttachments] = React.useReducer((value: number) => value + 1, 0);
+  const [, redrawDictation] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => attachments?.subscribe?.(() => redrawAttachments()), [attachments, redrawAttachments]);
-  const submit = async () => {
-    if (!viewModel.send || !draft.trim() || busy) return;
+  // The send seam the dictation confirm rides: the same single-flight W10
+  // SendController as typed input, reached through a live ref so the
+  // once-created controller never holds a stale submit closure. A skipped
+  // (busy/empty) send rejects instead of resolving so confirm keeps the draft.
+  const sendRef = React.useRef<(text: string) => Promise<void>>(async () => undefined);
+  const sendOnce = async (text: string): Promise<void> => {
+    if (!viewModel.send || text.trim() === '') throw new DictationError('TRANSCRIPT_REQUIRED');
+    if (busy) throw new Error('SEND_IN_PROGRESS');
     setBusy(true);
     try {
-      await viewModel.send.submit(draft, createRequestID());
-      setDraft('');
+      await viewModel.send.submit(text, createRequestID());
+      applyDraft('');
     } finally {
       setBusy(false);
     }
   };
+  sendRef.current = sendOnce;
+  const submit = async () => {
+    if (!viewModel.send || !draftRef.current.trim() || busy) return;
+    await sendOnce(draftRef.current);
+  };
+  const canVoice = viewModel.capabilities.canVoice && Boolean(dictation);
+  const dictationController = React.useMemo(() => {
+    if (!canVoice || !dictation) return null;
+    return createDictationController(
+      // Portless transcription is unused in production: the native port owns
+      // the flow and its `transcribe` is the W30 consumption point.
+      async () => { throw new DictationError('TRANSCRIBE_FAILED', 'DICTATION_PORT_REQUIRED'); },
+      applyDraft,
+      () => draftRef.current,
+      (text) => sendRef.current(text),
+      { port: dictation.port, limits: dictation.limits, scope: dictation.scope, onStateChange: () => redrawDictation() },
+    );
+  }, [applyDraft, canVoice, dictation, redrawDictation]);
   const canAttach = viewModel.capabilities.canAttach && Boolean(attachments);
   return (
     <View accessibilityLabel="conversation-controls">
-      <TextInput accessibilityLabel="conversation-draft" value={draft} onChangeText={setDraft} />
-      <Pressable accessibilityRole="button" accessibilityLabel="发送" disabled={busy} onPress={() => void submit()}>
+      <TextInput accessibilityLabel="conversation-draft" value={draft} onChangeText={applyDraft} />
+      <Pressable accessibilityRole="button" accessibilityLabel="发送" disabled={busy} onPress={() => void (dictationController ? dictationController.confirm().catch(() => undefined) : submit())}>
         <Text>{busy ? '发送中' : '发送'}</Text>
       </Pressable>
+      {canVoice && dictationController ? <DictationInput controller={dictationController} /> : null}
       {canAttach && attachments ? (
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable accessibilityRole="button" accessibilityLabel="附件" onPress={() => void attachments.entries.chooseFromLibrary()}>
@@ -115,7 +164,7 @@ export function ConversationControlPanel({ viewModel, attachments }: { viewModel
 }
 
 /** Product-owned seam around the retained Happy renderer. */
-export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery }: ConversationScreenProps) {
+export function ConversationScreen({ sessionId, viewModel, sessionRenderer: SessionRenderer = SessionView, attachments, recovery, dictation }: ConversationScreenProps) {
   const [, redraw] = React.useReducer((value: number) => value + 1, 0);
   React.useEffect(() => viewModel.subscribe?.(() => redraw()), [redraw, viewModel]);
   // W12: the product conversation resumes executions when the app returns to
@@ -153,7 +202,7 @@ export function ConversationScreen({ sessionId, viewModel, sessionRenderer: Sess
             </Pressable>
           </View>
         )}
-        <ConversationControlPanel viewModel={viewModel} attachments={attachments} />
+        <ConversationControlPanel viewModel={viewModel} attachments={attachments} dictation={dictation} />
         <SessionRenderer id={sessionId} viewModel={viewModel} />
       </View>
     </ConversationViewModelContext.Provider>

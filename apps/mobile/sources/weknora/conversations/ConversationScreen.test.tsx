@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConversationScreen, ProductConversationMessages } from './ConversationScreen';
 import type { ConversationViewModel } from './view-model';
 import type { ExecutionRecovery } from '../executions/recovery';
+import { DictationError, type DictationPort } from '../voice/dictation';
 
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
@@ -173,6 +174,145 @@ it('shows a retry affordance while recovery is failed and clears it once recover
   await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '重试恢复' }).props.onPress(); });
   expect(retries.count).toBe(1);
   expect(renderer!.root.findAllByProps({ accessibilityLabel: 'recovery-failure' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+});
+});
+
+// ---------------------------------------------------------------------------
+// W29 — hold-to-talk dictation on the conversation control panel.
+// ---------------------------------------------------------------------------
+
+function fakeDictationPort(overrides: Partial<DictationPort> = {}) {
+  const calls: string[] = [];
+  const impl: DictationPort = {
+    async start() { return undefined; },
+    async stop() { return { uri: 'file:///cache/dictation-1.m4a', durationMs: 1500 }; },
+    async cancel() { return undefined; },
+    async transcribe() { return '删除这个文件'; },
+    ...overrides,
+  };
+  const port: DictationPort = {
+    async start() { calls.push('start'); return impl.start(); },
+    async stop() { calls.push('stop'); return impl.stop(); },
+    async cancel() { calls.push('cancel'); return impl.cancel(); },
+    async transcribe(uri) { calls.push(`transcribe:${uri}`); return impl.transcribe(uri); },
+  };
+  return { port, calls };
+}
+
+function voiceModel(send: NonNullable<ConversationViewModel['send']>): ConversationViewModel {
+  return model({
+    pendingInteractions: [],
+    capabilities: { canCancel: false, canSteer: false, canAttach: false, canVoice: true },
+    send,
+  });
+}
+
+describe('ConversationScreen dictation (W29)', () => {
+it('fills the draft from the transcript without sending; the edited user send goes through exactly once', async () => {
+  const submitted: Array<{ text: string; requestID: string }> = [];
+  const viewModel = voiceModel({
+    draft: () => '', busy: () => false,
+    submit: async (text, requestID) => { submitted.push({ text, requestID }); },
+  });
+  const { port, calls } = fakeDictationPort();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, dictation: { port } })); });
+  const hold = renderer!.root.findByProps({ accessibilityLabel: '按住说话' });
+  await act(async () => { hold.props.onPressIn(); });
+  expect(calls).toEqual(['start']);
+  await act(async () => { hold.props.onPressOut(); });
+  // Transcription completion fills the draft only: no send/submit happened.
+  expect(submitted).toEqual([]);
+  const input = renderer!.root.findByProps({ accessibilityLabel: 'conversation-draft' });
+  expect(input.props.value).toBe('删除这个文件');
+  expect(calls).toContain('transcribe:file:///cache/dictation-1.m4a');
+  // The user edits the transcript and sends their latest value, once.
+  await act(async () => { input.props.onChangeText('保留这个文件'); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '发送' }).props.onPress(); });
+  expect(submitted).toEqual([{ text: '保留这个文件', requestID: expect.any(String) }]);
+  await act(async () => renderer!.unmount());
+});
+
+it('prevents a second send while the first is still in flight', async () => {
+  let release!: () => void;
+  const submitted: string[] = [];
+  const viewModel = voiceModel({
+    draft: () => '', busy: () => false,
+    submit: async (text) => { submitted.push(text); await new Promise<void>((resolve) => { release = resolve; }); },
+  });
+  const { port } = fakeDictationPort();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, dictation: { port } })); });
+  const input = renderer!.root.findByProps({ accessibilityLabel: 'conversation-draft' });
+  await act(async () => { input.props.onChangeText('hello'); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '发送' }).props.onPress(); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '发送' }).props.onPress(); });
+  expect(submitted).toEqual(['hello']);
+  await act(async () => release());
+  await act(async () => renderer!.unmount());
+});
+
+it('falls back to the text input when the microphone permission is denied', async () => {
+  const submitted: string[] = [];
+  const viewModel = voiceModel({
+    draft: () => '', busy: () => false,
+    submit: async (text) => { submitted.push(text); },
+  });
+  const { port, calls } = fakeDictationPort({ start: async () => { throw new DictationError('MIC_PERMISSION_DENIED'); } });
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, dictation: { port } })); });
+  const hold = renderer!.root.findByProps({ accessibilityLabel: '按住说话' });
+  await act(async () => { hold.props.onPressIn(); });
+  await act(async () => { hold.props.onPressOut(); });
+  expect(renderer!.root.findByProps({ accessibilityLabel: 'dictation-error' }).props.children).toBe('麦克风权限被拒绝，已切回文本输入');
+  expect(calls).toEqual(['start']); // no stop, no transcription
+  // The fallback: typing and sending still works.
+  const input = renderer!.root.findByProps({ accessibilityLabel: 'conversation-draft' });
+  await act(async () => { input.props.onChangeText('typed fallback'); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '发送' }).props.onPress(); });
+  expect(submitted).toEqual(['typed fallback']);
+  await act(async () => renderer!.unmount());
+});
+
+it('cancel during a hold deletes the temporary audio and ignores the stray release', async () => {
+  const viewModel = voiceModel({ draft: () => '', busy: () => false, submit: async () => undefined });
+  const { port, calls } = fakeDictationPort();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, dictation: { port } })); });
+  const hold = renderer!.root.findByProps({ accessibilityLabel: '按住说话' });
+  await act(async () => { hold.props.onPressIn(); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '取消录音' }).props.onPress(); });
+  expect(calls).toContain('cancel');
+  await act(async () => { hold.props.onPressOut(); });
+  expect(calls.filter((call) => call.startsWith('transcribe:'))).toHaveLength(0);
+  expect(renderer!.root.findByProps({ accessibilityLabel: 'conversation-draft' }).props.value).toBe('');
+  await act(async () => renderer!.unmount());
+});
+
+it('backgrounding cancels an in-flight hold', async () => {
+  const viewModel = voiceModel({ draft: () => '', busy: () => false, submit: async () => undefined });
+  const { port, calls } = fakeDictationPort();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel, dictation: { port } })); });
+  await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '按住说话' }).props.onPressIn(); });
+  await act(async () => { (AppState as unknown as { emitForTest(state: string): void }).emitForTest('background'); });
+  expect(calls).toContain('cancel');
+  await act(async () => renderer!.unmount());
+});
+
+it('hides the voice entry when the capability is off or no dictation surface is provided', async () => {
+  const entries = { chooseFromLibrary: vi.fn(async () => undefined), takePhoto: vi.fn(async () => undefined), acceptSharedFile: vi.fn(async () => undefined) };
+  const attachments = { entries, records: () => [], cancel: () => undefined, remove: () => undefined };
+  const offViewModel = model({ pendingInteractions: [], capabilities: { canCancel: false, canSteer: false, canAttach: false, canVoice: false } });
+  const { port } = fakeDictationPort();
+  let renderer: ReturnType<typeof create>;
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel: offViewModel, attachments, dictation: { port } })); });
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: '按住说话' })).toHaveLength(0);
+  await act(async () => renderer!.unmount());
+  const capableViewModel = voiceModel({ draft: () => '', busy: () => false, submit: async () => undefined });
+  await act(async () => { renderer = create(React.createElement(ConversationScreen, { sessionId: 's1', viewModel: capableViewModel })); });
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: '按住说话' })).toHaveLength(0);
   await act(async () => renderer!.unmount());
 });
 });

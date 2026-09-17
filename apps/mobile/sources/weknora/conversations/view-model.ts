@@ -261,7 +261,10 @@ export function createProductConversationViewModel(input: {
     // W25: the product conversation always assembles the attachment pipeline
     // when the route can authenticate; ConversationScreen still hides the
     // entries whenever no `attachments` prop reaches it.
-    capabilities: { canCancel: true, canSteer: true, canAttach: true },
+    // W29: same contract for the voice surface — canVoice is declared here
+    // and the screen still hides the hold-to-talk entry until a `dictation`
+    // prop (native audio port) reaches it.
+    capabilities: { canCancel: true, canSteer: true, canAttach: true, canVoice: true },
     commands: {
       cancel: async (runID, expectedRevision = 0) => {
         const captured = input.scope.capture();

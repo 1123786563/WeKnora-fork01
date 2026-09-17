@@ -7,6 +7,7 @@ import { ConversationScreen } from '@/weknora/conversations/ConversationScreen';
 import { createProductConversationViewModel, createProductExecutionApi } from '@/weknora/conversations/view-model';
 import { resolveProductSessionResources, type ProductSessionResourceSelection, type VerifiedProductSessionResources } from '@/weknora/conversations/resources';
 import { createProductSessionAttachments } from '@/weknora/resources/product-session-attachments';
+import { createProductDictationPort } from '@/weknora/voice/native-dictation-port';
 import { useProductAuth } from '@/weknora/auth/session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createPersistentExecutionRequestStorage, getExecutionStorage } from '@/weknora/platform/execution-storage';
@@ -89,6 +90,15 @@ function ProductSessionRoute() {
       sessionID: sessionId,
     });
   }, [auth.authSession, auth.credential, auth.scope, host, sessionId, viewModel]);
+  // W29 voice chain: the production dictation port (expo-audio capture with
+  // permission gating and temp-file cleanup). The authenticated transcription
+  // call is the port's W30 consumption point and is injected there when W30
+  // lands; the scope seam cancels an in-flight dictation on space switch.
+  const dictation = React.useMemo(() => (
+    host && viewModel && auth.credential?.kind === 'bearer' && auth.authSession
+      ? { port: createProductDictationPort(), scope: auth.scope }
+      : null
+  ), [auth.authSession, auth.credential, auth.scope, host, viewModel]);
   // Sessions without explicit product resource metadata remain the retained Happy route.
   // Product sessions never receive defaults: they wait for all server ownership checks.
   if (!productRoute) return <SessionView id={sessionId} />;
@@ -99,7 +109,7 @@ function ProductSessionRoute() {
   // (AppState active -> status/history/stream; background closes only the
   // subscription). The controller is per-view-model, i.e. per mount, matching
   // the screen's dispose-on-unmount contract.
-  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} />;
+  return <ConversationScreen sessionId={sessionId} viewModel={viewModel} attachments={attachments ?? undefined} recovery={viewModel.recovery} dictation={dictation ?? undefined} />;
 }
 
 export default React.memo(ProductSessionRoute);

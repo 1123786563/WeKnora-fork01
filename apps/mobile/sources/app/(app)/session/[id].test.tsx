@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => {
     getDocumentAsync: vi.fn(),
     requestCameraPermissionsAsync: vi.fn(),
     launchCameraAsync: vi.fn(),
+    requestRecordingPermissionsAsync: vi.fn(),
+    deletedFiles: [] as string[],
+    executionStarts: [] as Array<{ url: string; headers: Record<string, string>; body: unknown }>,
     storage: new Map<string, string>(),
   };
 });
@@ -87,6 +90,7 @@ vi.mock('@/weknora/conversations/view-model', async () => await import('../../..
 vi.mock('@/weknora/conversations/resources', async () => await import('../../../weknora/conversations/resources'));
 vi.mock('@/weknora/conversations/execution-projection', async () => await import('../../../weknora/conversations/execution-projection'));
 vi.mock('@/weknora/resources/product-session-attachments', async () => await import('../../../weknora/resources/product-session-attachments'));
+vi.mock('@/weknora/voice/native-dictation-port', async () => await import('../../../weknora/voice/native-dictation-port'));
 
 vi.mock('@/weknora/platform/execution-storage', async () => {
   const actual = await import('../../../weknora/platform/execution-storage');
@@ -102,6 +106,39 @@ vi.mock('expo-document-picker', () => ({ getDocumentAsync: mocks.getDocumentAsyn
 vi.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: mocks.requestCameraPermissionsAsync,
   launchCameraAsync: mocks.launchCameraAsync,
+}));
+
+// W29: the production dictation port drives the expo-audio recorder. The
+// native module is stubbed at the recorder boundary so the real adapter
+// (permission gate, prepare/record/stop, temp-file cleanup) runs as
+// production code.
+vi.mock('expo-audio', () => {
+  class MockAudioRecorder {
+    static instances: MockAudioRecorder[] = [];
+    isRecording = false;
+    uri: string | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-useless-constructor
+    constructor(public options: unknown) { MockAudioRecorder.instances.push(this); }
+    async prepareToRecordAsync() { return undefined; }
+    record() { this.isRecording = true; this.uri = 'file:///cache/dictation-1.m4a'; }
+    async stop() { this.isRecording = false; }
+    getStatus() {
+      return { canRecord: true, isRecording: this.isRecording, durationMillis: 1200, mediaServicesDidReset: false, url: this.uri };
+    }
+  }
+  return {
+    AudioModule: { AudioRecorder: MockAudioRecorder },
+    RecordingPresets: { HIGH_QUALITY: { extension: '.m4a', sampleRate: 44100, numberOfChannels: 2, bitRate: 128000 } },
+    requestRecordingPermissionsAsync: mocks.requestRecordingPermissionsAsync,
+    setAudioModeAsync: vi.fn(async () => undefined),
+  };
+});
+vi.mock('expo-file-system', () => ({
+  File: class MockFile {
+    exists = true;
+    constructor(public uri: string) {}
+    delete() { mocks.deletedFiles.push(this.uri); }
+  },
 }));
 
 vi.mock('@/weknora/auth/session', async () => {
@@ -155,6 +192,8 @@ beforeEach(() => {
   mocks.uploadPosts.length = 0;
   mocks.snapshotGets.length = 0;
   mocks.commandPosts.length = 0;
+  mocks.executionStarts.length = 0;
+  mocks.deletedFiles.length = 0;
   mocks.routeParams = {
     id: 'session-1',
     spaceId: 'space-1',
@@ -168,6 +207,7 @@ beforeEach(() => {
   mocks.getDocumentAsync.mockReset().mockResolvedValue({ canceled: true, assets: null });
   mocks.requestCameraPermissionsAsync.mockReset().mockResolvedValue({ granted: true, status: 'granted' });
   mocks.launchCameraAsync.mockReset().mockResolvedValue({ canceled: true, assets: null });
+  mocks.requestRecordingPermissionsAsync.mockReset().mockResolvedValue({ granted: true, status: 'granted' });
   mocks.fetch = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => {
     const method = init?.method ?? 'GET';
     if (url.startsWith('content://') || url.startsWith('file://')) {
@@ -194,7 +234,20 @@ beforeEach(() => {
         events: [],
       } });
     }
+    if (url.includes('/workbench/executions/run-voice-1/snapshot')) {
+      mocks.snapshotGets.push(record);
+      return jsonResponse({ success: true, data: {
+        execution: { schema_version: 1, run_id: 'run-voice-1', session_id: 'session-1', revision: 1, driver: 'platform', run_status: 'succeeded', execution_status: 'succeeded', settlement_status: 'settled', seq: 0, capabilities: {} },
+        watermark: 0,
+        events: [],
+      } });
+    }
+    if (url.includes('/workbench/executions/requests/req-voice-1')) { return jsonResponse({ success: true, data: { state: 'admitted', run_id: 'run-voice-1' } }); }
     if (url.includes('/workbench/executions/requests/')) { return jsonResponse({ success: true, data: { state: 'admitted', run_id: 'run-1' } }); }
+    if (method === 'POST' && url.endsWith('/api/v1/workbench/executions')) {
+      mocks.executionStarts.push({ url, headers: init?.headers ?? {}, body: init?.body });
+      return jsonResponse({ success: true, data: { run_id: 'run-voice-1', request_id: 'req-voice-1', status: 'dispatching' } });
+    }
     if (method === 'POST' && url.includes('/workbench/executions/run-1/commands')) {
       mocks.commandPosts.push({ url, headers: init?.headers ?? {}, body: init?.body });
       return jsonResponse({ success: true, data: { run_id: 'run-1', action: 'cancel' } });
@@ -329,6 +382,59 @@ describe('mounted product session route (W25 attachments assembly)', () => {
     // Background closes the subscription only: no cancel command is ever issued.
     await act(async () => { appState.emitForTest('background'); });
     expect(mocks.commandPosts).toHaveLength(0);
+
+    await act(async () => { renderer.unmount(); });
+  });
+});
+
+describe('mounted product session route (W29 dictation assembly)', () => {
+  it('assembles the voice chain: hold-to-talk renders, the permission gate runs, and dictation never auto-starts an execution', async () => {
+    const renderer = await mountRoute();
+
+    // I-1 closure assertion: the production route assembles the dictation
+    // surface (canVoice + native port), so the real ConversationScreen
+    // renders the hold-to-talk entry on a product session.
+    await waitForRoute(renderer, () => renderer.root.findAllByProps({ accessibilityLabel: '按住说话' }).length >= 1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: '附件' }).length).toBeGreaterThan(0);
+
+    // Hold: the real expo-audio adapter requests the microphone permission
+    // and drives the recorder.
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '按住说话' }).props.onPressIn(); });
+    await waitForRoute(renderer, () => mocks.requestRecordingPermissionsAsync.mock.calls.length >= 1);
+    expect(mocks.requestRecordingPermissionsAsync).toHaveBeenCalledTimes(1);
+
+    // Release: stop + transcription attempt. The transcribe seam is the W30
+    // consumption point, so without the endpoint the flow surfaces the typed
+    // failure — and crucially never issued an execution start.
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '按住说话' }).props.onPressOut(); });
+    await waitForRoute(renderer, () => renderer.root.findAllByProps({ accessibilityLabel: 'dictation-error' }).length >= 1);
+    expect(mocks.executionStarts).toHaveLength(0);
+    // The abandoned temporary audio is cleaned up through the real adapter.
+    expect(mocks.deletedFiles).toContain('file:///cache/dictation-1.m4a');
+
+    // The text-input fallback still sends exactly once with the auth bearer.
+    const input = renderer.root.findByProps({ accessibilityLabel: 'conversation-draft' });
+    await act(async () => { input.props.onChangeText('typed fallback'); });
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '发送' }).props.onPress(); });
+    await waitForRoute(renderer, () => mocks.executionStarts.length === 1);
+    expect(mocks.executionStarts[0].url).toBe(`${mocks.ORIGIN}/api/v1/workbench/executions`);
+    expect(mocks.executionStarts[0].headers.authorization).toBe('Bearer token-1');
+    const startBody = typeof mocks.executionStarts[0].body === 'string'
+      ? JSON.parse(mocks.executionStarts[0].body as string)
+      : mocks.executionStarts[0].body;
+    expect(startBody.text).toBe('typed fallback');
+
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('keeps the retained Happy route voice-free when product metadata is absent', async () => {
+    mocks.routeParams = { id: 'session-1' };
+    const renderer = await mountRoute();
+    await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); });
+
+    expect(renderer.root.findAllByType('SessionView')).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: '按住说话' })).toHaveLength(0);
+    expect(mocks.requestRecordingPermissionsAsync).not.toHaveBeenCalled();
 
     await act(async () => { renderer.unmount(); });
   });
