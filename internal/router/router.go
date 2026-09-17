@@ -206,6 +206,14 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// routes answering 404.
 	session.RegisterCraftPreviewRoutes(r, session.RegisteredCraftPreviewRouteHandler())
 
+	// Isolated artifact preview (W27): same isolated-origin shape as the
+	// craft preview — the opaque short-lived ticket minted by the
+	// authenticated sessions API carries its own authorization, and the
+	// preview origin never receives main-site credentials (no product
+	// cookie/token injection), so it must precede the global Auth
+	// middleware. A nil handler (preview not assembled) mounts nothing.
+	handler.RegisterArtifactPreviewRoutes(r, handler.RegisteredArtifactPreviewHandler())
+
 	// 认证中间件
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 

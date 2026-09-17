@@ -492,6 +492,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// W26: the versioned artifact download entry mounts on the sessions route
 	// table through the package-level registration (routes_chat.go).
 	must(container.Invoke(registerArtifactVersionHTTPHandlers))
+	// W27: the isolated artifact preview handler mounts its issue route on
+	// the sessions table (routes_chat.go) and its redemption route before
+	// the global Auth middleware (router.go), both via the package-level
+	// registration.
+	must(container.Invoke(registerArtifactPreviewHTTPHandlers))
 	// C02: interaction decide surface + outbox redelivery sweep, plus the
 	// post-construction registrar wiring that breaks the provider cycle
 	// (see wireCraftInteractionRegistrar).
@@ -2225,4 +2230,20 @@ func registerArtifactVersionHTTPHandlers(
 	versions *repository.ArtifactVersionStore,
 ) {
 	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions))
+}
+
+// registerArtifactPreviewHTTPHandlers installs the W27 isolated artifact
+// preview handler for route mounting. Issuance re-runs the W26
+// (tenant, session, ready-version) authorization; the preview origin itself
+// is ticket-only. The version store is the same provider the versioned
+// downloads consume; the isolated origin comes from the handler's own env
+// configuration and stays disabled (fail-closed) when unset.
+func registerArtifactPreviewHTTPHandlers(
+	sessions interfaces.SessionService,
+	tenants interfaces.TenantService,
+	files interfaces.FileService,
+	storage interfaces.StorageBackendResolver,
+	versions *repository.ArtifactVersionStore,
+) {
+	handler.RegisterArtifactPreviewHandler(handler.NewArtifactPreviewHandler(sessions, tenants, files, storage, versions))
 }

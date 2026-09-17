@@ -4,6 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/handler"
+	// Alias: RegisterSessionRoutes' `handler *session.Handler` parameter
+	// shadows the package name inside the function body; the W27 preview
+	// issue route still needs the top-level handler package.
+	handlerapi "github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 )
 
@@ -118,6 +122,17 @@ func RegisterSessionRoutes(
 		// routes below). Same :id wildcard as the sibling GET routes.
 		if artifactVersions := session.RegisteredArtifactVersionDownloadHandler(); artifactVersions != nil {
 			sessions.GET("/:id/artifact-versions/:version_id/download", artifactVersions.DownloadArtifactVersion)
+		}
+
+		// W27 isolated artifact preview: ticket issuance runs on the MAIN
+		// origin with this group's full auth chain (Viewer+ / chat API-key
+		// capability); the opaque short-lived ticket is redeemed on the
+		// ISOLATED preview origin, whose /ap route router.go mounts before
+		// the global Auth middleware (craft preview shape). Mounted only
+		// when the container-level assembly registered a handler
+		// (fail-closed, like the versioned download above).
+		if artifactPreview := handlerapi.RegisteredArtifactPreviewHandler(); artifactPreview != nil {
+			handlerapi.RegisterArtifactPreviewIssueRoute(sessions, artifactPreview)
 		}
 	}
 
