@@ -77,6 +77,9 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	}
 	// Additive column upgrades (order kind, scheduled plan change) so a
 	// deployment created before them migrates in place.
+	if err := normalizeMigratedCommercialUniques(db); err != nil {
+		return nil, err
+	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
 		return nil, err
 	}
@@ -86,6 +89,41 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 		subs:      repocommercial.NewSubscriptionStore(db),
 		providers: providers,
 	}, nil
+}
+
+// normalizeMigratedCommercialUniques reconciles the two commercial tables
+// that exist in both the versioned migrations and the AutoMigrate models.
+// The migrations declared quote_id / tenant_id as inline column UNIQUE
+// constraints (PostgreSQL *_key default names); the models declare
+// uniqueIndex (gorm uni_* index names). AutoMigrate resolves that
+// difference by dropping a constraint under its own name, which fails on
+// migration-provisioned databases where only the *_key constraint exists.
+// Create the model-expected unique index first, then drop the legacy
+// constraint by its real name, so quote/tenant uniqueness never has a gap.
+func normalizeMigratedCommercialUniques(db *gorm.DB) error {
+	type legacyUnique struct {
+		table      interface{}
+		field      string
+		tableName  string
+		constraint string
+	}
+	for _, legacy := range []legacyUnique{
+		{table: &repocommercial.OrderRow{}, field: "QuoteID", tableName: "commercial_orders", constraint: "commercial_orders_quote_id_key"},
+		{table: &repocommercial.Subscription{}, field: "TenantID", tableName: "commercial_subscriptions", constraint: "commercial_subscriptions_tenant_id_key"},
+	} {
+		if !db.Migrator().HasTable(legacy.tableName) {
+			continue
+		}
+		if db.Migrator().HasConstraint(legacy.tableName, legacy.constraint) {
+			if err := db.Migrator().CreateIndex(legacy.table, legacy.field); err != nil {
+				return err
+			}
+			if err := db.Migrator().DropConstraint(legacy.tableName, legacy.constraint); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // QuoteView is the produced quote projection.
