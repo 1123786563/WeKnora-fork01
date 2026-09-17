@@ -1810,12 +1810,13 @@
       "owners": [
         "MX-004",
         "MX-006",
-        "MX-011"
+        "MX-011",
+        "MX-014"
       ],
       "kind": "modify",
       "shared_serialized": true,
       "source": "mx-006-lock-extension",
-      "note": "domain/mobile 出口（MX-004 execution-frames、MX-006 submission 追加导出；串行单写）"
+      "note": "domain/mobile 出口（追加式：execution-frames/submission/query-scope/session-list）"
     },
     "internal/application/service/workbench/interaction_test.go": {
       "owners": [

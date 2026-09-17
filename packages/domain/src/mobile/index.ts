@@ -3,3 +3,4 @@ export * from './execution-cache.ts';
 export * from './execution-frames.ts';
 export * from './submission.ts';
 export * from './query-scope.ts';
+export * from './session-list.ts';
