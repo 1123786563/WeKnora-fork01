@@ -44,7 +44,8 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-030 | accepted | 620ddcb8→0119d82a(含fix) | mv2 19/19（含离线撤销韧性）· tsc 11=基线 | R1(2×P2)→修复→复核 PASS（代码/测试）；R2 记录项修正（D-027） | MX-030.md |
 | MX-015 | accepted | 0119d82a→082489e6 | mv2 21/21 · frozen 未就绪 0/保留 · tsc 11 | 规格 PASS · 质量 APPROVED（双突变杀优认证；P3 记录项本批修正） | MX-015.md |
 | MX-018 | review | 082489e6→16adf375 | mv2 21/21 · frozen stop_pending/停止待确认/false · tsc 11 | 待独立review（随 019 批） | MX-018.md |
-| MX-019 | review | 16adf375→(待提交) | mv2 22/22 · frozen 陈旧确认 0/refresh · tsc 11 | 待独立review | MX-019.md |
+| MX-019 | review | 16adf375→188da5fd | mv2 22/22 · frozen 陈旧确认 0/refresh · tsc 11 | 审查进行中（与 018 合并） | MX-019.md |
+| MX-031 | review | 188da5fd→(待提交) | mv2 23/23 · frozen 120/38/1260/0 · tsc 11 | 待独立review | MX-031.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 
