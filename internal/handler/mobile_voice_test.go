@@ -893,3 +893,171 @@ func TestTranscriptionReplayAgainstRealExecutionGate(t *testing.T) {
 		t.Fatalf("settled micro = %d, want 1200 (12s x 100, once)", record.AmountMicro)
 	}
 }
+
+// ---- R1-N1 (review round 2): settlement-failed transcription replays -----
+
+// R1-N1: when the transcription's gate.Finish fails, the result row must
+// not act as a settled short-circuit. A replay while the settlement never
+// landed must answer settled:false (never the hardcoded lie), must not call
+// the provider again, and once the settlement layer recovers the replay
+// COMPLETES the settlement exactly once — the I-4 keep-settleable semantics
+// extended to the transcription plane.
+func TestTranscriptionSettlementFailureReplayRetriesSettlement(t *testing.T) {
+	h := newVoiceHarness(t)
+	h.gate.finishErr = errors.New("settlement hiccup")
+	h.transcriber.result = voice.TranscriptionResult{Text: "probe", AudioSeconds: 4}
+	w := h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":false") {
+		t.Fatalf("first: %d %s", w.Code, w.Body.String())
+	}
+	// Replay while the settlement is still failing: honest settled:false,
+	// no second provider call, no second hold.
+	w = h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay while down: %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "\"settled\":false") {
+		t.Fatalf("replay must not claim settled while the settlement never landed: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "probe") {
+		t.Fatalf("replay still returns the original text: %s", w.Body.String())
+	}
+	if h.transcriber.calls != 1 {
+		t.Fatalf("transcriber calls = %d, the replay must not reach the provider", h.transcriber.calls)
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 0 {
+		t.Fatalf("total settled = %d, want 0 while settlement is down", total)
+	}
+	// Settlement layer recovers: the replay completes the settlement.
+	h.gate.finishErr = nil
+	w = h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":true") {
+		t.Fatalf("recovery replay: %d %s", w.Code, w.Body.String())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 4 {
+		t.Fatalf("total settled = %d, want exactly 4 after the recovered replay", total)
+	}
+	// And stays exactly 4 on further replays.
+	w = h.postTranscription(t, "owner-a", "req-1", "", []byte("audio"))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":true") {
+		t.Fatalf("settled replay: %d %s", w.Code, w.Body.String())
+	}
+	if total := h.gate.totalSettledAudioSeconds(); total != 4 {
+		t.Fatalf("total settled = %d, want exactly 4 (stable)", total)
+	}
+	if h.transcriber.calls != 1 {
+		t.Fatalf("transcriber calls = %d, no replay may reach the provider", h.transcriber.calls)
+	}
+}
+
+// R1-N1 against the REAL ExecutionGateService: admission passes while the
+// gate's own rate resolver is unavailable (the production default until
+// pricing administration is wired) — Finish fails, the row persists
+// unsettled, and wiring rates later lets the replay complete the charge.
+func TestTranscriptionSettlementRecoveryAgainstRealGate(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&repocommercial.BudgetAccountRow{},
+		&repocommercial.TaskBudgetRow{},
+		&repocommercial.ReservationRow{},
+		&repocommercial.BudgetLotRow{},
+		&repocommercial.BudgetLotAllocationRow{},
+		&repocommercial.UsageRow{},
+		&repocommercial.UsageCurrentRow{},
+		&repocommercial.OutboxEvent{},
+		&commercialsvc.SettlementRecord{},
+		&repository.VoiceSessionRow{},
+		&repository.VoiceTranscriptionRow{},
+	); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&repocommercial.BudgetAccountRow{TenantID: 7, VerifiedMicro: 10_000_000, VerifiedUntil: now.Add(time.Hour), Version: 1}).Error; err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	if err := db.Create(&repocommercial.TaskBudgetRow{TenantID: 7, RunID: "voice:", LimitMicro: 10_000_000, Deadline: now.Add(time.Hour), Version: 1}).Error; err != nil {
+		t.Fatalf("task budget: %v", err)
+	}
+	if err := db.Create(&repocommercial.BudgetLotRow{TenantID: 7, LotID: "lot-1", RemainingMicro: 10_000_000, IssuedAt: now}).Error; err != nil {
+		t.Fatalf("lot: %v", err)
+	}
+	// No WithRates: the gate's default unavailableRates makes Finish fail —
+	// exactly the review's "admission passed, settlement cannot price" gap.
+	gate, err := commercialsvc.NewExecutionGateService(db, integrationVoiceGateway{})
+	if err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	transcriber := &fakeVoiceTranscriber{result: voice.TranscriptionResult{Text: "rec", AudioSeconds: 4}}
+	voiceHandler, err := NewMobileVoiceHandler(
+		repository.NewVoiceSessionStore(db),
+		repository.NewVoiceTranscriptionStore(db),
+		&fakeVoiceProvider{},
+		transcriber,
+		gate,
+		fakeVoiceRates{version: "voice-it-v1", upper: 1200},
+	)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	identity := func(c *gin.Context) {
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(7))
+		ctx = context.WithValue(ctx, types.UserIDContextKey, "owner-a")
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+	group := r.Group("/mobile/voice", identity)
+	group.POST("/transcriptions", voiceHandler.TranscribeAudio)
+	post := func(requestID string) *httptest.ResponseRecorder {
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		_ = writer.WriteField("request_id", requestID)
+		part, _ := writer.CreateFormFile("audio", "capture.m4a")
+		_, _ = part.Write([]byte("audio"))
+		_ = writer.Close()
+		req := httptest.NewRequest(http.MethodPost, "/mobile/voice/transcriptions", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	w := post("req-rec")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":false") {
+		t.Fatalf("unsettled first: %d %s", w.Code, w.Body.String())
+	}
+	w = post("req-rec")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":false") {
+		t.Fatalf("replay must stay honest while unpriced: %d %s", w.Code, w.Body.String())
+	}
+	// Pricing administration arrives: the replay completes the settlement.
+	if _, err := gate.WithRates(func(string) (domain.PriceVersionRates, error) {
+		return domain.PriceVersionRates{Version: "voice-it-v1", Rates: map[string]domain.DimensionRate{
+			domain.DimensionAudioSeconds: {RateMicro: 100, Units: 1},
+		}}, nil
+	}); err != nil {
+		t.Fatalf("rates: %v", err)
+	}
+	w = post("req-rec")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "\"settled\":true") {
+		t.Fatalf("recovered replay: %d %s", w.Code, w.Body.String())
+	}
+	callID := voice.TranscriptionCallID(7, "req-rec")
+	var facts int64
+	if err := db.Model(&repocommercial.UsageRow{}).Where("tenant_id = ? AND call_id = ?", uint64(7), callID).Count(&facts).Error; err != nil {
+		t.Fatalf("facts: %v", err)
+	}
+	if facts != 1 {
+		t.Fatalf("usage facts = %d, want exactly 1", facts)
+	}
+	var record commercialsvc.SettlementRecord
+	if err := db.Where("tenant_id = ? AND call_id = ?", uint64(7), callID).First(&record).Error; err != nil {
+		t.Fatalf("settlement record: %v", err)
+	}
+	if record.AmountMicro != 400 {
+		t.Fatalf("settled micro = %d, want 400 (4s x 100, exactly once)", record.AmountMicro)
+	}
+}

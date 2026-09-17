@@ -186,17 +186,22 @@ var (
 // VoiceTranscriptionRow is the durable result of one request-id'd
 // transcription (I-2, review round 1): the W04-style request
 // reconciliation record that lets a replay of the same request id be
-// answered with the ORIGINAL result instead of a second charged call. The
-// row is written only AFTER the commercial settlement committed, so a row's
-// presence also proves its usage settled exactly once.
+// answered with the ORIGINAL result instead of a second charged call.
+// Settled (R1-N1, review round 2) records whether the row's usage has
+// actually settled: only a settled row acts as the replay short-circuit;
+// an unsettled row keeps the request id settleable so a later replay (or a
+// reconciliation sweep) can complete the charge — the row's presence alone
+// no longer claims settlement.
 type VoiceTranscriptionRow struct {
 	TenantID     uint64    `gorm:"column:tenant_id;not null;uniqueIndex:uq_voice_transcription_request,priority:1"`
 	RequestID    string    `gorm:"column:request_id;not null;uniqueIndex:uq_voice_transcription_request,priority:2"`
 	CallID       string    `gorm:"column:call_id;not null;index:idx_voice_transcription_call,priority:2"`
 	OwnerID      string    `gorm:"column:owner_id;not null"`
+	RunID        string    `gorm:"column:run_id;not null;default:''"`
 	Status       string    `gorm:"column:status;not null"`
 	Text         string    `gorm:"column:text;not null;default:''"`
 	AudioSeconds int64     `gorm:"column:audio_seconds;not null;default:0"`
+	Settled      bool      `gorm:"column:settled;not null;default:false"`
 	CreatedAt    time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
 }
 
@@ -248,6 +253,35 @@ func (s *VoiceTranscriptionStore) GetOwnedVoiceTranscription(ctx context.Context
 		return VoiceTranscriptionRow{}, err
 	}
 	return row, nil
+}
+
+// MarkVoiceTranscriptionSettled flips one request id's row to the settled
+// state (R1-N1): a single CAS from unsettled to settled, idempotent on an
+// already-settled row (reports false without error), so the completion of
+// a deferred settlement can never double-mark or resurrect.
+func (s *VoiceTranscriptionStore) MarkVoiceTranscriptionSettled(ctx context.Context, tenantID uint64, requestID string) (bool, error) {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(requestID) == "" {
+		return false, ErrVoiceTranscriptionInvalid
+	}
+	result := s.db.WithContext(ctx).Model(&VoiceTranscriptionRow{}).
+		Where("tenant_id = ? AND request_id = ? AND settled = ?", tenantID, requestID, false).
+		Update("settled", true)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 1 {
+		return true, nil
+	}
+	// Distinguish the idempotent replay (already settled) from a missing row.
+	var row VoiceTranscriptionRow
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND request_id = ?", tenantID, requestID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, ErrVoiceTranscriptionNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 // isUniqueViolation reports a unique-index violation across the sqlite and

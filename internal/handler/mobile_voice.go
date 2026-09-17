@@ -74,6 +74,7 @@ type VoiceSessionRepository interface {
 type VoiceTranscriptionRepository interface {
 	SaveVoiceTranscription(ctx context.Context, row repository.VoiceTranscriptionRow) error
 	GetOwnedVoiceTranscription(ctx context.Context, tenantID uint64, ownerID, requestID string) (repository.VoiceTranscriptionRow, error)
+	MarkVoiceTranscriptionSettled(ctx context.Context, tenantID uint64, requestID string) (bool, error)
 }
 
 // VoiceRateSource resolves the charged-voice admission numbers: the price
@@ -453,21 +454,31 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "missing_request_id"})
 		return
 	}
-	// I-2 (review round 1): request-id replay reconciliation, the W04 shape.
-	// The REAL ExecutionGate conflicts on any Begin replay of an already
-	// dispatched reservation key, so a replay can never be answered by
-	// re-running the charged pipeline. The durable result row — written only
-	// AFTER the settlement committed — answers the replay with the ORIGINAL
-	// outcome before any new budget, provider or settlement call.
+	// I-2 (review round 1) + R1-N1 (review round 2): request-id replay
+	// reconciliation, the W04 shape. The REAL ExecutionGate conflicts on any
+	// Begin replay of an already dispatched reservation key, so a replay can
+	// never be answered by re-running the charged pipeline. A SETTLED result
+	// row answers with the ORIGINAL outcome before any new budget, provider
+	// or settlement call; an UNSETTLED row (its Finish failed) does not act
+	// as a settled short-circuit — the replay retries the settlement itself
+	// (keep-settleable, like the stop path) and answers settled honestly.
 	if existing, replayErr := h.transcriptions.GetOwnedVoiceTranscription(c.Request.Context(), tenantID, ownerID, requestID); replayErr == nil {
+		settled := existing.Settled
+		if !settled {
+			// The reservation is already dispatched (Begin replay would
+			// conflict) and the audio is gone, but its trusted usage is
+			// durable in the row: re-issue the SAME settlement fact — the
+			// revision identity keeps it exactly-once — and mark the row.
+			settled = h.retryTranscriptionSettlement(c.Request.Context(), tenantID, existing)
+		}
 		if existing.Status == repository.VoiceTranscriptionSucceeded {
 			c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-				"text": existing.Text, "audio_seconds": existing.AudioSeconds, "settled": true, "replay": true,
+				"text": existing.Text, "audio_seconds": existing.AudioSeconds, "settled": settled, "replay": true,
 			}})
 			return
 		}
 		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"success": false, "error": "transcribe_failed", "data": gin.H{
-			"audio_seconds": existing.AudioSeconds, "settled": true, "replay": true,
+			"audio_seconds": existing.AudioSeconds, "settled": settled, "replay": true,
 		}})
 		return
 	} else if !errors.Is(replayErr, repository.ErrVoiceTranscriptionNotFound) && !errors.Is(replayErr, repository.ErrVoiceTranscriptionInvalid) {
@@ -516,7 +527,7 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 		return
 	}
 	callID := voice.TranscriptionCallID(tenantID, requestID)
-	reservationKey := "voice_tx:" + callID
+	reservationKey := voiceTranscriptionReservationKey(callID)
 	if _, err := h.gate.Begin(c.Request.Context(), domain.BudgetRequest{
 		TenantID: tenantID,
 		RunID:    voiceSessionRunID(bound.RunID, bound.SessionID),
@@ -558,18 +569,22 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 		Dimensions:   map[string]int64{domain.DimensionAudioSeconds: usage},
 		Status:       domain.UsageStatusFinal,
 	})
-	// Persist the request id's outcome AFTER the settlement committed (a
-	// row's presence proves its usage settled exactly once). A persist
-	// failure is answered 500 — the charge stands, but this request id can
-	// no longer be replayed (its reservation is already dispatched); the
-	// client retries with a NEW request id.
+	// Persist the request id's outcome with its REAL settlement state
+	// (R1-N1): a settled row short-circuits future replays; an unsettled
+	// row keeps the request id settleable so a later replay (or a
+	// reconciliation sweep) can complete the charge. A persist failure is
+	// answered 500 — the outcome is lost to this request id (its
+	// reservation is already dispatched); the client retries with a NEW
+	// request id.
 	resultRow := repository.VoiceTranscriptionRow{
 		TenantID:     tenantID,
 		RequestID:    requestID,
 		CallID:       callID,
 		OwnerID:      ownerID,
+		RunID:        bound.RunID,
 		Status:       repository.VoiceTranscriptionFailed,
 		AudioSeconds: usage,
+		Settled:      settleErr == nil,
 	}
 	if transcribeErr == nil {
 		resultRow.Status = repository.VoiceTranscriptionSucceeded
@@ -584,6 +599,42 @@ func (h *MobileVoiceHandler) TranscribeAudio(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"text": result.Text, "audio_seconds": usage, "settled": settleErr == nil}})
+}
+
+// retryTranscriptionSettlement completes a deferred settlement for one
+// unsettled result row (R1-N1): the reservation is already dispatched and
+// the audio is gone, but the trusted provider-reported usage is durable in
+// the row. It re-issues the SAME settlement fact — the revision identity
+// keeps it exactly-once, and an already-landed settlement replays as an
+// idempotent no-op — then flips the row's settled flag.
+func (h *MobileVoiceHandler) retryTranscriptionSettlement(ctx context.Context, tenantID uint64, row repository.VoiceTranscriptionRow) bool {
+	if row.AudioSeconds < 0 || strings.TrimSpace(row.CallID) == "" {
+		return false
+	}
+	err := h.gate.Finish(ctx, voiceTranscriptionReservationKey(row.CallID), domain.UsageFact{
+		TenantID:     tenantID,
+		RunID:        row.RunID,
+		CallID:       row.CallID,
+		AttemptID:    "tx",
+		Funding:      domain.FundingPlatform,
+		Service:      domain.ServiceVoice,
+		PriceVersion: h.priceVersionFor(ctx),
+		Revision:     1,
+		OccurredAt:   h.now().UTC(),
+		Dimensions:   map[string]int64{domain.DimensionAudioSeconds: row.AudioSeconds},
+		Status:       domain.UsageStatusFinal,
+	})
+	if err != nil {
+		return false
+	}
+	// The settlement landed. A failed/flipped flag only costs one more
+	// idempotent replay — never a second charge.
+	_, _ = h.transcriptions.MarkVoiceTranscriptionSettled(ctx, tenantID, row.RequestID)
+	return true
+}
+
+func voiceTranscriptionReservationKey(callID string) string {
+	return "voice_tx:" + callID
 }
 
 // priceVersionFor resolves the current voice price version for a settlement

@@ -41,6 +41,9 @@ func (routesVoiceTranscriptions) SaveVoiceTranscription(context.Context, reposit
 func (routesVoiceTranscriptions) GetOwnedVoiceTranscription(context.Context, uint64, string, string) (repository.VoiceTranscriptionRow, error) {
 	return repository.VoiceTranscriptionRow{}, nil
 }
+func (routesVoiceTranscriptions) MarkVoiceTranscriptionSettled(context.Context, uint64, string) (bool, error) {
+	return true, nil
+}
 
 type routesVoiceGate struct{}
 

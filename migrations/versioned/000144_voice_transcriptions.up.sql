@@ -3,9 +3,11 @@ CREATE TABLE voice_transcriptions (
     request_id VARCHAR(128) NOT NULL,
     call_id VARCHAR(64) NOT NULL,
     owner_id VARCHAR(255) NOT NULL,
+    run_id VARCHAR(64) NOT NULL DEFAULT '',
     status VARCHAR(16) NOT NULL,
     text TEXT NOT NULL DEFAULT '',
     audio_seconds BIGINT NOT NULL DEFAULT 0,
+    settled BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (status IN ('succeeded', 'failed')),
     CHECK (audio_seconds >= 0)
