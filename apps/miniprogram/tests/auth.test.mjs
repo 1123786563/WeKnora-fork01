@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-let mod; try { mod=await import('../src/core/auth.ts'); } catch {}
-const requireModule=()=>{assert.ok(mod,'AuthCoordinator must exist');return mod};
+// 导入失败必须带出真实原因（语法/依赖错误），不允许吞掉后报“模块不存在”误导定位。
+const mod=await import('../src/core/auth.ts');
 const tenant=(id)=>({user:{id:'u1',username:'Lin'},tenant:{id,name:`Space ${id}`},memberships:[]});
 function fixture(overrides={}){
  const map=new Map();const storage={read:k=>map.get(k),write:(k,v)=>map.set(k,v),remove:k=>map.delete(k)};
@@ -9,8 +9,8 @@ function fixture(overrides={}){
  const api={login:async()=>({token,refreshToken:'r1',...tenant(1)}),me:async()=>tenant(1),
  refresh:async()=>{refreshes++;await new Promise(r=>setTimeout(r,5));return {access_token:'t2',refresh_token:'r2'}},
  switchTenant:async id=>({token:'t3',refreshToken:'r3',...tenant(id)}),logout:async()=>{},...overrides};
- const auth=new (requireModule().AuthCoordinator)('https://api.example.test',storage,api);
- return {auth,storage,get refreshes(){return refreshes}};
+ const auth=new (mod.AuthCoordinator)('https://api.example.test',storage,api);
+ return {auth,map,storage,get refreshes(){return refreshes}};
 }
 test('login exposes identity without exposing credentials to UI',async()=>{const {auth}=fixture();await auth.login('x@example.test','not-stored');assert.equal(auth.snapshot().phase,'ready');assert.equal(auth.snapshot().tenantId,'1');assert.equal(JSON.stringify(auth.snapshot()).includes('t1'),false);assert.equal(auth.credential().accessToken,'t1')});
 test('concurrent refresh is single-flight and persists rotated credentials',async()=>{const f=fixture();await f.auth.login('x','pw');const scope=f.auth.scope.capture();await Promise.all([f.auth.refresh(scope),f.auth.refresh(scope)]);assert.equal(f.refreshes,1);assert.equal(f.auth.credential().accessToken,'t2')});
@@ -20,3 +20,25 @@ test('switch aborts old requests and preserves user while replacing tenant',asyn
 test('login response completing after logout cannot restore identity',async()=>{let release;const gate=new Promise(r=>release=r);const {auth}=fixture({login:async()=>{await gate;return {token:'late',refreshToken:'late-r',...tenant(1)}}});const work=auth.login('x','pw');await auth.logout();release();await assert.rejects(work,/stale/i);assert.equal(auth.snapshot().phase,'anonymous');assert.equal(auth.credential().kind,'anonymous')});
 test('tenant switch response completing after logout cannot restore identity',async()=>{let release;const gate=new Promise(r=>release=r);const {auth}=fixture({switchTenant:async()=>{await gate;return {token:'late',refreshToken:'late-r',...tenant(2)}}});await auth.login('x','pw');const work=auth.switchTenant(2);await auth.logout();release();await assert.rejects(work,/stale/i);assert.equal(auth.snapshot().phase,'anonymous');assert.equal(auth.credential().kind,'anonymous')});
 test('bootstrap me response completing after logout is discarded',async()=>{let release,blocking=false;const gate=new Promise(r=>release=r);const {auth}=fixture({me:async()=>{if(blocking)await gate;return tenant(1)}});await auth.login('x','pw');blocking=true;const work=auth.bootstrap();await auth.logout();release();await work;assert.equal(auth.snapshot().phase,'anonymous');assert.equal(auth.credential().kind,'anonymous')});
+test('definitive refresh rejection on the hot path clears the zombie session',async()=>{
+ // 热路径 refresh 被服务端明确拒绝（refresh token 失效返回 401）后，
+ // 会话不能停留在伪 ready：必须清除凭证并回到 anonymous，否则每次操作都无限 401。
+ const unauthorized=Object.assign(new Error('refresh token expired'),{status:401});
+ const {auth,map}=fixture({refresh:async()=>{await new Promise(r=>setTimeout(r,5));throw unauthorized}});
+ await auth.login('x','pw');
+ const key=[...map.keys()].find(k=>k.startsWith('wk:auth:'));
+ assert.ok(key,'stored credential key exists');
+ await assert.rejects(auth.refresh(auth.scope.capture()));
+ assert.equal(auth.snapshot().phase,'anonymous','session must leave ready after definitive 401');
+ assert.equal(auth.credential().kind,'anonymous','credentials must be cleared');
+ assert.equal(map.has(key),false,'stored credential must be removed');
+});
+test('transient refresh failure keeps the session for later retry',async()=>{
+ // 网络类失败不是凭证失效：不能把用户登出（会误伤在线用户），下一次仍可重试。
+ const network=Object.assign(new Error('network down'),{code:'NETWORK_ERROR'});
+ const {auth}=fixture({refresh:async()=>{throw network}});
+ await auth.login('x','pw');
+ await assert.rejects(auth.refresh(auth.scope.capture()));
+ assert.equal(auth.snapshot().phase,'ready','network failure must not clear the session');
+ assert.equal(auth.credential().accessToken,'t1');
+});

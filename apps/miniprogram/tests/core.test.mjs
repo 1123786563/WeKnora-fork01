@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const load = async name => import(`../src/core/${name}.ts`).catch(() => ({}));
-const format = await load('format');
-const scope = await load('scope');
-const utf8 = await load('utf8');
-const execution = await load('execution');
-const intent = await load('intent');
-const routing = await load('routes');
+// 导入失败必须带出真实原因；任何模块求值错误直接失败整个测试文件。
+const format = await import(`../src/core/format.ts`);
+const scope = await import(`../src/core/scope.ts`);
+const utf8 = await import(`../src/core/utf8.ts`);
+const execution = await import(`../src/core/execution.ts`);
+const intent = await import(`../src/core/intent.ts`);
+const routing = await import(`../src/core/routes.ts`);
 
 test('integer formatting never rounds values larger than Number.MAX_SAFE_INTEGER', () => {
   assert.equal(typeof format.formatCredits, 'function');
