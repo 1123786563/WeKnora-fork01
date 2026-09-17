@@ -26,12 +26,13 @@
     "apps/mobile/package.json": {
       "owners": [
         "MX-002",
-        "MX-007"
+        "MX-007",
+        "MX-012"
       ],
       "kind": "modify",
       "shared_serialized": true,
       "source": "mx-006/007-lock-extension",
-      "note": "锁转移：MX-007 追加 @weknora/design-tokens 依赖"
+      "note": "锁转移链：MX-007 依赖、MX-012 expo-sqlite（官方矩阵 ~55.0.20）"
     },
     "apps/mobile/sources/app/(app)/_layout.tsx": {
       "owners": [
@@ -1960,6 +1961,15 @@
       "shared_serialized": false,
       "source": "mx-009-lock-extension",
       "note": "产品壳挂载 spec（MX009-OBSERVATION）"
+    },
+    "apps/mobile/sources/weknora/platform/execution-storage.test.ts": {
+      "owners": [
+        "MX-012"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-012-lock-extension",
+      "note": "fake 对齐官方 void 事务 API"
     }
   }
 }

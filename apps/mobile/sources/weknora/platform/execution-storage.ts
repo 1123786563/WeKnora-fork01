@@ -186,6 +186,9 @@ export function createExecutionStorage(driver: ExecutionStorageDriver, cipher: P
       });
       return rows;
     },
+    async readCursor(runID: string): Promise<number> {
+      return driver.transaction(async (tx) => tx.getCursor(key, runID));
+    },
     clear: () => driver.clearScope(key),
   };
 }
