@@ -122,10 +122,10 @@ test('preserves typed HTTP errors and never turns malformed 200 into success', a
 
 test('builds a resumable event request without inventing cursor semantics', () => {
   assert.deepEqual(executionEventsRequest('run/1'), {
-    method: 'GET', path: '/api/v1/workbench/executions/run%2F1/events', headers: undefined,
+    method: 'GET', path: '/api/v1/workbench/executions/run%2F1/events?version=2', headers: undefined,
   });
   assert.deepEqual(executionEventsRequest('run/1', '4'), {
-    method: 'GET', path: '/api/v1/workbench/executions/run%2F1/events', headers: { 'Last-Event-ID': '4' },
+    method: 'GET', path: '/api/v1/workbench/executions/run%2F1/events?version=2', headers: { 'Last-Event-ID': '4' },
   });
   assert.throws(() => executionEventsRequest('run/1', ' '), /lastEventID/);
   assert.throws(() => executionEventsRequest('run/1', '-1'), /safe sequence/);

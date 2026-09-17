@@ -760,12 +760,13 @@
     "internal/workbench/contracts.go": {
       "owners": [
         "MX-003",
-        "MX-005"
+        "MX-005",
+        "MX-006"
       ],
       "kind": "modify",
       "shared_serialized": true,
-      "source": "mx-005-lock-extension",
-      "note": "锁转移（MX-003 review P2-1）：ConfirmedWatermark 上界校验补齐"
+      "source": "mx-006-lock-extension",
+      "note": "锁转移链：P2 修复序列（MX-006=保留名防线）"
     },
     "internal/workbench/interaction.go": {
       "owners": [
@@ -1755,12 +1756,13 @@
     },
     "packages/api-client/src/mobile/executions.test.ts": {
       "owners": [
-        "MX-003"
+        "MX-003",
+        "MX-006"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "mx-003-lock-extension",
-      "note": "锁扩展：消费方 fixture 对齐冻结契约"
+      "shared_serialized": true,
+      "source": "mx-006-lock-extension",
+      "note": "消费方断言（MX-003 快照字段、MX-006 events version=2）"
     },
     "packages/contracts/test/mobile-execution.test.ts": {
       "owners": [
@@ -1800,12 +1802,13 @@
     },
     "packages/domain/src/mobile/index.ts": {
       "owners": [
-        "MX-004"
+        "MX-004",
+        "MX-006"
       ],
       "kind": "modify",
-      "shared_serialized": false,
-      "source": "mx-004-lock-extension",
-      "note": "锁扩展：domain/mobile 出口（execution-frames 导出）"
+      "shared_serialized": true,
+      "source": "mx-006-lock-extension",
+      "note": "domain/mobile 出口（MX-004 execution-frames、MX-006 submission 追加导出；串行单写）"
     },
     "internal/application/service/workbench/interaction_test.go": {
       "owners": [
@@ -1842,6 +1845,42 @@
       "shared_serialized": false,
       "source": "mx-005-fix-round",
       "note": "真实 Go pending wire 回归测试（P1-1）"
+    },
+    "packages/domain/src/mobile/submission.test.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-006-lock-extension",
+      "note": "提交身份状态机测试（test:shared 纳入）"
+    },
+    "apps/mobile/sources/weknora/platform/submission-store.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-006-lock-extension",
+      "note": "MMKV scope 绑定提交存储适配器"
+    },
+    "apps/mobile/sources/weknora/platform/submission-store.test.ts": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-006-lock-extension",
+      "note": "适配器测试（tsx --test 执行，G10 混用登记）"
+    },
+    "internal/handler/session/workbench_read_test.go": {
+      "owners": [
+        "MX-006"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-006-lock-extension",
+      "note": "锁扩展：version 协商 httptest（MX-004 P2-3）"
     }
   }
 }

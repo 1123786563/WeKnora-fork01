@@ -160,7 +160,8 @@ export function executionEventsRequest(runID: string, lastEventID?: string): Cli
   const cursor = lastEventID === undefined ? undefined : validateLastEventID(lastEventID);
   return {
     method: 'GET',
-    path: `/api/v1/workbench/executions/${id}/events`,
+    // version=2：完整 envelope 业务帧 + 显式 control 帧（MX-004 字节合同；TS parser 仅支持 v2 流）
+    path: `/api/v1/workbench/executions/${id}/events?version=2`,
     headers: cursor === undefined ? undefined : { 'Last-Event-ID': cursor },
   };
 }
