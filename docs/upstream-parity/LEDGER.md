@@ -81,10 +81,10 @@
 |---|---|---|
 | D1 | fork 栈启动（OrbStack WeKnora-app :8080 + React :5181 + Vue :5180） | ✅ 完成（后端健康；注意镜像滞后于 main，验证本轮新功能需重建镜像） |
 | D2 | 上游栈启动（weknora-upstream compose + override：`Up-WeKnora-*` 容器名，app :18080 / UI :18081 / minio :19000-19001；.env 由 example 生成+JWT_SECRET 随机+端口 sed；账号 parity-up@local.dev / Parity123456! tenant 10000） | ✅ 完成 |
-| D3 | 核心流程一一对照逐项记录 | 🔄 进行中（API 级已完成）。已完成：注册/登录/KB 创建列表/上传→解析→分块→启用/混合检索/聊天流式 SSE。**结论汇总**：①信封分歧 D3-1（`success+data` vs `knowledge_base(s)`，fork 三端已适配，⛔ 不改）；②聊天事件序列 fork=上游超集：fork 多发 `session_title` 流内标题事件——**D3-2 fork 有意扩展**，Vue(index.vue:1525) 与 React(ChatRoutePage.tsx:345) 均已消费，⛔ 不改；③SSE 安全防护双栈一致（host.docker.internal / 直连 IP / 解析到私网的域名全部拒绝——白名单走 system_settings `ssrf.whitelist` 键，两栈已写入 `[parity-mock, 192.168.3.32]`）；④检索响应结构逐键一致、同一文档同一查询双栈命中一致。待做：浏览器级页面一一对照、agent-chat（智能体模式流）、更多知识格式 |
+| D3 | 核心流程一一对照逐项记录 | 🔄 进行中（API 级 + agent-chat 浏览器级已完成，2026-09-18 第 6 轮）。已完成：注册/登录/KB 创建列表/上传→解析→分块→启用/混合检索/聊天流式 SSE/agent-chat 智能体模式（上游基线+fork 缺陷修复 5e382d0b，见第 6 轮）。**结论汇总**：①信封分歧 D3-1（`success+data` vs `knowledge_base(s)`，fork 三端已适配，⛔ 不改）；②聊天事件序列 fork=上游超集：fork 多发 `session_title` 流内标题事件——**D3-2 fork 有意扩展**，Vue(index.vue:1525) 与 React(ChatRoutePage.tsx:345) 均已消费，⛔ 不改；③SSE 安全防护双栈一致（host.docker.internal / 直连 IP / 解析到私网的域名全部拒绝——白名单走 system_settings `ssrf.whitelist` 键，两栈已写入 `[parity-mock, 192.168.3.32]`）；④检索响应结构逐键一致、同一文档同一查询双栈命中一致。待做：更多知识格式、修复项端到端复验 |
 | D4 | 对照账号 | fork 栈：parity-test@local.dev / Parity123456!（**实际 tenant 10001，记忆中 10000 已过时**）；上游栈：parity-up@local.dev / Parity123456!（tenant 10000） |
-| D6 | 浏览器级页面一一对照 | 🔄 首轮完成（证据 `evidence/browser-d3/` 13 张）。**D6-1 状态更新（2026-09-17 深夜）**：先前记录的「空 content assistant 消息致冷加载白屏」复现**被 worktree 未提交 WIP 污染**——`.worktrees/react-multiclient` 存在半完成的路由架构迁移（main.tsx 自研路由→@tanstack/react-router，未提交；cron 自动化锁 stale PID 48180 已死，疑为中断遗留）。dev server :5181 加载的正是该中间态，冷加载崩溃与 SPA 导航丢历史均不可归因于已提交代码。**处置：暂缓定性，不在他人 WIP 上调试/提交**；待迁移 WIP 落库后按下方复现步骤重测（:5181 会话 589fdd67-0eda-440e-bf31-8788f610e464，对照上游 e9bd0ca3 空消息容错；上游对照实验结论——上游 Vue 对空 content 消息容错——不受影响仍然成立）。对照实验数据：删除空消息后冷加载恢复（rootChildren 0→1）在小迁移中间态下取得，仅供参考。其余对照点见第 4 轮记录 |
-| D5 | 双栈共享 mock 模型服务 | ✅ 完成：容器 `parity-mock`（python:3.12-alpine 跑 /Users/wuyongjun/trea/parity-mock/mock_server.py，同时接入 weknora-upstream_WeKnora-network 与 react-multiclient_WeKnora-network 两网），OpenAI 兼容 /v1/embeddings(1024 维确定性)+/v1/chat/completions(流式 SSE)。两栈 DB 已插 mock-llm(KnowledgeQA)/mock-embed(Embedding,1024) 并 is_default；fork tenant 10001 旧 rig 模型(parity-llm-mock 等)已同指 parity-mock。SSRF 白名单经 system_settings `ssrf.whitelist`（重启 app 生效）。**复跑入口：两栈 KB `parity-smoke*` 各传 parity-doc.md → batch-reparse → hybrid-search/knowledge-chat** |
+| D6 | 浏览器级页面一一对照 | 🔄 两轮完成（第 4 轮证据 `evidence/browser-d3/` 13 张；第 6 轮 agent-chat 证据 `evidence/browser-agent-chat/` 3 张）。**D6-1 已结案（2026-09-18 第 6 轮）**：冷加载白屏真因=ChatHeaderMenu hooks 顺序违规（见第 6 轮修复 1），当时的外部 WIP 污染只是掩盖了复现条件；回归测试 chat-header-hook-order.test.tsx 已锁死。其余对照点见第 4/6 轮记录 |
+| D5 | 双栈共享 mock 模型服务 | ✅ 完成：容器 `parity-mock`（python:3.12-alpine 跑 /Users/wuyongjun/trea/parity-mock/mock_server.py，同时接入 weknora-upstream_WeKnora-network 与 react-multiclient_WeKnora-network 两网），OpenAI 兼容 /v1/embeddings(1024 维确定性)+/v1/chat/completions(流式 SSE)+/v1/rerank(确定性 relevance_score，2026-09-18 第 6 轮加入)。两栈 DB 已插 mock-llm(KnowledgeQA)/mock-embed(Embedding,1024)/mock-rerank(Rerank) 并 is_default（rerank 非 default）；fork tenant 10001 旧 rig 模型(parity-llm-mock 等)已同指 parity-mock。SSRF 白名单经 system_settings `ssrf.whitelist`（重启 app 生效）。**复跑入口：两栈 KB `parity-smoke*` 各传 parity-doc.md → batch-reparse → hybrid-search/knowledge-chat；agent-chat 用 智能推理 agent（需配 对话模型+重排模型 就绪）** |
 
 ## E. 完成记录
 
@@ -126,6 +126,31 @@
 - 手工移植：55ec13a 去重上传（NOT IN failed/deleting + 矩阵测试追加到 fork 的 knowledge_duplicate_test.go）；special_tokens.go 新建 + anthropic_tools/openai_request/ollama 三处接线；b23ae05 IM 两处 QA goroutine useAgent defer 关闭 + qa_exit_test.go。
 - 验证：`go build ./...` EXIT=0；相关 8 组包 `go test` 42 包全 ok（repository/service/chat/im/web_search/datasource/types），EXIT=0（重定向后读 $?）。
 - 遗留：A8-A21 大条目、B8-B12 待核、C1-C7 前端同步、D 双栈实测、批量下载 swagger 条目补 regen。
+
+### 2026-09-18 第 6 轮（D3/D6 agent-chat 智能体模式浏览器对照 + 两处 fork 缺陷修复）🔄
+
+> 纪律例外说明：本轮按用户新指令以 `.worktrees/react-multiclient` 为工作目录做浏览器对照并修复 React 侧缺陷（提交 `5e382d0b`，与 cron lane 文件不相交，无提交冲突；cron R460 同期正常落地）。后端 DI 修复也在该分支——main 分支的 newAgentRuntime 无 usage 参数、不受影响，无需回植。
+
+**环境（本轮新增/变化）**：
+- fork 后端 WeKnora-app 容器曾丢失，已从 worktree compose（项目 react-multiclient，.env 从主仓复制）重建。旧镜像（2026-09-03, 14953fcb）已被覆盖删除，无法回滚——本轮被迫重建镜像。
+- parity-mock 扩展 `/v1/rerank`（确定性 relevance_score），容器已重启生效；双栈 DB（Up 10000 / fork 10001）均插入 mock-rerank（Rerank/remote → parity-mock:18090）。
+- 镜像构建坑：① `go install migrate` 需 GOPROXY_ARG=https://goproxy.cn,direct；② WITH_ANYDOC=1 的 rustup 步骤网络失败（build context 变更后缓存失效），对照验证用 WITH_ANYDOC=0 规避；③ 管道 tail 吞退出码事故再现一次（教训重申：一律重定向后读 $?）。
+- worktree 分支镜像启动 panic（DI 顺序，见下）曾致 :8080 crash-loop——修复后已恢复。
+
+**D3/D6 agent-chat 对照结论（上游 Vue :18081 vs fork React :5181，parity-up / parity-test 账号）**：
+- 上游基线流程：侧边栏智能体页（4 内置：快速问答/智能推理/维基问答/数据分析师；卡片点击=编辑弹窗）→ 新对话 `/platform/creatChat` 输入区「智能体芯片」→ 富选择面板（管理入口/内置分组/未就绪门禁：smart-reasoning 必须配 对话模型+重排模型，未就绪项禁选+提示）→ 切换 toast「已切换到智能推理」→ 发送 → `/platform/chat/:id` 流式渲染 agent_steps（thought+iteration+timestamp+tool_calls；mock 无 tool_calls）→ 消息工具栏 复制/添加到知识库/请求信息。上游消息结构：content + agent_steps[] + execution_context（agent_config_hash/question_suggestions/locale/langfuse）。
+- 上游附带观察：agent 编辑器字段集（模型*/ReRank 模型*/温度/最大生成Token（默认4096/沙箱24576）/思考模式/输出来源引用/最大迭代次数/LLM 超时；左导航 基础/知识检索/能力扩展 三组，含 MCP 服务、技能、长期记忆、发布渠道 IM 集成/网页嵌入）——后续 React 智能体编辑器 parity 的基线清单。另：上游消息行渲染 3 个空 src 的 t-image 占位（图片无法显示，mock 数据诱发，上游侧行为，fork 未模仿——待上游定性，暂不判差异）。
+
+**发现并修复的 fork 缺陷（提交 5e382d0b，TDD）**：
+1. **React agent-chat 全页崩溃**：`ChatHeaderMenu`（packages/views/src/chat/page.tsx）在 `if (!session) return null` 之后才调用 rename 聚焦 useEffect。发送后立即跳转 /platform/chat/:id 时会话尚未进入 sessions 列表 → 首渲染 null、次渲染 hook 数 12→13 → React 抛「Rendered more hooks than during the previous render」白屏，并连带 abort 后端 SSE（assistant 留空消息、agent 运行中止）。D6-1 遗留的「空 content assistant 消息冷加载白屏」真因即此（当时归因被路由 WIP 污染）。修复=effect 前移至 bail-out 之前；回归测试 `apps/web/src/chat/chat-header-hook-order.test.tsx`（HEAD 复现崩溃→修复后通过）。门禁：typecheck:web 0 错、test:web 1666/1666（+1）。
+2. **worktree 分支后端启动 panic**：container.go 把 CommercialGateway/ExecutionGate/RemoteUsageService 三个 Provider 注册在 `Invoke(registerCraftHTTPHandlers)` 之后——dig 惰性解析使 newAgentRuntime 的 *RemoteUsageService 缺失，boot panic（2026-09-18 重建镜像必现；main 无此问题）。修复=三 Provider 前移至 newAgentRuntime 注册之前；`go build ./internal/container` 0 错。`go test ./internal/container` 的 TestWireCraftInteractionRegistrarRegistersPendingInteractions 在基线（无我改动）即失败——分支预存问题，未代解。
+
+**发现未修（下轮候选）**：
+- **i18n 缺口（功能差异）**：fork 新对话页主体英文（Hi, I am WeKnora— / Ask questions directly to the model / Select Agent / Chat model / Send），上游同页全中文；内置智能体卡片名/描述英文（Quick Answer/Smart Reasoning/…），上游中文（快速问答/智能推理/…）。fork 侧边栏/登录/KB 页均为中文——聊天域 locale 未接线或键缺失。
+- **智能体选择器功能差距**：fork=原生 combobox（Select Agent 下拉）；上游=富面板（分组/管理入口/未就绪门禁+去配置直达/特性徽章/详情卡）。上游就绪门禁（smart-reasoning 需对话模型+重排模型）fork 未实现——用 mock 已可配置出就绪态做对照。
+- 后端旧镜像滞后的 migration error（db_version 135 failed）已随新镜像消失（新代码迁移集含 135 down 文件）。
+
+**遗留**：新镜像（WITH_ANYDOC=0）滚动后端到端复验 agent-chat（发送→流式→完成不崩溃）；上游 t-image 空占位定性；i18n 与选择器差距排期。
 
 ## G. 纪律与教训
 
