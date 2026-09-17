@@ -53,3 +53,14 @@ Mimosa 预提交扫描曾以「硬编码凭据」拦截提交，所指均为既�
 ## D-013 · 命令准入规则冻结（2026-09-18，MX-003，关闭 G03 规则面）
 
 `evaluateCommand(execution, action)`（packages/contracts）：终态 run 拒绝；capability 未上报=unavailable；非 supported 沿用其 state/reason；revision<=0（无快照 revision）拒绝。VM/页面（MX-017/018/019）必须消费此规则，禁止再硬编码 canCancel/canSteer 布尔。服务端强制在 MX-005 Command 通道对齐同一矩阵。
+
+## D-014 · SSE v2 字节合同与版本协商（2026-09-18，MX-004，关闭 G01）
+
+- 业务帧 v2：`id: seq`、`event: type`、`data: 完整 ExecutionEvent envelope`（Go writeWorkbenchSSEV2，先 Validate 再写）。
+- 控制帧 v2：显式 `event: control`，data={code,message}，**无业务 id**（writeWorkbenchControlSSE）；心跳保持注释行。v1 legacy `event: error` 帧在 TS parser 侧同样按控制帧分类（兼容旧流）。
+- 协商：`GET …/events?version=2`（默认 1=旧 payload-only，兼容测试保留）；非法 version 400。客户端 URL 参数接线在 MX-006（api-client executions.ts 锁主）落地。
+- TS：ParsedExecutionFrame 变联合类型（business|control）；控制帧不进业务 Reducer、不推进 cursor（domain classifyExecutionFrames 冻结）；控制帧带业务 id 即拒绝。
+
+## D-015 · 跨语言字节 fixture 策略（2026-09-18，MX-004）
+
+tests/mobile-v2/fixtures/*.bin 为 `go test -run TestMX004Emit` 用真实 writer 原语再生的构建产物，gitignore 不入库；TS probe 每次运行前重新生成，保证两端消费的是当前代码输出而非陈旧快照。

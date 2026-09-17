@@ -86,3 +86,4 @@ artifacts/alipay-sandbox/qr.png
 artifacts/alipay-sandbox/order_id.txt
 artifacts/alipay-sandbox/ali05-evidence.json
 DSH_*.txt
+tests/mobile-v2/fixtures/*.bin

@@ -1785,6 +1785,24 @@
       "shared_serialized": false,
       "source": "mx-003-lock-extension",
       "note": "Go/TS 共享 fixture，两端同源"
+    },
+    "internal/handler/session/workbench_stream_mx004_test.go": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "create",
+      "shared_serialized": false,
+      "source": "mx-004-lock-extension",
+      "note": "跨语言 emit 测试（真实 writer 原语产出字节）"
+    },
+    "packages/domain/src/mobile/index.ts": {
+      "owners": [
+        "MX-004"
+      ],
+      "kind": "modify",
+      "shared_serialized": false,
+      "source": "mx-004-lock-extension",
+      "note": "锁扩展：domain/mobile 出口（execution-frames 导出）"
     }
   }
 }

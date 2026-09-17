@@ -170,6 +170,17 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 		}
 		cursor = parsed
 	}
+	// Product stream version negotiation: v1 keeps the legacy payload-only
+	// data line for existing callers; v2 carries the full envelope and
+	// explicit control frames (MX-004 byte contract).
+	version := 1
+	if raw := strings.TrimSpace(c.Query("version")); raw != "" {
+		if raw != "1" && raw != "2" {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		version, _ = strconv.Atoi(raw)
+	}
 	// Perform the first read before committing the response. This preserves the
 	// HTTP 409 cursor-expired contract for reconnects whose history was trimmed.
 	events, _, err := h.snapshots.ReadRunEvents(c.Request.Context(), key, cursor, workbenchEventPageSize)
@@ -185,7 +196,7 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
-	if !flushWorkbenchEvents(c, events) {
+	if !flushWorkbenchEvents(c, events, version) {
 		return
 	}
 	for _, event := range events {
@@ -204,7 +215,7 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 	for {
 		snapshot, snapshotErr := h.snapshots.ReadRunSnapshot(c.Request.Context(), key)
 		if snapshotErr != nil {
-			writeWorkbenchStreamError(c, cursor, snapshotErr)
+			writeWorkbenchStreamError(c, cursor, snapshotErr, version)
 			return
 		}
 		if isTerminalWorkbenchStatus(snapshot.Execution.RunStatus) && len(events) < workbenchEventPageSize {
@@ -219,14 +230,14 @@ func (h *WorkbenchReadHandler) StreamWorkbenchEvents(c *gin.Context) {
 		case <-poll.C:
 			next, _, readErr := h.snapshots.ReadRunEvents(c.Request.Context(), key, cursor, workbenchEventPageSize)
 			if readErr != nil {
-				writeWorkbenchStreamError(c, cursor, readErr)
+				writeWorkbenchStreamError(c, cursor, readErr, version)
 				return
 			}
 			if len(next) == 0 {
 				events = nil // the current cursor is fully drained
 				continue
 			}
-			if !flushWorkbenchEvents(c, next) {
+			if !flushWorkbenchEvents(c, next, version) {
 				return
 			}
 			for _, event := range next {
@@ -248,10 +259,16 @@ func isTerminalWorkbenchStatus(status string) bool {
 	}
 }
 
-func flushWorkbenchEvents(c *gin.Context, events []workbench.ExecutionEvent) bool {
+func flushWorkbenchEvents(c *gin.Context, events []workbench.ExecutionEvent, version int) bool {
 	events = normalizeWorkbenchEvents(events)
 	for _, event := range events {
-		if err := writeWorkbenchSSE(c.Writer, event.Seq, event.Type, event.Payload); err != nil {
+		var err error
+		if version == 2 {
+			err = writeWorkbenchSSEV2(c.Writer, event)
+		} else {
+			err = writeWorkbenchSSE(c.Writer, event.Seq, event.Type, event.Payload)
+		}
+		if err != nil {
 			return false
 		}
 		flushWorkbenchWriter(c)
@@ -283,14 +300,20 @@ func flushWorkbenchWriter(c *gin.Context) {
 	}
 }
 
-func writeWorkbenchStreamError(c *gin.Context, cursor int64, err error) {
-	seq := cursor
-	if seq < 1 {
-		seq = 1
-	}
+func writeWorkbenchStreamError(c *gin.Context, cursor int64, err error, version int) {
 	code := "stream_error"
 	if errors.Is(err, agentruntime.ErrCursorExpired) {
 		code = "cursor_expired"
+	}
+	if version >= 2 {
+		// v2: explicit control frame without a business id; never advances the cursor
+		_ = writeWorkbenchControlSSE(c.Writer, code, err.Error())
+		flushWorkbenchWriter(c)
+		return
+	}
+	seq := cursor
+	if seq < 1 {
+		seq = 1
 	}
 	payload, marshalErr := json.Marshal(map[string]string{"code": code, "message": err.Error()})
 	if marshalErr == nil {
@@ -319,4 +342,37 @@ func writeWorkbenchSSE(w io.Writer, seq int64, kind string, raw json.RawMessage)
 		return err
 	}
 	return nil
+}
+
+// writeWorkbenchSSEV2 is the product v2 byte contract: the data line carries
+// the full ExecutionEvent envelope (schema_version/run_id/attempt_id/seq/type/
+// occurred_at/payload) so native parsers never reconstruct lost semantics.
+// id stays the business seq and event stays the business type.
+func writeWorkbenchSSEV2(w io.Writer, event workbench.ExecutionEvent) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
+	envelope, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.Seq, event.Type, envelope); err != nil {
+		return err
+	}
+	return nil
+}
+
+// writeWorkbenchControlSSE writes an explicit control frame. Control frames
+// carry no business id and must never advance the business cursor; clients
+// classify them separately from business events.
+func writeWorkbenchControlSSE(w io.Writer, code, message string) error {
+	if strings.TrimSpace(code) == "" || strings.ContainsAny(code, "\r\n") || strings.ContainsAny(message, "\r\n") {
+		return errors.New("invalid_control")
+	}
+	payload, err := json.Marshal(map[string]string{"code": code, "message": message})
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "event: control\ndata: %s\n\n", payload)
+	return err
 }
