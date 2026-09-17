@@ -48,7 +48,8 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 | MX-031 | review | 188da5fd→569eb068 | mv2 23/23 · frozen 120/38/1260/0 · tsc 11 | 待独立review | MX-031.md |
 | MX-024 | review | 569eb068→52a3627d | mv2 24/24 · frozen 0/[] · tsc 11 | 待独立review（与 031 合并） | MX-024.md |
 | MX-021 | review | 52a3627d→c600224e | mv2 25/25 · go 全绿（路由+DI）· shared 590/590 · tsc 11 | 审查进行中（与 024/031 合并） | MX-021.md |
-| MX-020 | review | c600224e→(待提交) | mv2 26/26 · frozen 0/编辑文本/authorizing · tsc 11 | 待独立review | MX-020.md |
+| MX-020 | review | c600224e→e3639894 | mv2 26/26 · frozen 0/编辑文本/authorizing · tsc 11 | 待独立review（审查代理 TLS 失败重派） | MX-020.md |
+| MX-023 | review | e3639894→(待提交) | mv2 27/27 · frozen 0/[] · tsc 11 | 待独立review | MX-023.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 
