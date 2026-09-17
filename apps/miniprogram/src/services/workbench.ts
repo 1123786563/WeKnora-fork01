@@ -34,7 +34,11 @@ export async function startTask(input:Omit<StartExecutionInput,'request_id'>):Pr
  if(old&&old.state!=='rejected'){
   const found=await executions.lookup(old.requestId);intent.reconcile(found);
   if(found.state==='admitted'&&found.run_id){rememberRun(found.run_id);intent.acknowledge();return found.run_id}
-  throw new Error('前一次任务仍待确认，请先查询原请求');
+  // lookup 明确返回 unknown 表示服务端没有该请求的持久记录（admission.go 对
+  // ErrRecordNotFound 的分支），不是"仍在途"。此时用同一 request_id 重提交是
+  // 安全的：若记录实际已存在，Start 会按幂等键返回原 run；换新 ID 反而会
+  // 违背"同一意图保留相同 request_id"。pending/dispatching 仍需等待。
+  if(found.state!=='unknown')throw new Error('前一次任务仍待确认，请先查询原请求');
  }
  if(old?.state==='rejected')intent.reset();const entry=intent.begin();
  try{const ack=await executions.start({...input,request_id:entry.requestId});intent.reconcile({state:'admitted',run_id:ack.run_id});rememberRun(ack.run_id);intent.acknowledge();return ack.run_id}
