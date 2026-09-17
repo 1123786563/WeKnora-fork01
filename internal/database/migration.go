@@ -24,7 +24,7 @@ var (
 	currentMigrationError   string
 )
 
-const sqliteWorkbenchRunsMigrationVersion = 16
+const sqliteWorkbenchRunsMigrationVersion = 55
 
 // CachedMigrationVersion returns the migration version captured at startup.
 // Returns (version, dirty, ok). ok is false if the version was never captured.
@@ -188,7 +188,7 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 		}
 	}
 
-	// Migration 000016 rebuilds agent_runs. SQLite only changes foreign_keys
+	// Migration 000055 rebuilds agent_runs. SQLite only changes foreign_keys
 	// outside a transaction, while the stock driver wraps every file in one.
 	// Bring every supported SQLite entry point to v15 using the normal driver,
 	// execute only v16 with NoTxWrap, then restore normal per-file wrapping for

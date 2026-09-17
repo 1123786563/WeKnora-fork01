@@ -38,6 +38,12 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	migration, err := os.ReadFile("../../../migrations/sqlite/000014_agent_runs.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
+	// The production store reads the post-rebuild agent_runs shape; the
+	// 000055 rebuild adds exactly these three defaulted columns on top of
+	// 000014, so mirror them instead of replaying the whole rebuild file.
+	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN driver VARCHAR(16) NOT NULL DEFAULT 'platform'").Error)
+	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN target_id VARCHAR(512) NOT NULL DEFAULT ''").Error)
+	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN budget_ref VARCHAR(512) NOT NULL DEFAULT ''").Error)
 	versions, err := os.ReadFile("../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(versions)).Error)

@@ -238,14 +238,16 @@ func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
 	// Step down past every execution/workbench-family migration (targets at
 	// 57, requests at 56, the run rebuild at 55, then observations/dispatch/
 	// interactions at 21/20/19) so the paseo-owned tables are all absent.
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -19))
+	// The applied set has gaps (17-18 and 22-29 were never used), so reaching
+	// version 16 from 57 crosses 31 applied migrations, not a contiguous 41.
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -31))
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 16, version)
 	require.False(t, dirty)
 	require.False(t, sqliteTableExists(t, db, "execution_target_identities"))
 	require.False(t, sqliteTableExists(t, db, "execution_observations"))
 	require.False(t, sqliteTableExists(t, db, "execution_source_cursors"))
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 19))
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 31))
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 57, version)
 	require.False(t, dirty)

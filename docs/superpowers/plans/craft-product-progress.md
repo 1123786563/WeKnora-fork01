@@ -72,3 +72,22 @@
 - 并行组 #1（R01+R02）：两项均审查 PASS_WITH_NITS 后串行合入（da6d169d、21bf52fc），合并后受影响包全绿（含 live 与真实 PG）。
 - R03 已从集成 HEAD 21bf52fc 派发；ready 集合现为 {R03}（R04 需 R03 完成）。
 - 事件留档：R01/R02 实现期间 worktree 曾被外部进程删除，实现者重建并复验；两次审查均核对提交与报告吻合。
+
+## G0 再恢复与当前基线复验（2026-09-17）
+
+执行提示词要求的现场恢复再次执行，本轮为第二次全量复核。与 2026-09-13 记录相比的关键变化与结论：
+
+- **历史现场已清理**：`.worktrees/craft-*` 与 `codex/craft-*` 任务分支均不存在（2026-09-16 分支清理）；权威 `dag-state.json` 随集成工作区删除。本文件与 Git 历史（合并 `e064a1f7`，为当前 `main` 祖先）成为完成事实的权威记录。
+- **27/27 任务维持 done**：DAG JSON 程序化校验（27 任务+5 门禁、引用完整、无环）；`release-evidence.json` 的 26 个任务 SHA + O05 集成 3a4895f4 + 终合并 e064a1f7 + 基线 83e2ef5c 全部为当前 HEAD（3e767d66）祖先；craft 迁移 000125–000132、`docs/testing/craft/` 证据文件均在当前树中。
+- **复核纠错（重要）**：第一轮复核的 "`go build ./...` PASS" 为管道假象（`go build | head && echo` 吞掉退出码），据此得出的"无集成破坏"结论错误。第二轮以真实退出码复验，发现 Craft 合并后（+2156 提交，paseo/mobile 专项）main 上存在四类真实破坏，全部由 paseo 合并链引入且未跑全量构建即落库：
+  1. **编译破坏 A**：`e9b024d3`（fix(paseo)）在 `service/workbench/remote_dispatch.go` 新增私有方法 `dispatch` 与既有字段 `dispatch` 重名，包不编译，连锁 `handler/session`、`container`、`application/repository` 构建失败。修复：方法改名 `dispatchFenced`。
+  2. **编译破坏 B**：`207cb66d`（fix(container)）在 `container/agent_runtime.go` 用 `r.Enabled`（*bool）直接做布尔运算、`worker, err =` 双分支赋值未声明 `err`；`container.go` 遗留未用导入。修复：改用 `r.RecoveryEnabled()`、补 `var err error`、删冗余导入。
+  3. **迁移器常量过期**：`internal/database/migration.go` 的 `sqliteWorkbenchRunsMigrationVersion=16` 未随迁移重编号（合并 391a4ac2 后文件为 000055）更新，导致生产迁移路径在 v55 处 dirty（`internal/database` 10 项测试失败）。修复：常量 16→55 + 注释。
+  4. **测试助手未适配 000055 自管事务**：12 处 `sqlite3migrate.Config{}`（11 个 craft 期测试助手 + `recoverytest/provider/main.go`）在 000055（BEGIN IMMEDIATE 自管事务）下报 "cannot start a transaction within a transaction"，使 `application/service`、`agent/opencode` live、`agent/recoverytest`（G3 双工作者竞争）失败。修复：全部加 `NoTxWrap: true`（与 paseo 已适配助手同模式）。
+  另修复四处过期测试期望：`workbench_migration_test.go` DownUp 步数 19→31（迁移编号存在 17-18/22-29 空洞）；`agent_run_worker_test.go` 三个 WorkerConfig 补 `Driver:"platform"`；`agent/tools`+`agent/trpc` 手工 schema 助手按 000055 精确差异补 `driver/target_id/budget_ref` 三列（ALTER 字面量，与重建迁移等价）；`repository/execution_dispatch_test.go` 迁移 head 断言 20→57 与 `repository/craft_version_test.go` W01 回滚目标 41→45（craft 家族现居 45–52，两处均为 open-connector 重编号后的过期编号）。
+- **修复后当前 main 复验全绿**（真实退出码）：`go build ./...` exit 0；`go test` craft / workbench / agent 全树（含 recoverytest G3 矩阵 39.9s、tools、trpc）/ sandbox / execution / database / application/service 全部子包 / application/repository / handler/session / container 全 ok；`CRAFT_LIVE=1 TestLiveCraftTwoTurns` PASS（41.3s，含真模型独立证据通道：真实模型写入 monthly-summary.md 且汇总正确）；builtin 回归子集 PASS；`apps/web` tsc+vite 构建与 1280/1280 单测 PASS（主工作区需先 `pnpm install`，非代码问题）；`check-craft-release.py --commit 6fbc0706` evidence verified。
+- **发布门禁按设计拒发当前 HEAD**：evidence head=6fbc0706 ≠ 当前 HEAD，须在发布切割时重新生成（终审 F1 原样有效，属发布时动作，非代码缺口）。
+- **外部缺口复核仍与留档一致（F2 继续有效）**：`NewCraftModelGateway` 无生产装配调用方（O02 网关未接线）；commercial 订阅/预算/订单/恢复/结算仍走 AutoMigrate（G4 迁移缺口）；`internal/metrics` 无 router/cmd 注册（/metrics 未暴露）；驻留事件无生产记录者。以上仅阻塞收费发布，不影响非收费交付。
+- **F3 已满足**：`/tmp` 无 craft 残留目录。
+- `craft.enabled` 回退路径复核：`CraftFeatureGate.Enabled` 零值 false，fail-closed 成立。
+- 本节修复（22 个代码文件）为协调器在 main 工作区的直接修复——均为根因已完全定位的机械修复（改名/常量/配置位/列对齐/过期编号），逐项经修复后定向复跑验证；未提交，待用户审阅。

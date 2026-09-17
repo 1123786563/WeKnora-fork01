@@ -29,14 +29,14 @@ func NewRemoteDispatcher(dispatch *repository.ExecutionDispatchStore) *RemoteDis
 }
 
 func (d *RemoteDispatcher) Dispatch(ctx context.Context, key agentruntime.RunKey, commandID, payloadHash, worker string, lease time.Duration, epoch int64, provider RemoteProvider) (string, error) {
-	return d.dispatch(ctx, agentruntime.Fence{RunKey: key, Owner: worker, Epoch: epoch}, commandID, payloadHash, worker, lease, provider)
+	return d.dispatchFenced(ctx, agentruntime.Fence{RunKey: key, Owner: worker, Epoch: epoch}, commandID, payloadHash, worker, lease, provider)
 }
 
 func (d *RemoteDispatcher) DispatchFence(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash string, lease time.Duration, provider RemoteProvider) (string, error) {
-	return d.dispatch(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
+	return d.dispatchFenced(ctx, fence, commandID, payloadHash, fence.Owner, lease, provider)
 }
 
-func (d *RemoteDispatcher) dispatch(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
+func (d *RemoteDispatcher) dispatchFenced(ctx context.Context, fence agentruntime.Fence, commandID, payloadHash, worker string, lease time.Duration, provider RemoteProvider) (string, error) {
 	key := fence.RunKey
 	if provider == nil {
 		return "", ErrProviderUnavailable

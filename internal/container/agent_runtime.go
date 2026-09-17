@@ -220,7 +220,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
-	if r.Enabled && provider == nil && len(executors) == 0 {
+	if r.RecoveryEnabled() && provider == nil && len(executors) == 0 {
 		return nil, errors.New("durable agent recovery requires a graph executor or a configured remote provider")
 	}
 	c := service.DefaultWorkerConfig()
@@ -246,6 +246,7 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		execute = executors[0]
 	}
 	var worker *service.AgentRunWorker
+	var err error
 	if provider != nil {
 		if dispatch == nil {
 			return nil, errors.New("remote dispatch store is required when a provider is configured")

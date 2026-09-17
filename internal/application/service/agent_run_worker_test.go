@@ -68,7 +68,7 @@ func TestWorkerConfigRejectsUnsafeLease(t *testing.T) {
 func TestWorkerSkipsWaitingUser(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{"r": {Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, Status: "waiting_user"}}, keys: []agentruntime.RunKey{{TenantID: 1, RunID: "r"}}}
 	n := 0
-	w, e := NewAgentRunWorker(s, func(context.Context, agentruntime.Fence) error { n++; return nil }, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
+	w, e := NewAgentRunWorker(s, func(context.Context, agentruntime.Fence) error { n++; return nil }, WorkerConfig{Enabled: true, Driver: "platform", Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
 	require.NoError(t, e)
 	require.NoError(t, w.Tick(context.Background()))
 	time.Sleep(20 * time.Millisecond)
@@ -79,7 +79,7 @@ func TestWorkerTwoTicksDoNotDuplicate(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{"r": {Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, Status: "queued"}}, keys: []agentruntime.RunKey{{TenantID: 1, RunID: "r"}}}
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	w, e := NewAgentRunWorker(s, func(context.Context, agentruntime.Fence) error { close(entered); <-release; return nil }, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
+	w, e := NewAgentRunWorker(s, func(context.Context, agentruntime.Fence) error { close(entered); <-release; return nil }, WorkerConfig{Enabled: true, Driver: "platform", Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
 	require.NoError(t, e)
 	require.NoError(t, w.Tick(context.Background()))
 	<-entered
@@ -96,7 +96,7 @@ func TestWorkerCallsRecoveryHookBeforeExecute(t *testing.T) {
 		order = append(order, "execute")
 		close(done)
 		return nil
-	}, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
+	}, WorkerConfig{Enabled: true, Driver: "platform", Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
 	require.NoError(t, err)
 	w.SetRecoveryHook(func(context.Context, agentruntime.Fence) error { order = append(order, "reconcile"); return nil })
 	require.NoError(t, w.Tick(context.Background()))

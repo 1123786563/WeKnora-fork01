@@ -31,7 +31,7 @@ func openCraftUsageServiceDB(t *testing.T) *gorm.DB {
 
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
 	require.NoError(t, err)
 	migrator, err := migrate.NewWithDatabaseInstance(
 		"file:"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)

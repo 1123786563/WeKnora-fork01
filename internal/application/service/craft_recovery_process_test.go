@@ -477,7 +477,7 @@ func openCraftRecoveryProviderDB(path string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
 	if err != nil {
 		return nil, err
 	}

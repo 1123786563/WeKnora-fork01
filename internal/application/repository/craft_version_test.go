@@ -189,7 +189,7 @@ func TestCraftVersionsMigrationDownDropsVersionTables(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
 	require.NoError(t, err)
 	migrator, err := migrate.NewWithDatabaseInstance(
 		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
@@ -197,10 +197,10 @@ func TestCraftVersionsMigrationDownDropsVersionTables(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, migrator.Up())
 	// Roll back to the version just before W01 explicitly instead of a
-	// relative Steps(-1): later chain entries (craft usage 43, craft budget
-	// 44, craft sessions 45) now sit above W01, and the pinned rule is about
+	// relative Steps(-1): later chain entries (craft sessions 49, snapshots
+	// 50, lifecycle 52) now sit above W01 at 46, and the pinned rule is about
 	// the W01 down script itself, not about W01 being the chain head.
-	require.NoError(t, migrator.Migrate(41))
+	require.NoError(t, migrator.Migrate(45))
 
 	for _, table := range []string{"craft_versions", "craft_version_files"} {
 		var count int

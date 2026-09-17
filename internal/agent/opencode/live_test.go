@@ -320,7 +320,7 @@ func openCraftLiveDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
 	if err != nil {
 		t.Fatalf("sqlite migrate driver: %v", err)
 	}
