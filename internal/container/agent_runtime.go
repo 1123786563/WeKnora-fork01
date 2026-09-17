@@ -13,6 +13,7 @@ import (
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"gorm.io/gorm"
 )
@@ -220,7 +221,11 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
-	if r.Enabled && provider == nil && len(executors) == 0 {
+	// BASE pre-existing breakage fix (coordinator-confirmed): Enabled is a
+	// *bool, so the gate goes through the nil-safe RecoveryEnabled()
+	// accessor (nil = not enabled) instead of a raw dereference-style
+	// boolean use that does not compile.
+	if r.RecoveryEnabled() && provider == nil && len(executors) == 0 {
 		return nil, errors.New("durable agent recovery requires a graph executor or a configured remote provider")
 	}
 	c := service.DefaultWorkerConfig()
@@ -246,6 +251,9 @@ func newAgentRuntimeWithDispatch(cfg *config.Config, store *repository.AgentRunS
 		execute = executors[0]
 	}
 	var worker *service.AgentRunWorker
+	// BASE pre-existing breakage fix (coordinator-confirmed): err was used
+	// below without a declaration; declare it once for both branches.
+	var err error
 	if provider != nil {
 		if dispatch == nil {
 			return nil, errors.New("remote dispatch store is required when a provider is configured")
@@ -301,7 +309,13 @@ func (r *AgentRuntime) Start(ctx context.Context) error {
 func (r *AgentRuntime) Drain() {
 	r.once.Do(func() {
 		if r != nil && r.Worker != nil {
-			r.Worker.Wait(time.Second)
+			if !r.Worker.Wait(time.Second) {
+				// The stop budget expired without positive confirmation
+				// that the worker exited: surface it as a W34
+				// stop_unconfirmed signal instead of pretending the
+				// shutdown was clean.
+				execution.CountExecutionStopUnconfirmed()
+			}
 		}
 	})
 }
@@ -309,9 +323,38 @@ func (r *AgentRuntime) Drain() {
 // AgentRecoveryAdmissionEnabled reports whether new tRPC runs may be admitted.
 // Enabled controls the worker; AdmissionEnabled controls new work, so an
 // operator can close admission while allowing existing runs to drain.
+// W34: worker drain additionally refuses NEW admissions process-wide while
+// the worker itself keeps running so already-admitted runs finish and
+// cleanup paths stay reachable.
 func AgentRecoveryAdmissionEnabled(cfg *config.Config) bool {
-	return cfg != nil && cfg.Agent != nil &&
-		cfg.Agent.Recovery.RecoveryEnabled() && cfg.Agent.Recovery.RecoveryAdmissionEnabled()
+	if cfg == nil || cfg.Agent == nil {
+		return false
+	}
+	if !cfg.Agent.Recovery.RecoveryEnabled() || !cfg.Agent.Recovery.RecoveryAdmissionEnabled() {
+		return false
+	}
+	if cfg.IsWorkbenchWorkerDraining() {
+		return false
+	}
+	return true
+}
+
+// WorkbenchPlatformAdmissionEnabled reports whether NEW platform-target
+// workbench executions are admitted at the runtime layer: the workbench
+// platform switch gates it, and worker drain closes every admission lane.
+// Reads and cleanup are deliberately NOT gated here — closing one lane must
+// never cut query or cleanup paths.
+func WorkbenchPlatformAdmissionEnabled(cfg *config.Config) bool {
+	return cfg.IsWorkbenchPlatformAdmissionEnabled() && !cfg.IsWorkbenchWorkerDraining()
+}
+
+// WorkbenchPaseoAdmissionEnabled reports whether NEW remote (Paseo-hosted)
+// workbench executions are admitted: the durable recovery admission must be
+// on, the W34 paseo gate must be open, and worker drain closes the lane.
+// Enabling Paseo itself stays a deployment act (provider wiring + agent
+// recovery switches); this switch is the rollback gate on top.
+func WorkbenchPaseoAdmissionEnabled(cfg *config.Config) bool {
+	return AgentRecoveryAdmissionEnabled(cfg) && cfg.IsWorkbenchPaseoAdmissionEnabled()
 }
 
 // ValidateAgentRuntimeConfig is called by startup wiring before constructing

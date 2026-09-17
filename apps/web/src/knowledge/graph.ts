@@ -227,6 +227,43 @@ export function graphHighlightSets(
   return { enlargedNodes: focus, litNodes, litEdges };
 }
 
+/**
+ * Vue WikiBrowser fitGraphToView (L1092-1137): frame the bounding box of the
+ * visible nodes with a 60px padding, clamp the scale to [0.2, 2], and center
+ * the box — shifted 240px left of center while the drawer is open so the
+ * node under focus stays clear of the 480px panel. Returns the viewport the
+ * renderer can tween to.
+ */
+export function fitGraphViewport(
+  positions: ReadonlyArray<{ x: number; y: number }>,
+  width: number,
+  height: number,
+  drawerVisible: boolean,
+): GraphViewport {
+  if (positions.length === 0) return { x: 0, y: 0, scale: 1 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of positions) {
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x);
+    maxY = Math.max(maxY, node.y);
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const padding = 60;
+  const boxWidth = Math.max(maxX - minX, 100) + padding * 2;
+  const boxHeight = Math.max(maxY - minY, 100) + padding * 2;
+  const scaleX = width / boxWidth;
+  const scaleY = height / boxHeight;
+  const scale = Math.max(0.2, Math.min(2, Math.min(scaleX, scaleY)));
+  const targetCx = width / 2 - (drawerVisible ? 240 : 0);
+  const targetCy = height / 2;
+  return { x: targetCx - cx * scale, y: targetCy - cy * scale, scale };
+}
+
 /** Vue WikiBrowser setEdgePositions margin: keep end markers clear of node circles. */
 export const GRAPH_EDGE_ARROW_MARGIN = 4;
 

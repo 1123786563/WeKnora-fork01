@@ -100,6 +100,7 @@ import {
   isFilteringDocuments,
 } from "./page-chrome.ts";
 import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
+import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
@@ -2573,6 +2574,10 @@ export function KnowledgeDocumentsPage({
     [kbMeta],
   );
 
+  // Vue ⚙ (KnowledgeBase.vue:2388 → uiStore.openKBSettings) opens the KB
+  // settings surface in place instead of navigating away; the Dialog below
+  // re-hosts KnowledgeSettingsPage for the same behavior.
+  const [kbSettingsOpen, setKbSettingsOpen] = useState(false);
   // Vue renders the 文档/Wiki/图谱 row inline as the third breadcrumb level
   // (KnowledgeBase.vue:2359-2380, activeKbTab === 'documents' here); the
   // label keys match the graph page's breadcrumb tabs so both surfaces read
@@ -3330,6 +3335,7 @@ export function KnowledgeDocumentsPage({
             }}
             supportedFileTypes={[...supportedFileTypes]}
             canManage={canContribute}
+            onOpenSettings={() => setKbSettingsOpen(true)}
             tabs={breadcrumbTabs}
           />
           <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
@@ -4318,6 +4324,17 @@ export function KnowledgeDocumentsPage({
           onConfirm={(tagIds) => void submitTagDialog(tagIds)}
           onClose={() => setTagDialog(null)}
         />
+      ) : null}
+      {kbSettingsOpen ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.settings")}
+          closeLabel={t("common.close")}
+          onClose={() => setKbSettingsOpen(false)}
+          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+        >
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} />
+        </Dialog>
       ) : null}
     </main>
   );

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, fitGraphViewport, graphEdgeEndpoints, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -271,4 +271,34 @@ test('highlight sets follow the Vue applyHighlight focus contract', () => {
   assert.ok(incoming);
   assert.deepEqual([...incoming.litEdges], ['x-focus']);
   assert.deepEqual([...incoming.litNodes].sort(), ['focus', 'x']);
+});
+
+test("fitGraphViewport frames the visible bbox with Vue padding, clamps, and drawer offset", () => {
+  // 600x400 canvas; nodes span (100,50)…(300,250) → box 320x320 (200 span +
+  // 2×60 padding), scale = min(600/320, 400/320) = 1.25, clamped below 2.
+  const positions = [{ x: 100, y: 50 }, { x: 300, y: 250 }];
+  const vp = fitGraphViewport(positions, 600, 400, false);
+  const scale = Math.min(600 / 320, 400 / 320);
+  assert.ok(Math.abs(vp.scale - scale) < 1e-9);
+  assert.ok(Math.abs(vp.x - (300 - 200 * scale)) < 1e-9);
+  assert.ok(Math.abs(vp.y - (200 - 150 * scale)) < 1e-9);
+
+  // Drawer open shifts the horizontal center 240px left of the canvas center.
+  const shifted = fitGraphViewport(positions, 600, 400, true);
+  assert.ok(Math.abs(shifted.scale - vp.scale) < 1e-9);
+  assert.ok(Math.abs(shifted.x - (vp.x - 240)) < 1e-9);
+  assert.ok(Math.abs(shifted.y - vp.y) < 1e-9);
+
+  // Tiny bboxes use the 100px floor (box 220x220 here), and the scale never
+  // exceeds 2 — the vertical ratio is the binding one.
+  const tiny = fitGraphViewport([{ x: 0, y: 0 }, { x: 4, y: 4 }], 600, 400, false);
+  assert.ok(Math.abs(tiny.scale - 400 / 220) < 1e-9);
+  assert.ok(tiny.scale < 2);
+
+  // Wide graphs clamp at the 0.2 lower bound instead of zooming out endlessly.
+  const wide = fitGraphViewport([{ x: 0, y: 0 }, { x: 20000, y: 10 }], 600, 400, false);
+  assert.equal(wide.scale, 0.2);
+
+  // No visible nodes keeps the unit viewport.
+  assert.deepEqual(fitGraphViewport([], 600, 400, false), { x: 0, y: 0, scale: 1 });
 });

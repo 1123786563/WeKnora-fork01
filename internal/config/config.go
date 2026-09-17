@@ -58,6 +58,81 @@ type Config struct {
 	CommercialNewOrders   *bool `yaml:"commercial_new_orders" json:"commercial_new_orders"`
 	CommercialNewDispatch *bool `yaml:"commercial_new_dispatch" json:"commercial_new_dispatch"`
 	ConnectorNewActions   *bool `yaml:"connector_new_actions" json:"connector_new_actions"`
+	// Workbench is the W34 managed-workbench capability switch panel. Each
+	// lane closes independently so an operator can stop NEW work of one
+	// kind (rollback) without cutting reads, cleanup or the other lanes.
+	// Pointer booleans keep "unset" distinguishable from "explicit false";
+	// polarity follows the O01 convention (unset = safe-on) EXCEPT
+	// worker_drain, which must be an explicit opt-in (unset = not draining).
+	// Env overrides are parsed in applyWorkbenchCapabilityDefaults.
+	Workbench *WorkbenchConfig `yaml:"workbench" json:"workbench"`
+}
+
+// WorkbenchConfig holds the W34 per-capability admission switches. Closing a
+// switch rejects NEW work in that lane only; already-admitted work keeps
+// running to completion and cleanup/reconciliation paths stay available —
+// one switch must never cut query and cleanup at the same time.
+type WorkbenchConfig struct {
+	// ReadEnabled gates workbench READ paths (list/get/status queries).
+	// Unset keeps reads on. Env: WEKNORA_WORKBENCH_READ_ENABLED.
+	ReadEnabled *bool `yaml:"read_enabled" json:"read_enabled"`
+	// PlatformAdmission gates NEW platform-target workbench executions.
+	// Unset keeps admission open. Env: WEKNORA_WORKBENCH_PLATFORM_ADMISSION.
+	PlatformAdmission *bool `yaml:"platform_admission" json:"platform_admission"`
+	// PaseoAdmission gates NEW remote (Paseo-hosted) workbench executions.
+	// This is the rollback gate on top of the opt-in enable path (enabling
+	// Paseo itself stays a deployment act: provider + agent recovery
+	// switches). Unset keeps the gate open. Env: WEKNORA_WORKBENCH_PASEO_ADMISSION.
+	PaseoAdmission *bool `yaml:"paseo_admission" json:"paseo_admission"`
+	// VoiceAdmission gates NEW voice-lane executions. Unset keeps the gate
+	// open. Env: WEKNORA_WORKBENCH_VOICE_ADMISSION.
+	VoiceAdmission *bool `yaml:"voice_admission" json:"voice_admission"`
+	// NotificationsEnabled gates NEW notification deliveries. Unset keeps
+	// notifications on. Env: WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED.
+	NotificationsEnabled *bool `yaml:"notifications_enabled" json:"notifications_enabled"`
+	// WorkerDrain puts the durable worker into drain mode: NEW admissions
+	// are refused everywhere while already-admitted runs continue to
+	// completion and cleanup still runs. Unset (or false) = normal
+	// operation. Env: WEKNORA_WORKBENCH_WORKER_DRAIN.
+	WorkerDrain *bool `yaml:"worker_drain" json:"worker_drain"`
+}
+
+// AreWorkbenchReadsEnabled reports whether workbench read paths answer.
+// Nil config or unset pointer keeps the safe-on default (true).
+func (c *Config) AreWorkbenchReadsEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.ReadEnabled == nil || *c.Workbench.ReadEnabled
+}
+
+// IsWorkbenchPlatformAdmissionEnabled reports whether NEW platform-target
+// executions are admitted. Nil keeps the safe-on default (true).
+func (c *Config) IsWorkbenchPlatformAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.PlatformAdmission == nil || *c.Workbench.PlatformAdmission
+}
+
+// IsWorkbenchPaseoAdmissionEnabled reports whether NEW remote (Paseo)
+// executions are admitted through the W34 gate. Nil keeps the gate open
+// (true) — enabling Paseo itself remains opt-in elsewhere.
+func (c *Config) IsWorkbenchPaseoAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.PaseoAdmission == nil || *c.Workbench.PaseoAdmission
+}
+
+// IsWorkbenchVoiceAdmissionEnabled reports whether NEW voice-lane
+// executions are admitted. Nil keeps the safe-on default (true).
+func (c *Config) IsWorkbenchVoiceAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.VoiceAdmission == nil || *c.Workbench.VoiceAdmission
+}
+
+// AreWorkbenchNotificationsEnabled reports whether NEW notification
+// deliveries are accepted. Nil keeps the safe-on default (true).
+func (c *Config) AreWorkbenchNotificationsEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.NotificationsEnabled == nil || *c.Workbench.NotificationsEnabled
+}
+
+// IsWorkbenchWorkerDraining reports whether the durable worker is in drain
+// mode (no NEW admissions anywhere; existing runs finish; cleanup runs).
+// Nil keeps the explicit opt-out default (false).
+func (c *Config) IsWorkbenchWorkerDraining() bool {
+	return c != nil && c.Workbench != nil && c.Workbench.WorkerDrain != nil && *c.Workbench.WorkerDrain
 }
 
 // AreCommercialNewOrdersEnabled reports whether NEW commercial orders are
@@ -701,6 +776,7 @@ func LoadConfig() (*Config, error) {
 	applyAuditDefaults(&cfg)
 	applyCommercialRolloutDefaults(&cfg)
 	applyOpenConnectorDefaults(&cfg)
+	applyWorkbenchCapabilityDefaults(&cfg)
 
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
@@ -1136,6 +1212,37 @@ func applyOpenConnectorDefaults(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_OPEN_CONNECTOR_RUNTIME")); value != "" {
 		cfg.OpenConnector.Runtime = value
 	}
+}
+
+// applyWorkbenchCapabilityDefaults applies the env-var overrides of the W34
+// workbench capability switches. Safe-ON polarity for the five capability
+// lanes: an unset or unparseable env var never closes a lane, and config.yaml
+// explicit false (the rollback action) is preserved as-is. worker_drain is
+// the opposite: unset/unparseable never STARTS a drain, and only an explicit
+// true opts in. The env vars are read explicitly because
+// viper.AutomaticEnv has no SetEnvPrefix, so WEKNORA_-prefixed vars are not
+// bound to the nested struct automatically. Values are booleans only —
+// nothing secret is stored here, and the parse-failure log prints the
+// variable NAME, never an env value.
+//
+// Env overrides (when set and parseable as boolean):
+//   - WEKNORA_WORKBENCH_READ_ENABLED
+//   - WEKNORA_WORKBENCH_PLATFORM_ADMISSION
+//   - WEKNORA_WORKBENCH_PASEO_ADMISSION
+//   - WEKNORA_WORKBENCH_VOICE_ADMISSION
+//   - WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED
+//   - WEKNORA_WORKBENCH_WORKER_DRAIN
+func applyWorkbenchCapabilityDefaults(cfg *Config) {
+	if cfg.Workbench == nil {
+		cfg.Workbench = &WorkbenchConfig{}
+	}
+	w := cfg.Workbench
+	applyRolloutSwitchEnv(&w.ReadEnabled, "WEKNORA_WORKBENCH_READ_ENABLED")
+	applyRolloutSwitchEnv(&w.PlatformAdmission, "WEKNORA_WORKBENCH_PLATFORM_ADMISSION")
+	applyRolloutSwitchEnv(&w.PaseoAdmission, "WEKNORA_WORKBENCH_PASEO_ADMISSION")
+	applyRolloutSwitchEnv(&w.VoiceAdmission, "WEKNORA_WORKBENCH_VOICE_ADMISSION")
+	applyRolloutSwitchEnv(&w.NotificationsEnabled, "WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED")
+	applyRolloutSwitchEnv(&w.WorkerDrain, "WEKNORA_WORKBENCH_WORKER_DRAIN")
 }
 
 func applyAuditDefaults(cfg *Config) {

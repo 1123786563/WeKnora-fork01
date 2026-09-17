@@ -17,6 +17,8 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   SVGElement: dom.window.SVGElement,
+  SVGSVGElement: dom.window.SVGSVGElement,
+  SVGGElement: dom.window.SVGGElement,
   Event: dom.window.Event,
   // openContextualGuide dispatches `new CustomEvent(...)`; without this pin the
   // Node-global CustomEvent wins and jsdom rejects the instance on dispatchEvent.
@@ -92,6 +94,15 @@ async function mount(client: WeKnoraClient = graphClient()) {
   });
   await act(async () => {});
   return container;
+}
+
+// Real-browser activation path for canvas nodes: pointerdown registers the
+// drag gesture and a stationary pointerup is the tap (endGraphGesture). A
+// synthetic MouseEvent('click') bypasses the gesture system entirely — which
+// is exactly how the old capture-on-pointerdown bug stayed invisible here.
+function tapNode(node: SVGGElement, pointerId = 1) {
+  node.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId, button: 0, clientX: 10, clientY: 10 }));
+  node.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId, button: 0, clientX: 10, clientY: 10 }));
 }
 
 test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract', async () => {
@@ -192,7 +203,7 @@ test('graph drawer renders page Markdown as reader content', async () => {
   const container = await mount();
   const node = container.querySelector<SVGGElement>('svg g[role="button"]');
   assert.ok(node);
-  await act(async () => node.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  await act(async () => tapNode(node));
   await act(async () => {});
   assert.ok(container.querySelector('[data-testid="knowledge-graph-reader"] h1'));
   assert.equal(container.querySelector('[data-testid="knowledge-graph-reader"] strong')?.textContent, 'Markdown');
@@ -679,16 +690,19 @@ test('graph hover highlights incident edges and dims the rest like Vue applyHigh
   assert.equal(far.getAttribute('style')?.replace(' ', '').includes('opacity:0.2'), false, 'dimmed node restored to full opacity');
 });
 
-test('graph click selects (drawer + persistent highlight) and background click clears like Vue', async () => {
+test('graph tap selects (drawer + persistent highlight) and background click clears like Vue', async () => {
   const container = await mount(highlightClient());
   const svg = canvasSvg(container)!;
   const group = svg.querySelector('g')!;
   const mid = nodeGroup(container, 'Mid')!;
-  await act(async () => mid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  // Pointer-sequence activation (pointerdown + stationary pointerup) — the
+  // path real browsers take; a bare MouseEvent('click') used to mask the
+  // capture bug.
+  await act(async () => tapNode(mid));
   await act(async () => {});
   // Drawer opens and the selection keeps the highlight on (Vue click →
   // graphSelectedSlug + applyHighlight + openGraphDrawer).
-  assert.ok(container.querySelector('aside[role="dialog"]'), 'drawer opens on click');
+  assert.ok(container.querySelector('aside[role="dialog"]'), 'drawer opens on tap');
   const bidir = litLine(group, 'url(#wk-graph-arrow-end-hl)', 'url(#wk-graph-arrow-start-hl)');
   assert.ok(bidir, 'selection keeps the hub-mid edge lit');
   // Vue activeRing: r+5 selection pulse ring on the selected node.
@@ -709,6 +723,45 @@ test('graph click selects (drawer + persistent highlight) and background click c
   assert.equal(bidir.getAttribute('marker-end'), 'url(#wk-graph-arrow-end)', 'background click restores plain markers');
   assert.equal(mid.querySelector(':scope > circle.wk-graph-active-ring'), null, 'selection ring cleared');
   assert.equal(container.querySelector('aside[role="dialog"]'), null);
+});
+
+test('graph node drag never activates the node — tap is the only pointer activation path', async () => {
+  const container = await mount(highlightClient());
+  const svg = canvasSvg(container)!;
+  const mid = nodeGroup(container, 'Mid')!;
+  // jsdom reports an empty rect; pin it so pointer coordinates map to svg
+  // space and the >3px drag threshold actually trips.
+  Object.defineProperty(svg, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 760, bottom: 420, width: 760, height: 420, toJSON: () => ({}) }),
+  });
+  await act(async () => {
+    mid.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId: 7, button: 0, clientX: 50, clientY: 50 }));
+    svg.dispatchEvent(new dom.window.PointerEvent('pointermove', { bubbles: true, pointerId: 7, button: 0, clientX: 120, clientY: 90 }));
+    svg.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId: 7, button: 0, clientX: 120, clientY: 90 }));
+  });
+  await act(async () => {});
+  assert.equal(container.querySelector('aside[role="dialog"]'), null, 'a real drag never opens the drawer');
+  assert.equal(mid.querySelector(':scope > circle.wk-graph-active-ring'), null, 'a real drag never selects the node');
+  const dimmedLines = [...svg.querySelectorAll('line')].filter((line) => (line.getAttribute('style') ?? '').includes('stroke-opacity'));
+  assert.equal(dimmedLines.length, 0, 'a real drag leaves the highlight state untouched');
+});
+
+test('graph double-tap on the same node fetches the drawer page once (Vue pendingSingleClick)', async () => {
+  const client = highlightClient();
+  let pageFetches = 0;
+  const innerGet = client.wiki.get.bind(client.wiki);
+  client.wiki.get = (async (...args: Parameters<typeof innerGet>) => {
+    pageFetches += 1;
+    return innerGet(...args);
+  }) as typeof client.wiki.get;
+  const container = await mountWith(client);
+  const mid = nodeGroup(container, 'Mid')!;
+  await act(async () => tapNode(mid, 2));
+  await act(async () => tapNode(mid, 3));
+  await act(async () => {});
+  assert.equal(pageFetches, 1, 'the second tap inside the 300ms window belongs to the dblclick ego pivot, not another fetch');
+  assert.ok(container.querySelector('aside[role="dialog"]'), 'the first tap still opened the drawer');
 });
 
 test('graph keyboard selection produces the same highlight as Vue applyHighlight', async () => {

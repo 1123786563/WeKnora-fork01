@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Dialog, Input, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views';
-import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
+import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewport, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
 import { DocumentsBreadcrumb, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
@@ -168,8 +168,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [drawerStatus, setDrawerStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [viewport, setViewport] = useState<GraphViewport>({ x: 0, y: 0, scale: 1 });
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
-  const gesture = useRef<{ kind: 'pan' | 'node'; pointerId: number; startX: number; startY: number; originX: number; originY: number; slug?: string } | null>(null);
+  const gesture = useRef<{ kind: 'pan' | 'node'; pointerId: number; startX: number; startY: number; originX: number; originY: number; slug?: string; captured?: boolean } | null>(null);
   const dragged = useRef(false);
+  // Vue pendingSingleClick (L4186-4220): the first of two taps on the same
+  // node opens the drawer, the second belongs to the dblclick ego pivot —
+  // without this both taps would fetch the page twice.
+  const lastNodeTap = useRef<{ slug: string; time: number } | null>(null);
   // Vue WikiBrowser selection/hover highlight state (graphSelectedSlug /
   // graphHighlightSlug, L3735/3738): a click/search/ego-preselect selects a
   // node, hovering another node adds a secondary focus, and a near-stationary
@@ -442,7 +446,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }, [drawerNeighbor, t]);
 
   function svgPoint(event: { clientX: number; clientY: number; currentTarget: SVGElement }) {
-    const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : event.currentTarget.ownerSVGElement;
+    // Child elements carry ownerSVGElement; the svg root itself has none.
+    // (Deliberately not `instanceof SVGSVGElement`: that interface must exist
+    // on the global scope or the gesture handlers throw before registering.)
+    const svg = event.currentTarget.ownerSVGElement ?? event.currentTarget;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
     // The viewBox mirrors the measured surface size, so the mapping is 1:1.
@@ -463,8 +470,11 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     if (!position) return;
     gesture.current = { kind: 'node', pointerId: event.pointerId, startX: point.x, startY: point.y, originX: position.x, originY: position.y, slug };
     dragged.current = false;
+    // No setPointerCapture here: capturing during pointerdown retargets the
+    // following pointer events (and the compat click) to the svg root, so a
+    // plain tap never activates the node in real browsers. Capture is taken
+    // lazily in moveGraphGesture once the pointer actually moves.
     event.stopPropagation();
-    (event.currentTarget.ownerSVGElement ?? event.currentTarget).setPointerCapture(event.pointerId);
   }
 
   function moveGraphGesture(event: ReactPointerEvent<SVGSVGElement>) {
@@ -475,11 +485,78 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     const dy = point.y - current.startY;
     if (Math.abs(dx) + Math.abs(dy) > 3) dragged.current = true;
     if (current.kind === 'pan') setViewport((value) => ({ ...value, x: current.originX + dx, y: current.originY + dy }));
-    else if (current.slug) setDragPositions((value) => ({ ...value, [current.slug!]: { x: current.originX + dx / viewport.scale, y: current.originY + dy / viewport.scale } }));
+    else if (current.slug) {
+      // Take capture only once the drag is real so the svg keeps receiving
+      // moves outside its bounds; a stationary tap never captures and its
+      // pointerup stays on the node.
+      if (dragged.current && !current.captured) {
+        current.captured = true;
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer already gone (released before the move dispatch) — the
+          // gesture simply stops receiving moves.
+        }
+      }
+      setDragPositions((value) => ({ ...value, [current.slug!]: { x: current.originX + dx / viewport.scale, y: current.originY + dy / viewport.scale } }));
+    }
   }
 
+  // Single activation path for canvas nodes: pointerdown registers the
+  // gesture, and a pointerup that never exceeded the drag threshold is the
+  // tap. (The former <g> onClick never fired in real browsers — capturing on
+  // pointerdown retargeted the click to the svg root — and jsdom's
+  // fireEvent-style dispatches bypass capture, which is why tests stayed
+  // green.) Shift+tap blooms like Vue shift+click (L4191-4200), and the
+  // second tap of a double-tap is left to onDoubleClick (Vue pendingSingleClick).
   function endGraphGesture(event: ReactPointerEvent<SVGSVGElement>) {
+    const current = gesture.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    gesture.current = null;
+    if (current.kind !== 'node' || !current.slug || dragged.current) return;
+    const slug = current.slug;
+    const now = Date.now();
+    const isSecondTap = lastNodeTap.current?.slug === slug && now - lastNodeTap.current.time < 300;
+    lastNodeTap.current = { slug, time: now };
+    if (isSecondTap) return;
+    const node = (visible?.nodes ?? []).find((item) => item.slug === slug);
+    if (!node) return;
+    if (event.shiftKey) {
+      void bloomNeighbors(slug);
+      return;
+    }
+    setSelectedSlug(slug);
+    void openNode(node);
+  }
+
+  // pointercancel means the gesture was taken over (scroll/pointer loss) —
+  // never treat it as a tap.
+  function cancelGraphGesture(event: ReactPointerEvent<SVGSVGElement>) {
     if (gesture.current?.pointerId === event.pointerId) gesture.current = null;
+  }
+
+  // Vue flyTo (WikiBrowser.vue L4482-4499): a 600ms cubic ease-out tween to
+  // the target pan/zoom. Falls back to an immediate jump when rAF is absent.
+  function flyViewportTo(target: GraphViewport, duration = 600) {
+    const start = viewport;
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const frame = typeof requestAnimationFrame === 'function'
+      ? (step: (now: number) => void) => requestAnimationFrame(step)
+      : null;
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    if (!frame) { setViewport(target); return; }
+    const step = (now: number) => {
+      const total = typeof performance !== 'undefined' ? performance.now() - t0 : Date.now() - t0;
+      const p = Math.min(1, duration > 0 ? total / duration : 1);
+      const e = ease(p);
+      setViewport({
+        x: start.x + (target.x - start.x) * e,
+        y: start.y + (target.y - start.y) * e,
+        scale: start.scale + (target.scale - start.scale) * e,
+      });
+      if (p < 1) frame(step);
+    };
+    frame(step);
   }
 
   return (
@@ -512,7 +589,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
-            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onClick={(event) => {
+            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
               // Vue setupPanZoom mouseup (L4544-4553): a near-stationary click
               // on the svg background clears the selection, the drawer, and
               // the highlight with it.
@@ -580,13 +657,13 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                   // stay at full opacity, everything else fades to 0.2.
                   const enlarged = highlight?.enlargedNodes.has(node.slug) ?? false;
                   const dimmed = highlight ? !highlight.litNodes.has(node.slug) : false;
-                  return <g key={node.slug} className="group/node cursor-pointer outline-none" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 0.2s' }} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onMouseEnter={() => enterNodeHover(node.slug)} onMouseLeave={leaveNodeHover} onClick={(event) => { if (event.shiftKey) { void bloomNeighbors(node.slug); return; } if (!dragged.current) { setSelectedSlug(node.slug); void openNode(node); } }} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSlug(node.slug); void openNode(node); } }}>
+                  return <g key={node.slug} className="group/node cursor-pointer outline-none" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 0.2s' }} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onMouseEnter={() => enterNodeHover(node.slug)} onMouseLeave={leaveNodeHover} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSlug(node.slug); void openNode(node); } }}>
                     {showExpansionRing ? <circle cx={position.x} cy={position.y} r={radius + 3} className="node-expansion-ring [fill:none] [stroke-width:1.5] [stroke-dasharray:3_3]" style={{ stroke: fill, opacity: 0.55 }} aria-hidden="true" /> : null}
                     {node.familiar ? <circle cx={position.x} cy={position.y} r={radius + 7} className="wk-graph-familiar-ring [fill:none] [stroke:#0052d9] [stroke-width:2]" style={{ opacity: 0.9 }} aria-hidden="true" /> : null}
                     {selectedSlug === node.slug ? <circle cx={position.x} cy={position.y} r={radius + 5} className="wk-graph-active-ring pointer-events-none [fill:none]" style={{ stroke: fill, strokeWidth: 2, transformOrigin: position.x + "px " + position.y + "px", animation: 'wk-node-active-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite' }} aria-hidden="true" /> : null}
                     <circle cx={position.x} cy={position.y} r={enlarged ? radius + 3 : radius} style={{ fill, strokeWidth: enlarged ? 3 : 2, transition: 'r 0.2s, stroke-width 0.2s, opacity 0.2s' }} className="[stroke:#fff] [stroke-width:2]" />
                     <text x={position.x} y={position.y + radius + 14} textAnchor="middle" className="pointer-events-none text-[11px] [fill:#66758b]">{node.title.length > 14 ? `${node.title.slice(0, 14)}…` : node.title}</text>
-                    {mode === 'ego' && !isEgoCenter && Math.max(0, node.link_count - neighborCount) > 0 ? <g className="node-bloom-btn pointer-events-none opacity-0 transition-opacity group-hover/node:pointer-events-auto group-hover/node:opacity-100" onClick={(event) => { event.stopPropagation(); void bloomNeighbors(node.slug); }}>
+                    {mode === 'ego' && !isEgoCenter && Math.max(0, node.link_count - neighborCount) > 0 ? <g className="node-bloom-btn pointer-events-none opacity-0 transition-opacity group-hover/node:pointer-events-auto group-hover/node:opacity-100" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void bloomNeighbors(node.slug); }}>
                       <circle cx={position.x + Math.SQRT1_2 * (radius + 6)} cy={position.y - Math.SQRT1_2 * (radius + 6)} r={8} className="[fill:#fff] [stroke:#0052d9] [stroke-width:1.5]" />
                       <line x1={position.x + Math.SQRT1_2 * (radius + 6)} x2={position.x + Math.SQRT1_2 * (radius + 6)} y1={position.y - Math.SQRT1_2 * (radius + 6) - 4} y2={position.y - Math.SQRT1_2 * (radius + 6) + 4} className="stroke-[#0052d9] [stroke-width:1.8] [stroke-linecap:round]" />
                       <line x1={position.x + Math.SQRT1_2 * (radius + 6) - 4} x2={position.x + Math.SQRT1_2 * (radius + 6) + 4} y1={position.y - Math.SQRT1_2 * (radius + 6)} y2={position.y - Math.SQRT1_2 * (radius + 6)} className="stroke-[#0052d9] [stroke-width:1.8] [stroke-linecap:round]" />
@@ -649,7 +726,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
             </div>
             <div className="-mx-3 h-px bg-line-neutral" aria-hidden="true" />
             <div className="flex flex-col gap-2">
-              <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" title="Fit to View" onClick={() => setViewport({ x: 0, y: 0, scale: 1 })}>
+              <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" title="Fit to View" onClick={() => flyViewportTo(fitGraphViewport(displayPositions, surfaceSize.width, surfaceSize.height, Boolean(drawerNode)))}>
                 <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-[13px] text-faint" aria-hidden="true">◎</span>
                 <span>{t('wikiBrowser.fitView')}</span>
               </button>

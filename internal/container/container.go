@@ -54,7 +54,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
-	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
