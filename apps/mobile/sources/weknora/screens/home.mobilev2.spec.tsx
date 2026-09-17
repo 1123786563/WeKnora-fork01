@@ -40,8 +40,6 @@ describe('MX-013 home screen', () => {
       );
     });
     expect(calls).toBe(1);
-    const text = JSON.stringify(renderer.root.props);
-    void text;
     const labels: string[] = renderer.root.findAll((node: { type: unknown; props: { accessibilityLabel?: string } }) => typeof node.type === 'string' && node.props.accessibilityLabel !== undefined).map((node: { props: { accessibilityLabel?: string } }) => node.props.accessibilityLabel ?? '');
     expect(labels.some((label) => label?.includes('1 项待审批'))).toBe(true);
     expect(labels.some((label) => label?.includes('任务 run-a'))).toBe(true);

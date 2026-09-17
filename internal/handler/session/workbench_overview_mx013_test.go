@@ -25,7 +25,11 @@ func TestMX013OverviewOwnerScope(t *testing.T) {
 	dsn := "file:" + t.TempDir() + "/overview.db?_foreign_keys=on&_busy_timeout=10000"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
+	// 真实列集建表（防自造 schema 掩盖缺列——R1 P1 教训）：物理列以生产迁移为准
 	require.NoError(t, db.AutoMigrate(&workbenchservice.OverviewRunRow{}, &workbenchservice.OverviewInteractionRow{}))
+	for _, table := range []string{"agent_runs", "workbench_interactions"} {
+		require.True(t, db.Migrator().HasTable(table))
+	}
 	now := time.Now().UTC()
 	require.NoError(t, db.Create([]*workbenchservice.OverviewRunRow{
 		{TenantID: 7, RunID: "owned-run", SessionID: "s-1", OwnerID: "u1", Status: "running", UpdatedAt: now},
@@ -67,6 +71,8 @@ func TestMX013OverviewOwnerScope(t *testing.T) {
 	require.Equal(t, now.Format(time.RFC3339), envelope.Data.AsOf)
 	first := envelope.Data.InProgress[0]
 	require.Equal(t, "running", first.RunStatus)
+	require.Equal(t, "running", first.ExecutionStatus, "active execution observation derives from run status (snapshot precedent)")
+	require.Equal(t, "pending", first.SettlementStatus, "active runs are never shown as settled")
 	require.Equal(t, "s-1", first.SessionID)
 	require.False(t, first.UpdatedAt.IsZero())
 

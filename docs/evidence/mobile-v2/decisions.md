@@ -101,3 +101,14 @@ MX-009 裁决「入口接线随 MX-010 落地」在锁账上不闭合：`_layout
 - MX-011 P2-1：domain/mobile/index.ts 追加 MX-011 owners（query-scope 导出，漏登记补齐）。
 - MX-011 P2-3 措辞拆分：切空间不取消服务端 Run=[x]（probe 观测）；退后台/断流=[~]（原语层结构保证，设备级复验 MX-034）。
 - MX-010 R1 修复：P1-1 SSO state 落盘形状对齐回跳契约（{state,redirect_uri,issued_at}+失败清理）；P2-1 probe 普通存储计数器接真实写入路径；P2-2 bootstrapMemberships 入 context；P3（死代码移除/SSO host 缺失反馈/replaceCredential bootstrap 失败上抛）。
+
+## D-025 · overview 计数语义与 B 类路径（2026-09-18，MX-013）
+
+- 路径采用 04-api-contracts §2 的 GET /workbench/overview（B 类；Viewer+API-key 与读边界一致）。
+- counts.active_runs=截断查询长度（≤20）——首页计数语义为「进行中卡片数」；真实总数需求出现时再版本化扩展。
+- 锁转移补登记（R1 P2-1）：read-models.ts（MX-003→MX-013：InteractionSummary.title 可选化，服务端现无该字段，B 类未发布期收紧）；api-client index.ts（MX-005→MX-013：createOverviewApi 出口）；execution-storage.test.ts（MX-012 搭车闭环已在该任务审查记录）。
+- D-016 P2-2（read-models run_status 枚举收紧）明确移交 **MX-021**（其接通 inbox/notification read-model 时统一收紧 A/B 类枚举），不在 MX-013 抢做。
+
+## D-026 · typecheck 基线更新（2026-09-18，MX-017）
+
+MX-017 产品对话重写消除了 ConversationScreen 的 3 个 G02/G04 继承错误（createRequestID 悬空导入/approve·reject 不在命令类型）——typecheck 基线由 14 降为 **11**（app/5、CommandPalette/3、SessionsList/2、useNavigateToSession.test/1，均 legacy 归属 MX-009 后续/其他）。此后基线=11。

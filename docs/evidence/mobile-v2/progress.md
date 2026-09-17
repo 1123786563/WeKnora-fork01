@@ -34,8 +34,11 @@
 
 mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线守护（该文件相对基线 6a70c35a 恒为 create）；复核代理实跑抓获。R2 已修复并复跑 7/7。纪律固化：**任何 file-ownership.json 变更后必须重跑 test:mobile-v2**（守护测试就是为此存在）。
 
-| MX-013 | review | 6d94a204→cd10655d | mv2 14/14 · go 双包 ok · 挂载 9/9 · shared 590/590 · tsc 14=基线 | 审查进行中 | MX-013.md |
+| MX-013 | fixing→review | 6d94a204→cd10655d(+fix) | frozen Go ok（含派生断言）· mv2 待复验 | R1 FAIL(P1 虚构列)→已修复→待复核 | MX-013.md |
 | MX-014 | review | cd10655d→(待提交) | mv2 15/15 · shared 590/590 · tsc 14=基线 | 待独立review | MX-014.md |
+
+| MX-014 | review | cd10655d→336b0ffb | mv2 15/15 · shared 590/590 · tsc 14=基线 | 审查进行中 | MX-014.md |
+| MX-017 | review | 336b0ffb→(待提交) | mv2 16/16 · frozen dup-seq 1/你好/0 · tsc 11=新基线(D-026) | 待独立review | MX-017.md |
 
 ## 接续说明（2026-09-18 本轮收口）
 

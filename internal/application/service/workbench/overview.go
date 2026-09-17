@@ -13,16 +13,15 @@ import (
  * unread_notifications 与 recent_artifacts 在对应能力（MX-021/024）接入前如实为零/空。
  */
 
-// OverviewRunRow 映射既有 agent_runs 表（只读投影列）。
+// OverviewRunRow 只映射 agent_runs 的物理列（000093/000134 建表与 ALTER 的实际列集子集）。
+// execution/settlement 是运行时投影（snapshotRunRow 先例）：活动态执行观察=Status、结算=pending。
 type OverviewRunRow struct {
-	TenantID         uint64
-	RunID            string
-	SessionID        string
-	OwnerID          string
-	Status           string
-	ExecutionStatus  string
-	SettlementStatus string
-	UpdatedAt        time.Time
+	TenantID  uint64
+	RunID     string
+	SessionID string
+	OwnerID   string
+	Status    string
+	UpdatedAt time.Time
 }
 
 func (OverviewRunRow) TableName() string { return "agent_runs" }
@@ -116,11 +115,12 @@ func (s *OverviewService) Overview(ctx context.Context, tenantID uint64, ownerID
 			RunID:            run.RunID,
 			SessionID:        run.SessionID,
 			RunStatus:        run.Status,
-			ExecutionStatus:  run.ExecutionStatus,
-			SettlementStatus: run.SettlementStatus,
+			ExecutionStatus:  run.Status,          // 活动态执行观察与 run 状态同源（快照先例）
+			SettlementStatus: "pending",           // 活动中结算未最终（终态时由结算域出证）
 			UpdatedAt:        run.UpdatedAt,
 		})
 	}
+	// 计数为截断查询长度（上限 20）——首页计数语义按“进行中卡片数”展示（D-025）
 	result.Counts.ActiveRuns = int64(len(runs))
 
 	var interactions []OverviewInteractionRow
