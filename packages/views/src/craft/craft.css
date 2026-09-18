@@ -2,7 +2,7 @@
    (packages/ui + apps/web styles.css palette: var(--craft-ink) ink, var(--craft-canvas) canvas,
    var(--craft-brand) accent, var(--craft-danger) danger, var(--craft-success-text) success, var(--craft-line) hairline). */
 
-.wk-craft-page { box-sizing: border-box; margin: 0 auto; max-width: 1180px; padding: 1.5rem 1.25rem 3rem; }
+.wk-craft-page { box-sizing: border-box; margin: 0 auto; max-width: 1180px; min-width: 0; overflow-x: clip; padding: 1.5rem 1.25rem 3rem; }
 .wk-craft-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; margin-bottom: 1rem; }
 .wk-craft-head h1 { font-size: 1.6rem; margin: 0; }
 .wk-craft-muted { color: var(--craft-secondary-text); margin: 0.25rem 0 0; }
@@ -120,3 +120,12 @@
 .wk-craft-notice[data-kind='reconnect'] { background: var(--craft-brand-soft); color: var(--craft-brand-ink); }
 .wk-craft-notice[data-kind='failed'] { background: var(--craft-danger-wash); color: var(--craft-danger); }
 .wk-craft-notice[data-kind='canceled'], .wk-craft-notice[data-kind='unknown'], .wk-craft-notice[data-kind='readonly'], .wk-craft-notice[data-kind='expired'] { background: var(--craft-canvas); color: var(--craft-secondary-text); border: 1px solid var(--craft-line); }
+
+/* CFT-S01-T010: the assistant-ui conversation column */
+.wk-craft-thread { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.wk-craft-thread-viewport { display: flex; flex-direction: column; gap: 0.7rem; flex: 1; min-height: 6rem; overflow-y: auto; padding: 0.9rem; }
+.wk-craft-thread .wk-craft-msg { border-radius: 8px; padding: 0.6rem 0.8rem; max-width: 46rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wk-craft-thread .wk-craft-msg-user { background: var(--craft-brand-soft); color: var(--craft-ink); align-self: flex-end; }
+.wk-craft-thread .wk-craft-msg-assistant { background: var(--craft-canvas); border: 1px solid var(--craft-line-soft); align-self: flex-start; }
+.wk-craft-thread-supplement { border-top: 1px solid var(--craft-line-soft); display: grid; gap: 0.6rem; max-height: 32vh; overflow-y: auto; padding: 0.6rem 0.9rem; }
+.wk-craft-tool-facts { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }

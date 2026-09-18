@@ -275,9 +275,11 @@ test('05 switching sessions never appends the old stream', async ({ page }) => {
 
   // Switch back to the first session while B is still generating: the first
   // session's conversation must not receive B's live stream.
+  // (CFT-S01-T010: the conversation column renders through assistant-ui —
+  // the scrolling viewport is the conversation container now.)
   await page.goto('/craft/' + encodeURIComponent(sessionId));
   await expect(page.getByTestId('craft-main-status')).toBeVisible({ timeout: 60_000 });
-  const conversationA = page.locator('.wk-craft-msgs');
+  const conversationA = page.locator('.wk-craft-thread-viewport');
   await expect(conversationA).toBeVisible({ timeout: 60_000 });
   const textA = await conversationA.innerText();
   expect(textA).not.toContain(bPrompt);
@@ -285,7 +287,7 @@ test('05 switching sessions never appends the old stream', async ({ page }) => {
   // Back to B: it must finish with only its own conversation.
   await page.goBack();
   await expect(page.getByTestId('craft-main-status')).toHaveText('已完成', { timeout: 240_000 });
-  const conversation = page.locator('.wk-craft-msgs');
+  const conversation = page.locator('.wk-craft-thread-viewport');
   const textB = await conversation.innerText();
   expect(textB).not.toContain(monthlyGoal);
   expect(textB).not.toContain(quarterlyGoal);

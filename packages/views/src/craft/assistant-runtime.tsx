@@ -30,7 +30,8 @@ import {
 
 /** One archived or live conversation row, as the workbench already derives it. */
 export interface CraftThreadRow {
-  prompt: string;
+  /** Null when a turn archived without a persisted prompt. */
+  prompt: string | null;
   assistantText: string;
   /** True ONLY when the main-run projection is terminal (W05 invariant). */
   assistantComplete: boolean;
@@ -125,6 +126,12 @@ export function useCraftAssistantRuntime(input: UseCraftAssistantRuntimeInput): 
 export interface CraftAssistantThreadProps extends UseCraftAssistantRuntimeInput {
   /** Rendered while the thread has no messages. */
   empty?: ReactNode;
+  /**
+   * When false the built-in ComposerPrimitive block is omitted — the host
+   * owns its own composer (the W05 craft composer keeps its draft machine,
+   * attachment chips and e2e anchors; the runtime's onNew then never fires).
+   */
+  composer?: boolean;
 }
 
 /**
@@ -154,14 +161,16 @@ export function CraftAssistantThread(props: CraftAssistantThreadProps) {
             }}
           />
         </ThreadPrimitive.Viewport>
-        <ComposerPrimitive.Root className="wk-craft-composer">
-          <ComposerPrimitive.Input
-            className="wk-craft-composer-input"
-            aria-label="craft composer"
-            placeholder="输入修改要求…"
-          />
-          <ComposerPrimitive.Send className="wk-craft-composer-send">发送</ComposerPrimitive.Send>
-        </ComposerPrimitive.Root>
+        {props.composer === false ? null : (
+          <ComposerPrimitive.Root className="wk-craft-composer">
+            <ComposerPrimitive.Input
+              className="wk-craft-composer-input"
+              aria-label="craft composer"
+              placeholder="输入修改要求…"
+            />
+            <ComposerPrimitive.Send className="wk-craft-composer-send">发送</ComposerPrimitive.Send>
+          </ComposerPrimitive.Root>
+        )}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );

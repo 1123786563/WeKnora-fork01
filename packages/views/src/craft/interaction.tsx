@@ -16,6 +16,7 @@
 // session grant in the first phase), single-choice accepts at most one
 // selection, custom text is bounded by 8 KiB, and a decided interaction only
 // ever re-displays its recorded state — it can never be re-decided.
+import React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------

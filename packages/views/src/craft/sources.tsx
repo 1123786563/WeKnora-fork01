@@ -7,6 +7,7 @@
 // which re-resolves it through the EXISTING resource permission chain on
 // every click — a share revoked after the run immediately yields the
 // permission error instead of replaying a cached link.
+import React from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, formatBytes, type CraftLocale } from './presentation.ts';
 

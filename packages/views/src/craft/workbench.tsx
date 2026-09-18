@@ -18,7 +18,7 @@
 // R06 interaction semantics are enforced in the card rendering: a question
 // offers answer/reject, a permission offers approve-with-scope/reject, and an
 // unknown kind only reject — there is deliberately no generic Approve.
-import {
+import React, {
   useCallback,
   useEffect,
   useMemo,
@@ -53,6 +53,8 @@ import { CraftSources } from './sources.tsx';
 import { CraftDocument, CRAFT_DOCUMENT_MD_PATH } from './document.tsx';
 import { CraftSpreadsheet, type CraftSpreadsheetPreviewView } from './spreadsheet.tsx';
 import { CraftSlides, type CraftSlidesPreviewView } from './slides.tsx';
+import { CraftAssistantThread } from './assistant-runtime.tsx';
+import { CraftToolFactList } from './thread.tsx';
 import './craft.css';
 // The message log store (createCraftMessageLog) lives in presentation.ts so
 // its reset/dedupe semantics stay node-testable without importing CSS; it is
@@ -486,33 +488,51 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const statusLabel = statusLabelLocalized(props.locale, mainStatus, liveProjection.childStatus, props.snapshotVersionId !== null);
   const liveTurnEmpty = livePrompt === null && liveProjection.text === '' && liveProjection.tools.length === 0 && liveProjection.interactions.length === 0 && props.versions.length === 0 && turns.length === 0;
 
+  // CFT-S01-T010: the conversation column now renders through the REAL
+  // assistant-ui ExternalStoreRuntime (T006). The store contract is
+  // {subscribe, getSnapshot()->{text, complete}} — derived from the SAME W05
+  // projection above, with a stable snapshot object so React 19's
+  // useSyncExternalStore never loops. isRunning flows ONLY from the main-run
+  // status: a child delegation finishing can never flip it.
+  const threadSnapshotRef = useRef({ text: liveProjection.text, complete: liveProjection.complete });
+  threadSnapshotRef.current = { text: liveProjection.text, complete: liveProjection.complete };
+  const threadStore = useMemo(() => ({
+    subscribe: props.messageLog.subscribe,
+    getSnapshot: () => threadSnapshotRef.current,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [props.messageLog]);
+  const threadRunning = mainStatus !== '' && !isMainRunTerminal(mainStatus);
+
   const conversation = (
     <>
-      <div className="wk-craft-msgs" aria-label={strings.craftTabConversation}>
-        {turns.map((turn, index) => (
-          <div key={'turn-' + index}>
-            {turn.prompt !== null ? <div className="wk-craft-msg wk-craft-msg-user">{turn.prompt}</div> : null}
-            <div className="wk-craft-msg wk-craft-msg-assistant">{turn.assistant.text}</div>
-          </div>
-        ))}
-        {props.resumedRun && turns.length === 0 && livePrompt === null ? (
-          <p className="wk-craft-hint">{strings.craftConversationResumed}</p>
-        ) : null}
-        {livePrompt !== null ? <div className="wk-craft-msg wk-craft-msg-user">{livePrompt}</div> : null}
-        <div className="wk-craft-msg wk-craft-msg-assistant">
-          {liveProjection.text !== '' ? liveProjection.text : liveTurnEmpty ? strings.craftConversationEmpty : null}
-          {!liveProjection.complete && liveProjection.text !== '' ? <span className="wk-craft-msg-cursor" aria-hidden="true"> ▍</span> : null}
+      <CraftAssistantThread
+        store={threadStore}
+        isRunning={threadRunning}
+        isDisabled={!props.canWrite}
+        onNew={async () => { /* the host composer owns sending (see form below) */ }}
+        prompt={livePrompt}
+        runId={snapshot.runId ?? 'idle'}
+        archivedTurns={turns.map((turn) => ({
+          prompt: turn.prompt,
+          assistantText: turn.assistant.text,
+          assistantComplete: turn.assistant.complete,
+        }))}
+        empty={
+          props.resumedRun && turns.length === 0 && livePrompt === null
+            ? <p className="wk-craft-hint">{strings.craftConversationResumed}</p>
+            : liveTurnEmpty
+              ? <p className="wk-craft-hint">{strings.craftConversationEmpty}</p>
+              : null
+        }
+        composer={false}
+      />
+      {liveProjection.tools.length > 0 || liveProjection.childStatus !== 'idle' ? (
+        <div className="wk-craft-thread-supplement">
+          <p className="wk-craft-hint">{strings.craftDetailsChildStatus}: {liveProjection.childStatus}</p>
+          <CraftToolFactList facts={liveProjection.tools} />
         </div>
-        {liveProjection.tools.length > 0 || liveProjection.childStatus !== 'idle' ? (
-          <details className="wk-craft-card">
-            <summary>{strings.craftDetailsChildStatus}: {liveProjection.childStatus}</summary>
-            <ul>
-              {liveProjection.tools.map((tool) => (
-                <li key={tool.seq}><code>{tool.tool}</code> — {tool.status}</li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+      ) : null}
+      <div className="wk-craft-thread-supplement">
         {liveProjection.artifactVersionIds.map((versionId) => (
           <div key={versionId} className="wk-craft-card">
             <p style={{ margin: 0 }}>{strings.craftVersionLabel}: <code>{versionId}</code></p>

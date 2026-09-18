@@ -6,6 +6,7 @@
 // destroys the previous iframe node AND its one-time ticket: the parent clears
 // the ticket on version change and remounts this panel, so an old capability
 // URL can never survive into the next version's frame.
+import React from 'react';
 import { useEffect, useState } from 'react';
 import type { CraftPreviewTicketView } from '@weknora/contracts';
 import { Button } from '@weknora/ui';
