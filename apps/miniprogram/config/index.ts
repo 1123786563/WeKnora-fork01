@@ -2,7 +2,10 @@ import { defineConfig } from '@tarojs/cli';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const origin=(process.env.WEKNORA_API_ORIGIN??'').replace(/\/+$/,'');
-if(origin && !/^https:\/\/[^/?#]+$/.test(origin))throw new Error('WEKNORA_API_ORIGIN must be a fixed HTTPS origin without /api/v1');
+// 生产强制固定 HTTPS origin；本地回环的 http（localhost/127.0.0.1 带端口）仅用于开发
+// 联调——模拟器的 Chromium 对 *.orb.local 走 mDNS 解析不可靠，本地联调须用回环地址。
+const LOCAL_HTTP_ORIGIN=/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+if(origin && !LOCAL_HTTP_ORIGIN.test(origin) && !/^https:\/\/[^/?#]+$/.test(origin))throw new Error('WEKNORA_API_ORIGIN must be a fixed HTTPS origin (or loopback http for local dev) without /api/v1');
 const appid=process.env.WEKNORA_WEAPP_APPID??'touristappid';
 // Public build metadata; credentials belong exclusively on the Go server.
 writeFileSync(resolve(process.cwd(),'project.config.json'),JSON.stringify({miniprogramRoot:'dist/',projectname:'weknora-miniprogram',appid,compileType:'miniprogram',setting:{es6:true,minified:true,urlCheck:true}},null,2));
