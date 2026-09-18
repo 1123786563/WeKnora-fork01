@@ -96,7 +96,7 @@ export interface ChatComposerProps {
   modelOptions?: readonly { id: string; name: string }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
-  /** Vue control-right swaps send for stop while a reply is streaming. */
+  /** Vue control-right swaps send for stop while a reply is running (isReplying: dispatched through stream end, incl. the pre-stream window). */
   streaming?: boolean;
   /** Vue shows stop whenever the active session cannot accept a steer. */
   canSteer?: boolean;

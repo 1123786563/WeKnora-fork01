@@ -677,6 +677,9 @@ export function ChatPage(props: ChatPageProps) {
         {/* A follow-up queue only makes sense while a turn is actually running;
             when idle the main composer handles the message (a steer would 409). */}
         {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {/* Vue isReplying (Input-field.vue) flips true when a turn is
+            dispatched, not when the first SSE event arrives; the composer's
+            stop swap must cover the pre-stream send window too. */}
         <ChatComposer
           copy={copy}
           draft={props.draft}
@@ -708,7 +711,7 @@ export function ChatPage(props: ChatPageProps) {
           modelOptions={props.modelOptions}
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
-          streaming={streaming}
+          streaming={streaming || sending}
           canSteer={Boolean(props.onSteer)}
           onStop={props.onStopStream}
         />

@@ -1129,7 +1129,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function stopStream(): Promise<void> {
     const sessionId = selectedSessionIdRef.current;
-    if (!sessionId || streamState.phase !== 'streaming') return;
+    if (!sessionId) return;
+    // Vue isReplying spans the whole turn: a stop during the pre-stream window
+    // (request dispatched, phase still 'idle', first SSE event not arrived)
+    // must still abort the pending fetch, not no-op on the phase guard.
+    if (streamState.phase !== 'streaming' && !streamAbortRef.current) return;
     const messageId = streamState.assistantMessageId;
     const controller = streamAbortRef.current;
     streamAbortRef.current = null;
