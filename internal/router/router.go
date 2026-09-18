@@ -201,6 +201,12 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// middleware). The ticket is minted by an authenticated POST.
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
+	// Local-browser extension gateway (A13): the WebSocket upgrade carries a
+	// device credential in its subprotocol and the authorize/internal
+	// endpoints authenticate inside the BrowserSkill manager, so these also
+	// precede the global Auth middleware.
+	RegisterLocalBrowserRoutes(r, params.SessionHandler)
+
 	// Craft controlled preview on its isolated origin (W02): the one-time
 	// capability paths carry their own authorization and the origin never
 	// receives main-site credentials, so this must also precede the global
@@ -271,6 +277,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
+		// Member-scoped local-browser management (A13): pairing, status,
+		// revoke and the extension download for the calling member.
+		RegisterMyBrowserRoutes(v1, params.SessionHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
 		RegisterKnowledgeBaseActivityRoutes(v1, params.AuditLogHandler, rbacGuards)
 		// KB-scoped image proxy: lets tenants render images embedded in

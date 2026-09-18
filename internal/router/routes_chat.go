@@ -63,6 +63,8 @@ func RegisterSessionRoutes(
 		sessions.DELETE("/:id/messages", handler.ClearSessionMessages)
 		sessions.POST("/:session_id/generate_title", handler.GenerateTitle)
 		sessions.POST("/:session_id/fork", handler.ForkSession)
+		sessions.GET("/:id/local-browser", handler.BrowserSkillConnection)
+		sessions.POST("/:session_id/local-browser", handler.BrowserSkillConnection)
 		sessions.POST("/:session_id/attachments", handler.UploadTemporaryDocument)
 		sessions.GET("/:id/attachments", handler.ListTemporaryDocuments)
 		sessions.GET("/:id/attachments/:attachment_id", handler.GetTemporaryDocument)
@@ -197,4 +199,27 @@ func RegisterChatRoutes(r *gin.RouterGroup, handler *session.Handler, g *rbacGua
 // /sessions/:id (gin requires identical wildcard names per tree).
 func RegisterSandboxTerminalRoutes(r *gin.Engine, sessionHandler *session.Handler) {
 	r.GET("/api/v1/sessions/:id/sandbox/terminal", sessionHandler.SandboxTerminalWS)
+}
+
+// RegisterLocalBrowserRoutes mounts the extension-facing local-browser
+// endpoints on the bare engine, before the global auth middleware. The
+// WebSocket upgrade carries a device credential in its subprotocol (not the
+// access JWT), and the authorize/internal endpoints authenticate via the
+// BrowserSkill manager itself (one-use pairing tokens / HMAC-signed cluster
+// RPC). The manager rejects anything unauthenticated, so these routes must
+// stay out of the authed group.
+func RegisterLocalBrowserRoutes(r *gin.Engine, sessionHandler *session.Handler) {
+	r.GET("/api/v1/local-browser/extension", sessionHandler.BrowserSkillExtension)
+	r.POST("/api/v1/local-browser/extension/authorize", sessionHandler.BrowserSkillAuthorize)
+	r.POST("/api/v1/local-browser/internal", sessionHandler.BrowserSkillInternal)
+}
+
+// RegisterMyBrowserRoutes mounts the member's own browser-connection
+// management endpoints (pairing link, status, revoke, extension download) on
+// the authenticated group. The handler derives the member scope from the
+// request context; normal auth and tenant membership apply upstream.
+func RegisterMyBrowserRoutes(r *gin.RouterGroup, sessionHandler *session.Handler) {
+	r.GET("/me/browser", sessionHandler.BrowserSkillAccount)
+	r.POST("/me/browser", sessionHandler.BrowserSkillAccount)
+	r.GET("/me/browser/extension", sessionHandler.BrowserSkillDownload)
 }
