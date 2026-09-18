@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -142,6 +142,12 @@ export interface ChatPageProps {
    * (default, plain Enter) queues it as a follow-up.
    */
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[], delivery?: 'after' | 'inject'): Promise<void>;
+  /**
+   * R477-A2 — toast channel for the two steer attachment warnings
+   * (steerAttachmentPending / steerHasAttachments). Vue carries both via
+   * MessagePlugin.warning; hosts with a toast surface pass it through.
+   */
+  onSteerWarning?(message: string): void;
   /** R473-A2 — queued steer chips shown by the composer (Vue .steer-queue). */
   steerQueue?: readonly ChatSteerQueueChip[];
   /** Vue promote-steer (inject a queued after-message now). */
@@ -291,7 +297,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
+function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onSteerWarning, onMentionOpen, onMentionSelect, onMentionRemove }: {
   copy: ChatCopyTable;
   onSteer: (content: string, mentionedItems: readonly ChatMentionView[], delivery?: 'after' | 'inject') => Promise<void>;
   /** R474-A2 — the ⌘Enter/Alt+Enter inject shortcut promotes the first queued chip when the steer draft is empty (Vue injectCurrentInput). */
@@ -300,6 +306,12 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
   mentionOptions?: readonly ChatMentionView[];
   mentionedItems?: readonly ChatMentionView[];
   attachments?: readonly ChatAttachmentView[];
+  /**
+   * R477-A2 — the two steer attachment warnings travel as toasts in Vue
+   * (Input-field.vue MessagePlugin.warning). Hosts that own a toast channel
+   * pass it here; without one the message degrades to the inline alert.
+   */
+  onSteerWarning?(message: string): void;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -315,10 +327,10 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
     event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
-    if (attachments.length > 0) {
-      setError(copy.steerAttachmentsBlocked);
-      return;
-    }
+    // R477-A2 — the two Vue steer attachment warnings gate the path (see
+    // resolveSteerAttachmentWarning); hosts own the toast carrier.
+    const attachmentWarning = resolveSteerAttachmentWarning(attachments);
+    if (attachmentWarning) { const message = copy[attachmentWarning]; onSteerWarning ? onSteerWarning(message) : setError(message); return; }
     setBusy(true); setError(null);
     // R476-A2 — a rejected enqueue surfaces input.messages.steerFailed (Vue
     // handleSteerMsg catch toasts the scenario copy, not the send fallback).
@@ -730,7 +742,7 @@ export function ChatPage(props: ChatPageProps) {
             actually running (Vue canSteer); when idle the main composer handles
             the message (a steer would 409), and a quick-answer turn has no
             steer affordance at all — stop is the only action. */}
-        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {/* Vue isReplying (Input-field.vue) flips true when a turn is
             dispatched, not when the first SSE event arrives; the composer's
             stop swap must cover the pre-stream send window too. */}

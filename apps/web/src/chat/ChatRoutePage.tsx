@@ -1602,6 +1602,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
      * (SteerComposer onSteer(content, mentionedItems, delivery)); steer()
      * keeps retrySteerId third (host-internal retries), so adapt here. */
     onSteer={(content, selectedMentions, delivery) => steer(content, selectedMentions ?? mentionedItems, undefined, delivery)}
+    /* R477-A2 — Vue toasts both steer attachment warnings
+     * (input.messages.steerAttachmentPending / steerHasAttachments) via
+     * MessagePlugin.warning; route them onto the agent toast channel the
+     * R476 steer notices already use. */
+    onSteerWarning={showAgentToast}
     steerQueue={steerQueueChips(steerQueue)}
     onSteerPromote={(steerId) => { void promoteSteer(steerId); }}
     onSteerRemove={(steerId) => { void removeSteer(steerId); }}

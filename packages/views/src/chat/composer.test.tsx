@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createChatSubmission, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, steerShortcutLabel, type ChatSteerQueueChip } from './composer.tsx';
+import { createChatSubmission, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, shouldSubmitFromKeyboard, steerShortcutLabel, type ChatAttachmentView, type ChatSteerQueueChip } from './composer.tsx';
 
 test('does not create a pending message from an empty draft', () => {
   assert.throws(() => createChatSubmission('   '), /message must not be empty/);
@@ -85,4 +85,27 @@ test('resolves the inject shortcut onto the draft or the first queued steer', ()
 
 test('the steer shortcut label renders SSR-safe like the Vue tooltip suffix', () => {
   assert.ok(/^(⌘ Enter|Alt\+Enter)$/.test(steerShortcutLabel()));
+});
+
+/*
+ * R477-A2 — Vue Input-field.vue steer-path attachment gates (two warnings,
+ * checked in this order before a steer dispatch):
+ *   1. uploadedAttachments.some(status === 'uploading')
+ *        → warning input.messages.steerAttachmentPending
+ *   2. uploadedAttachments.length || uploadedImages.length
+ *        → warning input.messages.steerHasAttachments
+ * The React composer keeps one unified attachment list, so gate 2 is any
+ * entry present; a still-uploading file always wins (gate 1) exactly like
+ * the Vue some() check runs before the length check.
+ */
+test('resolveSteerAttachmentWarning mirrors the Vue two-key steer attachment gates', () => {
+  const uploading: ChatAttachmentView[] = [{ id: 'local-1', name: 'spec.pdf', status: 'uploading' }];
+  const settled: ChatAttachmentView[] = [{ id: 'att-1', name: 'guide.txt', status: 'ready', attachmentId: 'att-1' }];
+  const failed: ChatAttachmentView[] = [{ id: 'local-2', name: 'broken.csv', status: 'failed', error: 'Upload failed' }];
+
+  assert.equal(resolveSteerAttachmentWarning([]), null, 'no attachments → steer proceeds');
+  assert.equal(resolveSteerAttachmentWarning(uploading), 'steerAttachmentPending', 'an in-flight upload → the pending warning');
+  assert.equal(resolveSteerAttachmentWarning([...settled, ...uploading]), 'steerAttachmentPending', 'the uploading gate runs before the presence gate');
+  assert.equal(resolveSteerAttachmentWarning(settled), 'steerHasAttachments', 'a settled attachment → the cannot-attach warning');
+  assert.equal(resolveSteerAttachmentWarning(failed), 'steerHasAttachments', 'a failed attachment still blocks the steer path');
 });

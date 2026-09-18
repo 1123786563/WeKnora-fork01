@@ -94,6 +94,24 @@ export function resolveSteerInjectAction(input: {
   return first ? { kind: 'promote', steerId: first.steerId } : undefined;
 }
 
+/*
+ * R477-A2 — Vue Input-field.vue steer-path attachment gates, in Vue order:
+ *   1. uploadedAttachments.some(item => item.status === 'uploading')
+ *        → MessagePlugin.warning(input.messages.steerAttachmentPending)
+ *   2. uploadedAttachments.length || uploadedImages.length
+ *        → MessagePlugin.warning(input.messages.steerHasAttachments)
+ * The React composer keeps one unified attachment list, so gate 2 is any
+ * entry; gate 1 wins whenever an upload is still in flight. Returns the
+ * copy key to toast (Vue carrier), or null when the steer may proceed.
+ */
+export type SteerAttachmentWarning = 'steerAttachmentPending' | 'steerHasAttachments';
+
+export function resolveSteerAttachmentWarning(attachments: readonly ChatAttachmentView[]): SteerAttachmentWarning | null {
+  if (attachments.some((item) => item.status === 'uploading')) return 'steerAttachmentPending';
+  if (attachments.length > 0) return 'steerHasAttachments';
+  return null;
+}
+
 export interface ChatComposerProps {
   draft: string;
   /**

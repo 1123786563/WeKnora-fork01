@@ -221,3 +221,35 @@ test('resolveChatCopy exposes the Vue steer scenario toasts in every locale', ()
     }
   }
 });
+
+/*
+ * R477-A2 — byte-exact mirrors of frontend/src/i18n/locales/*.ts
+ * input.messages.{steerAttachmentPending,steerHasAttachments}: Vue
+ * Input-field.vue toasts (MessagePlugin.warning) the first key when a queued
+ * steer still has an uploading attachment, the second when any attachment is
+ * present on the steer path. These replace the R476 composite
+ * steerAttachmentsBlocked key.
+ */
+test('resolveChatCopy exposes the Vue steer attachment warnings in every locale', () => {
+  const expected = {
+    steerAttachmentPending: {
+      'zh-CN': '附件尚未上传完成，请稍后再追加',
+      'en-US': 'Attachment is still uploading. Please try again shortly.',
+      'ja-JP': '添付ファイルのアップロードが完了していません。しばらくしてから追加してください。',
+      'ko-KR': '첨부 파일 업로드가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.',
+      'ru-RU': 'Вложение ещё загружается. Повторите попытку чуть позже.',
+    },
+    steerHasAttachments: {
+      'zh-CN': '进行中的回答无法附带附件，请先移除附件或等当前回答结束后再发送',
+      'en-US': 'Attachments cannot be added to a running answer. Remove them first, or send after it finishes.',
+      'ja-JP': '実行中の回答には添付ファイルを追加できません。先に削除するか、終了後に送信してください。',
+      'ko-KR': '진행 중인 응답에는 첨부 파일을 추가할 수 없습니다. 먼저 제거하거나 응답이 끝난 뒤 보내주세요.',
+      'ru-RU': 'К текущему ответу нельзя добавить вложения. Удалите их или отправьте после завершения.',
+    },
+  } as const;
+  for (const [key, perLocale] of Object.entries(expected)) {
+    for (const locale of CHAT_COPY_LOCALES) {
+      assert.equal(resolveChatCopy(locale)[key as keyof typeof expected], perLocale[locale], `${key} must be byte-exact for ${locale}`);
+    }
+  }
+});

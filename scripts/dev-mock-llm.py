@@ -28,11 +28,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MOCK_MODEL = "mock-model"
 FIXED_CONTENT = "This is a deterministic mock summary for R475 parity testing. The document describes WeKnora UI alignment verification steps and mock LLM environment setup."
+# R477 A3: question-generation prompts (config/prompt_templates/generate_questions.yaml)
+# are answered with one numbered question per line so the backend's
+# line-splitting parser (knowledge_process.go generateQuestionsWithContext)
+# materialises question_count questions per chunk.
+QUESTION_LINES = (
+    "1. What environment setup is required for WeKnora question generation verification?\n"
+    "2. How does the WeKnora backend gate automatic question generation for a knowledge base?\n"
+    "3. What assertions confirm generated questions were persisted for a document chunk?"
+)
 EMBED_DIM = 8
 
 
 def _content_for(body):
     """Wiki extraction prompts demand {"entities":[],"concepts":[]} JSON;
+    question-generation prompts get one question per line;
     everything else gets the fixed prose summary."""
     try:
         msgs = body.get("messages") or []
@@ -41,6 +51,8 @@ def _content_for(body):
         text = ""
     if '"entities"' in text and '"concepts"' in text:
         return '{"entities": [], "concepts": []}'
+    if "<main_content>" in text:
+        return QUESTION_LINES
     return FIXED_CONTENT
 
 

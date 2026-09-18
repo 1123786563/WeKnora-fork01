@@ -1,5 +1,9 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 流程教训（跨轮沉淀）
+
+- **早暂存纪律（源自 R476 事故）**：R476 末尾一次外部 `git reset` + `clean` 删除了尚未提交的交付物（`.nvmrc`、gate 脚本等），整轮成果被迫重做。此后每个代理/轮次的交付物必须**改完即 `git add` 暂存**（不 commit，由编排者统一提交）：staged 内容可抵御 `reset --hard` + `clean` 对未跟踪文件的删除；未暂存的未跟踪文件没有任何保护。R477 A1 起执行，同轮补上 `.gitignore` 的 `!.nvmrc` 例外并将 `build:web` 纳入 `pnpm gates` 串行链。
+
 ## 2026-09-15 Round R360 — Hidden app routes and narrow-screen settings repair
 
 - Vue 路由审计发现此前账本遗漏四个应用连接入口：`/platform/apps`、`/platform/apps/connections`、`/platform/apps/authorization/:id`、`/platform/apps/actions/:id`。React 已补齐 route matching、shell dispatch、目录/连接/授权轮询/动作审批页面骨架，并保持 `/api/v1/apps/*` 的租户作用域与 expected-version 写入边界；路由清单已同步更新。
@@ -5396,3 +5400,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r476-code-parity-round.md`. No Vue, mobile, or Go code was modified by
   this round. R477 queue: early-stage discipline, .nvmrc exception, embedding model for the positive path,
   attachment-warning duals, gates+build inclusion.
+
+## 2026-09-18 Round R477 — Early-staging discipline, steer attachment dual-keys, embedding positive path proven
+
+- Four parallel agents (A1 discipline + gates build, A2 steer attachment warnings, A3 embedding positive
+  path, A4 verifier). Verdict: all PASS; six gates via pnpm gates (v26): test:shared 811/811, test:web
+  1861/1861, typecheck ×2 0, integrity ✓, build ✓.
+- A1: !.nvmrc exception (check-ignore exit=1; the -v negation trap noted), .nvmrc staged, gates extended to
+  six ending in build:web (full live pass), and the early-staging discipline landed as both a ledger
+  「流程教训」 section and practice (all deliverables staged on completion — the R476 incident's countermeasure).
+- A2: Vue's two ordered attachment gates ported (uploading → steerAttachmentPending; any attachment →
+  steerHasAttachments; both warning toasts) — the zh-only composite key retired with zero residue; pure
+  resolveSteerAttachmentWarning + onSteerWarning channel (host reuses the R476 toast bus). +2 keys ×5
+  byte-exact. chat 220+136. Cut cleanly from the external A13 phase-4a changes.
+- A3 (POSITIVE PATH PROVEN, zero business code): the mock already served 8-dim embeddings; a <main_content>
+  branch returning three question lines added; the R476 blocker was the vector KB lacking embedding_model_id
+  (settable at creation) — model r477-mock-embedding (30751f9f, dim 8) registered and bound. E2E: completed
+  doc, 3 generated_questions auto-persisted AND vector-indexed (decisive log). This proves the R476 product
+  issue's converse — the pipeline works when gated in; the silent-skip UX gap stands. Embedding model kept as
+  a fixture.
+- A4 methodology note: gates must run via `pnpm gates` (a bare v26 node skips the re-exec and child PATHs
+  fall back to v22 — createRoot false-reds).
+- Gates: six green (v26). Evidence: `evidence/vue-react-parity/2026-09-18-r477-code-parity-round.md`. No
+  Vue, mobile, or Go code was modified by this round. R478 queue: 900-char window re-anchor, silent-skip UX
+  issue ticket, pending-state mapping option.
