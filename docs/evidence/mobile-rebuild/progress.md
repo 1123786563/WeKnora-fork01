@@ -108,8 +108,30 @@
 - agent-chat 实时行为：POST 200 + text/event-stream；真实帧（`event:message` 无空格格式）被 parser 正确消费；服务端发 error 帧（"baseURL SSRF check failed"——该部署 LLM provider baseURL 为 IP 被后端自身 SSRF 校验拒绝）后硬中断连接 → 客户端 error 帧持久展示 + 断流路径（行为正确）。完整回复依赖部署侧配置 provider 域名（环境问题，非客户端缺陷，D-15 记录）
 - 协议修正（真实环境发现）：受理帧 agent_query 也带 done:true——isTerminalChunk 收敛 done 终结语义（answer/complete/stop/error），新增回归测试；此前误将受理帧当流结束
 
-### 最终回归（本节后）
-- `npx jest` → **109/109**（12 suites）；tsc 0；隔离门禁 0 违规（74 源文件）；`npx expo export --platform ios` → 0
+### 验证缺口补齐（2026-09-18 晚，verifier next-action 执行记录）
+
+**杀进程与重开恢复（SSE 清单项）**：`npx jest tests/integration/reopen-recovery.test.ts` → **3/3**
+- 用 node:sqlite（Node 26 内置）复刻 SqliteStore 的 DDL 与语句（全参数绑定），模拟进程 A 写入（uncertain pending/2 事件/投影 watermark=2/cursor/草稿）后连接关闭（进程被杀）→ 进程 B 新连接重开同一 DB 文件：全部数据恢复；对账闭环按原 request_id 绑定原 runId（不换 ID）；按恢复 cursor 续流时旧 seq 1/2 幂等丢弃、仅提交 seq 3；scope 隔离跨进程成立
+
+**Android 构建（第 4 层双平台的 Android 侧）**：
+- `npx expo prebuild -p android --no-install` → 0
+- `npx expo export --platform android` → **0**（JS bundle 产物 dist/）
+- `ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleDebug` → **BUILD SUCCESSFUL in 20m37s**（GRADLE:0）
+  - 产物 `android/app/build/outputs/apk/debug/app-debug.apk`（173MB debug APK，sha256 前 16 位 bb27ff2b22d5b70c）
+  - 网络障碍与解决：gradle 9 发行版官方/腾讯镜像均阻断；华为镜像 `mirrors.huaweicloud.com/gradle/` + wrapper networkTimeout=120000 成功；此前两次 URL 替换因 properties `\:` 转义未生效（已修正并留档 android/gradle/wrapper/gradle-wrapper.properties）
+
+**动态字体与长文本压力（当前环境可执行部分）**：
+- `tests/components/font-scaling.test.ts` → 3/3：静态断言 app/ + components/ 全部源码无 allowFontScaling={false}/adjustsFontSizeToFit/maxFontSizeMultiplier 限制（200% 字体缩放不被禁用）；正文排版引用 theme.type 令牌
+- `tests/components/long-text.test.tsx` → 4/4：超长任务标题（TaskCard numberOfLines=2）、超长文件名（ArtifactCard ellipsizeMode=middle）、超长审批正文（DecisionSheet 冻结摘要完整渲染+Sheet 内滚动）、PendingCard/StatusBadge 超长文本渲染不崩溃
+
+**blocked-env（环境在验证时段变为不可用，如实记录）**：
+- iOS 模拟器多宽度（360/390/430）与 200% 大字体原生截图：验证时段 CoreSimulator runtime 全部缺失（`xcrun simctl list devices/runtimes` 均空，Xcode 27 的 iOS runtime 目录不存在）——此前可用的 11 台设备与 iOS 26 runtime 消失（疑似用户环境变更中）。已交付 36 张双主题截图基于此前环境；本项以组件级等价验证（上述 font-scaling/long-text 测试）+ 布局用 flex/流式（无绝对坐标）补偿，真机多宽度截图待环境恢复
+- 键盘弹出场景（输入焦点需 UI 自动化，idb 不可用）：未执行
+- 语音录音（expo-audio 真实环境）、推送注册（后端无 API，blocked-dependency）、Android E2E 真机链路：未执行
+- agent-chat 完整回复端到端：部署 LLM provider baseURL 为 IP 被后端 SSRF 校验拒绝（D-15），依赖部署侧配置域名
+
+**全量回归（本节后）**：`npx jest` → **119/119**（15 suites）；tsc 0；隔离门禁 0 违规（77 源文件）
+
 
 
 ## RW-027 / RW-015 收尾（2026-09-18 下午）
