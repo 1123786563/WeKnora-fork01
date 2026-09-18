@@ -568,10 +568,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
 	must(container.Provide(handler.NewTagHandler))
-	// Session fork (A11): repositories only for now — the sandbox snapshot
-	// port stays nil until phase 3 wires git checkpoints, which per the
-	// upstream contract degrades every sandbox-carrying fork instead of
-	// failing (message-only forks still copy history + lineage).
+	// Session fork (A11) + pinned session sandbox (A17): the runner, ID
+	// lookup, and fork snapshot port resolve the session's pinned manager at
+	// request time; a nil pin keeps sandbox-carrying forks degrading instead
+	// of failing (message-only forks still copy history + lineage).
+	must(container.Provide(newPinnedSessionSandbox))
 	must(container.Provide(newSessionForkService))
 	must(container.Provide(newWorkspaceCheckpointer))
 	must(container.Provide(newSandboxIDLookup))

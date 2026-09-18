@@ -49,7 +49,11 @@ func shellExecTestContext() context.Context {
 	return WithToolExecContext(context.Background(), &ToolExecContext{SessionID: "session-1"})
 }
 
-func TestShellExecRejectsWorkDirOutsideWorkspace(t *testing.T) {
+func TestShellExecAllowsAnySandboxDirectory(t *testing.T) {
+	// Upstream contract since the file-access/artifact split: an ordinary
+	// session's work_dir may select any directory inside the session sandbox
+	// (the container is the isolation boundary); only install mode narrows
+	// the roots.
 	executor := &fakeShellExecutor{}
 	tool := NewShellExecTool(executor, nil)
 
@@ -58,9 +62,8 @@ func TestShellExecRejectsWorkDirOutsideWorkspace(t *testing.T) {
 	))
 
 	require.NoError(t, err)
-	require.False(t, result.Success)
-	require.Contains(t, result.Error, `work_dir "/etc" is outside the allowed sandbox roots /workspace`)
-	assert.Equal(t, time.Duration(0), executor.timeout)
+	require.True(t, result.Success, result.Error)
+	assert.Equal(t, "/etc", executor.workDir)
 }
 
 func TestShellExecTimeoutHonorsAndCapsRequestedValue(t *testing.T) {
