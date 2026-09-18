@@ -265,3 +265,18 @@ PASS（见 /tmp/gates-round4.log）。
   （/tmp/verify-parser-v3.txt）；
 - mineru 抽屉：文件类型 chips、Backend=pipeline、解析方式=自动识别（推荐）、公式/表格识别、
   语言=ch、测试连接/保存齐全（截图 /tmp/parser-drawer.png）。
+
+### Wiki 浏览器移植项：范围勘定（未移植，如实记录）
+
+WikiBrowser.vue 实测 6592 行，加 WikiRevisionDrawer.vue（810）与 WikiFolderActions.vue（172）
+约 7575 行 Vue，另有 wikiDirectoryState.ts 与版本化页面 API（list/revisions/graph/stats/
+search/issues）。React 侧现存实现为另一代"版本化页面管理器"（新建页面/树形/列表视图/slug/
+v1）。移植需：① wiki API 客户端面对齐（graph overview/ego 模式、stats、search、issues）；
+② 分类目录树 + Index 页面面板 + 搜索/上传引导的布局移植；③ 修订抽屉与目录操作；④
+kbSettings.wiki.* i18n 键检查补齐；⑤ 空 wiki 空态（暂无 Wiki 页面/知识库还是空的引导）。
+规模为多会话级，本会话未启动以免烂尾；此项是"每页完全一致"目标下唯一已知的大型剩余差异。
+
+### 其余阻塞（维持）
+
+apps/authorization 与 actions 的真实数据态、onboarding（需无租户账号）、邀请注册态依赖外部
+fixture；聊天页模型芯片显示差异已判定为 Vue mount 竞态假象（见第一轮第 3 项说明）。
