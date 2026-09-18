@@ -196,10 +196,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelOptions = useMemo(() => chatModels
     .map((model) => ({ id: String(model.id ?? '').trim(), name: String(model.display_name ?? model.name ?? model.id ?? '').trim() }))
     .filter((model) => model.id.length > 0 && model.name.length > 0), [chatModels]);
-  useEffect(() => {
-    if (!selectedModelId) return;
-    try { window.localStorage.setItem(chatModelStorageKey(scope.scope), selectedModelId); } catch { /* storage may be unavailable */ }
-  }, [scope.scope, selectedModelId]);
+  // Vue parity (Input-field.vue handleModelChange): localStorage only ever
+  // records the user's *explicit* pick. The loader-seeded first-model fallback
+  // (models-load effect) stays in memory only — writing it here would turn a
+  // synthetic default into a durable "user choice" the next mount inherits.
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   // R473-A2 — Vue steerQueue ref parity: queued after-messages shown as
@@ -1579,7 +1579,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelContextIsDefault={modelChipIsDefault}
     modelOptions={modelOptions}
     selectedModelId={selectedModelId}
-    onModelChange={(modelId) => { setUserModelPick(modelId); setSelectedModelId(modelId); }}
+    onModelChange={(modelId) => {
+      // Vue handleModelChange order: persist the explicit pick first, then
+      // update the in-memory selection states.
+      try { window.localStorage.setItem(chatModelStorageKey(scope.scope), modelId); } catch { /* storage may be unavailable */ }
+      setUserModelPick(modelId);
+      setSelectedModelId(modelId);
+    }}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}

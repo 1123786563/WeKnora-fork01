@@ -364,14 +364,14 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           </div>
           <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Login form">
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.email')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]">
                 <Input id="auth-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
               </div>
               {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.password')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
               <span className="auth-input-shell relative flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-password" aria-invalid={hasFieldError('password')} aria-describedby={hasFieldError('password') ? fieldErrorId('password') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 pr-8 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
               {hasFieldError('password') ? <span id={fieldErrorId('password')} role="alert">{fieldError('password')}</span> : null}
             </label>

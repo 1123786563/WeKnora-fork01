@@ -631,7 +631,7 @@ export function ChatPage(props: ChatPageProps) {
       pageCount={props.sessionPageCount}
       onPageChange={props.onSessionPageChange}
     />
-    <section className="wk-chat-main flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
+    <section className="wk-chat-main relative flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
       {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent px-[12px] pt-[10px] pb-0">
         <div className="wk-chat-header-titles pointer-events-auto inline-flex items-center gap-[2px] max-w-[min(320px,100%)] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] pl-[8px] backdrop-blur-[8px]">
           <h1 title={headerTitle} className="m-0 min-w-0 cursor-default overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{headerTitle}</h1>

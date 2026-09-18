@@ -6,7 +6,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
-import { formatMessage, isLocale, supportedLocales } from '@weknora/i18n';
+import { formatMessage, isLocale } from '@weknora/i18n';
+import { usePreferredLocale } from '../locale.ts';
 import { Input, Select, Textarea } from '@weknora/ui';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { buildInviteLink, copyText, sharedResourceRow } from './settings-actions.ts';
@@ -62,12 +63,6 @@ const ORG_TAG_TONES: Record<string, string> = {
   success: 'bg-accent-wash text-accent',
 };
 
-function currentLocale(): string {
-  const candidate = navigator.language;
-  if (isLocale(candidate)) return candidate;
-  const base = candidate.split('-')[0];
-  return supportedLocales.find((locale) => locale.split('-')[0] === base) ?? 'en-US';
-}
 function t(locale: string, key: string, values?: Record<string, string | number>): string {
   return formatMessage(isLocale(locale) ? locale : 'en-US', key, values);
 }
@@ -323,7 +318,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // Guards the settings modal's org-detail refresh: a late response for a
   // closed (or switched) modal must not resurrect stale settingsOrg state.
   const settingsRequestId = useRef('');
-  const locale = currentLocale();
+  const locale = usePreferredLocale();
   const organizationsApi = client.identity.organizations;
 
   function showToast(tone: 'success' | 'error' | 'warning', text: string) { setToast({ tone, text }); }

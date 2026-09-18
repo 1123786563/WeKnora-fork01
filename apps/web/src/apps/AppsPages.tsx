@@ -7,11 +7,48 @@ import { navigate } from '../platform/navigation.ts';
 
 type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
 type Props = { client: WeKnoraClient; mode: AppMode; id?: string; role?: string };
+// zh copy mirrors frontend/src/i18n/locales/zh-CN.ts apps.* byte-exactly
+// (Vue AppsView/ConnectionsView/AuthorizationView/ActionView baselines).
 const copy = {
-  catalog: { title: '应用目录', description: '查看当前工作空间可用的已审核应用动作与已安装版本。', empty: '暂无可用应用动作', installed: '已安装应用', installedEmpty: '暂无已安装应用' },
-  connections: { title: '应用连接', description: '管理个人与工作空间级应用连接。', empty: '暂无应用连接' },
-  authorization: { title: '应用授权', description: '本页面只轮询本次授权尝试状态；授权地址由连接流程提供。' },
-  action: { title: '应用动作审批', description: '审批并执行一个绑定到当前快照的应用动作。' },
+  catalog: {
+    title: '应用目录',
+    description: '当前空间经评审发布的动作及其权限范围；下方为本空间已安装的应用版本。界面不展示运行地址、密钥引用或内部别名。',
+    empty: '暂无可用动作',
+    installed: '已安装应用',
+    installedEmpty: '暂无已安装应用',
+    published: '已发布',
+    unpublished: '未发布',
+    colAction: '动作', colApp: '应用', colVersion: '版本', colProvider: '提供方', colRisk: '风险',
+    colPermissions: '所需权限', colSchemaDigest: 'Schema 指纹', colPublished: '发布状态',
+    colState: '状态', colScopes: '权限范围',
+  },
+  connections: {
+    title: '应用连接',
+    description: '当前空间的应用连接：区分个人与空间连接及其账号归属。界面不展示运行地址、密钥引用或内部别名。',
+    empty: '暂无连接',
+    memberCannotManage: '当前角色无法管理连接（需要空间所有者或管理员）。',
+    colId: '连接', colKind: '类型', colAccount: '账号归属', colState: '状态', colActions: '操作',
+    kindPersonal: '个人', kindSpace: '空间', accountSpace: '空间共享',
+    startAuthorization: '授权', revoke: '断开',
+    revokeConfirmContent: '断开后本空间立即失去该连接授权；远端清理可能仍在后台进行。确定断开吗？',
+    remoteCleanupNote: '本地已断开；远端清理由后台异步完成',
+  },
+  authorization: {
+    title: '授权状态',
+    description: '轮询本地授权记录，等待外部授权完成。',
+    attemptLabel: '授权记录', connectionLabel: '连接', statusLabel: '状态', expiresLabel: '过期时间',
+    noUrlGuidance: '此部署不返回外部授权链接：请在 open-connector 控制面发出的通知中完成外部授权；完成后本页会自动更新。',
+    back: '返回连接列表',
+  },
+  action: {
+    title: '动作审批',
+    description: '以下为服务器冻结的调用快照（账号、目标、参数）；审批即绑定该快照。',
+    accountLabel: '账号（连接）', targetLabel: '目标', riskLabel: '风险', stateLabel: '状态',
+    digestLabel: '内容指纹', fenceLabel: '版本围栏', argsLabel: '参数',
+    approve: '批准', execute: '执行',
+    noResendHint: '结果待核对期间不支持重发；请等待提供方查询结果。',
+    memberCannotApprove: '当前角色无法审批或执行动作（需要空间所有者或管理员）。',
+  },
 } as const;
 
 function isAbortError(cause: unknown): boolean { const error = cause as { name?: string; code?: string }; return error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED'; }
@@ -22,11 +59,11 @@ function PageFrame({ title, description, loading, onReload, children }: { title:
 }
 
 function CatalogTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
-  const fields = [['action_id', '动作'], ['app_id', '应用'], ['app_version', '版本'], ['provider', '提供方'], ['risk', '风险'], ['required_scopes', '权限'], ['schema_digest', '摘要'], ['published', '发布']] as const;
-  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = appRisk(value); return <Badge tone={risk.tone}>{risk.label}</Badge>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Badge tone={value ? 'success' : 'neutral'}>{value ? '已发布' : '未发布'}</Badge> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+  const fields = [['action_id', copy.catalog.colAction], ['app_id', copy.catalog.colApp], ['app_version', copy.catalog.colVersion], ['provider', copy.catalog.colProvider], ['risk', copy.catalog.colRisk], ['required_scopes', copy.catalog.colPermissions], ['schema_digest', copy.catalog.colSchemaDigest], ['published', copy.catalog.colPublished]] as const;
+  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = appRisk(value); return <Badge tone={risk.tone}>{risk.label}</Badge>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Badge tone={value ? 'success' : 'neutral'}>{value ? copy.catalog.published : copy.catalog.unpublished}</Badge> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
 }
 function InstallationsTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
-  const fields = [['app_key', '应用'], ['version', '版本'], ['state', '状态'], ['scopes', '权限']] as const;
+  const fields = [['app_key', copy.catalog.colApp], ['version', copy.catalog.colVersion], ['state', copy.catalog.colState], ['scopes', copy.catalog.colScopes]] as const;
   return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'state' ? (() => { const state = installationState(value); return <Badge tone={state.tone}>{state.label}</Badge>; })() : appStatus(value); return <TableCell key={field}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
 }
 
@@ -42,15 +79,15 @@ function ConnectionsPage({ client, role }: { client: WeKnoraClient; role?: strin
   const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(''); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setError(appErrorMessage(cause)); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client]);
   const startAuthorization = async (row: AppRow) => { if (!canManage || busy) return; setBusy(String(row.id)); setError(''); try { const value = responseRecord(await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/authorization-attempts`, body: {} })); const attemptId = String(value.attempt_id ?? ''); if (!attemptId) throw new Error('授权尝试未返回 ID'); navigate('/platform/apps/authorization/' + encodeURIComponent(attemptId)); } catch (cause) { setError(appErrorMessage(cause)); } finally { setBusy(''); } };
-  const revoke = async (row: AppRow) => { if (!canManage || busy || !window.confirm('确认撤销此应用连接？')) return; setBusy(String(row.id)); setError(''); try { await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/revoke`, body: { expected_version: row.auth_version } }); await load(); } catch (cause) { setError(appErrorMessage(cause)); } finally { setBusy(''); } };
-  return <PageFrame title={copy.connections.title} description={copy.connections.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canManage ? <Status>当前角色只能查看应用连接。</Status> : null}<Card><Table><TableHead><TableRow>{['连接 ID', '类型', '所有者', '状态', '操作'].map((header) => <TableHeader key={header}>{header}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><TableCell colSpan={5}>{copy.connections.empty}</TableCell></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id)}>{appShort(row.id)}</TableCell><TableCell>{row.kind === 'space' ? '工作空间' : appStatus(row.kind)}</TableCell><TableCell>{row.kind === 'space' ? '工作空间' : appShort(row.owner_id)}</TableCell><TableCell>{appStatus(row.state)}</TableCell><TableCell>{canManage && row.state === 'active' ? <><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void startAuthorization(row)}>授权</Button><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void revoke(row)}>撤销</Button></> : row.state === 'revoked' ? '远端清理中' : '—'}</TableCell></TableRow>)}</TableBody></Table></Card></PageFrame>;
+  const revoke = async (row: AppRow) => { if (!canManage || busy || !window.confirm(copy.connections.revokeConfirmContent)) return; setBusy(String(row.id)); setError(''); try { await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/revoke`, body: { expected_version: row.auth_version } }); await load(); } catch (cause) { setError(appErrorMessage(cause)); } finally { setBusy(''); } };
+  return <PageFrame title={copy.connections.title} description={copy.connections.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canManage ? <Status>{copy.connections.memberCannotManage}</Status> : null}<Card><Table><TableHead><TableRow>{[copy.connections.colId, copy.connections.colKind, copy.connections.colAccount, copy.connections.colState, copy.connections.colActions].map((header) => <TableHeader key={header}>{header}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><TableCell colSpan={5}>{copy.connections.empty}</TableCell></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id)}>{appShort(row.id)}</TableCell><TableCell>{row.kind === 'space' ? copy.connections.kindSpace : copy.connections.kindPersonal}</TableCell><TableCell>{row.kind === 'space' ? copy.connections.accountSpace : (appStatus(row.owner_id) || '—')}</TableCell><TableCell>{appStatus(row.state)}</TableCell><TableCell>{canManage && row.state === 'active' ? <><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void startAuthorization(row)}>{copy.connections.startAuthorization}</Button><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void revoke(row)}>{copy.connections.revoke}</Button></> : row.state === 'revoked' ? copy.connections.remoteCleanupNote : '—'}</TableCell></TableRow>)}</TableBody></Table></Card></PageFrame>;
 }
 
 function AuthorizationPage({ client, id }: { client: WeKnoraClient; id: string }) {
   const [attempt, setAttempt] = useState<AppRow>({}); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const timer = useRef<ReturnType<typeof setTimeout> | null>(null); const generation = useRef(0); const request = useRef<AbortController | null>(null);
   const poll = async (showLoading = false) => { if (!id) return; if (timer.current) { clearTimeout(timer.current); timer.current = null; } request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; if (showLoading) setLoading(true); setError(''); try { const value = responseRecord(await client.request({ method: 'GET', path: `/api/v1/apps/authorization-attempts/${encodeURIComponent(id)}`, signal: controller.signal })); if (run !== generation.current) return; setAttempt(value); if (authorizationStatus(value.status).poll) timer.current = setTimeout(() => void poll(), 3000); } catch (cause) { if (run === generation.current && !isAbortError(cause)) setError(appErrorMessage(cause)); } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void poll(true); return () => { generation.current += 1; if (timer.current) clearTimeout(timer.current); request.current?.abort(); }; }, [client, id]);
-  return <PageFrame title={copy.authorization.title} description={copy.authorization.description} loading={loading} onReload={() => void poll(true)}>{error ? <Status tone="error">{error}</Status> : null}<Status>授权地址不在此页面生成；此页面只显示本次授权尝试的本地状态。</Status><Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">尝试 ID</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">连接 ID</dt><dd className="m-0 font-mono">{appShort(attempt.connection_id)}</dd></div><div><dt className="font-medium text-muted">状态</dt><dd className="m-0">{appStatus(attempt.status)}</dd></div><div><dt className="font-medium text-muted">过期时间</dt><dd className="m-0">{appStatus(attempt.expires_at)}</dd></div></dl></Card><Button variant="text" onClick={() => navigate('/platform/apps/connections')}>返回连接</Button></PageFrame>;
+  return <PageFrame title={copy.authorization.title} description={copy.authorization.description} loading={loading} onReload={() => void poll(true)}>{error ? <Status tone="error">{error}</Status> : null}<Status>{copy.authorization.noUrlGuidance}</Status><Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">{copy.authorization.attemptLabel}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.connectionLabel}</dt><dd className="m-0 font-mono">{appShort(attempt.connection_id)}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.statusLabel}</dt><dd className="m-0">{appStatus(attempt.status)}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.expiresLabel}</dt><dd className="m-0">{appStatus(attempt.expires_at)}</dd></div></dl></Card><Button variant="text" onClick={() => navigate('/platform/apps/connections')}>{copy.authorization.back}</Button></PageFrame>;
 }
 
 function ActionPage({ client, id, role }: { client: WeKnoraClient; id: string; role?: string }) {
@@ -60,7 +97,7 @@ function ActionPage({ client, id, role }: { client: WeKnoraClient; id: string; r
   const action = detail.action && typeof detail.action === 'object' ? detail.action as AppRow : detail; const controls = actionControls(action.state, canDrive);
   const mutate = async (kind: 'approve' | 'execute') => { if (saving || !(kind === 'approve' ? controls.approve : controls.execute)) return; setSaving(true); setError(''); try { await client.request({ method: 'POST', path: `/api/v1/apps/actions/${encodeURIComponent(id)}/${kind}`, body: kind === 'approve' ? { digest: action.digest, expected_version: detail.expected_version } : {} }); await load(); } catch (cause) { setError(appErrorMessage(cause)); await load(); } finally { setSaving(false); } };
   const content = appStatus(action.content); let pretty = content; try { pretty = JSON.stringify(JSON.parse(content), null, 2); } catch { /* server content may be non-JSON legacy data */ }
-  return <PageFrame title={copy.action.title} description={copy.action.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canDrive ? <Status>当前角色无权审批或执行应用动作。</Status> : null}<Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">动作 ID</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">账户</dt><dd className="m-0 font-mono">{appStatus(action.connection_name)}</dd></div><div><dt className="font-medium text-muted">目标</dt><dd className="m-0 font-mono">{appStatus(action.target)}</dd></div><div><dt className="font-medium text-muted">风险</dt><dd className="m-0">—</dd></div><div><dt className="font-medium text-muted">状态</dt><dd className="m-0">{appStatus(action.state)}</dd></div><div><dt className="font-medium text-muted">摘要</dt><dd className="m-0 font-mono">{appShort(action.digest)}</dd></div><div><dt className="font-medium text-muted">版本栅栏</dt><dd className="m-0 font-mono">{appStatus(detail.expected_version)}</dd></div><div><dt className="font-medium text-muted">参数</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3">{pretty}</dd></div></dl><div className="mt-4 flex gap-2">{controls.approve ? <Button loading={saving} onClick={() => void mutate('approve')}>批准</Button> : null}{controls.execute ? <Button loading={saving} onClick={() => void mutate('execute')}>执行</Button> : null}</div>{action.state === 'unknown' ? <Status>结果待核对；当前阶段不会提供重试发送。</Status> : null}</Card></PageFrame>;
+  return <PageFrame title={copy.action.title} description={copy.action.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canDrive ? <Status>{copy.action.memberCannotApprove}</Status> : null}<Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">{copy.action.accountLabel}</dt><dd className="m-0 font-mono">{appStatus(action.connection_name)}</dd></div><div><dt className="font-medium text-muted">{copy.action.targetLabel}</dt><dd className="m-0 font-mono">{appStatus(action.target)}</dd></div><div><dt className="font-medium text-muted">{copy.action.riskLabel}</dt><dd className="m-0">—</dd></div><div><dt className="font-medium text-muted">{copy.action.stateLabel}</dt><dd className="m-0">{appStatus(action.state)}</dd></div><div><dt className="font-medium text-muted">{copy.action.digestLabel}</dt><dd className="m-0 font-mono">{appShort(action.digest)}</dd></div><div><dt className="font-medium text-muted">{copy.action.fenceLabel}</dt><dd className="m-0 font-mono">{appStatus(detail.expected_version)}</dd></div><div><dt className="font-medium text-muted">{copy.action.argsLabel}</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3">{pretty}</dd></div></dl><div className="mt-4 flex gap-2">{controls.approve ? <Button loading={saving} onClick={() => void mutate('approve')}>{copy.action.approve}</Button> : null}{controls.execute ? <Button loading={saving} onClick={() => void mutate('execute')}>{copy.action.execute}</Button> : null}</div>{action.state === 'unknown' ? <Status>{copy.action.noResendHint}</Status> : null}</Card></PageFrame>;
 }
 
 export function AppsPage({ client, mode, id, role }: Props) { return mode === 'catalog' ? <CatalogPage client={client} /> : mode === 'connections' ? <ConnectionsPage client={client} role={role} /> : mode === 'authorization' ? <AuthorizationPage client={client} id={id ?? ''} /> : <ActionPage client={client} id={id ?? ''} role={role} />; }
