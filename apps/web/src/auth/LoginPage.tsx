@@ -417,10 +417,12 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
               {fieldError('confirmPassword')}
             </label>
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
-            {!inviteToken ? <div className="mt-[18px] text-center text-sm text-[#666]">
+            {/* Vue shows the 已有账户？返回登录 footer unconditionally, also on
+                the share-link invite register form. */}
+            <div className="mt-[18px] text-center text-sm text-[#666]">
               <span>{t('auth.haveAccount')}</span>
               <a href="#" className="ml-1 cursor-pointer text-sm font-medium text-(--auth-brand) no-underline hover:underline" onClick={(event) => { event.preventDefault(); setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</a>
-            </div> : null}
+            </div>
           </form>
           <div className="mt-6 flex flex-col gap-2.5">
             <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.independentTenant')}</span></div>

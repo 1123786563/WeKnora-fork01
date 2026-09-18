@@ -337,3 +337,19 @@ check:integrity PASS（/tmp/gates-round7.log）。
 
 test:shared 869/869、test:web 1873/1873、typecheck:shared/typecheck:web 0、check:integrity
 PASS（/tmp/gates-round8.log）。双端真实数据对照截图与 DOM 快照存 /tmp/verify-*。
+
+## 追加轮：onboarding 与邀请注册态对照（第九轮，2026-09-19）
+
+解除两项 fixture 阻塞并完成对照：
+
+1. **onboarding（无租户账号）**：API 注册 onboard-user@local.dev 后 SQL 删除其自动创建的空
+   租户（users.tenant_id 经 FK 置 NULL）→ /onboarding/workspace 双端可达。对照：React
+   渲染 选择你的工作空间 + 创建空间查看邀请 + 退出；Vue 同构（创建空间/查看邀请 为两按钮
+   内联排布，innerText 分行差异）✓。
+2. **邀请注册态（/register?token=）**：向 tenant_invitations 直插分享链接行
+   （token=parity-invite-token-1，contributor，7 天）。双端对照：邀请横幅
+   （您被邀请加入「parity-test's Workspace」）、四字段注册表单（用户名/邮箱/密码/确认密码）、
+   创建账户并开始使用 WeKnora 均一致。发现并修复：Vue 在邀请注册表单也无条件显示
+   已有账户？返回登录 页脚，React 在邀请态隐藏了它 → 去掉 !inviteToken 门控。
+   标签星号差异为提取假象：Vue 的必填星号是 CSS 伪元素（innerText 不可见），React 是文本
+   节点——视觉一致，无需修改。
