@@ -202,3 +202,38 @@ envvars 守卫/SVG 图标/Ollama 格式化/WeKnoraCloud 面板与 i18n），随�
 migration 改名（000136→000156/157，100% 纯改名，属并行车道内容）；f619eb6c 为其后残余增
 量（ollama loader 兜底、云凭证收起时序、5 个测试断言更新与本台账）。净内容与工作树一致，
 门禁在该树上全绿。
+
+## 追加轮：剩余 8 设置分区 + Wiki/Graph 页签扫描（第四轮，2026-09-19）
+
+### 扫描结果分诊
+
+- **skills/mcp**：零差异 ✓
+- **sandbox**：仅 ⓘ 字形差异（Vue t-icon vs React 文本字符）→ 已换 SVG；
+- **vectorstore/storage**：实例类型显示"类型未知"（API 字段为 engine_type，面板读 type）→
+  补回退，postgres 正确显示；React 卡片的管理按钮（编辑/测试/删除/设为默认）为 Vue 抽屉内
+  等价功能的平铺展示，保留；
+- **system-global/runtime-queues**：非 system-admin 时 Vue 内容区为空，React 渲染面板标题
+  → SettingsPage 加 role==='system-admin' 门控，非管理员渲染空内容；
+- **parser**：结构性差异——Vue 为引擎卡片组（anydoc/内置/MarkItDown/MinerU×2/
+  OpenDataLoader/PaddleOCR-VL×2/简单/WeKnora Cloud，含可用性状态与首字母分组），
+  React 为旧式平面配置表单（PDF 解析方式/OCR 开关/MinerU backend 变体/vLLM 地址等）。
+  完整对齐需移植 ParserEngineSettings.vue（1191 行），**记为待移植项**；
+- **KB Wiki 页签**（Wiki 型 KB 实测）：Vue = 搜索 + 分类目录 + Wiki Index 页面面板（面包屑
+  内嵌布局）；React = 独立版本化页面管理器（新建页面/树形/列表视图/slug/v1）。两端为不同
+  代实现，**WikiBrowser 完整移植记为待移植项**（截图 /tmp/wiki-{vue,react}.png）；
+- **KB Graph 页签**：React 空 wiki 报 "Invalid Wiki graph edges"+重试（严格解析对空响应抛
+  错），Vue 显示"暂无图谱数据"空态 → 修复 pages.ts graph() 解析：nodes/edges/meta 缺省时
+  降级为空图（仅拒绝存在但畸形的条目）；复验：错误消失、图谱正常渲染节点（索引页自动创建
+  后为 1 节点，此前 Vue 抓到空态属时序差异）。
+- 文档型 KB 的 ?tab=wiki/graph 两端均保持文档视图（wiki 页签仅 wiki_enabled KB 有效）——
+  行为一致 ✓。
+
+### 环境事故（第四轮）
+
+端口 8082 被 external 项目的 Expo dev server（onyx-foss/mobile）占用，WeKnora Go 后端启动
+FATAL（/tmp/wk-backend.log），两个前端全面失效。已回收端口并重启 Go 后端（登录 200 恢复）。
+
+### 门禁（第四轮）
+
+test:shared 869/869、test:web 1871/1871、typecheck:shared/typecheck:web 0、check:integrity
+PASS（见 /tmp/gates-round4.log）。

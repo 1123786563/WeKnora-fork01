@@ -1752,7 +1752,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <h3>{t('settings.sandbox.title')}</h3>
           {/* Page hint popover (SandboxSettings.vue:8-19). */}
           <details className="wk-sandbox-hint relative ml-[6px] inline-block">
-            <summary aria-label={t('settings.sandbox.pageHintTitle')}>ⓘ</summary>
+            <summary aria-label={t('settings.sandbox.pageHintTitle')}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8h.01M12 12v4" /></svg></summary>
             <div>
               <p className="m-0"><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
               <p className="wk-muted text-muted m-0">{t('settings.sandbox.pageHint')}</p>

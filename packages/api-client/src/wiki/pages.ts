@@ -223,9 +223,16 @@ function revisionList(value: unknown): WikiRevisionListResponse {
 }
 
 function graph(value: unknown): WikiGraphData {
-  const row = object(value, 'Invalid Wiki graph response');
+  // Vue parses the graph payload tolerantly: an empty wiki returns a body
+  // without nodes/edges and the view degrades to the 暂无图谱数据 empty
+  // state. Only present-but-malformed entries are rejected.
+  const empty: WikiGraphData = { nodes: [], edges: [], meta: { mode: 'overview', total: 0, returned: 0, truncated: false } };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return empty;
+  const row = value as Record<string, unknown>;
+  // The empty-wiki response carries nodes without an edges key.
+  if (!Array.isArray(row.nodes) && !Array.isArray(row.edges)) return empty;
   if (!Array.isArray(row.nodes)) throw new Error('Invalid Wiki graph nodes');
-  if (!Array.isArray(row.edges)) throw new Error('Invalid Wiki graph edges');
+  const edges = Array.isArray(row.edges) ? row.edges : empty.edges;
   const nodes = row.nodes.map((item) => {
     const node = object(item, 'Invalid Wiki graph node');
     for (const key of ['slug', 'title', 'page_type']) if (typeof node[key] !== 'string') throw new Error(`Invalid Wiki graph node ${key}`);
@@ -233,12 +240,16 @@ function graph(value: unknown): WikiGraphData {
     if (node.familiar !== undefined && typeof node.familiar !== 'boolean') throw new Error('Invalid Wiki graph node familiar');
     return node as WikiGraphNode;
   });
-  const edges = row.edges.map((item) => {
+  const edgeRows = (edges as unknown[]).map((item) => {
     const edge = object(item, 'Invalid Wiki graph edge');
     if (typeof edge.source !== 'string' || typeof edge.target !== 'string') throw new Error('Invalid Wiki graph edge endpoints');
     return edge as WikiGraphEdge;
   });
-  const meta = object(row.meta, 'Invalid Wiki graph meta');
+  const emptyMeta: WikiGraphMeta = { mode: 'overview', total: 0, returned: 0, truncated: false };
+  if (typeof row.meta !== 'object' || row.meta === null || Array.isArray(row.meta)) {
+    return { nodes, edges, meta: { ...emptyMeta, total: nodes.length, returned: nodes.length } };
+  }
+  const meta = row.meta as Record<string, unknown>;
   if (typeof meta.mode !== 'string' || meta.mode.trim() === '') throw new Error('Invalid Wiki graph meta mode');
   for (const key of ['total', 'returned']) if (typeof meta[key] !== 'number' || !Number.isSafeInteger(meta[key]) || meta[key] < 0) throw new Error(`Invalid Wiki graph meta ${key}`);
   if (typeof meta.truncated !== 'boolean') throw new Error('Invalid Wiki graph meta truncated');

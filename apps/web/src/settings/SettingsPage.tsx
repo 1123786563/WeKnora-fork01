@@ -349,8 +349,11 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
-    const runtimeQueuesPanel = key === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={sectionPayload as never} loading={sectionLoading} error={sectionError} /> : null;
-    const systemGlobalPanel = key === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
+    // Vue Settings.vue: these two sections stay nav-visible but render no panel
+    // content without the system-admin role (the content area is simply empty).
+    const systemAdminOnlyPanelDenied = key === 'system-global' || key === 'runtime-queues' ? role !== 'system-admin' : false;
+    const runtimeQueuesPanel = key === 'runtime-queues' && role === 'system-admin' ? <RuntimeQueuesPanel client={client} payload={sectionPayload as never} loading={sectionLoading} error={sectionError} /> : null;
+    const systemGlobalPanel = key === 'system-global' && role === 'system-admin' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
     const platformApiKeysPanel = key === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
     const systemAuditPanel = key === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={sectionPayload} /> : null;
     const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} onMutated={() => void load(true)} /> : null;
