@@ -167,7 +167,16 @@ test('an empty sanitized SVG is treated as a failure and keeps the code block', 
 // attachMarkdownEnhancementListeners opens the fullscreen viewer. The React
 // face must decorate the hydrated .wk-chat-mermaid figure with the same chrome.
 
-const zhLabels = { badge: '图表', expand: '全屏查看', close: '关闭' };
+const zhLabels = {
+  badge: '图表',
+  expand: '全屏查看',
+  close: '关闭',
+  zoomIn: '放大',
+  zoomOut: '缩小',
+  reset: '重置',
+  download: '下载图片',
+  downloading: '下载中...',
+};
 
 function hydratedRoot(): {
   root: HTMLElement;
@@ -249,4 +258,42 @@ test('figures already decorated are not wrapped twice', async () => {
   decorateEmbedMermaidChrome(root, zhLabels);
   assert.equal(root.querySelectorAll('.embed-mermaid-block').length, 1, 'decoration is idempotent');
   assert.equal(root.querySelectorAll('.embed-mermaid-block__badge').length, 1);
+});
+
+// ─── R463/A3 — fullscreen viewer toolbar (Vue openMermaidFullscreen parity) ──
+// Vue ships a zoomIn/zoomOut/reset/download toolbar beside the close control
+// (frontend/src/utils/mermaidViewer.ts L98-103); the React face mounts the
+// shared views-engine toolbar (packages/views/src/chat/mermaid-viewer.ts).
+
+test('the fullscreen viewer carries the Vue toolbar with zoom stepping', async () => {
+  const { root, engine } = hydratedRoot();
+  await hydrateEmbedAnswerMermaid(root, true, engine, zhLabels);
+  root.querySelector<HTMLButtonElement>('.embed-mermaid-block__expand')!.click();
+  const viewer = document.body.querySelector('.embed-mermaid-viewer')!;
+  const stage = viewer.querySelector<HTMLElement>('.embed-mermaid-viewer__stage')!;
+  assert.ok(stage, 'the zoom transform targets the viewer stage');
+
+  const buttons = [...viewer.querySelectorAll<HTMLButtonElement>('.wk-mermaid-viewer-toolbar button')];
+  assert.deepEqual(
+    buttons.map((button) => button.title),
+    ['放大', '缩小', '重置', '下载图片', '关闭'],
+    'zoomIn, zoomOut, reset, download, then close — the Vue order',
+  );
+
+  buttons[0]!.click();
+  buttons[0]!.click();
+  assert.match(stage.style.transform, /scale\(1\.4\)/, 'zoomIn steps by the Vue 0.2 increment');
+  buttons[2]!.click();
+  assert.equal(stage.style.transform, 'translate(0px, 0px) scale(1)', 'reset restores the initial view');
+});
+
+test('the embed labels type the shared viewer toolbar contract', async () => {
+  const { attachMermaidViewerToolbar } = await import('@weknora/views/chat/mermaid');
+  const overlay = document.createElement('div');
+  const stage = document.createElement('div');
+  const handle = attachMermaidViewerToolbar(overlay, stage, zhLabels);
+  overlay.appendChild(handle.toolbar);
+  assert.ok(overlay.contains(handle.toolbar), 'the shared engine mounts the toolbar for the embed face');
+  handle.detach();
+  assert.equal(overlay.querySelector('.wk-mermaid-viewer-toolbar'), null, 'detach clears the toolbar');
 });
