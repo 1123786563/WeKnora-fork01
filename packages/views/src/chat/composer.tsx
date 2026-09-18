@@ -114,6 +114,7 @@ export interface ChatComposerProps {
 export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const mentionSearchRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   // Vue Input-field.vue prefill consume: nextTick(() => textarea.focus()).
@@ -151,6 +152,19 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
     event.target.value = '';
     for (const file of files) void onAttachmentSelect?.(file);
   }
+
+  /*
+   * R472-A2 (R470 reverse gap): Vue Input-field.vue renders a dedicated image
+   * upload button only when the selected agent config has
+   * image_upload_enabled === true (isImageUploadEnabledByAgent; quick-answer
+   * has no config flag so the button stays hidden). On the authenticated web
+   * client Vue image picks travel through the same temporary-attachment
+   * transport as paperclip files (chat/index.vue: upload → attachment_ids),
+   * so React reuses the onAttachmentSelect pipeline and only adds the gated
+   * affordance; the chip strip doubles as the Vue image-preview bar.
+   */
+  const imageUploadEnabled = agents?.find((agent) => agent.id === selectedAgentId)?.config?.image_upload_enabled === true;
+  const imageAttachmentCount = attachments.filter((attachment) => /\.(jpe?g|png|gif|webp|bmp|tiff)$/i.test(attachment.name)).length;
 
   const filteredMentionOptions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
   function toggleMentions(): void {
@@ -261,6 +275,18 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               /> : null}
             </>;
           })() : null}
+          {imageUploadEnabled && onAttachmentSelect ? <>
+            {/* Vue Input-field.vue ~2596: hidden image input accepts the four multimodal MIME types, multiple picks. */}
+            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
+            <button type="button" data-image-count={imageAttachmentCount > 0 ? String(imageAttachmentCount) : undefined} data-active={imageAttachmentCount > 0 ? 'true' : undefined} className="wk-chat-control-icon wk-chat-image-upload-btn relative flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadImage} disabled={disabled} title={t.uploadImage} onClick={() => imageInputRef.current?.click()}>
+              <svg width="18" height="18" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
+                <path d="M896 128H128c-35.3 0-64 28.7-64 64v640c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V192c0-35.3-28.7-64-64-64zM128 832V192h768l0.1 640H128z" />
+                <path d="M352 448a96 96 0 1 0 0-192 96 96 0 0 0 0 192z" />
+                <path d="M128 768l224-288 160 160 192-256L896 640v128H128z" />
+              </svg>
+              {imageAttachmentCount > 0 ? <span className="wk-chat-image-count absolute -right-[4px] -top-[4px] flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-[#07c05f] px-[3px] text-[10px] font-medium leading-none text-white">{imageAttachmentCount}</span> : null}
+            </button>
+          </> : null}
           <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
           <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
