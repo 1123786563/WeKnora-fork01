@@ -4,7 +4,7 @@
 
 状态语义：planned → ready → in_progress → implemented → verified → reviewed → merged；blocked 必须写明原因/影响/解除条件。
 
-## 当前阶段：S00+S01+S02 全部关闭（T001-T018 全 verified，18/36）
+## 当前阶段：S00-S03 全部关闭（T001-T024 全 verified，24/36）——首个产品里程碑达成
 
 | 任务 | 标题 | 状态 | 说明 |
 |---|---|---|---|
