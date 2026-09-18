@@ -360,7 +360,9 @@ func TestCraftHTTPViewerReadOnlyAndCrossTenantInvisible(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 	w = env.do(t, http.MethodGet, "/api/v1/craft/sessions?limit=10", "foreigntenant", "")
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"success":true,"data":[],"next_cursor":""}`, w.Body.String())
+	// The list envelope carries the deployment gate snapshot (CFT-S01-T009):
+	// for a foreign tenant the page itself stays empty — invisible sessions.
+	require.JSONEq(t, `{"success":true,"data":[],"next_cursor":"","capabilities":{"enabled":true,"allowed_kinds":["web"]}}`, w.Body.String())
 }
 
 // TestCraftHTTPOldBuiltinSessionStaysOffCraft pins that a legacy builtin
