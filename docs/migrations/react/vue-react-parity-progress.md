@@ -5265,3 +5265,26 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r471-code-parity-round.md`. No Vue, mobile, or Go code was modified by
   this round. R472 queue: questions UI live smoke (toggle-hidden root cause), main-box same-frame steer form,
   A2 inline sections + system-admin capture, three i18n keys.
+
+## 2026-09-18 Round R472 — skipped domain state, agent image upload, questions live smoke; dev stack wiped
+
+- Four parallel agents (A1 skipped domain + i18n keys, A2 agent image upload + steer ruling, A3 questions live
+  smoke + inline anchoring, A4 verifier). Verdict: A1/A2 PASS byte-exact; A3 partial via an environment event;
+  gates test:web 1808/1808 (+7), test:shared 795/795 (+4), typecheck 0, build ✓, integrity PASS.
+- A1: spans use started_at/finished_at (Vue reads only those) and a disabled multimodal closes as skipped
+  (已跳过, done||skipped both traversed) — the domain model gained the skipped state + timestamp aliases, the
+  aggregate matches Vue, and knowledgeBase.timeline.skipped landed ×5 byte-exact with the R470 divergence
+  flipped to a contract guard. The three common keys (add/saveSuccess/deleteSuccess) landed byte-exact with
+  R471's degraded consumers switched back. domain 9/9, i18n 15/15, documents 238/238.
+- A2: the agent image-upload button (config.image_upload_enabled gating, Vue-identical form, before the
+  paperclip) rides the existing attachment pipeline — React's pipeline was already a superset; uploadImage ×5
+  as a views-local label. +6 tests; chat 174+121. Steer same-frame ruled NO-CHANGE (behavior table already
+  landed; rework = load-bearing churn for visual gain); queued-steer chips queued as their own item.
+- A3: the questions toggle IS visible for creator+admin (the R471 mystery likely a silent canMutateDocument
+  degradation on request failure); CRUD smoke add/edit verified (PUT 200s), delete flow evidenced to the
+  confirm gate before the stack died. Datasource inline error state anchored (raw text + kept buttons, no
+  retry). **ENVIRONMENT EVENT: a parallel process wiped the dev stack twice (tenant 10001 data gone — the
+  fixture library is destroyed; future browser rounds must rebuild fixtures).**
+- Gates: test:web 1808/1808, test:shared 795/795, typecheck 0, build ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r472-code-parity-round.md`. No Vue, mobile, or Go code was modified by
+  this round. R473 queue: fixture rebuild + questions Vue-side pairing + steer chips + skipped live capture.
