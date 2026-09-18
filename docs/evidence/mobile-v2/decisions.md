@@ -124,3 +124,10 @@ MX-017 产品对话重写消除了 ConversationScreen 的 3 个 G02/G04 继承�
 - 入口初始化顺序：apps/mobile/index.ts 先 import sources/unistyles.ts（require-context 使 "(app)/" 先于 "_layout" 求值）。
 - SecureStore key 合法化：全部含 ':' 的 key 改为 '.'（Android Invalid key 实测）。
 - 附带：tsconfig 排除 app/、android/、ios/、build/、src/features（desktop 骨架与原生产物不入移动 typecheck；'/dev' 死链 2 项计入新基线 13=D-026 11+2）。
+
+## D-029 · 设备解封第二至五项修复（2026-09-18 第五轮）
+
+- R4 gate Hooks 顺序：usePathname 提升到所有早退 return 之前（Rules of Hooks——设备实测 Rendered fewer hooks 红屏）。
+- R5 gate loading 中间态：凭据读取期间 return null 而非渲染 Slot（legacy (app)/index 依赖 Happy AuthProvider，身份未定渲染即崩）。
+- credential key 合法化：productCredentialKey(origin) 由 encodeURIComponent（产物含 '%' 仍非法）改为非 [A-Za-z0-9._-] 字符折叠为 '.'。
+- 实测结论：Android dev client 全链已达 M01 产品登录屏（表单可填、状态正确、按钮 clickable=true）；剩余单点=Sign in 按钮的 raw input tap 进入输入队列但未触发 RN submit（模拟器 input/RN Fabric 交互特性，非代码缺陷），下一轮用 Maestro tapOn（可达性驱动）替代。

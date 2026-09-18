@@ -40,5 +40,8 @@ export function createCredentials(store: CredentialStore, key: string): Credenti
 }
 
 export function productCredentialKey(origin: string): string {
-  return `weknora:credentials:${encodeURIComponent(new URL(origin).origin)}`;
+  // SecureStore key 仅允许字母数字与 .-_（Android 严格校验；':'/' 非法——2026-09-18 设备实测）。
+  // encodeURIComponent 产物含 '%' 仍非法；改为 SHA-free 的安全子串折叠。
+  const normalized = new URL(origin).origin.replace(/[^A-Za-z0-9._-]+/g, '.');
+  return `weknora.credentials.${normalized}`;
 }

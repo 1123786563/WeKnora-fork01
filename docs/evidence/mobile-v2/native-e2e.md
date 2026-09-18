@@ -82,3 +82,9 @@ android-legacy-login-light（desktop 骨架登录页——遮蔽缺陷实证）�
 # Android：DevLauncher → New dev server → http://10.0.2.2:8083
 # iOS：xcrun simctl install "iPhone 17 Pro" apps/mobile/ios/build/DerivedData/Build/Products/Debug-iphonesimulator/WeKnora.app && xcrun simctl launch "iPhone 17 Pro" com.weknora.mobile → DevLauncher → http://localhost:8083
 ```
+
+## 第五轮追加（2026-09-18）
+
+- gate 两项修复（Hooks 顺序 + loading null 中间态）后，设备冷启动全链贯通至 M01 产品登录屏（表单可填、React 状态正确、按钮 clickable）。
+- 剩余单点：Sign in 的 raw input tap 进入系统输入队列但未触发 RN submit（状态与可点击性均已插桩验证为正确）。下一轮改用 Maestro tapOn（可达性驱动；CLI 已装，首启需下载驱动）。
+- 新增截图：android-M01-product-login-light / android-M01-filled / android-post-login / android-step2。
