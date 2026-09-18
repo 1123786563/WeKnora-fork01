@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
+import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
 import type { CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createCraftWorkbenchController, type CraftEventFrame, type CraftEventTransport, type CraftSyncError } from '@weknora/core/craft/controller';
@@ -391,6 +392,9 @@ export function CraftRoutes(props: CraftRoutesProps) {
   // The interaction decide routes do not exist on the backend yet (W04 report
   // §6): decisions surface here and nowhere else — never a silent approval.
   const pendingDecisions = useRef<CraftInteractionActionInput[]>([]);
+  // CFT-S01-T008: the live submit intent's idempotency key. Null = no live
+  // intent; minted on first send, reused across retries, cleared on success.
+  const pendingRequestIdRef = useRef<string | null>(null);
   const handleInteractionAction = useCallback((input: CraftInteractionActionInput) => {
     pendingDecisions.current = [...pendingDecisions.current, input];
     // Visible feedback without pretending the backend accepted it.
@@ -436,28 +440,48 @@ export function CraftRoutes(props: CraftRoutesProps) {
     async (prompt: string): Promise<void> => {
       const current = attachments;
       if (sessionId === null) throw new Error('no active craft session');
-      const inputRefs: string[] = [];
+      // CFT-S01-T008: the submit intent is frozen through the command bridge.
+      // The requestId is minted ONCE per intent and survives lost responses —
+      // a retry of the same composer draft reuses it, so the server replays
+      // the admission instead of admitting twice. It clears only on success.
+      if (pendingRequestIdRef.current === null) pendingRequestIdRef.current = crypto.randomUUID();
       try {
-        for (const attachment of current) {
-          setAttachmentState(attachment.id, 'uploading');
-          const ref = await uploadAndAssociate(attachment);
-          inputRefs.push(ref);
-          setAttachmentState(attachment.id, 'ready');
-        }
+        await submitDraftWithAttachments(
+          {
+            sessionId,
+            prompt,
+            kind: 'web',
+            knowledgeScope: creationScope ?? '',
+            baseVersionId: null,
+            requestId: pendingRequestIdRef.current,
+            expectedWorkspaceRevision: null,
+            attachments: current.map((attachment) => ({ name: attachment.name, sha256: '', file: attachment.file })),
+            signal: scopeController.current().signal,
+          },
+          {
+            uploadAndAssociate: async (bridgeAttachment) => {
+              const attachment = current.find((item) => item.name === bridgeAttachment.name);
+              if (attachment === undefined) throw new Error(`unknown attachment: ${bridgeAttachment.name}`);
+              setAttachmentState(attachment.id, 'uploading');
+              try {
+                const ref = await uploadAndAssociate(attachment);
+                setAttachmentState(attachment.id, 'ready');
+                return ref;
+              } catch (error) {
+                setAttachmentState(attachment.id, 'error');
+                throw error;
+              }
+            },
+            submitDraft: (command, signal) =>
+              craftApi.submit(sessionId, command, signal ?? scopeController.current().signal),
+          },
+        );
       } catch (error) {
-        for (const attachment of current) setAttachmentState(attachment.id, 'error');
+        // uploads or the submission failed: the intent KEEPS its key so the
+        // user's retry replays idempotently
         throw error;
       }
-      await craftApi.submit(
-        sessionId,
-        {
-          request_id: crypto.randomUUID(),
-          prompt,
-          input_refs: inputRefs,
-          knowledge_scope: creationScope ?? '',
-        },
-        scopeController.current().signal,
-      );
+      pendingRequestIdRef.current = null;
       setAttachments([]);
       setCreationScope(null);
       setCreationPrompt(null);
