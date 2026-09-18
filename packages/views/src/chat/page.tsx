@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, type ChatAttachmentView, type ChatMentionView, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -136,6 +136,14 @@ export interface ChatPageProps {
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
+  /** R473-A2 — queued steer chips shown by the composer (Vue .steer-queue). */
+  steerQueue?: readonly ChatSteerQueueChip[];
+  /** Vue promote-steer (inject a queued after-message now). */
+  onSteerPromote?(steerId: string): void | Promise<void>;
+  /** Vue remove-steer (cancel one queued message). */
+  onSteerRemove?(steerId: string): void | Promise<void>;
+  /** Vue retry-steer (re-run a failed enqueue). */
+  onSteerRetry?(steerId: string): void | Promise<void>;
   /**
    * R471-A1 — Vue canSteer parity (chat/index.vue :canSteer="isAgentStreamSession()"):
    * only an agent-pipeline session has a loop that accepts a mid-run message.
@@ -729,6 +737,10 @@ export function ChatPage(props: ChatPageProps) {
           streaming={streaming || sending}
           canSteer={canSteer}
           onStop={props.onStopStream}
+          steerQueue={props.steerQueue}
+          onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
+          onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
+          onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
         />
       </div>
       {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>

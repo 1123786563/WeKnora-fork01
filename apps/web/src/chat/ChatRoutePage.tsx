@@ -24,6 +24,19 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
+import {
+  clearSteerQueue,
+  dropSteerItem,
+  enqueueSteerItem,
+  failSteerItem,
+  markSteerAwaitingIdleSend,
+  nextSteerIdleSend,
+  settleSteerItem,
+  steerQueueChips,
+  syncSteerQueueFromServer,
+  type WebSteerQueueItem,
+} from './steer-queue.ts';
+import type { SteerMutationResponse } from '@weknora/contracts';
 import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
@@ -73,6 +86,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Sidebar group-by toggle persists across reloads (Vue sessionGrouping.ts).
   const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>(() => readStoredGroupMode());
   const [streamState, setStreamState] = useState(initialChatStreamState);
+  // Mirror for async handlers captured before a re-render (steer/promote read
+  // the live phase the same turn the feed flips it); the feed and stop keep it
+  // current alongside every setStreamState.
+  const streamStateRef = useRef(initialChatStreamState());
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
   // Chat models for the composer chip (Vue chatResources chatModels); the
@@ -177,6 +194,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }, [scope.scope, selectedModelId]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  // R473-A2 — Vue steerQueue ref parity: queued after-messages shown as
+  // composer chips with promote/remove/retry; consumed one-per-boundary after
+  // a turn completes (frontend/src/views/chat/index.vue).
+  const [steerQueue, setSteerQueue] = useState<WebSteerQueueItem[]>([]);
+  const steerQueueRef = useRef<WebSteerQueueItem[]>([]);
+  const steerConsumeInFlightRef = useRef(false);
+  // The ref is the source of truth (async handlers read it mid-turn, before
+  // any re-render lands); the state is the render mirror.
+  const applySteerQueue = (updater: (current: WebSteerQueueItem[]) => WebSteerQueueItem[]): void => {
+    const next = updater(steerQueueRef.current);
+    steerQueueRef.current = next;
+    setSteerQueue(next);
+  };
   // History refresh in-flight flag (Vue sessions.messages loader).
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [suggestions, setSuggestions] = useState<MessageSuggestionSet | undefined>();
@@ -356,8 +386,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setSuggestions(undefined);
       suggestionForMessage.current = null;
       impressionForSuggestion.current = null;
+      applySteerQueue(clearSteerQueue);
       return;
     }
+    // Vue chat/index.vue session switch: the queue belongs to the previous
+    // turn's session and is dropped on selection change.
+    applySteerQueue(clearSteerQueue);
     let active = true;
     setSuggestions(undefined);
     suggestionForMessage.current = null;
@@ -392,6 +426,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const sessionId = selectedSessionId;
     if (resumeStartedRef.current.get(sessionId) === resumeId) return;
     resumeStartedRef.current.set(sessionId, resumeId);
+    // Vue hydrateSteerQueue (only when the local queue is empty): restoring a
+    // session mid-run also restores the server-owned steer backlog as chips.
+    void hydrateSteerQueue(sessionId);
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const runId = ++chatRunIdRef.current;
@@ -794,10 +831,36 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return uuid ?? 'steer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   }
 
-  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems): Promise<void> {
-    const sessionId = selectedSessionId;
+  function applySteerEnqueueResult(sessionId: string, clientSteerId: string, result: SteerMutationResponse): void {
+    if (selectedSessionIdRef.current !== sessionId) return;
+    if (result.status === 'queued') {
+      // Settled onto the server-issued id; the backlog fires as a follow-up
+      // run once the current turn exits (Vue queued.steer_id = serverId).
+      applySteerQueue((current) => settleSteerItem(current, clientSteerId, result.steer_id));
+      return;
+    }
+    if (result.status === 'new_run') {
+      // No live run accepted the message. Still attached to a stream: keep it
+      // and send locally once the current SSE settles (Vue awaitingIdleSend);
+      // idle means the caller can fall back to a plain send right away.
+      if (streamStateRef.current.phase === 'streaming' || streamAbortRef.current) {
+        applySteerQueue((current) => markSteerAwaitingIdleSend(settleSteerItem(current, clientSteerId), clientSteerId));
+        return;
+      }
+      applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+      return;
+    }
+    // already_injected: the running turn read it; no queue residue (Vue drops
+    // the item and clears the pending preview).
+    applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+  }
+
+  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems, retrySteerId?: string): Promise<void> {
+    // selectSession keeps the ref current even before the re-render lands, so
+    // the steer dispatched right after a fresh session-create still resolves.
+    const sessionId = selectedSessionIdRef.current;
     if (!sessionId) throw new Error('Create or select a conversation first.');
-    const streaming = streamState.phase === 'streaming';
+    const streaming = streamStateRef.current.phase === 'streaming';
     const steerMentions: SteerMentionItem[] = selectedMentions.map((item) => ({
       id: item.id,
       name: item.name,
@@ -807,24 +870,138 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       ...(item.kbName ? { kbName: item.kbName } : {}),
       ...(item.skillName ? { skillName: item.skillName } : {}),
     }));
+    const clientSteerId = retrySteerId ?? newSteerId();
     const action = buildSteerAction({
       streaming,
       content,
       assistantMessageId: streamState.assistantMessageId,
       mentionedItems: steerMentions,
-      newSteerId,
+      newSteerId: () => clientSteerId,
     });
     if (action.kind === 'send') return send(action.submission);
+    // R473-A2: the follow-up lands as a composer chip while the POST is in
+    // flight (Vue pushes the pending item before awaiting steerSession).
+    applySteerQueue((current) => retrySteerId
+      ? current.map((item) => item.steerId === retrySteerId ? { ...item, status: 'pending' as const } : item)
+      : enqueueSteerItem(current, { steerId: clientSteerId, content, mentionedItems: steerMentions }));
     try {
-      await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
+      const result = await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
+      applySteerEnqueueResult(sessionId, clientSteerId, result);
     } catch (cause) {
-      if (!isSteerConflict(cause)) throw cause;
-      // 409: the run moved past the message id we expected. Re-base onto the
-      // freshest assistant message id and retry once.
-      const rebased = streamState.assistantMessageId;
-      if (!rebased || rebased === action.input.expectedAssistantMessageId) throw cause;
-      await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
+      if (isSteerConflict(cause)) {
+        // 409: the run moved past the message id we expected. Re-base onto the
+        // freshest assistant message id and retry once.
+        const rebased = streamState.assistantMessageId;
+        if (rebased && rebased !== action.input.expectedAssistantMessageId) {
+          try {
+            const result = await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
+            applySteerEnqueueResult(sessionId, clientSteerId, result);
+            return;
+          } catch (retryCause) {
+            applySteerQueue((current) => failSteerItem(current, clientSteerId));
+            throw retryCause;
+          }
+        }
+      }
+      applySteerQueue((current) => failSteerItem(current, clientSteerId));
+      throw cause;
     }
+  }
+
+  /** Vue promote-steer: flip a queued after-message to inject (send now). */
+  async function promoteSteer(steerId: string): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId || !steerId) return;
+    const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
+    if (!item || item.status !== 'queued') return;
+    try {
+      const result = await client.chat.steer.promote(sessionId, steerId, scope.signal);
+      if (result.status === 'new_run' && (streamStateRef.current.phase === 'streaming' || streamAbortRef.current)) {
+        applySteerQueue((current) => markSteerAwaitingIdleSend(current, steerId));
+        return;
+      }
+      if (result.status === 'new_run') {
+        applySteerQueue((current) => dropSteerItem(current, steerId));
+        await send({ content: item.content, status: 'pending' });
+        return;
+      }
+      // queued (flipped to inject) and already_injected both leave the chip
+      // strip: the message surfaces as an injected user bubble in the stream.
+      applySteerQueue((current) => dropSteerItem(current, steerId));
+    } catch (cause) {
+      // Vue rolls the item back to after and toasts; the chip stays.
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+    }
+  }
+
+  /** Vue remove-steer: cancel one queued message (DELETE /steer/:id). */
+  async function removeSteer(steerId: string): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId || !steerId) return;
+    try {
+      await client.chat.steer.remove(sessionId, steerId, scope.signal);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+      return;
+    }
+    applySteerQueue((current) => dropSteerItem(current, steerId));
+  }
+
+  /** Vue retry-steer: re-run the failed enqueue with the same steer id. */
+  async function retrySteer(steerId: string): Promise<void> {
+    const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
+    if (!item || item.status !== 'failed') return;
+    await steer(item.content, item.mentionedItems ?? mentionedItems, steerId);
+  }
+
+  /**
+   * Vue flushSteerAfterTurn + attachSteerFollowUp: once the stream settles,
+   * locally owned items (new_run races) are sent one per boundary, then the
+   * server list re-syncs the backlog — items the follow-up run claimed leave
+   * the queue, and the refreshed history lets the resume pipeline attach the
+   * follow-up run's stream.
+   */
+  async function consumeSteerAfterTurn(sessionId: string): Promise<void> {
+    if (steerConsumeInFlightRef.current || selectedSessionIdRef.current !== sessionId) return;
+    steerConsumeInFlightRef.current = true;
+    try {
+      // The feed's completed event fires before the outer send() releases its
+      // in-flight guard; wait for the turn to fully settle first.
+      for (let attempt = 0; attempt < 100 && sendInFlightRef.current; attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+      }
+      if (selectedSessionIdRef.current !== sessionId) return;
+      const idle = nextSteerIdleSend(steerQueueRef.current);
+      if (idle) {
+        applySteerQueue((current) => dropSteerItem(current, idle.steerId));
+        void send({ content: idle.content, status: 'pending' }).catch(() => undefined);
+        return;
+      }
+      if (steerQueueRef.current.length === 0) return;
+      try {
+        const remote = await client.chat.steer.list(sessionId, scope.signal);
+        if (selectedSessionIdRef.current !== sessionId) return;
+        applySteerQueue((current) => syncSteerQueueFromServer(current, remote.items));
+      } catch { /* keep the local queue view */ }
+      if (steerQueueRef.current.length === 0) return;
+      try {
+        const persisted = await client.sessions.messages(sessionId, { limit: 50, signal: scope.signal });
+        if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setMessages(appendMessages([], persisted));
+      } catch { /* follow-up attach happens on the next history refresh */ }
+    } finally {
+      steerConsumeInFlightRef.current = false;
+    }
+  }
+
+  /** Vue hydrateSteerQueue: restore the server backlog once per resume target. */
+  async function hydrateSteerQueue(sessionId: string): Promise<void> {
+    if (steerQueueRef.current.length > 0) return;
+    try {
+      const remote = await client.chat.steer.list(sessionId, scope.signal);
+      if (selectedSessionIdRef.current !== sessionId || steerQueueRef.current.length > 0) return;
+      const synced = syncSteerQueueFromServer([], remote.items);
+      if (synced.length > 0) applySteerQueue(() => synced);
+    } catch { /* queue restore is best-effort */ }
   }
 
   async function downloadArtifact(messageId: string, artifactIndex: number): Promise<void> {
@@ -1100,12 +1277,18 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       }
       runState = reduceChatStream(runState, event);
       setStreamState(runState);
+      streamStateRef.current = runState;
       rememberApprovalSnapshot(runState.assistantMessageId, Object.values(runState.approvals));
       if (runState.phase === 'error') throw new ChatStreamApplicationError(runState.error ?? 'Chat stream failed');
       const injectedRows = runState.injectedUserMessages.map((injected) => ({
         id: injectedId(injected.steerId, injected.userMessageId),
         session_id: sessionId, role: 'user' as const, content: injected.content, is_completed: true,
       }));
+      // Vue onUserMessageInjected: an injected steer leaves the queue (both
+      // the enqueue-then-promote and direct inject paths converge here).
+      for (const injected of runState.injectedUserMessages) {
+        applySteerQueue((current) => dropSteerItem(current, injected.steerId));
+      }
       const hasLiveAssistant = Boolean(runState.answer) || Boolean(runState.thinking) || Object.keys(runState.toolCalls).length > 0;
       if (hasLiveAssistant || injectedRows.length > 0) {
         const injectedIds = new Set(injectedRows.map((row) => row.id));
@@ -1124,6 +1307,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         suggestionForMessage.current = runState.assistantMessageId;
         void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
       }
+      // R473-A2 — Vue onTurnComplete → flushSteerAfterTurn: consume the steer
+      // queue once the turn settles (idle-send first, then server backlog
+      // re-sync). Deferred because send() still holds its in-flight guard.
+      if (runState.phase === 'completed') {
+        window.setTimeout(() => { void consumeSteerAfterTurn(sessionId); }, 0);
+      }
     };
   }
 
@@ -1140,6 +1329,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     controller?.abort();
     chatRunIdRef.current += 1;
     setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
+    streamStateRef.current = { ...streamStateRef.current, phase: 'stopped', artifactsPending: false };
+    // Vue handleStopConfirmed: stopping the turn cancels the whole steer queue.
+    applySteerQueue(clearSteerQueue);
     if (messageId) {
       try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
     }
@@ -1204,6 +1396,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           if (runController.signal.aborted) return;
           if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
             setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
+            streamStateRef.current = { ...streamStateRef.current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false };
           }
           // Application errors keep the server-provided message (Vue renders
           // the SSE error event content); transport errors carry the copy.
@@ -1309,6 +1502,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
     onSteer={steer}
+    steerQueue={steerQueueChips(steerQueue)}
+    onSteerPromote={(steerId) => { void promoteSteer(steerId); }}
+    onSteerRemove={(steerId) => { void removeSteer(steerId); }}
+    onSteerRetry={(steerId) => { void retrySteer(steerId); }}
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}

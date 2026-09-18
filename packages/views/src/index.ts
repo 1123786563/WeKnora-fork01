@@ -1,5 +1,5 @@
 export { ChatComposer, createChatSubmission } from './chat/composer.tsx';
-export type { ChatComposerProps, ChatMentionView, ChatSubmission } from './chat/composer.tsx';
+export type { ChatComposerProps, ChatMentionView, ChatSteerQueueChip, ChatSubmission } from './chat/composer.tsx';
 export { AgentSelectorPanel, agentNotReadyLabels } from './chat/agent-selector.tsx';
 export type { AgentSelectorAgent, AgentSelectorModel, AgentSelectorProps } from './chat/agent-selector.tsx';
 export { resolveForkAffordance, stashForkLanding, takeForkLanding } from './chat/fork-point.ts';

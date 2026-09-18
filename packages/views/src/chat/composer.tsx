@@ -41,6 +41,18 @@ export function createChatSubmission(draft: string): ChatSubmission {
   return { content, status: 'pending' };
 }
 
+/*
+ * R473-A2 — one chip per queued steer follow-up (Vue Input-field.vue
+ * .steer-queue): the host owns the queue; the composer only renders it.
+ * `pending` mirrors Vue item.pending (POST /steer in flight), `failed`
+ * mirrors item.failed (retry affordance).
+ */
+export interface ChatSteerQueueChip {
+  steerId: string;
+  content: string;
+  status: 'pending' | 'queued' | 'failed';
+}
+
 type ChatKeyboardEvent = Pick<KeyboardEvent, 'key' | 'keyCode' | 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'> & { isComposing?: boolean };
 
 export function shouldSubmitFromKeyboard(event: ChatKeyboardEvent, canSteer: boolean): boolean {
@@ -101,6 +113,14 @@ export interface ChatComposerProps {
   /** Vue shows stop whenever the active session cannot accept a steer. */
   canSteer?: boolean;
   onStop?(): void;
+  /** R473-A2 — queued steer follow-ups rendered as chips (Vue .steer-queue). */
+  steerQueue?: readonly ChatSteerQueueChip[];
+  /** Vue promote-steer: flip a queued after-message to inject (send now). */
+  onSteerPromote?(steerId: string): void;
+  /** Vue remove-steer: cancel a queued message (DELETE /steer/:id). */
+  onSteerRemove?(steerId: string): void;
+  /** Vue retry-steer: re-run the failed enqueue POST. */
+  onSteerRetry?(steerId: string): void;
   /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
   copy?: ChatCopyTable;
 }
@@ -111,7 +131,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -216,6 +236,24 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
     <label className="wk-chat-visually-hidden absolute h-[1px] w-[1px] overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)] [clip-path:inset(50%)]" htmlFor="wk-chat-draft">{t.composerPlaceholder}</label>
     <div data-guide="chat-input" className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
+      {/* R473-A2 — Vue Input-field.vue .steer-queue (~2599): one chip per queued
+          after-message at the very top of the input shell. Waiting clock icon +
+          truncated text (full text via title) + per-state actions; pending
+          shows the spinner and hides actions, failed swaps them for retry. */}
+      {steerQueue.length > 0 ? <ul className="wk-chat-steer-queue m-0 flex list-none flex-wrap gap-[6px] px-[14px] pt-[10px]" role="list" aria-label={t.steerQueueWaiting}>
+        {steerQueue.map((item) => <li key={item.steerId} role="listitem" data-steer-id={item.steerId} data-steer-status={item.status} className="wk-chat-steer-queue-item inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
+          <svg className="shrink-0 text-[rgba(0,0,0,0.4)]" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M8 4.8V8l2.2 1.6" strokeLinecap="round" /></svg>
+          <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title={item.content}>{item.content}</span>
+          {item.status === 'failed' ? (onSteerRetry ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.steerRetry} title={t.steerRetry} onClick={() => onSteerRetry(item.steerId)}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5" strokeLinecap="round" /><path d="M13 2v3h-3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button> : null) : item.status === 'pending' ? <span className="wk-chat-steer-sending shrink-0" role="img" aria-label={t.loadingMessages}>…</span> : <>
+            {onSteerPromote ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.steerQueueSendNow} title={t.steerQueueSendNow} onClick={() => onSteerPromote(item.steerId)}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
+            </button> : null}
+            {onSteerRemove ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.remove} title={t.remove} onClick={() => onSteerRemove(item.steerId)}>×</button> : null}
+          </>}
+        </li>)}
+      </ul> : null}
       {attachments.length > 0 ? <ul className="wk-chat-attachments m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.uploadAttachment}>
         {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]" title={attachment.error || attachment.status}>
           <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.name}</span>
