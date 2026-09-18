@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 shopt -s nullglob
 
-OLD_SHARED_MINIMUM=102 # original test:shared file count, recorded 2026-09-18
+OLD_SHARED_MINIMUM=101 # unique files matched by the original test:shared globs (the mobile-* overlap double-listed 102 in raw ls), recorded 2026-09-18
 
 CRAFT_TEST_GLOBS=(
   'packages/contracts/src/craft/*.test.ts'
