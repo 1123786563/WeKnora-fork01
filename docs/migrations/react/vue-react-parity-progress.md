@@ -5214,3 +5214,29 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   typecheck 0, build ✓, integrity PASS. Evidence:
   `evidence/vue-react-parity/2026-09-18-r469-code-parity-round.md`. No Vue, mobile, or Go code was modified
   by this round. Next-round queue head: N009 spans defect; then generated-questions popover.
+
+## 2026-09-18 Round R470 — N009 spans fix (live-verified), stop-button contract, settings error-state anchoring
+
+- Four parallel agents (A1 N009 spans fix, A2 composer stop button, A3 settings error-state anchoring, A4
+  verifier with live verification). Verdict: A1 PASS, A2 PASS-with-reservations, A3 PASS; gates test:web
+  1778/1778 (+7, zero flakes), test:shared 789/789, typecheck 0, build ✓, integrity PASS.
+- A1: N009 root-caused — the spans endpoint wraps in {success,data} and Vue reads res.data while the React
+  client returned the raw body (trace undefined → all stages 等待中, poller terminal on first tick). Fixed
+  with resolveKnowledgeSpansView wired at all three consumers; fixtures from the R469-captured real shape;
+  live-verified with a fresh tenant + real upload/parse (stage states + waterfall render; screenshot pairs
+  with R469's both-end baseline). documents 230/230. Deferred (packages closed): skipped-stage domain state +
+  started_at/finished_at aliases + timeline.skipped key; postprocess failure aggregation shape.
+- A2: Vue's stop shows through the whole isReplying life (send→SSE end); React's stop branch existed but
+  streaming only covered the event phase and the guard blocked pre-stream aborts — fixed (streaming||sending,
+  widened guard, +3 tests; N019 red reproduced). Attachment note CORRECTED: Vue has the unconditional
+  attachment button; the real gap is Vue's agent-scoped image upload missing in React (queued). RESERVATION:
+  A4's three live attempts did NOT reproduce stop (canSteer-true steer branch + textarea-not-disabled
+  contradiction; two candidates unresolved) — highest-priority R471 follow-up.
+- A3 (12 screenshots, symmetric 500-interception): settings error states anchored — React renders raw
+  backend English with no retry (several sections drop the title) vs Vue's three aligned patterns
+  (toast+kept UI / toast+empty+retry / banner+retry). Row upgrades R027/R024/R033/R035 C→B; the error-UX
+  alignment (localized copy + retry per section pattern) queued for R471.
+- Gates: test:web 1778/1778, test:shared 789/789, typecheck 0, build ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r470-code-parity-round.md`. No Vue, mobile, or Go code was modified
+  by this round. R471 queue: A2 stop live gap; settings error-UX alignment; generated-questions popover;
+  image-upload reverse gap.
