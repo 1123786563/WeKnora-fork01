@@ -543,6 +543,15 @@ function num(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * Vue `value || fallback` seeding (UploadConfirmDialog L1096-1102): live KBs
+ * store 0 for "not customized", so a falsy number falls back to the default
+ * instead of surfacing an invalid 0 in the dialog state.
+ */
+function vueNumOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value !== 0 ? value : fallback;
+}
+
 function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
@@ -600,14 +609,17 @@ export function uploadConfirmStateFromKb(kb: KbLike): UploadConfirmUIState {
   if (!kb) return state;
   const chunking = kbRecord(kb, 'chunking_config');
   if (chunking) {
-    state.chunkSize = num(chunking.chunk_size, 512);
-    state.chunkOverlap = num(chunking.chunk_overlap, 80);
+    // Vue initFromKbInfo seeds with `||` semantics: the live KB "not
+    // customized" zeros (chunk_size 0, chunk_overlap 0) fall back to the
+    // Vue defaults instead of entering the dialog as invalid values.
+    state.chunkSize = vueNumOr(chunking.chunk_size, 512);
+    state.chunkOverlap = vueNumOr(chunking.chunk_overlap, 80);
     state.separators = strList(chunking.separators, state.separators);
     state.parserRules = parseEngineRules(chunking.parser_engine_rules);
     if (Array.isArray(chunking.parser_engine_rules) && chunking.parser_engine_rules.length === 0) state.parserRules = [];
     state.enableParentChild = chunking.enable_parent_child === true;
-    state.parentChunkSize = num(chunking.parent_chunk_size, 4096);
-    state.childChunkSize = num(chunking.child_chunk_size, 384);
+    state.parentChunkSize = vueNumOr(chunking.parent_chunk_size, 4096);
+    state.childChunkSize = vueNumOr(chunking.child_chunk_size, 384);
     state.chunkStrategy = str(chunking.strategy, 'auto') || 'auto';
     state.tokenLimit = num(chunking.token_limit, 0);
     state.languages = strList(chunking.languages, []);

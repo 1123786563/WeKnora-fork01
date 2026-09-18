@@ -23,10 +23,13 @@ Object.assign(globalThis, {
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 // jsdom does not implement blob object URLs; the upload pipeline mints one per
-// file before handing the source to the transport (browser-only API).
-const urlCtor = dom.window.URL as typeof URL & { createObjectURL?: unknown; revokeObjectURL?: unknown };
-urlCtor.createObjectURL ??= (() => 'blob:mock-upload-source') as never;
-urlCtor.revokeObjectURL ??= (() => undefined) as never;
+// file before handing the source to the transport (browser-only API). The page
+// module resolves the bare `URL` to the Node realm global, so stub there (the
+// jsdom File must be accepted).
+const globalUrl = globalThis.URL as typeof URL & Record<string, unknown>;
+globalUrl.createObjectObjectURLBackup ??= globalUrl.createObjectURL;
+globalUrl.createObjectURL = (() => 'blob:mock-upload-source') as typeof globalUrl.createObjectURL;
+globalUrl.revokeObjectURL ??= (() => undefined) as never;
 
 const { createRoot } = await import('react-dom/client');
 const { KnowledgeDocumentsPage } = await import('./KnowledgeDocumentsPage.tsx');
@@ -130,4 +133,27 @@ test('clicking 确认上传并解析 posts the staged file through the upload cl
   assert.equal(uploadCalls.length, 1, 'one upload POST is issued for the staged file');
   assert.equal(uploadCalls[0]?.knowledgeBaseId, 'kb-1');
   assert.equal(uploadCalls[0]?.input.fileName, 'r475-a1.md');
+});
+
+// R474 A4 P2 root cause reproduction: the live fixture KB stores
+// chunking_config { chunk_size: 0, chunk_overlap: 0 } ("not customized").
+// Vue seeds 0 || 512 = 512 and uploads; React used to keep 0 and silently
+// reject the confirm click (< 100 guard) with no POST. The seeded defaults
+// must carry the confirm through exactly like Vue initFromKbInfo.
+test('a KB with zeroed chunking_config still uploads on confirm (R474 A4 regression)', async () => {
+  const uploadCalls: UploadCall[] = [];
+  const client = pageClient({ chunking_config: { chunk_size: 0, chunk_overlap: 0, separators: null } }, uploadCalls);
+  mountedRoot = await renderPage(client);
+
+  const file = new dom.window.File(['# r475 zero chunk fixture'], 'r475-zero-chunk.md', { type: 'text/markdown' });
+  dropFiles([file]);
+
+  const confirm = confirmButton();
+  assert.equal(confirm.disabled, false, 'confirm stays enabled for a zero-config KB');
+  await act(async () => { confirm.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+  assert.equal(uploadCalls.length, 1, 'confirm posts the upload instead of silently rejecting chunk_size 0');
+  const processConfig = uploadCalls[0]?.input.process_config as { chunking_config?: { chunk_size?: number } } | undefined;
+  assert.equal(processConfig?.chunking_config?.chunk_size, 512, 'the Vue default 512 is submitted');
 });
