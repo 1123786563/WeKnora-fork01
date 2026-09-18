@@ -487,6 +487,15 @@ export interface UploadConfirmUIState {
   questionEnabled: boolean;
   questionCount: number;
   questionInstructions: string;
+  /**
+   * R478 React-first mitigation flag: true when the KB's indexing strategy
+   * has vector AND keyword search both off, in which case the backend's
+   * kb.NeedsEmbeddingModel() gate silently skips question generation even
+   * with the switch on (knowledge_post_process.go L209). Drives the inline
+   * hint in the dialog's question section; optional because a KB whose
+   * strategy is unknown must stay hint-free.
+   */
+  questionGenerationSkipped?: boolean;
   /** Vue uiState.nodeExtractConfig (kb extract_config). */
   nodeExtract: UploadNodeExtractState;
   /** Vue uiState.graphEnabled (kb indexing_strategy.graph_enabled). */
@@ -517,6 +526,7 @@ export function defaultUploadConfirmUIState(): UploadConfirmUIState {
     questionEnabled: true,
     questionCount: 3,
     questionInstructions: '',
+    questionGenerationSkipped: false,
     nodeExtract: {
       enabled: false,
       text: '',
@@ -603,10 +613,25 @@ function parseGraphRelations(value: unknown): UploadGraphRelationState[] {
   });
 }
 
+/**
+ * R478 React-first mitigation predicate: mirrors the backend gate
+ * IndexingStrategy.NeedsEmbedding() = VectorEnabled || KeywordEnabled
+ * (internal/types/indexing_strategy.go L33-36) that silently skips question
+ * generation when false (knowledge_post_process.go L209-211). True only when
+ * the KB positively reports both flags off; a missing indexing_strategy
+ * (backend defaults both on) stays false so the dialog never cries wolf.
+ */
+export function kbSkipsQuestionGeneration(kb: KbLike): boolean {
+  const indexing = kbRecord(kb, 'indexing_strategy');
+  if (!indexing) return false;
+  return indexing.vector_enabled !== true && indexing.keyword_enabled !== true;
+}
+
 /** Vue initFromKbInfo: seed the dialog from the knowledge base defaults. */
 export function uploadConfirmStateFromKb(kb: KbLike): UploadConfirmUIState {
   const state = defaultUploadConfirmUIState();
   if (!kb) return state;
+  state.questionGenerationSkipped = kbSkipsQuestionGeneration(kb);
   const chunking = kbRecord(kb, 'chunking_config');
   if (chunking) {
     // Vue initFromKbInfo seeds with `||` semantics: the live KB "not
@@ -950,9 +975,34 @@ export const GRAPH_EXTRACT_DEFAULT_EXAMPLE: Readonly<{
 // Dialog copy now resolves through the shared i18n bundle
 // (packages/i18n/src/generated/uploadConfirm.ts - the local byte-exact table
 // that used to live here was migrated there per this file's own header note).
+
+/**
+ * R478 React-first mitigation copy (no Vue counterpart yet, so nothing to be
+ * byte-exact with): the shared bundle is consulted first; once the key lands
+ * in packages/i18n this table becomes dead weight and can be dropped (same
+ * contract as documents/tags-locale.ts FALLBACKS).
+ */
+const QUESTION_SKIP_HINT_KEY = 'uploadConfirm.questionGeneration.skippedHint';
+const QUESTION_SKIP_HINT_FALLBACKS: Record<string, Record<Locale, string>> = {
+  [QUESTION_SKIP_HINT_KEY]: {
+    'zh-CN': '当前知识库未开启向量/关键词检索，AI 问题生成不会执行',
+    'en-US': 'This knowledge base has vector and keyword search disabled; AI question generation will not run',
+    'ja-JP': 'このナレッジベースではベクトル/キーワード検索が無効のため、AI 質問生成は実行されません',
+    'ko-KR': '이 지식 베이스는 벡터/키워드 검색이 꺼져 있어 AI 질문 생성이 실행되지 않습니다',
+    'ru-RU': 'В этой базе знаний векторный и ключевой поиск отключены, поэтому генерация вопросов ИИ выполняться не будет',
+  },
+};
+
 /** t function for dialog copy via the shared i18n bundle. */
 export function uploadConfirmT(locale: Locale): (key: string, values?: Record<string, string | number>) => string {
-  return (key, values) => formatMessage(locale, key, values);
+  return (key, values) => {
+    const shared = formatMessage(locale, key, values);
+    if (shared !== key) return shared;
+    const table = QUESTION_SKIP_HINT_FALLBACKS[key];
+    if (!table) return shared;
+    const template = table[locale] ?? table['en-US'];
+    return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(values?.[name] ?? `{${name}}`));
+  };
 }
 
 /** Same contract as the former local table: locale resolve, en-US fallback, key echo. */

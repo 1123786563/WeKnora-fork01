@@ -42,6 +42,7 @@ const {
   uploadConfirmMessage,
   defaultUploadConfirmUIState,
   defaultUploadConfirmSection,
+  uploadConfirmStateFromKb,
   graphSectionAvailable,
   sectionAfterGraphAvailabilityChange,
   toUploadEntries,
@@ -449,6 +450,62 @@ test('question generation section exposes the count and instructions controls', 
   assert.match(html, /aria-valuemin="1"/);
   assert.match(html, /aria-valuemax="10"/);
   assert.match(html, /wk-upload-section-header/);
+});
+
+// --- Question generation silent-skip hint (R478) ----------------------------------
+// React-first mitigation for a shared Vue+React UX defect: the backend gates
+// question generation on kb.NeedsEmbeddingModel() (vector_enabled ||
+// keyword_enabled, indexing_strategy.go L34), silently skipping wiki-only KBs.
+// Vue's UploadConfirmDialog question section has no linkage at all, so React
+// adds an inline hint ahead of any Vue-side fix. This is a superset
+// mitigation, NOT a parity claim.
+
+const wikiOnlyKb = {
+  id: 'kb-wiki-only',
+  name: 'wiki-only',
+  chunking_config: {},
+  question_generation_config: { enabled: true, question_count: 3 },
+  indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true, graph_enabled: false },
+};
+
+const vectorKb = {
+  id: 'kb-vector',
+  name: 'vector',
+  chunking_config: {},
+  question_generation_config: { enabled: true, question_count: 3 },
+  indexing_strategy: { vector_enabled: true, keyword_enabled: true, wiki_enabled: false, graph_enabled: false },
+};
+
+test('question generation shows the silent-skip hint for vector/keyword-off KBs without blocking the switch', () => {
+  const html = sectionsHtml({ state: uploadConfirmStateFromKb(wikiOnlyKb) });
+  assert.match(html, /wk-question-skip-hint/);
+  assert.match(html, /role="note"/);
+  assert.match(html, /当前知识库未开启向量\/关键词检索/);
+  // Non-blocking mitigation: the enabled switch stays operable and the
+  // payload keeps the user's choice (backend behavior is unchanged).
+  const switchTag = html.match(/<button[^>]*id="wk-question-enabled"[^>]*>/)?.[0] ?? '';
+  assert.match(switchTag, /role="switch"/);
+  assert.doesNotMatch(switchTag, /\bdisabled\b/);
+});
+
+test('question generation renders no silent-skip hint once vector or keyword search is on', () => {
+  const html = sectionsHtml({ state: uploadConfirmStateFromKb(vectorKb) });
+  assert.doesNotMatch(html, /wk-question-skip-hint/);
+  assert.doesNotMatch(html, /当前知识库未开启向量\/关键词检索/);
+  // Unknown indexing strategy (KB not loaded yet) must stay hint-free.
+  const unknown = sectionsHtml({ state: uploadConfirmStateFromKb({ name: 'no-strategy' }) });
+  assert.doesNotMatch(unknown, /wk-question-skip-hint/);
+});
+
+test('question generation silent-skip hint carries complete copy for every locale', () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const text = uploadConfirmT(locale)('uploadConfirm.questionGeneration.skippedHint');
+    assert.notEqual(text, 'uploadConfirm.questionGeneration.skippedHint', `${locale} must resolve real copy`);
+    assert.ok(text.trim().length > 0, `${locale} copy must be non-empty`);
+  }
+  const en = sectionsHtml({ state: uploadConfirmStateFromKb(wikiOnlyKb), locale: 'en-US' });
+  assert.match(en, /vector and keyword search disabled/);
+  assert.doesNotMatch(en, /当前知识库未开启向量\/关键词检索/);
 });
 
 test('config sections localize through the dialog copy table in other locales', () => {

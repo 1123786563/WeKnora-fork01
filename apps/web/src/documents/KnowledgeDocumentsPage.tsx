@@ -1431,6 +1431,14 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
       <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
         <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
         <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
+        {/* R478 React-first mitigation (shared Vue+React UX defect, superset — NOT a parity claim):
+            the backend silently skips question generation for KBs with vector
+            and keyword search both off (kb.NeedsEmbeddingModel gate). Inform
+            only; the switch and payload stay untouched so backend behavior
+            is unchanged. */}
+        {state.questionGenerationSkipped ? (
+          <p role="note" className="wk-question-skip-hint m-0 mb-3 rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-bg-muted,#f9fafb)] px-3 py-2 text-[12px] leading-normal text-[var(--wk-muted,#667085)]">{t("uploadConfirm.questionGeneration.skippedHint")}</p>
+        ) : null}
         <div className="wk-upload-question-row flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col">
           <div className="wk-upload-question-info grid min-w-0 flex-1 gap-1">
             <label id="wk-question-enabled-label" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>

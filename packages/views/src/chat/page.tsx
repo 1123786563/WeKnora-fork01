@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, resolveSteerSubmitFailure, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -332,9 +332,10 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
     const attachmentWarning = resolveSteerAttachmentWarning(attachments);
     if (attachmentWarning) { const message = copy[attachmentWarning]; onSteerWarning ? onSteerWarning(message) : setError(message); return; }
     setBusy(true); setError(null);
-    // R476-A2 — a rejected enqueue surfaces input.messages.steerFailed (Vue
-    // handleSteerMsg catch toasts the scenario copy, not the send fallback).
-    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error && cause.message ? cause.message : copy.steerFailed); } finally { setBusy(false); }
+    // R476-A2/R478-A1 — a rejected enqueue surfaces input.messages.steerFailed
+    // (Vue handleSteerMsg catch toasts the scenario copy, not the send
+    // fallback); the fallback contract lives in the exported predicate.
+    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(resolveSteerSubmitFailure(copy, cause)); } finally { setBusy(false); }
   }
 
   /*
