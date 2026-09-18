@@ -1,6 +1,6 @@
 # CFT 续跑入口（RESUME）
 
-最后更新：2026-09-18（T018 完成后；累计 verified 18/36：S00+S01+S02 三阶段全闭）
+最后更新：2026-09-18（T024 完成后；累计 verified 24/36：S00-S03 全闭，首个产品里程碑达成）
 
 ## 已完成（verified，自审；证据目录 docs/craft/evidence/<task-id>/）
 
@@ -24,6 +24,12 @@
 | CFT-S02-T016 | 6c15ace9 | TestCraftWorkspaceGuard* 四断言矩阵（单写者/stale 零写入/stale fence 全链拒绝/读不占写槽） |
 | CFT-S02-T017 | 5864d627 | TestCraftSourceGuard*（跨租户拒绝/共享按资源 ACL/注入文档纯数据结构白名单） |
 | CFT-S02-T018 | e455743f | TestCraftExecutionBudget*（拒绝零请求/重放去重/重试如实/unknown 计数非 0） |
+| CFT-S03-T019 | d22f605a | 发布链 pin（admission 失败零上传零发布/事务失败留 staging 同内容重试恢复） |
+| CFT-S03-T020 | cbde19fd | 预览续期策略 pin（v2 发布后 v1 重取票仍绑定 v1）+ 修复 T009 漏跑断言 |
+| CFT-S03-T021 | ab7e82d0 | TestCraftDelegateMerge*（failed 定案无载荷/unknown 不持久化/succeeded 只携事实） |
+| CFT-S03-T022 | 44e72409 | 缺源拒绝恢复+下载仍可用 pin（其余三断言既有 C05 套件） |
+| CFT-S03-T023 | f7d34946 | StopStatus 五态矩阵（受理≠终止）；410/SIGKILL 双窗/stale 冲突既有 |
+| **CFT-S03-T024** | **b95a202d** | **里程碑**：mock 6/6 + real 3/3（真实免费模型 2.1m）；十反例全映射已执行测试 |
 
 测试基线：test:craft:shared **108 pass**；playwright mock **6/6**；go craft 103 + handler/service 全绿；typecheck:shared/web 通过。
 
@@ -31,17 +37,16 @@
 
 - 无。
 
-## S01 剩余
+## S04 就绪态（T025-T030，Office 三类型；按 S02/S03 差距核实模式）
 
-- **T010 双栏工作台**（deps T004✓ T007✓）：对话列从 W05 自绘切到 CraftAssistantThread + CraftToolFactList；CraftShell/CraftDrawer 接入顶栏与抽屉；响应式（<760 切换）；注意 workbench.tsx 有大量 W05 既有逻辑（turns 归档、preview/files/interaction 面板）——**渐进替换对话列渲染**而非重写整个组件；改后必须跑 e2e 6 spec（craft-goal/craft-main-status 等 data-testid 是断言锚点，不可破坏）。
-- **T011 版本与来源视图**（deps T008✓ T010）；**T012 问题审批/取消/异常反馈**（deps T008✓ T010）——W05 交互卡（interaction.tsx）与 R06 decide 路由已有，主要核对高保真差距（DecisionCard 状态机 recorded→delivery_pending→delivered→unknown）。
-- 新模块接线三链提醒：packages/*/package.json exports + apps/web/tsconfig.json paths + apps/web/vite.config.ts alias **都要登记**（T009 踩过：漏 vite alias 导致 e2e 红）。
+- 后端生成器已有（internal/craft 的 document/spreadsheet/slides 各 11/15/11 测试 + manifest 验证器 + T019 admission pin）；T025-T030 按任务卡逐项核对 + pin；浏览器级"生成→修改→查看→历史下载"验收需全栈 harness 开 WEKNORA_CRAFT_KINDS 对应类型再跑。
+- Gate 现状：默认只开 web；document/spreadsheet/slides 关闭中（任务验收过了才放开，不谎称 36/36）。
+- **环境注意**：本机今天多起外部清理（playwright 缓存、nginx 二进制）。e2e 前检查 `nginx -v` 与 `ls ~/Library/Caches/ms-playwright/`；playwright 重装用 `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright pnpm --filter @weknora/web exec playwright install chromium-headless-shell`。
 
-## S02/S03 提示（按差距核实模式）
+## S05 提示（T031-T036）
 
-- T019 不可变发布/T020 预览/T021 主 Agent 归并/T022 恢复/T023 审批取消：后端实现大量已有（W01-W06 + C02/C05 + 103 Go 测试 + e2e mock 6/6 全绿），按任务卡逐项核对 + pin 测试（S02 模式：Test<Task>* 汇总断言）。
-- **T024 里程碑**：mock 全量（当前绿）+ real 模式复跑（craft-stack.sh up/run real，W06 历史通过）+ 十反例清单核对（部分已有：跨租户/隔离/幂等/恶意 fixture 在 e2e 03-06；断流/游标/旧 worker/取消竞态/撤权/预算触顶/恢复冲突在 Go 层 pin——T024 汇总执行证据）。
-- 测试基线：test:craft:shared 108；go craft 103+；e2e mock 6/6；live serve 两轮绿。
+- 生命周期/审计/灰度回滚/视觉五宽度基线（1440/1280/1024/768/390）/安全故障注入总回归/证据收敛；T035 跑 Mimosa 完整扫描（hook 持续 scanner_enobufs）。
+- 测试基线：test:craft:shared 108；go craft 103+ 全绿；e2e mock 6/6 + real 3/3；live serve 两轮绿。
 
 ## 未提交改动 / 锁 / 进程
 
@@ -51,11 +56,11 @@
 
 ```bash
 cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/craft-cft
-# T010 开始：packages/views/src/craft/workbench.tsx 对话列接
-# CraftAssistantThread（props: messageLog/controller 已在位）
-# 验证: pnpm run test:craft:shared（94 基线）+ e2e mock 6 spec
+# S04 从 T025 开始：读 docs/design/weknora-craft-hifi/docs/tasks/CFT-S04-T025.md，
+# 核对 internal/craft/document.go + skills 清单（docs/testing/craft 与 W01/W06 报告），
+# 按 S02/S03 模式 pin；验证基线: pnpm run test:craft:shared（108）+ go craft 全绿
 ```
 
 ## 缺失环境 / 待验证
 
-- 无缺失。待验证：real e2e（T024）、视觉对比（T034）、Mimosa 完整扫描（T035；hook 一直报 scanner_enobufs 未出完整结论，本轮未宣称安全）。
+- 无缺失（本机环境修复记录见 evidence/CFT-S03-T024 §三）。待验证：Office 三类型浏览器级验收（S04）、视觉五宽度（T034）、Mimosa 完整扫描（T035；hook 一直报 scanner_enobufs 未出完整结论，本轮未宣称安全）。
