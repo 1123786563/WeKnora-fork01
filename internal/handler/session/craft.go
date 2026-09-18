@@ -38,6 +38,9 @@ type CraftSessionAPI interface {
 	ListVersions(context.Context, craft.Scope) ([]craft.Version, error)
 	GetVersion(context.Context, craft.Scope, string) (craft.Version, error)
 	OpenVersionFile(context.Context, craft.Scope, string, string) (craft.File, io.ReadCloser, error)
+	// Capabilities projects the deployment gate for view consumption
+	// (CFT-S00-T005); the server keeps re-validating through Allows.
+	Capabilities() service.CraftGateCapabilities
 }
 
 // NewCraftSessionHandler constructs the handler. svc may be nil: every
@@ -341,11 +344,15 @@ func (h *CraftSessionHandler) CreateCraftSession(c *gin.Context) {
 		craftHTTPError(c, err)
 		return
 	}
+	caps := h.svc.Capabilities()
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"data": gin.H{
 			"session_id": workspace.SessionID, "workspace_id": workspace.ID,
 			"engine_type": "trpc",
+			// CFT-S00-T005: the gate snapshot rides along so the UI can offer
+			// exactly the open kinds (snake_case wire, struct fields stay Go).
+			"capabilities": gin.H{"enabled": caps.Enabled, "allowed_kinds": caps.Kinds},
 		},
 	})
 }
@@ -408,6 +415,12 @@ func (h *CraftSessionHandler) GetCraftWorkspace(c *gin.Context) {
 		"workspace":     craftWorkspaceDTO(view.Workspace),
 		"active_run_id": view.ActiveRunID, "pending_id": view.PendingID,
 		"last_seq": view.LastSeq,
+		// CFT-S00-T005: the gate snapshot rides along; reading history never
+		// depends on it, submits do.
+		"capabilities": func() gin.H {
+			caps := h.svc.Capabilities()
+			return gin.H{"enabled": caps.Enabled, "allowed_kinds": caps.Kinds}
+		}(),
 	}
 	if view.ActiveRun != nil {
 		data["active_run"] = runView(*view.ActiveRun)

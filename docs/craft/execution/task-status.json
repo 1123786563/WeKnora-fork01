@@ -32,10 +32,12 @@
     },
     {
       "id": "CFT-S00-T005",
-      "status": "ready",
+      "status": "verified",
       "deps": [
         "CFT-S00-T002"
-      ]
+      ],
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S00-T005/"
     },
     {
       "id": "CFT-S00-T006",

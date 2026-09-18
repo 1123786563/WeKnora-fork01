@@ -798,3 +798,35 @@ func TestCraftHTTPRestoreCompetitions(t *testing.T) {
 	w = env.do(t, http.MethodPost, restorePath, "", "{\"request_id\":\"x\"}")
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// CFT-S00-T005: the deployment gate snapshot rides on create and workspace
+// responses so the UI offers exactly the open kinds, while the server keeps
+// rejecting closed kinds (draft-preserving is the caller's rule, projected by
+// packages/domain craftViewCapabilities).
+func TestCraftHTTPCapabilitiesProjection(t *testing.T) {
+	env := newCraftHTTPEnv(t, service.CraftFeatureGate{Enabled: true, Kinds: []string{"web"}})
+	created := env.createSession(t, "caps-1", "能力作品", "web")
+	caps, ok := created["capabilities"].(map[string]any)
+	require.True(t, ok, "create response carries capabilities: %v", created)
+	require.Equal(t, true, caps["enabled"])
+	require.Equal(t, []any{"web"}, caps["allowed_kinds"])
+
+	sessionID := created["session_id"].(string)
+	w := env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft", "", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"allowed_kinds":["web"]`, "workspace body: %s", w.Body.String())
+
+	// A closed kind is rejected by the SERVER even though the client can see
+	// the open list — the projection is never the boundary. (Unsupported
+	// maps to 503 in the host error taxonomy.)
+	w = env.do(t, http.MethodPost, "/api/v1/craft/sessions", "",
+		`{"request_id":"caps-2","title":"表格","kind":"spreadsheet"}`)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, "closed kind body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), "not enabled")
+
+	// Gate closed: submissions close while the gate snapshot still reports why.
+	closedEnv := newCraftHTTPEnv(t, service.CraftFeatureGate{})
+	closedCaps := closedEnv.svc.Capabilities()
+	require.False(t, closedCaps.Enabled)
+	require.False(t, service.CraftFeatureGate{}.Allows("web"), "zero-value gate rejects every kind")
+}
