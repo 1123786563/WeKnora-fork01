@@ -368,6 +368,46 @@ func (r *messageRepository) GetSessionArtifacts(
 	return result, nil
 }
 
+// GetSessionArtifactRefs returns the same flattened artifact list as
+// GetSessionArtifacts, but keeps the owning message id and the artifact's
+// position inside that message's array. Signed download grants address a blob
+// by (message, index); this projection is the only way to resolve a
+// session-wide position into that pair without loading full message rows.
+// Ordering matches GetSessionArtifacts exactly so the two lists align 1:1.
+func (r *messageRepository) GetSessionArtifactRefs(
+	ctx context.Context, sessionID string,
+) ([]types.SessionArtifactRef, error) {
+	if sessionID == "" {
+		return nil, nil
+	}
+	var rows []struct {
+		ID        string                 `gorm:"column:id"`
+		Artifacts types.MessageArtifacts `gorm:"column:artifacts"`
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&types.Message{}).
+		Select("id", "artifacts").
+		Where("session_id = ? AND deleted_at IS NULL", sessionID).
+		Order("created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []types.SessionArtifactRef{}, nil
+	}
+	refs := make([]types.SessionArtifactRef, 0, len(rows))
+	for _, row := range rows {
+		for i := range row.Artifacts {
+			refs = append(refs, types.SessionArtifactRef{
+				MessageID: row.ID,
+				Index:     i,
+				Artifact:  row.Artifacts[i],
+			})
+		}
+	}
+	return refs, nil
+}
+
 // GetSessionAttachments returns every user-uploaded attachment in creation
 // order while projecting only the attachments JSON column.
 func (r *messageRepository) GetSessionAttachments(

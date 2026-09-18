@@ -310,6 +310,8 @@ export interface ArtifactWire {
   size: number | null;
   source_run: string | null;
   created_at: string | null;
+  /** 会话级序号：签名下载端点的寻址键（后端 /workbench artifacts 列表下发） */
+  index: number | null;
 }
 
 export const decodeArtifact: Decoder<ArtifactWire> = (v) => {
@@ -322,6 +324,7 @@ export const decodeArtifact: Decoder<ArtifactWire> = (v) => {
     size: optNum()(r.size ?? null),
     source_run: optStr()(r.source_run ?? r.run_id ?? null),
     created_at: optStr()(r.created_at ?? null),
+    index: optNum()(r.index ?? null),
   };
 };
 
@@ -330,4 +333,19 @@ export const decodeArtifactList: Decoder<ArtifactWire[]> = (v) => {
     ? v
     : ((v as Record<string, unknown>)?.artifacts as unknown[]) ?? ((v as Record<string, unknown>)?.items as unknown[]) ?? [];
   return arr(decodeArtifact)(list);
+};
+
+// ---- 成果签名下载链接（后端最小补充：HMAC 短时效 grant）----
+export interface ArtifactSignedUrlWire {
+  url: string;
+  expires_at: string | null;
+}
+
+export const decodeArtifactSignedUrl: Decoder<ArtifactSignedUrlWire> = (v) => {
+  // HttpClient 已解 data 包裹；此处直接读字段并容忍缺失（缺失 url 视为能力不可用，不冒充）
+  const r = (v ?? {}) as Record<string, unknown>;
+  return {
+    url: String(r.url ?? ""),
+    expires_at: optStr()(r.expires_at ?? null),
+  };
 };

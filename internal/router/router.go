@@ -52,10 +52,11 @@ type RouterParams struct {
 	AuditLogService              interfaces.AuditLogService
 	ChunkHandler                 *handler.ChunkHandler
 	SessionHandler               *session.Handler
-	WorkbenchHandler             *session.WorkbenchReadHandler    `optional:"true"`
-	WorkbenchStartHandler        *session.WorkbenchStartHandler   `optional:"true"`
-	WorkbenchCommandHandler      *session.WorkbenchCommandHandler `optional:"true"`
-	ExecutionTargetHandler       *handler.ExecutionTargetHandler  `optional:"true"`
+	WorkbenchHandler             *session.WorkbenchReadHandler     `optional:"true"`
+	WorkbenchStartHandler        *session.WorkbenchStartHandler    `optional:"true"`
+	WorkbenchCommandHandler      *session.WorkbenchCommandHandler  `optional:"true"`
+	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler `optional:"true"`
+	ExecutionTargetHandler       *handler.ExecutionTargetHandler   `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
 	ModelHandler                 *handler.ModelHandler
@@ -198,6 +199,14 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// middleware). The ticket is minted by an authenticated POST.
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
+	// Workbench artifact grant download: credential-free by design. The HMAC
+	// grant (tenant/session/message/index/expiry) is the authorization fact,
+	// verified in constant time — same pattern as the presigned file routes
+	// below. Must precede the global Auth middleware.
+	if params.SessionHandler != nil {
+		r.GET("/api/v1/workbench/artifacts/download", params.SessionHandler.DownloadWorkbenchArtifactGrant)
+	}
+
 	// Craft controlled preview on its isolated origin (W02): the one-time
 	// capability paths carry their own authorization and the origin never
 	// receives main-site credentials, so this must also precede the global
@@ -298,6 +307,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, rbacGuards, params.ExecutionTargetHandler)
+		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)

@@ -2,6 +2,7 @@
 import { HttpClient, type RequestInit2 } from "./http";
 import {
   decodeArtifactList,
+  decodeArtifactSignedUrl,
   decodeConnectionList,
   decodeExecutionTargetList,
   decodeInteraction,
@@ -11,6 +12,7 @@ import {
   decodeSnapshot,
   decodeStartExecutionResponse,
   decodeUsageSummary,
+  type ArtifactSignedUrlWire,
   type ArtifactWire,
   type ConnectionWire,
   type ExecutionTargetWire,
@@ -178,6 +180,14 @@ export class WeKnoraApi {
   }
   artifacts(runId: string, init?: RequestInit2): Promise<ArtifactWire[]> {
     return this.http.request(`/workbench/executions/${encodeURIComponent(runId)}/artifacts`, { ...init }, decodeArtifactList);
+  }
+  /** 签发短时效签名下载链接（后端 HMAC grant；未配置密钥的部署返回 501，如实透传） */
+  artifactSignedUrl(runId: string, index: number, init?: RequestInit2): Promise<ArtifactSignedUrlWire> {
+    return this.http.request(
+      `/workbench/executions/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(String(index))}/signed-url`,
+      { ...init, method: "POST" },
+      decodeArtifactSignedUrl,
+    );
   }
 
   // ---- usage ----

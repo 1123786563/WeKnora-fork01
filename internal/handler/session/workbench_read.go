@@ -97,6 +97,15 @@ func (h *WorkbenchReadHandler) IngestWorkbenchSourceEvent(c *gin.Context) {
 }
 
 func (h *WorkbenchReadHandler) owned(c *gin.Context) (agentruntime.RunKey, bool) {
+	run, ok := resolveOwnedRun(c, h.runs)
+	return run.Key, ok
+}
+
+// resolveOwnedRun is the shared ownership predicate for workbench read
+// surfaces. It re-reads the run through GetOwnedRun so tenant/owner scoping
+// is enforced by the durable store, not by URL trust. The full run is
+// returned because artifact surfaces additionally need the session binding.
+func resolveOwnedRun(c *gin.Context, runs OwnedRunReader) (agentruntime.Run, bool) {
 	tenantID, ok := types.TenantIDFromContext(c.Request.Context())
 	if !ok || tenantID == 0 {
 		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
@@ -109,21 +118,21 @@ func (h *WorkbenchReadHandler) owned(c *gin.Context) (agentruntime.RunKey, bool)
 			ownerID, ownerOK = value.(string)
 		}
 	}
-	if !ok || !ownerOK || tenantID == 0 || ownerID == "" || h == nil || h.runs == nil {
+	if !ok || !ownerOK || tenantID == 0 || ownerID == "" || runs == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
-		return agentruntime.RunKey{}, false
+		return agentruntime.Run{}, false
 	}
 	runID := strings.TrimSpace(c.Param("run_id"))
-	run, err := h.runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
+	run, err := runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
 	if errors.Is(err, agentruntime.ErrNotFound) {
 		c.AbortWithStatus(http.StatusNotFound)
-		return agentruntime.RunKey{}, false
+		return agentruntime.Run{}, false
 	}
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return agentruntime.RunKey{}, false
+		return agentruntime.Run{}, false
 	}
-	return run.Key, true
+	return run, true
 }
 
 func writeWorkbenchJSON(c *gin.Context, value any) {

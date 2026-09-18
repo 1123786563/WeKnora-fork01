@@ -245,6 +245,16 @@ type MessageArtifact struct {
 // MessageArtifacts is a slice of MessageArtifact for database storage.
 type MessageArtifacts []MessageArtifact
 
+// SessionArtifactRef pins a session artifact to the assistant message that
+// produced it. The session-wide flattening used by the artifact list loses
+// this binding; signed download grants address artifacts by (message, index)
+// so the grant cannot be replayed against a different blob.
+type SessionArtifactRef struct {
+	MessageID string
+	Index     int
+	Artifact  MessageArtifact
+}
+
 // Value implements the driver.Valuer interface for database serialization
 func (m MessageArtifacts) Value() (driver.Value, error) {
 	if m == nil {

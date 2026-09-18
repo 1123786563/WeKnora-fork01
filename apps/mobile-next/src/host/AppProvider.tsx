@@ -12,6 +12,8 @@ import { AuthController, type AppIdentity, type AuthStage } from "@/features/aut
 import { SubmissionService } from "@/features/workbench/submit/SubmissionService";
 import { ChatService } from "@/features/conversations/chat/ChatService";
 import { AttachmentUploader } from "@/features/workbench/attachments/AttachmentUploader";
+import { downloadArtifact as runArtifactDownload, type ArtifactDownloadOutcome } from "@/features/executions/artifactDownload";
+import type { ArtifactWire } from "@/contracts/workbench";
 import { handleDeepLink } from "@/features/notifications/deeplink/DeepLinkController";
 
 export interface AppHostConfig {
@@ -46,6 +48,8 @@ export interface AppHost {
   chat: ChatService;
   /** 附件上传器工厂（M05 每次编辑会话一个实例，items 有状态） */
   makeAttachmentUploader(): AttachmentUploader;
+  /** 成果下载（M14）：签名链接 → 真实 bytes → 本地缓存；IO 装配在此，页面只消费结果 */
+  downloadArtifact(runId: string, artifact: ArtifactWire): Promise<ArtifactDownloadOutcome>;
   /** 视觉验证/演示 fixture 显式开关（非生产默认） */
   visualFixture: boolean;
   setVisualFixture(on: boolean): void;
@@ -180,6 +184,34 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
       scopeKey,
       chat,
       makeAttachmentUploader,
+      downloadArtifact: async (runId, artifact) => {
+        if (artifact.index == null) {
+          // 列表未携带序号（旧部署）：无法寻址签名端点，如实失败
+          return { kind: "network", message: "成果序号缺失，无法生成下载链接" } satisfies ArtifactDownloadOutcome;
+        }
+        return runArtifactDownload(
+          {
+            requestSignedUrl: async () => {
+              const signed = await api.artifactSignedUrl(runId, artifact.index!);
+              return signed.url;
+            },
+            // 签名 URL 是唯一授权凭据：fetch 不携带 Authorization
+            fetchBytes: async (url) => {
+              const res = await fetch(url);
+              if (!res.ok) return { status: res.status };
+              const buf = await res.arrayBuffer();
+              return { status: res.status, bytes: new Uint8Array(buf) };
+            },
+            writeFile: async (name, bytes) => {
+              const fs = require("expo-file-system") as typeof import("expo-file-system");
+              const file = new fs.File(fs.Paths.cache, `wk-artifact-${Date.now()}-${name}`);
+              file.write(bytes);
+              return file.uri;
+            },
+          },
+          artifact.name,
+        );
+      },
       visualFixture: false,
       setVisualFixture: (on: boolean) => {
         setVisualFixtureState(on);

@@ -54,3 +54,10 @@ GET `/agents`（含 builtin）、GET `/agents/:id`、`/suggested-questions` 等�
 
 ## 11. 移动端缺口（差异，见 decisions D-04/05/06/07）
 - 无 `/workbench/overview`、无通用通知/push inbox、无统一四类交互 kind、无实时语音端点。
+
+## 最小后端补充（2026-09-18 第三轮，RW-022 签名链接；源码已核验+真实 roundtrip）
+
+- `GET /api/v1/workbench/executions/{run_id}/artifacts`：owned run → 会话 assistant artifacts 元数据（`data.items[]`：index/id(`msg:idx`)/name/mime/version/size/source_run/created_at）；storage URL 不出服务端
+- `POST /api/v1/workbench/executions/{run_id}/artifacts/{index}/signed-url`（query ttl_seconds 上限 900）：`data{url,expires_at(RFC3339),artifact}`；501 code=artifact_signing_disabled 当部署未配置密钥
+- `GET /api/v1/workbench/artifacts/download?tenant_id&session_id&message_id&index&expires_at&signature`：**无登录态**（全局 Auth 前注册）；HMAC-SHA256 恒定时间验签 + 过期拒绝（401 code=artifact_grant_expired / artifact_grant_invalid）；流式 bytes（Content-Disposition attachment、no-store）
+- 密钥：环境变量 `WEKNORA_ARTIFACT_SIGNING_KEY`（≥32 字节 hex），未配置全部签名端点 fail-closed 501

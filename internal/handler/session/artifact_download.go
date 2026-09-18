@@ -2,11 +2,13 @@ package session
 
 import (
 	stderrors "errors"
+	"context"
 	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/access"
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
@@ -15,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/workbench"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -191,7 +194,14 @@ func (h *Handler) DownloadMessageArtifact(c *gin.Context) {
 		_ = c.Error(errors.NewNotFoundError("artifact storage path missing"))
 		return
 	}
+	h.streamResolvedArtifact(c, ctx, msg, index, artifact, sessionID)
+}
 
+// streamResolvedArtifact resolves a message artifact to a file and streams
+// the bytes. Shared by the authenticated per-message download and the signed
+// workbench grant download so both paths go through the same tenant storage
+// resolution and never expose provider:// URLs.
+func (h *Handler) streamResolvedArtifact(c *gin.Context, ctx context.Context, msg *types.Message, index int, artifact types.MessageArtifact, logScope string) {
 	if h.fileService == nil {
 		c.Error(errors.NewInternalServerError("file service unavailable"))
 		return
@@ -236,7 +246,7 @@ func (h *Handler) DownloadMessageArtifact(c *gin.Context) {
 	reader, err := fileService.GetFile(ctx, file.Path)
 	if err != nil {
 		logger.Warnf(ctx, "artifact download read failed: session=%s message=%s idx=%d err=%v",
-			sessionID, messageID, index, err)
+			logScope, msg.ID, index, err)
 		_ = c.Error(errors.NewNotFoundError("artifact blob missing"))
 		return
 	}
@@ -249,12 +259,90 @@ func (h *Handler) DownloadMessageArtifact(c *gin.Context) {
 		logger.Warnf(
 			ctx,
 			"artifact download stream failed: session=%s message=%s idx=%d err=%v",
-			sessionID,
-			messageID,
+			logScope,
+			msg.ID,
 			index,
 			err,
 		)
 	}
+}
+
+// DownloadWorkbenchArtifactGrant streams an artifact behind a short-lived
+// HMAC grant minted by the workbench signed-URL endpoint. The route carries
+// NO login session: the signature (tenant/session/message/index/expiry) is
+// the authorization fact, so verification happens in constant time and an
+// expired or tampered link is rejected with 401/404 — never refreshed
+// implicitly. Clients re-authorize through the authenticated endpoint.
+//
+// The grant's tenant is applied as the execution tenant for storage
+// resolution; the artifact is re-resolved from current message state so a
+// link to a deleted message stops working even before expiry.
+//
+// @Router /workbench/artifacts/download [get]
+func (h *Handler) DownloadWorkbenchArtifactGrant(c *gin.Context) {
+	query := c.Request.URL.Query()
+	tenantID, tenantErr := strconv.ParseUint(query.Get("tenant_id"), 10, 64)
+	index, indexErr := strconv.Atoi(query.Get("index"))
+	expiresAt, expErr := strconv.ParseInt(query.Get("expires_at"), 10, 64)
+	sessionID := secutils.SanitizeForLog(query.Get("session_id"))
+	messageID := secutils.SanitizeForLog(query.Get("message_id"))
+	signature := query.Get("signature")
+	if tenantErr != nil || indexErr != nil || expErr != nil || sessionID == "" || messageID == "" || signature == "" {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	grant := workbench.ArtifactGrant{
+		TenantID:  tenantID,
+		SessionID: sessionID,
+		MessageID: messageID,
+		Index:     index,
+		ExpiresAt: expiresAt,
+	}
+	secret, keyErr := workbench.ArtifactSigningKeyFromEnv()
+	if keyErr != nil {
+		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+			"success": false,
+			"code":    "artifact_signing_disabled",
+			"error":   "artifact signing key not configured",
+		})
+		return
+	}
+	if verifyErr := workbench.VerifyArtifactGrantAt(secret, grant, signature, time.Now()); verifyErr != nil {
+		// Expired grants are reported distinctly so the client can offer
+		// re-authorization instead of a generic failure.
+		code := "artifact_grant_invalid"
+		if strings.Contains(verifyErr.Error(), "expired") {
+			code = "artifact_grant_expired"
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": code})
+		return
+	}
+	// The caller identity here is the grant tenant — set explicitly via
+	// WithCaller so storage scoping works without a login session.
+	ctx := types.WithCaller(c.Request.Context(), types.Caller{TenantID: grant.TenantID})
+	refs, refsErr := h.messageService.GetSessionArtifactRefs(ctx, grant.SessionID)
+	if refsErr != nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	var resolved *types.SessionArtifactRef
+	for i := range refs {
+		if refs[i].MessageID == grant.MessageID && refs[i].Index == grant.Index {
+			resolved = &refs[i]
+			break
+		}
+	}
+	if resolved == nil || resolved.Artifact.URL == "" {
+		// Deleted messages make the grant undeliverable; do not leak why.
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	// Minimal message shell: ResolveMessageArtifact only reads the artifacts
+	// array and (for shared-agent fallbacks) message identity. Grants are
+	// minted only after run-ownership checks, so the primary tenant-owner
+	// path is what signed links exercise.
+	msg := &types.Message{ID: resolved.MessageID, SessionID: grant.SessionID, Artifacts: types.MessageArtifacts{resolved.Artifact}}
+	h.streamResolvedArtifact(c, ctx, msg, 0, resolved.Artifact, grant.SessionID)
 }
 
 // artifactListItem is the JSON shape returned by ListSessionArtifacts /

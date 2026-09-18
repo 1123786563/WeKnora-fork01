@@ -63,6 +63,10 @@ type MessageService interface {
 	// the frontend "download files generated in this session" drawer and
 	// to clean up storage blobs on session deletion.
 	GetSessionArtifacts(ctx context.Context, sessionID string) (types.MessageArtifacts, error)
+	// GetSessionArtifactRefs returns the artifact list with the owning
+	// message binding attached; workbench signed download grants resolve
+	// through it. No user authorization happens here — callers scope it.
+	GetSessionArtifactRefs(ctx context.Context, sessionID string) ([]types.SessionArtifactRef, error)
 }
 
 // MessageRepository defines the message repository interface
@@ -117,6 +121,12 @@ type MessageRepository interface {
 	// cheap even for long conversations. Empty slice + nil error means the
 	// session has no artifacts yet (never an error).
 	GetSessionArtifacts(ctx context.Context, sessionID string) (types.MessageArtifacts, error)
+	// GetSessionArtifactRefs returns the same artifact list but keeps the
+	// owning message id and per-message index attached. Workbench signed
+	// download links address an artifact by session-wide position, and this
+	// projection is what maps that position back to (message, index) without
+	// loading full message rows.
+	GetSessionArtifactRefs(ctx context.Context, sessionID string) ([]types.SessionArtifactRef, error)
 	// GetSessionAttachments returns every user-uploaded attachment recorded in
 	// the session. Implementations should project only the attachments column.
 	GetSessionAttachments(ctx context.Context, sessionID string) (types.MessageAttachments, error)

@@ -48,6 +48,24 @@ func RegisterWorkbenchStartRoutes(r *gin.RouterGroup, h *session.WorkbenchStartH
 	workbench.GET("/requests/:request_id", h.Lookup)
 }
 
+// RegisterWorkbenchArtifactRoutes exposes the execution-artifact surfaces:
+// an owned-run metadata list and short-lived signed download links, plus the
+// credential-free download endpoint those links point at. The download route
+// carries no login session — the HMAC grant is the authorization fact.
+func RegisterWorkbenchArtifactRoutes(r *gin.RouterGroup, artifacts *session.WorkbenchArtifactHandler, sessionHandler *session.Handler, g *rbacGuards) {
+	if g == nil {
+		return
+	}
+	if artifacts != nil {
+		executions := r.Group("/workbench/executions", g.Viewer())
+		workbench := g.apiKeyGroup(executions, apiKeyChat(apiKeyFullAccess()))
+		workbench.GET("/:run_id/artifacts", artifacts.ListWorkbenchArtifacts)
+		workbench.POST("/:run_id/artifacts/:index/signed-url", artifacts.CreateWorkbenchArtifactSignedURL)
+	}
+	// The credential-free download endpoint is registered on the root router
+	// before the global Auth middleware (see router.go); nothing to do here.
+}
+
 // RegisterWorkbenchCommandRoutes exposes typed interaction decisions and the
 // closed cancel/steer command union. The handler is optional while deployments
 // are migrating their durable approval adapter; no unsafe fallback is used.
