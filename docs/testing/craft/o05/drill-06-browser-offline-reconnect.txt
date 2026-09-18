@@ -1,0 +1,12 @@
+$ CRAFT_STACK_TAG=o05 ... bash apps/web/e2e/craft-stack.sh run mock e2e/craft-reconnect.spec.ts  (stack booted via up mock; ports 42401-42408)
+
+Running 2 tests using 1 worker
+
+(node:97936) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 e2e/craft-reconnect.spec.ts:48:1 › 01 refreshing at waiting/generating/finished keeps one run, no duplicate messages, selected version (6.4s)
+  ✓  2 e2e/craft-reconnect.spec.ts:95:1 › 02 a killed stream shows syncing, recovers on restore without a second admission (4.2s)
+
+  2 passed (11.2s)
+[stack] playwright exit=0 artifacts=/tmp/craft-o05-mock.YH0TtI/artifacts run=/tmp/craft-o05-mock.YH0TtI
+EXIT=0

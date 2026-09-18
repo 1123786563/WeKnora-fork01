@@ -1,0 +1,10 @@
+$ go test ./internal/application/service -run "TestCraftUsageServiceUnknownStaysSeparateAndLateUsageCorrects|TestCraftUsageViewAggregatesKnownAndUnknown|TestCraftUsageViewUnknownStaysVisible" -count=1 -v
+=== RUN   TestCraftUsageServiceUnknownStaysSeparateAndLateUsageCorrects
+--- PASS: TestCraftUsageServiceUnknownStaysSeparateAndLateUsageCorrects (0.05s)
+=== RUN   TestCraftUsageViewAggregatesKnownAndUnknown
+--- PASS: TestCraftUsageViewAggregatesKnownAndUnknown (0.07s)
+=== RUN   TestCraftUsageViewUnknownStaysVisible
+--- PASS: TestCraftUsageViewUnknownStaysVisible (0.05s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/service	1.352s
+EXIT=0
