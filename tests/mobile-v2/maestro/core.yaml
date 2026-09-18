@@ -1,8 +1,0 @@
-name: mobile-v2-core-e2e
-# MX-034 入口（顶层）：调用 flows/ 下的可执行编排
-appId:
-  ios: com.weknora.mobile
-  android: com.weknora.mobile
-tags: [core-flow]
----
-- runFlow: flows/core.yaml
