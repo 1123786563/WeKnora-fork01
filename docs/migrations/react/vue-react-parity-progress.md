@@ -5168,3 +5168,24 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1762/1762 (+10), `pnpm test:shared` 787/787, `pnpm build:web` ✓, integrity 0 P0.
   Evidence: `evidence/vue-react-parity/2026-09-18-r467-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
+
+## 2026-09-18 Round R468 — Parent-context blocked (api-client gap), coverage map, five-surface browser pairing
+
+- Four parallel agents (A1 chunks parent-context, A2 matrix coverage audit, A3 five-surface browser pairing,
+  A4 verifier). No production code changed (A1 BLOCKED; A2/A3 read-only). Gates: test:web 1762/1762 (interim
+  2 fails triple-proven flaky), test:shared 787/787, typecheck 0, build ✓, integrity PASS.
+- A1 BLOCKED with contract: the parent-context popover needs GET /api/v1/chunks/by-id/{id} (backend EXISTS at
+  routes_knowledge.go:37; api-client lacks it and exposes no generic request; packages/** outside domain).
+  Unblock next round: documents.getChunkById + the popover per the documented Vue contract; also evaluate the
+  generated-questions popover (same endpoint family).
+- A2 coverage map: 89 rows = 50 A / 10 B / 29 C / 0 D. documents/wiki/KB essentially all A; chat thinnest
+  high-frequency domain (7 C); settings 17 C (error states). Early screenshot assets referenced by the matrix
+  no longer exist (surviving dirs R428+); R434/R454 ledger headings missing. Top10 verification list produced
+  (composer/tool-approval/permission drawer/processing timeline/settings error sweep/…).
+- A3 five-surface pairing (19 screenshots): KB list/documents tab/agents/settings highly aligned (the ⋯ menu
+  re-verified identical first time since R437). NEW P1: Vue's 4-step new-chat wizard (model + knowledge scope)
+  absent in React; 近7天 session-group headers clickable in React vs inert in Vue. P2: KB-detail sidebars,
+  suggestion areas, chunking field sets (both directions). P3: chip subtitle, 🦞 glyph, menu semantics.
+- Gates and evidence as above; `evidence/vue-react-parity/2026-09-18-r468-audit-and-browser-round.md`. No
+  Vue, mobile, or Go code was modified by this round. Next-round queue: api-client unblock → parent-context;
+  A2 Top10; A3 P1 wizard adjudication.
