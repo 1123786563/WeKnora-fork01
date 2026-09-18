@@ -221,6 +221,24 @@ func (s *ExecutionDispatchStore) RecoverUnknown(ctx context.Context, record Disp
 	return result, err
 }
 
+// LatestReceipt returns the newest durable provider receipt for a run. It is
+// used by cancellation after a worker restart, when process-local active state
+// is unavailable.
+func (s *ExecutionDispatchStore) LatestReceipt(ctx context.Context, key agentruntime.RunKey) (DispatchRecord, error) {
+	if s == nil || s.db == nil || key.TenantID == 0 || key.RunID == "" {
+		return DispatchRecord{}, agentruntime.ErrConflict
+	}
+	var row executionDispatchRow
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND external_id <> ''", key.TenantID, key.RunID).Order("updated_at DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return DispatchRecord{}, agentruntime.ErrNotFound
+	}
+	if err != nil {
+		return DispatchRecord{}, err
+	}
+	return row.record(), nil
+}
+
 // SaveReceipt is the only transition that proves a provider external id was
 // returned. It rechecks tenant, run and epoch inside the same transaction.
 func (s *ExecutionDispatchStore) SaveReceipt(ctx context.Context, record DispatchRecord, externalID string) error {

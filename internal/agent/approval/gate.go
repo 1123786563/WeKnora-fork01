@@ -87,6 +87,7 @@ type Decision struct {
 type PendingRequest struct {
 	TenantID           uint64
 	RunID              string // durable execution identity; distinct from RequestID
+	CredentialVersion  int64  // positive authorization snapshot for remote approvals
 	UserID             string // owner of the session that initiated the call (used for Resolve authorization); empty disables user check
 	SessionID          string
 	AssistantMessageID string

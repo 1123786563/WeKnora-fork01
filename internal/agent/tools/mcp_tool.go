@@ -162,6 +162,7 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 				decision, waitErr := t.gate.RequestAndWait(waitCtx, approval.PendingRequest{
 					TenantID:           tenantID,
 					RunID:              meta.RunID,
+					CredentialVersion:  meta.CredentialVersion,
 					UserID:             meta.UserID,
 					SessionID:          meta.SessionID,
 					AssistantMessageID: meta.AssistantMessageID,

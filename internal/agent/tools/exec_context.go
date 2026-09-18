@@ -13,6 +13,7 @@ type execCtxKey struct{}
 type ToolExecContext struct {
 	// RunID is the durable execution identity. It is distinct from RequestID.
 	RunID              string
+	CredentialVersion  int64
 	SessionID          string
 	AssistantMessageID string
 	RequestID          string
