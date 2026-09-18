@@ -20,6 +20,14 @@ function isBearer(value:unknown):value is BearerCredential {
   return v.kind==='bearer'&&typeof v.accessToken==='string'&&v.accessToken.length>0&&
     (v.refreshToken===undefined||typeof v.refreshToken==='string');
 }
+/** URL hosts are case-insensitive, so storage keys must not embed raw host case:
+ *  builds pointed at https://WeKnora-App.example and https://weknora-app.example
+ *  talk to the same server and must share one session identity. */
+export function normalizeApiOrigin(origin:string):string{
+  const trimmed=origin.replace(/\/+$/,'');
+  const match=/^(https:\/\/)([^/?#]+)([/?#].*)?$/i.exec(trimmed);
+  return match?match[1]+match[2].toLowerCase()+(match[3]??''):trimmed;
+}
 /** Credentials are private implementation state, never included in observable UI state. */
 export class AuthCoordinator {
   readonly scope:ScopeGuard;
@@ -28,8 +36,22 @@ export class AuthCoordinator {
   private transition=0;
   private listeners=new Set<()=>void>(); private refreshing:Promise<void>|null=null;
   constructor(origin:string,store:ValueStore,api:AuthPort){
-    this.origin=origin.replace(/\/+$/,'');this.store=store;this.api=api;this.key=`wk:auth:${this.origin}`;
+    this.origin=normalizeApiOrigin(origin);this.store=store;this.api=api;this.key=`wk:auth:${this.origin}`;
+    this.migrateCaseVariants();
     this.scope=new ScopeGuard({origin:this.origin,userId:null,tenantId:null});
+  }
+  /** Older builds stored credentials under host-case variants of the same origin.
+   *  Adopt the first valid bearer into the canonical key and drop every variant,
+   *  so logins survive an origin-case change and no token is left behind on logout. */
+  private migrateCaseVariants():void{
+    const keys=typeof this.store.keys==='function'?this.store.keys():[];
+    for(const legacy of keys){
+      if(!legacy.startsWith('wk:auth:')||legacy===this.key)continue;
+      if(normalizeApiOrigin(legacy.slice('wk:auth:'.length))!==this.origin)continue;
+      const value=this.store.read(legacy);
+      if(isBearer(value)&&this.store.read(this.key)===undefined)this.store.write(this.key,value);
+      this.store.remove(legacy);
+    }
   }
   snapshot=():SessionView=>this.value;
   subscribe=(listener:()=>void):(()=>void)=>{this.listeners.add(listener);return()=>this.listeners.delete(listener)};

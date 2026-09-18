@@ -1,0 +1,123 @@
+{
+  "method": "WCAG relative luminance (sRGB), no opacity/gradient in these pairs",
+  "scope": "core solid-color pairs; not a complete accessibility audit",
+  "pairs": [
+    {
+      "pair": "blue action / white text",
+      "foreground": "#ffffff",
+      "background": "#2e6de6",
+      "ratio": 4.723,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "green action / dark ink",
+      "foreground": "#172033",
+      "background": "#07c05f",
+      "ratio": 6.751,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "green hover / dark ink",
+      "foreground": "#172033",
+      "background": "#08dd6e",
+      "ratio": 8.969,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "green active / dark ink",
+      "foreground": "#172033",
+      "background": "#06b04d",
+      "ratio": 5.675,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "body / white",
+      "foreground": "#172033",
+      "background": "#ffffff",
+      "ratio": 16.268,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "muted / white",
+      "foreground": "#66758b",
+      "background": "#ffffff",
+      "ratio": 4.685,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "accessible secondary / canvas",
+      "foreground": "#506078",
+      "background": "#f7f9fc",
+      "ratio": 6.06,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "accessible secondary / sidebar",
+      "foreground": "#506078",
+      "background": "#f9f9f9",
+      "ratio": 6.071,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "original muted / canvas (NOT USED for secondary copy)",
+      "foreground": "#66758b",
+      "background": "#f7f9fc",
+      "ratio": 4.442,
+      "normal_text_target": 4.5,
+      "meets_4_5": false,
+      "used_as_action_text_or_body": false
+    },
+    {
+      "pair": "success text / soft green",
+      "foreground": "#137333",
+      "background": "#e9f8ec",
+      "ratio": 5.415,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "warning text / wash",
+      "foreground": "#9a6700",
+      "background": "#fffaeb",
+      "ratio": 4.665,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "danger text / wash",
+      "foreground": "#b42318",
+      "background": "#fdecea",
+      "ratio": 5.749,
+      "normal_text_target": 4.5,
+      "meets_4_5": true,
+      "used_as_action_text_or_body": true
+    },
+    {
+      "pair": "legacy bright green / white text (NOT USED for Craft actions)",
+      "foreground": "#ffffff",
+      "background": "#07c05f",
+      "ratio": 2.41,
+      "normal_text_target": 4.5,
+      "meets_4_5": false,
+      "used_as_action_text_or_body": false
+    }
+  ]
+}

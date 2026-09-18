@@ -1,0 +1,32 @@
+FFF
+======================================================================
+FAIL: test_interactions_have_distinct_version_and_base (__main__.DeliveryContract.test_interactions_have_distinct_version_and_base)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/weknora-craft-hifi/qa/initial_contract_test.py", line 15, in test_interactions_have_distinct_version_and_base
+    self.assertTrue(p.is_file(), '尚未实现状态交互')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : 尚未实现状态交互
+
+======================================================================
+FAIL: test_standalone_entry_exists (__main__.DeliveryContract.test_standalone_entry_exists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/weknora-craft-hifi/qa/initial_contract_test.py", line 6, in test_standalone_entry_exists
+    self.assertTrue((ROOT/'index.html').is_file(), '尚未实现高保真入口')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : 尚未实现高保真入口
+
+======================================================================
+FAIL: test_tokens_preserve_existing_brand (__main__.DeliveryContract.test_tokens_preserve_existing_brand)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/weknora-craft-hifi/qa/initial_contract_test.py", line 9, in test_tokens_preserve_existing_brand
+    self.assertTrue(p.is_file(), '尚未实现令牌映射')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : 尚未实现令牌映射
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=3)

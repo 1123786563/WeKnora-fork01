@@ -1,4 +1,4 @@
-export interface ValueStore { read(key: string): unknown; write(key: string, value: unknown): void; remove(key: string): void }
+export interface ValueStore { read(key: string): unknown; write(key: string, value: unknown): void; remove(key: string): void; keys?(): string[] }
 export interface IntentRecord { requestId: string; state: 'submitting'|'pending'|'dispatching'|'admitted'|'rejected'|'unknown'; runId?: string }
 export class PendingIntent {
   private store: ValueStore; private key: string; private id: () => string;

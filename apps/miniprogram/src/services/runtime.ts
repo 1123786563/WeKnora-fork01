@@ -3,10 +3,12 @@ import Taro from '@tarojs/taro';
 import { createWeKnoraClient, createExecutionsApi, createServerSentEventParser, parseChatEvent, buildChatStreamRequest } from '@weknora/api-client';
 import type { HttpRequest, HttpResult, NativeMultipartFileRequest } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
-import { AuthCoordinator } from '../core/auth.ts';
+import { AuthCoordinator, normalizeApiOrigin } from '../core/auth.ts';
 import { storage, clearPrivateCache } from '../platform/storage.ts';
 import { createWeappTransport, type WeappNetwork } from '../platform/transport.ts';
-const origin=__API_ORIGIN__;
+// baseURL、可信来源校验、auth 存储 key 必须使用同一个 host 大小写归一化后的 origin，
+// 否则同一 host 的不同大小写构建之间会话孤立，旧变体 key 的 token 会残留本机。
+const origin=normalizeApiOrigin(__API_ORIGIN__);
 const network:WeappNetwork={
   request:options=>Taro.request(options as Parameters<typeof Taro.request>[0]),
   uploadFile:options=>Taro.uploadFile(options as Parameters<typeof Taro.uploadFile>[0]),

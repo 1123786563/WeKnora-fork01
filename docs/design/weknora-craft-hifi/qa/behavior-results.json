@@ -1,0 +1,205 @@
+{
+  "scope": "offline standalone HTML prototype ONLY",
+  "render_method": "Chromium set_content of exact index.html; file:// navigation blocked by environment policy",
+  "tests": [
+    {
+      "name": "01 首页主体与继承品牌颜色",
+      "status": "passed",
+      "seconds": 0.621
+    },
+    {
+      "name": "02 空目标不可创建Run",
+      "status": "passed",
+      "seconds": 0.167
+    },
+    {
+      "name": "03 模板填充目标与类型但不执行",
+      "status": "passed",
+      "seconds": 0.217
+    },
+    {
+      "name": "04 首次创建无虚构历史且交付v1",
+      "status": "passed",
+      "seconds": 0.283
+    },
+    {
+      "name": "05 作品库过滤搜索与空态清除",
+      "status": "passed",
+      "seconds": 0.484
+    },
+    {
+      "name": "06 修改仅新建一轮并保留历史记录",
+      "status": "passed",
+      "seconds": 0.329
+    },
+    {
+      "name": "07 查看v1不改变基线或运行",
+      "status": "passed",
+      "seconds": 0.483
+    },
+    {
+      "name": "08 恢复显式确认且不新发布版本",
+      "status": "passed",
+      "seconds": 0.521
+    },
+    {
+      "name": "09 缺恢复源时仍可查看但禁止恢复",
+      "status": "passed",
+      "seconds": 0.321
+    },
+    {
+      "name": "10 只读禁止编辑与恢复",
+      "status": "passed",
+      "seconds": 0.384
+    },
+    {
+      "name": "11 活动任务禁止恢复工作区",
+      "status": "passed",
+      "seconds": 0.367
+    },
+    {
+      "name": "12 审批区分记录和远端送达",
+      "status": "passed",
+      "seconds": 0.6
+    },
+    {
+      "name": "13 拒绝审批不授予权限",
+      "status": "passed",
+      "seconds": 0.377
+    },
+    {
+      "name": "14 回答问题不形成许可决定",
+      "status": "passed",
+      "seconds": 0.386
+    },
+    {
+      "name": "15 重连只恢复原任务读取",
+      "status": "passed",
+      "seconds": 0.325
+    },
+    {
+      "name": "16 预览续期不重生成",
+      "status": "passed",
+      "seconds": 0.371
+    },
+    {
+      "name": "17 取消二次确认并保留历史",
+      "status": "passed",
+      "seconds": 0.509
+    },
+    {
+      "name": "18 本轮失败不替换已交付内容",
+      "status": "passed",
+      "seconds": 0.34
+    },
+    {
+      "name": "19 结果不明没有自动重发入口",
+      "status": "passed",
+      "seconds": 0.372
+    },
+    {
+      "name": "20 来源撤权清除原文与拒绝再读",
+      "status": "passed",
+      "seconds": 0.552
+    },
+    {
+      "name": "21 下一轮来源变化不回写历史版本",
+      "status": "passed",
+      "seconds": 0.495
+    },
+    {
+      "name": "22 本地文件名转义且只读取名称大小",
+      "status": "passed",
+      "seconds": 0.297
+    },
+    {
+      "name": "23 导出明确是HTML示例而非Office",
+      "status": "passed",
+      "seconds": 0.303
+    },
+    {
+      "name": "24 文件元数据与未执行检查不伪造",
+      "status": "passed",
+      "seconds": 0.4
+    },
+    {
+      "name": "25 网页筛选与窄屏预览可交互",
+      "status": "passed",
+      "seconds": 0.456
+    },
+    {
+      "name": "26 文档内容预览",
+      "status": "passed",
+      "seconds": 0.393
+    },
+    {
+      "name": "27 表格只读预览与公式说明",
+      "status": "passed",
+      "seconds": 0.411
+    },
+    {
+      "name": "28 演示稿分页与边界",
+      "status": "passed",
+      "seconds": 0.597
+    },
+    {
+      "name": "29 设计规范页色板组件",
+      "status": "passed",
+      "seconds": 0.445
+    },
+    {
+      "name": "30 Escape关闭并恢复触发焦点",
+      "status": "passed",
+      "seconds": 0.323
+    },
+    {
+      "name": "31 IME组合Enter不误发送",
+      "status": "passed",
+      "seconds": 0.26
+    },
+    {
+      "name": "32 390px首页对话作品与来源切换",
+      "status": "passed",
+      "seconds": 0.847
+    },
+    {
+      "name": "33-768 页面无水平溢出",
+      "status": "passed",
+      "seconds": 0.363
+    },
+    {
+      "name": "33-1024 页面无水平溢出",
+      "status": "passed",
+      "seconds": 0.398
+    },
+    {
+      "name": "33-1280 页面无水平溢出",
+      "status": "passed",
+      "seconds": 0.428
+    },
+    {
+      "name": "33-1440 页面无水平溢出",
+      "status": "passed",
+      "seconds": 0.403
+    },
+    {
+      "name": "34 减少动效偏好生效",
+      "status": "passed",
+      "seconds": 0.161
+    },
+    {
+      "name": "35 无浏览器未捕获异常",
+      "status": "passed",
+      "seconds": 0.0
+    },
+    {
+      "name": "36 无远程资产/API请求",
+      "status": "passed",
+      "seconds": 0.0
+    }
+  ],
+  "passed": 39,
+  "failed": 0,
+  "page_errors": [],
+  "remote_requests": []
+}

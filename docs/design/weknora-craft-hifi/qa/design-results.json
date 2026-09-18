@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "tasks": 36,
+  "dependency_graph": "all ids resolve and DAG valid",
+  "token_declarations": 73,
+  "remote_cdn": "none",
+  "font_files_included": 0,
+  "scope": "artifact consistency only; no business repository compilation"
+}

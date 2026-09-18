@@ -1,0 +1,14 @@
+/* Add after existing global theme; consume inside .wk-craft only. */
+@theme inline {
+  --color-craft-brand: var(--craft-brand);
+  --color-craft-action: var(--craft-accent);
+  --color-craft-action-foreground: var(--craft-action-fg);
+  --color-craft-surface: var(--craft-surface);
+  --color-craft-canvas: var(--craft-canvas);
+  --color-craft-ink: var(--craft-ink);
+  --color-craft-muted: var(--craft-muted);
+  --color-craft-line: var(--craft-line);
+  --radius-craft-control: var(--craft-radius-control);
+  --radius-craft-card: var(--craft-radius-card);
+}
+/* Prefer a scoped CraftAction wrapper; do not redefine global --color-primary. */

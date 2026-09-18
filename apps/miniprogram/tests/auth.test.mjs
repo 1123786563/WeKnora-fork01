@@ -42,3 +42,35 @@ test('transient refresh failure keeps the session for later retry',async()=>{
  assert.equal(auth.snapshot().phase,'ready','network failure must not clear the session');
  assert.equal(auth.credential().accessToken,'t1');
 });
+test('D7: host-case variant of the same origin migrates into the canonical key on construct',async()=>{
+ // URL host 大小写不敏感，但存储 key 是字符串：用不同大小写 origin 构建的两个包
+ // 不能互相看见登录态。构造时必须把同 host 变体的旧 key 迁移到规范（小写）key，
+ // 并删除变体 key，避免凭证残留本机。
+ const map=new Map();
+ map.set('wk:auth:https://WeKnora-App.ORB.local',{kind:'bearer',accessToken:'legacy',refreshToken:'legacy-r'});
+ const storage={read:k=>map.get(k),write:(k,v)=>map.set(k,v),remove:k=>map.delete(k),keys:()=>[...map.keys()]};
+ const api={me:async()=>tenant(1),refresh:async()=>({access_token:'t2',refresh_token:'r2'})};
+ const auth=new mod.AuthCoordinator('https://WeKnora-App.ORB.local',storage,api);
+ await auth.bootstrap();
+ assert.equal(auth.snapshot().phase,'ready','migrated credential must restore the session');
+ assert.equal(auth.credential().accessToken,'legacy');
+ assert.deepEqual([...map.keys()],['wk:auth:https://weknora-app.orb.local'],'variant key must be removed after migration');
+});
+test('D7: logout clears the canonical key only, other-origin keys stay untouched',async()=>{
+ const map=new Map();
+ map.set('wk:auth:https://Up-WeKnora-app.orb.local',{kind:'bearer',accessToken:'other-box',refreshToken:'other-r'});
+ const storage={read:k=>map.get(k),write:(k,v)=>map.set(k,v),remove:k=>map.delete(k),keys:()=>[...map.keys()]};
+ const api={login:async()=>({token:'t1',refreshToken:'r1',...tenant(1)}),me:async()=>tenant(1),refresh:async()=>({access_token:'t2',refresh_token:'r2'}),logout:async()=>{}};
+ const auth=new mod.AuthCoordinator('https://WeKnora-App.ORB.local',storage,api);
+ await auth.login('x','pw');
+ await auth.logout();
+ assert.deepEqual([...map.keys()],['wk:auth:https://Up-WeKnora-app.orb.local'],'only same-host variants are normalized; different containers must be untouched');
+});
+test('D7: non-bearer garbage in a variant key is dropped, not migrated',async()=>{
+ const map=new Map();
+ map.set('wk:auth:https://WeKnora-App.ORB.local',{kind:'anonymous'});
+ const storage={read:k=>map.get(k),write:(k,v)=>map.set(k,v),remove:k=>map.delete(k),keys:()=>[...map.keys()]};
+ const api={me:async()=>tenant(1)};
+ new mod.AuthCoordinator('https://weknora-app.orb.local',storage,api);
+ assert.equal(map.size,0,'garbage variant key must be removed without writing it into the canonical key');
+});
