@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -135,7 +135,13 @@ export interface ChatPageProps {
   onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
-  onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
+  /**
+   * Steer dispatch. R474-A2: the optional delivery mirrors Vue
+   * handleSteerMsg(query, mentions, delivery) — 'inject' (⌘Enter/Alt+Enter
+   * shortcut) surfaces the message in the running turn immediately, 'after'
+   * (default, plain Enter) queues it as a follow-up.
+   */
+  onSteer?(content: string, mentionedItems?: readonly ChatMentionView[], delivery?: 'after' | 'inject'): Promise<void>;
   /** R473-A2 — queued steer chips shown by the composer (Vue .steer-queue). */
   steerQueue?: readonly ChatSteerQueueChip[];
   /** Vue promote-steer (inject a queued after-message now). */
@@ -285,9 +291,12 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
+function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
   copy: ChatCopyTable;
-  onSteer: (content: string, mentionedItems: readonly ChatMentionView[]) => Promise<void>;
+  onSteer: (content: string, mentionedItems: readonly ChatMentionView[], delivery?: 'after' | 'inject') => Promise<void>;
+  /** R474-A2 — the ⌘Enter/Alt+Enter inject shortcut promotes the first queued chip when the steer draft is empty (Vue injectCurrentInput). */
+  steerQueue?: readonly ChatSteerQueueChip[];
+  onSteerPromote?(steerId: string): void | Promise<void>;
   mentionOptions?: readonly ChatMentionView[];
   mentionedItems?: readonly ChatMentionView[];
   attachments?: readonly ChatAttachmentView[];
@@ -302,8 +311,8 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
   const [mentionQuery, setMentionQuery] = useState('');
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(event?: React.FormEvent<HTMLFormElement>, delivery: 'after' | 'inject' = 'after'): Promise<void> {
+    event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
     if (attachments.length > 0) {
@@ -311,7 +320,27 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
       return;
     }
     setBusy(true); setError(null);
-    try { await onSteer(content, mentionedItems); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : copy.sendFailed); } finally { setBusy(false); }
+    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : copy.sendFailed); } finally { setBusy(false); }
+  }
+
+  /*
+   * R474-A2 — Vue Input-field.vue onKeydown + injectCurrentInput: plain Enter
+   * queues the follow-up ('after'); ⌘Enter/Alt+Enter injects the typed draft
+   * ('inject'), or — with an empty draft — promotes the first queued chip.
+   */
+  function handleDraftKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (busy || !shouldSubmitFromKeyboard(event, true)) return;
+    event.preventDefault();
+    if (isSteerInjectShortcut(event, true)) {
+      const action = resolveSteerInjectAction({ draft, steerQueue });
+      if (action?.kind === 'promote') {
+        void onSteerPromote?.(action.steerId);
+        return;
+      }
+      void submit(undefined, 'inject');
+      return;
+    }
+    void submit(undefined, 'after');
   }
 
   const availableMentions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
@@ -359,7 +388,7 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
   return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
     <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
     {mentionedItems.length > 0 ? <ul className="m-0 flex flex-wrap gap-[6px] p-0" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="inline-flex items-center gap-[5px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[7px] py-[3px] text-[12px] text-[rgba(0,0,0,0.65)]"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="border-0 bg-transparent p-0" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
-    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
     <div className="relative flex items-center gap-[6px]"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[8px] py-[4px] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="absolute bottom-[34px] left-0 z-20 w-[260px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[5px] text-[12px]" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="block w-full rounded-[6px] border-0 bg-transparent px-[8px] py-[6px] text-left text-[12px] hover:bg-[#f3f3f3]" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="m-0 px-[8px] py-[6px] text-[12px] text-[rgba(0,0,0,0.45)]">{copy.mentionNoAvailable}</p>}</div> : null}</div>
     {error ? <p role="alert">{error}</p> : null}
     <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
@@ -699,7 +728,7 @@ export function ChatPage(props: ChatPageProps) {
             actually running (Vue canSteer); when idle the main composer handles
             the message (a steer would 409), and a quick-answer turn has no
             steer affordance at all — stop is the only action. */}
-        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {/* Vue isReplying (Input-field.vue) flips true when a turn is
             dispatched, not when the first SSE event arrives; the composer's
             stop swap must cover the pre-stream send window too. */}

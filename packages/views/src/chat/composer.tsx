@@ -62,6 +62,38 @@ export function shouldSubmitFromKeyboard(event: ChatKeyboardEvent, canSteer: boo
   return true;
 }
 
+/*
+ * R474-A2 — Vue inject shortcut (frontend/src/utils/chatSubmitShortcut.ts):
+ * ⌘Enter steers unconditionally; Alt+Enter only on a steer-capable turn.
+ * Shift/Ctrl and IME composition never trigger it (newline / candidate keys).
+ */
+export function isSteerInjectShortcut(event: ChatKeyboardEvent, canSteer: boolean): boolean {
+  if (!shouldSubmitFromKeyboard(event, canSteer)) return false;
+  if (event.metaKey) return true;
+  return event.altKey && canSteer;
+}
+
+/** Vue Input-field.vue steerShortcutLabel: ⌘ Enter on Apple platforms, Alt+Enter elsewhere. */
+export function steerShortcutLabel(): string {
+  const platform = typeof navigator === 'undefined' ? '' : navigator.platform ?? '';
+  return /Mac|iPhone|iPad/.test(platform) ? '⌘ Enter' : 'Alt+Enter';
+}
+
+/*
+ * R474-A2 — Vue Input-field.vue injectCurrentInput + firstQueuedSteer: the
+ * ⌘Enter/Alt+Enter shortcut injects the current draft when it has content;
+ * with an empty draft it promotes the first queued after-message (delivery
+ * 'after', not pending/promoting/failed) via emit('promote-steer').
+ */
+export function resolveSteerInjectAction(input: {
+  draft: string;
+  steerQueue: readonly ChatSteerQueueChip[];
+}): { kind: 'submit' } | { kind: 'promote'; steerId: string } | undefined {
+  if (input.draft.trim()) return { kind: 'submit' };
+  const first = input.steerQueue.find((item) => item.status === 'queued');
+  return first ? { kind: 'promote', steerId: first.steerId } : undefined;
+}
+
 export interface ChatComposerProps {
   draft: string;
   /**
@@ -163,7 +195,30 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (disabled || !shouldSubmitFromKeyboard(event, canSteer)) return;
     event.preventDefault();
+    // R474-A2 — Vue injectCurrentInput: on a steer-capable running turn the
+    // ⌘Enter/Alt+Enter shortcut injects the typed draft, or — with an empty
+    // draft — promotes the first queued steer chip (firstQueuedSteer).
+    if (streaming && canSteer && isSteerInjectShortcut(event, canSteer)) {
+      const action = resolveSteerInjectAction({ draft, steerQueue });
+      if (action?.kind === 'promote') {
+        void promoteSteerChip(action.steerId);
+        return;
+      }
+    }
     submitDraft();
+  }
+
+  /*
+   * R474-A2 — Vue item.promoting: the chip promote action is disabled while
+   * its POST /steer/:id/inject is in flight (double-click / shortcut guard on
+   * top of the host-side idempotency check).
+   */
+  const [promotingSteerId, setPromotingSteerId] = useState<string | null>(null);
+  function promoteSteerChip(steerId: string): void {
+    const result = onSteerPromote?.(steerId);
+    if (!result) return;
+    setPromotingSteerId(steerId);
+    void Promise.resolve(result).finally(() => setPromotingSteerId((current) => current === steerId ? null : current));
   }
 
   const showStop = streaming && (!canSteer || !draft.trim());
@@ -241,18 +296,25 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
           truncated text (full text via title) + per-state actions; pending
           shows the spinner and hides actions, failed swaps them for retry. */}
       {steerQueue.length > 0 ? <ul className="wk-chat-steer-queue m-0 flex list-none flex-wrap gap-[6px] px-[14px] pt-[10px]" role="list" aria-label={t.steerQueueWaiting}>
-        {steerQueue.map((item) => <li key={item.steerId} role="listitem" data-steer-id={item.steerId} data-steer-status={item.status} className="wk-chat-steer-queue-item inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
+        {steerQueue.map((item, index) => {
+          // R474-A2 — Vue Input-field.vue ~2610: only the first promotable chip
+          // advertises the ⌘Enter/Alt+Enter shortcut in its send-now tooltip.
+          const shortcutSuffix = index === steerQueue.findIndex((candidate) => candidate.status === 'queued')
+            ? ` · ${steerShortcutLabel()}`
+            : '';
+          return <li key={item.steerId} role="listitem" data-steer-id={item.steerId} data-steer-status={item.status} data-steer-promoting={promotingSteerId === item.steerId ? 'true' : undefined} className="wk-chat-steer-queue-item inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
           <svg className="shrink-0 text-[rgba(0,0,0,0.4)]" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M8 4.8V8l2.2 1.6" strokeLinecap="round" /></svg>
           <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title={item.content}>{item.content}</span>
           {item.status === 'failed' ? (onSteerRetry ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.steerRetry} title={t.steerRetry} onClick={() => onSteerRetry(item.steerId)}>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5" strokeLinecap="round" /><path d="M13 2v3h-3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button> : null) : item.status === 'pending' ? <span className="wk-chat-steer-sending shrink-0" role="img" aria-label={t.loadingMessages}>…</span> : <>
-            {onSteerPromote ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.steerQueueSendNow} title={t.steerQueueSendNow} onClick={() => onSteerPromote(item.steerId)}>
+            {onSteerPromote ? <button type="button" disabled={promotingSteerId === item.steerId} className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.steerQueueSendNow} title={`${t.steerQueueSendNow}${shortcutSuffix}`} onClick={() => promoteSteerChip(item.steerId)}>
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
             </button> : null}
             {onSteerRemove ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.remove} title={t.remove} onClick={() => onSteerRemove(item.steerId)}>×</button> : null}
           </>}
-        </li>)}
+        </li>;
+        })}
       </ul> : null}
       {attachments.length > 0 ? <ul className="wk-chat-attachments m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.uploadAttachment}>
         {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]" title={attachment.error || attachment.status}>

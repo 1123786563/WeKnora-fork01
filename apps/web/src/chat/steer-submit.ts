@@ -12,13 +12,16 @@ export interface SteerMentionItem {
 
 export const STEER_CONFLICT_STATUS = 409;
 
-export type SteerAction = 
+/** R474-A2 — Vue handleSteerMsg delivery: 'after' queues, 'inject' (⌘Enter) surfaces in the running turn now. */
+export type SteerDeliveryMode = 'after' | 'inject';
+
+export type SteerAction =
   | { kind: 'send'; submission: ChatSubmission }
   | {
     kind: 'enqueue';
     input: {
       query: string;
-      delivery: 'after';
+      delivery: SteerDeliveryMode;
       channel: string;
       expectedAssistantMessageId?: string;
       steerId: string;
@@ -38,6 +41,7 @@ export function buildSteerAction(options: {
   assistantMessageId?: string;
   mentionedItems?: readonly SteerMentionItem[];
   newSteerId: () => string;
+  delivery?: SteerDeliveryMode;
 }): SteerAction {
   if (!options.streaming) {
     return { kind: 'send', submission: { content: options.content, status: 'pending' } };
@@ -46,7 +50,7 @@ export function buildSteerAction(options: {
     kind: 'enqueue',
     input: {
       query: options.content,
-      delivery: 'after',
+      delivery: options.delivery ?? 'after',
       channel: 'web',
       ...(options.assistantMessageId ? { expectedAssistantMessageId: options.assistantMessageId } : {}),
       steerId: options.newSteerId(),

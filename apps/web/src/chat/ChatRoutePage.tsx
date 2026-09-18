@@ -831,31 +831,38 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return uuid ?? 'steer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   }
 
-  function applySteerEnqueueResult(sessionId: string, clientSteerId: string, result: SteerMutationResponse): void {
-    if (selectedSessionIdRef.current !== sessionId) return;
+  /**
+   * Applies the enqueue receipt to the local queue. Returns true when the
+   * caller must degrade to a plain send: the POST answered new_run on an
+   * already-idle page (R474-A2 N1, Vue handleSteerMsg ~899 drops the item and
+   * falls back to sendMsg — the message is never silently dropped).
+   */
+  function applySteerEnqueueResult(sessionId: string, clientSteerId: string, result: SteerMutationResponse): boolean {
+    if (selectedSessionIdRef.current !== sessionId) return false;
     if (result.status === 'queued') {
       // Settled onto the server-issued id; the backlog fires as a follow-up
       // run once the current turn exits (Vue queued.steer_id = serverId).
       applySteerQueue((current) => settleSteerItem(current, clientSteerId, result.steer_id));
-      return;
+      return false;
     }
     if (result.status === 'new_run') {
       // No live run accepted the message. Still attached to a stream: keep it
       // and send locally once the current SSE settles (Vue awaitingIdleSend);
-      // idle means the caller can fall back to a plain send right away.
+      // idle means the caller falls back to a plain send right away.
       if (streamStateRef.current.phase === 'streaming' || streamAbortRef.current) {
         applySteerQueue((current) => markSteerAwaitingIdleSend(settleSteerItem(current, clientSteerId), clientSteerId));
-        return;
+        return false;
       }
       applySteerQueue((current) => dropSteerItem(current, clientSteerId));
-      return;
+      return true;
     }
     // already_injected: the running turn read it; no queue residue (Vue drops
     // the item and clears the pending preview).
     applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+    return false;
   }
 
-  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems, retrySteerId?: string): Promise<void> {
+  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems, retrySteerId?: string, delivery: 'after' | 'inject' = 'after'): Promise<void> {
     // selectSession keeps the ref current even before the re-render lands, so
     // the steer dispatched right after a fresh session-create still resolves.
     const sessionId = selectedSessionIdRef.current;
@@ -877,6 +884,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       assistantMessageId: streamState.assistantMessageId,
       mentionedItems: steerMentions,
       newSteerId: () => clientSteerId,
+      // R474-A2 — the ⌘Enter/Alt+Enter inject shortcut passes delivery
+      // 'inject' through (Vue handleSteerMsg(query, mentions, delivery)).
+      delivery: retrySteerId ? undefined : delivery,
     });
     if (action.kind === 'send') return send(action.submission);
     // R473-A2: the follow-up lands as a composer chip while the POST is in
@@ -886,7 +896,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       : enqueueSteerItem(current, { steerId: clientSteerId, content, mentionedItems: steerMentions }));
     try {
       const result = await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
-      applySteerEnqueueResult(sessionId, clientSteerId, result);
+      // N1 race: the enqueue answered new_run on an idle page — degrade to a
+      // plain send (Vue sendMsg fallback) instead of dropping the message.
+      if (applySteerEnqueueResult(sessionId, clientSteerId, result)) {
+        await send({ content, status: 'pending' });
+      }
     } catch (cause) {
       if (isSteerConflict(cause)) {
         // 409: the run moved past the message id we expected. Re-base onto the
@@ -895,7 +909,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         if (rebased && rebased !== action.input.expectedAssistantMessageId) {
           try {
             const result = await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
-            applySteerEnqueueResult(sessionId, clientSteerId, result);
+            if (applySteerEnqueueResult(sessionId, clientSteerId, result)) {
+              await send({ content, status: 'pending' });
+            }
             return;
           } catch (retryCause) {
             applySteerQueue((current) => failSteerItem(current, clientSteerId));

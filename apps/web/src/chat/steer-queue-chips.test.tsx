@@ -79,3 +79,20 @@ test('the steer queue strip is localized in every shipped locale', () => {
   assert.equal(resolveChatCopy('ko-KR').steerRetry, '다시 보내기');
   assert.equal(resolveChatCopy('ru-RU').remove, 'Удалить');
 });
+
+/*
+ * R474-A2 — Vue Input-field.vue ~2610: only the first promotable chip
+ * advertises the ⌘Enter/Alt+Enter inject shortcut in its send-now tooltip
+ * (steerShortcutLabel), same suffix style as the Vue t-tooltip content.
+ */
+test('the first promotable chip tooltip advertises the ⌘Enter/Alt+Enter shortcut', () => {
+  const html = renderQueue([
+    { steerId: 'steer-a', content: '第一条', status: 'pending' },
+    { steerId: 'steer-b', content: '第二条', status: 'queued' },
+    { steerId: 'steer-c', content: '第三条', status: 'queued' },
+  ]);
+  const tooltips = [...html.matchAll(/title="(补充当前任务[^"]*)"/g)].map((match) => match[1]);
+  assert.equal(tooltips.length, 2, 'both queued chips render a send-now tooltip');
+  assert.match(tooltips[0]!, / · (⌘ Enter|Alt\+Enter)$/, 'the first promotable chip carries the shortcut suffix');
+  assert.doesNotMatch(tooltips[1]!, / · (⌘ Enter|Alt\+Enter)$/, 'later chips do not advertise the shortcut');
+});

@@ -224,6 +224,55 @@ test('a steer during a running agent turn enqueues server-side and wires the chi
   void streaming;
 });
 
+/*
+ * R474-A2 N1 — Vue handleSteerMsg new_run race (chat/index.vue ~899): the
+ * steer POST started while the turn streamed, but by the time it answers
+ * new_run the page is idle (no run to join, nothing queued server-side).
+ * Vue drops the queue item and falls back to sendMsg — the message must
+ * reach the send path, never be silently dropped.
+ */
+test('an enqueue resolving new_run after the turn settled degrades to a plain send', async () => {
+  const streamCalls: Array<{ body?: { query?: string } }> = [];
+  let firstFeed: ((event: unknown) => void) | undefined;
+  let releaseFirstStream: (() => void) | undefined;
+  const stream = async (options: { body?: { query?: string } }, feed: (event: unknown) => void) => {
+    streamCalls.push(options);
+    if (streamCalls.length === 1) {
+      firstFeed = feed;
+      feed({ type: 'answer', content: 'working' });
+      await new Promise<void>((resolve) => { releaseFirstStream = resolve; });
+    }
+  };
+  let resolveEnqueue: ((value: unknown) => void) | undefined;
+  const client = baseClient({
+    enqueue: () => new Promise((resolve) => { resolveEnqueue = resolve; }),
+    list: async () => ({ success: true as const, items: [] }),
+  }, stream);
+
+  const props = await renderChatRoutePage({ client, scopeController, location: 'http://weknora.test/platform/creatChat' });
+  (globalThis.window as { history: { pushState: (...args: unknown[]) => void } }).history.pushState = () => undefined;
+  void props.send({ content: 'hello', status: 'pending' });
+  for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setImmediate(resolve));
+
+  // Steer dispatched while streaming: the enqueue POST is in flight.
+  const steerPromise = props.onSteer!('补充一下');
+  for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(streamCalls.length, 1, 'the enqueue is still in flight: no send has happened yet');
+  assert.ok(resolveEnqueue, 'the steer enqueue POST is pending');
+
+  // The turn settles before the enqueue POST answers.
+  firstFeed!({ type: 'complete' });
+  releaseFirstStream!();
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+
+  resolveEnqueue!({ success: true, status: 'new_run', steer_id: 'steer-race-1' });
+  await steerPromise;
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(streamCalls.length >= 2, 'the idle new_run degrades to a plain send instead of dropping the message');
+  assert.equal(streamCalls.at(-1)?.body?.query, '补充一下', 'the degraded send carries the steered content');
+});
+
 test('a steer enqueue the server already injected leaves no queue residue', async () => {
   const calls: string[] = [];
   const stream = async (_options: unknown, feed: (event: unknown) => void) => {
@@ -261,4 +310,25 @@ test('ChatRoutePage wires the Vue steer queue lifecycle into the host stream pip
   assert.match(source, /client\.chat\.steer\.list\(/, 'completed turns re-sync the queue with the server');
   assert.match(source, /onSteerPromote=\{/, 'ChatPage receives the promote handler');
   assert.match(source, /onSteerRemove=\{/, 'ChatPage receives the remove handler');
+});
+
+/*
+ * R474-A2 — the streaming steer composer carries the Vue inject shortcut
+ * (Input-field.vue onKeydown → injectCurrentInput): plain Enter queues
+ * ('after'), ⌘Enter/Alt+Enter either injects the typed draft (delivery
+ * 'inject' flows through onSteer → buildSteerAction) or — with an empty
+ * draft — promotes the first queued chip.
+ */
+test('the streaming steer composer and the host steer path carry the inject shortcut contract', async () => {
+  const steerSubmitSource = readFileSync(new URL('./steer-submit.ts', import.meta.url), 'utf8');
+  assert.match(steerSubmitSource, /delivery: SteerDeliveryMode/, 'the steer enqueue input models both delivery modes');
+  const hostSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  assert.match(hostSource, /retrySteerId\?: string, delivery: 'after' \| 'inject' = 'after'/, 'the host steer handler accepts the delivery mode');
+  assert.match(hostSource, /delivery: retrySteerId \? undefined : delivery/, 'the dispatch forwards the shortcut delivery to the enqueue input');
+
+  const pageSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  assert.match(pageSource, /onKeyDown=\{handleDraftKeyDown\}[^>]*disabled=\{busy\}/, 'the steer textarea handles keydown (Enter queue / ⌘Enter inject)');
+  assert.match(pageSource, /isSteerInjectShortcut\(event, true\)/, 'the inject shortcut gates the promote-or-inject branch');
+  assert.match(pageSource, /resolveSteerInjectAction\(\{ draft, steerQueue \}\)/, 'an empty draft resolves onto the first queued chip');
+  assert.match(pageSource, /steerQueue=\{props\.steerQueue\} onSteerPromote=\{props\.onSteerPromote\}/, 'the page forwards the queue and promote handler to the steer composer');
 });
