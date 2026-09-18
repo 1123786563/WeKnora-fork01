@@ -9,6 +9,8 @@ import { InMemoryStore, type MobileStore } from "@/platform/store";
 import { SqliteStore, secureCreds } from "@/platform/native";
 import { AuthController, type AppIdentity, type AuthStage } from "@/features/auth/AuthController";
 import { SubmissionService } from "@/features/workbench/submit/SubmissionService";
+import { ChatService } from "@/features/conversations/chat/ChatService";
+import { AttachmentUploader } from "@/features/workbench/attachments/AttachmentUploader";
 
 export interface AppHostConfig {
   /** 默认受信服务器（用户可在 M01 覆盖） */
@@ -38,6 +40,10 @@ export interface AppHost {
   switchSpace(tenantId: string): Promise<void>;
   logout(): Promise<void>;
   scopeKey(): string;
+  /** 聊天发送与流式消费（M07） */
+  chat: ChatService;
+  /** 附件上传器工厂（M05 每次编辑会话一个实例，items 有状态） */
+  makeAttachmentUploader(): AttachmentUploader;
   /** 视觉验证/演示 fixture 显式开关（非生产默认） */
   visualFixture: boolean;
   setVisualFixture(on: boolean): void;
@@ -59,16 +65,20 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
     const store = config.__testOverrides?.store ?? new SqliteStore();
     const credentials = config.__testOverrides?.credentials ?? secureCreds;
     const scope = new ScopeCoordinator();
+    // token 缓存：ChatService/上传等同步 headers 场景使用；每次凭证写入后刷新
+    let cachedToken = "";
     const http = new HttpClient({
       getOrigin: () => hostRef.current?.origin ?? config.defaultOrigin,
       getTenantId: () => scope.scope?.tenantId ?? null,
       credentials: {
         read: async () => {
           const c = await credentials.read();
+          cachedToken = c?.access ?? "";
           return c ? { access: c.access, refresh: c.refresh } : null;
         },
         write: async (v) => {
           const c = await credentials.read();
+          cachedToken = v.access;
           await credentials.write({
             origin: hostRef.current?.origin ?? config.defaultOrigin,
             access: v.access,
@@ -77,7 +87,10 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
             tenantId: c?.tenantId ?? null,
           });
         },
-        clear: () => credentials.clear(),
+        clear: () => {
+          cachedToken = "";
+          return credentials.clear();
+        },
       },
       onAuthExpired: () => setStage({ kind: "login" }),
     });
@@ -114,6 +127,23 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
         }
       },
     });
+    const chat = new ChatService({
+      buildUrl: (sessionId) => `${hostRef.current?.origin ?? config.defaultOrigin}/api/v1/agent-chat/${encodeURIComponent(sessionId)}`,
+      headers: () => {
+        const h: Record<string, string> = {};
+        if (cachedToken) h.Authorization = `Bearer ${cachedToken}`;
+        const tenant = scope.scope?.tenantId;
+        if (tenant) h["X-Tenant-ID"] = tenant;
+        return h;
+      },
+    });
+    const makeAttachmentUploader = () =>
+      new AttachmentUploader({
+        transport: {
+          upload: (sessionId, file, agentId, signal) => api.uploadAttachment(sessionId, file, agentId, signal),
+          get: (sessionId, attachmentId, signal) => api.getAttachment(sessionId, attachmentId, signal),
+        },
+      });
     hostRef.current = {
       stage,
       identity,
@@ -139,6 +169,8 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
         setReloadKey((k) => k + 1);
       },
       scopeKey,
+      chat,
+      makeAttachmentUploader,
       visualFixture: false,
       setVisualFixture: (on: boolean) => {
         setVisualFixtureState(on);

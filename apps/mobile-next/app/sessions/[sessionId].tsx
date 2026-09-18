@@ -3,6 +3,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -18,15 +19,14 @@ import { Icon } from "@/components/Icon";
 import { IconButton } from "@/components/IconButton";
 import { StateView } from "@/components/StateView";
 import type { SessionWire } from "@/contracts/auth";
+import {
+  ChatProjection,
+  type ChatMessage,
+  type ChatMessagePart,
+} from "@/features/conversations/chat/ChatService";
 
-// M07 对话（02 规格）：会话上下文来自 GET /sessions；消息读取端点尚未联调——
-// 消息区按真实数据渲染（当前为空态），发送不假装成功，仅显示等待联调的持久提示行。
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-}
+// M07 对话（02 规格）：POST /agent-chat/:session_id 真实发送 + SSE 流式渲染（RW-015 接线）。
+// 发送失败保留草稿；断流提示可续传（continue-stream 端点在后续恢复控制器接线）。
 
 /** 距底部小于该值视为"接近底部"，此时内容变化才自动滚底 */
 const NEAR_BOTTOM_THRESHOLD = 80;
@@ -41,10 +41,13 @@ export default function ConversationScreen() {
   const [session, setSession] = useState<SessionWire | null>(null);
   const [agentName, setAgentName] = useState<string | null>(null);
   const [view, setView] = useState<"loading" | "ready" | "error">("loading");
-  const [messages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [sendPendingNote, setSendPendingNote] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [disconnected, setDisconnected] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  const projectionRef = useRef<ChatProjection>(new ChatProjection());
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const nearBottomRef = useRef(true);
 
@@ -60,7 +63,6 @@ export default function ConversationScreen() {
       setSession(found);
       setView("ready");
       if (found?.agent_id) {
-        // Agent 名尽力而为：目录读取失败时保持空
         try {
           const agents = await app.api.agents();
           setAgentName(agents.find((a) => a.id === found.agent_id)?.name ?? null);
@@ -69,7 +71,6 @@ export default function ConversationScreen() {
         }
       }
     } catch {
-      // 列表读取失败但路由参数仍有效：直接按参数渲染（不阻塞会话视图）
       setSession(null);
       setView("ready");
     }
@@ -79,7 +80,6 @@ export default function ConversationScreen() {
     void load();
   }, [load]);
 
-  // 用户上翻时不强制滚底：仅当接近底部才自动跟随
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
@@ -92,10 +92,40 @@ export default function ConversationScreen() {
     }
   };
 
-  // 消息发送：当前无消息写入端点（后端联调中），不做本地假成功
-  const handleSend = () => {
-    if (!draft.trim()) return;
-    setSendPendingNote(true);
+  const syncFromProjection = () => setMessages([...projectionRef.current.list]);
+
+  const handleSend = async () => {
+    const text = draft.trim();
+    if (!text || sending || !sessionId) return;
+    setSending(true);
+    setStreamError(null);
+    setDisconnected(false);
+    const keptDraft = draft; // 发送失败恢复草稿
+    setDraft("");
+    try {
+      await app.chat.send(
+        sessionId,
+        { query: text, agent_id: session?.agent_id ?? undefined },
+        projectionRef.current,
+        {
+          onUpdate: syncFromProjection,
+          onDone: syncFromProjection,
+          onError: (e) => {
+            setStreamError(e.message);
+            syncFromProjection();
+          },
+          onDisconnected: (p) => {
+            setDisconnected(true);
+            syncFromProjection();
+            void p;
+          },
+        },
+      );
+    } finally {
+      setSending(false);
+      // 失败且用户未输入新内容时恢复草稿
+      setDraft((current) => (current === "" ? keptDraft : current));
+    }
   };
 
   const styles = StyleSheet.create({
@@ -132,6 +162,43 @@ export default function ConversationScreen() {
       color: theme.c.subtle,
       marginBottom: theme.space[12],
     },
+    userBubble: {
+      alignSelf: "flex-end",
+      maxWidth: "85%" as const,
+      backgroundColor: theme.c.brand,
+      borderRadius: theme.radius.card,
+      borderBottomRightRadius: theme.radius.xs,
+      paddingHorizontal: theme.space[16],
+      paddingVertical: theme.space[12],
+      marginBottom: theme.space[12],
+    },
+    userText: { color: theme.c["on-brand"], fontSize: theme.type.body.fontSize, lineHeight: theme.type.body.lineHeight },
+    assistantRow: {
+      alignSelf: "flex-start",
+      maxWidth: "92%" as const,
+      marginBottom: theme.space[16],
+      gap: theme.space[8],
+    },
+    assistantLabel: { flexDirection: "row", alignItems: "center", gap: theme.space[4] },
+    assistantLabelText: { fontSize: theme.type.caption.fontSize, color: theme.c.muted, fontWeight: "600" },
+    assistantText: {
+      color: theme.c.ink,
+      fontSize: theme.type.body.fontSize,
+      lineHeight: theme.type.body.lineHeight,
+    },
+    toolCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space[8],
+      borderRadius: theme.radius.control,
+      backgroundColor: theme.c["surface-alt"],
+      paddingHorizontal: theme.space[12],
+      paddingVertical: theme.space[8],
+    },
+    toolCardText: { flex: 1, fontSize: theme.type["body-sm"].fontSize, color: theme.c.muted },
+    thinkingText: { fontSize: theme.type["body-sm"].fontSize, color: theme.c.subtle, fontStyle: "italic" },
+    errorText: { color: theme.c.danger, fontSize: theme.type["body-sm"].fontSize },
+    streamingDot: { color: theme.c.brand, fontSize: theme.type.caption.fontSize },
     composer: {
       borderTopWidth: 1,
       borderTopColor: theme.c.line,
@@ -141,7 +208,7 @@ export default function ConversationScreen() {
       paddingBottom: insets.bottom + theme.space[8],
       gap: theme.space[4],
     },
-    pendingNote: {
+    notice: {
       flexDirection: "row",
       alignItems: "center",
       gap: theme.space[8],
@@ -150,17 +217,15 @@ export default function ConversationScreen() {
       paddingHorizontal: theme.space[12],
       paddingVertical: theme.space[8],
     },
-    pendingNoteText: {
+    noticeText: {
       flex: 1,
       fontSize: theme.type["body-sm"].fontSize,
       lineHeight: theme.type["body-sm"].lineHeight,
       color: theme.c.info,
     },
-    composerRow: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: theme.space[4],
-    },
+    noticeWarn: { backgroundColor: theme.c["warning-soft"] },
+    noticeWarnText: { color: theme.c.warning },
+    composerRow: { flexDirection: "row", alignItems: "flex-end", gap: theme.space[4] },
     input: {
       flex: 1,
       minHeight: theme.size["icon-touch"],
@@ -177,6 +242,49 @@ export default function ConversationScreen() {
       textAlignVertical: "center",
     },
   });
+
+  const renderPart = (part: ChatMessagePart, key: string) => {
+    switch (part.kind) {
+      case "text":
+        return (
+          <Text key={key} style={styles.assistantText}>
+            {part.text}
+          </Text>
+        );
+      case "thinking":
+        return (
+          <Text key={key} style={styles.thinkingText}>
+            {part.text}
+          </Text>
+        );
+      case "tool_call":
+      case "tool_result":
+        return (
+          <View key={key} style={styles.toolCard}>
+            <Icon name={part.kind === "tool_call" ? "settings" : "checkcircle"} size={14} color={theme.c.muted} />
+            <Text style={styles.toolCardText} numberOfLines={2}>
+              {part.label}
+            </Text>
+          </View>
+        );
+      case "references":
+        return (
+          <Pressable key={key} accessibilityRole="button" accessibilityLabel="查看引用" style={styles.toolCard}>
+            <Icon name="book" size={14} color={theme.c.brand} />
+            <Text style={[styles.toolCardText, { color: theme.c.brand }]} numberOfLines={1}>
+              {part.text}
+            </Text>
+            <Icon name="chevron" size={12} color={theme.c.subtle} />
+          </Pressable>
+        );
+      case "error":
+        return (
+          <Text key={key} style={styles.errorText} accessibilityRole="alert">
+            {part.text}
+          </Text>
+        );
+    }
+  };
 
   const title = session?.title || "会话";
   const today = new Date();
@@ -203,17 +311,30 @@ export default function ConversationScreen() {
           ref={listRef}
           data={messages}
           inverted={false}
-          keyExtractor={(m) => m.id}
-          renderItem={({ item }) => (
-            <Text style={{ color: theme.c.ink }}>{item.text}</Text>
-          )}
+          keyExtractor={(m) => m.stableId}
+          renderItem={({ item }) =>
+            item.role === "user" ? (
+              <View style={styles.userBubble} accessibilityLabel={`我的消息：${(item.parts[0] as { text: string })?.text ?? ""}`}>
+                <Text style={styles.userText}>{(item.parts[0] as { text: string })?.text ?? ""}</Text>
+              </View>
+            ) : (
+              <View style={styles.assistantRow}>
+                <View style={styles.assistantLabel}>
+                  <Icon name="spark" size={12} color={theme.c.brand} />
+                  <Text style={styles.assistantLabelText}>{agentName ?? "Agent"}</Text>
+                  {item.streaming && <Text style={styles.streamingDot}> · 正在输入…</Text>}
+                </View>
+                {item.parts.map((p, i) => renderPart(p, `${item.stableId}_${i}`))}
+              </View>
+            )
+          }
           ListHeaderComponent={<Text style={styles.dateLine}>{dateLine}</Text>}
           ListEmptyComponent={
             <StateView
               state={{
                 kind: "empty",
                 title: "这里还没有消息",
-                description: "会话消息的读取与发送正在等待后端联调。",
+                description: "输入内容开始这次协作。",
               }}
             />
           }
@@ -226,10 +347,16 @@ export default function ConversationScreen() {
       )}
 
       <View style={styles.composer}>
-        {sendPendingNote && (
-          <View style={styles.pendingNote} accessibilityRole="alert">
-            <Icon name="info" size={16} color={theme.c.info} />
-            <Text style={styles.pendingNoteText}>发送能力等待后端联调</Text>
+        {streamError && (
+          <View style={[styles.notice, styles.noticeWarn]} accessibilityRole="alert">
+            <Icon name="alert" size={16} color={theme.c.warning} />
+            <Text style={[styles.noticeText, styles.noticeWarnText]}>{streamError} · 草稿已保留</Text>
+          </View>
+        )}
+        {disconnected && !streamError && (
+          <View style={styles.notice} accessibilityRole="alert">
+            <Icon name="wifi" size={16} color={theme.c.info} />
+            <Text style={styles.noticeText}>连接中断，回复可能未完成；重新进入会话可继续</Text>
           </View>
         )}
         <View style={styles.composerRow}>
@@ -243,7 +370,7 @@ export default function ConversationScreen() {
             accessibilityLabel="输入消息"
             testID="conversation-input"
           />
-          <IconButton name="send" label="发送" onPress={handleSend} testID="conversation-send" />
+          <IconButton name="send" label={sending ? "发送中" : "发送"} onPress={() => void handleSend()} disabled={sending} testID="conversation-send" />
           <IconButton name="mic" label="语音输入" onPress={() => router.push("/voice")} testID="conversation-mic" />
         </View>
       </View>

@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useApp } from "@/host/AppProvider";
@@ -9,10 +10,10 @@ import { ActionButton } from "@/components/ActionButton";
 import { FormField } from "@/components/FormField";
 import { OfflineNotice } from "@/components/OfflineNotice";
 import { DecisionSheet } from "@/components/DecisionSheet";
-import type { IconName } from "@/components/Icon";
 import type { SubmitOutcome } from "@/features/workbench/submit/SubmissionService";
 import { agentSelection } from "@/features/workbench/agentSelection";
 import { targetSelection } from "@/features/targets/selection";
+import { AttachmentUploader, type AttachmentItem } from "@/features/workbench/attachments/AttachmentUploader";
 
 // M05 新建任务（02 规格）：Agent、任务描述、附件、知识、执行目标、预算；提交走持久状态机。
 const DRAFT_ID = "new-task";
@@ -31,6 +32,17 @@ export default function NewTaskScreen() {
   const [offline, setOffline] = useState(false);
   const [outcome, setOutcome] = useState<SubmitOutcome | null>(null);
   const [uncertainId, setUncertainId] = useState<string | null>(null);
+  // 附件（RW-027）：uploader 有状态；attachments 镜像驱动重渲染；sessionId 首次加附件时创建
+  const uploaderRef = useRef<AttachmentUploader | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [attNote, setAttNote] = useState<string | null>(null);
+
+  const uploader = () => {
+    if (!uploaderRef.current) uploaderRef.current = app.makeAttachmentUploader();
+    return uploaderRef.current;
+  };
+  const syncAttachments = () => setAttachments([...uploader().list]);
 
   // M06/M15 选择页回传：每次聚焦读取（back 返回不重新挂载）
   useFocusEffect(
@@ -81,10 +93,44 @@ export default function NewTaskScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, agentId, targetId, budget]);
 
+  /** 添加附件：选择 → 创建会话（首次）→ multipart 上传真实 bytes → 等待解析 ready */
+  const pickAttachment = async () => {
+    setAttNote(null);
+    const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const a = picked.assets[0];
+    const file = { uri: a.uri, name: a.name ?? "附件", mimeType: a.mimeType ?? "application/octet-stream", size: a.size ?? 0 };
+    const item = uploader().pick(file);
+    syncAttachments();
+    if (item.state === "failed") return; // 本地校验失败已在列表中显示原因
+    try {
+      // 附件挂在会话上：首次添加时创建会话（标题取任务摘要首行）
+      let sid = sessionId;
+      if (!sid) {
+        const created = await app.api.createSession(text.trim().split("\n")[0]?.slice(0, 40) || "新任务");
+        sid = created.id;
+        setSessionId(sid);
+      }
+      await uploader().uploadAndWait(sid, item.localId, file, agentId);
+    } catch (e) {
+      setAttNote(`附件上传失败：${(e as Error).message}`);
+    }
+    syncAttachments();
+  };
+
   const submit = async () => {
     setSubmitting(true);
     setOffline(false);
     try {
+      // 附件未 ready 不提交（详细设计 §8：扫描前不能交给 Agent）
+      if (uploader().hasUploading()) {
+        setOutcome({ kind: "rejected", requestId: "", reason: "附件仍在校验中，校验通过前不能发送", kindDetail: "validation" });
+        return;
+      }
+      if (!uploader().allReady()) {
+        setOutcome({ kind: "rejected", requestId: "", reason: "有附件校验失败，请移除或重新添加", kindDetail: "validation" });
+        return;
+      }
       const out = await app.submissions.submit({
         text,
         agentId,
@@ -92,7 +138,7 @@ export default function NewTaskScreen() {
         workspaceRef: "ws_default",
         budgetUpper: Number(budget),
         knowledgeBaseIds: [],
-        sessionId: null,
+        sessionId,
       });
       setOutcome(out);
       if (out.kind === "accepted") {
@@ -190,7 +236,28 @@ export default function NewTaskScreen() {
       borderTopColor: theme.c.line,
     },
     error: { color: theme.c.danger, marginTop: theme.space[8], fontSize: theme.type["body-sm"].fontSize },
+    attRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space[12],
+      backgroundColor: theme.c.surface,
+      borderRadius: theme.radius.control,
+      borderWidth: 1,
+      borderColor: theme.c.line,
+      padding: theme.space[12],
+      marginTop: theme.space[8],
+    },
+    attIcon: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+    attName: { fontSize: theme.type["body-sm"].fontSize, fontWeight: "600", color: theme.c.ink },
+    attState: { fontSize: theme.type.caption.fontSize, color: theme.c.muted, marginTop: 1 },
   });
+
+  const attStateLabel = (s: AttachmentItem["state"]): string =>
+    s === "selected" ? "已选择"
+    : s === "uploading" ? "正在上传…"
+    : s === "verifying" ? "校验中 · 通过前不能发送"
+    : s === "ready" ? "校验完成 · 仅本次任务使用"
+    : "校验失败";
 
   const rejectedReason = outcome?.kind === "rejected" ? outcome.reason : null;
 
@@ -233,14 +300,7 @@ export default function NewTaskScreen() {
         />
 
         <View style={styles.chips}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="添加附件"
-            style={styles.chip}
-            onPress={() =>
-              setOutcome({ kind: "rejected", requestId: "", reason: "附件上传将在本地后端联调时启用（RW-027）", kindDetail: "validation" })
-            }
-          >
+          <Pressable accessibilityRole="button" accessibilityLabel="添加附件" style={styles.chip} onPress={() => void pickAttachment()}>
             <Icon name="paperclip" size={14} color={theme.c.muted} />
             <Text style={styles.chipText}>添加附件</Text>
           </Pressable>
@@ -249,6 +309,38 @@ export default function NewTaskScreen() {
             <Text style={styles.chipText}>引用知识（可选）</Text>
           </Pressable>
         </View>
+
+        {attachments.map((a) => (
+          <View key={a.localId} style={styles.attRow} accessibilityLabel={`附件 ${a.fileName}，${attStateLabel(a.state)}`}>
+            <View style={styles.attIcon}>
+              {a.state === "uploading" || a.state === "verifying" ? (
+                <ActivityIndicator size="small" color={theme.c.brand} />
+              ) : (
+                <Icon name={a.state === "failed" ? "alert" : "checkcircle"} size={16} color={a.state === "failed" ? theme.c.danger : theme.c.brand} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.attName} numberOfLines={1} ellipsizeMode="middle">
+                {a.fileName}
+              </Text>
+              <Text style={[styles.attState, a.state === "failed" && { color: theme.c.danger }]}>
+                {a.state === "failed" ? a.error : attStateLabel(a.state)}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`移除附件 ${a.fileName}`}
+              hitSlop={8}
+              onPress={() => {
+                uploader().remove(a.localId);
+                syncAttachments();
+              }}
+            >
+              <Icon name="close" size={16} color={theme.c.subtle} />
+            </Pressable>
+          </View>
+        ))}
+        {attNote && <Text style={styles.error}>{attNote}</Text>}
 
         <Text style={styles.fieldLabel}>在哪里执行</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={`选择执行目标，当前 ${targetName}`} onPress={() => router.push("/targets")}>

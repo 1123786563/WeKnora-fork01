@@ -437,7 +437,7 @@
       "id": "RW-027",
       "title": "附件上传（真实 bytes）",
       "group": "G5",
-      "status": "pending",
+      "status": "integrating",
       "files": [
         "apps/mobile-next/src/features/workbench/attachments/**"
       ],

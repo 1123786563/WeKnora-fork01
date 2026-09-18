@@ -33,6 +33,7 @@ import {
   type TenantWire,
   type UserWire,
 } from "@/contracts/auth";
+import { decodeTemporaryDocument, type TemporaryDocumentWire } from "@/contracts/attachments";
 
 export interface StartExecutionInput {
   request_id: string;
@@ -92,6 +93,31 @@ export class WeKnoraApi {
       const r = (v ?? {}) as Record<string, unknown>;
       return { id: String((r.id as string) ?? (r.session_id as string) ?? "") };
     });
+  }
+
+  // ---- 附件（临时文档；RW-027。真实 bytes multipart，字段名 file）----
+  uploadAttachment(
+    sessionId: string,
+    file: { uri: string; name: string; mimeType: string },
+    agentId?: string,
+    signal?: AbortSignal,
+  ): Promise<TemporaryDocumentWire> {
+    const fd = new FormData();
+    fd.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+    if (agentId) fd.append("agent_id", agentId);
+    return this.http.uploadMultipart(
+      `/sessions/${encodeURIComponent(sessionId)}/attachments`,
+      fd,
+      { signal },
+      decodeTemporaryDocument,
+    );
+  }
+  getAttachment(sessionId: string, attachmentId: string, signal?: AbortSignal): Promise<TemporaryDocumentWire> {
+    return this.http.request(
+      `/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      { signal },
+      decodeTemporaryDocument,
+    );
   }
 
   // ---- agents ----

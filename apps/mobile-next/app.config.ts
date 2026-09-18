@@ -14,6 +14,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-secure-store",
+    "expo-document-picker",
     [
       "expo-audio",
       { microphonePermission: "用于将你的语音转为文字草稿，确认后才发送。" },

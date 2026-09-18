@@ -206,6 +206,59 @@ export class HttpClient {
     return this.refreshInFlight;
   }
 
+  /**
+   * multipart 上传（附件真实 bytes 传输）。
+   * formData 由调用方构造；RN 原生层负责读取文件内容上传（不传 Content-Type，让原生设置 boundary）。
+   * 测试环境用注入的 fetchImpl + FormData（内存 bytes）。
+   */
+  async uploadMultipart<T>(path: string, formData: FormData, init?: Omit<RequestInit2, "body">, decode?: (v: unknown) => T): Promise<T> {
+    const origin = canonicalOrigin(this.opts.getOrigin());
+    assertTrustedHost(origin);
+    const url = `${origin}/api/v1${path}`;
+    const creds = await this.opts.credentials.read();
+    const headers: Record<string, string> = { ...(init?.headers ?? {}) };
+    if (creds?.access) headers.Authorization = `Bearer ${creds.access}`;
+    const tenant = this.opts.getTenantId();
+    if (tenant) headers["X-Tenant-ID"] = tenant;
+
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, { method: "POST", headers, body: formData as unknown as BodyInit, signal: init?.signal });
+    } catch (e) {
+      if ((e as Error).name === "AbortError") throw new ApiError("aborted", "请求已取消");
+      throw new ApiError("network", `无法连接服务器（${(e as Error).message}）`);
+    }
+
+    const text = await res.text();
+    let body: unknown = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = { raw: text };
+      }
+    }
+    if (!res.ok) {
+      const wire = parseErrorBody(body, `上传失败（HTTP ${res.status}）`);
+      const kind: ApiErrorKind =
+        res.status === 401 ? "unauthorized"
+        : res.status === 403 ? "forbidden"
+        : res.status === 404 ? "not_found"
+        : res.status === 413 || res.status === 422 || res.status === 400 ? "validation"
+        : res.status >= 500 ? "server"
+        : "server";
+      throw new ApiError(kind, wire.message, res.status, wire.code, wire.details);
+    }
+    if (!decode) return body as T;
+    const data = body && typeof body === "object" && "data" in (body as Record<string, unknown>) ? (body as Record<string, unknown>).data : body;
+    try {
+      return decode(data);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError("decode", `响应格式异常：${(e as Error).message}`);
+    }
+  }
+
   // SSE/流式传输字节流（platform 层注入实现；此处仅定义端口）
   stream(
     _input: { url: string; headers: Record<string, string>; signal: AbortSignal },

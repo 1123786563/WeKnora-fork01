@@ -91,6 +91,13 @@
 
 ## 最终状态（2026-09-18）
 - jest 77/77（8 suites）、tsc 0、隔离门禁 0、iOS bundle export 0、xcodebuild BUILD SUCCEEDED、模拟器实机运行 ✓、live-backend 10/10 ✓、36 张原生双主题截图 ✓
+
+## RW-027 / RW-015 收尾（2026-09-18 下午）
+- RW-027 附件：contracts/attachments.ts（TemporaryDocument 解码）+ HttpClient.uploadMultipart（multipart 真实 bytes 通道）+ AttachmentUploader 状态机（selected→uploading→verifying→ready/failed；未 ready 阻断提交；失败保草稿语义）+ api.uploadAttachment/getAttachment + M05 接线（expo-document-picker 选择→首附件创建会话→上传→状态 chips→提交前 ready 校验）+ app.config 注册插件
+- RW-015 M07 发送接线：ChatService（POST /agent-chat/:session_id + SSE 流消费 consumeChatStream）+ ChatProjection（answer 增量拼接/tool 卡/thinking/error 持久/未知类型安全展示/done 终止/EOF→disconnected 续流信号）+ AppProvider 装配（token 缓存 headers）+ M07 页面重写（消息气泡按 parts 渲染、流式"正在输入"、断流提示、发送失败保留草稿）
+- 新测试：tests/features/attachments.test.ts（7：状态机/白名单/超时/multipart 表单语义/未 ready 阻断提交闭环）+ tests/features/chat.test.ts（9：投影/真实 SSE 帧/残缺帧跳过/POST 闭环/HTTP 失败/断流）
+- 全量回归：`npx jest` → **93/93**（10 suites）；tsc 0；隔离门禁 0 违规（69 源文件）
+- 实时联调（live-attachments-chat.mts 已就绪）：**blocked-env**——本地后端 8082 的 PG/Redis 容器在验证时段被停止/重建（docker ps：WeKnora-postgres-dev Exited、新容器 Created 未启动，用户环境迁移中），注册写路径报 "failed to create workspace"。脚本保留（`npx tsx tests/integration/live-attachments-chat.mts`），环境恢复后一键执行；附件与聊天协议层已由真实 Go 源码核验 + 单测真实 SSE 帧覆盖。
 - 明确未完成（如实）：RW-027 附件上传、RW-028 深链通知、RW-029 i18n 集中化、M07 发送接线（后端端点在）、M13 OAuth 浏览器授权实测、M14 下载/分享签名链接、SSO 模拟器回跳实测、Android 构建/E2E、逐页像素比对与多宽度/大字体场景（blocked-env 或待环境）
 
 
