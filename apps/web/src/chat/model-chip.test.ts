@@ -58,6 +58,7 @@ test('chat model list keeps the Vue KnowledgeQA filter only', () => {
 test('chip resolves display_name over name and appends the context spec', () => {
   const chip = resolveChatModelChip({
     models: [{ id: 'mock-stream-model', name: 'mock-stream-model', display_name: ' Mock Stream ', type: 'KnowledgeQA', parameters: { context_window: 128000 } }],
+    selectedModelId: 'mock-stream-model',
   });
   assert.equal(chip.label, 'Mock Stream');
   assert.equal(chip.context, '128K');
@@ -129,17 +130,16 @@ test('a persisted pick missing from the list stays unconfigured like Vue', () =>
   assert.equal(chip.isDefaultContext, false);
 });
 
-test('chip falls back to the first available model without an agent binding', () => {
+test('without an agent binding or explicit pick the chip shows 未配置 (Vue fresh-load parity)', () => {
   const chip = resolveChatModelChip({
     models: [
       { id: 'first-model', name: 'first-model', type: 'KnowledgeQA', parameters: {} },
       { id: 'second-model', name: 'second-model', type: 'KnowledgeQA' },
     ],
   });
-  assert.equal(chip.label, 'first-model');
-  // parameters without context_window still show the 200K default suffix.
-  assert.equal(chip.context, '200K');
-  assert.equal(chip.isDefaultContext, true);
+  assert.equal(chip.label, '未配置');
+  assert.equal(chip.context, '');
+  assert.equal(chip.isDefaultContext, false);
 });
 
 test('an agent model missing from the list stays unconfigured like Vue', () => {

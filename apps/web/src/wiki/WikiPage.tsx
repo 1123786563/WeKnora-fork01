@@ -431,11 +431,20 @@ export function WikiPage({
   useEffect(() => {
     if (viewMode !== "tree") return;
     if (typeof client.wiki.folders !== "function") return;
-    void client.wiki.folders(knowledgeBaseId, folderId).then((result) => setFolders(result.folders)).catch(() => setFolders([]));
-  }, [client, knowledgeBaseId, folderId, viewMode]);
+    // Same bucket page_types the reload path passes (Vue loadCategoriesForType).
+    const pageTypes = activeBucket === "knowledge"
+      ? ["entity", "concept", "synthesis", "comparison"]
+      : activeBucket === "summary" ? ["summary"] : [];
+    void client.wiki.folders(knowledgeBaseId, folderId, pageTypes).then((result) => setFolders(result.folders)).catch(() => setFolders([]));
+  }, [client, knowledgeBaseId, folderId, viewMode, activeBucket]);
 
   async function reloadFolders() {
-    const result = await client.wiki.folders(knowledgeBaseId, folderId);
+    // Vue passes the active bucket's page_types so empty folders surface only
+    // in the merged knowledge view (ListChildFolders showEmptyFolders rule).
+    const pageTypes = activeBucket === "knowledge"
+      ? ["entity", "concept", "synthesis", "comparison"]
+      : activeBucket === "summary" ? ["summary"] : [];
+    const result = await client.wiki.folders(knowledgeBaseId, folderId, pageTypes);
     setFolders(result.folders);
   }
 
@@ -497,22 +506,55 @@ export function WikiPage({
     setPage(1);
   }
 
-  async function createFolder() {
-    const name = window.prompt(t("wikiBrowser.folderNamePlaceholder"))?.trim();
-    if (!name || folderBusy) return;
+  // Vue inline editing (WikiFolderActions / wiki-directory-item--editing):
+  // creation and rename happen in an input embedded in the row, not a prompt.
+  const [inlineCreating, setInlineCreating] = useState(false);
+  const [inlineCreatingName, setInlineCreatingName] = useState("");
+  const [renamingFolderId, setRenamingFolderId] = useState("");
+  const [renamingName, setRenamingName] = useState("");
+
+  async function createFolder(name?: string) {
+    const finalName = (name ?? window.prompt(t("wikiBrowser.folderNamePlaceholder")) ?? "").trim();
+    if (!finalName || folderBusy) return;
     setFolderBusy(true);
-    try { await client.wiki.createFolder(knowledgeBaseId, folderId, name); await reloadFolders(); }
+    try { await client.wiki.createFolder(knowledgeBaseId, folderId, finalName); await reloadFolders(); }
     catch (error) { setState({ status: "error", message: error instanceof Error ? error.message : t("wikiBrowser.createFolderFailed") }); }
     finally { setFolderBusy(false); }
   }
 
-  async function renameFolder(folder: WikiFolderNode) {
-    const name = window.prompt(t("wikiBrowser.folderNamePlaceholder"), folder.name)?.trim();
-    if (!name || name === folder.name || folderBusy) return;
+  function startInlineCreate() {
+    setInlineCreating(true);
+    setInlineCreatingName("");
+  }
+
+  async function submitInlineCreate() {
+    const name = inlineCreatingName.trim();
+    setInlineCreating(false);
+    setInlineCreatingName("");
+    if (name) await createFolder(name);
+  }
+
+  function startRenameFolder(folder: WikiFolderNode) {
+    setRenamingFolderId(folder.id);
+    setRenamingName(folder.name);
+  }
+
+  async function renameFolder(folder: WikiFolderNode, name?: string) {
+    const finalName = (name ?? window.prompt(t("wikiBrowser.folderNamePlaceholder"), folder.name) ?? "").trim();
+    if (!finalName || finalName === folder.name || folderBusy) return;
     setFolderBusy(true);
-    try { await client.wiki.updateFolder(knowledgeBaseId, folder.id, { name }); await reloadFolders(); }
+    try { await client.wiki.updateFolder(knowledgeBaseId, folder.id, { name: finalName }); await reloadFolders(); }
     catch (error) { setState({ status: "error", message: error instanceof Error ? error.message : t("wikiBrowser.renameFolderFailed") }); }
     finally { setFolderBusy(false); }
+  }
+
+  function movePageToFolder(slug: string, folder: WikiFolderNode) {
+    if (folderBusy) return;
+    setFolderBusy(true);
+    void client.wiki.movePage(knowledgeBaseId, slug, folder.id)
+      .then(() => { void loadPages(); void reloadFolders(); })
+      .catch((reason: unknown) => setState({ status: "error", message: reason instanceof Error ? reason.message : t("wikiBrowser.movePageFailed") }))
+      .finally(() => setFolderBusy(false));
   }
 
   async function deleteFolder(folder: WikiFolderNode) {
@@ -807,10 +849,33 @@ export function WikiPage({
         <Button type="button" aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}>☰</Button>
         <Button type="button" aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}>≡</Button>
         <Button type="button" aria-label={t("wikiBrowser.indexTitle")} title={t("wikiBrowser.indexTitle")} onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
-        {canContribute ? <Button type="button" disabled={folderBusy} aria-label={t("wikiBrowser.folderActions")} title={t("wikiBrowser.folderActions")} onClick={() => void createFolder()}>＋</Button> : null}
+        {canContribute ? <Button type="button" disabled={folderBusy} aria-label={t("wikiBrowser.newRootFolder")} title={t("wikiBrowser.newRootFolder")} onClick={startInlineCreate}>＋</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
       </div>
-      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
+      {inlineCreating ? <div className="wk-wiki-directory-item flex items-center gap-2 border-b border-line-soft py-[0.55rem]">
+        <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus
+          placeholder={t("wikiBrowser.folderNamePlaceholder")}
+          onChange={(event) => setInlineCreatingName(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") void submitInlineCreate(); if (event.key === "Escape") { setInlineCreating(false); setInlineCreatingName(""); } }} />
+        <Button type="button" disabled={folderBusy} onClick={() => void submitInlineCreate()}>{t("common.save")}</Button>
+        <Button type="button" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>{t("common.cancel")}</Button>
+      </div> : null}
+      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id}
+        className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"
+        onDragOver={(event) => { if (canContribute) event.preventDefault(); }}
+        onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), folder); } }}>
+        {renamingFolderId === folder.id ? (
+          <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus value={renamingName}
+            onChange={(event) => setRenamingName(event.target.value)}
+            onBlur={() => { void renameFolder(folder, renamingName); setRenamingFolderId(""); }}
+            onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
+        ) : (
+          <>
+            <Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>
+            {canContribute ? <span className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(folder)}>🗑</Button></span> : null}
+          </>
+        )}
+      </li>)}</ul> : null}
     </>
   );
 
@@ -849,6 +914,8 @@ export function WikiPage({
                   className={`wk-wiki-page-item group/wiki-item grid min-h-[98px] cursor-pointer gap-0.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
                   type="button"
+                  draggable={canContribute}
+                  onDragStart={(event) => { event.dataTransfer.setData("text/wiki-slug", page.slug); event.dataTransfer.effectAllowed = "move"; }}
                   onClick={() => choose(page)}
                 >
                   <span className="wk-wiki-page-item-title truncate text-sm leading-5 text-[#202020]">{page.title}</span>

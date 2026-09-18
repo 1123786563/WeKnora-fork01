@@ -115,12 +115,16 @@ export function resolveChatModelChip(options: {
     // the agent's model binds the conversation.
     selected = findById(selectedModelId && selectedModelId !== agentModelId ? selectedModelId : agentModelId);
   } else if (selectedModelId) {
-    // Vue ensureModelSelection: the stored last pick seeds the selection; a
-    // pick that no longer exists in the list stays 未配置 (no first-model
-    // fallback).
+    // The stored last pick seeds the chip only when it still resolves; a
+    // missing id stays 未配置 (Vue find() miss).
     selected = findById(selectedModelId);
   } else {
-    selected = options.models[0];
+    // Deterministic Vue fresh-load parity: with no agent binding and no
+    // explicit pick the chip shows 未配置, never an invented first model.
+    // (Vue's ensureModelSelection first-model fallback loses to the platform
+    // prefetch race on every full page load; the dropdown still lists all
+    // models for an explicit pick.)
+    return { label: notConfiguredLabel, context: '', isDefaultContext: false };
   }
   if (!selected) {
     return { label: notConfiguredLabel, context: '', isDefaultContext: false };

@@ -314,3 +314,26 @@ check:integrity PASS（/tmp/gates-round7.log）。
 剩余（如实）：目录树的拖拽移动/内联重命名、修订抽屉的完整差异视图、graph 的 ego 扩边等
 深度交互仍为 React 旧实现的等价功能，未逐像素复刻 Vue；分类目录的文件夹层级（当前 fixture
 无文件夹）待有层级数据后再对照。
+
+## 追加轮：真实数据对照 + Wiki 深层交互 + 模型芯片确定性对齐（第八轮，2026-09-19）
+
+1. **apps 真实数据**：连接创建 API 无 provider 时 501 fail-closed（无法 API 造数），改直插
+   DB（connections/connector_authorization_attempts/app_actions 各 1 行）。双端对照：
+   连接页同一行（conn-parity-1 个人 活跃 授权/断开）；动作审批页渲染冻结快照
+   （账号（连接）/目标/风险/状态=待审批/内容指纹/版本围栏/参数 + 批准按钮）；授权状态页渲染
+   等待授权 + 轮询提示 + 过期时间。
+2. **模型芯片确定性对齐**：resolveChatModelChip 在无智能体绑定且无显式选择时不再回退首模型
+   显示，直接渲染 未配置（Vue 刷新后可观察语义）；发送链路的 loader 种子保持不变。浏览器
+   复验：React 芯片 = 未配置，与 Vue 一致。
+3. **Wiki 深层交互**：目录工具栏 ＋ 打开内联创建输入（Enter 保存/Esc 取消）；重命名改行内
+   输入（✎ 触发）；页面项可拖拽，目录行接收放置 → movePage 落库并刷新。浏览器端到端验证：
+   内联建目录（Parity 目录）→ 内联改名（Parity 目录改）→ 拖拽 实体：WeKnora 入目录（DB
+   folder_id 已更新）。folders 请求按活动分桶携带 page_types（空目录仅在知识合并视图显示，
+   同 Vue ListChildFolders 规则）。
+4. **wiki 客户端**：补 stats/search/issues；分桶页签 知识(2)/摘要(1) + 默认知识分桶 +
+   客户端过滤（后端 list 忽略 page_types 已实测）。
+
+### 门禁（第八轮）
+
+test:shared 869/869、test:web 1873/1873、typecheck:shared/typecheck:web 0、check:integrity
+PASS（/tmp/gates-round8.log）。双端真实数据对照截图与 DOM 快照存 /tmp/verify-*。
