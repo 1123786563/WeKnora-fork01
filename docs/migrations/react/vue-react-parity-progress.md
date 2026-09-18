@@ -5151,9 +5151,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: `pnpm test:web` 1752/1752, `pnpm test:shared` 787/787, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
   Evidence: `evidence/vue-react-parity/2026-09-18-r466-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
-__zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-44487539-7bfe-4cc5-bae7-0ef2df59b805-cwd'; fi
-exit "$__zcode_status"
+
 ## 2026-09-18 Round R467 — kbIds deep-link completed from an interrupted agent (partial-execution salvage)
 
 - The 4-agent dispatch (chunks popover / palette kbIds / matrix audit / verifier) was killed by an API
@@ -5170,6 +5168,3 @@ exit "$__zcode_status"
 - Gates: `pnpm test:web` 1762/1762 (+10), `pnpm test:shared` 787/787, `pnpm build:web` ✓, integrity 0 P0.
   Evidence: `evidence/vue-react-parity/2026-09-18-r467-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round.
-__zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-1b12b994-c669-4172-b20b-5cf6f0ae7ec0-cwd'; fi
-exit "$__zcode_status"
