@@ -62,7 +62,11 @@ export class WeKnoraApi {
     return this.http.request("/auth/login", { method: "POST", body: { email, password }, ...init }, decodeLoginResponse);
   }
   me(init?: RequestInit2): Promise<UserWire> {
-    return this.http.request("/auth/me", { ...init }, decodeUserLoose);
+    // 真实 /auth/me → {data:{user,memberships,tenant,capabilities}}（live-backend.mts 核验）
+    return this.http.request("/auth/me", { ...init }, (v) => {
+      const r = (v ?? {}) as Record<string, unknown>;
+      return decodeUserLoose(r.user ?? v);
+    });
   }
   logout(init?: RequestInit2): Promise<void> {
     return this.http.request("/auth/logout", { method: "POST", ...init });

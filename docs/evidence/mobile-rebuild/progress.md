@@ -72,6 +72,13 @@
 - `xcrun simctl install booted WeKnora.app` + `launch com.weknora.mobilenext` → **原生 App 真机级运行成功**（pid 65543）
 - 36 张原生截图（18 页 × 双主题）→ screenshots/native/；抽样复核 M01/M03/M08 通过（visual-verification.md）
 
+### 真实后端联调（RW-008/RW-032，2026-09-18）
+- 本地 Go 后端运行于 localhost:8082（/api/v1/auth/config 探活 200）
+- `npx tsx tests/integration/live-backend.mts`（随机测试账号，self_serve 注册）→ **10/10 通过**：
+  注册 201 / loginWithPassword token+凭证 / memberships 解码 / stage=ready / me()（data.user 修正后）/ tenants()（data.items 修正后）/ sessions()（total=0）/ agents()（4 个 builtin）/ 坏 token→unauthorized / 无凭证 bootstrap→login
+- 真实 wire 修正两处解码器：/auth/me 的 user 在 data.user；/tenants 列表在 data.items（auth.ts/weknora.ts，注释标注来源）
+- 回归：jest 77/77、tsc 0、隔离门禁 0 违规
+
 ### 视觉验证
 - 见 visual-verification.md：M01/M03/M08 深度核对通过；36 张存档；逐页像素比对/多宽度/大字体/Android 为 blocked-env 或未完成，如实记录
 

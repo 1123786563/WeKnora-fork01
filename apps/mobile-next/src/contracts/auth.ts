@@ -89,14 +89,16 @@ export interface TenantWire {
 }
 
 export const decodeTenantList: Decoder<TenantWire[]> = (v) => {
-  const list = Array.isArray(v) ? v : ((v as Record<string, unknown>)?.tenants as unknown[]) ?? [];
+  // 真实 /tenants → {data:{items:[...]}}；兼容裸数组与 tenants 键（live-backend.mts 核验）
+  const r = (v ?? {}) as Record<string, unknown>;
+  const list: unknown[] = Array.isArray(v) ? v : ((r.tenants as unknown[]) ?? (r.items as unknown[]) ?? []);
   return list.map((t) => {
-    const r = (t ?? {}) as Record<string, unknown>;
+    const row = (t ?? {}) as Record<string, unknown>;
     return {
-      id: String(r.id ?? ""),
-      name: String(r.name ?? ""),
-      role: String(r.role ?? "member"),
-      billing_role: optStr()(r.billing_role ?? null),
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      role: String(row.role ?? "member"),
+      billing_role: row.billing_role == null ? null : String(row.billing_role),
     };
   });
 };

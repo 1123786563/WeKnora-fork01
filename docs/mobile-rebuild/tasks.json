@@ -512,7 +512,7 @@
       "id": "RW-032",
       "title": "集成/E2E 与故障测试",
       "group": "G7",
-      "status": "pending",
+      "status": "integrating",
       "files": [
         "apps/mobile-next/tests/integration/**"
       ],
