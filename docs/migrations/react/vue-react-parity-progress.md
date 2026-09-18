@@ -5424,3 +5424,24 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: six green (v26). Evidence: `evidence/vue-react-parity/2026-09-18-r477-code-parity-round.md`. No
   Vue, mobile, or Go code was modified by this round. R478 queue: 900-char window re-anchor, silent-skip UX
   issue ticket, pending-state mapping option.
+
+## 2026-09-18 Round R478 — Toast-window re-anchor, pending mapping, question-skip hint, endgame map (salvaged)
+
+- Interrupted-dispatch round salvaged per the R445 protocol: all three agents HAD executed before the
+  interruption; their staged deliverables were swept into the external a605d530 + 066eb742 (8th sweep).
+  Post-salvage: six gates ALL PASS via pnpm gates on the merged state.
+- Environment prelude: the user's onyx-foss uvicorn now holds IPv4 :8080; the WeKnora dev backend binds
+  [::1]:8080 and the vite proxy reaches it correctly (parity login verified through :5181) — onyx untouched.
+  Mock daemon restarted; a non-fatal migration-157 warning recorded.
+- A1: the 900-char toast window retired (resolveSteerSubmitFailure exported — Vue's server-message-first;
+  behavioral + single-line anchor assertions); the pending attachment state maps to the FIRST key per Vue's
+  state machine. In a605d530.
+- A2 (SUPERSET, explicitly not parity): Vue verified to have NO mitigation for the silent question skip;
+  React gains kbSkipsQuestionGeneration (mirrors the backend gate exactly, no false positives on absent
+  strategy) + a role=note hint under the question fieldset (switch stays enabled), +1 key ×5. Queued: the
+  Vue-side hint, i18n migration, product root fix.
+- A3: coverage map rebuilt (r468 details purged; ±2-row tolerance) — A 56 / B 17 / C 16 / D 0. ENDGAME plan:
+  ① settings 9-row error batch (1-2 rounds, one method); ② N021 tool fixture; ③ N015 adjudication; ≤1%
+  requires C ≤ 1 row (15-16 to close) with a per-row plan in the report.
+- Gates: six PASS (pnpm gates, v26). Evidence: `evidence/vue-react-parity/2026-09-18-r478-code-parity-round.md`.
+  No Vue, mobile, or Go code was modified by this round's agents. R479 queue head: the settings 9-row batch.
