@@ -113,6 +113,13 @@ export interface KnowledgeChunkRevision {
   [key: string]: unknown;
 }
 
+/** Vue doc-content GeneratedQuestion (backend types.GeneratedQuestion json tags). */
+export interface KnowledgeGeneratedQuestion {
+  id: string;
+  question: string;
+  content_revision?: number;
+}
+
 export interface KnowledgeChunkUpdateInput {
   content?: string;
   is_enabled?: boolean;
@@ -318,6 +325,48 @@ export function createKnowledgeDocumentsApi(
       const data = parsed.data;
       if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') throw new Error('Invalid knowledge chunk');
       return data as KnowledgeChunk;
+    },
+    /** Vue upsertGeneratedQuestion: PUT /api/v1/chunks/by-id/{chunkId}/questions
+     * body { question_id, question } (empty id = add). Handler UpsertGeneratedQuestion
+     * replies { success, data: GeneratedQuestion }. */
+    async upsertGeneratedQuestion(chunkId: string, question: string, questionId?: string): Promise<KnowledgeGeneratedQuestion> {
+      const response = await request({
+        method: 'PUT',
+        path: `/api/v1/chunks/by-id/${encodeURIComponent(chunkId)}/questions`,
+        body: { question_id: questionId || '', question },
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') throw new Error('Invalid generated question');
+      return data as KnowledgeGeneratedQuestion;
+    },
+    /** Vue deleteGeneratedQuestion: DELETE /api/v1/chunks/by-id/{chunkId}/questions.
+     * The backend reads question_id from the JSON body (chunk.go ShouldBindJSON),
+     * matching Vue del(url, { question_id }); success replies { success, message }. */
+    async deleteGeneratedQuestion(chunkId: string, questionId: string): Promise<void> {
+      await request({
+        method: 'DELETE',
+        path: `/api/v1/chunks/by-id/${encodeURIComponent(chunkId)}/questions`,
+        body: { question_id: questionId },
+      });
+    },
+    /** Vue regenerateGeneratedQuestions: POST /api/v1/chunks/by-id/{chunkId}/questions/regenerate.
+     * Handler RegenerateGeneratedQuestions replies { success, data: GeneratedQuestion[] }. */
+    async regenerateGeneratedQuestions(chunkId: string): Promise<KnowledgeGeneratedQuestion[]> {
+      const response = await request({
+        method: 'POST',
+        path: `/api/v1/chunks/by-id/${encodeURIComponent(chunkId)}/questions/regenerate`,
+        body: {},
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (!Array.isArray(data)) throw new Error('Invalid generated questions');
+      return data.map((item, index) => {
+        if (typeof item !== 'object' || item === null || Array.isArray(item) || typeof (item as { id?: unknown }).id !== 'string') {
+          throw new Error(`Invalid generated question at data[${index}]`);
+        }
+        return item as KnowledgeGeneratedQuestion;
+      });
     },
     async updateDetails(id: string, input: KnowledgeDocumentDetailsUpdateInput): Promise<KnowledgeDocument> {
       return parseDocumentMutation(await request({

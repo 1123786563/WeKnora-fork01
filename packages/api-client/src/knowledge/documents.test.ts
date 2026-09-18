@@ -268,6 +268,44 @@ test('rejects a by-id chunk envelope without a usable id', async () => {
   await assert.rejects(() => nullData.getChunkById('chunk-1'), /Invalid knowledge chunk/);
 });
 
+test('keeps generated-question mutations on the Vue by-id questions endpoint contract', async () => {
+  // R471/A3 — Vue api/knowledge-base upsert/delete/regenerateGeneratedQuestion
+  // (frontend/src/api/knowledge-base/index.ts) against handler chunk.go:
+  // UpsertGeneratedQuestion/RegenerateGeneratedQuestions reply {success,data},
+  // DeleteGeneratedQuestion replies {success,message} and reads question_id
+  // from the JSON body (ShouldBindJSON), not a query param.
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    if (request.path.endsWith('/regenerate')) return { success: true, data: [{ id: 'q2', question: 'Regenerated Q', content_revision: 3 }] };
+    if (request.method === 'DELETE') return { success: true, message: 'Generated question deleted' };
+    return { success: true, data: { id: 'q1', question: 'Saved Q', content_revision: 3 } };
+  });
+
+  const saved = await api.upsertGeneratedQuestion('chunk/1', 'Saved Q');
+  await api.upsertGeneratedQuestion('chunk/1', 'Edited Q', 'q1');
+  await api.deleteGeneratedQuestion('chunk/1', 'q1');
+  const regenerated = await api.regenerateGeneratedQuestions('chunk/1');
+
+  assert.equal(saved.id, 'q1');
+  assert.equal(saved.content_revision, 3);
+  assert.deepEqual(regenerated.map((question) => question.id), ['q2']);
+  assert.deepEqual(requests, [
+    { method: 'PUT', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: '', question: 'Saved Q' } },
+    { method: 'PUT', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: 'q1', question: 'Edited Q' } },
+    { method: 'DELETE', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: 'q1' } },
+    { method: 'POST', path: '/api/v1/chunks/by-id/chunk%2F1/questions/regenerate', body: {} },
+  ]);
+});
+
+test('rejects generated-question envelopes without usable data', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true }));
+  await assert.rejects(() => api.upsertGeneratedQuestion('c1', 'Q'), /Invalid generated question/);
+  await assert.rejects(() => api.regenerateGeneratedQuestions('c1'), /Invalid generated questions/);
+  const notArray = createKnowledgeDocumentsApi(async () => ({ success: true, data: { id: 'q1' } }));
+  await assert.rejects(() => notArray.regenerateGeneratedQuestions('c1'), /Invalid generated questions/);
+});
+
 test('updates document summary and custom metadata through the guarded detail endpoint', async () => {
   let request: { method: string; path: string; body?: unknown } | undefined;
   const api = createKnowledgeDocumentsApi(async (input) => {

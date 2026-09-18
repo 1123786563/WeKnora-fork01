@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
+import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, KnowledgeGeneratedQuestion, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Sheet, Status } from '@weknora/ui';
 import { buildDocumentPreview, canPreviewDocument, DocumentMarkdownBody, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
@@ -311,6 +311,33 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
   const [parentContextId, setParentContextId] = useState<string | null>(null);
   const [parentContextLoading, setParentContextLoading] = useState<string | null>(null);
   const [parentContextError, setParentContextError] = useState<string | null>(null);
+  // Vue questionPopupChunk/questionComposerChunk/editingQuestionKey & friends
+  // (doc-content L1323-1475): the questions panel, add composer, inline row
+  // editor, popconfirm delete, and regenerate each keep their own busy state.
+  const [questionsId, setQuestionsId] = useState<string | null>(null);
+  const [questionComposerId, setQuestionComposerId] = useState<string | null>(null);
+  const [questionDraft, setQuestionDraft] = useState('');
+  const [editingQuestion, setEditingQuestion] = useState<{ chunkId: string; questionId: string } | null>(null);
+  const [questionEditDraft, setQuestionEditDraft] = useState('');
+  const [savingQuestionComposer, setSavingQuestionComposer] = useState<string | null>(null);
+  const [savingQuestionKey, setSavingQuestionKey] = useState<string | null>(null);
+  const [regeneratingQuestions, setRegeneratingQuestions] = useState<string | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState<{ chunkId: string; questionId: string } | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<{ chunkId: string; questionId: string } | null>(null);
+  const [questionNotice, setQuestionNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+
+  const closeQuestions = () => {
+    setQuestionsId(null);
+    setQuestionComposerId(null);
+    setQuestionDraft('');
+    setEditingQuestion(null);
+    setQuestionEditDraft('');
+    setConfirmingDelete(null);
+  };
+
+  const patchChunkRow = (chunkId: string, patch: (chunk: KnowledgeChunk) => KnowledgeChunk) => {
+    setState((current) => ({ ...current, chunks: current.chunks.map((row) => row.id === chunkId ? patch(row) : row) }));
+  };
 
   const load = (page = 1) => {
     setPageError(null);
@@ -331,10 +358,11 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
   useEffect(() => {
     setPageError(null);
     setState({ status: 'loading', chunks: [], total: 0, page: 1, pendingPage: undefined, message: undefined });
-    // Vue watch(details.id) closes the parent-context popup but keeps the
-    // parent cache (parentContextCache lives across documents).
+    // Vue watch(details.id) closes the question popup, composer, and inline
+    // editor alongside the parent-context popup.
     setParentContextId(null);
     setParentContextError(null);
+    closeQuestions();
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, document.id]);
@@ -384,6 +412,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
 
   const showHistory = (chunk: KnowledgeChunk) => {
     setParentContextId(null);
+    closeQuestions();
     setHistoryLoading(chunk.id);
     void client.knowledgeBases.documents.chunkRevisions(document.id, chunk.id).then((rows) => setHistory({ id: chunk.id, rows })).catch((error: unknown) => setState((current) => ({ ...current, message: error instanceof Error ? error.message : t('common.error') }))).finally(() => setHistoryLoading(null));
   };
@@ -402,6 +431,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
     setDraft('');
     setHistory(null);
     setParentContextError(null);
+    closeQuestions();
     const parentId = parentChunkId(chunk);
     if (!parentId || parentContextCache.has(parentId)) return;
     setParentContextLoading(chunk.id);
@@ -413,11 +443,110 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
     }).finally(() => setParentContextLoading(null));
   };
 
+  /** Vue setQuestionPopupVisible: opening the questions panel closes the
+   * parent-context and history expansions; closing also resets the composer
+   * and the inline editor (closeQuestionComposer + cancelQuestionEdit). */
+  const openQuestions = (chunk: KnowledgeChunk) => {
+    if (questionsId === chunk.id) {
+      closeQuestions();
+      return;
+    }
+    setQuestionsId(chunk.id);
+    setParentContextId(null);
+    setEditingId(null);
+    setDraft('');
+    setHistory(null);
+    setQuestionComposerId(null);
+    setQuestionDraft('');
+    setEditingQuestion(null);
+    setConfirmingDelete(null);
+  };
+
+  /** Vue addQuestion: upsert without a question id, then merge result.data
+   * into the local metadata and toast common.saveSuccess. */
+  const addQuestion = async (chunk: KnowledgeChunk) => {
+    const question = questionDraft.trim();
+    if (!question) return;
+    setSavingQuestionComposer(chunk.id);
+    try {
+      const saved = await client.knowledgeBases.documents.upsertGeneratedQuestion(chunk.id, question);
+      patchChunkRow(chunk.id, (row) => upsertLocalQuestion(row, saved));
+      setQuestionDraft('');
+      setQuestionComposerId(null);
+      setQuestionNotice({ tone: 'success', message: t('common.success') });
+    } catch (error: unknown) {
+      setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
+    } finally { setSavingQuestionComposer(null); }
+  };
+
+  /** Vue saveQuestionEdit: unchanged text just cancels; otherwise upsert with
+   * the existing question id and swap in the saved row. */
+  const saveQuestionEdit = async (chunk: KnowledgeChunk, question: KnowledgeGeneratedQuestion) => {
+    const value = questionEditDraft.trim();
+    if (!value) return;
+    if (value === question.question) {
+      setEditingQuestion(null);
+      setQuestionEditDraft('');
+      return;
+    }
+    const key = `${chunk.id}:${question.id}`;
+    setSavingQuestionKey(key);
+    try {
+      const saved = await client.knowledgeBases.documents.upsertGeneratedQuestion(chunk.id, value, question.id);
+      patchChunkRow(chunk.id, (row) => upsertLocalQuestion(row, saved));
+      setEditingQuestion(null);
+      setQuestionEditDraft('');
+      setQuestionNotice({ tone: 'success', message: t('common.success') });
+    } catch (error: unknown) {
+      setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
+    } finally { setSavingQuestionKey(null); }
+  };
+
+  /** Vue handleDeleteQuestion: DELETE by question id, then splice the row out
+   * of the local metadata (the popconfirm gate lives on the row buttons). */
+  const deleteQuestion = async (chunk: KnowledgeChunk, question: KnowledgeGeneratedQuestion) => {
+    setDeletingQuestion({ chunkId: chunk.id, questionId: question.id });
+    try {
+      await client.knowledgeBases.documents.deleteGeneratedQuestion(chunk.id, question.id);
+      patchChunkRow(chunk.id, (row) => {
+        const metadata = chunkMetadata(row);
+        if (Array.isArray(metadata.generated_questions)) {
+          metadata.generated_questions = metadata.generated_questions.filter((item) => !(typeof item === 'object' && item !== null && (item as { id?: unknown }).id === question.id));
+        }
+        return writeChunkMetadata(row, metadata);
+      });
+      setConfirmingDelete(null);
+      setQuestionNotice({ tone: 'success', message: t('common.success') });
+    } catch (error: unknown) {
+      setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.deleteFailed') });
+    } finally { setDeletingQuestion(null); }
+  };
+
+  /** Vue regenerateQuestions: the response array replaces generated_questions
+   * and generated_questions_revision pins to the current content_revision. */
+  const regenerateQuestions = async (chunk: KnowledgeChunk) => {
+    setRegeneratingQuestions(chunk.id);
+    try {
+      const rows = await client.knowledgeBases.documents.regenerateGeneratedQuestions(chunk.id);
+      patchChunkRow(chunk.id, (row) => {
+        const metadata = chunkMetadata(row);
+        metadata.generated_questions = rows;
+        metadata.generated_questions_revision = row.content_revision || 0;
+        return writeChunkMetadata(row, metadata);
+      });
+      setQuestionComposerId(null);
+      setQuestionNotice({ tone: 'success', message: t('knowledgeBase.questionsRegenerated') });
+    } catch (error: unknown) {
+      setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
+    } finally { setRegeneratingQuestions(null); }
+  };
+
   const mergedContent = mergeChunkContents(state.chunks);
   return <section className="wk-document-chunks mt-4" aria-label={t('knowledgeBase.viewChunks')} hidden={view === 'preview'}>
     <div className="mb-3 flex items-center justify-between gap-3"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.viewChunks')} {state.total ? `(${state.total})` : ''}</h3></div>
     {mutationError ? <Status tone="error">{mutationError}</Status> : null}
     {retryNotice ? <Status tone={retryNotice.tone}>{retryNotice.message}</Status> : null}
+    {questionNotice ? <Status tone={questionNotice.tone}>{questionNotice.message}</Status> : null}
     {parentContextError ? <Status tone="error">{parentContextError}</Status> : null}
     {state.status === 'loading' && !pageTransition ? <Status>{t('common.loading')}</Status> : null}
     {pageTransition ? <div className="wk-chunk-page-loading" role="status"><Status>{t('common.loading')}</Status></div> : null}
@@ -434,7 +563,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         : <div className="wk-document-merged text-[13px] text-muted">—</div>
       : null}
     {state.status === 'success' && view !== 'merged' ? <><div className="flex flex-col gap-3">{state.chunks.map((chunk, index) => <article key={chunk.id} className="rounded-[8px] border border-line-soft bg-surface p-3" data-chunk-id={chunk.id}>
-      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{parentChunkId(chunk) || canEdit ? <span className="flex flex-wrap gap-1">{parentChunkId(chunk) ? <Button type="button" variant="text" className="wk-parent-context-toggle" title={t('knowledgeBase.viewParentContext')} aria-label={t('knowledgeBase.viewParentContext')} aria-expanded={parentContextId === chunk.id} onClick={() => openParentContext(chunk)}><GitBranchIcon /></Button> : null}{canEdit ? <><Button type="button" onClick={() => { setParentContextId(null); setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</> : null}</span> : null}</div>
+      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{parentChunkId(chunk) || generatedQuestions(chunk).length > 0 || canEdit ? <span className="flex flex-wrap gap-1">{parentChunkId(chunk) ? <Button type="button" variant="text" className="wk-parent-context-toggle" title={t('knowledgeBase.viewParentContext')} aria-label={t('knowledgeBase.viewParentContext')} aria-expanded={parentContextId === chunk.id} onClick={() => openParentContext(chunk)}><GitBranchIcon /></Button> : null}{generatedQuestions(chunk).length > 0 || canEdit ? <Button type="button" variant="text" className="wk-chunk-questions-toggle" title={t('knowledgeBase.generatedQuestions')} aria-label={t('knowledgeBase.generatedQuestions')} aria-expanded={questionsId === chunk.id} onClick={() => openQuestions(chunk)}><HelpCircleIcon /></Button> : null}{canEdit ? <><Button type="button" onClick={() => { setParentContextId(null); closeQuestions(); setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</> : null}</span> : null}</div>
       {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[120px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <DocumentMarkdownBody markdown={chunk.content || '—'} labels={MERMAID_VIEWER_COPY[locale]} className="wk-document-chunk-content markdown-content m-0 min-w-0 text-[13px] text-ink [overflow-wrap:anywhere]" />}
       {history?.id === chunk.id ? <div className="mt-3 border-t border-line-soft pt-3"><strong className="text-[12px]">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="m-0 mt-2 list-decimal pl-5 text-[12px]">{history?.rows.map((row) => <li key={row.revision} className="mb-2"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="ml-2" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
       {parentContextId === chunk.id && parentChunkId(chunk) ? <div className="wk-chunk-parent-context mt-3 border-t border-line-soft pt-3" aria-label={t('knowledgeBase.viewParentContext')}>
@@ -443,6 +572,40 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
           ? <div className="chunk-popup-state" role="status"><Status>{t('common.loading')}</Status></div>
           : <DocumentMarkdownBody markdown={parentContextCache.get(parentChunkId(chunk)!) || ''} labels={MERMAID_VIEWER_COPY[locale]} className="wk-chunk-parent-context-body markdown-content m-0 min-w-0 max-h-[480px] overflow-auto text-[13px] text-muted [overflow-wrap:anywhere]" />}
       </div> : null}
+      {questionsId === chunk.id ? (() => { const rows = generatedQuestions(chunk); return <div className="wk-chunk-questions mt-3 border-t border-line-soft pt-3" aria-label={t('knowledgeBase.generatedQuestions')}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] font-semibold"><span className="text-muted"><HelpCircleIcon /></span>{t('knowledgeBase.generatedQuestions')}<span className="font-normal text-muted">{rows.length}</span>{hasStaleGeneratedQuestions(chunk) ? <span className="font-normal text-muted">{t('knowledgeBase.staleGeneratedQuestions')}</span> : null}</div>
+          {canEdit ? <span className="flex flex-wrap gap-1">
+            <Button type="button" variant="text" title={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} onClick={() => { setQuestionComposerId(chunk.id); setQuestionDraft(''); setEditingQuestion(null); setConfirmingDelete(null); }}>＋</Button>
+            <Button type="button" variant="text" title={t('knowledgeBase.regenerateQuestions')} aria-label={t('knowledgeBase.regenerateQuestions')} loading={regeneratingQuestions === chunk.id} onClick={() => void regenerateQuestions(chunk)}>↻</Button>
+          </span> : null}
+        </div>
+        {canEdit && questionComposerId === chunk.id ? <div className="question-composer mb-2 flex items-center gap-1">
+          <input value={questionDraft} placeholder={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[13px]" onChange={(event) => setQuestionDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void addQuestion(chunk); }} />
+          <Button type="button" variant="text" title={t('common.cancel')} aria-label={t('common.cancel')} disabled={savingQuestionComposer === chunk.id} onClick={() => { setQuestionComposerId(null); setQuestionDraft(''); }}>×</Button>
+          <Button type="button" loading={savingQuestionComposer === chunk.id} disabled={!questionDraft.trim()} onClick={() => void addQuestion(chunk)}>{t('common.confirm')}</Button>
+        </div> : null}
+        {rows.length ? <ul className="questions-list m-0 flex list-none flex-col gap-2 p-0">
+          {rows.map((question) => <li key={question.id} className="question-item flex items-start gap-2 text-[13px]">
+            <span className="shrink-0 text-muted"><HelpCircleIcon /></span>
+            {editingQuestion?.chunkId === chunk.id && editingQuestion.questionId === question.id ? <span className="flex min-w-0 flex-1 items-center gap-1">
+              <input value={questionEditDraft} aria-label={t('common.edit')} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[13px]" onChange={(event) => setQuestionEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void saveQuestionEdit(chunk, question); }} />
+              <Button type="button" variant="text" onClick={() => { setEditingQuestion(null); setQuestionEditDraft(''); }}>{t('common.cancel')}</Button>
+              <Button type="button" loading={savingQuestionKey === `${chunk.id}:${question.id}`} onClick={() => void saveQuestionEdit(chunk, question)}>{t('common.save')}</Button>
+            </span> : confirmingDelete?.chunkId === chunk.id && confirmingDelete.questionId === question.id ? <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              <span className="min-w-0 flex-1 text-muted">{t('knowledgeBase.confirmDeleteQuestion')}</span>
+              <Button type="button" variant="text" onClick={() => setConfirmingDelete(null)}>{t('common.cancel')}</Button>
+              <Button type="button" loading={deletingQuestion?.chunkId === chunk.id && deletingQuestion.questionId === question.id} onClick={() => void deleteQuestion(chunk, question)}>{t('common.confirmDelete')}</Button>
+            </span> : <>
+              <span className="question-text min-w-0 flex-1">{question.question}</span>
+              {canEdit && !question.id.startsWith('legacy-') ? <span className="question-actions flex shrink-0 gap-1">
+                <Button type="button" variant="text" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => { setEditingQuestion({ chunkId: chunk.id, questionId: question.id }); setQuestionEditDraft(question.question); setConfirmingDelete(null); }}>{t('common.edit')}</Button>
+                <Button type="button" variant="text" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => { setConfirmingDelete({ chunkId: chunk.id, questionId: question.id }); setEditingQuestion(null); }}>{t('common.delete')}</Button>
+              </span> : null}
+            </>}
+          </li>)}
+        </ul> : questionComposerId !== chunk.id ? <div className="questions-empty flex items-center gap-2 text-[13px] text-muted">{t('knowledgeBase.noGeneratedQuestions')}</div> : null}
+      </div>; })() : null}
     </article>)}</div></> : null}
     {/* Vue renders the chunk pagination for both merged and chunks views
         (viewMode merged || chunks), so 全文 can advance past page one, and
@@ -577,6 +740,65 @@ function GitBranchIcon() {
 function parentChunkId(chunk: KnowledgeChunk): string | null {
   const value = chunk.parent_chunk_id;
   return typeof value === 'string' && value ? value : null;
+}
+
+function HelpCircleIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>;
+}
+
+/** Vue getChunkMetadata: chunk metadata arrives either as a JSON string or an object. */
+function chunkMetadata(chunk: KnowledgeChunk): Record<string, unknown> {
+  const raw = chunk.metadata;
+  if (typeof raw === 'string') {
+    try { const parsed = JSON.parse(raw || '{}'); return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}; } catch { return {}; }
+  }
+  return typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+}
+
+/** Vue getGeneratedQuestions: metadata.generated_questions with legacy string
+ * entries mapped onto legacy-{index} ids that can never be edited or deleted. */
+function generatedQuestions(chunk: KnowledgeChunk): KnowledgeGeneratedQuestion[] {
+  const list = chunkMetadata(chunk).generated_questions;
+  if (!Array.isArray(list)) return [];
+  return list.map((item, index) => {
+    if (typeof item === 'string') return { id: `legacy-${index}`, question: item };
+    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+      const row = item as { id?: unknown; question?: unknown; content_revision?: unknown };
+      return {
+        id: typeof row.id === 'string' && row.id ? row.id : `legacy-${index}`,
+        question: typeof row.question === 'string' ? row.question : '',
+        ...(typeof row.content_revision === 'number' ? { content_revision: row.content_revision } : {}),
+      };
+    }
+    return { id: `legacy-${index}`, question: '' };
+  });
+}
+
+/** Vue hasStaleGeneratedQuestions: a question pinned to an older content_revision
+ * than the chunk revision (falling back to metadata.generated_questions_revision). */
+function hasStaleGeneratedQuestions(chunk: KnowledgeChunk): boolean {
+  const questions = generatedQuestions(chunk);
+  if (!questions.length) return false;
+  const metadata = chunkMetadata(chunk);
+  const fallbackRevision = typeof metadata.generated_questions_revision === 'number' ? metadata.generated_questions_revision : 0;
+  const currentRevision = typeof chunk.content_revision === 'number' ? chunk.content_revision : 0;
+  return questions.some((question) => (typeof question.content_revision === 'number' ? question.content_revision : fallbackRevision) !== currentRevision);
+}
+
+/** Vue keeps the metadata kind: string chunks get a re-serialized string back. */
+function writeChunkMetadata(chunk: KnowledgeChunk, metadata: Record<string, unknown>): KnowledgeChunk {
+  return { ...chunk, metadata: typeof chunk.metadata === 'string' ? JSON.stringify(metadata) : metadata };
+}
+
+/** Vue upsertChunkGeneratedQuestion: upsert onto the raw generated_questions array. */
+function upsertLocalQuestion(chunk: KnowledgeChunk, question: KnowledgeGeneratedQuestion): KnowledgeChunk {
+  const metadata = chunkMetadata(chunk);
+  const rows = Array.isArray(metadata.generated_questions) ? [...metadata.generated_questions] : [];
+  const index = rows.findIndex((row) => typeof row === 'object' && row !== null && (row as { id?: unknown }).id === question.id);
+  if (index >= 0) rows[index] = question;
+  else rows.push(question);
+  metadata.generated_questions = rows;
+  return writeChunkMetadata(chunk, metadata);
 }
 
 function MetadataEditor({ editing, rows, saving, canEdit, onStart, onChange, onCancel, onSave }: {

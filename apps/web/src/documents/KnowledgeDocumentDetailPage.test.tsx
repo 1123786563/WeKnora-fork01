@@ -886,3 +886,206 @@ test('switching documents closes the parent panel but keeps the parent cache', a
   assert.ok(body().querySelector('.wk-chunk-parent-context')?.querySelector('h1'), 'the cached parent content renders after the switch');
   assert.deepEqual(getCalls, ['parent-1'], 'the parent cache survives the document switch');
 });
+
+// ─── R471/A3 — generated questions (Vue doc-content questions popup, L1911-2010) ──
+// Vue contract: a help-circle entry (title=generatedQuestions) renders when
+// questions.length > 0 || canEditContent; the panel shows the count, the
+// stale hint (a question whose content_revision differs from the chunk
+// revision), an add composer + regenerate action for editors, inline row
+// edit/save, popconfirm delete gated to !legacy- ids, and the regenerate
+// replacement writes generated_questions_revision. Vue canEditContent =
+// canEditKB === true || admin (React: canMutateDocument gate).
+
+const QUESTION_ROWS = [
+  { id: 'chunk-1', content: 'Chunk body', content_revision: 3, is_enabled: true, metadata: { generated_questions: [
+    { id: 'q1', question: 'Current question?', content_revision: 3 },
+    { id: 'q2', question: 'Stale question?', content_revision: 1 },
+  ] } },
+  { id: 'chunk-2', content: 'Empty chunk', content_revision: 1, is_enabled: true },
+];
+
+function questionClient(chunkRows: Array<Record<string, unknown>>, role = 'contributor') {
+  // The viewer fixture must not own the KB (computeKBPermissions would then
+  // grant canContribute like the parent-context viewer test's 'owner-1').
+  const knowledgeBaseOwnerId = role === 'viewer' ? 'owner-1' : 'user-1';
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }), role, knowledgeBaseOwnerId, chunkRows);
+  const documents = (client as any).knowledgeBases.documents;
+  documents.getChunkById = async (id: string) => ({ id, content: 'Parent body' });
+  documents.upsertGeneratedQuestion = async () => ({ id: 'q-saved', question: 'Saved', content_revision: 3 });
+  documents.deleteGeneratedQuestion = async () => undefined;
+  documents.regenerateGeneratedQuestions = async () => [{ id: 'r1', question: 'Regenerated?', content_revision: 3 }];
+  return client;
+}
+
+function questionEntry(scope: ParentNode): HTMLButtonElement | undefined {
+  return Array.from(scope.querySelectorAll('button'))
+    .find((button) => button.getAttribute('title') === '辅助召回问题' || button.getAttribute('aria-label') === '辅助召回问题') as HTMLButtonElement | undefined;
+}
+
+test('question entry follows the Vue gate and the panel renders count, stale hint, and rows for viewers', async () => {
+  const container = await mountDetail(questionClient(QUESTION_ROWS, 'viewer'));
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+
+  assert.ok(questionEntry(body().querySelector('[data-chunk-id="chunk-1"]')!), 'chunks with questions expose the entry even to viewers');
+  assert.equal(questionEntry(body().querySelector('[data-chunk-id="chunk-2"]')!), undefined, 'a questionless chunk hides the entry when the viewer cannot edit');
+  assert.equal(Array.from(body().querySelectorAll('button')).some((button) => button.getAttribute('title') === '添加辅助召回问题'), false, 'viewers get no add action like Vue canEditContent');
+
+  await act(async () => { questionEntry(body()!)!.click(); });
+  const panel = () => body().querySelector<HTMLElement>('.wk-chunk-questions');
+  assert.ok(panel(), 'clicking the entry expands the questions panel');
+  const text = panel()!.textContent || '';
+  assert.ok(text.includes('Current question?') && text.includes('Stale question?'), 'the metadata questions render');
+  assert.ok(text.includes('问题基于编辑前内容生成'), 'a question older than the chunk revision surfaces the Vue stale hint');
+  assert.equal(Array.from(panel()!.querySelectorAll('button')).length, 0, 'viewers see no edit/delete/regenerate affordances');
+
+  await act(async () => { questionEntry(body()!)!.click(); });
+  assert.equal(body().querySelector('.wk-chunk-questions'), null, 'clicking the entry again closes the panel like the Vue popup trigger');
+});
+
+test('legacy string questions render but hide the Vue edit/delete affordances', async () => {
+  const legacyRows = [
+    { id: 'chunk-1', content: 'Chunk body', content_revision: 3, is_enabled: true, metadata: { generated_questions: ['Legacy string question?'] } },
+  ];
+  const container = await mountDetail(questionClient(legacyRows));
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { questionEntry(body()!)!.click(); });
+  const panel = () => body().querySelector<HTMLElement>('.wk-chunk-questions');
+  assert.ok(panel()!.textContent?.includes('Legacy string question?'), 'legacy string-array metadata maps onto displayable questions');
+  assert.equal(Array.from(panel()!.querySelectorAll('button')).some((button) => button.textContent === '删除'), false, 'legacy-* questions cannot be deleted like Vue !startsWith(legacy-)');
+});
+
+test('an editor adds a question through the Vue composer contract', async () => {
+  const upserts: Array<unknown[]> = [];
+  const client = questionClient(QUESTION_ROWS);
+  (client as any).knowledgeBases.documents.upsertGeneratedQuestion = async (chunkId: string, question: string, questionId?: string) => {
+    upserts.push([chunkId, question, questionId]);
+    return { id: 'q-new', question, content_revision: 3 };
+  };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { questionEntry(body()!)!.click(); });
+
+  await act(async () => { (Array.from(body().querySelectorAll('button')).find((button) => button.getAttribute('title') === '添加辅助召回问题') as HTMLButtonElement).click(); });
+  const input = body().querySelector<HTMLInputElement>('input[placeholder="添加辅助召回问题"]');
+  assert.ok(input, 'the composer opens with the addGeneratedQuestion placeholder');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(input!.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')?.set?.call(input!, 'Brand new question?');
+    input!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const submit = Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '确认') as HTMLButtonElement;
+  assert.ok(submit!.disabled === false, 'a non-empty draft enables the add action');
+  await act(async () => { submit!.click(); });
+  await act(async () => {});
+
+  assert.deepEqual(upserts, [['chunk-1', 'Brand new question?', undefined]], 'add sends the question without a question id');
+  assert.ok(body().querySelector('.wk-chunk-questions')?.textContent?.includes('Brand new question?'), 'the saved question joins the local list from the response data');
+  assert.equal(body().querySelector('input[placeholder="添加辅助召回问题"]'), null, 'the composer closes after a successful add');
+  assert.ok(body().textContent?.includes('成功'), 'the Vue save toast maps onto a success notice');
+});
+
+test('an editor saves an inline question edit through the upsert endpoint', async () => {
+  const upserts: Array<unknown[]> = [];
+  const client = questionClient(QUESTION_ROWS);
+  (client as any).knowledgeBases.documents.upsertGeneratedQuestion = async (chunkId: string, question: string, questionId?: string) => {
+    upserts.push([chunkId, question, questionId]);
+    return { id: questionId!, question, content_revision: 3 };
+  };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { questionEntry(body()!)!.click(); });
+
+  await act(async () => { (Array.from(body().querySelector('.wk-chunk-questions')!.querySelectorAll('button')).find((button) => button.textContent === '编辑') as HTMLButtonElement).click(); });
+  const editor = body().querySelector<HTMLInputElement>('.wk-chunk-questions input');
+  assert.ok(editor, 'the inline editor opens for the question row');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(editor!.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')?.set?.call(editor!, 'Edited question?');
+    editor!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => { (Array.from(body().querySelector('.wk-chunk-questions')!.querySelectorAll('button')).find((button) => button.textContent === '保存') as HTMLButtonElement).click(); });
+  await act(async () => {});
+
+  assert.deepEqual(upserts, [['chunk-1', 'Edited question?', 'q1']], 'edit sends the existing question id for the upsert');
+  const text = body().querySelector('.wk-chunk-questions')!.textContent || '';
+  assert.ok(text.includes('Edited question?') && !text.includes('Current question?'), 'the local row is replaced with the saved question');
+  assert.equal(body().querySelector('.wk-chunk-questions input'), null, 'the inline editor closes after save');
+});
+
+test('delete confirms inline and removes the row through the questions endpoint', async () => {
+  const deletes: Array<unknown[]> = [];
+  const client = questionClient(QUESTION_ROWS);
+  (client as any).knowledgeBases.documents.deleteGeneratedQuestion = async (chunkId: string, questionId: string) => {
+    deletes.push([chunkId, questionId]);
+  };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { questionEntry(body()!)!.click(); });
+
+  await act(async () => { (Array.from(body().querySelector('.wk-chunk-questions')!.querySelectorAll('button')).find((button) => button.textContent === '删除') as HTMLButtonElement).click(); });
+  const panel = () => body().querySelector('.wk-chunk-questions')!;
+  assert.ok(panel().textContent?.includes('确定要删除这个问题吗'), 'the Vue popconfirm copy surfaces before the delete');
+  await act(async () => { (Array.from(panel().querySelectorAll('button')).find((button) => button.textContent === '确认删除') as HTMLButtonElement).click(); });
+  await act(async () => {});
+
+  assert.deepEqual(deletes, [['chunk-1', 'q1']], 'delete targets the question id on the by-id questions endpoint');
+  const text = panel().textContent || '';
+  assert.ok(!text.includes('Current question?') && text.includes('Stale question?'), 'only the deleted row leaves the local list');
+});
+
+test('regenerate replaces the questions and clears the stale hint like Vue', async () => {
+  const regenerations: string[] = [];
+  const client = questionClient(QUESTION_ROWS);
+  (client as any).knowledgeBases.documents.regenerateGeneratedQuestions = async (chunkId: string) => {
+    regenerations.push(chunkId);
+    return [{ id: 'r1', question: 'Regenerated?', content_revision: 3 }];
+  };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { questionEntry(body()!)!.click(); });
+  assert.ok(body().querySelector('.wk-chunk-questions')?.textContent?.includes('问题基于编辑前内容生成'));
+
+  await act(async () => { (Array.from(body().querySelectorAll('button')).find((button) => button.getAttribute('title') === '重新生成问题') as HTMLButtonElement).click(); });
+  await act(async () => {});
+
+  assert.deepEqual(regenerations, ['chunk-1']);
+  const text = body().querySelector('.wk-chunk-questions')!.textContent || '';
+  assert.ok(text.includes('Regenerated?') && !text.includes('Current question?'), 'regenerate swaps the whole list from the response data');
+  assert.ok(!text.includes('问题基于编辑前内容生成'), 'generated_questions_revision resets so the stale hint clears');
+  assert.ok(body().textContent?.includes('辅助召回问题已更新'), 'the questionsRegenerated feedback is surfaced');
+});
+
+test('the questions panel is mutually exclusive with edit, history, and parent context', async () => {
+  const rows = [
+    { id: 'chunk-1', content: 'Chunk body', content_revision: 3, is_enabled: true, parent_chunk_id: 'parent-1', metadata: { generated_questions: [{ id: 'q1', question: 'Current question?', content_revision: 3 }] } },
+  ];
+  const client = questionClient(rows);
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  const chunkRow = () => body().querySelector('[data-chunk-id="chunk-1"]')!;
+  const chunkButton = (label: string) => Array.from(chunkRow().querySelectorAll('button')).find((button) => button.textContent?.includes(label));
+  const panel = () => body().querySelector('.wk-chunk-questions');
+
+  await act(async () => { questionEntry(body()!)!.click(); });
+  assert.ok(panel());
+  await act(async () => { chunkButton('编辑')!.click(); });
+  assert.ok(chunkRow().querySelector('textarea'), 'edit mode opens');
+  assert.equal(panel(), null, 'opening the chunk editor closes the questions panel');
+
+  await act(async () => { questionEntry(body()!)!.click(); });
+  await act(async () => { chunkButton('编辑历史')!.click(); });
+  await act(async () => {});
+  assert.equal(panel(), null, 'opening the chunk history closes the questions panel like the Vue popup mutex');
+
+  await act(async () => { questionEntry(body()!)!.click(); });
+  await act(async () => { parentEntry(body()!)!.click(); });
+  assert.equal(panel(), null, 'opening the parent-context panel closes the questions panel');
+  assert.ok(body().querySelector('.wk-chunk-parent-context'), 'the parent panel opens in its place');
+});
