@@ -96,6 +96,12 @@ export function createDataSourcesApi(request: (input: ClientRequest) => Promise<
     async create(input: Partial<DataSource>): Promise<DataSource> { return parseDataSource(await request({ method: 'POST', path: '/api/v1/datasource', body: input })); },
     async update(id: string, input: Partial<DataSource>): Promise<DataSource> { return parseDataSource(await request({ method: 'PUT', path: path(id), body: input })); },
     async putCredentials(id: string, credentials: Record<string, unknown>): Promise<unknown> { return request({ method: 'PUT', path: path(id, '/credentials'), body: { credentials } }); },
+    async removeCredentials(id: string): Promise<void> {
+      // The backend route takes a field segment and only `credentials` exists
+      // (internal/router/routes_infra.go) — Vue dels the doubled
+      // /credentials/credentials path (frontend/src/api/datasource/index.ts:174).
+      await request({ method: 'DELETE', path: path(id, '/credentials/credentials') });
+    },
     async logs(id: string, limit = 20, offset = 0): Promise<DataSourceSyncLog[]> {
       const value = await request({ method: 'GET', path: path(id, `/logs?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`) });
       const raw = Array.isArray(value) ? value : row(value, 'data source logs').data;

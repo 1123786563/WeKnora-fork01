@@ -202,10 +202,10 @@ func TestSessionDeleteRacesActiveRun(t *testing.T) {
 	runs := service.NewAgentRunService(store)
 	require.NoError(t, runs.DeleteSessionRuns(runTestCtx(), 1, "s1"))
 
-	// Deletion fences the run terminally and removes its durable rows so no
-	// worker can resurrect it; the store answers not-found afterwards.
+	// Deletion fences the run terminally but retains durable rows so late stop
+	// and usage observations can reconcile without resurrecting execution.
 	_, err = store.Get(runTestCtx(), key)
-	require.ErrorIs(t, err, agentruntime.ErrNotFound, "a deleted run leaves no reclaimable row")
+	require.NoError(t, err, "the tombstoned run remains for late stop and usage reconciliation")
 	var slot *string
 	require.NoError(t, db.Raw(
 		"SELECT active_agent_run_id FROM sessions WHERE id = 's1'").Scan(&slot).Error)

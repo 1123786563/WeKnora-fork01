@@ -43,6 +43,11 @@ export interface KnowledgeSpanNode {
   status?: string;
   start_time?: string;
   end_time?: string;
+  // Backend spans (internal/handler/knowledge.go GetKnowledgeSpans) serialize
+  // started_at/finished_at — the fields Vue's nodeStart/nodeEnd read. The
+  // start_time/end_time spellings above stay accepted for older fixtures.
+  started_at?: string;
+  finished_at?: string;
   duration_ms?: number;
   error?: unknown;
   children?: KnowledgeSpanNode[];
@@ -82,7 +87,7 @@ export function shouldGracePollKnowledgeSpans(
   return activity > 0 && now >= activity && now - activity < graceMs;
 }
 
-export type KnowledgeTimelineStepState = 'pending' | 'running' | 'done' | 'failed';
+export type KnowledgeTimelineStepState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 
 export interface KnowledgeTimelineStep {
   stage: KnowledgeProcessingStage;
@@ -93,10 +98,19 @@ export interface KnowledgeTimelineStep {
 function spanStatus(node: KnowledgeSpanNode): KnowledgeTimelineStepState {
   const raw = typeof node.status === 'string' ? node.status.toLowerCase() : '';
   if (/(fail|error|cancel|abort)/.test(raw)) return 'failed';
+  // A skipped stage never executed (e.g. multimodal disabled for the KB);
+  // Vue renders it as knowledgeStages.status.skipped (已跳过), never running.
+  if (raw === 'skipped' || raw === 'skip') return 'skipped';
+  // R474/A3: Vue reads span status verbatim — an explicit 'pending' span
+  // stays pending (drawer row: '—' duration, no status text) even once the
+  // backend has serialized started_at; the timestamp fallback below must
+  // not swallow it into running/进行中.
+  if (raw === 'pending') return 'pending';
   if (/(succe|complet|done|finish|ok)/.test(raw)) return 'done';
   if (raw === 'running' || raw === 'in_progress' || raw === 'started' || raw === 'active') return 'running';
-  if (typeof node.end_time === 'string' && node.end_time !== '') return 'done';
-  if (typeof node.start_time === 'string' && node.start_time !== '') return 'running';
+  // Backend spans carry started_at/finished_at; accept both spellings.
+  if (typeof (node.end_time ?? node.finished_at) === 'string' && (node.end_time ?? node.finished_at) !== '') return 'done';
+  if (typeof (node.start_time ?? node.started_at) === 'string' && (node.start_time ?? node.started_at) !== '') return 'running';
   return 'pending';
 }
 
@@ -133,7 +147,6 @@ export function flattenKnowledgeSpans(root: KnowledgeSpanNode | null | undefined
 export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTimelineStep[] {
   const collected: KnowledgeSpanNode[] = [];
   collectSpans(spans.trace ?? null, collected);
-  const currentStage = normalizeStageToken(spans.current_stage);
   const stageFor = (node: KnowledgeSpanNode): KnowledgeProcessingStage | undefined => {
     const tokens = [node.name, node.stage].map(normalizeStageToken).filter((token) => token !== '');
     for (const stage of knowledgeProcessingStages) {
@@ -145,13 +158,25 @@ export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTime
   const stateFor = (stage: KnowledgeProcessingStage): KnowledgeTimelineStepState => {
     const matches = collected.filter((node) => stageFor(node) === stage);
     if (matches.length === 0) {
-      // No span yet: the backend current_stage marks where parsing is right now.
-      return currentStage === normalizeStageToken(stage) ? 'running' : 'pending';
+      // R474/A3: the Vue stages computed maps a spanless stage onto a plain
+      // pending placeholder regardless of current_stage — the backend cursor
+      // never flips a stage without a span to running, so the same pending
+      // stage renders 等待中, never 进行中.
+      return 'pending';
     }
     const states = matches.map(spanStatus);
     if (states.includes('failed')) return 'failed';
     if (states.includes('running')) return 'running';
-    return states.every((state) => state === 'done') ? 'done' : 'running';
+    // Vue counts done and skipped alike as traversed (currentStageIndex);
+    // a stage whose spans all skipped (multimodal disabled) surfaces as
+    // skipped so the timeline reads 已跳过 instead of 进行中.
+    if (states.every((state) => state === 'done' || state === 'skipped')) {
+      return states.includes('done') ? 'done' : 'skipped';
+    }
+    // R474/A3: an all-pending stage stays pending (Vue renders the span's
+    // own status); the running fallback below is only for ambiguous mixes.
+    if (states.every((state) => state === 'pending')) return 'pending';
+    return 'running';
   };
   return knowledgeProcessingStages.map((stage) => ({
     stage,

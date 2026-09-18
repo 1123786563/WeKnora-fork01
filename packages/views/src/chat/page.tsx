@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, type ChatAttachmentView, type ChatMentionView, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
 import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
+import { splitLiveThinking, type LiveThinkingState } from './live-thinking.ts';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+
+// Re-exported for route hosts on the mapped ./chat/page subpath: the
+// ChatRoutePage transient row strips `<think>` content with the same Vue
+// processStreamChunk split that drives the live deepThink block.
+export { splitLiveThinking };
 
 function mentionMarker(type: ChatMentionView['type']): string {
   switch (type) {
@@ -24,6 +30,9 @@ export interface ChatAgentOption {
   id: string;
   name: string;
   disabled?: boolean;
+  description?: string;
+  is_builtin?: boolean;
+  config?: Record<string, unknown>;
 }
 
 export interface ChatToolApprovalPrompt {
@@ -33,6 +42,10 @@ export interface ChatToolApprovalPrompt {
   decision?: string;
   /** Original tool call arguments, rendered editable in the approval card. */
   arguments?: Record<string, unknown>;
+  /** Unix seconds the approval was requested (SSE tool_approval_required). */
+  requestedAt?: number;
+  /** Approval timeout in seconds; Vue ToolApprovalCard defaults to 600. */
+  timeoutSeconds?: number;
 }
 
 export interface ChatOAuthApprovalPrompt {
@@ -55,6 +68,12 @@ export interface ChatToolCallView {
 export interface ChatStreamPresentation {
   phase: 'idle' | 'streaming' | 'completed' | 'stopped' | 'error';
   thinking: string;
+  /**
+   * Raw accumulated answer content. Vue's main face drives its deepThink
+   * streaming indicator from `<think>` tags in this buffer, not from the SSE
+   * `thinking` field (agent timeline only).
+   */
+  answer?: string;
   references: readonly unknown[];
   toolCalls: readonly ChatToolCallView[];
   artifactsPending?: boolean;
@@ -70,6 +89,12 @@ export interface ChatPageProps {
   selectedSessionId: string | null;
   messages: readonly ChatMessage[];
   draft: string;
+  /**
+   * R466-A2 — Vue prefillQuery focus pulse: bump the number (e.g. 0 → 1) to
+   * focus the composer textarea (Input-field.vue nextTick(textarea.focus)
+   * after consumePrefillQuery fills the draft). 0 keeps the default blur.
+   */
+  composerFocusSignal?: number;
   /** UI locale (chat-copy.ts tables); defaults to the app locale convention. */
   locale?: string;
   loadingSessions?: boolean;
@@ -93,6 +118,11 @@ export interface ChatPageProps {
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
+  /** Chat-readiness models + agent-selector host actions (upstream AgentSelector). */
+  agentModels?: readonly { id: string; type?: string }[];
+  onManageAgents?(): void;
+  onConfigureAgent?(agent: { id: string }, section: string, highlight?: 'summary_model' | 'rerank_model'): void;
+  onAgentNotReady?(agent: { id: string; name: string }, labels: string[]): void;
   /** Empty-state suggested questions for the new-conversation view. */
   starterQuestions?: readonly string[];
   /** True while the agent suggested-questions request is in flight (skeleton chips). */
@@ -102,10 +132,35 @@ export interface ChatPageProps {
   onStarterQuestionClick?(question: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
-  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void>;
+  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
-  onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
+  /**
+   * Steer dispatch. R474-A2: the optional delivery mirrors Vue
+   * handleSteerMsg(query, mentions, delivery) — 'inject' (⌘Enter/Alt+Enter
+   * shortcut) surfaces the message in the running turn immediately, 'after'
+   * (default, plain Enter) queues it as a follow-up.
+   */
+  onSteer?(content: string, mentionedItems?: readonly ChatMentionView[], delivery?: 'after' | 'inject'): Promise<void>;
+  /** R473-A2 — queued steer chips shown by the composer (Vue .steer-queue). */
+  steerQueue?: readonly ChatSteerQueueChip[];
+  /** Vue promote-steer (inject a queued after-message now). */
+  onSteerPromote?(steerId: string): void | Promise<void>;
+  /** Vue remove-steer (cancel one queued message). */
+  onSteerRemove?(steerId: string): void | Promise<void>;
+  /** Vue retry-steer (re-run a failed enqueue). */
+  onSteerRetry?(steerId: string): void | Promise<void>;
+  /**
+   * R471-A1 — Vue canSteer parity (chat/index.vue :canSteer="isAgentStreamSession()"):
+   * only an agent-pipeline session has a loop that accepts a mid-run message.
+   * The presence of onSteer used to stand in for this, but hosts wire a steer
+   * handler unconditionally (its idle branch falls back to a plain send), which
+   * advertised steer capability on quick-answer turns and let the stop button
+   * (`streaming && (!canSteer || !draft)`) never win with a non-empty draft.
+   * Hosts pass the real per-session capability; the Boolean(onSteer) fallback
+   * preserves hosts that never differentiate.
+   */
+  canSteer?: boolean;
   onStopStream?(): void;
   stream?: ChatStreamPresentation;
   onRenameSession?(sessionId: string, title?: string): Promise<void>;
@@ -133,6 +188,9 @@ export interface ChatPageProps {
   onCitationClick?(citationId: string): void;
   /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
   onBookmark?(messageId: string): void | Promise<void>;
+  /** Vue usermsg/botmsg 分叉 entry (A11 phase 4). */
+  onForkMessage?(messageId: string): void;
+  canForkMessage?(messageId: string): boolean;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   terminal?: ChatTerminalView;
@@ -165,12 +223,38 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
   return references;
 }
 
+/*
+ * Vue deepThink.vue live indicator: while the streamed answer holds an open
+ * `<think>` tag the header pulses with chat.thinking「思考中...」 and the
+ * reasoning streams inline (forced open, answer held back); once the tag
+ * closes the block auto-folds under chat.deepThoughtCompleted「已深度思考」.
+ * The SSE `thinking` field itself never renders here — on the Vue main face
+ * it only feeds the agent timeline surface.
+ */
+function LiveThinking({ copy, live }: { copy: ChatCopyTable; live: LiveThinkingState }) {
+  if (!live.showThink) return null;
+  if (live.thinking) {
+    return <section className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copy.thinkingAlt}>
+      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
+        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+        {copy.thinking}
+      </p>
+      {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+    </section>;
+  }
+  return <details className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
+    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copy.deepThoughtCompleted}</summary>
+    {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+  </details>;
+}
+
 function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
+  const live = splitLiveThinking(stream.answer ?? '');
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
   return <section aria-label={copy.streamStatus} className="wk-chat-live-response mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px] text-[13px]">
     <p role="status" className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.streamStatus}: {stream.phase}</p>
     {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.artifactsPending}</p> : null}
-    {stream.phase === 'streaming' && stream.thinking ? <details open className="my-[6px]"><summary className="cursor-pointer text-[rgba(0,0,0,0.6)]">{copy.thinkingAlt}</summary><p className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{stream.thinking}</p></details> : null}
+    {stream.phase === 'streaming' ? <LiveThinking copy={copy} live={live} /> : null}
     {stream.toolCalls.length > 0 ? <div><h2 className="mt-[8px] mb-[4px] text-[13px]">{copy.toolCallsTitle}</h2><ul className="wk-list m-0 list-none p-0">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="text-[rgba(0,0,0,0.4)]">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
   </section>;
 }
@@ -195,7 +279,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
       approval={approval}
       busy={busy !== null}
       onResolve={props.onResolveToolApproval
-        ? (pendingId, decision, modifiedArgs) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs))
+        ? (pendingId, decision, modifiedArgs, reason) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs, reason))
         : undefined}
       copy={props.copy}
     />)}
@@ -207,9 +291,12 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
+function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
   copy: ChatCopyTable;
-  onSteer: (content: string, mentionedItems: readonly ChatMentionView[]) => Promise<void>;
+  onSteer: (content: string, mentionedItems: readonly ChatMentionView[], delivery?: 'after' | 'inject') => Promise<void>;
+  /** R474-A2 — the ⌘Enter/Alt+Enter inject shortcut promotes the first queued chip when the steer draft is empty (Vue injectCurrentInput). */
+  steerQueue?: readonly ChatSteerQueueChip[];
+  onSteerPromote?(steerId: string): void | Promise<void>;
   mentionOptions?: readonly ChatMentionView[];
   mentionedItems?: readonly ChatMentionView[];
   attachments?: readonly ChatAttachmentView[];
@@ -224,8 +311,8 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
   const [mentionQuery, setMentionQuery] = useState('');
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(event?: React.FormEvent<HTMLFormElement>, delivery: 'after' | 'inject' = 'after'): Promise<void> {
+    event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
     if (attachments.length > 0) {
@@ -233,7 +320,27 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
       return;
     }
     setBusy(true); setError(null);
-    try { await onSteer(content, mentionedItems); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : copy.sendFailed); } finally { setBusy(false); }
+    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : copy.sendFailed); } finally { setBusy(false); }
+  }
+
+  /*
+   * R474-A2 — Vue Input-field.vue onKeydown + injectCurrentInput: plain Enter
+   * queues the follow-up ('after'); ⌘Enter/Alt+Enter injects the typed draft
+   * ('inject'), or — with an empty draft — promotes the first queued chip.
+   */
+  function handleDraftKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (busy || !shouldSubmitFromKeyboard(event, true)) return;
+    event.preventDefault();
+    if (isSteerInjectShortcut(event, true)) {
+      const action = resolveSteerInjectAction({ draft, steerQueue });
+      if (action?.kind === 'promote') {
+        void onSteerPromote?.(action.steerId);
+        return;
+      }
+      void submit(undefined, 'inject');
+      return;
+    }
+    void submit(undefined, 'after');
   }
 
   const availableMentions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
@@ -281,7 +388,7 @@ function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = []
   return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
     <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
     {mentionedItems.length > 0 ? <ul className="m-0 flex flex-wrap gap-[6px] p-0" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="inline-flex items-center gap-[5px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[7px] py-[3px] text-[12px] text-[rgba(0,0,0,0.65)]"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="border-0 bg-transparent p-0" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
-    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
     <div className="relative flex items-center gap-[6px]"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[8px] py-[4px] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="absolute bottom-[34px] left-0 z-20 w-[260px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[5px] text-[12px]" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="block w-full rounded-[6px] border-0 bg-transparent px-[8px] py-[6px] text-left text-[12px] hover:bg-[#f3f3f3]" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="m-0 px-[8px] py-[6px] text-[12px] text-[rgba(0,0,0,0.45)]">{copy.mentionNoAvailable}</p>}</div> : null}</div>
     {error ? <p role="alert">{error}</p> : null}
     <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
@@ -338,6 +445,16 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   const renameSubmittingRef = useRef(false);
   const renameDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const renameTriggerRef = useRef<HTMLElement | null>(null);
+  // The rename-focus effect must run before the !session bail-out: when the
+  // selected session id points at a list entry that has not loaded yet (the
+  // immediate post-send jump), the first render returns null after the refs
+  // and the next render mounts this effect — React aborts the tree with
+  // "Rendered more hooks than during the previous render".
+  useEffect(() => {
+    if (!renameOpen) return;
+    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
+    return () => window.cancelAnimationFrame(frame);
+  }, [renameOpen]);
   if (!session) return null;
   const pinned = session.is_pinned === true;
   const openRename = () => {
@@ -351,11 +468,6 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
     setRenameError(null);
     window.setTimeout(() => renameTriggerRef.current?.focus(), 0);
   };
-  useEffect(() => {
-    if (!renameOpen) return;
-    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
-    return () => window.cancelAnimationFrame(frame);
-  }, [renameOpen]);
   const submitRename = async () => {
     if (renameSubmittingRef.current || !props.onRenameSession) return;
     const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);
@@ -483,6 +595,12 @@ export function ChatPage(props: ChatPageProps) {
   })();
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
+  // R471-A1: Vue isAgentStreamSession() parity — see the canSteer prop doc.
+  const canSteer = props.canSteer ?? Boolean(props.onSteer);
+  // Vue parity: once deepThink streams the typing dots are replaced by the
+  // live thinking block (shouldShowGlobalTypingIndicator turns false when the
+  // assistant message exists).
+  const liveThinking = splitLiveThinking(props.stream?.answer ?? '');
 
   /* main.wk-chat-page utilities carry the chat.css parity values; the
      retained guard block in chat.css keeps beating the legacy styles.css
@@ -594,22 +712,30 @@ export function ChatPage(props: ChatPageProps) {
           hasMore={props.hasMoreMessages}
           onLoadOlder={props.onLoadOlderMessages}
           sessionId={props.selectedSessionId}
-          typingIndicator={streaming && !props.stream!.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
+          typingIndicator={streaming && !props.stream!.thinking && !liveThinking.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
           suggestions={props.suggestions}
           onSuggestionClick={props.onSuggestionClick}
           onRefreshSuggestions={props.onRefreshSuggestions}
           onDismissSuggestions={props.onDismissSuggestions}
           onCitationClick={activateCitation}
           onBookmark={props.onBookmark}
+          onForkMessage={props.onForkMessage}
+          canForkMessage={props.canForkMessage}
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
         />}
-        {/* A follow-up queue only makes sense while a turn is actually running;
-            when idle the main composer handles the message (a steer would 409). */}
-        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {/* A follow-up queue only makes sense while an agent-pipeline turn is
+            actually running (Vue canSteer); when idle the main composer handles
+            the message (a steer would 409), and a quick-answer turn has no
+            steer affordance at all — stop is the only action. */}
+        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {/* Vue isReplying (Input-field.vue) flips true when a turn is
+            dispatched, not when the first SSE event arrives; the composer's
+            stop swap must cover the pre-stream send window too. */}
         <ChatComposer
           copy={copy}
           draft={props.draft}
+          focusSignal={props.composerFocusSignal}
           disabled={sending || pending !== undefined || streaming}
           onDraftChange={props.onDraftChange}
           onSubmit={(submission) => void send(submission)}
@@ -627,15 +753,23 @@ export function ChatPage(props: ChatPageProps) {
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}
+          agentModels={props.agentModels}
+          onManageAgents={props.onManageAgents}
+          onConfigureAgent={props.onConfigureAgent}
+          onAgentNotReady={props.onAgentNotReady}
           modelLabel={props.modelLabel}
           modelContext={props.modelContext}
           modelContextIsDefault={props.modelContextIsDefault}
           modelOptions={props.modelOptions}
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
-          streaming={streaming}
-          canSteer={Boolean(props.onSteer)}
+          streaming={streaming || sending}
+          canSteer={canSteer}
           onStop={props.onStopStream}
+          steerQueue={props.steerQueue}
+          onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
+          onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
+          onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
         />
       </div>
       {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>

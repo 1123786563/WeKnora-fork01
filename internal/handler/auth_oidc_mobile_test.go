@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,11 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 const mobileOIDCTestRedirect = "weknora://oidc"
@@ -24,6 +30,16 @@ type stubOIDCMobileUserService struct {
 	authorizationURL  func(context.Context, string) (*types.OIDCAuthURLResponse, error)
 	loginWithOIDC     func(context.Context, string, string, types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
 	loginWithOIDCPKCE func(context.Context, string, string, types.TenantProvisioningMode, string) (*types.OIDCCallbackResponse, error)
+}
+
+func (s *stubOIDCMobileUserService) GetUserByID(context.Context, string) (*types.User, error) {
+	return &types.User{ID: "u-mobile", TenantID: 1}, nil
+}
+func (s *stubOIDCMobileUserService) GenerateTokens(context.Context, *types.User) (string, string, error) {
+	return "access", "refresh", nil
+}
+func (s *stubOIDCMobileUserService) BuildLoginMemberships(context.Context, *types.User, *types.Tenant) []types.Membership {
+	return []types.Membership{}
 }
 
 func (s *stubOIDCMobileUserService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
@@ -61,20 +77,25 @@ func mobileOIDCTestRouter(h *AuthHandler) *gin.Engine {
 	r.GET("/auth/oidc/url", h.GetOIDCAuthorizationURL)
 	r.GET("/auth/oidc/callback", h.OIDCRedirectCallback)
 	r.POST("/auth/oidc/exchange", h.OIDCExchange)
+	r.POST("/auth/mobile/exchange", h.MobileOIDCExchange)
 	return r
 }
 
 func TestOIDCMobileCallbackReturnsOneTimeCodeWithoutBearerTokens(t *testing.T) {
 	state := mobileOIDCTestState(t)
-	var exchanged bool
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repository.MobileExchange{}))
+	store := repository.NewMobileExchangeStore(db)
 	service := &stubOIDCMobileUserService{
 		authorizationURL: func(context.Context, string) (*types.OIDCAuthURLResponse, error) { return nil, nil },
 		loginWithOIDC: func(context.Context, string, string, types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error) {
-			exchanged = true
-			return &types.OIDCCallbackResponse{Success: true, Token: "access", RefreshToken: "refresh"}, nil
+			return &types.OIDCCallbackResponse{Success: true, User: &types.User{ID: "u-mobile"}}, nil
 		},
 	}
-	r := mobileOIDCTestRouter(NewAuthHandler(&config.Config{}, service, nil, nil, nil))
+	h := NewAuthHandler(&config.Config{}, service, nil, nil, nil)
+	h.SetMobileExchangeStore(store)
+	r := mobileOIDCTestRouter(h)
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?code=provider-code&state="+url.QueryEscape(state), nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -89,8 +110,8 @@ func TestOIDCMobileCallbackReturnsOneTimeCodeWithoutBearerTokens(t *testing.T) {
 	if location.Scheme+"://"+location.Host+location.Path != mobileOIDCTestRedirect {
 		t.Fatalf("Location = %q, want %q", location.String(), mobileOIDCTestRedirect)
 	}
-	if got := location.Query().Get("oidc_code"); got != "provider-code" {
-		t.Errorf("oidc_code = %q, want provider-code", got)
+	if got := location.Query().Get("code"); got == "" || got == "provider-code" {
+		t.Errorf("code = %q, want a server-issued one-time code", got)
 	}
 	if location.Query().Get("state") != state {
 		t.Errorf("state was not returned unchanged")
@@ -98,9 +119,70 @@ func TestOIDCMobileCallbackReturnsOneTimeCodeWithoutBearerTokens(t *testing.T) {
 	if strings.Contains(location.String(), "access") || strings.Contains(location.String(), "refresh") || location.Query().Get("oidc_result") != "" {
 		t.Errorf("Location leaked a bearer payload: %q", location.String())
 	}
-	if exchanged {
-		t.Fatal("mobile callback must defer token exchange to /auth/oidc/exchange")
+	if strings.Contains(location.String(), "provider-code") {
+		t.Fatal("provider authorization code must not cross the native redirect")
 	}
+}
+
+func TestOIDCMobileStartCallbackExchangeIsOneTime(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repository.MobileExchange{}))
+	verifier := "mobile-verifier-value-abcdefghijklmnopqrstuvwxyz123456"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	// The provider-issued state must already be a signed state: the handler's
+	// mobile decoration (decorateOIDCMobileAuthorization) verifies the
+	// provider state before re-signing it with the mobile handoff fields, so
+	// a bare string is rejected (mirrors mobileOIDCTestState / the signed-
+	// state contract in TestOIDCMobileExchangeUsesSignedStateAndReturnsSessionJSON).
+	providerState, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
+		Nonce: "provider-nonce", RedirectURI: "https://api.example.test/api/v1/auth/oidc/callback",
+		IssuedAt: time.Now().Unix(),
+	})
+	require.NoError(t, err)
+	service := &stubOIDCMobileUserService{
+		authorizationURL: func(context.Context, string) (*types.OIDCAuthURLResponse, error) {
+			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://idp.example/authorize", State: providerState, Nonce: "provider-nonce"}, nil
+		},
+		loginWithOIDC: func(_ context.Context, code, redirect string, _ types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error) {
+			if code != "provider-code" || redirect != "https://api.example.test/api/v1/auth/oidc/callback" {
+				t.Fatalf("provider callback args = %q %q", code, redirect)
+			}
+			return &types.OIDCCallbackResponse{Success: true, User: &types.User{ID: "u-mobile"}}, nil
+		},
+	}
+	h := NewAuthHandler(&config.Config{}, service, nil, nil, nil)
+	h.SetMobileExchangeStore(repository.NewMobileExchangeStore(db))
+	r := mobileOIDCTestRouter(h)
+	start := httptest.NewRequest(http.MethodGet, "/auth/oidc/url?redirect_uri=https%3A%2F%2Fapi.example.test%2Fapi%2Fv1%2Fauth%2Foidc%2Fcallback&frontend_redirect_uri=weknora%3A%2F%2Foidc&code_challenge="+url.QueryEscape(challenge), nil)
+	startW := httptest.NewRecorder()
+	r.ServeHTTP(startW, start)
+	require.Equal(t, http.StatusOK, startW.Code)
+	var authURL types.OIDCAuthURLResponse
+	require.NoError(t, json.Unmarshal(startW.Body.Bytes(), &authURL))
+	authState := authURL.State
+	provider := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?code=provider-code&state="+url.QueryEscape(authState), nil)
+	providerW := httptest.NewRecorder()
+	r.ServeHTTP(providerW, provider)
+	require.Equal(t, http.StatusFound, providerW.Code)
+	location, err := url.Parse(providerW.Header().Get("Location"))
+	require.NoError(t, err)
+	require.Equal(t, "weknora://oidc", location.Scheme+"://"+location.Host+location.Path)
+	code := location.Query().Get("code")
+	require.NotEmpty(t, code)
+	body, _ := json.Marshal(map[string]string{"code": code, "state": authState, "redirect_uri": "weknora://oidc", "code_verifier": verifier})
+	exchange := httptest.NewRequest(http.MethodPost, "/auth/mobile/exchange", strings.NewReader(string(body)))
+	exchange.Header.Set("Content-Type", "application/json")
+	exchangeW := httptest.NewRecorder()
+	r.ServeHTTP(exchangeW, exchange)
+	require.Equal(t, http.StatusOK, exchangeW.Code)
+	require.Contains(t, exchangeW.Body.String(), `"token":"access"`)
+	replay := httptest.NewRequest(http.MethodPost, "/auth/mobile/exchange", strings.NewReader(string(body)))
+	replay.Header.Set("Content-Type", "application/json")
+	replayW := httptest.NewRecorder()
+	r.ServeHTTP(replayW, replay)
+	require.Equal(t, http.StatusUnauthorized, replayW.Code)
 }
 
 func TestOIDCMobileCallbackReturnsProviderCancellationToAllowlistedDeepLink(t *testing.T) {

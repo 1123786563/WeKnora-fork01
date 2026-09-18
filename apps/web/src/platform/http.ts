@@ -7,7 +7,10 @@ import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 // failure) rejects with the localized error.networkError copy instead of the
 // raw fetch error, on every page.
 function activeLocale(): Locale {
-  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('locale') : null;
+  const storage = typeof localStorage !== 'undefined'
+    ? localStorage
+    : (typeof window !== 'undefined' ? window.localStorage : undefined);
+  const stored = storage?.getItem('locale') ?? null;
   if (stored && isLocale(stored)) return stored;
   return 'zh-CN';
 }
@@ -26,7 +29,7 @@ export interface BrowserTransportOptions {
   fetcher?: FetchLike;
   credential?: Credential | (() => Credential);
   tenantId?: string | null | (() => string | null);
-  locale?: string;
+  locale?: string | (() => string);
   requestId?: () => string;
   shouldRefresh?: (request: HttpRequest) => boolean;
   refresh?: () => Promise<void>;
@@ -95,7 +98,11 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
       if (credential.sessionSig) headers['x-embed-session'] = credential.sessionSig;
       if (credential.visitorId) headers['x-embed-visitor'] = credential.visitorId;
     }
-    if (options.locale) headers['accept-language'] = options.locale;
+    // Vue request.ts:86 sends Accept-Language: getCurrentLanguage() on every
+    // call — the live i18n locale (localStorage 'locale' || zh-CN), never the
+    // browser language. Default the same way; a reactive provider wins.
+    const locale = typeof options.locale === 'function' ? options.locale() : (options.locale ?? activeLocale());
+    headers['accept-language'] = locale;
     headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();
     return { ...request, headers };
   }

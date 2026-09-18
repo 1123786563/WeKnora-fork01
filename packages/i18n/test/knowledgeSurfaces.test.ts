@@ -67,10 +67,11 @@ const documentsPageKeys = [
   'knowledgeBase.documents.url', 'knowledgeBase.documents.manualTitle', 'knowledgeBase.documents.manualContent',
   'knowledgeBase.documents.uploadFile', 'knowledgeBase.documents.importUrl', 'knowledgeBase.documents.createDocument',
   'knowledgeBase.documents.cancel', 'knowledgeBase.documents.statusUnknown', 'knowledgeBase.documents.loadingDocuments',
-  'knowledgeBase.documents.noDocuments', 'knowledgeBase.documents.root', 'knowledgeBase.documents.viewerReadonly',
+  'knowledgeBase.documents.noDocuments', 'knowledgeBase.documents.root',
   'knowledgeBase.documents.tabDocuments', 'knowledgeBase.documents.tabWiki', 'knowledgeBase.documents.tabGraph',
   'knowledgeBase.documents.detail', 'knowledgeBase.timeline.title', 'knowledgeBase.timeline.pending',
   'knowledgeBase.timeline.running', 'knowledgeBase.timeline.done', 'knowledgeBase.timeline.failed',
+  'knowledgeBase.timeline.skipped',
   'knowledgeBase.detail.back', 'knowledgeBase.detail.eyebrow',
 ];
 
@@ -82,5 +83,23 @@ test('documents page zh-CN render contains no raw-English literals', () => {
     assert.notEqual(value, key, 'missing zh-CN value for ' + key);
     if (allowedLatinValues.has(key)) continue;
     assert.ok(/[\u4e00-\u9fff]/.test(value), 'zh-CN value for ' + key + ' looks like raw English: ' + value);
+  }
+});
+
+// R472-A1 (R470 遗留): a disabled multimodal stage closes as status
+// 'skipped' with started_at/finished_at timestamps. Vue renders it through
+// knowledgeStages.status.skipped (frontend/src/i18n/locales/*.ts); the React
+// timeline key knowledgeBase.timeline.skipped carries the same copy
+// byte-exact in every locale so the stage reads 已跳过 instead of 进行中.
+test('knowledgeBase.timeline.skipped is carried byte-exact from Vue knowledgeStages.status.skipped in every locale', () => {
+  const vueBaseline: Record<Locale, string> = {
+    'zh-CN': '已跳过',
+    'en-US': 'Skipped',
+    'ja-JP': 'スキップ済み',
+    'ko-KR': '건너뜀',
+    'ru-RU': 'Пропущено',
+  };
+  for (const locale of supportedLocales) {
+    assert.equal(formatMessage(locale, 'knowledgeBase.timeline.skipped'), vueBaseline[locale], locale + ' timeline.skipped diverges from the Vue baseline');
   }
 });

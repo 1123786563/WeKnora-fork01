@@ -18,22 +18,23 @@ import (
 
 // Config 应用程序总配置
 type Config struct {
-	Conversation    *ConversationConfig    `yaml:"conversation"     json:"conversation"`
-	Server          *ServerConfig          `yaml:"server"           json:"server"`
-	KnowledgeBase   *KnowledgeBaseConfig   `yaml:"knowledge_base"   json:"knowledge_base"`
-	Tenant          *TenantConfig          `yaml:"tenant"           json:"tenant"`
-	Auth            *AuthConfig            `yaml:"auth"             json:"auth"`
-	Audit           *AuditConfig           `yaml:"audit"            json:"audit"`
-	OIDCAuth        *OIDCAuthConfig        `yaml:"oidc_auth"        json:"oidc_auth"`
-	Models          []ModelConfig          `yaml:"models"           json:"models"`
-	VectorDatabase  *VectorDatabaseConfig  `yaml:"vector_database"  json:"vector_database"`
-	DocReader       *DocReaderConfig       `yaml:"docreader"        json:"docreader"`
-	StreamManager   *StreamManagerConfig   `yaml:"stream_manager"   json:"stream_manager"`
-	ExtractManager  *ExtractManagerConfig  `yaml:"extract"          json:"extract"`
-	WebSearch       *WebSearchConfig       `yaml:"web_search"       json:"web_search"`
-	PromptTemplates *PromptTemplatesConfig `yaml:"prompt_templates" json:"prompt_templates"`
-	IM              *IMConfig              `yaml:"im"               json:"im"`
-	Agent           *AgentConfig           `yaml:"agent"            json:"agent"`
+	Conversation       *ConversationConfig       `yaml:"conversation"     json:"conversation"`
+	Server             *ServerConfig             `yaml:"server"           json:"server"`
+	KnowledgeBase      *KnowledgeBaseConfig      `yaml:"knowledge_base"   json:"knowledge_base"`
+	Tenant             *TenantConfig             `yaml:"tenant"           json:"tenant"`
+	Auth               *AuthConfig               `yaml:"auth"             json:"auth"`
+	Audit              *AuditConfig              `yaml:"audit"            json:"audit"`
+	OIDCAuth           *OIDCAuthConfig           `yaml:"oidc_auth"        json:"oidc_auth"`
+	Models             []ModelConfig             `yaml:"models"           json:"models"`
+	VectorDatabase     *VectorDatabaseConfig     `yaml:"vector_database"  json:"vector_database"`
+	DocReader          *DocReaderConfig          `yaml:"docreader"        json:"docreader"`
+	StreamManager      *StreamManagerConfig      `yaml:"stream_manager"   json:"stream_manager"`
+	ExtractManager     *ExtractManagerConfig     `yaml:"extract"          json:"extract"`
+	WebSearch          *WebSearchConfig          `yaml:"web_search"       json:"web_search"`
+	PromptTemplates    *PromptTemplatesConfig    `yaml:"prompt_templates" json:"prompt_templates"`
+	IM                 *IMConfig                 `yaml:"im"               json:"im"`
+	Agent              *AgentConfig              `yaml:"agent"            json:"agent"`
+	MobileNotification *MobileNotificationConfig `yaml:"mobile_notification" json:"mobile_notification"`
 	// OpenConnector is the T16 deployment config of the open-connector
 	// dispatch path. DEFAULT OFF: a nil section or unset enabled keeps the
 	// explicit refusing dispatcher (the API fails closed with 503, never a
@@ -58,6 +59,121 @@ type Config struct {
 	CommercialNewOrders   *bool `yaml:"commercial_new_orders" json:"commercial_new_orders"`
 	CommercialNewDispatch *bool `yaml:"commercial_new_dispatch" json:"commercial_new_dispatch"`
 	ConnectorNewActions   *bool `yaml:"connector_new_actions" json:"connector_new_actions"`
+	// Workbench is the W34 managed-workbench capability switch panel. Each
+	// lane closes independently so an operator can stop NEW work of one
+	// kind (rollback) without cutting reads, cleanup or the other lanes.
+	// Pointer booleans keep "unset" distinguishable from "explicit false";
+	// polarity follows the O01 convention (unset = safe-on) EXCEPT
+	// worker_drain, which must be an explicit opt-in (unset = not draining).
+	// Env overrides are parsed in applyWorkbenchCapabilityDefaults.
+	Workbench *WorkbenchConfig `yaml:"workbench" json:"workbench"`
+}
+
+// WorkbenchConfig holds the W34 per-capability admission switches. Closing a
+// switch rejects NEW work in that lane only; already-admitted work keeps
+// running to completion and cleanup/reconciliation paths stay available —
+// one switch must never cut query and cleanup at the same time.
+type WorkbenchConfig struct {
+	// ReadEnabled gates workbench READ paths (list/get/status queries).
+	// Unset keeps reads on. Env: WEKNORA_WORKBENCH_READ_ENABLED.
+	ReadEnabled *bool `yaml:"read_enabled" json:"read_enabled"`
+	// PlatformAdmission gates NEW platform-target workbench executions.
+	// Unset keeps admission open. Env: WEKNORA_WORKBENCH_PLATFORM_ADMISSION.
+	PlatformAdmission *bool `yaml:"platform_admission" json:"platform_admission"`
+	// PaseoAdmission gates NEW remote (Paseo-hosted) workbench executions.
+	// This is the rollback gate on top of the opt-in enable path (enabling
+	// Paseo itself stays a deployment act: provider + agent recovery
+	// switches). Unset keeps the gate open. Env: WEKNORA_WORKBENCH_PASEO_ADMISSION.
+	// Wiring target: the remote admission entrypoint lands with W22–W24; it
+	// must install workbench.NewWorkbenchCapabilityGate (or consult
+	// container.WorkbenchPaseoAdmissionEnabled) so this switch takes effect
+	// there. No production remote submit path exists on the current branch.
+	PaseoAdmission *bool `yaml:"paseo_admission" json:"paseo_admission"`
+	// VoiceAdmission gates NEW voice-lane executions. Unset keeps the gate
+	// open. Env: WEKNORA_WORKBENCH_VOICE_ADMISSION.
+	// Wiring target: the voice API entrypoint arrives with W30/W31; until
+	// then there is no voice lane to gate (the switch is consumed by that
+	// task, not faked here).
+	VoiceAdmission *bool `yaml:"voice_admission" json:"voice_admission"`
+	// NotificationsEnabled gates NEW notification deliveries. Unset keeps
+	// notifications on. Env: WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED.
+	// Wiring target: the notification outbox/delivery worker lands with
+	// W14/W15 (device binding W13 first); until that lane exists there is
+	// no delivery path to gate.
+	NotificationsEnabled *bool `yaml:"notifications_enabled" json:"notifications_enabled"`
+	// WorkerDrain puts the durable worker into drain mode: NEW admissions
+	// are refused everywhere while already-admitted runs continue to
+	// completion and cleanup still runs. Unset (or false) = normal
+	// operation. Env: WEKNORA_WORKBENCH_WORKER_DRAIN.
+	WorkerDrain *bool `yaml:"worker_drain" json:"worker_drain"`
+	// ProtocolMinimum/ProtocolMaximum override the advertised protocol
+	// compatibility window (W36/W37). Unset keeps the compiled defaults,
+	// which must stay aligned with packages/domain/src/mobile
+	// SERVER_PROTOCOL_WINDOW {minimum: 2, maximum: 3}. Env:
+	// WEKNORA_WORKBENCH_PROTOCOL_MINIMUM / WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM.
+	ProtocolMinimum *int `yaml:"protocol_minimum" json:"protocol_minimum"`
+	ProtocolMaximum *int `yaml:"protocol_maximum" json:"protocol_maximum"`
+}
+
+// AreWorkbenchReadsEnabled reports whether workbench read paths answer.
+// Nil config or unset pointer keeps the safe-on default (true).
+func (c *Config) AreWorkbenchReadsEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.ReadEnabled == nil || *c.Workbench.ReadEnabled
+}
+
+// IsWorkbenchPlatformAdmissionEnabled reports whether NEW platform-target
+// executions are admitted. Nil keeps the safe-on default (true).
+func (c *Config) IsWorkbenchPlatformAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.PlatformAdmission == nil || *c.Workbench.PlatformAdmission
+}
+
+// IsWorkbenchPaseoAdmissionEnabled reports whether NEW remote (Paseo)
+// executions are admitted through the W34 gate. Nil keeps the gate open
+// (true) — enabling Paseo itself remains opt-in elsewhere.
+func (c *Config) IsWorkbenchPaseoAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.PaseoAdmission == nil || *c.Workbench.PaseoAdmission
+}
+
+// IsWorkbenchVoiceAdmissionEnabled reports whether NEW voice-lane
+// executions are admitted. Nil keeps the safe-on default (true).
+func (c *Config) IsWorkbenchVoiceAdmissionEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.VoiceAdmission == nil || *c.Workbench.VoiceAdmission
+}
+
+// AreWorkbenchNotificationsEnabled reports whether NEW notification
+// deliveries are accepted. Nil keeps the safe-on default (true).
+func (c *Config) AreWorkbenchNotificationsEnabled() bool {
+	return c == nil || c.Workbench == nil || c.Workbench.NotificationsEnabled == nil || *c.Workbench.NotificationsEnabled
+}
+
+// IsWorkbenchWorkerDraining reports whether the durable worker is in drain
+// mode (no NEW admissions anywhere; existing runs finish; cleanup runs).
+// Nil keeps the explicit opt-out default (false).
+func (c *Config) IsWorkbenchWorkerDraining() bool {
+	return c != nil && c.Workbench != nil && c.Workbench.WorkerDrain != nil && *c.Workbench.WorkerDrain
+}
+
+// ProtocolWindow reports the protocol compatibility window this server
+// advertises on /system/capabilities. Nil config or unset pointers keep the
+// compiled defaults (2, 3) aligned with the TS SERVER_PROTOCOL_WINDOW; an
+// override that would produce an unservable window (minimum < 1 or
+// maximum < minimum) falls back to the defaults rather than broadcasting
+// nonsense.
+func (c *Config) ProtocolWindow() (minimum int, maximum int) {
+	minimum, maximum = 2, 3
+	if c == nil || c.Workbench == nil {
+		return minimum, maximum
+	}
+	if c.Workbench.ProtocolMinimum != nil && *c.Workbench.ProtocolMinimum >= 1 {
+		minimum = *c.Workbench.ProtocolMinimum
+	}
+	if c.Workbench.ProtocolMaximum != nil && *c.Workbench.ProtocolMaximum >= 1 {
+		maximum = *c.Workbench.ProtocolMaximum
+	}
+	if maximum < minimum {
+		return 2, 3
+	}
+	return minimum, maximum
 }
 
 // AreCommercialNewOrdersEnabled reports whether NEW commercial orders are
@@ -129,6 +245,17 @@ func OpenConnectorRuntimeIDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// MobileNotificationConfig controls the optional push delivery gateway.
+// An empty endpoint keeps the durable outbox active while failing provider
+// sends closed; credentials are read from the environment and never logged.
+type MobileNotificationConfig struct {
+	Provider    string        `yaml:"provider" json:"provider"`
+	ProviderURL string        `yaml:"provider_url" json:"provider_url"`
+	AccessToken string        `yaml:"access_token" json:"-"`
+	RetryBase   time.Duration `yaml:"retry_base" json:"retry_base"`
+	RetryMax    time.Duration `yaml:"retry_max" json:"retry_max"`
 }
 
 // AgentConfig represents the global agent settings.
@@ -696,11 +823,13 @@ func LoadConfig() (*Config, error) {
 	// Validate configuration values
 	applyOIDCEnvOverrides(&cfg)
 	applyAgentEnvOverrides(&cfg)
+	applyMobileNotificationEnvOverrides(&cfg)
 	applyKnowledgeBaseEnvOverrides(&cfg)
 	applyAuthAndTenantDefaults(&cfg)
 	applyAuditDefaults(&cfg)
 	applyCommercialRolloutDefaults(&cfg)
 	applyOpenConnectorDefaults(&cfg)
+	applyWorkbenchCapabilityDefaults(&cfg)
 
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
@@ -811,6 +940,37 @@ func ValidateConfig(cfg *Config) error {
 		return fmt.Errorf("config validation errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func applyMobileNotificationEnvOverrides(cfg *Config) {
+	if cfg.MobileNotification == nil {
+		cfg.MobileNotification = &MobileNotificationConfig{}
+	}
+	if cfg.MobileNotification.RetryBase <= 0 {
+		cfg.MobileNotification.RetryBase = time.Second
+	}
+	if cfg.MobileNotification.RetryMax <= 0 {
+		cfg.MobileNotification.RetryMax = 5 * time.Minute
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL")); value != "" {
+		cfg.MobileNotification.ProviderURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER")); value != "" {
+		cfg.MobileNotification.Provider = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN")); value != "" {
+		cfg.MobileNotification.AccessToken = value
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_RETRY_BASE")); value != "" {
+		if d, err := time.ParseDuration(value); err == nil && d > 0 {
+			cfg.MobileNotification.RetryBase = d
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_RETRY_MAX")); value != "" {
+		if d, err := time.ParseDuration(value); err == nil && d > 0 {
+			cfg.MobileNotification.RetryMax = d
+		}
+	}
 }
 
 func applyOIDCEnvOverrides(cfg *Config) {
@@ -1135,6 +1295,53 @@ func applyOpenConnectorDefaults(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_OPEN_CONNECTOR_RUNTIME")); value != "" {
 		cfg.OpenConnector.Runtime = value
+	}
+}
+
+// applyWorkbenchCapabilityDefaults applies the env-var overrides of the W34
+// workbench capability switches. Safe-ON polarity for the five capability
+// lanes: an unset or unparseable env var never closes a lane, and config.yaml
+// explicit false (the rollback action) is preserved as-is. worker_drain is
+// the opposite: unset/unparseable never STARTS a drain, and only an explicit
+// true opts in. The env vars are read explicitly because
+// viper.AutomaticEnv has no SetEnvPrefix, so WEKNORA_-prefixed vars are not
+// bound to the nested struct automatically. Values are booleans only —
+// nothing secret is stored here; on a parse failure the shared helper logs
+// the variable NAME together with the unparseable value (boolean-lane
+// values, not secret material by design).
+//
+// Env overrides (when set and parseable as boolean):
+//   - WEKNORA_WORKBENCH_READ_ENABLED
+//   - WEKNORA_WORKBENCH_PLATFORM_ADMISSION
+//   - WEKNORA_WORKBENCH_PASEO_ADMISSION
+//   - WEKNORA_WORKBENCH_VOICE_ADMISSION
+//   - WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED
+//   - WEKNORA_WORKBENCH_WORKER_DRAIN
+//
+// The protocol window overrides (W37) parse as integers; unset or
+// unparseable values never change the advertised window:
+//   - WEKNORA_WORKBENCH_PROTOCOL_MINIMUM
+//   - WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM
+func applyWorkbenchCapabilityDefaults(cfg *Config) {
+	if cfg.Workbench == nil {
+		cfg.Workbench = &WorkbenchConfig{}
+	}
+	w := cfg.Workbench
+	applyRolloutSwitchEnv(&w.ReadEnabled, "WEKNORA_WORKBENCH_READ_ENABLED")
+	applyRolloutSwitchEnv(&w.PlatformAdmission, "WEKNORA_WORKBENCH_PLATFORM_ADMISSION")
+	applyRolloutSwitchEnv(&w.PaseoAdmission, "WEKNORA_WORKBENCH_PASEO_ADMISSION")
+	applyRolloutSwitchEnv(&w.VoiceAdmission, "WEKNORA_WORKBENCH_VOICE_ADMISSION")
+	applyRolloutSwitchEnv(&w.NotificationsEnabled, "WEKNORA_WORKBENCH_NOTIFICATIONS_ENABLED")
+	applyRolloutSwitchEnv(&w.WorkerDrain, "WEKNORA_WORKBENCH_WORKER_DRAIN")
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_WORKBENCH_PROTOCOL_MINIMUM")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 {
+			w.ProtocolMinimum = &n
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_WORKBENCH_PROTOCOL_MAXIMUM")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n >= 1 {
+			w.ProtocolMaximum = &n
+		}
 	}
 }
 

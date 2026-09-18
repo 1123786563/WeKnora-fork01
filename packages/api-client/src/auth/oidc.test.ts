@@ -30,7 +30,9 @@ test('native OIDC exchange posts one-time code and verifier without URL credenti
 test('native OIDC start binds the S256 challenge to the authorization request', async () => {
   const calls: any[] = [];
   const api = createOIDCApi(async (input) => { calls.push(input); return { success: true }; });
-  await api.startNative('weknora://auth', 'challenge');
+  await api.startNative('https://api.example.test/api/v1/auth/oidc/callback', 'challenge', 'weknora://oidc');
+  assert.match(calls[0].path, /redirect_uri=https%3A%2F%2Fapi.example.test%2Fapi%2Fv1%2Fauth%2Foidc%2Fcallback/);
+  assert.match(calls[0].path, /frontend_redirect_uri=weknora%3A%2F%2Foidc/);
   assert.match(calls[0].path, /code_challenge=challenge/);
 });
 

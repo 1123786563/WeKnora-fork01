@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildProcessingTimeline,
   canDocumentAction,
+  mergeChunkContents,
   summarizeUploadProgress,
   getDocumentStatus,
   normalizeDocumentPage,
@@ -77,6 +78,34 @@ test('builds a processing timeline that distinguishes failed and completed enric
   assert.deepEqual(buildProcessingTimeline({ id: '3', parse_status: 'completed' }).map((step) => step.key), [
     'uploaded', 'parsing', 'enriching', 'indexed',
   ]);
+});
+
+test('mergeChunkContents ports the Vue mergeChunks ordering and overlap trimming', () => {
+  // Vue sorts by start_at (chunk_index fallback) and trims the overlap the
+  // chunker re-emits at the next chunk start via suffix matching; overlaps
+  // shorter than Vue's MIN_OVERLAP (12 chars) are never trimmed.
+  assert.equal(mergeChunkContents([
+    { content: 'BEGIN-OF-DOC OVERLAP-CONTENT-12', start_at: 0, end_at: 100 },
+    { content: 'OVERLAP-CONTENT-12 TAIL-TEXT', start_at: 70, end_at: 200 },
+  ]), 'BEGIN-OF-DOC OVERLAP-CONTENT-12 TAIL-TEXT');
+
+  // A repadded table header before the overlap is skipped (headSlack), never duplicated.
+  assert.equal(mergeChunkContents([
+    { content: 'DATA-TABLE\nROW-ONE-VALUE', start_at: 0, end_at: 50 },
+    { content: '| H |\nROW-ONE-VALUE', start_at: 40, end_at: 90 },
+  ]), 'DATA-TABLE\nROW-ONE-VALUE');
+
+  // A real position gap joins with a blank line exactly like the Vue merged view.
+  assert.equal(mergeChunkContents([
+    { content: 'A', start_at: 0, end_at: 100 },
+    { content: 'B', start_at: 150, end_at: 200 },
+  ]), 'A\n\nB');
+
+  // Without position info Vue's appendChunkContent concatenates directly (overlap <= 0 branch).
+  assert.equal(mergeChunkContents([
+    { content: 'A', chunk_index: 1 },
+    { content: 'B', chunk_index: 2 },
+  ]), 'AB');
 });
 
 test('summarizes upload progress with completed count and failure state', () => {

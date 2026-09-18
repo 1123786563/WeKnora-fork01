@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { Button, Checkbox, Dialog, Input, Radio, Range, Select, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { navigate as clientNavigate } from '../platform/navigation.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { normalizeFAQPayload, parseExcelFile, parseFAQImportText, serializeFAQEntries } from './import-export.ts';
 import './faq.css';
@@ -444,7 +445,7 @@ export function faqKBDetailPath(knowledgeBaseId: string): string {
   return '/knowledgeBase/' + encodeURIComponent(knowledgeBaseId);
 }
 
-function defaultNavigate(path: string): void { window.location.assign(path); }
+function defaultNavigate(path: string): void { clientNavigate(path); }
 
 /** Vue dropdowns close on outside click — mirror it via focusout. */
 function closeOnBlur(event: FocusEvent<HTMLElement>, close: () => void): void {
@@ -1087,8 +1088,20 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           {canContribute && selected.size > 0 ? (
             <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" aria-label="FAQ batch actions">
               <span className="mr-auto text-[0.85rem] text-muted">{t('common.itemCount', { count: selected.size })}</span>
-              <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button>
-              <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button>
+              {/* Vue FAQBatchBar.vue:53-63 (+ FAQEntryManager.vue:1046-1049):
+                  批量启用 only renders when the selection has disabled entries,
+                  批量禁用 only when it has enabled ones. */}
+              {(() => {
+                const selectedEntries = entries.filter((entry) => selected.has(entry.id));
+                const selectedEnabledCount = selectedEntries.filter((entry) => entry.is_enabled !== false).length;
+                const selectedDisabledCount = selectedEntries.length - selectedEnabledCount;
+                return (
+                  <>
+                    {selectedDisabledCount > 0 ? <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button> : null}
+                    {selectedEnabledCount > 0 ? <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button> : null}
+                  </>
+                );
+              })()}
               <Button type="button" onClick={onBatchRecommend}>{t('knowledgeEditor.faq.recommended')}</Button>
               <Select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
                 <option value="">{t('knowledgeBase.untagged')}</option>
@@ -1589,6 +1602,14 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const locale = useAppLocale();
   const t = createFaqTranslator(locale);
   const faq = client.knowledge.faq;
+  // Vue KnowledgeBase.vue:88 — isFAQ = (kbInfo?.type || '') === 'faq'; the FAQ
+  // manager only mounts on the v-else branch of v-if="!isFAQ", so a document
+  // KB can never reach the FAQ view (Vue has no /faq route — the KB detail
+  // always renders the documents view). React's standalone /knowledgeBase/:id/
+  // faq route mirrors that gate: nothing FAQ-related is fetched until the KB
+  // type resolves, and a non-FAQ KB is redirected (replace, so the dead /faq
+  // URL drops off history) to the KB detail documents route.
+  const [faqGate, setFaqGate] = useState<'pending' | 'allowed' | 'blocked'>('pending');
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [kbList, setKbList] = useState<KBListItem[]>([]);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
@@ -1639,8 +1660,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setLastResult(null);
     }
   }, [client]);
-  // Vue onMounted → restoreImportTask + loadImportResult (:2825-2829).
-  useEffect(() => { void loadLastResult(knowledgeBaseId); }, [loadLastResult, knowledgeBaseId]);
+  // Vue onMounted → restoreImportTask + loadImportResult (:2825-2829) — gated
+  // on the resolved FAQ type so a document KB fires zero /api/v1/faq requests.
+  useEffect(() => { if (faqGate === 'allowed') void loadLastResult(knowledgeBaseId); }, [faqGate, loadLastResult, knowledgeBaseId]);
   useEffect(() => {
     if (!importTask || (importTask.status !== 'processing' && importTask.status !== 'pending')) return;
     const timer = setInterval(() => {
@@ -1668,7 +1690,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }, [importTask?.status]);
   const [canContribute, setCanContribute] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
-  const navigate = useCallback((path: string) => { window.location.assign(path); }, []);
+  const navigate = useCallback((path: string) => { clientNavigate(path); }, []);
   // B6: Vue closeImportResult (:2345-2356) — persist 'close' server-side, then
   // hide locally; on failure the strip stays (Vue only logs).
   const closeImportResult = useCallback(async () => {
@@ -1684,7 +1706,11 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }, [lastResult, t]);
 
   // Page receives knowledgeBaseId only — fetch the KB record, the KB list (crumb
-  // switcher), tags (filter) and the caller to gate viewer accounts.
+  // switcher), tags (filter) and the caller to gate viewer accounts. The KB
+  // record also decides the Vue isFAQ gate: FAQ work only proceeds for
+  // type === 'faq'; an unresolvable type falls through as allowed so a
+  // transient settings failure degrades to the old error surface (the load
+  // failure handling below stops any retry storm) instead of a hard redirect.
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -1698,9 +1724,17 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setKbList(list.map((item) => ({ id: String(item.id), name: item.name, type: typeof item.type === 'string' ? item.type : undefined })));
       setTags(tagRows);
       setCanContribute(computeKBPermissions(kbRow as KBSurfaceKB, me as KBSurfaceMe | null).canContribute);
-    }).catch(() => { if (active) setCanContribute(false); });
+      setFaqGate((typeof kbRow?.type === 'string' ? kbRow.type : '') === 'faq' ? 'allowed' : 'blocked');
+    }).catch(() => { if (active) { setCanContribute(false); setFaqGate('allowed'); } });
     return () => { active = false; };
   }, [client, knowledgeBaseId]);
+
+  // Vue keeps document KBs on the documents view — mirror that by replacing
+  // the unreachable /faq URL with the KB detail route.
+  useEffect(() => {
+    if (faqGate !== 'blocked') return;
+    clientNavigate(faqKBDetailPath(knowledgeBaseId), 'replace');
+  }, [faqGate, knowledgeBaseId]);
 
   // Scroll-append guard shared with the sync loadMore callback.
   const loadingMoreRef = useRef(false);
@@ -1722,8 +1756,15 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setTotal(result.total ?? 0);
       setHasMore(faqHasMore(loaded, result.total ?? 0));
       if (!append) setSelected(new Set());
-    } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
-    finally {
+    } catch (error) {
+      // Loading-reset: a failed page must also drop hasMore, or the
+      // FAQPageView fill-short-page effect re-fires loadMore on every render
+      // while entries stay empty — the unbounded 400 retry chain a document
+      // KB used to produce. Vue settles loading/loadingMore in its finally;
+      // this keeps the auto-append terminal too.
+      setHasMore(false);
+      setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') });
+    } finally {
       loadingMoreRef.current = false;
       setLoading(false);
       setLoadingMore(false);
@@ -1734,7 +1775,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     void load(true);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [client, knowledgeBaseId, keyword, activeTagIds, entries.length, loading, hasMore]);
-  useEffect(() => { void load(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [client, knowledgeBaseId, keyword, activeTagIds]);
+  // First page loads only after the gate resolves the KB as FAQ type — a
+  // document KB never reaches the FAQ endpoints (Vue isFAQ gate parity).
+  useEffect(() => { if (faqGate === 'allowed') void load(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [client, knowledgeBaseId, keyword, activeTagIds, faqGate]);
 
   // Vue handleEntryStatusChange (FAQEntryManager.vue:1487): optimistic flip via
   // the entries/fields batch, per-direction success copy, rollback on failure.
@@ -1862,6 +1905,10 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     setActiveTagIds((current) => current.filter((id) => nextTags.some((tag) => tag.id === id)));
     await load(false);
   }
+
+  // Pending = KB type unresolved; blocked = redirect to the documents view has
+  // fired. Either way no FAQ markup renders — Vue never mounts the manager.
+  if (faqGate !== 'allowed') return null;
 
   return (
     <>

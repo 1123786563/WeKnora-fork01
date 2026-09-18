@@ -1,9 +1,14 @@
 package container
 
 import (
+	"os"
+	"strings"
+
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -31,11 +36,28 @@ func NewWorkbenchArtifactHandler(
 	return session.NewWorkbenchArtifactHandler(runs, messages)
 }
 
+// NewWorkbenchListHandler wires the mobile workbench list to the ownership-
+// scoped repository; tenant/owner always come from the authenticated context.
+func NewWorkbenchListHandler(lists *repository.WorkbenchListStore) *session.WorkbenchListHandler {
+	return session.NewWorkbenchListHandler(lists)
+}
+
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.
-func NewWorkbenchAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore) *workbenchservice.AdmissionCoordinator {
-	return workbenchservice.NewAdmissionCoordinator(db, runs, workbenchservice.NoopTaskBudget{}, nil)
+// The W34 capability gate (workbench.worker_drain / platform_admission) is
+// installed here so every NEW admission consults the switches before any
+// budget reservation or durable write; already-admitted runs and cleanup
+// stay untouched (drain semantics). W24 additionally wires the durable
+// credit budget and the database-backed admission binding resolver so only
+// trusted execution-target usage binds at admission time.
+func NewWorkbenchAdmissionCoordinator(cfg *config.Config, db *gorm.DB, runs *repository.AgentRunStore, targets repository.ExecutionTargetStore) *workbenchservice.AdmissionCoordinator {
+	coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(targets))
+	if err != nil {
+		panic(err)
+	}
+	coordinator.SetAdmissionGate(workbenchservice.NewWorkbenchCapabilityGate(cfg))
+	return coordinator
 }
 
 func NewWorkbenchStartHandler(admission *workbenchservice.AdmissionCoordinator) *session.WorkbenchStartHandler {
@@ -76,4 +98,22 @@ func NewWorkbenchInboxHandler(db *gorm.DB) *session.WorkbenchInboxHandler {
 
 func NewWorkbenchCommandHandler(interactions *workbenchservice.Service) *session.WorkbenchCommandHandler {
 	return session.NewWorkbenchCommandHandler(interactions)
+}
+
+func mobileEnvironment() string {
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_MOBILE_ENVIRONMENT")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(os.Getenv("APP_ENV")); value != "" {
+		return value
+	}
+	return "development"
+}
+
+func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
+	return repository.NewMobileDeviceStore(db, mobileEnvironment())
+}
+
+func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
+	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
 }

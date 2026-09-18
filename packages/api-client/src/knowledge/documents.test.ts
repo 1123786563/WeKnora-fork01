@@ -146,6 +146,32 @@ test('fetches preview and download bytes through the authenticated binary reques
   assert.equal(requests[0]?.signal, controller.signal);
 });
 
+test('batchDownload posts the selected ids and returns the ZIP blob', async () => {
+  // Upstream api/knowledge-base/index.ts batchDownloadKnowledge: POST
+  // /knowledge-bases/:id/knowledge/batch-download with {ids}, responseType
+  // blob — credentials stay in headers, never in a download link.
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async () => {
+    throw new Error('JSON request was not expected');
+  }, async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return {
+      body: new Blob(['zip-bytes'], { type: 'application/zip' }),
+      contentType: 'application/zip',
+      headers: { 'content-type': 'application/zip' },
+    };
+  });
+
+  const zip = await api.batchDownload('kb/1', ['doc-1', 'doc-2']);
+
+  assert.equal(zip.contentType, 'application/zip');
+  assert.deepEqual(requests, [{
+    method: 'POST',
+    path: '/api/v1/knowledge-bases/kb%2F1/knowledge/batch-download',
+    body: { ids: ['doc-1', 'doc-2'] },
+  }]);
+});
+
 test('supports URL/manual sources and guarded document mutations', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createKnowledgeDocumentsApi(async (request) => {
@@ -219,6 +245,67 @@ test('keeps document chunk paging and revision mutations on the Vue endpoint con
     { method: 'PUT', path: '/api/v1/chunks/doc%2Fa/chunk%2F1', body: { content: 'updated', expected_revision: 3 } },
     { method: 'POST', path: '/api/v1/chunks/doc%2Fa/chunk%2F1/revert', body: { revision: 2, expected_revision: 4 } },
   ]);
+});
+
+test('loads a single chunk through the Vue by-id endpoint contract', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return { success: true, data: { id: 'parent-1', content: '# Parent chunk' } };
+  });
+
+  const chunk = await api.getChunkById('chunk/1');
+
+  assert.equal(chunk.id, 'parent-1');
+  assert.equal(chunk.content, '# Parent chunk');
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/chunks/by-id/chunk%2F1', body: undefined },
+  ]);
+});
+
+test('rejects a by-id chunk envelope without a usable id', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true, data: { content: 'no id' } }));
+  await assert.rejects(() => api.getChunkById('chunk-1'), /Invalid knowledge chunk/);
+  const nullData = createKnowledgeDocumentsApi(async () => ({ success: true }));
+  await assert.rejects(() => nullData.getChunkById('chunk-1'), /Invalid knowledge chunk/);
+});
+
+test('keeps generated-question mutations on the Vue by-id questions endpoint contract', async () => {
+  // R471/A3 — Vue api/knowledge-base upsert/delete/regenerateGeneratedQuestion
+  // (frontend/src/api/knowledge-base/index.ts) against handler chunk.go:
+  // UpsertGeneratedQuestion/RegenerateGeneratedQuestions reply {success,data},
+  // DeleteGeneratedQuestion replies {success,message} and reads question_id
+  // from the JSON body (ShouldBindJSON), not a query param.
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    if (request.path.endsWith('/regenerate')) return { success: true, data: [{ id: 'q2', question: 'Regenerated Q', content_revision: 3 }] };
+    if (request.method === 'DELETE') return { success: true, message: 'Generated question deleted' };
+    return { success: true, data: { id: 'q1', question: 'Saved Q', content_revision: 3 } };
+  });
+
+  const saved = await api.upsertGeneratedQuestion('chunk/1', 'Saved Q');
+  await api.upsertGeneratedQuestion('chunk/1', 'Edited Q', 'q1');
+  await api.deleteGeneratedQuestion('chunk/1', 'q1');
+  const regenerated = await api.regenerateGeneratedQuestions('chunk/1');
+
+  assert.equal(saved.id, 'q1');
+  assert.equal(saved.content_revision, 3);
+  assert.deepEqual(regenerated.map((question) => question.id), ['q2']);
+  assert.deepEqual(requests, [
+    { method: 'PUT', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: '', question: 'Saved Q' } },
+    { method: 'PUT', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: 'q1', question: 'Edited Q' } },
+    { method: 'DELETE', path: '/api/v1/chunks/by-id/chunk%2F1/questions', body: { question_id: 'q1' } },
+    { method: 'POST', path: '/api/v1/chunks/by-id/chunk%2F1/questions/regenerate', body: {} },
+  ]);
+});
+
+test('rejects generated-question envelopes without usable data', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true }));
+  await assert.rejects(() => api.upsertGeneratedQuestion('c1', 'Q'), /Invalid generated question/);
+  await assert.rejects(() => api.regenerateGeneratedQuestions('c1'), /Invalid generated questions/);
+  const notArray = createKnowledgeDocumentsApi(async () => ({ success: true, data: { id: 'q1' } }));
+  await assert.rejects(() => notArray.regenerateGeneratedQuestions('c1'), /Invalid generated questions/);
 });
 
 test('updates document summary and custom metadata through the guarded detail endpoint', async () => {

@@ -1,7 +1,11 @@
 package session
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -13,6 +17,106 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/gin-gonic/gin"
 )
+
+// attachmentImageExtensions are extensions whose content sniffs reliably as
+// image/*, so a declared mismatch proves client-side MIME spoofing. TIFF is
+// deliberately absent: Go's DetectContentType does not recognize it, so
+// enforcing the family there would reject legitimate TIFF uploads.
+var attachmentImageExtensions = map[string]struct{}{
+	".jpg": {}, ".jpeg": {}, ".png": {}, ".gif": {}, ".bmp": {}, ".webp": {},
+}
+
+// attachmentSniffableImageMimes mirrors attachmentImageExtensions for
+// client-declared MIME types.
+var attachmentSniffableImageMimes = map[string]struct{}{
+	"image/jpeg": {}, "image/png": {}, "image/gif": {}, "image/bmp": {}, "image/webp": {},
+}
+
+// attachmentExecutableSniffs are content types no chat attachment may claim,
+// regardless of the declared MIME or file name.
+var attachmentExecutableSniffs = map[string]struct{}{
+	"application/x-msdownload":    {},
+	"application/x-elf":           {},
+	"application/x-executable":    {},
+	"application/x-sharedlib":     {},
+	"application/x-mach-binary":   {},
+	"application/x-java-vm":       {},
+	"application/x-dosexec":       {},
+	"application/x-msdos-program": {},
+}
+
+// attachmentExecutableMagics covers binaries Go's DetectContentType does not
+// name (it returns application/octet-stream for them): Windows PE ("MZ"),
+// Linux ELF, Mach-O and Java class files.
+var attachmentExecutableMagics = [][]byte{
+	{'M', 'Z'},
+	{0x7f, 'E', 'L', 'F'},
+	{0xFE, 0xED, 0xFA, 0xCE},
+	{0xFE, 0xED, 0xFA, 0xCF},
+	{0xCE, 0xFA, 0xED, 0xFE},
+	{0xCF, 0xFA, 0xED, 0xFE},
+	{0xCA, 0xFE, 0xBA, 0xBE},
+}
+
+func hasAttachmentExecutableMagic(head []byte) bool {
+	for _, magic := range attachmentExecutableMagics {
+		if bytes.HasPrefix(head, magic) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateAttachmentContent inspects the real bytes of a session attachment
+// upload (mobile or web) before anything is persisted: zero-byte payloads,
+// oversized bodies, executable content and MIME families that contradict the
+// sniffed bytes are rejected, and an optional client-supplied sha256 digest is
+// verified against the actual content. It returns the effective MIME type to
+// store — the declared type when present and not contradicted, otherwise the
+// sniffed one.
+func validateAttachmentContent(fileName, declaredMIME string, data []byte, wantDigest string) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("attachment is empty")
+	}
+	maxSize := secutils.GetMaxFileSizeMB() * 1024 * 1024
+	if int64(len(data)) > maxSize {
+		return "", fmt.Errorf("file exceeds size limit of %dMB", secutils.GetMaxFileSizeMB())
+	}
+	head := data
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	sniffed := http.DetectContentType(head)
+	if _, blocked := attachmentExecutableSniffs[sniffed]; blocked {
+		return "", fmt.Errorf("attachment content type %q is not allowed", sniffed)
+	}
+	if hasAttachmentExecutableMagic(head) {
+		return "", fmt.Errorf("attachment contains executable content")
+	}
+	ext := strings.ToLower(filepath.Ext(fileName))
+	_, extIsImage := attachmentImageExtensions[ext]
+	declaredIsImage := false
+	if declared := strings.ToLower(strings.TrimSpace(declaredMIME)); declared != "" {
+		_, declaredIsImage = attachmentSniffableImageMimes[declared]
+	}
+	sniffedIsImage := strings.HasPrefix(sniffed, "image/")
+	if (extIsImage || declaredIsImage) && !sniffedIsImage {
+		return "", fmt.Errorf("attachment content (%s) does not match its declared image type", sniffed)
+	}
+	if sniffedIsImage && !extIsImage && !declaredIsImage {
+		return "", fmt.Errorf("attachment content (%s) does not match its declared type %q", sniffed, declaredMIME)
+	}
+	if wantDigest != "" {
+		sum := sha256.Sum256(data)
+		if !strings.EqualFold(strings.TrimSpace(wantDigest), hex.EncodeToString(sum[:])) {
+			return "", fmt.Errorf("attachment digest mismatch")
+		}
+	}
+	if strings.TrimSpace(declaredMIME) != "" {
+		return strings.TrimSpace(declaredMIME), nil
+	}
+	return sniffed, nil
+}
 
 // UploadTemporaryDocument accepts one multipart file and immediately returns
 // a session-scoped document ID. Parsing continues in the document worker.
@@ -38,6 +142,20 @@ func (h *Handler) UploadTemporaryDocument(c *gin.Context) {
 		return
 	}
 	defer file.Close()
+
+	// Read the real bytes up front so size, MIME family and digest are all
+	// verified against the actual content, never the client's declarations.
+	data, err := io.ReadAll(io.LimitReader(file, secutils.GetMaxFileSizeMB()*1024*1024+1))
+	if err != nil {
+		c.Error(apperrors.NewBadRequestError("failed to read attachment"))
+		return
+	}
+	wantDigest := strings.TrimSpace(c.PostForm("sha256"))
+	effectiveMIME, validateErr := validateAttachmentContent(fileHeader.Filename, fileHeader.Header.Get("Content-Type"), data, wantDigest)
+	if validateErr != nil {
+		c.Error(apperrors.NewBadRequestError(validateErr.Error()))
+		return
+	}
 
 	sourceTenantID, parseErr := types.ParseAgentSourceTenantID(c.PostForm(types.AgentSourceTenantIDParam))
 	if parseErr != nil {
@@ -83,11 +201,16 @@ func (h *Handler) UploadTemporaryDocument(c *gin.Context) {
 	}
 	document, err := h.temporaryDocuments.Create(
 		ctx, c.GetUint64(types.TenantIDContextKey.String()), sessionID,
-		fileHeader.Filename, fileHeader.Header.Get("Content-Type"), fileHeader.Size, file, options,
+		fileHeader.Filename, effectiveMIME, int64(len(data)), bytes.NewReader(data), options,
 	)
 	if err != nil {
 		c.Error(apperrors.NewBadRequestError(err.Error()))
 		return
+	}
+	if wantDigest != "" {
+		sum := sha256.Sum256(data)
+		logger.Infof(ctx, "session attachment uploaded: session_id=%s attachment_id=%s size=%d sha256=%s",
+			sessionID, document.ID, len(data), hex.EncodeToString(sum[:]))
 	}
 	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": document})
 }

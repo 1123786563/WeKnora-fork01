@@ -65,3 +65,32 @@ export function toggleResourceSelection(resources: readonly DataSourceResource[]
   }
   return [...next];
 }
+
+// Vue isDriveConnector: the Drive connectors have no "list spaces" API, so the
+// resource step requires a user-supplied root folder_token.
+export function isDriveConnector(type: string): boolean {
+  return type === 'feishu_drive' || type === 'lark_drive';
+}
+
+// Vue extractDriveFolderToken accepts either a bare folder_token or a Drive
+// folder URL (https://xxx.feishu.cn/drive/folder/<token> or the Lark
+// equivalent https://xxx.larksuite.com/drive/folder/<token>) and returns the
+// token. Matching is path-based, host-agnostic. Trims surrounding whitespace.
+// Returns "" when nothing usable is found.
+export function extractDriveFolderToken(input: string): string {
+  const raw = (input || '').trim();
+  if (!raw) return '';
+  // Bare token: no scheme, no slash - use as-is.
+  if (!raw.includes('://') && !raw.includes('/')) return raw;
+  // URL form: extract the segment after /drive/folder/.
+  const match = raw.match(/\/drive\/folder\/([^/?#]+)/);
+  if (match && match[1]) return match[1];
+  // Fallback: last path segment of a URL, or the raw string.
+  try {
+    const url = new URL(raw);
+    const segments = url.pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] || raw;
+  } catch {
+    return raw;
+  }
+}

@@ -1,17 +1,13 @@
 import type { KnowledgeDocument } from '@weknora/api-client';
-import { createElement, useEffect, useRef, type ReactElement } from 'react';
+import { createElement, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import * as XLSX from 'xlsx';
-import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
-import { previewKindForFile, previewStatus, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
+import { renderChatMarkdown } from '@weknora/views/chat/markdown';
+import { attachMermaidViewerToolbar, hydrateMermaidBlocksWithBrowserDefaults, type MermaidViewerToolbarLabels } from '@weknora/views/chat/mermaid';
+import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
 export interface KnowledgeDocumentPreviewModel {
   kind: DocumentPreviewKind;
-  availability: {
-    kind: 'ready' | 'processing' | 'error' | 'unsupported';
-    label: string;
-  };
   ready: boolean;
-  downloadOnly: boolean;
   path: string;
   fileName: string;
 }
@@ -90,12 +86,16 @@ export function DocumentPreviewContent({
   url,
   fileName,
   spreadsheet,
+  mermaidLabels,
+  mermaidLoader,
 }: {
   kind: InlinePreviewKind | 'mermaid';
   text?: string;
   url?: string;
   fileName?: string;
   spreadsheet?: SpreadsheetPreviewModel;
+  mermaidLabels?: DocumentMermaidLabels;
+  mermaidLoader?: DocumentMermaidLoader;
 }): ReactElement {
   if (kind === 'spreadsheet') {
     return createElement('div', { className: 'wk-preview-spreadsheet', 'aria-label': `${fileName || 'Document'} content` },
@@ -124,7 +124,7 @@ export function DocumentPreviewContent({
   if (kind === 'video') {
     return createElement('video', { className: 'wk-preview-video block max-h-[calc(100vh-240px)] max-w-full', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
-  if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName });
+  if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName, labels: mermaidLabels, loader: mermaidLoader });
   return createElement('iframe', {
     className: 'wk-preview-pdf',
     src: url,
@@ -132,7 +132,107 @@ export function DocumentPreviewContent({
   });
 }
 
-function MermaidPreview({ text, fileName }: { text: string; fileName?: string }): ReactElement {
+// ─── R465/A1 — mermaid fullscreen viewer (Vue document-preview parity) ───────
+//
+// Vue frontend/src/components/document-preview.vue renders .mmd/.mermaid files
+// as a sanitized SVG and opens utils/mermaidViewer.ts openMermaidFullscreen on
+// a click: a fixed overlay with the toolbar zoomIn/zoomOut/reset/download plus
+// a close control (Vue order), 0.2 zoom stepping, drag panning and Escape /
+// overlay-click dismissal. The zoom/download mechanics ride the shared views
+// engine (packages/views/src/chat/mermaid-viewer.ts, R463) so this face only
+// owns the overlay, the close control and the locale labels.
+
+/** Toolbar + close + dialog-name copy (Vue i18n mermaid.* strings). */
+export interface DocumentMermaidLabels extends MermaidViewerToolbarLabels {
+  close: string;
+  /** Vue mermaid.expand — used as the fullscreen dialog's accessible name. */
+  expand: string;
+}
+
+/** Injectable hydrator for tests (defaults to the shared views loader). */
+export type DocumentMermaidLoader = typeof hydrateMermaidBlocksWithBrowserDefaults;
+
+// Vue close icon (frontend/src/utils/mermaidViewer.ts L102).
+const MERMAID_CLOSE_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+/**
+ * Open the fullscreen mermaid viewer for one diagram (Vue
+ * openMermaidFullscreen): overlay + centered stage carrying the sanitized SVG,
+ * shared-engine toolbar (zoomIn, zoomOut, reset, download) with the close
+ * control appended last. Dismiss on close, overlay click, or Escape.
+ */
+export function openDocumentMermaidFullscreen(svgHtml: string, labels: DocumentMermaidLabels): void {
+  if (typeof document === 'undefined') return;
+  const overlay = document.createElement('div');
+  overlay.className = 'wk-document-mermaid-viewer';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', labels.expand);
+  // Vue overlay chrome (mermaidViewer.ts L81) with the engine's flex-centered
+  // stage layout (the toolbar transforms the stage from its centered slot).
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,0.65);overflow:hidden;cursor:grab;';
+
+  const stage = document.createElement('div');
+  stage.className = 'wk-document-mermaid-viewer__stage';
+  stage.innerHTML = svgHtml;
+  const svgEl = stage.querySelector('svg');
+  if (svgEl) {
+    // Vue content chrome (mermaidViewer.ts L107-113).
+    svgEl.style.display = 'block';
+    svgEl.setAttribute('draggable', 'false');
+  }
+  stage.style.cssText =
+    'max-width:100%;max-height:100%;overflow:auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,0.2);cursor:default;';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'wk-document-mermaid-viewer__close';
+  closeBtn.setAttribute('aria-label', labels.close);
+  closeBtn.setAttribute('title', labels.close);
+  closeBtn.innerHTML = MERMAID_CLOSE_ICON;
+  closeBtn.style.cssText =
+    'display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid #e5e7eb;border-radius:6px;background:rgba(255,255,255,0.95);color:#6b7280;cursor:pointer;padding:0;box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+
+  // Vue order (mermaidViewer.ts L103): zoomIn, zoomOut, reset, download, close.
+  const { toolbar, detach } = attachMermaidViewerToolbar(overlay, stage, labels);
+  toolbar.appendChild(closeBtn);
+
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      close();
+    }
+  };
+  const close = () => {
+    detach();
+    overlay.remove();
+    document.removeEventListener('keydown', onKeydown, true);
+  };
+  closeBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    close();
+  });
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKeydown, true);
+
+  overlay.append(toolbar, stage);
+  document.body.appendChild(overlay);
+}
+
+function MermaidPreview({
+  text,
+  fileName,
+  labels,
+  loader = hydrateMermaidBlocksWithBrowserDefaults,
+}: {
+  text: string;
+  fileName?: string;
+  labels?: DocumentMermaidLabels;
+  loader?: DocumentMermaidLoader;
+}): ReactElement {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!root.current || typeof document === 'undefined') return;
@@ -142,22 +242,124 @@ function MermaidPreview({ text, fileName }: { text: string; fileName?: string })
     source.dataset.markdownDiagram = 'mermaid';
     source.append(code);
     root.current.replaceChildren(source);
-    void hydrateMermaidBlocksWithBrowserDefaults(root.current, 'wk-document-mermaid').catch(() => {});
-  }, [text]);
-  return createElement('div', { ref: root, className: 'wk-preview-mermaid min-h-16 overflow-auto', 'aria-label': `${fileName || 'Document'} Mermaid diagram` });
+    void loader(root.current, 'wk-document-mermaid').catch(() => {});
+  }, [text, loader]);
+  // Vue document-preview.vue: the whole .preview-mermaid surface is clickable
+  // (@click="openMermaid") and opens the fullscreen viewer only when a
+  // rendered svg exists (`if (!svg) return`).
+  const openViewer = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!labels) return;
+    const svg = event.currentTarget.querySelector('svg');
+    if (!svg) return;
+    openDocumentMermaidFullscreen((svg as SVGElement).outerHTML, labels);
+  };
+  return createElement('div', {
+    ref: root,
+    className: 'wk-preview-mermaid min-h-16 cursor-pointer overflow-auto',
+    'aria-label': `${fileName || 'Document'} Mermaid diagram`,
+    tabIndex: 0,
+    onClick: openViewer,
+  });
 }
 
+const AUDIO_PREVIEW_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac']);
+
+// ─── R466/A1 — merged/chunks inline mermaid hydration (Vue doc-content parity) ─
+//
+// Vue doc-content renders the 全文 (merged) view and every chunk body through
+// processMarkdown — ```mermaid fences become diagram nodes — then
+// runMarkdownPostRenderPipeline scans the markdown root, mermaid.run()s every
+// diagram and bindMermaidClickEvents marks each rendered container clickable
+// (cursor pointer, stopPropagation) so a click opens
+// utils/mermaidViewer openMermaidFullscreen(svg.outerHTML). The pipeline reruns
+// whenever the markdown body changes (chunk page turn / edit / view switch).
+//
+// React rides the shared views engine: renderChatMarkdown emits
+// pre[data-markdown-diagram="mermaid"] and
+// hydrateMermaidBlocksWithBrowserDefaults replaces it with a .wk-chat-mermaid
+// figure (a failed render degrades back to the escaped code block — engine
+// semantics). This face only owns the trigger and the click binding.
+
+export interface DocumentMarkdownBodyProps {
+  markdown: string;
+  className?: string;
+  labels: DocumentMermaidLabels;
+  /** Injectable hydrator for tests (defaults to the shared views loader). */
+  loader?: DocumentMermaidLoader;
+}
+
+/** Vue bindMermaidClickEvents: rendered diagrams become click-to-fullscreen. */
+function bindDocumentMermaidClicks(root: HTMLElement, labels: DocumentMermaidLabels): void {
+  root.querySelectorAll<HTMLElement>('.wk-chat-mermaid').forEach((figure) => {
+    // Vue removes and re-adds listeners to avoid double binding; a dataset
+    // flag gives the same idempotence for figures that survive a re-run.
+    if (figure.dataset.mermaidFullscreenBound === 'true') return;
+    figure.dataset.mermaidFullscreenBound = 'true';
+    figure.style.cursor = 'pointer';
+    figure.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const svg = figure.querySelector('svg');
+      if (svg) openDocumentMermaidFullscreen(svg.outerHTML, labels);
+    });
+  });
+}
+
+/**
+ * Markdown body for the merged/chunks views (Vue md-content): renders
+ * renderChatMarkdown HTML, then after render hydrates inline mermaid blocks
+ * with the shared engine and binds the Vue click-to-fullscreen behavior.
+ * Bodies without mermaid fences skip the hydration pass entirely.
+ */
+export function DocumentMarkdownBody({ markdown, className, labels, loader = hydrateMermaidBlocksWithBrowserDefaults }: DocumentMarkdownBodyProps): ReactElement {
+  const root = useRef<HTMLDivElement>(null);
+  const html = useMemo(() => renderChatMarkdown(markdown), [markdown]);
+  useEffect(() => {
+    const host = root.current;
+    if (!host || typeof document === 'undefined') return;
+    // Vue renderMermaidDiagrams only runs when the scan finds diagram nodes.
+    if (!host.querySelector('[data-markdown-diagram="mermaid"]')) return;
+    let cancelled = false;
+    void loader(host, 'wk-document-mermaid').then(() => {
+      if (cancelled || !host.isConnected) return;
+      bindDocumentMermaidClicks(host, labels);
+    }).catch(() => {
+      // Hydration failure keeps the escaped code block visible (engine fallback).
+    });
+    return () => { cancelled = true; };
+  }, [html, labels, loader]);
+  return createElement('div', { ref: root, className, dangerouslySetInnerHTML: { __html: html } });
+}
+
+/**
+ * Vue doc-content#canPreview: only `type === 'file'` knowledge entries with a
+ * resolvable preview extension, and never audio — Vue hides the preview tab
+ * for audio and embeds the player above the content views instead. The
+ * extension resolution mirrors Vue resolveFilePreviewExt: an explicit
+ * file_type wins over the filename suffix. `source` is present on real
+ * payloads but deliberately ignored — Vue gates on `type`, and backend file
+ * knowledge carries `source: ""`.
+ */
+export function canPreviewDocument(document: { type?: string; source?: string; file_name?: string; title?: string; file_type?: string }): boolean {
+  if (document.type !== 'file') return false;
+  const normalizedType = (document.file_type || '').trim().replace(/^\./, '').toLowerCase();
+  const fileName = document.file_name || document.title || '';
+  const dot = fileName.lastIndexOf('.');
+  const fromName = dot < 0 || dot === fileName.length - 1 ? '' : fileName.slice(dot + 1).toLowerCase();
+  const extension = normalizedType || fromName;
+  if (!extension || AUDIO_PREVIEW_EXTENSIONS.has(extension)) return false;
+  return isInlinePreviewKind(previewKindForDocument(`doc.${extension}`));
+}
+
+/**
+ * Vue doc-content#buildPreviewModel never consults parse_status: the preview
+ * tab is gated by canPreview() (file type + resolvable extension, never
+ * audio) and the embedded audio player loads for audio files regardless of
+ * processing state. `ready` therefore mirrors exactly those conditions —
+ * `type === 'file'` plus an inline-previewable extension — so a pending or
+ * failed parse never hides preview content or the audio player.
+ */
 export function buildDocumentPreview(document: KnowledgeDocument, previewPath: string): KnowledgeDocumentPreviewModel {
   const fileName = document.file_name || document.title || 'document';
-  const status = previewStatus(document);
   const kind = previewKindForDocument(fileName);
-  const inline = isInlinePreviewKind(kind);
-  const availability = status.kind === 'processing'
-    ? { kind: 'processing' as const, label: status.label }
-    : status.kind === 'unavailable'
-      ? { kind: 'error' as const, label: status.label }
-      : !inline
-        ? { kind: 'unsupported' as const, label: 'Unsupported file type' }
-        : { kind: 'ready' as const, label: status.label };
-  return { kind, availability, ready: status.kind === 'ready', downloadOnly: !inline, path: previewPath, fileName };
+  return { kind, ready: document.type === 'file' && isInlinePreviewKind(kind), path: previewPath, fileName };
 }

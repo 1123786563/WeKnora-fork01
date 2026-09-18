@@ -112,6 +112,22 @@ function shouldShowOrgRelationTag(opts: { selection: SpaceSelection; isOwner: bo
   return true;
 }
 
+// canRequestUpgradeForOrg ported from Vue OrganizationSettingsModal.vue
+// canRequestUpgrade: the role-upgrade request is offered only inside edit
+// mode, to members whose space role is below admin, while the tenant role is
+// admin+ (below that the modal shows the read-only tenant-role hint instead).
+export function canRequestUpgradeForOrg(opts: { mode: 'create' | 'edit'; myRole: string; tenantAdmin: boolean }): boolean {
+  return opts.mode === 'edit' && opts.myRole !== '' && opts.myRole !== 'admin' && opts.tenantAdmin;
+}
+
+// upgradeRoleOptionsForRole ported from Vue OrganizationSettingsModal.vue
+// upgradeRoleOptions: only roles above the current space role are selectable.
+export function upgradeRoleOptionsForRole(myRole: string): Array<'editor' | 'admin'> {
+  if (myRole === 'viewer') return ['editor', 'admin'];
+  if (myRole === 'editor') return ['admin'];
+  return [];
+}
+
 /* Minimal inline icon set (TDesign glyph equivalents, stroke = currentColor). */
 function IconGlyph(props: { d: string; size?: number; viewBox?: string; fill?: boolean; className?: string }) {
   return (
@@ -304,6 +320,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [activeInviteCode, setActiveInviteCode] = useState(inviteCode);
   const [confirmState, setConfirmState] = useState<{ kind: 'leave' | 'delete'; org: Organization } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards the settings modal's org-detail refresh: a late response for a
+  // closed (or switched) modal must not resurrect stale settingsOrg state.
+  const settingsRequestId = useRef('');
   const locale = currentLocale();
   const organizationsApi = client.identity.organizations;
 
@@ -436,9 +455,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     setMemberSearchQuery(''); setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
     setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
+    // Vue OrganizationSettingsModal fetchOrgDetail: the org detail endpoint
+    // (GET /organizations/:id) carries has_pending_upgrade and the
+    // authoritative my_role; the list row alone cannot gate the upgrade form.
+    settingsRequestId.current = org.id;
+    void organizationsApi.get(org.id).then((detail) => {
+      if (settingsRequestId.current === org.id) setSettingsOrg(detail);
+    }).catch(() => { /* keep the list row, like Vue's caught fetchOrgDetail */ });
   }
 
-  function closeSettings() { setSettingsOpen(false); setSettingsOrg(null); }
+  function closeSettings() { settingsRequestId.current = ''; setSettingsOpen(false); setSettingsOrg(null); }
 
   function openJoinModal() {
     setJoinOpen(true); setJoinStep('invite'); setJoinInputCode(''); setJoinPreview(null);
@@ -675,9 +701,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   async function submitUpgradeRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!settingsOrg) return;
+    // Vue disables the upgrade entry while hasPendingUpgrade; the inline form
+    // mirrors that by refusing to submit a second request.
+    if (settingsOrg.has_pending_upgrade === true) return;
     try {
       await organizationsApi.requestRoleUpgrade(settingsOrg.id, { requested_role: upgradeRole, ...(upgradeNote.trim() ? { message: clampApplicationNote(upgradeNote) } : {}) });
       setUpgradeNote('');
+      // Vue handleSubmitUpgrade: hasPendingUpgrade.value = true (plus the
+      // store patch) so the entry stays disabled without a refetch.
+      setSettingsOrg((current) => (current ? { ...current, has_pending_upgrade: true } : current));
       showToast('success', t(locale, 'organization.upgrade.submitSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.upgrade.submitFailed'))); }
   }
@@ -815,11 +847,26 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const settingsOrgAdmin = settingsMode === 'create' || Boolean(settingsOrg && (settingsOrg.is_owner === true || settingsOrg.my_role === 'admin'));
   const settingsCanManage = canManageOrg && settingsOrgAdmin;
   const showSettingsRoleHint = settingsMode === 'edit' && settingsOrgAdmin && !canManageOrg;
+  // Vue OrganizationSettingsModal canRequestUpgrade/upgradeRoleOptions: only
+  // space members below admin with a tenant-admin+ role may request a role
+  // upgrade, and only roles above their current space role are selectable.
+  const canRequestUpgrade = canRequestUpgradeForOrg({ mode: settingsMode, myRole: strOf(settingsOrg?.my_role), tenantAdmin: canManageOrg });
+  const upgradeChoices = upgradeRoleOptionsForRole(strOf(settingsOrg?.my_role));
+  // Vue OrganizationSettingsModal hasPendingUpgrade/current-role bar: the org
+  // detail endpoint reports an in-flight upgrade request (entry disabled,
+  // organization.upgrade.pending title) and the popup always tags the current
+  // space role (organization.upgrade.currentRole + organization.role.{my_role},
+  // falling back to viewer like Vue's `orgInfo?.my_role || 'viewer'`).
+  const upgradeCurrentRole = strOf(settingsOrg?.my_role) || 'viewer';
+  const hasPendingUpgrade = boolOf(settingsOrg?.has_pending_upgrade);
   const settingsNavLabels: Record<string, string> = {
     basic: 'organization.editor.navBasic',
     permissions: 'organization.editor.navPermissions',
     members: 'organization.members.listTitle',
-    requests: 'organization.joinRequests.listTitle',
+    // Vue OrganizationSettingsModal.vue:1008 labels the nav entry with
+    // t('organization.settings.joinRequests') (加入申请); 待审核申请 stays
+    // reserved for the inner list title (Vue :513).
+    requests: 'organization.settings.joinRequests',
     shares: 'organization.sharedResources.kbListTitle',
     agents: 'organization.sharedResources.agentListTitle',
     invite: 'organization.settings.inviteLink',
@@ -973,20 +1020,24 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                         {settingsCanManage ? <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'common.save')}</button> : null}
                       </form>
-                      <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
+                      {canRequestUpgrade ? <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
+                        <div className="mb-[16px] flex items-center gap-[8px]">
+                          <span className="text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.upgrade.currentRole')}</span>
+                          <span className={RELATION_ROLE_TAG + ' ' + (RELATION_ROLE_TAG_TONES[upgradeCurrentRole] ?? 'bg-[rgba(107,114,128,0.08)] text-[rgba(23,26,29,0.6)]')}>{t(locale, 'organization.role.' + upgradeCurrentRole)}</span>
+                        </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
                           <Select id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
-                            {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
+                            {upgradeChoices.map((value) => <option key={value} value={value}>{t(locale, 'organization.role.' + value)}</option>)}
                           </Select>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
                           <Textarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
-                        <button type="submit" className={ORG_BTN_OUTLINE}>{t(locale, 'organization.upgrade.submitBtn')}</button>
-                      </form>
+                        <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
+                      </form> : null}
                     </>
                   ) : settingsSection === 'members' ? (
                     <>
@@ -1018,7 +1069,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : settingsSection === 'requests' ? (
                     <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.joinRequests.listTitle')}</h2>
+                      {/* Vue OrganizationSettingsModal.vue:505-516 — the section
+                          heading is 加入申请 (+ description); 待审核申请 with a
+                          live count is the inner list title below it. */}
+                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.joinRequests')}</h2>
+                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.joinRequestsDesc')}</p>
+                      <div className="mb-[8px] flex items-center gap-[8px]">
+                        <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.joinRequests.listTitle')}</span>
+                        <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{requests.filter((request) => request.status === 'pending').length}</span>
+                      </div>
                       {feedStatus('requests', t(locale, 'organization.settings.reviewFailed'))}
                       {detailFeeds.requests.status === 'ready' && requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : null}
                       {detailFeeds.requests.status === 'ready' ? requests.filter((request) => request.status === 'pending').map((request) => (

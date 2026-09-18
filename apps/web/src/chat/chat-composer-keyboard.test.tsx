@@ -31,3 +31,64 @@ test('submits on the Vue-compatible plain Enter shortcut', async () => {
 
   assert.deepEqual(submissions, ['Ask Vue']);
 });
+
+/*
+ * R474-A2 — Vue Input-field.vue injectCurrentInput: while replying on a
+ * steer-capable turn, ⌘Enter (Alt+Enter off-Mac) injects the current draft;
+ * with an empty draft it promotes the first queued steer chip instead
+ * (firstQueuedSteer → emit('promote-steer')).
+ */
+test('⌘Enter promotes the first queued steer when the draft is empty while streaming', async () => {
+  const submissions: string[] = [];
+  const promoted: string[] = [];
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ChatComposer
+      draft=""
+      streaming
+      canSteer
+      steerQueue={[
+        { steerId: 's-pending', content: 'posting', status: 'pending' },
+        { steerId: 's-queued', content: 'queued follow-up', status: 'queued' },
+      ]}
+      onDraftChange={() => undefined}
+      onSubmit={(submission) => submissions.push(submission.content)}
+      onSteerPromote={(steerId) => promoted.push(steerId)}
+    />,
+  ));
+  const textarea = container.querySelector<HTMLTextAreaElement>('#wk-chat-draft');
+  assert.ok(textarea);
+
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })));
+
+  assert.deepEqual(promoted, ['s-queued'], 'the shortcut promotes the first queued chip');
+  assert.deepEqual(submissions, [], 'an empty draft is not submitted');
+});
+
+test('⌘Enter with a typed draft submits it for immediate injection while streaming', async () => {
+  const submissions: string[] = [];
+  const promoted: string[] = [];
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ChatComposer
+      draft="answer now please"
+      streaming
+      canSteer
+      steerQueue={[{ steerId: 's-queued', content: 'queued follow-up', status: 'queued' }]}
+      onDraftChange={() => undefined}
+      onSubmit={(submission) => submissions.push(submission.content)}
+      onSteerPromote={(steerId) => promoted.push(steerId)}
+    />,
+  ));
+  const textarea = container.querySelector<HTMLTextAreaElement>('#wk-chat-draft');
+  assert.ok(textarea);
+
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })));
+
+  assert.deepEqual(submissions, ['answer now please'], 'the draft wins over the queue');
+  assert.deepEqual(promoted, []);
+});

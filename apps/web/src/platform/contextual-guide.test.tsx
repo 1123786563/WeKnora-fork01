@@ -50,6 +50,19 @@ const settle = (ms: number) => act(async () => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 });
 
+// Poll until `check()` passes (inside act, so pending React updates flush) with
+// a generous deadline instead of one fixed sleep: the guide's arm/poll/retry
+// chains are real-timer ladders (5ms arm, 13 × locateRetryDelayMs auto-skip,
+// 600ms catalog delay) whose setTimeout latency balloons under the concurrent
+// full-suite runner, so any fixed budget flakes intermittently.
+async function waitFor(check: () => boolean, label: string, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() >= deadline) assert.fail(`timed out after ${timeoutMs}ms waiting for: ${label}`);
+    await settle(5);
+  }
+}
+
 const GLOBAL_DONE = { [GLOBAL_USER_GUIDE_KEY]: '1' };
 
 const FAST = {
@@ -120,10 +133,8 @@ test('(gating) the host waits for the global welcome tour before opening (400ms 
   assert.equal(overlay(), null, 'global guide still pending — contextual guide stays closed');
   await act(async () => {
     dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
-    await new Promise((resolve) => setTimeout(resolve, 30));
   });
-  await settle(20);
-  assert.ok(overlay(), 'poll must arm the open once the global guide finishes');
+  await waitFor(() => Boolean(overlay()), 'poll must arm the open once the global guide finishes');
   assert.equal(stepTitle(), '创建第一个知识库');
 });
 
@@ -134,8 +145,7 @@ test('(routing) openContextualGuide opens the requested tour with the Vue zh-CN 
     openContextualGuide('agentList');
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await settle(15);
-  assert.ok(overlay());
+  await waitFor(() => Boolean(overlay()), 'agentList tour opens after the arm delay');
   assert.equal(overlay()?.getAttribute('data-guide-tour'), 'agentList');
   assert.equal(stepTitle(), '创建你的智能体');
   assert.equal(stepLabel(), '1 / 1');
@@ -159,7 +169,7 @@ test('(anchor spotlight) a fake anchor with a real box produces hole + ring + ca
     openContextualGuide('kbList');
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await settle(15);
+  await waitFor(() => Boolean(document.querySelector('.wk-guide__spot')), 'spotlight hole must render for a located anchor');
   const spot = document.querySelector('.wk-guide__spot') as HTMLElement | null;
   const ring = document.querySelector('.wk-guide__ring') as HTMLElement | null;
   assert.ok(spot, 'spotlight hole must render for a located anchor');
@@ -179,8 +189,7 @@ test('(dismissal) skipping persists the tour key and cascades alsoCompleteTours'
     openContextualGuide('kbCreate', { isFaq: true });
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await settle(15);
-  assert.ok(overlay());
+  await waitFor(() => Boolean(overlay()), 'kbCreate tour opens after the arm delay');
   assert.equal(stepTitle(), '选择知识库类型');
   const skip = buttonByText('跳过');
   assert.ok(skip);
@@ -194,8 +203,7 @@ test('(routing) the pending sessionStorage hand-off opens the tour after a full-
   dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
   dom.window.sessionStorage.setItem(CONTEXTUAL_GUIDE_PENDING_KEY, JSON.stringify({ tour: 'kbDetail', options: {} }));
   await mountHost();
-  await settle(20);
-  assert.ok(overlay(), 'destination-page host must consume the intent and open');
+  await waitFor(() => Boolean(overlay()), 'destination-page host must consume the intent and open');
   assert.equal(stepTitle(), '知识库还是空的');
   assert.equal(dom.window.sessionStorage.getItem(CONTEXTUAL_GUIDE_PENDING_KEY), null, 'intent is consumed (one-shot)');
 });
@@ -207,8 +215,7 @@ test('tenantModels agent variant renders the stepsAgent copy', async () => {
     openContextualGuide('tenantModels', { variant: 'agent' });
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await settle(15);
-  assert.ok(overlay());
+  await waitFor(() => Boolean(overlay()), 'tenantModels tour opens after the arm delay');
   assert.equal(stepTitle(), '需要先配置对话模型');
   const next = buttonByText('下一步');
   assert.ok(next);
@@ -238,7 +245,10 @@ test('(direct mount) ContextualGuide walks kbDetail steps, marks dots, and repor
 
 test('(direct mount) optional chat kb step auto-skips when its anchor is missing', async () => {
   await mountDirect('chat', { locateRetryDelayMs: 1, beforeDelayMs: 0 });
-  await settle(40);
+  // The skip happens after the full 13-attempt locate-retry ladder (12 retries
+  // × locateRetryDelayMs): poll for it instead of trusting one 40ms sleep,
+  // which overflows when the concurrent suite inflates timer latency.
+  await waitFor(() => stepTitle() === '输入你的问题', 'optional kb step (missing anchor) is skipped, input follows');
   assert.equal(stepTitle(), '输入你的问题', 'optional kb step (missing anchor) is skipped, input follows');
   assert.equal(stepLabel(), '2 / 4');
 });
@@ -254,4 +264,113 @@ test('Escape dismisses and reports to the host like the Vue keydown handler', as
     await new Promise((resolve) => setTimeout(resolve, 5));
   });
   assert.equal(dismissed, 1, 'Escape reports dismissal (SpotlightGuide.vue:5)');
+});
+
+// --- kbDetail host flows (documents page trigger + Vue KnowledgeBase.vue:339-345) ---
+
+/** The toolbar upload anchor, laid out like a real button (jsdom boxes are zero). */
+function addUploadAnchor() {
+  const anchor = document.createElement('button');
+  anchor.setAttribute('data-guide', 'kb-detail-add-doc');
+  anchor.style.width = '28px';
+  anchor.style.height = '28px';
+  document.body.append(anchor);
+  anchor.getBoundingClientRect = () => ({ x: 900, y: 200, width: 28, height: 28, top: 200, left: 900, right: 928, bottom: 228, toJSON: () => ({}) }) as DOMRect;
+  return anchor;
+}
+
+test('(kbDetail) the tour opens after the 600ms catalog delay with the intro step centered', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost({ openDelayOverrideMs: undefined });
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+  assert.equal(overlay(), null, 'no overlay before the 600ms open delay (contextualGuides.ts:78)');
+  await waitFor(() => Boolean(overlay()), 'overlay appears after the catalog open delay');
+  assert.equal(overlay()?.getAttribute('data-guide-tour'), 'kbDetail');
+  assert.equal(stepTitle(), '知识库还是空的');
+  assert.equal(stepLabel(), '1 / 3');
+  assert.ok(card()?.className.includes('wk-guide__card--center'), 'intro step centers the card');
+});
+
+test('(kbDetail) next/prev walk the three steps and the upload anchor is spotlighted', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await waitFor(() => Boolean(overlay()), 'kbDetail tour opens after the arm delay');
+  assert.equal(stepLabel(), '1 / 3');
+
+  await click(buttonByText('下一步')!);
+  await waitFor(() => Boolean(document.querySelector('.wk-guide__spot')), 'upload anchor gets the spotlight hole');
+  assert.equal(stepTitle(), '添加文档');
+  assert.equal(stepLabel(), '2 / 3');
+  assert.ok(document.querySelector('.wk-guide__spot'), 'upload anchor gets the spotlight hole');
+  assert.ok(document.querySelector('.wk-guide__ring'), 'brand ring renders around the hole');
+
+  await click(buttonByText('上一步')!);
+  await settle(30);
+  assert.equal(stepTitle(), '知识库还是空的', 'prev returns to the intro step');
+  assert.equal(stepLabel(), '1 / 3');
+  assert.ok(card()?.className.includes('wk-guide__card--center'), 'centered again on the target-less step');
+});
+
+test('(kbDetail) skip, done and Escape each close the tour and persist the one-shot key', async () => {
+  for (const [label, walk, close] of [
+    ['skip', 0, '跳过'],
+    ['done', 2, '知道了'],
+  ] as const) {
+    dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+    addUploadAnchor();
+    await mountHost();
+    await act(async () => {
+      openContextualGuide('kbDetail');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await waitFor(() => Boolean(overlay()), `${label} pass: kbDetail tour opens after the arm delay`);
+    for (let i = 0; i < walk; i += 1) {
+      await click(buttonByText('下一步')!);
+      await settle(20);
+    }
+    await click(buttonByText(close)!);
+    assert.equal(overlay(), null, `${label} closes the tour`);
+    assert.equal(dom.window.localStorage.getItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail), '1', `${label} writes weknora:contextual-guide-kb-detail:v1`);
+    await act(async () => mountedRoot?.unmount());
+    mountedRoot = undefined;
+    document.body.replaceChildren();
+    dom.window.localStorage.clear();
+  }
+
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await waitFor(() => Boolean(overlay()), 'Escape pass: kbDetail tour opens after the arm delay');
+  await act(async () => {
+    overlay()?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+  assert.equal(overlay(), null, 'Escape closes the tour');
+  assert.equal(dom.window.localStorage.getItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail), '1', 'Escape persists like Vue onFinish');
+});
+
+test('(kbDetail) a finished tour never re-opens when the documents page re-triggers', async () => {
+  dom.window.localStorage.setItem(GLOBAL_USER_GUIDE_KEY, '1');
+  dom.window.localStorage.setItem(CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS.kbDetail, '1');
+  addUploadAnchor();
+  await mountHost();
+  await act(async () => {
+    openContextualGuide('kbDetail');
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  });
+  await settle(30);
+  assert.equal(overlay(), null, 'the weknora:contextual-guide-kb-detail:v1 key blocks the trigger');
 });

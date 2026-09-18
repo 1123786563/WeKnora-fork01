@@ -89,3 +89,33 @@ test('Vue page actions expose a contributor-only delete operation backed by the 
   assert.match(source, /client\.wiki\.remove\(knowledgeBaseId,selected\.slug\)/);
   assert.match(source, /wikiBrowser\.deletePageConfirm/);
 });
+
+// Vue WikiBrowser.vue `cancelEditPage`: the inline editor pairs Save with a
+// Cancel button that exits edit mode and discards the draft.
+test('Wiki editor exposes a cancel action that exits edit mode without saving', () => {
+  const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
+  const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1', canContribute: true }));
+  assert.match(html, /class="wk-wiki-editor[^"]*"/);
+  const source = WikiPage.toString();
+  assert.match(source, /cancelEdit\s*\(/);
+  assert.match(source, /t\("common\.cancel"\)/);
+});
+
+// Vue KnowledgeBase.vue canEdit contract: the wiki edit entry consults the
+// org share list (authoritative share-grant signal), the KB creator_id owner
+// check, and the active-tenant admin role — not just the caller's tenant role
+// prop. The permission probe must feed all three inputs into wikiEditPermission.
+test('Wiki edit permission probe follows the Vue canEdit contract inputs', () => {
+  const source = WikiPage.toString();
+  assert.match(source, /wikiEditPermission\(/);
+  assert.match(source, /knowledgeBaseShares\.listShared\(/);
+});
+
+// Vue WikiBrowser.vue `overwriteSavePage`: on a 409 conflict the editor offers
+// "覆盖保存" (overwrite) in addition to reloading the latest version.
+test('Wiki conflict state exposes the Vue overwrite action backed by the latest version', () => {
+  const source = WikiPage.toString();
+  assert.match(source, /saveState\?\.\s*status\s*===?\s*"conflict"/);
+  assert.match(source, /wikiBrowser\.editConflictOverwrite/);
+  assert.match(source, /overwriteWikiPage\s*\(/);
+});

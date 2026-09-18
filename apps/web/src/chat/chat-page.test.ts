@@ -102,15 +102,20 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     },
   }));
 
-  // Agent selector lives in the composer control bar (Vue agent-mode chip).
+  // Agent selector lives in the composer control bar (Vue agent-mode chip):
+  // a button trigger (upstream AgentSelector) carrying the current agent
+  // name; the grouped panel itself mounts on click.
   assert.match(html, /id="wk-chat-agent"/);
-  assert.match(html, /value="agent-1"/);
+  assert.match(html, /aria-haspopup="dialog"/);
   assert.match(html, /Research/);
-  assert.match(html, /Disabled · 不可用/);
+  assert.doesNotMatch(html, /Disabled/);
   assert.match(html, /同意/);
   assert.match(html, /去授权 Docs MCP/);
   assert.match(html, /补充当前任务/);
-  assert.match(html, /checking sources/);
+  // Vue main-face contract: the SSE `thinking` field never renders a fold on
+  // the main face (it only feeds the agent timeline); the live thinking
+  // indicator is deepThink, driven by `<think>` tags in the streamed answer.
+  assert.doesNotMatch(html, /checking sources/);
   assert.match(html, /Guide &lt;safe&gt;/);
   assert.match(html, /search_docs/);
   assert.match(html, /&lt;not markup&gt;/);
@@ -242,20 +247,19 @@ test('new-conversation view renders the agent picker and the agent suggested que
     onStarterQuestionClick: () => undefined,
     locale: 'zh-CN',
   }));
-  // Agent picker (Vue AgentSelector semantics) renders the available agents.
+  // Agent picker (Vue AgentSelector semantics): button trigger shows the
+  // current agent; disabled agents stay out of the picker panel.
   assert.match(html, /id="wk-chat-agent"/);
-  assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
-  assert.match(html, /value="agent-2"/);
-  assert.match(html, /Disabled agent · 不可用/);
+  assert.doesNotMatch(html, /Disabled agent/);
   // Vue creatChat empty state: welcome heading + suggested question cards.
   assert.match(html, /wk-chat-starters/);
   assert.match(html, /Hi，我是 WeKnora，让你的知识触手可及/);
   assert.match(html, /你可以这样问我/);
   assert.match(html, /What is WeKnora?/);
   assert.match(html, /How do I upload files?/);
-  // Vue composer anatomy: quick-answer chip label, model chip, circular send.
-  assert.match(html, /快速问答/);
+  // Vue composer anatomy: agent chip (current agent label), model chip, send.
+  assert.match(html, /wk-chat-agent-chip/);
   assert.match(html, /wk-chat-model-chip/);
   assert.match(html, /aria-label="发送"/);
 });
@@ -381,6 +385,75 @@ test('chat page hides the typing indicator once thinking or tool calls arrive', 
     stream: { phase: 'streaming', thinking: 'checking', references: [], toolCalls: [] },
   }));
   assert.doesNotMatch(html, /wk-chat-typing/);
+});
+
+/*
+ * Vue main-face streaming thinking indicator (deepThink.vue + processStreamChunk):
+ * an open `<think>` tag in the accumulated answer switches the live block to
+ * 「思考中...」 with the reasoning text streamed inline; the answer stays hidden
+ * and the global typing dots are replaced by the deepThink block (botmsg shows
+ * the message, so shouldShowGlobalTypingIndicator is false).
+ */
+test('chat page shows the deepThink live indicator while an open think tag streams', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'u1', session_id: 's', role: 'user', content: 'hello' }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', answer: '<think>先分解问题\n再检索', references: [], toolCalls: [] },
+  }));
+  // Live header: pulsing status + chat.thinking 「思考中...」(deepThink thinking-text).
+  assert.match(html, /wk-chat-live-think/);
+  assert.match(html, /role="status"[^>]*>[\s\S]*?思考中\.\.\./);
+  assert.match(html, /先分解问题/);
+  // The think tag never leaks into the visible answer area.
+  assert.doesNotMatch(html, /&lt;think&gt;/);
+  // Vue deepThink replaces the typing dots once the block streams.
+  assert.doesNotMatch(html, /wk-chat-typing/);
+});
+
+test('chat page folds the live indicator to 已深度思考 once the think tag closes', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'u1', session_id: 's', role: 'user', content: 'hello' }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', answer: '<think>推理过程</think>最终答案正文', references: [], toolCalls: [] },
+  }));
+  // Folded header: chat.deepThoughtCompleted, auto-collapsed like deepThink's watcher.
+  assert.match(html, /wk-chat-live-think/);
+  assert.match(html, /已深度思考/);
+  assert.doesNotMatch(html, /<details open/);
+  assert.match(html, /推理过程/);
+  assert.doesNotMatch(html, /&lt;think&gt;/);
+});
+
+test('chat page renders plain streamed answers without any live thinking block', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'u1', session_id: 's', role: 'user', content: 'hello' }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', answer: '正文开始流出', references: [], toolCalls: [] },
+  }));
+  assert.doesNotMatch(html, /wk-chat-live-think/);
+  assert.doesNotMatch(html, /思考中/);
+  assert.doesNotMatch(html, /已深度思考/);
 });
 
 test('message list renders the Vue anatomy: date separators, user pill, plain assistant text with icon row', () => {
@@ -601,4 +674,83 @@ test('chat route uses Vue-localized copy for destructive confirmation and KB men
     assert.ok(copy.deleteConfirmBody);
     assert.ok(copy.knowledgeBasesLoadFailed);
   }
+});
+
+test('chat route feeds the raw streamed answer and strips think tags from the transient row', () => {
+  const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  // Vue parity: the live thinking block parses the accumulated answer content,
+  // so the presentation must carry it and the transient assistant row must not
+  // render the raw `<think>` markup (content stays empty while thinking).
+  assert.match(routeSource, /answer: streamState\.answer/);
+  assert.match(routeSource, /content: splitLiveThinking\(runState\.answer\)\.answer/);
+});
+
+/*
+ * R466-A2 history deepThink (Vue botmsg.vue + handleMsgList restore branch):
+ * a persisted assistant answer that still contains a full `<think>…</think>`
+ * block renders like the Vue history face — a folded 「已深度思考」 block with
+ * the reasoning inside, and the visible message body is only the post-tag
+ * answer (the tags never leak into the markdown).
+ */
+test('history assistant message renders the folded deepThink block with the tags stripped', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [
+      { id: 'u1', session_id: 's', role: 'user', content: '解释 RAG' },
+      { id: 'a1', session_id: 's', role: 'assistant', content: '<think>先拆解概念，再对比向量检索</think>RAG 是检索增强生成的缩写。', is_completed: true },
+    ],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  // deepThink.vue history mount: thinking=false → folded under 已深度思考.
+  assert.match(html, /wk-chat-history-think/);
+  assert.match(html, /已深度思考/);
+  assert.doesNotMatch(html, /<details open/);
+  // The reasoning text lives inside the foldable block.
+  assert.match(html, /先拆解概念，再对比向量检索/);
+  // The message body keeps only the post-tag answer.
+  assert.match(html, /RAG 是检索增强生成的缩写。/);
+  assert.doesNotMatch(html, /&lt;think&gt;/);
+  assert.doesNotMatch(html, /&lt;\/think&gt;/);
+});
+
+test('history assistant message without think tags renders no deepThink block', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'a1', session_id: 's', role: 'assistant', content: '普通历史回答', is_completed: true }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  assert.doesNotMatch(html, /wk-chat-history-think/);
+  assert.doesNotMatch(html, /已深度思考/);
+  assert.match(html, /普通历史回答/);
+});
+
+test('an unclosed think block in history restores the live thinking presentation', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'a1', session_id: 's', role: 'assistant', content: '<think>中断的推理过程', is_completed: false }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  // Vue restore branch: unclosed <think> keeps thinking=true (expanded, 思考中...).
+  assert.match(html, /wk-chat-history-think/);
+  assert.match(html, /思考中\.\.\./);
+  assert.match(html, /中断的推理过程/);
+  assert.doesNotMatch(html, /&lt;think&gt;/);
 });

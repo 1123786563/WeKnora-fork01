@@ -10,7 +10,9 @@ import {
   mergeAllScopeKnowledgeBases,
   type MergedKnowledgeBase,
 } from '@weknora/domain';
-import { formatMessage, isLocale, type Locale, type MessageValues } from '@weknora/i18n';
+import { formatMessage, type MessageValues } from '@weknora/i18n';
+import { usePreferredLocale } from './locale.ts';
+import { navigate } from './platform/navigation.ts';
 import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
 import {
   isContextualGuideDone,
@@ -27,6 +29,7 @@ import {
 } from './knowledge-bases/list.ts';
 import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
 import { KnowledgeBaseActivityPanel } from './knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { SharedKnowledgeBaseDrawer } from './knowledge-bases/SharedKnowledgeBaseDrawer.tsx';
 import { defaultKnowledgeEditorConfig, hydrateKnowledgeEditorConfig, knowledgeEditorConfigPayload, type KnowledgeEditorConfig } from './knowledge-bases/editor-config.ts';
 import { visibleKnowledgeEditorSections, type KnowledgeEditorSection } from './knowledge-bases/editor-sections.ts';
 import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
@@ -64,11 +67,6 @@ function truncateRailLabel(text: string, max = 4): string {
 }
 
 const SKELETON_CARD_COUNT = 6;
-
-function resolveLocale(): Locale {
-  const language = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? (language.split('-')[0] as Locale) : 'en-US';
-}
 
 function readScopeFromUrl(): KbListSpace {
   const value = new URLSearchParams(window.location.search).get('scope');
@@ -111,14 +109,21 @@ function membershipRole(memberships: unknown, tenantId: string | null): string {
 }
 
 // Vue KnowledgeBaseList.vue:2203-2283 — section rows render inline in the
-// grid with per-section icons (pinned/mine/tenant/shared).
+// grid with per-section icons (pinned/mine/tenant/shared). The two
+// "shared with me" groups pair a main usergroup-add icon with a 12px
+// sub-icon (edit / browse) marking the permission, per Vue :162-163/:179-180.
 const SECTION_ICONS: Record<string, KbIconName> = {
-  pinned: 'pin',
+  pinned: 'pin-filled',
   mine: 'user',
   tenantOthers: 'usergroup',
   sharedByMe: 'share',
-  sharedEditable: 'usergroup',
-  sharedReadonly: 'usergroup',
+  sharedEditable: 'usergroup-add',
+  sharedReadonly: 'usergroup-add',
+};
+
+const SECTION_SUBICONS: Record<string, KbIconName> = {
+  sharedEditable: 'edit',
+  sharedReadonly: 'browse',
 };
 
 type KbListRow =
@@ -155,7 +160,7 @@ function railCountVisible(key: KbListSpace, count: number): boolean {
 }
 
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
-  const locale = useMemo(resolveLocale, []);
+  const locale = usePreferredLocale();
   const t = useCallback((key: string, values: MessageValues = {}) => formatMessage(locale, key, values), [locale]);
 
   const [reloadToken, setReloadToken] = useState(0);
@@ -194,6 +199,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [editorActivity, setEditorActivity] = useState<Array<{ id: number; action: string; outcome: string; created_at: string }>>([]);
   const [editorActivityLoading, setEditorActivityLoading] = useState(false);
   const [sharingKb, setSharingKb] = useState<{ id: string; name: string } | null>(null);
+  // Vue sharedDetailPanelVisible + currentSharedKbForDetail
+  // (KnowledgeBaseList.vue:1489-1491): the drawer binds the raw share row.
+  const [sharedDetail, setSharedDetail] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Delete confirmation dialog state; DELETE fires only after confirm.
@@ -613,8 +621,11 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     setDialogOpen(true);
   }
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Vue KnowledgeBaseEditorModal.vue:1335-1365 handleSubmit → doSubmit: the
+  // footer button is a plain @click handler (no native form), so the save
+  // pipeline is entered from onClick and guards itself (double-submit,
+  // blank-name, section-jumping validation all live here).
+  async function save() {
     if (saving) return; // double-submit guard
     if (!name.trim()) return; // blank names are blocked
     if (type === 'document' && !Object.values(indexingStrategy).some(Boolean)) {
@@ -659,7 +670,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       // the guide arms (queue the intent for the next document).
       if (editingId === null && record?.id !== undefined && !isContextualGuideDone(window.localStorage, 'kbDetail')) {
         openContextualGuide('kbDetail');
-        window.location.assign(knowledgeBaseDetailPath(String(record.id)));
+        navigate(knowledgeBaseDetailPath(String(record.id)));
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t('knowledgeList.messages.deleteFailed'));
@@ -716,6 +727,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     openEdit(kb);
   }
 
+  // Vue openSharedDetailFromAll (KnowledgeBaseList.vue:1499-1512): re-find the
+  // raw share row (knowledge_base / source_from_agent / shared_at) by share_id
+  // so the drawer shows the share-entry fields the merged card flattens away.
+  function openSharedDetail(card: MergedKnowledgeBase) {
+    const rows = pageState.status === 'success' ? (pageState.shared as Array<Record<string, unknown>>) : [];
+    const raw = typeof card.share_id === 'string' ? rows.find((row) => row.share_id === card.share_id) : undefined;
+    setSharedDetail(raw ?? {
+      name: card.name,
+      permission: card.permission,
+      shared_at: card.shared_at,
+      org_name: typeof card.org_name === 'string' ? card.org_name : undefined,
+      knowledge_base: { id: card.id },
+    });
+  }
+
   function openCard(kb: Record<string, unknown>) {
     const id = String(kb.id);
     try {
@@ -733,7 +759,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       if (kb.type !== 'faq' && count === 0 && canManageKBCard(kb, { userId: viewer.userId, isAdmin: viewer.isAdmin })) {
         openContextualGuide('kbDetail');
       }
-      window.location.assign(knowledgeBaseDetailPath(id));
+      navigate(knowledgeBaseDetailPath(id));
       return;
     }
     // Vue handleCardClick else-branch: uninitialized card click opens the
@@ -768,13 +794,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             <nav className="kb-list-rail-panel flex min-h-0 w-full flex-1 flex-col items-stretch gap-0.5 overflow-y-auto overflow-x-hidden border-r border-[#e3e7ee] px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {railItems.map((item, index) => (
                 <Fragment key={item.key}>
-                  {index === 3 ? <div className="kb-list-rail-divider mx-1.5 my-1.5 h-px shrink-0 bg-[#e3e7ee]" aria-hidden="true" /> : null}
+                  {index === 3 ? <div className="kb-list-rail-divider mx-1 my-1.5 h-px shrink-0 bg-[#f3f3f3]" aria-hidden="true" /> : null}
                   {index === 4 && item.org ? <div className="kb-list-rail-section-title mt-0.5 shrink-0 overflow-hidden border-t border-[#e3e7ee] px-2 pt-2 pb-0.5 text-left text-xs font-semibold leading-[1.4] text-[#646e74]">{t('listSpaceSidebar.spaces')}</div> : null}
                   <button
                     type="button"
                     className={space === item.key
-                      ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-[#eef4ef] px-2 py-1.5 text-left text-sm font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#eef4ef]'
-                      : 'kb-list-rail-panel-item group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-transparent px-2 py-1.5 text-left text-sm font-[inherit] text-[#1d2129] transition-all duration-150 hover:bg-[#f0f3f8]'}
+                      ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-[#f3f3f3] px-2 py-1.5 text-left text-sm font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#f3f3f3]'
+                      : 'kb-list-rail-panel-item group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-transparent px-2 py-1.5 text-left text-sm font-[inherit] text-[#1d2129] transition-all duration-150 hover:bg-[#f3f3f3]'}
                     aria-pressed={space === item.key}
                     onClick={() => setSpace(item.key)}
                   >
@@ -782,7 +808,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       <KbIcon name={item.icon} size={16} />
                       <span className="kb-list-rail-panel-label min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[13px] leading-[1.4]" title={item.org ? item.org.name : undefined}>{item.label}</span>
                     </span>
-                    {railCountVisible(item.key, item.count) ? <span className={`kb-list-rail-panel-count ml-1.5 shrink-0 rounded-lg px-[7px] py-0.5 text-xs font-medium transition-all duration-150 ${space === item.key ? 'bg-[#eef4ef] text-[#07c05f]' : 'bg-[#f0f3f8] text-[#646e74] group-hover/item:text-[#1d2129]'}`}>{item.count}</span> : null}
+                    {railCountVisible(item.key, item.count) ? <span className={`kb-list-rail-panel-count ml-1.5 shrink-0 rounded-lg bg-[#f3f3f3] px-[7px] py-0.5 text-xs font-medium transition-all duration-150 ${space === item.key ? 'text-[#07c05f]' : 'text-[#646e74] group-hover/item:text-[#1d2129]'}`}>{item.count}</span> : null}
                   </button>
                 </Fragment>
               ))}
@@ -791,13 +817,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             <div className="kb-list-rail-strip flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-3 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {railItems.map((item, index) => (
                 <Fragment key={item.key}>
-                  {index === 4 && item.org ? <div className="kb-list-rail-divider kb-list-rail-strip-divider mx-1.5 my-1.5 h-px w-10 shrink-0 bg-[#e3e7ee]" aria-hidden="true" /> : null}
+                  {index === 4 && item.org ? <div className="kb-list-rail-divider kb-list-rail-strip-divider my-[3px] h-px w-6 shrink-0 bg-[#f3f3f3]" aria-hidden="true" /> : null}
                   <button
                     key={item.key}
                     type="button"
                     className={space === item.key
-                      ? 'kb-list-rail-item kb-list-rail-item-active flex w-[50px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-[#eef4ef] pt-[5px] pb-0.5 font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#eef4ef] hover:text-[#07c05f]'
-                      : 'kb-list-rail-item flex w-[50px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-transparent pt-[5px] pb-0.5 font-[inherit] text-[#646e74] transition-all duration-150 hover:bg-[#f0f3f8] hover:text-[#1d2129]'}
+                      ? 'kb-list-rail-item kb-list-rail-item-active flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-[#f3f3f3] pt-[5px] pb-0.5 font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#f3f3f3] hover:text-[#07c05f]'
+                      : 'kb-list-rail-item flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-transparent pt-[5px] pb-0.5 font-[inherit] text-[#646e74] transition-all duration-150 hover:bg-[#f3f3f3] hover:text-[#1d2129]'}
                     title={`${item.label} (${item.count})`}
                     aria-pressed={space === item.key}
                     onClick={() => setSpace(item.key)}
@@ -817,7 +843,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             aria-orientation="vertical"
             onMouseDown={onRailDragStart}
           >
-            <div className={`kb-list-rail-handle-line h-10 w-0.5 rounded-[1px] transition-[opacity,background] duration-200 ease-[ease] ${railDragging ? 'bg-[#07c05f] opacity-100' : 'bg-[#c9d0da] opacity-[0.45] group-hover/handle:bg-[#07c05f] group-hover/handle:opacity-100'}`} />
+            <div className={`kb-list-rail-handle-line h-10 w-0.5 rounded-[1px] transition-[opacity,background] duration-200 ease-[ease] ${railDragging ? 'bg-[#07c05f] opacity-100' : 'bg-[#eeeeee] opacity-[0.45] group-hover/handle:bg-[#07c05f] group-hover/handle:opacity-100'}`} />
           </div>
         </aside>
         <div className="kb-list-content flex min-w-0 flex-1 flex-col pt-5 pl-7">
@@ -845,20 +871,20 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             {notice ? <Status tone="success">{notice}</Status> : null}
             {/* Vue amber uninitialized banner (KnowledgeBaseList.vue:30-34) */}
             {hasUninitialized ? (
-              <div className="kb-list-warning mb-5 flex items-center gap-2 rounded-md border border-[#f7d8b0] bg-[#fdf3e7] px-4 py-3 text-sm leading-5 text-[#cf6b1d] [&_svg]:shrink-0" role="status">
+              <div className="kb-list-warning mb-5 flex items-center gap-2 rounded-md border border-[#f9e0c7] bg-[#fef3e6] px-4 py-3 text-sm leading-5 text-[#ed7b2f] [&_svg]:shrink-0" role="status">
                 <KbIcon name="info-circle" size={16} />
                 <span>{t('knowledgeList.uninitializedBanner')}</span>
               </div>
             ) : null}
-            {uploadSummaries.length ? <div className="wk-upload-progress-panel mb-4 rounded-lg border border-[#e6f4ea] bg-[#f6fffa] px-4 py-3" aria-live="polite">
-              {uploadSummaries.map((summary, index) => <div className={`wk-upload-progress-item flex items-start gap-[10px] ${index > 0 ? 'mt-3 border-t border-[#dff0e4] pt-3' : ''}`} key={summary.kbId}>
-                <div className="wk-upload-progress-icon grid h-6 w-6 flex-none place-items-center rounded-full bg-[#d1fadf] font-bold text-[#067647]" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
+            {uploadSummaries.length ? <div className="wk-upload-progress-panel mb-5 flex flex-col gap-3" aria-live="polite">
+              {uploadSummaries.map((summary) => <div className="wk-upload-progress-item flex items-center gap-3 rounded-lg border border-[#e3e7ee] bg-white px-4 py-3" key={summary.kbId}>
+                <div className="wk-upload-progress-icon flex flex-none items-center justify-center text-[#07c05f]" aria-hidden="true"><KbIcon name={summary.completed === summary.total ? 'check-circle-filled' : 'upload'} size={20} /></div>
                 <div className="wk-upload-progress-content min-w-0 flex-1">
-                  <div className="wk-upload-progress-title text-sm font-semibold text-[#172b1b]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
-                  <div className="wk-upload-progress-subtitle mt-[3px] text-xs text-[#667085]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
-                  <div className="wk-upload-progress-subtitle mt-[3px] text-xs text-[#667085]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
-                  {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error mt-[3px] text-xs text-[#b42318]">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
-                  <div className="wk-upload-progress-track mt-2 h-[6px] overflow-hidden rounded-full bg-[#dff3e5]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill h-full rounded-full bg-[#07c05f] [transition:width_.18s_ease]" style={{ width: `${summary.progress}%` }} /></div>
+                  <div className="wk-upload-progress-title mb-0.5 text-sm font-semibold leading-[22px] text-[#1d2129]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
+                  <div className="wk-upload-progress-subtitle text-xs leading-[18px] text-[#646e74]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
+                  <div className="wk-upload-progress-subtitle mt-0.5 text-xs leading-[18px] text-[#8a94a6]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
+                  {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error mt-1 text-xs leading-[18px] text-[#e34d59]">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
+                  <div className="wk-upload-progress-track mt-[10px] h-[6px] overflow-hidden rounded-full bg-[#f3f3f3]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill h-full rounded-full bg-[linear-gradient(90deg,#06b04d_0%,#07c05f_100%)] [transition:width_0.2s_ease]" style={{ width: `${summary.progress}%` }} /></div>
                 </div>
               </div>)}
             </div> : null}
@@ -906,6 +932,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         onClick={() => toggleSection(row.key)}
                       >
                         <KbIcon name={row.key === 'tenantOthers' && !viewer.isAdmin ? 'browse' : SECTION_ICONS[row.key] ?? 'user'} size={14} />
+                        {SECTION_SUBICONS[row.key] ? <span className="-ml-1 opacity-75" aria-hidden="true"><KbIcon name={SECTION_SUBICONS[row.key]} size={12} /></span> : null}
                         <span>{t(row.labelKey)}</span>
                         <span className="kb-list-section-count ml-0.5 rounded-lg bg-[#f2f4f8] px-1.5 text-[11px] font-medium leading-4 text-[#646e74]">{row.count}</span>
                         <span className="kb-list-section-toggle ml-1 opacity-70 group-hover/section:opacity-100" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
@@ -932,7 +959,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   const cardClasses = [
                     'kb-list-card group/card relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border px-[14px] py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
                     isFaq
-                      ? 'kb-list-card-faq border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(0,82,217,0.08)_0%,transparent_100%)] hover:border-[#0052d9] hover:shadow-[0_4px_12px_rgba(0,82,217,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.08)_100%)]'
+                      ? 'kb-list-card-faq border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(0,82,217,0.08)_0%,transparent_100%)] hover:border-[#07c05f] hover:shadow-[0_4px_12px_rgba(0,82,217,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.08)_100%)]'
                       : 'kb-list-card-document border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(7,192,95,0.08)_0%,transparent_100%)] hover:border-[#07c05f] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.08)_100%)]',
                     initialized ? '' : 'kb-list-card-uninitialized opacity-90',
                     highlightId === card.id ? 'kb-list-flash animate-[kbListFlash_0.6s_ease-in-out_3] border-[#07c05f]!' : '',
@@ -949,19 +976,39 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       </button>
                       <div className="kb-list-card-head relative z-[1] mb-1.5 flex items-center gap-1">
                         <span className="kb-list-card-title flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[#1d2129]" title={String(card.name ?? '')}>
-                          {isWiki ? <span className="kb-list-card-wiki-chip shrink-0 rounded bg-[rgba(124,77,255,0.1)] px-[5px] py-0 text-[11px] font-medium leading-4 text-[#7c4dff]">{t('knowledgeList.features.wiki')}</span> : null}
+                          {isWiki ? <span className="kb-list-card-wiki-chip shrink-0 text-[#646e74]" role="img" aria-label={t('knowledgeList.features.wiki')} title={t('knowledgeList.features.wiki')}><KbIcon name="wiki" size={15} /></span> : null}
                           <span className="kb-list-card-title-text">{String(card.name ?? '')}</span>
                         </span>
-                        <button
-                          type="button"
-                          className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
-                          aria-label={t('common.settings')}
-                          aria-haspopup="menu"
-                          aria-expanded={menuFor === card.id}
-                          onClick={(event) => { event.stopPropagation(); setMenuFor((current) => (current === card.id ? null : card.id)); }}
-                        >
-                          <KbIcon name="dots" size={16} />
-                        </button>
+                        {/* Vue shared-detail-trigger (KnowledgeBaseList.vue:305-315):
+                            info-circle 查看详情 entry on non-own shared cards,
+                            replacing the three-dot as the detail affordance.
+                            @click.stop keeps card navigation out of the way. */}
+                        {isSharedCard ? (
+                          <button
+                            type="button"
+                            className="kb-shared-detail-trigger flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#07c05f] transition-colors duration-200 hover:bg-[rgba(7,192,95,0.08)]"
+                            title={t('knowledgeList.menu.viewDetails')}
+                            aria-label={t('knowledgeList.menu.viewDetails')}
+                            onClick={(event) => { event.stopPropagation(); openSharedDetail(card); }}
+                          >
+                            <KbIcon name="info-circle" size={16} />
+                          </button>
+                        ) : null}
+                        {/* Vue own-card three-dot menu (KnowledgeBaseList.vue) is absent on
+                            shared cards (:304-315): the info-circle trigger above replaces it
+                            as the only header affordance on non-own shared cards. */}
+                        {isSharedCard ? null : (
+                          <button
+                            type="button"
+                            className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
+                            aria-label={t('common.settings')}
+                            aria-haspopup="menu"
+                            aria-expanded={menuFor === card.id}
+                            onClick={(event) => { event.stopPropagation(); setMenuFor((current) => (current === card.id ? null : card.id)); }}
+                          >
+                            <KbIcon name="dots" size={16} />
+                          </button>
+                        )}
                       </div>
                       {menuFor === card.id ? (
                         <div className="kb-list-more-menu absolute right-1.5 top-8 z-30 flex min-w-[132px] flex-col rounded-lg border border-[#e3e7ee] bg-white p-1.5 shadow-[0_8px_24px_rgba(23,35,61,0.12)]" role="menu" onClick={(event) => event.stopPropagation()}>
@@ -988,14 +1035,16 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       <p className="kb-list-card-desc relative z-[1] m-0 mb-1.5 min-h-0 flex-1 overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2] text-xs font-normal leading-[18px] text-[#646e74]">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
                       <div className="kb-list-card-bottom relative z-[1] mt-auto flex items-center justify-between gap-2 border-t-[0.5px] border-[#e3e7ee] pt-[6px]">
                         <div className="kb-list-badges flex min-w-0 items-center gap-1">
-                          <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#0052d9]' : 'bg-[rgba(7,192,95,0.08)] text-[#0a9059]')}>
+                          <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#07c05f]' : 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]')}>
                             <KbIcon name={isFaq ? 'chat' : 'folder'} size={14} />
-                            <span className="kb-list-badge-count">{count}</span>
+                            {/* Vue KnowledgeBaseList.vue:336 shared card badge: `kb.knowledge_count || '-'`
+                                (faq: chunk_count || '-'); own cards keep the numeric `|| 0` fallback (:259). */}
+                            <span className="kb-list-badge-count">{isSharedCard ? (count || '-') : count}</span>
                           </span>
-                          {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(124,77,255,0.08)] text-[#7c4dff]" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
-                          {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(255,152,0,0.08)] text-[#e37318]" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
-                          {questionEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-question inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,150,136,0.08)] text-[#009688]" title={t('knowledgeList.features.questionGeneration')}><KbIcon name="help-circle" size={14} /></span> : null}
-                          {shareCount > 0 ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-shared inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,82,217,0.08)] text-[#0052d9]" title={t('knowledgeList.sharedToOrgs', { count: shareCount })}><KbIcon name="share" size={14} /></span> : null}
+                          {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(124,77,255,0.08)] text-[#07c05f]" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
+                          {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(255,152,0,0.08)] text-[#ed7b2f]" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
+                          {questionEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-question inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,150,136,0.08)] text-[#00a870]" title={t('knowledgeList.features.questionGeneration')}><KbIcon name="help-circle" size={14} /></span> : null}
+                          {shareCount > 0 ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-shared inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,82,217,0.08)] text-[#07c05f]" title={t('knowledgeList.sharedToOrgs', { count: shareCount })}><KbIcon name="share" size={14} /></span> : null}
                         </div>
                         {isSharedCard && typeof card.org_name === 'string' && card.org_name ? (
                           <span className="kb-list-org-chip inline-flex max-w-[140px] shrink-0 items-center gap-[5px] overflow-hidden whitespace-nowrap text-ellipsis rounded-md bg-[rgba(7,192,95,0.06)] px-2 py-[3px] text-xs font-medium text-[#646e74] [&_svg]:shrink-0 [&_svg]:text-[#07c05f]" title={card.org_name}><KbIcon name="workspace" size={14} />{card.org_name}</span>
@@ -1010,8 +1059,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         </div>
       </div>
 
-      <Dialog className="wk-kb-editor-dialog" open={dialogOpen} title={editingId ? t('knowledgeEditor.titleEdit') : t('knowledgeList.create')} closeLabel={editingId ? t('common.cancel') : undefined} onClose={() => setDialogOpen(false)}>
-        <form className="wk-form mb-4 grid gap-4" onSubmit={save}>
+      <Dialog className="wk-kb-editor-dialog h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]!" open={dialogOpen} title={editingId ? t('knowledgeEditor.titleEdit') : t('knowledgeList.create')} closeLabel={editingId ? t('common.cancel') : undefined} onClose={() => setDialogOpen(false)}>
+        {/* Vue KnowledgeBaseEditorModal.vue has no native form element: the
+            settings body is a plain div and the footer buttons are @click
+            handlers (:447-455). Keeping this wrapper a div (not a form)
+            removes the form-in-form hydration error the share section used
+            to trigger and drops the implicit Enter-submit contract Vue
+            never had. */}
+        <div className="wk-form mb-4 grid gap-4">
           <div className="grid min-h-[360px] grid-cols-[minmax(132px,0.34fr)_minmax(0,1fr)] gap-5 max-[680px]:grid-cols-1">
             <nav aria-label={t('common.settings')} data-guide="kb-editor-sidebar" className="flex flex-col gap-2 border-r border-line-soft pr-3 max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pb-3">
               {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="grid gap-1">
@@ -1023,15 +1078,37 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
               {editorSection === 'basic' ? <div className="grid gap-4">
                 <div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.basic.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.basic.description')}</p></div>
                 {editingId ? <div className="grid gap-1"><span className="text-[13px] font-medium text-ink">{t('knowledgeEditor.basic.kbId')}</span><span className="text-xs leading-[18px] text-muted">{t('knowledgeEditor.basic.kbIdDesc')}</span><code className="rounded-[6px] bg-surface-muted px-2 py-1 font-mono text-xs text-muted">{editingId}</code></div> : null}
-                <label className="grid gap-1">{t('knowledgeEditor.basic.typeLabel')}
-                  <Select data-guide="kb-create-type" value={type} onChange={(event) => { const nextType = event.target.value as 'document' | 'faq'; setType(nextType); setEditorSection(nextType === 'faq' ? 'faq' : 'basic'); }} disabled={Boolean(editingId)} className="rounded-control border border-line-strong p-[0.55rem]"><option value="document">{t('common.typeDocument')}</option><option value="faq">{t('common.typeFaq')}</option></Select>
-                </label>
-                {type === 'document' ? <fieldset data-guide="kb-create-indexing" className="m-0 grid min-w-0 gap-2 border-0 p-0"><legend className="p-0 text-[15px] font-medium text-ink">{t('knowledgeEditor.indexing.title')}</legend><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.description')}</p><div className="grid gap-3 min-[720px]:grid-cols-2">
+                <div role="radiogroup" aria-label={t('knowledgeEditor.basic.typeLabel')} data-guide="kb-create-type" className="grid gap-1">
+                  <span className="text-[15px] font-medium text-ink">{t('knowledgeEditor.basic.typeLabel')}<span className="ml-1 text-[#e34d59]">*</span></span>
+                  {/* Vue KnowledgeBaseEditorModal.vue:67-74 t-radio-group outline +
+                      theme.css checked fill. The frame is carried by the joined
+                      buttons themselves (TDesign .t-radio-button: 1px #e7e7e7
+                      border, 3px end radius, 30px height, 16px x-padding, no
+                      tab gap); the checked button's right border stays brand
+                      green so the shared divider reads green like Vue. */}
+                  <div className="kb-create-type-frame inline-flex w-fit rounded-[3px]" onKeyDown={(event) => {
+                    const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+                    const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
+                    if (!forward && !backward) return;
+                    event.preventDefault();
+                    const order = ['document', 'faq'] as const;
+                    const next = order[(order.indexOf(type) + (forward ? 1 : order.length - 1)) % order.length];
+                    setType(next);
+                    setEditorSection(next === 'faq' ? 'faq' : 'basic');
+                    (event.currentTarget.querySelector(`button[data-value="${next}"]`) as HTMLButtonElement | null)?.focus();
+                  }}>
+                    {(['document', 'faq'] as const).map((item, index, items) => <button key={item} type="button" role="radio" data-value={item} aria-checked={type === item} tabIndex={type === item ? 0 : -1} disabled={Boolean(editingId)} className={`h-[30px] cursor-pointer border-y px-4 py-0 text-sm [font:inherit] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${index === 0 ? 'rounded-l-[3px]' : ''} ${index === items.length - 1 ? 'rounded-r-[3px] border-r' : ''} ${index > 0 && type === items[index - 1] ? '' : 'border-l'} ${type === item ? 'z-[1] border-[var(--color-brand)] bg-accent text-white' : 'border-line-neutral bg-surface text-[rgba(0,0,0,0.9)] hover:border-accent hover:text-accent focus-visible:text-accent focus-visible:outline-none'}`} onClick={() => { setType(item); setEditorSection(item === 'faq' ? 'faq' : 'basic'); }}>{item === 'document' ? t('common.typeDocument') : t('common.typeFaq')}</button>)}
+                  </div>
+                  <span className="text-xs leading-[18px] text-muted">{t('knowledgeEditor.basic.typeDescription')}</span>
+                </div>
+                {type === 'document' ? <fieldset data-guide="kb-create-indexing" className="m-0 grid min-w-0 gap-2 border-0 p-0"><legend className="p-0 text-[15px] font-medium text-ink">{t('knowledgeEditor.indexing.title')}<span className="ml-1 text-[#e34d59]">*</span></legend><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.description')}</p><div className="grid gap-3 min-[720px]:grid-cols-2">
                   <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.vector_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.vector_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, vector_enabled: event.target.checked, keyword_enabled: event.target.checked }))} /><strong className="text-[13px] font-medium">{t('knowledgeEditor.indexing.searchTitle')}</strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.searchDesc')}</small></label>
-                  <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.wiki_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.wiki_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, wiki_enabled: event.target.checked }))} /><strong className="text-[13px] font-medium">{t('knowledgeEditor.indexing.wikiTitle')}</strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.wikiDesc')}</small></label>
+                  <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.wiki_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.wiki_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, wiki_enabled: event.target.checked }))} />{/* Vue KnowledgeBaseEditorModal.vue:106-109 indexing-check-title + :1972-1984 indexing-new-badge */}
+                    <strong className="inline-flex items-center gap-[6px] text-[13px] font-medium">{t('knowledgeEditor.indexing.wikiTitle')}<span className="kb-editor-new-badge inline-flex h-4 items-center rounded-[3px] bg-[var(--color-brand-light)] px-[6px] text-[10px] font-semibold leading-none tracking-[0.4px] text-accent">NEW</span></strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.wikiDesc')}</small></label>
                 </div></fieldset> : null}
-                <label className="grid gap-1">{t('knowledgeEditor.basic.nameLabel')} <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} required className="rounded-control border border-line-strong p-[0.55rem]" /></label>
-                <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} /><span className="text-right text-xs leading-[18px] text-muted">{description.length}/200</span></label>
+                <label className="grid gap-1"><span>{t('knowledgeEditor.basic.nameLabel')}<span className="ml-1 text-[#e34d59]">*</span></span> {/* Vue t-input :165-169 is maxlength-only; blank names are blocked by the JS save pipeline */}<Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} maxLength={50} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+                <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} />{/* Vue KnowledgeBaseEditorModal.vue:171-179 t-textarea maxlength=200 → .t-textarea__limit counter (12px/20px, placeholder gray, right-aligned) */}
+                  <span className="kb-editor-desc-count justify-self-end text-xs leading-5 text-[var(--color-text-placeholder)]" aria-live="polite">{description.length}/200</span></label>
               </div> : null}
               {editorSection === 'models' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.models.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.models.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.models.embeddingLabel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder={t('knowledgeEditor.models.embeddingPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label><label className="grid gap-1">{t('knowledgeEditor.models.llmLabel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder={t('knowledgeEditor.models.llmPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label></div> : null}
               {editorSection === 'faq' && type === 'faq' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.faq.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.faq.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.faq.indexModeLabel')}<Select value={editorConfig.faqConfig.indexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, indexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['indexMode'] } }))}><option value="question_only">{t('knowledgeEditor.faq.modes.questionOnly')}</option><option value="question_answer">{t('knowledgeEditor.faq.modes.questionAnswer')}</option></Select></label><label className="grid gap-1">{t('knowledgeEditor.faq.questionIndexModeLabel')}<Select value={editorConfig.faqConfig.questionIndexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, questionIndexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['questionIndexMode'] } }))}><option value="combined">{t('knowledgeEditor.faq.modes.combined')}</option><option value="separate">{t('knowledgeEditor.faq.modes.separate')}</option></Select></label><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.faq.entryGuide')}</p></div> : null}
@@ -1049,10 +1126,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             </div>
           </div>
           <div className="mt-3 flex justify-end gap-2">
-            <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeList.create')}</Button>
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            {/* Vue :451-453 `<t-button @click="handleSubmit" :loading="saving" :disabled="loading">` —
+                editorOptions.loading is the React counterpart of the Vue dialog-open `loading`
+                (watch(visible) arms it, loadEditorOptions settles it), so save is disabled while
+                the editor data is not ready, with saving's spinner/disable layered on top. */}
+            <Button type="button" data-guide="kb-create-submit" loading={saving} disabled={editorOptions.loading} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
           </div>
-        </form>
+        </div>
       </Dialog>
 
       <Dialog
@@ -1069,6 +1150,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       </Dialog>
 
       <KnowledgeBaseShareDialog client={client} knowledgeBaseId={sharingKb?.id ?? ''} knowledgeBaseName={sharingKb?.name ?? ''} open={sharingKb !== null} onClose={() => setSharingKb(null)} onChanged={() => setReloadToken((value) => value + 1)} />
+
+      {/* Vue right-side shared KB detail drawer (KnowledgeBaseList.vue:709-776) */}
+      <SharedKnowledgeBaseDrawer
+        open={sharedDetail !== null}
+        shared={sharedDetail}
+        onClose={() => setSharedDetail(null)}
+        onGoToKb={(kbId) => { navigate(knowledgeBaseDetailPath(kbId)); setSharedDetail(null); }}
+      />
     </main>
   );
 }

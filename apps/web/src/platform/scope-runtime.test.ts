@@ -91,3 +91,28 @@ test('logout invalidates the active generation so late data cannot be accepted',
   assert.equal(previous.signal.aborted, true);
   assert.equal(runtime.controller.isCurrent(previous.scope), false);
 });
+
+// R441 A4: hydrate is the /auth/me landing — it must mirror Vue setUser and
+// write the weknora_user identity so per-user preference namespacing follows
+// the active account. logout clears it.
+test('hydrate writes weknora_user; logout clears it (Vue stores/auth.ts parity)', () => {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  const runtime = createWebScopeRuntime('https://api.test', null, null, { storage });
+
+  runtime.hydrate({ user: { id: 'user-9', email: 'u9@test.dev', nickname: 'Nine' }, tenant: { id: 1 }, capabilities: {} });
+  assert.deepEqual(JSON.parse(storage.getItem('weknora_user')!), { id: 'user-9', email: 'u9@test.dev', nickname: 'Nine' });
+
+  runtime.logout();
+  assert.equal(storage.getItem('weknora_user'), null);
+});
+
+test('hydrate without storage injected stays a no-op (embed / non-browser safe)', () => {
+  const runtime = createWebScopeRuntime('https://api.test', null, null);
+  assert.doesNotThrow(() => runtime.hydrate({ user: { id: 'user-1' }, tenant: null, capabilities: {} }));
+  assert.equal(runtime.current().scope.userId, 'user-1');
+});

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { storage, useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
@@ -10,7 +10,7 @@ import {
 } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNavigateToProductSession } from '@/hooks/useNavigateToSession';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { createWorktree } from '@/utils/worktree';
@@ -100,7 +100,7 @@ export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
     const defaultOverrides = useSetting('agentDefaultOverrides');
-    const navigateToSession = useNavigateToSession();
+    const navigateToProduct = useNavigateToProductSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
     // is state rather than a bare boolean: creating a worktree, asking the
     // machine for a session, and opening it are three different waits.
@@ -443,7 +443,8 @@ export function useStartSessionFromDraft() {
 
             draft.setInput('');
             draft.setAttachments([]);
-            navigateToSession(sessionId);
+            const created = storage.getState().sessions[sessionId];
+            if (!created || !navigateToProduct(created)) return false;
             if (prompt || attachments.length > 0) {
                 // The session is ready at this point. Open it immediately and
                 // let the first message enqueue without keeping the user on Home
@@ -474,7 +475,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, machines, navigateToSession, sessions]);
+    }, [defaultOverrides, machines, navigateToProduct, sessions]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

@@ -51,7 +51,7 @@ function fakeClient(searchData: Array<Record<string, unknown>>, options: { searc
   return {
     client: {
       knowledgeBases: {
-        settings: { get: async () => ({ id: 'kb-1', name: 'KB One', type: 'KnowledgeQA' }) },
+        settings: { get: async () => ({ id: 'kb-1', name: 'KB One', type: 'faq' }) },
         list: async () => [],
       },
       knowledge: {

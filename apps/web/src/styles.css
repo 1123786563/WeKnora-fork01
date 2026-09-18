@@ -318,3 +318,13 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee); }
 }
 .doc-filter-bar__filters::-webkit-scrollbar { height: 4px; }
 .doc-filter-bar__filters::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.15); border-radius: 2px; }
+
+/* Knowledge graph selected-node pulse (Vue WikiBrowser.vue @keyframes
+   node-active-pulse, .node-active-ring): the selection ring scales from the
+   node center and fades out on a 1.5s loop. transform-origin is set inline
+   per ring because the React renderer positions circles with absolute
+   cx/cy rather than Vue's per-node translate group. */
+@keyframes wk-node-active-pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}

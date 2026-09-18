@@ -38,6 +38,32 @@ test('escapes raw HTML and drops unsafe link and image destinations', () => {
   assert.doesNotMatch(html, /<script/i);
 });
 
+/*
+ * Vue botmsg.vue markdown image contract (R464): when the image destination
+ * fails isValidImageURL, the renderer emits the localized placeholder
+ * paragraph `invalidImageHtml: () => `<p>${t('error.invalidImageLink')}</p>``
+ * instead of silently dropping the image or showing the alt text.
+ */
+test('invalid image destinations render the Vue invalid-image placeholder paragraph', () => {
+  const html = renderChatMarkdown('![替代文本](javascript:alert(1))');
+  assert.match(html, /<p>无效的图片链接<\/p>/);
+  assert.doesNotMatch(html, /javascript:/i);
+  assert.doesNotMatch(html, /替代文本/);
+
+  const relative = renderChatMarkdown('![图](not-a-url.png)');
+  assert.match(relative, /<p>无效的图片链接<\/p>/);
+});
+
+test('the invalid-image placeholder carries the host-provided locale label', () => {
+  const html = renderChatMarkdown('![alt](javascript:alert(1))', { invalidImageLabel: 'Invalid image link' });
+  assert.match(html, /<p>Invalid image link<\/p>/);
+});
+
+test('valid image destinations still render img elements', () => {
+  const html = renderChatMarkdown('![图](https://example.com/a.png)');
+  assert.match(html, /<img src="https:\/\/example\.com\/a\.png" alt="图"/);
+});
+
 test('turns citation protocol tags into accessible reference buttons', () => {
   const html = renderChatMarkdown('答案 <kb doc="guide.md" chunk_id="chunk-1" />');
 
@@ -63,6 +89,11 @@ test('message rendering uses the shared safe Markdown renderer', () => {
 
   assert.match(html, /<strong>回答<\/strong>/);
   assert.doesNotMatch(html, /white-space/);
+});
+
+test('message rendering threads the invalid-image label into the shared renderer', () => {
+  const html = renderMessageHtml({ content: '![x](javascript:alert(1))' }, 'Invalid image link');
+  assert.match(html, /<p>Invalid image link<\/p>/);
 });
 
 test('message artifacts retain only public metadata for protected download actions', () => {

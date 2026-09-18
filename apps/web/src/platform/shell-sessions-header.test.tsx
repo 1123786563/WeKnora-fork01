@@ -71,7 +71,7 @@ function fakeClient(me: Record<string, unknown> = { user: { id: 'u1', username: 
 
 async function mountShell(options: { collapsed?: boolean; me?: Record<string, unknown> } = {}) {
   window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
-  if (options.collapsed) window.localStorage.setItem('weknora_sidebar_collapsed', 'true');
+  if (options.collapsed) window.localStorage.setItem('sidebar_collapsed', 'true');
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);

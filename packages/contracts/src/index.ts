@@ -35,6 +35,8 @@ export interface ChatSession {
   is_pinned: boolean;
   created_at?: string;
   updated_at?: string;
+  /** Session lineage (A11): set when this session was forked from another. */
+  parent_session_id?: string;
   [key: string]: unknown;
 }
 
@@ -151,6 +153,7 @@ export interface KnowledgeDocument {
   title?: string;
   file_name?: string;
   file_type?: string;
+  type?: string;
   source?: string;
   parse_status?: KnowledgeProcessingStatus;
   summary_status?: string;

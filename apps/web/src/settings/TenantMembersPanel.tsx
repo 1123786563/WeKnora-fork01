@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Dialog, Input, Select, Status } from '@weknora/ui';
+import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { TenantAuditDrawer } from './TenantAuditDrawer.tsx';
+import { EmptyState } from './EmptyState.tsx';
+import { auditDateParts } from './SystemAuditLogPanel.tsx';
 
 type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
 type Props = { client: WeKnoraClient; tenantId: number; role: Role; initialMembers?: { items: TenantMember[]; total: number } };
@@ -10,6 +13,10 @@ type Props = { client: WeKnoraClient; tenantId: number; role: Role; initialMembe
 const roles: TenantRole[] = ['owner', 'admin', 'contributor', 'viewer'];
 const INVITATION_TTL_DAYS = 7;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+// TenantMembers.vue:627 — audit cursor pages are 50 rows.
+const AUDIT_PAGE_SIZE = 50;
+// TenantMembers.vue:858 — member search debounce window.
+const SEARCH_DEBOUNCE_MS = 320;
 const RBAC_DOC_URL = 'https://github.com/Tencent/WeKnora/blob/main/docs/RBAC%E8%AF%B4%E6%98%8E.md';
 
 // ---- Local fallbacks for keys missing from @weknora/i18n (reported upstream; do
@@ -105,7 +112,7 @@ function createPanelTranslator(locale: Locale) {
 type Translate = ReturnType<typeof createPanelTranslator>;
 
 // ---- Inline icons (Vue uses t-icons; the web client ships no icon package). ----
-type IconName = 'info' | 'history' | 'link' | 'user-add' | 'user-clear' | 'copy' | 'close' | 'search' | 'refresh';
+type IconName = 'info' | 'history' | 'link' | 'user-add' | 'user-clear' | 'copy' | 'close' | 'search' | 'refresh' | 'chevron-down';
 function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': true as const, focusable: false as const };
   switch (name) {
@@ -127,6 +134,8 @@ function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
       return <svg {...common}><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.2 10.2 14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
     case 'refresh':
       return <svg {...common}><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><path d="M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+    case 'chevron-down':
+      return <svg {...common}><path d="M3.6 6.2 8 10.4l4.4-4.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
 }
 
@@ -151,6 +160,18 @@ const TBL = 'w-full border-collapse text-[0.8125rem]';
 const TH = 'bg-[var(--wk-canvas,#f7f9fc)] py-2 px-3 text-left text-xs font-semibold whitespace-nowrap text-[var(--wk-muted,#66758b)]';
 const TD = 'border-t border-[var(--wk-border,#dce3ed)] py-[0.55rem] px-3 align-middle text-[var(--wk-text,#172033)]';
 const TR_HOVER = 'hover:bg-[rgb(46_109_230/4%)]';
+// Audit table header (TenantMembers.vue:1745-1780 .audit-table-shell): the
+// drawer's scroll area is the scroll container, so thead pins to its top.
+const AUDIT_TH = TH + ' sticky top-0 z-[2] [box-shadow:inset_0_-1px_0_var(--wk-border,#dce3ed)]';
+// TenantMembers.vue:983-1001 auditColumns widths (target/path wrap instead of clip).
+const AUDIT_COLUMNS: Array<{ key: string; label: string; width?: number; minWidth?: number; align?: 'center' }> = [
+  { key: 'created_at', label: 'tenantMember.audit.columns.time', width: 120 },
+  { key: 'actor', label: 'tenantMember.audit.columns.actor', width: 180 },
+  { key: 'action', label: 'tenantMember.audit.columns.action', width: 130 },
+  { key: 'target', label: 'tenantMember.audit.columns.target', minWidth: 200 },
+  { key: 'request_path', label: 'tenantMember.audit.columns.path', minWidth: 160 },
+  { key: 'outcome', label: 'tenantMember.audit.columns.outcome', width: 80, align: 'center' },
+];
 // Vue t-pagination default: borderless numbers, radius 3px, 24px box; current =
 // brand #07c05f fill + white text; hover = brand text on transparent.
 const PAGER_BTN = 'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-[0.3rem] py-0 font-normal text-[rgb(0_0_0/90%)] [font:inherit]';
@@ -308,6 +329,24 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditLoadedOnce, setAuditLoadedOnce] = useState(false);
+  // Cursor pagination (TenantMembers.vue:618-627): backend pages by
+  // descending id via after_id; next_cursor === 0 stops loading.
+  const auditCursorRef = useRef(0);
+  const [auditHasMore, setAuditHasMore] = useState(true);
+  const auditHasMoreRef = useRef(true);
+  const auditLoadingRef = useRef(false);
+  // Expanded-row state stays ephemeral so reopening the drawer starts
+  // collapsed (TenantMembers.vue:1113-1116).
+  const [auditExpandedKeys, setAuditExpandedKeys] = useState<number[]>([]);
+  // Drawer scroll root + bottom sentinel for IntersectionObserver-driven
+  // infinite scroll (TenantMembers.vue:629-632, 1177-1197).
+  const auditScrollRef = useRef<HTMLDivElement | null>(null);
+  const auditSentinelRef = useRef<HTMLDivElement | null>(null);
+  const auditObserverRef = useRef<IntersectionObserver | null>(null);
+  // Display names seen across paginated member payloads, so audit rows can
+  // resolve user ids that are not on the current member page
+  // (TenantMembers.vue:589-590, 799-803, 1064-1074).
+  const memberDisplayRef = useRef<Record<string, { username?: string; email?: string }>>({});
   const permissionsRef = useRef<HTMLDivElement | null>(null);
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -330,12 +369,38 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       if (nextPage > maxPage) { setLoading(false); await load(maxPage, nextQuery, nextPageSize); return; }
       setMembers(result.items); setTotal(result.total);
       setPage(nextPage); setPageSize(nextPageSize);
+      rememberMembersForAudit(result.items);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : tr('tenantMember.errors.generic'));
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { if (initialMembers === undefined) void load(1, '', 20); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [client, tenantId]);
+  // Search debounce (TenantMembers.vue:576-579, 851-859): typing schedules a
+  // single server query 320ms later with the trimmed input, back on page 1.
+  // appliedQueryRef dedupes against already-applied terms so the explicit
+  // submit/clear paths don't double-fire when they reset `query`.
+  const appliedQueryRef = useRef('');
+  const searchTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const next = query.trim();
+    if (next === appliedQueryRef.current) return;
+    window.clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = window.setTimeout(() => {
+      appliedQueryRef.current = next;
+      void load(1, next, pageSize);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(searchTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // Tenant switch resets the search state like TenantMembers.vue:1447-1465
+  // (query, debounce timer, applied term, page and page size).
+  useEffect(() => {
+    window.clearTimeout(searchTimerRef.current);
+    appliedQueryRef.current = '';
+    setQuery('');
+    if (initialMembers === undefined) void load(1, '', 20); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [client, tenantId]);
 
   async function loadInvitations(nextPage = invitationsPage, nextPageSize = invitationsPageSize) {
     if (!canManage) return;
@@ -351,20 +416,82 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
   useEffect(() => { if (canManage) void loadInvitations(1, 20); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [client, tenantId, canManage]);
 
-  async function loadAudit() {
-    if (!canViewAudit || auditLoading) return;
+  const loadAuditRef = useRef<(reset: boolean) => Promise<void>>(async () => {});
+
+  // TenantMembers.vue:1134-1175. reset=true (first open / refresh button)
+  // drops the list and starts from the top; false appends the next page.
+  async function loadAudit(reset: boolean) {
+    if (!canViewAudit || auditLoadingRef.current) return;
+    if (!reset && !auditHasMoreRef.current) return;
+    auditLoadingRef.current = true;
     setAuditLoading(true); setAuditError(null);
-    try { setAudit((await client.identity.tenants.auditLog.list(tenantId, { limit: 50 })).items); setAuditLoadedOnce(true); }
-    catch (cause) { setAuditError(cause instanceof Error ? cause.message : tr('tenantMember.errors.generic')); }
-    finally { setAuditLoading(false); }
+    try {
+      const result = await client.identity.tenants.auditLog.list(tenantId, { afterId: reset ? undefined : (auditCursorRef.current || undefined), limit: AUDIT_PAGE_SIZE });
+      const rows = result.items;
+      setAudit((current) => reset ? rows : [...current, ...rows]);
+      auditCursorRef.current = result.nextCursor || 0;
+      // next_cursor === 0 means "empty page OR smallest id reached" — stop.
+      const hasMore = !!result.nextCursor && rows.length > 0;
+      auditHasMoreRef.current = hasMore;
+      setAuditHasMore(hasMore);
+      setAuditLoadedOnce(true);
+    } catch (cause) {
+      const status = (cause as { status?: number } | null)?.status;
+      setAuditError(status === 403
+        ? tr('tenantMember.audit.forbidden')
+        : cause instanceof Error ? cause.message : tr('tenantMember.errors.generic'));
+    } finally {
+      auditLoadingRef.current = false;
+      setAuditLoading(false);
+    }
+  }
+  loadAuditRef.current = loadAudit;
+
+  // TenantMembers.vue:1177-1197: sentinel observer bound to the drawer's
+  // scroll area, firing the next cursor page ~100px before the bottom.
+  function detachAuditInfiniteScroll() {
+    auditObserverRef.current?.disconnect();
+    auditObserverRef.current = null;
   }
 
-  function openAudit() {
-    setAuditOpen((open) => {
-      if (!open && !auditLoadedOnce) void loadAudit();
-      return !open;
-    });
+  function attachAuditInfiniteScroll() {
+    detachAuditInfiniteScroll();
+    if (typeof IntersectionObserver === 'undefined') return;
+    const root = auditScrollRef.current;
+    const sentinel = auditSentinelRef.current;
+    if (!root || !sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      if (!auditHasMoreRef.current || auditLoadingRef.current) return;
+      void loadAuditRef.current(false);
+    }, { root, rootMargin: '100px 0px', threshold: 0 });
+    observer.observe(sentinel);
+    auditObserverRef.current = observer;
   }
+
+  // Drawer lifecycle mirrors TenantMembers.vue:1199-1243: lazy-load on first
+  // open only (refresh stays explicit), attach the observer after the drawer
+  // content mounts, detach on close / error, and clean up on unmount.
+  function openAuditDrawer() {
+    setAuditOpen(true);
+    if (!auditLoadedOnce) void loadAudit(true);
+  }
+
+  useEffect(() => {
+    if (!auditOpen || auditError) {
+      detachAuditInfiniteScroll();
+      return;
+    }
+    // jsdom (node --test) ships no rAF; fall back to a task like FAQPage/McpToolsDirectory.
+    const schedule = typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0);
+    const frame = schedule(() => attachAuditInfiniteScroll());
+    return () => { typeof window.cancelAnimationFrame === 'function' ? window.cancelAnimationFrame(frame) : window.clearTimeout(frame); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditOpen, auditError]);
+
+  useEffect(() => () => detachAuditInfiniteScroll(), []);
 
   // Close the permissions popover on outside click, like the Vue hover popup.
   useEffect(() => {
@@ -447,14 +574,56 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
     finally { setBusy(false); }
   }
 
-  function search(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void load(1, query, pageSize); }
-  function clearSearch() { setQuery(''); setPage(1); void load(1, '', pageSize); }
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    window.clearTimeout(searchTimerRef.current);
+    const next = query.trim();
+    appliedQueryRef.current = next;
+    void load(1, next, pageSize);
+  }
+  function clearSearch() {
+    window.clearTimeout(searchTimerRef.current);
+    appliedQueryRef.current = '';
+    setQuery(''); setPage(1); void load(1, '', pageSize);
+  }
+
+  // TenantMembers.vue:799-803 — remember member display fields from every
+  // paginated payload so the audit table can resolve ids off the current page.
+  function rememberMembersForAudit(rows: TenantMember[]) {
+    for (const row of rows) memberDisplayRef.current[row.user_id] = { username: row.username, email: row.email };
+  }
 
   function actorDisplayName(userId: string): string {
     const current = members.find((member) => member.user_id === userId);
     if (current?.username?.trim()) return current.username.trim();
     if (current?.email?.trim()) return current.email.trim();
-    return userId || tr('tenantMember.audit.systemActor');
+    const memo = memberDisplayRef.current[userId];
+    if (memo?.username?.trim()) return memo.username.trim();
+    if (memo?.email?.trim()) return memo.email.trim();
+    return userId;
+  }
+
+  // ---- Audit row helpers (TenantMembers.vue:1081-1132) ----
+
+  function auditTargetSubject(entry: AuditLog): string {
+    if (entry.target_user_id) return actorDisplayName(entry.target_user_id);
+    if (entry.target_id) return entry.target_type ? `${entry.target_type}:${entry.target_id}` : entry.target_id;
+    return '';
+  }
+
+  function auditTargetDiff(entry: AuditLog): string {
+    const details = entry.details && typeof entry.details === 'object' ? entry.details as Record<string, unknown> : null;
+    if (!details) return '';
+    if (entry.action === 'rbac.member_role_changed' && details.old_role && details.new_role) return `${String(details.old_role)} → ${String(details.new_role)}`;
+    if (entry.action === 'rbac.access_denied' && typeof details.required_role === 'string') return tr('tenantMember.audit.requiredRole', { role: details.required_role });
+    if ((entry.action === 'rbac.invitation_sent' || entry.action === 'rbac.invitation_revoked') && typeof details.role === 'string') return details.role;
+    return '';
+  }
+
+  function auditDetailsJSON(entry: AuditLog): string {
+    if (entry.details === null || entry.details === undefined) return '{}';
+    if (typeof entry.details === 'string') return entry.details;
+    try { return JSON.stringify(entry.details, null, 2); } catch { return String(entry.details); }
   }
 
   function auditActionLabel(action: string): string {
@@ -465,6 +634,21 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
   function auditOutcomeLabel(outcome: string): string {
     const label = tr('tenantMember.audit.outcome.' + outcome);
     return label.startsWith('tenantMember.audit.outcome.') ? outcome : label;
+  }
+
+  function auditActionTone(action: string): 'success' | 'warning' | 'danger' | 'default' {
+    switch (action) {
+      case 'rbac.access_denied': return 'danger';
+      case 'rbac.member_added': return 'success';
+      case 'rbac.member_removed':
+      case 'rbac.member_left':
+      case 'rbac.member_role_changed': return 'warning';
+      default: return 'default';
+    }
+  }
+
+  function toggleAuditExpand(id: number) {
+    setAuditExpandedKeys((keys) => keys.includes(id) ? keys.filter((key) => key !== id) : [...keys, id]);
   }
 
   const maxMembersPage = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
@@ -501,7 +685,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             </div> : null}
           </div>
         </div>
-        {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAudit}>
+        {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAuditDrawer}>
           <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
         </Button> : null}
         {canManage ? <Button type="button" variant="default" className="h-7 rounded-[3px]! px-2 text-xs" aria-label={tr('tenantMember.add.button')} onClick={() => setInviteOpen(true)}>
@@ -610,7 +794,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             </> : null}
           </div>
         </div>
-        {error ? <div className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
+        {/* R472 A2 — Vue TenantMembers.vue:313-318 t-alert theme=error + retry：
+            浅红横幅透传后端原文 + 重试按钮（load() 重发同请求）。 */}
+        {error ? <div data-testid="tenant-members-error" role="alert" className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading && members.length === 0 ? <Status>{tr('tenantMember.loading')}</Status>
           : total === 0 ? <div className="py-2"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>
@@ -670,40 +856,114 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       </div>
     </div>
 
-    {auditOpen && canViewAudit ? <Card role="region" aria-label={tr('tenantMember.audit.tabLabel')} className="flex flex-col gap-[0.625rem]">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.description')}</span>
-        <Button type="button" disabled={auditLoading} onClick={() => void loadAudit()}>
-          <Icon name="refresh" /> {tr('tenantMember.audit.refresh')}
-        </Button>
+    // Audit drawer — port of TenantMembers.vue:380-511 (SettingDrawer with
+    // width="1120px" min 720 max 1600, storage-key tenant-members-audit).
+    <TenantAuditDrawer
+      open={auditOpen && canViewAudit}
+      title={tr('tenantMember.audit.tabLabel')}
+      onClose={() => setAuditOpen(false)}
+      width={1120}
+      minWidth={720}
+      maxWidth={1600}
+      storageKey="setting-drawer:width:tenant-members-audit"
+    >
+      <div className="flex min-h-0 w-full flex-1 flex-col gap-3.5">
+        <div className="flex items-center justify-between gap-3 rounded-card bg-[var(--wk-canvas,#f7f9fc)] px-4 py-3">
+          <span className="min-w-0 flex-1 text-[13px] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.description')}</span>
+          <Button type="button" variant="text" size="small" className="shrink-0" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
+            <Icon name="refresh" /> {tr('tenantMember.audit.refresh')}
+          </Button>
+        </div>
+        {auditError ? <div className="flex flex-1 flex-col items-start"><div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><Button type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</Button></div></div>
+          : !auditLoading && audit.length === 0 ? <div className="flex flex-1 flex-col items-center justify-center px-3 py-6"><EmptyState description={tr('tenantMember.audit.empty')} /></div>
+          : <div ref={auditScrollRef} className="audit-scroll-area min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+              <div className="overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
+                <table className={TBL}>
+                  <thead><tr>
+                    <th className={AUDIT_TH + ' w-9'} aria-label={tr('tenantMember.audit.expanded.details')} />
+                    {AUDIT_COLUMNS.map((column) => <th key={column.key} className={AUDIT_TH + (column.align === 'center' ? ' text-center' : '')} style={column.width ? { width: column.width } : { minWidth: column.minWidth }}>{tr(column.label)}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {audit.map((entry) => {
+                      const expanded = auditExpandedKeys.includes(entry.id);
+                      const subject = auditTargetSubject(entry);
+                      const diff = auditTargetDiff(entry);
+                      const parts = auditDateParts(entry.created_at, locale);
+                      return <Fragment key={entry.id}>
+                        <tr className={TR_HOVER + ' cursor-pointer'} aria-expanded={expanded} onClick={() => toggleAuditExpand(entry.id)}>
+                          <td className={TD + ' pr-0'}>
+                            <span className={'inline-flex text-[var(--wk-muted,#66758b)] transition-transform ' + (expanded ? 'rotate-180' : '')}><Icon name="chevron-down" /></span>
+                          </td>
+                          <td className={TD}>
+                            <div className="flex flex-col gap-[2px] leading-[1.3]">
+                              <span className="text-xs text-[var(--wk-muted,#66758b)]">{parts.date}</span>
+                              <span className="text-[13px] font-medium text-[var(--wk-text,#172033)] [font-variant-numeric:tabular-nums]">{parts.time}</span>
+                            </div>
+                          </td>
+                          <td className={TD}>
+                            <div className="flex min-w-0 flex-col gap-[2px] leading-[1.3]">
+                              <span className="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap text-[var(--wk-text,#172033)]">
+                                {entry.actor_user_id ? actorDisplayName(entry.actor_user_id) : tr('tenantMember.audit.systemActor')}
+                              </span>
+                              {entry.actor_role ? <span className="text-xs text-[var(--wk-muted,#66758b)]">{tr('tenantMember.role.' + entry.actor_role)}</span> : null}
+                            </div>
+                          </td>
+                          <td className={TD}><span className={wkTag(auditActionTone(entry.action))}>{auditActionLabel(entry.action)}</span></td>
+                          <td className={TD}>
+                            <div className="flex min-w-0 flex-col gap-1 py-[2px] leading-[1.35]">
+                              {subject ? <span className="break-all text-[13px] text-[var(--wk-text,#172033)]">{subject}</span> : null}
+                              {diff ? <span className="break-all font-mono text-xs leading-[1.4] text-[var(--wk-muted,#66758b)]">{diff}</span> : null}
+                              {!subject && !diff ? <span className="text-[var(--wk-faint,#98a2b8)]">—</span> : null}
+                            </div>
+                          </td>
+                          <td className={TD}>
+                            {entry.request_path ? <span className="break-all font-mono text-xs text-[var(--wk-muted,#66758b)]">
+                              {entry.request_method ? <span className="mr-1 inline-block font-semibold text-[var(--wk-text,#172033)]">{entry.request_method}</span> : null}
+                              {entry.request_path}
+                            </span> : <span className="text-[var(--wk-faint,#98a2b8)]">—</span>}
+                          </td>
+                          <td className={TD + ' text-center'}><span className={wkTag(entry.outcome === 'denied' ? 'danger' : entry.outcome === 'success' ? 'success' : 'default')}>{auditOutcomeLabel(entry.outcome)}</span></td>
+                        </tr>
+                        {expanded ? <tr className="audit-expanded-row">
+                          <td colSpan={AUDIT_COLUMNS.length + 1} className="border-t border-[var(--wk-border,#dce3ed)] p-0! align-top!">
+                            <div className="flex flex-col gap-3 bg-[var(--wk-canvas,#f7f9fc)] px-4 py-3">
+                              <div className="grid gap-x-[18px] gap-y-2.5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+                                <div className="flex min-w-0 flex-col gap-[2px]">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.expanded.actorId')}</span>
+                                  <span className="break-all font-mono text-xs text-[var(--wk-text,#172033)]">{entry.actor_user_id || '—'}</span>
+                                </div>
+                                {entry.target_user_id ? <div className="flex min-w-0 flex-col gap-[2px]">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.expanded.targetUserId')}</span>
+                                  <span className="break-all font-mono text-xs text-[var(--wk-text,#172033)]">{entry.target_user_id}</span>
+                                </div> : null}
+                                {entry.target_type ? <div className="flex min-w-0 flex-col gap-[2px]">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.expanded.targetType')}</span>
+                                  <span className="break-all font-mono text-xs text-[var(--wk-text,#172033)]">{entry.target_type}</span>
+                                </div> : null}
+                                {entry.target_id ? <div className="flex min-w-0 flex-col gap-[2px]">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.expanded.targetId')}</span>
+                                  <span className="break-all font-mono text-xs text-[var(--wk-text,#172033)]">{entry.target_id}</span>
+                                </div> : null}
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--wk-muted,#66758b)]">{tr('tenantMember.audit.expanded.details')}</span>
+                                <pre className="m-0 max-h-[280px] overflow-auto whitespace-pre-wrap break-all rounded-[6px] border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 font-mono text-xs leading-[1.55] text-[var(--wk-text,#172033)]">{auditDetailsJSON(entry)}</pre>
+                              </div>
+                            </div>
+                          </td>
+                        </tr> : null}
+                      </Fragment>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* 触底 sentinel：IntersectionObserver root 指向 .audit-scroll-area（TenantMembers.vue:497-498） */}
+              <div ref={auditSentinelRef} className="audit-load-sentinel pointer-events-none h-px w-full" aria-hidden="true" />
+              {auditLoading && audit.length > 0 ? <div className="audit-loading-more flex items-center justify-center gap-2.5 p-3 text-xs text-[var(--wk-muted,#66758b)]"><Status>{tr('tenantMember.loading')}</Status></div> : null}
+              {!auditHasMore && audit.length > 0 && !auditLoading ? <p className="audit-end-hint m-0 py-2 pb-3.5 text-center text-xs text-[var(--wk-faint,#98a2b8)]">{tr('tenantMember.audit.end')}</p> : null}
+            </div>}
       </div>
-      {auditError ? <div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><Button type="button" onClick={() => void loadAudit()}>{tr('tenantMember.retry')}</Button></div>
-        : !auditLoading && audit.length === 0 ? <div className="py-2"><Status>{tr('tenantMember.audit.empty')}</Status></div>
-        : <div className="data-table-shell overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
-            <div className="overflow-x-auto">
-              <table className={TBL}>
-                <thead><tr>
-                  <th className={TH}>{tr('tenantMember.audit.columns.time')}</th>
-                  <th className={TH}>{tr('tenantMember.audit.columns.actor')}</th>
-                  <th className={TH}>{tr('tenantMember.audit.columns.action')}</th>
-                  <th className={TH}>{tr('tenantMember.audit.columns.target')}</th>
-                  <th className={TH}>{tr('tenantMember.audit.columns.path')}</th>
-                  <th className={TH}>{tr('tenantMember.audit.columns.outcome')}</th>
-                </tr></thead>
-                <tbody>
-                  {audit.map((entry) => <tr key={entry.id} className={TR_HOVER}>
-                    <td className={TD}>{formatDate(entry.created_at, locale)}</td>
-                    <td className={TD}>{entry.actor_user_id ? actorDisplayName(entry.actor_user_id) : tr('tenantMember.audit.systemActor')}</td>
-                    <td className={TD}><span className={wkTag('default')}>{auditActionLabel(entry.action)}</span></td>
-                    <td className={TD}>{entry.target_user_id ? actorDisplayName(entry.target_user_id) : entry.target_id ? `${entry.target_type}:${entry.target_id}` : '—'}</td>
-                    <td className={TD}>{entry.request_path ? `${entry.request_method} ${entry.request_path}` : '—'}</td>
-                    <td className={TD}><span className={wkTag(entry.outcome === 'denied' ? 'danger' : entry.outcome === 'success' ? 'success' : 'default')}>{auditOutcomeLabel(entry.outcome)}</span></td>
-                  </tr>)}
-                </tbody>
-              </table>
-            </div>
-          </div>}
-    </Card> : null}
+    </TenantAuditDrawer>
 
     <Dialog open={inviteOpen} title={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)} closeLabel={tr('common.close')}>
       <form className="flex flex-col gap-3" onSubmit={submitInvite}>

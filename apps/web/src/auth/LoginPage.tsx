@@ -145,6 +145,10 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     setLocale(next);
     window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
     setShowLanguageMenu(false);
+    // Vue Login.vue:522-528 — persisting the language confirms it with a
+    // MessagePlugin.success(language.languageSaved) toast rendered in the NEW
+    // locale (vue-i18n's t is reactive to locale.value, which was just set).
+    showToast('success', formatMessage(next, 'language.languageSaved'));
   }
 
   async function redeemInviteAndEnter(token: string) {
@@ -220,7 +224,9 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       window.location.assign(result.authorizationUrl);
     } catch (error) {
       setState('error');
-      const text = error instanceof Error ? error.message : t('auth.loginErrorRetry');
+      // Vue Login.vue:636/647 — the OIDC-entry fallback is auth.oidcLoginFailed
+      // (not the generic login-retry copy); a backend message still wins.
+      const text = error instanceof Error ? error.message : t('auth.oidcLoginFailed');
       setMessage(text);
       showToast('error', text);
     } finally {

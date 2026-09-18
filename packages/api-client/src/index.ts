@@ -16,7 +16,7 @@ export type { FetchLike, FetchResponseLike } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export { createProductAuth, createProductAuthSession } from './auth/login.ts';
-export type { ProductAuthOptions } from './auth/login.ts';
+export type { ProductAuthOptions, ProductIdentitySnapshot, ProductAuthSession } from './auth/login.ts';
 export { createOIDCApi } from './auth/oidc.ts';
 export type { OIDCAuthURLResponse, OIDCConfigResponse, OIDCExchangeResponse, AuthRequest } from './auth/oidc.ts';
 export { createInvitationsApi } from './auth/invitations.ts';
@@ -24,7 +24,7 @@ export type { TenantInvitationStatus, InvitationListResponse, InvitationActionRe
 export { createAuthApi } from './auth/endpoints.ts';
 export { parseLogin } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, ParsedLogin, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
-export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams, KnowledgeChunk, KnowledgeChunkPage, KnowledgeChunkRevision, KnowledgeChunkUpdateInput, KnowledgeDocumentDetailsUpdateInput } from './knowledge/documents.ts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams, KnowledgeChunk, KnowledgeChunkPage, KnowledgeChunkRevision, KnowledgeChunkUpdateInput, KnowledgeDocumentDetailsUpdateInput, KnowledgeGeneratedQuestion } from './knowledge/documents.ts';
 export { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivityEntry, KnowledgeBaseActivityQuery, KnowledgeBaseActivityResult, KnowledgeBaseConfigInput, KnowledgeBaseUpdateInput, ParserEngineInfo, ParserEnginesResult, StorageBackendView, VectorStoreView } from './knowledge/settings.ts';
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';
@@ -109,10 +109,13 @@ export type {
   ExecutionsApi,
   CommandAck,
   ExecutionCommandInput,
+  ExecutionListParams,
   RequestLookup,
   RequestLookupState,
   StartAck,
   StartExecutionInput,
+  WorkbenchExecutionItem,
+  WorkbenchExecutionList,
 } from './mobile/executions.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';
 export type {

@@ -46,6 +46,9 @@ type UserPreferences struct {
 	// UI hides self-service password rotation until the user sets a known
 	// password via ChangePassword (which clears this flag).
 	OidcOnlyLogin *bool `json:"oidc_only_login,omitempty"`
+
+	// BrowserSearchInstructions customizes browser search for this user. Nil/empty uses the platform default.
+	BrowserSearchInstructions *string `json:"browser_search_instructions,omitempty"`
 }
 
 // Value implements driver.Valuer so GORM persists UserPreferences as

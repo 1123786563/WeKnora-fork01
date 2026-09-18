@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Select, Status, Switch, Textarea } from '@weknora/ui';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import { navigate } from '../platform/navigation.ts';
 
 type MemoryRow = Record<string, unknown>;
 type MemoryStatusTab = 'active' | 'pending' | 'tracking' | 'documents' | 'superseded' | 'archived';
@@ -529,7 +530,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       showNotice(t('memorySettings.openDocumentUnavailable'), 'warning');
       return;
     }
-    window.location.assign(url);
+    navigate(url);
   };
 
   const handleStopTrackingDocument = async (row: MemoryRow) => {

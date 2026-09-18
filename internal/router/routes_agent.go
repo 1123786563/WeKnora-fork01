@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/Tencent/WeKnora/internal/embedpolicy"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -335,46 +336,39 @@ func embedChannelIDFromPath(path string) string {
 	return strings.TrimSpace(rest)
 }
 
-// embedFrameAncestorsMiddleware sets a per-channel `frame-ancestors` CSP on the
-// embed SPA page so it can only be framed by the channel's allowed origins.
-// When the channel declares no origins (or "*"), no restriction is applied,
-// matching the API allowlist semantics. Only GET/HEAD page loads are handled.
+// embedFrameAncestorsMiddleware applies the per-channel `frame-ancestors` CSP
+// to the embed SPA page so it can only be framed by the channel's allowed
+// origins. The response starts fail-closed ('none'); the channel's normalized
+// policy replaces it, and a wholly invalid/empty list keeps the page unfetchable
+// by frames at all. Only GET/HEAD page loads are handled.
 func embedFrameAncestorsMiddleware(svc interfaces.EmbedChannelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 			c.Next()
 			return
 		}
+		if !strings.HasPrefix(c.Request.URL.Path, "/embed/") {
+			c.Next()
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		c.Header("Content-Security-Policy", "frame-ancestors 'none'")
 		channelID := embedChannelIDFromPath(c.Request.URL.Path)
 		if channelID == "" {
-			c.Next()
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		ch, err := svc.LookupEnabledChannel(c.Request.Context(), channelID)
 		if err != nil || ch == nil {
-			c.Next()
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-		origins := ch.AllowedOriginsList()
-		sources := make([]string, 0, len(origins))
-		wildcard := false
-		for _, o := range origins {
-			o = strings.TrimSpace(o)
-			if o == "" {
-				continue
-			}
-			if o == "*" {
-				wildcard = true
-				break
-			}
-			sources = append(sources, o)
-		}
-		// No explicit origins or a wildcard => do not constrain framing here.
-		if wildcard || len(sources) == 0 {
-			c.Next()
+		policy := embedpolicy.FrameAncestors(ch.AllowedOriginsList())
+		c.Header("Content-Security-Policy", policy)
+		if policy == "frame-ancestors 'none'" {
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-		c.Header("Content-Security-Policy", "frame-ancestors "+strings.Join(sources, " "))
 		c.Next()
 	}
 }

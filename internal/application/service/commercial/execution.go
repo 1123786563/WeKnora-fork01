@@ -38,6 +38,17 @@ type ExecutionGateService struct {
 	stopped func(domain.Credits, domain.Credits) error
 }
 
+// AttachChildRun exposes the budget-tree admission seam to higher-level
+// remote execution services. It intentionally shares the exact BudgetStore
+// used by Begin/Finish, so a delegated call cannot attach to a second budget
+// projection and then reserve against a different root.
+func (s *ExecutionGateService) AttachChildRun(ctx context.Context, tenantID uint64, childRun, parentRun string) error {
+	if s == nil || s.budget == nil {
+		return repocommercial.ErrTaskBudgetMissing
+	}
+	return s.budget.AttachChildRun(ctx, tenantID, childRun, parentRun)
+}
+
 // NewExecutionGateService validates its wiring and builds the gate from the
 // budget store and settlement dependencies. A nil rate resolver is legal for
 // wiring (blocked-env): Finish then rejects unpriced final facts instead of

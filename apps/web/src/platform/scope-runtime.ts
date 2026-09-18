@@ -1,4 +1,5 @@
 import { createScopeController, isCapabilitySupported, normalizeCapabilityMap, scopedKey, type CapabilityMap, type ScopeController, type ScopeHandle } from '@weknora/domain';
+import { clearWeknoraUser, persistWeknoraUser } from '@weknora/domain/settings/local-preferences';
 import type { AuthMe, AuthSession } from '@weknora/api-client';
 
 export interface WebScopeRuntime {
@@ -38,13 +39,17 @@ function membershipRole(memberships: unknown[] | undefined, tenantId: string | n
   return 'viewer';
 }
 
-export function createWebScopeRuntime(origin: string, userId: string | null = null, tenantId: string | null = null, options: { liteMode?: boolean; edition?: string; persistTenant?: (tenantId: string | null) => void } = {}): WebScopeRuntime {
+export function createWebScopeRuntime(origin: string, userId: string | null = null, tenantId: string | null = null, options: { liteMode?: boolean; edition?: string; persistTenant?: (tenantId: string | null) => void; storage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } } = {}): WebScopeRuntime {
   const controller = createScopeController({ origin, userId, tenantId });
   let capabilitySnapshot: CapabilityMap = {};
   let liteMode = options.liteMode === true;
   let edition = options.edition;
   let systemAdmin = false;
   let activeRole: WebTenantRole = 'viewer';
+  // weknora_user persistence target. main.tsx does not inject one; fall back
+  // to the browser's localStorage so the /auth/me landing keeps the identity
+  // entry (Vue setUser parity) even without wiring changes.
+  const userStorage = options.storage ?? (typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : undefined);
   const commitScope = (nextUserId: string | null, nextTenantId: string | null): ScopeHandle => {
     const handle = controller.switchScope(origin, nextUserId, nextTenantId);
     options.persistTenant?.(nextTenantId);
@@ -71,6 +76,11 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     const maybeEdition = authMe.user.edition;
     if (typeof maybeEdition === 'string' && maybeEdition.trim()) edition = maybeEdition;
     activeRole = membershipRole(authMe.memberships, tenantId);
+    // Mirror Vue stores/auth.ts setUser: persist the authenticated identity so
+    // per-user preference namespaces (WeKnora_${userId}_*) follow the account.
+    // persistWeknoraUser also resets the migration latch so preferences adopt
+    // for the new identity (Vue reloadUserPreferences parity).
+    if (userStorage) persistWeknoraUser(userStorage, authMe.user as unknown as Record<string, unknown>);
     return commitScope(nextUserId, tenantId);
   };
   const switchTenant = async (
@@ -93,7 +103,16 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     setIdentity: commitScope,
     setTenant: (nextTenantId) => commitScope(controller.current().scope.userId, nextTenantId),
     switchTenant,
-    logout: () => { capabilitySnapshot = {}; systemAdmin = false; activeRole = 'viewer'; controller.logout(); options.persistTenant?.(null); },
+    logout: () => {
+      capabilitySnapshot = {};
+      systemAdmin = false;
+      activeRole = 'viewer';
+      controller.logout();
+      options.persistTenant?.(null);
+      // Vue stores/auth.ts logout removes weknora_user so the preference
+      // namespace falls back to "anon" until the next login.
+      if (userStorage) clearWeknoraUser(userStorage);
+    },
     requiresWorkspace: () => controller.current().scope.userId !== null && controller.current().scope.tenantId === null,
     can: (capability) => isCapabilitySupported(capabilitySnapshot, capability, { liteMode, edition }),
     capabilities: () => ({ ...capabilitySnapshot }),

@@ -13,9 +13,19 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
+
+// SandboxIDLookup resolves a session's bound sandbox without provisioning
+// one. A session with no live sandbox reports ok=false, which the completion
+// path treats as "nothing to check point".
+type SandboxIDLookup interface {
+	BoundSandboxID(ctx context.Context, sessionID string) (string, bool)
+}
+
+var _ SandboxIDLookup = (*sandbox.SessionBoundManager)(nil)
 
 // AgentStreamHandler handles agent events for SSE streaming
 // It uses a dedicated EventBus per request to avoid SessionID filtering
@@ -27,7 +37,7 @@ type AgentStreamHandler struct {
 	assistantMessageID string
 	requestID          string
 	receivedAt         time.Time // Handler entry timestamp, used for TTFB logging
-	ttfbLogged         bool      // Guards one-shot TTFB log on first answer chunk
+	ttfbLogged         bool      // Guards one-shot log on first answer chunk
 	assistantMessage   *types.Message
 	streamManager      interfaces.StreamManager
 
@@ -37,6 +47,12 @@ type AgentStreamHandler struct {
 	// sandbox after the agent completes. Nil when the sandbox backend
 	// doesn't support artifact collection or WeKnora was built without it.
 	artifactCollector *service.ArtifactCollector
+
+	// checkpointer commits the sandbox's /workspace at the end of the turn so
+	// session fork can roll back to this message. Nil (or a nil lookup) means
+	// the message simply cannot serve as a fork point with sandbox state.
+	checkpointer    *service.WorkspaceCheckpointer
+	sandboxIDLookup SandboxIDLookup
 
 	// State tracking
 	knowledgeRefs   []*types.SearchResult
@@ -90,6 +106,8 @@ func NewAgentStreamHandler(
 	streamManager interfaces.StreamManager,
 	eventBus *event.EventBus,
 	artifactCollector *service.ArtifactCollector,
+	checkpointer *service.WorkspaceCheckpointer,
+	sandboxIDLookup SandboxIDLookup,
 ) *AgentStreamHandler {
 	return &AgentStreamHandler{
 		ctx:                ctx,
@@ -102,6 +120,8 @@ func NewAgentStreamHandler(
 		streamManager:      streamManager,
 		eventBus:           eventBus,
 		artifactCollector:  artifactCollector,
+		checkpointer:       checkpointer,
+		sandboxIDLookup:    sandboxIDLookup,
 		knowledgeRefs:      make([]*types.SearchResult, 0),
 		eventStartTimes:    make(map[string]time.Time),
 	}
@@ -114,6 +134,7 @@ func (h *AgentStreamHandler) Subscribe() {
 	h.eventBus.On(event.EventAgentThought, h.handleThought)
 	h.eventBus.On(event.EventAgentToolCall, h.handleToolCall)
 	h.eventBus.On(event.EventAgentToolResult, h.handleToolResult)
+	h.eventBus.On(event.EventAgentCommandOutput, h.handleCommandOutput)
 	h.eventBus.On(event.EventAgentReferences, h.handleReferences)
 	h.eventBus.On(event.EventMemoryRecalled, h.handleMemoryRecalled)
 	h.eventBus.On(event.EventContextCompacted, h.handleContextCompacted)
@@ -716,6 +737,20 @@ func (h *AgentStreamHandler) handleComplete(ctx context.Context, evt event.Event
 			h.assistantMessage.Usage = usage
 		}
 
+		// Commit the sandbox /workspace at the end of the agent turn so a
+		// session fork at this message can roll the workspace back here.
+		//
+		// Best-effort throughout: a nil checkpoint just means this message
+		// cannot serve as a fork point with sandbox state.
+		if h.checkpointer != nil && h.sandboxIDLookup != nil {
+			checkpointCtx := context.WithoutCancel(h.ctx)
+			if sandboxID, ok := h.sandboxIDLookup.BoundSandboxID(checkpointCtx, h.sessionID); ok {
+				h.assistantMessage.SandboxCheckpoint = h.checkpointer.Checkpoint(
+					checkpointCtx, h.sessionID, sandboxID, h.assistantMessageID,
+				)
+			}
+		}
+
 		// Drain skill-generated files from the sandbox into persistent
 		// storage. Best-effort: any failure is logged and the turn is
 		// persisted without artifacts. Collect is a no-op when either the
@@ -876,4 +911,20 @@ func publicArtifactViews(list types.MessageArtifacts) []map[string]interface{} {
 		})
 	}
 	return out
+}
+
+// handleCommandOutput forwards UI-only progress without adding partial output
+// to the model conversation or completing the tool call.
+func (h *AgentStreamHandler) handleCommandOutput(_ context.Context, evt event.Event) error {
+	data, ok := evt.Data.(event.CommandOutputData)
+	if !ok || data.ToolCallID == "" {
+		return nil
+	}
+	return h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		ID: evt.ID, Type: types.ResponseTypeCommandOutput, Timestamp: time.Now(),
+		Data: map[string]interface{}{
+			"tool_call_id": data.ToolCallID, "command": data.Command,
+			"started_at": data.StartedAt, "output": data.Output, "done": data.Done,
+		},
+	})
 }

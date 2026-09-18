@@ -39,6 +39,16 @@ type Handler struct {
 	// not support artifact collection; handlers must check before using.
 	artifactCollector *service.ArtifactCollector
 	memoryService     interfaces.MemoryService // Service for cross-session long-term memory
+	// forkService branches a session at a chosen user or assistant message.
+	// May be nil in deployments where fork is not wired; ForkSession checks.
+	forkService sessionForker
+	// workspaceCheckpointer commits the sandbox /workspace at the end of each
+	// agent turn so session fork can roll back to a specific message. May be
+	// nil when the deployment has no sandbox backend.
+	workspaceCheckpointer *service.WorkspaceCheckpointer
+	// sandboxIDLookup resolves a session's bound sandbox without provisioning
+	// (A11 phase 3 checkpoint hook).
+	sandboxIDLookup SandboxIDLookup
 	// userService / memberService back the sandbox terminal's self-contained
 	// handshake (browser WebSocket upgrades cannot send Authorization).
 	userService   interfaces.UserService
@@ -104,6 +114,15 @@ func NewHandler(
 	temporaryDocuments interfaces.TemporaryDocumentService,
 	artifactCollector *service.ArtifactCollector,
 	memoryService interfaces.MemoryService,
+	// forkService branches a session at a chosen user or assistant message.
+	// May be nil in deployments where fork is not wired; ForkSession checks.
+	// Concrete-typed parameter so dig can inject it; the field keeps the
+	// narrow interface for stub-based tests.
+	forkService *service.SessionForkService,
+	// workspaceCheckpointer + sandboxIDLookup back the per-turn git checkpoint
+	// hook (A11 phase 3); both may be nil on sandbox-less deployments.
+	workspaceCheckpointer *service.WorkspaceCheckpointer,
+	sandboxIDLookup SandboxIDLookup,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
@@ -126,6 +145,9 @@ func NewHandler(
 		temporaryDocuments:   temporaryDocuments,
 		artifactCollector:    artifactCollector,
 		memoryService:        memoryService,
+		forkService:          forkService,
+		workspaceCheckpointer: workspaceCheckpointer,
+		sandboxIDLookup:      sandboxIDLookup,
 		userService:          userService,
 		memberService:        memberService,
 		terminalService:      terminalService,

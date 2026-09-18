@@ -295,11 +295,19 @@ test('permissions popover and audit drawer open from the header row', async () =
   assert.match(popover?.textContent ?? '', /我/, 'current role is badged with 我');
 
   await act(async () => [...container.querySelectorAll('button')].find((b) => (b.textContent ?? '').includes('审计日志'))?.click());
-  const audit = container.querySelector('[role="region"][aria-label="审计日志"]');
-  assert.ok(audit, 'audit link opens the audit log region');
+  // The audit surface now mirrors Vue SettingDrawer (TenantMembers.vue:383-386):
+  // a right-side drawer teleported to document.body, named via aria-labelledby.
+  const audit = [...document.querySelectorAll('aside[role="dialog"]')].find((el) => el.textContent?.includes('审计日志'));
+  assert.ok(audit, 'audit link opens the audit log drawer');
   assert.equal(auditCalls.length, 1, 'audit log is lazy-loaded on first open');
   assert.match(audit?.textContent ?? '', /刷新/);
   assert.match(audit?.textContent ?? '', /暂无审计事件。/);
+  // Vue empty state (TenantMembers.vue:412): TDesign t-empty renders the 48px
+  // "no result" illustration above the default zh-CN title "暂无数据".
+  // (jsdom attribute selectors lowercase SVG attribute names, so match via getAttribute.)
+  const illustration = [...(audit?.querySelectorAll('svg') ?? [])].some((svg) => svg.getAttribute('viewBox') === '0 0 48 48');
+  assert.ok(illustration, 'audit empty state renders the TDesign illustration');
+  assert.match(audit?.textContent ?? '', /暂无数据/, 't-empty default title line renders');
 });
 
 test('invite dialog opens from the add-member button and sends the invitation', async () => {

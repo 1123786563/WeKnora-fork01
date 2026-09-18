@@ -327,7 +327,10 @@ test('(i) shell session source filter exposes Vue-backed web, API, and configure
     filter.dispatchEvent(new Event('change', { bubbles: true }));
     await settle(40);
   });
-  assert.deepEqual(sourceCalls, ['web', 'api', 'embed:embed-1', 'feishu', 'api']);
+  // The second 'web' is the reload once auth/me resolves the admin role: the
+  // scope change must restart the load (it used to strand the list on
+  // Loading), then the explicit bucket switch appends its own request.
+  assert.deepEqual(sourceCalls, ['web', 'web', 'api', 'embed:embed-1', 'feishu', 'api']);
 });
 
 test('(j) viewers and unknown mounts keep admin session sources hidden', async () => {
@@ -369,8 +372,45 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
     mountedRoot?.render(React.createElement(PlatformShell, { client: viewer as never, onLogout: () => undefined, children: React.createElement('div', null, 'page') }));
     await settle(30);
   });
-  assert.deepEqual(viewerCalls, ['web']);
+  // The viewer client must only ever see web-source requests: the client
+  // swap resets the invalid 'api' source, and the later auth/me scope
+  // resolution reloads web once more (same restart semantics as (i)/(l2)).
+  assert.ok(viewerCalls.length > 0, 'expected the viewer client to load the web bucket');
+  assert.ok(viewerCalls.every((source) => source === 'web'), `viewer client must only request web, saw ${viewerCalls.join(',')}`);
   assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+});
+
+test('(l2) admin auth/me scope flip during the first load must not strand the list on Loading', async () => {
+  // R428 parity bug: the shell mounts before auth/me lands with
+  // canSeeAdminSessionSources=false; when me resolves with an admin role the
+  // session effect used to early-return on the scope change while the first
+  // in-flight request's finally skipped setSessionsLoading(false)
+  // (sessionsMountedRef already false) — the sidebar stayed on "Loading..."
+  // forever even though the request succeeded. The source is already web, so
+  // the effect must fall through and reload with the new generation.
+  let listCalls = 0;
+  let releaseFirst: (() => void) | undefined;
+  const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const client = fakeClient({
+    auth: { me: async () => ({ user: { id: 'u1', username: 'admin', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'admin' }] }) },
+    list: async () => {
+      listCalls += 1;
+      if (listCalls === 1) await firstGate;
+      return { data: SESSIONS, total: SESSIONS.length, page: 1, page_size: 30 };
+    },
+  });
+  const container = await mountShell({ client });
+  assert.equal(listCalls >= 2, true, `expected the scope flip to restart the load, saw ${listCalls} calls`);
+  assert.equal(rowTitles().includes('今天的会话'), true, 'session rows render after the admin scope flip');
+  const nav = container.querySelector('nav[aria-label="我的对话"]') as HTMLElement;
+  assert.ok(nav);
+  assert.equal(nav.textContent?.includes('Loading...'), false, 'no stranded text loading label');
+  assert.equal(nav.querySelector('[role="status"]'), null, 'no skeleton or error status remains after success');
+  // The stale first-generation response must stay discarded after release.
+  releaseFirst?.();
+  await settle(10);
+  assert.equal(rowTitles().includes('今天的会话'), true);
+  assert.equal(nav.querySelector('[role="status"]'), null);
 });
 
 test('(m) batch management exposes accessible selection and deletes selected sessions', async () => {

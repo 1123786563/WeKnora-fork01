@@ -269,6 +269,9 @@ export type AgentCardAction = 'edit' | 'copy' | 'toggle' | 'delete';
 
 export function cardActions(agent: AgentCardModel, viewer: AgentViewer): AgentCardAction[] {
   if (!agent.isMine) {
+    // Space-view rows shared BY me carry no popup menu at all
+    // (AgentList.vue:572 gates the popup on !shared.is_mine).
+    if (agent.sharedByMe) return [];
     // Shared cards: admins get the enable/disable toggle only.
     return viewer.isAdmin ? ['toggle'] : [];
   }
@@ -278,6 +281,15 @@ export function cardActions(agent: AgentCardModel, viewer: AgentViewer): AgentCa
   if (viewer.isAdmin) actions.push('toggle');
   if (!agent.is_builtin && canManageAgent(agent, viewer)) actions.push('delete');
   return actions;
+}
+
+/**
+ * Card click destination (AgentList.vue handleCardClick vs
+ * handleSpaceAgentCardClick): own agents and space-view "shared by me" rows
+ * open the editor; every other shared row opens the readonly detail drawer.
+ */
+export function opensEditorOnCardClick(agent: Pick<AgentCardModel, 'isMine' | 'sharedByMe'>): boolean {
+  return agent.isMine || agent.sharedByMe === true;
 }
 
 // --- corner badges (AgentList.vue card-bottom-right + card-list-badge rules) --

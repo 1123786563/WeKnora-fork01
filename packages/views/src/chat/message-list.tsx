@@ -20,6 +20,7 @@ import {
   type ArtifactPreviewPayload,
 } from './artifact-preview.tsx';
 import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { splitHistoryThinking, type LiveThinkingState } from './live-thinking.ts';
 
 /*
  * chat.css → utilities (Tailwind migration). The wk-* classes stay as
@@ -37,7 +38,6 @@ const USER_BUBBLE = "ml-auto box-border w-max max-w-[min(76%,820px)] rounded-[8p
 export const TOOL_LIST_ITEM = "flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]";
 
 export type AssistantTimelineItem =
-  | { kind: 'thinking'; text: string }
   | { kind: 'tool'; id: string; name?: string; status: 'pending' | 'completed' | 'failed'; result?: unknown }
   | { kind: 'finish' };
 
@@ -61,6 +61,10 @@ export interface MessageListProps {
   onCitationClick?(citationId: string): void;
   /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
   onBookmark?(messageId: string): void | Promise<void>;
+  /** Vue usermsg/botmsg 分叉 entry: fork this session at the given message. */
+  onForkMessage?(messageId: string): void;
+  /** Vue index.vue forkAffordanceOf gate; absent hides every fork button. */
+  canForkMessage?(messageId: string): boolean;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   sessionId?: string | null;
@@ -74,8 +78,8 @@ export function messageArtifactItems(message: Record<string, unknown>): ChatArti
   return normalizeArtifactList(Array.isArray(message.artifacts) ? message.artifacts : undefined);
 }
 
-export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
-  return renderChatMarkdown(message.content);
+export function renderMessageHtml(message: Pick<ChatMessage, 'content'>, invalidImageLabel?: string): string {
+  return renderChatMarkdown(message.content, invalidImageLabel ? { invalidImageLabel } : {});
 }
 
 export async function writeClipboardText(text: string, clipboard?: { writeText(t: string): Promise<void> }): Promise<void> {
@@ -151,11 +155,17 @@ function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable;
   </button>;
 }
 
-/** Vue AgentStreamDisplay order: reasoning first, tool calls next, finish last. */
+/*
+ * Vue AgentStreamDisplay order: reasoning first, tool calls next, finish last.
+ * R464: the reasoning item itself is gone — the Vue main chat face never
+ * renders the `thinking` field or the persisted `agent_steps` reasoning text
+ * (botmsg.vue only shows `<think>`-tag content via deepThink and the agent
+ * timeline is a separate surface), so the simplified React timeline keeps
+ * only the tool calls and the finish node.
+ */
 export function assistantTimelineItems(message: ChatMessage): AssistantTimelineItem[] {
   const extras = assistantMessageExtras(message);
   const items: AssistantTimelineItem[] = [];
-  if (extras.thinking) items.push({ kind: 'thinking', text: extras.thinking });
   for (const call of extras.toolCalls) items.push({ kind: 'tool', ...call });
   if (message.is_completed === true && items.length > 0) items.push({ kind: 'finish' });
   return items;
@@ -167,17 +177,39 @@ function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
   </li>;
 }
 
+/*
+ * R466-A2 — Vue deepThink.vue over a restored history message: a persisted
+ * answer keeps its full `<think>…</think>` block, and the history face mounts
+ * with thinking=false, i.e. folded under chat.deepThoughtCompleted「已深度思考」
+ * (deepThink.vue onMounted isFold=true) with the reasoning one click away.
+ * An unclosed block (interrupted turn) restores the live「思考中...」state —
+ * content stays visible while thinking (v-show="!isFold || thinking").
+ */
+function HistoryDeepThink({ copy: copyTable, state }: { copy: ChatCopyTable; state: LiveThinkingState }) {
+  const content = state.thinkContent
+    ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{state.thinkContent}</p>
+    : null;
+  if (state.thinking) {
+    return <section className="wk-chat-history-think wk-chat-history-think--live mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copyTable.thinkingAlt}>
+      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
+        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+        {copyTable.thinking}
+      </p>
+      {content}
+    </section>;
+  }
+  return <details className="wk-chat-history-think wk-chat-history-think--done mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
+    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copyTable.deepThoughtCompleted}</summary>
+    {content}
+  </details>;
+}
+
 function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
   const items = assistantTimelineItems(props.message);
   if (items.length === 0) return null;
   return <section className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]' aria-label={props.copy.thinkingAndTools}>
     <ol className='wk-chat-agent-timeline m-0 list-none p-[6px]'>
-      {items.map((item, index) => item.kind === 'thinking' ? <li key={`thinking-${index}`} className='wk-chat-agent-timeline-item border-b border-[#edf0f5] py-[6px] last:border-b-0'>
-        <details>
-          <summary className='cursor-pointer text-[rgba(0,0,0,0.6)]'>{props.copy.thinkingAndTools}</summary>
-          <pre className='mx-0 mb-0 mt-[6px] max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{item.text}</pre>
-        </details>
-      </li> : item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
+      {items.map((item) => item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
         <details className='min-w-0'>
           <summary className='cursor-pointer truncate'>{item.name ?? item.id}</summary>
           {item.result !== undefined ? <pre className='mt-[6px] max-h-[180px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2)}</pre> : null}
@@ -201,7 +233,7 @@ function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenL
   </section>;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const timestampLabels = conversationTimeLabels(t);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -366,16 +398,29 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label={t.messagesLabel}>
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
+      // Vue handleMsgList restore split: the persisted `<think>…</think>`
+      // block becomes the folded deepThink header and the message body keeps
+      // only the post-tag answer (tags never reach the markdown renderer).
+      const historyThink = isAssistant ? splitHistoryThinking(message.content) : null;
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
         {showSeparator ? <li className="wk-chat-timestamp block list-none select-none border-b border-[#edf0f5] px-0 py-[0.8rem] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
         <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]'}>
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {!isAssistant && onForkMessage && canForkMessage?.(message.id) === true ? (
+            <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>⑂</button>
+          ) : null}
           {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
             <FallbackInfoButton copy={t} message={message} />
+            {onForkMessage && canForkMessage?.(message.id) === true ? (
+              <button type="button" className={`${ANSWER_TOOL_BUTTON} wk-chat-fork`} title={t.forkFromAssistantTooltip} aria-label={t.forkFromAssistantTooltip} onClick={() => onForkMessage(message.id)}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>
+              </button>
+            ) : null}
           </div> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
           {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}

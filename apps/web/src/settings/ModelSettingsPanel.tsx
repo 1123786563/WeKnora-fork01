@@ -8,6 +8,7 @@ import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
 import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
+import { navigate } from "../platform/navigation.ts";
 import { modelInUseDetails, type ModelUsageDetails } from "../configuration/model-usage.ts";
 import { useAppLocale } from "../i18n.ts";
 import {
@@ -1129,7 +1130,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
               ) : draft.source === "local" && ollamaStatus === false ? (
                 <p className="wk-muted text-muted">
                   {t("model.editor.ollamaUnavailable")}{" "}
-                  <Button type="button" onClick={() => window.location.assign("/platform/settings?section=ollama")}>
+                  <Button type="button" onClick={() => navigate("/platform/settings?section=ollama")}>
                     {t("model.editor.goToOllamaSettings")}
                   </Button>
                 </p>
@@ -1217,7 +1218,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   ) : (
                     <Status tone="warning">
                       {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}{" "}
-                      <Button type="button" onClick={() => window.location.assign("/platform/settings?section=weknoracloud")}>
+                      <Button type="button" onClick={() => navigate("/platform/settings?section=weknoracloud")}>
                         {t("settings.weknoraCloud.goToSettings")}
                       </Button>
                     </Status>

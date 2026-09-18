@@ -1,0 +1,271 @@
+# W34 managed mobile-workbench deployment topology.
+#
+# This compose file is a LOCAL, CONTROLLED verification of the managed-node
+# orchestration facts required by internal/execution.DeploymentPolicy:
+#   - non-root users, read-only root filesystems, dropped capabilities
+#   - per-service CPU / memory / PID limits
+#   - isolated work volumes (never a shared writable tenant home, never the
+#     host docker socket)
+#   - secrets mounted as read-only files under /run/secrets (never env vars)
+#   - REAL egress enforcement by network topology: the backend network is
+#     `internal: true` (no outbound route at all), and the ONLY service with
+#     an uplink is the egress gateway, which allowlists destination domains.
+#     A config bool is a claim, not isolation evidence — the isolation here
+#     is enforced by the network fabric, not by application settings.
+#
+# What this file is NOT: a production egress gateway/host network policy, a
+# substitute for mTLS termination, or a benchmark. See README.md for the
+# runbook (capability switches, drain procedure, alerts) and the evidence
+# doc docs/evidence/mobile-workbench/W34-deployment.md for what was actually
+# verified in this environment.
+#
+# Secrets are provisioned under ${MW_SECRETS_DIR:-./secrets} by the operator
+# (README "Provision secrets"). compose fails to render config while the
+# files are absent — fail closed by construction, same contract as
+# docker/compose.open-connector.yaml.
+#
+# Validate any edit:
+#   docker compose -f deploy/mobile-workbench/compose.yaml config >/dev/null
+
+name: mobile-workbench
+
+x-managed-hardening: &managed-hardening
+  # Non-root, immutable rootfs, no privilege escalation, no capabilities.
+  user: "65534:65534"
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: ["ALL"]
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
+services:
+  # WeKnora API + durable worker (single dig process). Outbound model calls
+  # go through the egress gateway; the internal network has no other route.
+  api:
+    <<: *managed-hardening
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.app
+    cpus: "2.0"
+    mem_limit: 4g
+    pids_limit: 512
+    networks:
+      frontend:
+        ipv4_address: 172.31.0.10 # fixed private address (mTLS peer identity anchor)
+      backend:
+        ipv4_address: 172.30.0.10
+    ports:
+      # API entry only, loopback-bound; a TLS-terminating reverse proxy owns
+      # the public edge. The daemon admin port is NEVER published here.
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Non-secret routing only. Secrets live in /run/secrets files and are
+      # read by the process — never passed as environment variables, so
+      # `docker inspect` / logs can never leak a DSN or token.
+      HTTPS_PROXY: "http://egress-gateway:3128"
+      NO_PROXY: "postgres,redis,bridge,egress-gateway,open-connector,localhost,127.0.0.1"
+    volumes:
+      # Dedicated writable work volume (uploads, logs) — NOT the bridge
+      # workspaces volume and NOT a path shared with any other tenant home.
+      - api-workdir:/var/lib/weknora
+      - ../../config:/app/config:ro
+    secrets:
+      - source: db_password
+        target: db_password
+      - source: redis_password
+        target: redis_password
+      - source: bridge_signing_secret
+        target: bridge_signing_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Remote execution bridge node (TS, services/paseo-adapter). The process
+  # entrypoint itself arrives with the W19–W24 remote-execution integration;
+  # this service pins the network/mount/limit posture that W34 must verify:
+  # backend-only (no direct egress route — only via the gateway), read-only
+  # rootfs, isolated workspace volume, no docker socket anywhere.
+  bridge:
+    <<: *managed-hardening
+    build:
+      context: ../../services/paseo-adapter
+      dockerfile_inline: |
+        FROM node:22-bookworm-slim
+        WORKDIR /adapter
+        COPY package.json ./
+        # Placeholder keepalive: the W19–W24 integration provides the real
+        # bridge entrypoint. This image exists so the topology below is a
+        # real container, not a config claim.
+        CMD ["node", "-e", "setInterval(() => {}, 1 << 30)"]
+    cpus: "1.0"
+    mem_limit: 1g
+    pids_limit: 128
+    networks:
+      backend:
+        ipv4_address: 172.30.0.20 # fixed private address; API dials exactly this peer
+    environment:
+      HTTPS_PROXY: "http://egress-gateway:3128"
+      NO_PROXY: "api,postgres,redis,egress-gateway,localhost,127.0.0.1"
+    volumes:
+      # Isolated execution workspaces. One volume per bridge node; per-tenant
+      # subdirectories are allocated by the runtime (never a shared writable
+      # tenant home across nodes).
+      - bridge-workspaces:/var/lib/bridge/workspaces
+    secrets:
+      - source: bridge_signing_secret
+        target: bridge_signing_secret
+
+  # The ONLY service with an outbound uplink. Squid allowlists destination
+  # domains; everything else fails closed. Pin the digest in production
+  # (README "Image pinning").
+  egress-gateway:
+    image: ubuntu/squid:latest
+    cpus: "0.5"
+    mem_limit: 512m
+    pids_limit: 64
+    networks:
+      backend:
+        ipv4_address: 172.30.0.30
+      egress:
+    configs:
+      - source: egress_allowlist
+        target: /etc/squid/squid.conf
+    volumes:
+      - squid-cache:/var/spool/squid
+    healthcheck:
+      test: ["CMD-SHELL", "squid -k check 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    # The official image's entrypoint must start as root once to chown the
+    # data directory, then drops to the unprivileged postgres user (uid 999)
+    # via gosu — the SERVER process itself never runs as root. Overriding
+    # user here breaks initdb permission setup (verified locally).
+    cpus: "1.0"
+    mem_limit: 2g
+    pids_limit: 256
+    networks:
+      backend:
+        ipv4_address: 172.30.0.40
+    # No ports: the database is reachable only inside the backend network.
+    environment:
+      POSTGRES_USER: weknora
+      POSTGRES_DB: weknora
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    secrets:
+      - source: db_password
+        target: db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weknora"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    user: "999:999"
+    cpus: "0.5"
+    mem_limit: 1g
+    pids_limit: 128
+    networks:
+      backend:
+        ipv4_address: 172.30.0.41
+    # No ports. Password comes from the read-only secret file, not env.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)"
+    volumes:
+      - redis-data:/data
+    secrets:
+      - source: redis_password
+        target: redis_password
+    restart: unless-stopped
+
+  # Optional open-connector runtime (profile "connector"). Its console is
+  # NEVER published to the host; the WeKnora API reaches it over the backend
+  # network only (docker/compose.open-connector.yaml owns the full stack).
+  open-connector:
+    profiles: ["connector"]
+    <<: *managed-hardening
+    build:
+      context: ../..
+      dockerfile: docker/open-connector.Dockerfile
+    cpus: "1.0"
+    mem_limit: 1g
+    pids_limit: 256
+    networks:
+      backend:
+        ipv4_address: 172.30.0.50
+    # No ports: the console and admin endpoints stay inside the backend
+    # network. Joining the dedicated open-connector stack (oc-net) is the
+    # production wiring; this entry verifies the no-publish posture.
+
+networks:
+  # Public entry lane. Only the API service attaches; the reverse proxy on
+  # the host terminates TLS here.
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+  # The managed lane. `internal: true` removes the outbound route: no
+  # default gateway, no NAT — a container on this network cannot reach the
+  # internet or the host LAN even if its config claims otherwise.
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  # Uplink lane, attached ONLY by the egress gateway.
+  egress:
+    driver: bridge
+
+volumes:
+  api-workdir:
+  bridge-workspaces:
+  pgdata:
+  redis-data:
+  squid-cache:
+
+secrets:
+  db_password:
+    file: ${MW_SECRETS_DIR:-./secrets}/db_password
+  redis_password:
+    file: ${MW_SECRETS_DIR:-./secrets}/redis_password
+  bridge_signing_secret:
+    file: ${MW_SECRETS_DIR:-./secrets}/bridge_signing_secret
+
+configs:
+  egress_allowlist:
+    # Fail-closed domain allowlist. Production deployments edit this list
+    # (model provider endpoints only) and reload with `squid -k reconfigure`.
+    content: |
+      http_port 3128
+
+      # Allowed outbound destinations (example set — adjust per deployment).
+      acl allowed_domains dstdomain .openai.com
+      acl allowed_domains dstdomain .anthropic.com
+      acl allowed_domains dstdomain .bigmodel.cn
+
+      # Deny by IP-literal access to prevent DNS-bypass tricks.
+      acl via_ip dst 0.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 169.254.0.0/16
+      http_access deny via_ip
+      http_access allow allowed_domains
+      http_access deny all
+
+      # Logs go to /var/log/squid/*.log; the image entrypoint tails them to
+      # stdout. (Do NOT use access_log stdio:/dev/stdout here: squid drops
+      # to the unprivileged proxy user, which cannot open /dev/stdout —
+      # verified locally, squid exits FATAL at startup.)
+      cache deny all

@@ -9,10 +9,12 @@ import {
   type KnowledgeTimelineStep,
   type KnowledgeTimelineNode,
 } from "@weknora/domain/knowledge/processing";
+import { knowledgeSpansLastError, resolveKnowledgeSpansView } from "./processing-timeline.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
+import { navigate } from "../platform/navigation.ts";
 import {
   applyUploadOverrides,
   asrSectionIssue,
@@ -59,6 +61,7 @@ import {
   type UploadNodeExtractState,
 } from "./upload-pipeline.ts";
 import {
+  canUploadKnowledgeDocuments,
   classifyKnowledgeBaseMetadataError,
   kbTypeRedirectPath,
   resolveKBSurfaceTabs,
@@ -82,6 +85,7 @@ import {
 } from "./tags.ts";
 import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
 import { tagSurfaceT } from "./tags-locale.ts";
+import { useKbDetailGuideTrigger } from "../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts";
 import uploadMaskIllustration from "./upload-mask.svg";
 import "./documents-list.css";
 import {
@@ -89,16 +93,26 @@ import {
   type KnowledgeDocumentListState,
 } from "./list.ts";
 import {
+  batchDownloadKnownBytes,
+  batchDownloadPreflight,
+  batchDownloadZipName,
+  saveBatchDownloadBlob,
+  selectBatchDownloadIds,
+} from "./knowledge-batch-download.ts";
+import {
   computeSupportedFileTypes,
   computeUnsupportedFileTypes,
   dateRangeToTimeParams,
+  documentsKBDetailPath,
   documentsKBSettingsPath,
   isFilteringDocuments,
 } from "./page-chrome.ts";
 import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
+import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
+  type DocumentsBreadcrumbTab,
   EditIcon,
   Icon,
   LinkIcon,
@@ -163,23 +177,13 @@ export function canCloseUploadConfirmDialog(uploading: boolean): boolean {
   return !uploading;
 }
 
-/** Vue canEditKB parity for the upload surface, including shared editor grants. */
-export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
-  const userId = me?.user?.id;
-  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
-  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
-  // Vue checks ownership before the effective share projection. A stale
-  // my_permission=viewer on an owned KB must not hide the creator's upload
-  // controls (the share-first restriction is resolved by the KB context).
-  if (isCreator) return true;
-  const permission = kb.my_permission ?? kb.permission;
-  if (typeof permission === "string" && permission.trim()) {
-    return ["owner", "admin", "editor"].includes(permission.trim().toLowerCase());
-  }
-  const isAdmin = Boolean(me?.user?.is_superuser === true || me?.user?.role === "admin" || me?.user?.role === "system_admin"
-    || me?.memberships?.some((membership) => membership.role === "admin" || membership.role === "system_admin"));
-  return isAdmin;
-}
+/**
+ * Vue canEditKB parity for the upload surface, including shared editor grants.
+ * Implementation moved to ../knowledge/permissions.ts so the graph page and
+ * other KB surfaces gate management chrome with the identical signal; the
+ * re-export keeps the historical import path stable.
+ */
+export { canUploadKnowledgeDocuments } from "../knowledge/permissions.ts";
 
 function hasContributorRole(me: KBSurfaceMe | null | undefined): boolean {
   const roles = [me?.user?.role, ...(me?.memberships ?? []).map((membership) => membership.role)];
@@ -318,7 +322,10 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
-  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={() => { close(); handler(); }}>{icon}<span>{label}</span></button>;
+  // stopPropagation: the card's onClick opens the document drawer — menu
+  // choices (batch manage/move/delete/…) must not bubble into it (upstream
+  // renders the card menu outside the card's click target).
+  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={(event) => { event.stopPropagation(); close(); handler(); }}>{icon}<span>{label}</span></button>;
   const downloadable = document.source === "file" || document.source === "manual" || !document.source;
   return <span className="relative inline-flex shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
     <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><MoreIcon /></button>
@@ -924,6 +931,10 @@ export interface UploadSourceDropdownProps {
   onSelect: (key: UploadSourceDropdownAction) => void;
   /** Picked files from the hidden multiple / webkitdirectory inputs. */
   onFiles: (files: File[], fromFolder?: boolean) => void;
+  /** Guide spotlight anchor — Vue KbUploadSourceDropdown trigger carries
+   * data-guide="kb-detail-add-doc" (KnowledgeBase.vue:2613). Only the
+   * page-level dropdown passes it; the dialog's "continue add" stays anonymous. */
+  guideTarget?: string;
 }
 
 /**
@@ -979,6 +990,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         title={props.tooltip}
         aria-haspopup="menu"
         aria-expanded={props.open}
+        data-guide={props.guideTarget}
         onClick={props.onToggle}
         style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer", fontSize: "14px" }}
       >
@@ -2308,7 +2320,7 @@ export function KnowledgeDocumentsPage({
           })),
         );
         const redirect = kbTypeRedirectPath(kb as KBSurfaceKB);
-        if (redirect) window.location.replace(redirect);
+        if (redirect) navigate(redirect, 'replace');
       })
       .catch((error: unknown) => {
         if (active) {
@@ -2329,6 +2341,18 @@ export function KnowledgeDocumentsPage({
     void client.knowledgeBases.settings.parserEngines().then((result) => { if (active) { setParserEngines(result.data); setParserEnginesLoading(false); } }).catch(() => { if (active) { setParserEngines([]); setParserEnginesLoading(false); } });
     return () => { active = false; };
   }, [client]);
+
+  // Vue KnowledgeBase.vue:2741 + 339-345 — the one-shot kbDetail welcome tour
+  // arms on detail-page entry (any tab, incl. deep links) for an editable,
+  // non-FAQ knowledge base whose document list finished loading empty. The
+  // shell guide host (PlatformShell) owns dismissal + welcome-tour gating.
+  useKbDetailGuideTrigger({
+    knowledgeBaseId,
+    kbType: typeof kbMeta?.type === "string" ? kbMeta.type : null,
+    canEdit: canContribute,
+    documentsLoading: state.status !== "success",
+    documentCount: state.status === "success" ? state.page.items.length : 0,
+  });
 
   useEffect(() => {
     let active = true;
@@ -2551,10 +2575,37 @@ export function KnowledgeDocumentsPage({
     lastSelectedIndex.current = -1;
   }
   const pageTotal = state.status === "success" ? state.page.total : 0;
+  // resolveKBSurfaceTabs is the strict Vue isWiki gate (permissions.ts): a KB
+  // with the wiki off yields no tabs at all — even with graph extraction on —
+  // and the breadcrumb falls back to the plain 文档 crumb. While the KB
+  // metadata is still loading the Vue page also shows the plain crumb
+  // (isWiki=false until kbInfo lands), so the fallback is empty too.
   const tabs = useMemo(
-    () => (kbMeta ? resolveKBSurfaceTabs(kbMeta) : ["documents" as const]),
+    () => (kbMeta ? resolveKBSurfaceTabs(kbMeta) : []),
     [kbMeta],
   );
+
+  // Vue ⚙ (KnowledgeBase.vue:2388 → uiStore.openKBSettings) opens the KB
+  // settings surface in place instead of navigating away; the Dialog below
+  // re-hosts KnowledgeSettingsPage for the same behavior.
+  const [kbSettingsOpen, setKbSettingsOpen] = useState(false);
+  // Vue renders the 文档/Wiki/图谱 row inline as the third breadcrumb level
+  // (KnowledgeBase.vue:2359-2380, activeKbTab === 'documents' here); the
+  // label keys match the graph page's breadcrumb tabs so both surfaces read
+  // identically.
+  const breadcrumbTabs: DocumentsBreadcrumbTab[] = tabs.map((tab) => ({
+    key: tab,
+    label: tab === "documents"
+      ? t("knowledgeEditor.wikiBrowser.tabDocuments")
+      : tab === "wiki"
+        ? "Wiki" /* Vue template renders the wiki tab as the literal "Wiki" (KnowledgeBase.vue L2365) */
+        : t("knowledgeEditor.wikiBrowser.tabGraph"),
+    href: tab === "documents"
+      ? documentsKBDetailPath(knowledgeBaseId)
+      : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}?tab=${tab}`,
+    active: tab === "documents",
+    title: tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined,
+  }));
 
   // Vue canConfirm: empty batch, empty manual content or a required model
   // missing (multimodal/ASR) disables the confirm button.
@@ -2944,11 +2995,11 @@ export function KnowledgeDocumentsPage({
       if (!active || inFlight) return;
       inFlight = true;
       try {
-        const spans = await client.knowledgeBases.documents.spans(traceDocument.id);
+        const spans = resolveKnowledgeSpansView(await client.knowledgeBases.documents.spans(traceDocument.id));
         if (!active) return;
         const parseStatus = typeof spans.parse_status === "string" ? spans.parse_status : traceDocument.parse_status;
         const nodes = flattenKnowledgeSpans(spans.trace);
-        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: spans.last_error });
+        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: knowledgeSpansLastError(spans) });
         setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
         if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
           window.clearInterval(polling);
@@ -3040,10 +3091,49 @@ export function KnowledgeDocumentsPage({
     }
   }
 
+  // Vue KnowledgeBase.vue handleBatchDownload (L453-504): filter to entries
+  // with an original file, enforce the 200/512MiB caps with the upstream
+  // warnings, stream the ZIP through the authenticated seam, save via an
+  // object-URL anchor. Aborted on unmount / KB switch like the Vue flow.
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const batchDownloadController = useRef<AbortController | null>(null);
+  useEffect(() => () => batchDownloadController.current?.abort(), []);
+  async function handleBatchDownload() {
+    if (batchDownloading || !selected.size) return;
+    const itemsById = new Map(items.map((item) => [item.id, item]));
+    const selection = selectBatchDownloadIds(selected, itemsById);
+    const warningKey = batchDownloadPreflight(selection, batchDownloadKnownBytes(selection.ids, itemsById));
+    if (warningKey) {
+      showStageNotice(t(warningKey), "warning");
+      return;
+    }
+    if (selection.skipped > 0) {
+      showStageNotice(t("knowledgeBase.batchDownloadSkipped", { count: selection.skipped }), "warning");
+    }
+    const controller = new AbortController();
+    batchDownloadController.current = controller;
+    setBatchDownloading(true);
+    try {
+      const zip = await client.knowledgeBases.documents.batchDownload(knowledgeBaseId, selection.ids, controller.signal);
+      if (controller.signal.aborted) return;
+      const blob = zip.body instanceof Blob ? zip.body : new Blob([zip.body], { type: "application/zip" });
+      saveBatchDownloadBlob(blob, batchDownloadZipName());
+      showStageNotice(t("knowledgeBase.batchDownloadStarted"), "success");
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        showStageNotice(error instanceof Error ? error.message : t("knowledgeBase.batchDownloadFailed"), "error");
+      }
+    } finally {
+      if (batchDownloadController.current === controller) {
+        batchDownloadController.current = null;
+        setBatchDownloading(false);
+      }
+    }
+  }
+
   // Vue's batch popconfirm filters documents that are already being parsed
   // before the batch endpoint is called.
-  function reparseSelected() {
-    if (!selected.size) return;
+  function reparseSelected() {    if (!selected.size) return;
     const ids = filterReparseIds([...selected], items);
     if (!ids.length) {
       setMutationError(t("common.operationFailed"));
@@ -3295,6 +3385,8 @@ export function KnowledgeDocumentsPage({
             }}
             supportedFileTypes={[...supportedFileTypes]}
             canManage={canContribute}
+            onOpenSettings={() => setKbSettingsOpen(true)}
+            tabs={breadcrumbTabs}
           />
           <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
           {kbMetaError ? (
@@ -3308,51 +3400,20 @@ export function KnowledgeDocumentsPage({
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
-            onConfigure={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
           {storageEngineMissing ? (
-            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}>
+            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}>
               <Icon size={12} className="warning-icon shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>
               <span>{t('knowledgeBase.missingStorageEngine')}</span>
               <span className="warning-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToStorageSettings')} →</span>
             </p>
           ) : null}
-          {!canContribute ? (
-            <Status tone="warning">
-              {t("knowledgeBase.documents.viewerReadonly")}
-            </Status>
-          ) : null}
         </div>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          <nav
-            className="wk-kb-tabs"
-            aria-label={t("knowledgeBase.documents.title")}
-          >
-            {tabs.map((tab) => (
-              <a
-                key={tab}
-                className={tab === "documents" ? "is-active" : ""}
-                href={
-                  tab === "documents"
-                    ? `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`
-                    : `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/${tab}`
-                }
-              >
-                {tab === "documents"
-                  ? t("knowledgeBase.documents.tabDocuments")
-                  : tab === "wiki"
-                    ? t("knowledgeBase.documents.tabWiki")
-                    : t("knowledgeBase.documents.tabGraph")}
-              </a>
-            ))}
-          </nav>
-          <Button
-            type="button"
-            onClick={() => setReloadToken((value) => value + 1)}
-          >
-            {t("knowledgeBase.documents.reload")}
-          </Button>
-        </div>
+        {/* Vue's document header (KnowledgeBase.vue:2330-2408) has no
+            top-right actions: the tab row lives in the breadcrumb and there
+            is no manual reload button — uploads/uploads-in-progress refresh
+            the lists through their own watchers. */}
       </header>
       <div className="wk-documents-surface">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
@@ -3560,6 +3621,7 @@ export function KnowledgeDocumentsPage({
                   <div className="doc-filter-actions">
                     <UploadSourceDropdown
                       tooltip={t("knowledgeBase.addDocument")}
+                      guideTarget="kb-detail-add-doc"
                       items={[
                         { key: "file", label: ct("upload.uploadDocument") },
                         { key: "folder", label: ct("upload.uploadFolder") },
@@ -3613,6 +3675,16 @@ export function KnowledgeDocumentsPage({
                 onClick={() => { setSelected(new Set()); setBatchMode(false); }}
               >
                 {t("knowledgeBase.clearSelection")}
+              </Button>
+              {/* Vue DocumentBatchBar primary action: 批量下载 (download stays
+                  available to contributors even without mutate rights). */}
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!selected.size || batchDownloading}
+                onClick={() => void handleBatchDownload()}
+              >
+                {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
               </Button>
               {canContribute ? (
                 <>
@@ -3996,7 +4068,7 @@ export function KnowledgeDocumentsPage({
             asrIssue={asrIssue}
             parserEngines={parserEngines}
             parserLoading={parserEnginesLoading}
-            onConfigureParserSettings={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
+            onConfigureParserSettings={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
             vllmModels={vllmModels}
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}
@@ -4307,6 +4379,17 @@ export function KnowledgeDocumentsPage({
           onConfirm={(tagIds) => void submitTagDialog(tagIds)}
           onClose={() => setTagDialog(null)}
         />
+      ) : null}
+      {kbSettingsOpen ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.settings")}
+          closeLabel={t("common.close")}
+          onClose={() => setKbSettingsOpen(false)}
+          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+        >
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} />
+        </Dialog>
       ) : null}
     </main>
   );

@@ -114,3 +114,67 @@ test('resolveChatLocale stays within the supported locale set', () => {
   // contract is asserted: the resolved locale always has a copy table.
   assert.ok(CHAT_COPY_LOCALES.includes(resolveChatLocale()));
 });
+
+test('resolveChatLocale ignores navigator.language like the Vue deployment default', () => {
+  // Upstream i18n/index.ts resolves localStorage['locale'] || deployment
+  // default (zh-CN) — it never sniffs the browser language, so an English
+  // browser still gets the Chinese deployment default. The chat view must
+  // follow the same convention (browser sniffing here produced an English
+  // chat page inside an otherwise-Chinese app — 2026-09-18 round 7).
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalNavigator = globalThis.navigator;
+  try {
+    (globalThis as { window?: unknown }).window = {
+      navigator: { language: 'en-US' },
+      localStorage: { getItem: () => null },
+    };
+    // No stored preference: deployment default wins over the browser locale.
+    assert.equal(resolveChatLocale(), 'zh-CN');
+    // Explicit stored choice still wins.
+    (globalThis as { window?: unknown }).window = {
+      navigator: { language: 'en-US' },
+      localStorage: { getItem: (key: string) => (key === 'locale' ? 'ja-JP' : null) },
+    };
+    assert.equal(resolveChatLocale(), 'ja-JP');
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: originalNavigator });
+  }
+});
+
+test('resolveChatCopy exposes the Vue tool-approval args editing labels in every locale', () => {  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts agentStream.toolApproval.
+  const modified = {
+    'zh-CN': '已修改',
+    'en-US': 'Modified',
+    'ja-JP': '変更あり',
+    'ko-KR': '수정됨',
+    'ru-RU': 'Изменено',
+  } as const;
+  const rejected = {
+    'zh-CN': '用户拒绝',
+    'en-US': 'User rejected',
+    'ja-JP': 'ユーザが拒否しました',
+    'ko-KR': '사용자 거부',
+    'ru-RU': 'Отклонено пользователем',
+  } as const;
+  for (const locale of CHAT_COPY_LOCALES) {
+    assert.equal(resolveChatCopy(locale).approvalArgsModified, modified[locale]);
+    assert.equal(resolveChatCopy(locale).approvalRejectedReason, rejected[locale]);
+  }
+});
+
+test('resolveChatCopy exposes the Vue invalid-image placeholder in every locale', () => {
+  // Byte-exact mirrors of frontend/src/i18n/locales/*.ts error.invalidImageLink
+  // (botmsg.vue renders `<p>${t('error.invalidImageLink')}</p>` for images that
+  // fail isValidImageURL). ru-RU ships the English string upstream — copied as-is.
+  const expected = {
+    'zh-CN': '无效的图片链接',
+    'en-US': 'Invalid image link',
+    'ja-JP': '無効な画像リンクです',
+    'ko-KR': '유효하지 않은 이미지 링크',
+    'ru-RU': 'Invalid image link',
+  } as const;
+  for (const locale of CHAT_COPY_LOCALES) {
+    assert.equal(resolveChatCopy(locale).invalidImageLink, expected[locale]);
+  }
+});

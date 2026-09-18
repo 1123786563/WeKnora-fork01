@@ -51,6 +51,30 @@ type RemoteStartRequest struct {
 	Provider     string
 }
 
+// RemoteUsageObservation is provider output only. It deliberately contains
+// no funding/source fields: those are selected by the server-side execution
+// binding before the provider is called.
+type RemoteUsageObservation struct {
+	Service      string
+	Status       string
+	PriceVersion string
+	Revision     int64
+	OccurredAt   time.Time
+	Dimensions   map[string]int64
+}
+
+type RemoteStartResult struct {
+	ExternalID string
+	Usage      *RemoteUsageObservation
+}
+
+// RemoteUsageProvider is an additive capability. Older providers may still
+// implement RemoteCommandProvider; the dispatcher then treats missing usage
+// as an unknown outcome and durably reconciles the dispatch.
+type RemoteUsageProvider interface {
+	StartCommandWithUsage(context.Context, RemoteStartRequest) (RemoteStartResult, error)
+}
+
 type RemoteCommandProvider interface {
 	StartCommand(context.Context, RemoteStartRequest) (string, error)
 }
@@ -61,6 +85,14 @@ type Fence struct {
 	Owner                                    string
 	Epoch                                    int64
 	TargetID, WorkspaceRef, Prompt, Provider string
+	// The following values are server-owned execution-binding metadata. They
+	// are restored from the immutable admission snapshot, never accepted from
+	// a remote provider response.
+	ParentRunID, UsageSource, UsageFunding, UsageService, UsagePriceVersion string
+	UsageCredentialVersion                                                  int64
+	UsageUpper, UsageRevision                                               int64
+	UsageStatus                                                             string
+	UsageDimensions                                                         map[string]int64
 }
 
 // RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.
@@ -102,8 +134,21 @@ type Run struct {
 type Admission struct {
 	Key       RunKey
 	SessionID string
-	UserID    string
-	RequestID string
+	// Usage binding is server-owned admission metadata. It is persisted in
+	// the immutable run snapshot and copied into every worker Fence; clients
+	// and provider observations never populate these fields.
+	ParentRunID            string
+	UsageCredentialVersion int64
+	UsageSource            string
+	UsageFunding           string
+	UsageService           string
+	UsagePriceVersion      string
+	UsageUpper             int64
+	UsageRevision          int64
+	UsageStatus            string
+	UsageDimensions        map[string]int64
+	UserID                 string
+	RequestID              string
 	// UserMessageID optionally reuses the handler-persisted user message row
 	// instead of creating a second one; empty generates a fresh id.
 	UserMessageID      string

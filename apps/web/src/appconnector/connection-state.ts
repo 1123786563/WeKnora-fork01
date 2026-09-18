@@ -41,3 +41,67 @@ export function syncStatusText(status:Pick<SyncStatusView,'state'|'pause_reason'
  }
  return status.state;
 }
+
+// --- R439 A3: Vue ConnectionsView/AppsView badge contracts ----------------
+//
+// Labels mirror the Vue locale vocabulary (frontend/src/i18n/locales, apps.*
+// keys, present in all five locales); tones map TDesign themes onto the
+// React Status vocabulary (danger→error, default→neutral).
+
+// ConnectionsView stateLabel: active/revoked get their apps.common label,
+// anything else stays verbatim as 状态：{state} instead of being coerced.
+export function connectionStateLabel(state:string):string {
+ if(state==='active') return '活跃';
+ if(state==='revoked') return '已断开';
+ return `状态：${state}`;
+}
+
+// ConnectionsView stateTheme: active→success, revoked→danger, else default.
+export function connectionStateTone(state:string):'success'|'error'|'neutral' {
+ if(state==='active') return 'success';
+ if(state==='revoked') return 'error';
+ return 'neutral';
+}
+
+// AppsView installationStateLabel: active/disabled vocabulary; an absent
+// state (older backend) renders as an em dash like the other Vue fallbacks.
+export function installationStateLabel(state:string|undefined):string {
+ if(state==='active') return '活跃';
+ if(state==='disabled') return '已停用';
+ if(state===undefined) return '—';
+ return `状态：${state}`;
+}
+
+// ConnectionsView revoke catch: a 409 status or VERSION_CONFLICT code is the
+// server's CAS refusing a stale auth_version — a conflict that must prompt a
+// re-read, never a fabricated success or a generic failure.
+export function revokeFailureKind(e:unknown):'conflict'|'generic' {
+ const err=e as { status?:unknown; code?:unknown } | null;
+ if(err!==null&&typeof err==='object') {
+  if(err.status===409) return 'conflict';
+  if(err.code==='VERSION_CONFLICT') return 'conflict';
+ }
+ return 'generic';
+}
+
+// AppsView riskLabel: apps.risk vocabulary, unknown risks stay verbatim.
+export function catalogRiskLabel(risk:string):string {
+ if(risk==='read') return '只读';
+ if(risk==='write') return '写入';
+ if(risk==='send') return '发送';
+ if(risk==='delete') return '删除';
+ return risk;
+}
+
+// AppsView riskTheme: read→success, write→warning, send/delete→danger.
+export function catalogRiskTone(risk:string):'success'|'warning'|'error'|'neutral' {
+ if(risk==='read') return 'success';
+ if(risk==='write') return 'warning';
+ if(risk==='send'||risk==='delete') return 'error';
+ return 'neutral';
+}
+
+// AppsView published column tag: 已发布(success) / 未发布(default).
+export function catalogPublishedLabel(published:boolean):string {
+ return published?'已发布':'未发布';
+}

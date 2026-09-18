@@ -79,7 +79,7 @@ function renderMath(expression: string, displayMode: boolean): string {
   }
 }
 
-function createRenderer(): Renderer {
+function createRenderer(invalidImageLabel: string): Renderer {
   const renderer = new Renderer();
   renderer.html = ({ text }: Tokens.HTML | Tokens.Tag) => escapeHtml(text);
   renderer.link = ({ href, title, tokens }: Tokens.Link) => {
@@ -91,7 +91,10 @@ function createRenderer(): Renderer {
   };
   renderer.image = ({ href, title, text }: Tokens.Image) => {
     const url = safeUrl(href, true);
-    if (!url) return escapeHtml(text || '');
+    // Vue botmsg.vue invalidImageHtml: images failing the URL validation render
+    // the localized `error.invalidImageLink` placeholder paragraph instead of
+    // being dropped or replaced by the alt text.
+    if (!url) return `<p>${escapeHtml(invalidImageLabel)}</p>`;
     const titleAttribute = title ? ` title="${escapeHtml(title)}"` : '';
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(text || '')}" loading="lazy"${titleAttribute}>`;
   };
@@ -104,17 +107,25 @@ function createRenderer(): Renderer {
   return renderer;
 }
 
+/** error.invalidImageLink zh-CN — the deployment-default placeholder (Vue locale default). */
+export const INVALID_IMAGE_LINK_PLACEHOLDER = '无效的图片链接';
+
+export interface ChatMarkdownOptions {
+  /** Localized error.invalidImageLink placeholder for invalid image destinations. */
+  invalidImageLabel?: string;
+}
+
 /**
  * Render assistant Markdown as a small, DOM-safe HTML contract for all web
  * clients. Raw HTML is escaped, links are allow-listed, and citation tags are
  * converted to buttons instead of being interpreted by the browser.
  */
-export function renderChatMarkdown(markdown: unknown): string {
+export function renderChatMarkdown(markdown: unknown, options: ChatMarkdownOptions = {}): string {
   const raw = typeof markdown === 'string' ? markdown : String(markdown ?? '');
   if (!raw.trim()) return '';
   const { source, replacements } = preserveCitations(raw);
   const html = marked.parse(source, {
-    renderer: createRenderer(),
+    renderer: createRenderer(options.invalidImageLabel?.trim() || INVALID_IMAGE_LINK_PLACEHOLDER),
     gfm: true,
     breaks: true,
     async: false,

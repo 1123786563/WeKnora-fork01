@@ -206,6 +206,18 @@ test('documents page filter bar matches the Vue anatomy', () => {
   assert.ok(!html.includes('rounded-card border border-line bg-surface p-4'), 'Vue document area has no extra shadcn Card chrome');
 });
 
+test('shared read-only documents page shows no viewer-readonly banner like Vue', () => {
+  const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentsPage, {
+    client: {} as never,
+    knowledgeBaseId: kbId,
+  }));
+  // Vue (KnowledgeBase.vue document-header) expresses read-only shared access
+  // purely by hiding the editing entries — it never renders a banner. The
+  // initial canContribute=false projection is the shared-viewer state.
+  assert.ok(!html.includes('查看权限'), 'React-invented 查看权限 banner removed');
+  assert.ok(!html.includes('编辑操作已隐藏'), 'readonly editing-hidden copy removed');
+});
+
 test('upload entry stays hidden until the Vue capability resolves; legacy form is gone', () => {
   const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentsPage, {
     client: {} as never,

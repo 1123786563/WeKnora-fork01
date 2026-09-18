@@ -54,18 +54,23 @@ const joinedOrg: Organization = {
   pending_join_request_count: 0,
 } as unknown as Organization;
 
-interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJoinRequest: unknown[]; updateRole: unknown[][]; review: unknown[][]; leave: string[]; remove: string[]; update: unknown[][]; membersList: string[]; joinRequestsList: string[]; kbSharesList: string[]; agentSharesList: string[]; inviteCode: string[] }
+interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJoinRequest: unknown[]; updateRole: unknown[][]; review: unknown[][]; leave: string[]; remove: string[]; update: unknown[][]; membersList: string[]; joinRequestsList: string[]; kbSharesList: string[]; agentSharesList: string[]; inviteCode: string[]; get: string[]; upgrade: unknown[] }
 
 // R017: auth/me drives the page's self-resolved canManageOrg when no explicit
 // role prop is passed. The default mirrors an admin home-tenant membership so
 // legacy gating-free expectations stay valid; RBAC tests override it.
 export interface MeOverride { role: string; canAccessAllTenants?: boolean }
 
-function clientWith(organizations: Organization[], me_?: MeOverride): { client: WeKnoraClient; calls: Calls } {
-  const calls: Calls = { create: [], preview: [], join: [], submitJoinRequest: [], updateRole: [], review: [], leave: [], remove: [], update: [], membersList: [], joinRequestsList: [], kbSharesList: [], agentSharesList: [], inviteCode: [] };
+function clientWith(organizations: Organization[], me_?: MeOverride, detailFor?: (id: string) => Organization | undefined): { client: WeKnoraClient; calls: Calls } {
+  const calls: Calls = { create: [], preview: [], join: [], submitJoinRequest: [], updateRole: [], review: [], leave: [], remove: [], update: [], membersList: [], joinRequestsList: [], kbSharesList: [], agentSharesList: [], inviteCode: [], get: [], upgrade: [] };
   const organizationsApi = {
     list: async () => ({ items: organizations, total: organizations.length }),
-    get: async (id: string) => organizations.find((item) => item.id === id) ?? organizations[0],
+    get: async (id: string) => {
+      calls.get.push(id);
+      const detail = detailFor?.(id);
+      if (detail) return detail;
+      return organizations.find((item) => item.id === id) ?? organizations[0];
+    },
     create: async (input: unknown) => { calls.create.push(input); return { ...ownerOrg, ...(input as Record<string, unknown>) }; },
     update: async (id: string, input: unknown) => { calls.update.push([id, input]); return organizations[0]; },
     remove: async (id: string) => { calls.remove.push(id); },
@@ -75,7 +80,7 @@ function clientWith(organizations: Organization[], me_?: MeOverride): { client: 
     search: async () => ({ items: [], total: 0 }),
     joinById: async () => joinedOrg,
     leave: async (id: string) => { calls.leave.push(id); },
-    requestRoleUpgrade: async () => ({}),
+    requestRoleUpgrade: async (id: string, input: unknown) => { calls.upgrade.push([id, input]); return {}; },
     generateInviteCode: async (id: string) => { calls.inviteCode.push(id); return { inviteCode: 'GEN-CODE' }; },
     members: {
       list: async (id: string) => { calls.membersList.push(id); return { items: [{ id: 'm1', user_id: 'u1', username: 'Alice', email: 'a@x.dev', role: 'admin', tenant_id: 1, joined_at: '2030-01-01' }], total: 1 }; },
@@ -349,11 +354,13 @@ test('card click opens the shared-space settings modal with members and join req
   const membersPanel = root.querySelector('[role="dialog"]') as HTMLElement;
   assert.match(membersPanel.textContent ?? '', /Alice/);
 
-  const requestsNav = [...membersPanel.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
-  assert.ok(requestsNav, 'expected join-requests nav item');
+  const requestsNav = [...membersPanel.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
+  assert.ok(requestsNav, 'expected join-requests nav item labelled 加入申请 like the Vue modal (OrganizationSettingsModal.vue:1008)');
   await click(requestsNav);
   await act(async () => {});
   const requestsPanel = root.querySelector('[role="dialog"]') as HTMLElement;
+  assert.match(requestsPanel.textContent ?? '', /加入申请/, 'section heading uses the Vue 加入申请 wording');
+  assert.match(requestsPanel.textContent ?? '', /待审核申请/, 'inner list title keeps the Vue 待审核申请 wording');
   assert.match(requestsPanel.textContent ?? '', /Bob/);
 
   const approveButtons = textButtons(requestsPanel, '通过');
@@ -426,7 +433,7 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
   assert.deepEqual([...sectionSelector.options].map((option) => [option.value, option.textContent]), [
     ['basic', '基本信息'],
     ['members', '共享空间成员'],
-    ['requests', '待审核申请'],
+    ['requests', '加入申请'],
     ['shares', '共享知识库'],
     ['agents', '共享智能体'],
     ['invite', '邀请链接'],
@@ -544,7 +551,7 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   assert.equal(memberRole.disabled, true);
   assert.equal(textButtons(dialog, '移除').length, 0);
 
-  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
+  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
   assert.equal(requestsNav, undefined, 'Vue hides join-request navigation from non-admin organization members');
 
   const inviteNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '邀请链接');
@@ -616,4 +623,86 @@ test('rail clicks sync ?scope= (created/joined set it, all removes it)', async (
   assert.equal(railFor('全部')!.getAttribute('title'), '全部 (2)');
   assert.equal(railFor('我创建的')!.getAttribute('title'), '我创建的 (1)');
   assert.equal(railFor('我加入的')!.getAttribute('title'), '我加入的 (1)');
+});
+
+// R435-A3: Vue OrganizationSettingsModal.vue gates the role-upgrade entry with
+// canRequestUpgrade (edit mode + space role below admin + tenant admin+) and
+// narrows upgradeRoleOptions to roles above the current one.
+test('role-upgrade entry follows the Vue canRequestUpgrade/upgradeRoleOptions contract', async () => {
+  const { canRequestUpgradeForOrg, upgradeRoleOptionsForRole } = await import('./OrganizationsPage.tsx');
+
+  // Create mode never offers an upgrade request.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'create', myRole: 'viewer', tenantAdmin: true }), false);
+  // A missing space role cannot request an upgrade.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: '', tenantAdmin: true }), false);
+  // Admins (and owners) already hold the top space role.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'admin', tenantAdmin: true }), false);
+  // Below tenant admin the modal shows the read-only tenant-role hint instead.
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'editor', tenantAdmin: false }), false);
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'viewer', tenantAdmin: true }), true);
+  assert.equal(canRequestUpgradeForOrg({ mode: 'edit', myRole: 'editor', tenantAdmin: true }), true);
+
+  // Vue upgradeRoleOptions: only roles above the current space role.
+  assert.deepEqual(upgradeRoleOptionsForRole('viewer'), ['editor', 'admin']);
+  assert.deepEqual(upgradeRoleOptionsForRole('editor'), ['admin']);
+  assert.deepEqual(upgradeRoleOptionsForRole('admin'), []);
+  assert.deepEqual(upgradeRoleOptionsForRole(''), []);
+});
+
+// R436-A4: Vue OrganizationSettingsModal.vue sources hasPendingUpgrade from
+// the org detail endpoint (fetchOrgDetail → has_pending_upgrade), disables the
+// upgrade entry while a request is pending (title/aria swap to
+// organization.upgrade.pending), shows the current-role bar
+// (organization.upgrade.currentRole + organization.role.{my_role}), and marks
+// the flag locally right after a successful submit.
+test('upgrade form reflects has_pending_upgrade from the org detail endpoint', async () => {
+  const { client, calls } = clientWith([ownerOrg, joinedOrg], undefined, (id) => (id === joinedOrg.id ? { ...joinedOrg, has_pending_upgrade: true } : undefined));
+  const root = await mountPage(client);
+
+  const cards = orgCards(root);
+  await click(cards[1]!);
+  // Flush the modal's org-detail fetch (Vue fetchOrgDetail parity).
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected settings dialog');
+  assert.ok(calls.get.includes(joinedOrg.id), 'expected the org detail endpoint to back the upgrade gate');
+
+  // Submit is disabled while a request is pending; the affordance explains why
+  // (Vue swaps title/aria to organization.upgrade.pending = 审核中).
+  const submit = textButtons(dialog, '提交申请')[0];
+  assert.ok(submit, 'expected the upgrade submit button');
+  assert.equal(submit.disabled, true);
+  assert.equal(submit.getAttribute('title'), '审核中');
+  assert.equal(submit.getAttribute('aria-label'), '审核中');
+
+  // Vue upgrade-current-role-bar: 当前角色 label + role tag of my_role (编辑).
+  assert.match(dialog.textContent ?? '', /当前角色/);
+  assert.match(dialog.textContent ?? '', /编辑/);
+});
+
+test('a successful upgrade request marks the org pending and disables resubmission', async () => {
+  const { client, calls } = clientWith([ownerOrg, joinedOrg]);
+  const root = await mountPage(client);
+
+  const cards = orgCards(root);
+  await click(cards[1]!);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  const upgradeForm = [...dialog.querySelectorAll('form')].find((form) => (form.textContent ?? '').includes('提交申请')) as HTMLFormElement;
+  assert.ok(upgradeForm, 'expected the upgrade form');
+  const submit = textButtons(upgradeForm, '提交申请')[0];
+  assert.ok(submit, 'expected the upgrade submit button');
+  assert.equal(submit.disabled, false, 'no pending request yet — submit stays enabled');
+  assert.equal(submit.getAttribute('title'), null);
+
+  await submitForm(upgradeForm);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  assert.equal(calls.upgrade.length, 1, 'expected one requestRoleUpgrade call');
+  const submitAfter = textButtons(upgradeForm, '提交申请')[0];
+  assert.ok(submitAfter, 'expected the upgrade submit button after submit');
+  assert.equal(submitAfter.disabled, true, 'Vue sets hasPendingUpgrade right after success');
+  assert.equal(submitAfter.getAttribute('title'), '审核中');
 });

@@ -75,6 +75,60 @@ test('chip prefers the selected agent model over the first listed model', () => 
   assert.equal(chip.label, 'Agent Model');
 });
 
+/*
+ * R464 Vue selection-priority pins. Vue Input-field.vue resolves the chip from
+ * selectedModelId, which is (a) seeded from the localStorage last pick
+ * (ensureModelSelection), (b) only overridden by the agent-model watch when the
+ * user has no differing explicit pick. The React chip must honor the same
+ * pick → agent → first-model order instead of jumping straight to the agent
+ * binding or the first row (the R463 mock/glm-5.3 header mismatch).
+ */
+test('chip honors the persisted model pick over the first listed model', () => {
+  const chip = resolveChatModelChip({
+    models: [
+      { id: 'parity-llm-mock', name: 'parity-llm-mock', display_name: 'Mock LLM', type: 'KnowledgeQA' },
+      { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+    ],
+    selectedModelId: 'glm-5.3',
+  });
+  assert.equal(chip.label, 'glm-5.3');
+  assert.equal(chip.context, '200K');
+  assert.equal(chip.isDefaultContext, true);
+});
+
+test('a differing user pick wins over the agent binding like the Vue agent-model watch', () => {
+  const chip = resolveChatModelChip({
+    models: [
+      { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+      { id: 'agent-model', name: 'agent-model', display_name: 'Agent Model', type: 'KnowledgeQA' },
+      { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+    ],
+    agentModelId: 'agent-model',
+    selectedModelId: 'glm-5.3',
+  });
+  assert.equal(chip.label, 'glm-5.3');
+});
+
+test('the agent binding wins when the pick matches it or is absent', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'agent-model', name: 'agent-model', display_name: 'Agent Model', type: 'KnowledgeQA' },
+  ];
+  assert.equal(resolveChatModelChip({ models, agentModelId: 'agent-model', selectedModelId: 'agent-model' }).label, 'Agent Model');
+  assert.equal(resolveChatModelChip({ models, agentModelId: 'agent-model' }).label, 'Agent Model');
+});
+
+test('a persisted pick missing from the list stays unconfigured like Vue', () => {
+  const chip = resolveChatModelChip({
+    models: [{ id: 'first-model', name: 'first-model', type: 'KnowledgeQA' }],
+    selectedModelId: 'ghost-model',
+    notConfiguredLabel: '未配置',
+  });
+  assert.equal(chip.label, '未配置');
+  assert.equal(chip.context, '');
+  assert.equal(chip.isDefaultContext, false);
+});
+
 test('chip falls back to the first available model without an agent binding', () => {
   const chip = resolveChatModelChip({
     models: [

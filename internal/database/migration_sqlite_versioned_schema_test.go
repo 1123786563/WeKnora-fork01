@@ -26,6 +26,12 @@ var versionedSQLiteTables = []string{
 	"execution_targets",
 	"execution_target_identities",
 	"execution_workspaces",
+	"execution_cleanup",
+	"execution_cleanup_artifacts",
+	"mobile_devices",
+	"mobile_notification_intents",
+	"mobile_notification_checkpoints",
+	"mobile_notification_provider_state",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -43,7 +49,7 @@ var versionedSQLiteColumns = map[string][]string{
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
 	"tenant_skill_snapshots":      {"planned_name"},                                   // 000086, 000088
-	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id"}, // 000057
+	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id", "usage_binding_json"}, // 000057, 000071
 	"execution_target_identities": {"credential_version", "external_target_id"},       // 000057
 	"execution_workspaces":        {"target_id", "root_ref"},                          // 000057
 }
@@ -55,8 +61,13 @@ var versionedSQLiteColumns = map[string][]string{
 // continues through 000040 (open-connector 000041-000044) and the Craft
 // tables through 000052, native OIDC exchange through 000053, tenant skills
 // at 000054, the workbench run rebuild at 000055, the workbench request
-// queue at 000056 and the execution target schema at 000057.
-const expectedSQLiteMigrationVersion = 57
+// queue at 000056, the execution target schema at 000057, the mobile device
+// registry at 000058, the notification outbox at 000059, notification
+// delivery columns at 000060, the cleanup ledger and artifact receipts at
+// 000061-000066, artifact versions at 000067, the mobile voice plane at
+// 000068-000069, the notification provider pause state at 000070 and the
+// execution target usage binding at 000071.
+const expectedSQLiteMigrationVersion = 71
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
@@ -72,6 +83,9 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
+	}
+	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {
 		for _, column := range columns {
@@ -128,6 +142,9 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "upgraded SQLite DB must have table %s", table)
+	}
+	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+		require.Truef(t, sqliteIndexExists(t, db, index), "upgraded SQLite DB must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {
 		for _, column := range columns {
@@ -190,6 +207,13 @@ func sqliteTableExists(t *testing.T, db *sql.DB, table string) bool {
 		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
 		table,
 	).Scan(&n))
+	return n == 1
+}
+
+func sqliteIndexExists(t *testing.T, db *sql.DB, index string) bool {
+	t.Helper()
+	var n int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", index).Scan(&n))
 	return n == 1
 }
 

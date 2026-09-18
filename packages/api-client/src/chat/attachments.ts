@@ -26,6 +26,9 @@ function encoded(value: string, name: string): string {
 export function createChatAttachmentsApi(request: (input: ClientRequest) => Promise<unknown>) {
   return {
     async upload(sessionId: string, input: ChatAttachmentUploadInput, signal?: AbortSignal): Promise<TemporaryAttachment> {
+      // Native sources ride the local file port (transport.sendMultipartFile):
+      // the platform resolves content:// and file:// URIs to bytes so the
+      // multipart part carries the file itself, never the device-local path.
       const nativeFile = isNativeFileSource(input.file) ? input.file : undefined;
       const multipartFields: Record<string, string> = {};
       if (input.agentId) multipartFields.agent_id = input.agentId;

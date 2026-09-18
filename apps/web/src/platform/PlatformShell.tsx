@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
-import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { formatMessage, type Locale } from '@weknora/i18n';
+import { usePreferredLocale } from '../locale.ts';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
 import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '../../../../packages/views/src/chat/session-sidebar.tsx';
+import { resolveChatCopy } from '../../../../packages/views/src/chat/chat-copy.ts';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
 import { ContextualGuideHost } from '../../../../packages/views/src/guides/ContextualGuide.tsx';
 import { NewUserGuide } from '../../../../packages/views/src/guides/NewUserGuide.tsx';
@@ -18,6 +21,13 @@ import {
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
 import { InvitationInbox } from './InvitationInbox.tsx';
+import { navigate, subscribeNavigation } from './navigation.ts';
+import {
+  loadPaletteDeploymentCapabilities,
+  paletteAccessFromCapabilities,
+  type PaletteDeploymentCapabilities,
+} from './deployment-capabilities.ts';
+import { PaletteRetrievalSettings } from './retrieval-settings-panel.tsx';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
@@ -27,6 +37,13 @@ import weknoraLogo from '../auth/assets/weknora.png';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
+function handleInternalLink(event: ReactMouseEvent<HTMLAnchorElement>, path: string, afterNavigate?: () => void): void {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  afterNavigate?.();
+  navigate(path);
+}
+
 export interface PlatformShellProps {
   client: Client;
   onLogout: () => void | Promise<void>;
@@ -34,11 +51,29 @@ export interface PlatformShellProps {
   children: ReactNode;
 }
 
-// Locale resolution mirrors App.tsx / SettingsPage: navigator.language with a
-// package-supported fallback.
-function resolveLocale(): Locale {
-  const language = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? (language.split('-')[0] as Locale) : 'en-US';
+// R446 D7 — the user menu 「退出」 item must ALWAYS land the user on the login
+// page, matching Vue UserMenu.vue:518-536 handleLogout: the logout API call may
+// fail (Vue swallows the error) but local cleanup plus navigation still win.
+// A rejected onLogout means the parent chain died before it could navigate, and
+// a promise that never settles (hung transport / refresh coordinator) strands
+// the user in the shell forever — both cases fall back to a hard navigation.
+export const SHELL_LOGOUT_FALLBACK_MS = 4000;
+
+export async function runShellLogout(
+  onLogout: () => void | Promise<void>,
+  nav: (url: string) => void = (url) => window.location.assign(url),
+  fallbackMs: number = SHELL_LOGOUT_FALLBACK_MS,
+): Promise<void> {
+  // Object holder: the callbacks below mutate async, and TS's control-flow
+  // analysis would wrongly narrow a `let` scalar to its initializer.
+  const outcome = { status: 'timeout' as 'ok' | 'failed' | 'timeout' };
+  await Promise.race([
+    Promise.resolve()
+      .then(onLogout)
+      .then(() => { outcome.status = 'ok'; }, () => { outcome.status = 'failed'; }),
+    new Promise<void>((resolve) => setTimeout(resolve, fallbackMs)),
+  ]);
+  if (outcome.status !== 'ok') nav('/login');
 }
 
 // Nav labels migrated to packages/i18n menu.* (auto-ported from Vue locales).
@@ -64,6 +99,27 @@ const KB_ACTIVE = (pathname: string): boolean =>
   pathname === '/platform/knowledge-bases' ||
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
   /^\/knowledgeBase(\/|$)/.test(pathname);
+
+/**
+ * R464-A1 — seed the command palette's KB scope chip from the KB detail
+ * route, mirroring Vue GlobalCommandPalette.vue's `route.params.kbId`
+ * inference on open. The palette resolves the display name from the KB list
+ * once it loads; the raw id is the fallback (Vue parity).
+ */
+// Both path forms reach the KB detail surface: the React-native
+// /knowledgeBase/:id(…) routes and the Vue-form alias
+// /platform/knowledge-bases/:id — the scope chip must seed on the user's
+// primary path too, not only the alias (R464 A4 live finding).
+export function kbScopeFromLocation(): { id: string; name: string } | null {
+  const match = window.location.pathname.match(/^\/(?:knowledgeBase|platform\/knowledge-bases)\/([^/]+)/);
+  if (!match) return null;
+  try {
+    const id = decodeURIComponent(match[1]!).trim();
+    return id ? { id, name: id } : null;
+  } catch {
+    return null;
+  }
+}
 
 function Icon({ path }: { path: string | string[] }): ReactNode {
   const paths = Array.isArray(path) ? path : [path];
@@ -114,24 +170,39 @@ export function shouldShowTenantSwitcher(options: {
   return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
 }
 
-const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
+// Vue stores/ui.ts:23,123-126 persists the collapsed rail under the Vue-era
+// key `sidebar_collapsed` and re-reads it on boot; keep the same key so the
+// preference survives reloads and stays interchangeable with the Vue artifact
+// (the key is also listed in legacy-session.ts LEGACY_PREFERENCE_KEYS).
+const COLLAPSE_STORAGE_KEY = 'sidebar_collapsed';
 
 const SHELL_SESSION_PAGE_SIZE = 30;
 
 type TenantMembership = { tenantId: string; tenantName: string; role: string };
 
 export function PlatformShell({ client, onLogout, onTenantSwitch, children }: PlatformShellProps): ReactNode {
-  const locale = useMemo(resolveLocale, []);
+  const locale = usePreferredLocale();
   const t = useCallback((key: string) => formatMessage(locale, key), [locale]);
   const labels = {
     newChat: formatMessage(locale, 'menu.newChat'),
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
-    workspaceSettings: formatMessage(locale, 'settings.tenantInfo'),
+    // R449-A2 — Vue UserMenu.vue:83 labels the tenant quick link with
+    // $t('settings.workspaceSettings') (「空间设置」), not settings.tenantInfo
+    // (「空间信息」, which names the settings section header). Both target
+    // ?section=tenant; the menu label follows the Vue key.
+    workspaceSettings: formatMessage(locale, 'settings.workspaceSettings'),
     membersSettings: formatMessage(locale, 'tenantMember.title'),
     modelsSettings: formatMessage(locale, 'settings.modelManagement'),
     skillsSettings: formatMessage(locale, 'settings.skills.title'),
+    // Vue UserMenu.vue:96-100 renders the catch-all settings entry with
+    // $t('general.allSettings') below a divider that closes the section
+    // quick-link group.
+    allSettings: formatMessage(locale, 'general.allSettings'),
+    // R449-A2 — Vue UserMenu.vue:112 labels the system-admin entry with
+    // $t('settings.navGroups.systemAdministration') (「系统管理」).
+    systemAdministration: formatMessage(locale, 'settings.navGroups.systemAdministration'),
     // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
     reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Vue UserMenu.vue:115-134 keeps these external help/community entries
@@ -146,6 +217,13 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     renameSession: formatMessage(locale, 'menu.renameSession'),
     newSession: formatMessage(locale, 'menu.newSession'),
   };
+  // Vue menu.vue renders session-list copy in the app locale (stored
+  // preference, zh-CN default). SessionSidebarList without a copy prop falls
+  // back to resolveChatLocale(), which also consults navigator.language and
+  // rendered English chat copy ("Loading...") in en-US browsers; pass the
+  // shell's resolved copy so the sidebar follows the app locale like the
+  // chat page does (ChatRoutePage: resolveChatCopy(readStoredLocale())).
+  const shellSidebarCopy = useMemo(() => resolveChatCopy(locale), [locale]);
 
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
@@ -168,7 +246,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // navigated so leaving the step can return to the previous page, mirroring
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean; isSystemAdmin: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false, isSystemAdmin: false });
   // Vue menu.ts:72-81 — the organizations nav entry is gated on
   // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
   // the shared space). Initial true = fail-open while identity resolves:
@@ -179,6 +257,60 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const [canSeeAdminSessionSources, setCanSeeAdminSessionSources] = useState(false);
   const authResolvedClientRef = useRef<Client | null>(null);
 
+  // Shared /auth/me reconciliation. The mount bootstrap and the tenant
+  // submenu's throttled refresh both apply the same payload so memberships
+  // and role gating stay consistent (Vue stores/auth.ts refreshFromAuthMe
+  // reconciles user / home tenant / memberships wholesale).
+  const applyAuthMe = useCallback((me: Awaited<ReturnType<Client['auth']['me']>>) => {
+    const record = me.user as Record<string, unknown>;
+    setUser({
+      id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
+      name: typeof record.username === 'string' && record.username ? record.username : '—',
+      email: typeof record.email === 'string' ? record.email : '',
+      avatar: typeof record.avatar === 'string' ? record.avatar : '',
+      tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
+      tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
+      role: '',
+      memberships: (me.memberships ?? []).flatMap((item) => {
+        if (!item || typeof item !== 'object') return [];
+        const row = item as Record<string, unknown>;
+        const rawId = row.tenant_id ?? row.tenantId;
+        if (rawId === undefined || rawId === null || String(rawId).trim() === '') return [];
+        return [{ tenantId: String(rawId), tenantName: typeof row.tenant_name === 'string' && row.tenant_name.trim() ? row.tenant_name : `#${String(rawId)}`, role: typeof row.role === 'string' ? row.role : '' }];
+      }),
+      membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
+      canAccessAllTenants: record.can_access_all_tenants === true,
+      // R449-A2 — Vue stores/auth.ts:121 isSystemAdmin (User.IsSystemAdmin):
+      // platform-wide flag, independent of per-tenant roles. Resolution
+      // mirrors scope-runtime.ts:75 (snake_case primary, camelCase tolerated).
+      // UI gating only; the server-side RequireSystemAdmin middleware is the
+      // real boundary.
+      isSystemAdmin: record.is_system_admin === true || record.isSystemAdmin === true,
+    });
+    // R017 RBAC self-resolution (OrganizationsPage parity, Vue
+    // currentTenantRole): the active-tenant membership role — selected
+    // tenant first, falling back to the home tenant — decides entry
+    // visibility, with the can_access_all_tenants superuser flag passing
+    // the admin gate. UI rendering only; the server route guard is the
+    // real boundary. An unknown role ('' — membership data absent, e.g.
+    // embedded/test mounts) fails open and keeps the entry visible.
+    const selectedTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? null;
+    const homeTenantId = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
+    const tenantId = selectedTenantId ?? homeTenantId;
+    let currentRole = '';
+    for (const item of me.memberships ?? []) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const id = row.tenant_id ?? row.tenantId;
+      if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
+    }
+    setCanSeeOrganizations(
+      currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
+    );
+    setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
+    setUser((current) => ({ ...current, role: currentRole }));
+  }, []);
+
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -186,19 +318,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const recentQueriesKey = recentQueriesStorageKey(user.id || null, readReactPlatformState(window.localStorage)?.tenantId ?? null);
 
   useEffect(() => {
-    // Route transitions in this app mostly use full navigations and popstate
-    // reloads the page. Track pushState/replaceState so in-place navigations
-    // (e.g. settings section links) still update the active highlight.
+    // Keep the active menu in sync with browser history and app navigation.
     const update = () => setPathname(window.location.pathname);
-    window.addEventListener('popstate', update);
-    const originalPush = window.history.pushState.bind(window.history);
-    const originalReplace = window.history.replaceState.bind(window.history);
-    window.history.pushState = (...args: Parameters<typeof originalPush>) => { const r = originalPush(...args); update(); return r; };
-    window.history.replaceState = (...args: Parameters<typeof originalReplace>) => { const r = originalReplace(...args); update(); return r; };
+    const unsubscribe = subscribeNavigation(update);
     return () => {
-      window.removeEventListener('popstate', update);
-      window.history.pushState = originalPush;
-      window.history.replaceState = originalReplace;
+      unsubscribe();
     };
   }, []);
 
@@ -208,53 +332,105 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     void client.auth.me().then((me) => {
       if (!active) return;
       authResolvedClientRef.current = client;
-      const record = me.user as Record<string, unknown>;
-      setUser({
-        id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
-        name: typeof record.username === 'string' && record.username ? record.username : '—',
-        email: typeof record.email === 'string' ? record.email : '',
-        avatar: typeof record.avatar === 'string' ? record.avatar : '',
-        tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
-        tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
-        role: '',
-        memberships: (me.memberships ?? []).flatMap((item) => {
-          if (!item || typeof item !== 'object') return [];
-          const row = item as Record<string, unknown>;
-          const rawId = row.tenant_id ?? row.tenantId;
-          if (rawId === undefined || rawId === null || String(rawId).trim() === '') return [];
-          return [{ tenantId: String(rawId), tenantName: typeof row.tenant_name === 'string' && row.tenant_name.trim() ? row.tenant_name : `#${String(rawId)}`, role: typeof row.role === 'string' ? row.role : '' }];
-        }),
-        membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
-        canAccessAllTenants: record.can_access_all_tenants === true,
-      });
-      // R017 RBAC self-resolution (OrganizationsPage parity, Vue
-      // currentTenantRole): the active-tenant membership role — selected
-      // tenant first, falling back to the home tenant — decides entry
-      // visibility, with the can_access_all_tenants superuser flag passing
-      // the admin gate. UI rendering only; the server route guard is the
-      // real boundary. An unknown role ('' — membership data absent, e.g.
-      // embedded/test mounts) fails open and keeps the entry visible.
-      const selectedTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? null;
-      const homeTenantId = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
-      const tenantId = selectedTenantId ?? homeTenantId;
-      let currentRole = '';
-      for (const item of me.memberships ?? []) {
-        if (!item || typeof item !== 'object') continue;
-        const row = item as Record<string, unknown>;
-        const id = row.tenant_id ?? row.tenantId;
-        if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
-      }
-      setCanSeeOrganizations(
-        currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
-      );
-      setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
-      setUser((current) => ({ ...current, role: currentRole }));
+      applyAuthMe(me);
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
+    return () => { active = false; };
+  }, [client, applyAuthMe]);
+
+  // Vue menu.vue:1004-1006 fetches the organizations list once on mount
+  // (when not already loaded) purely to power the sidebar pending-join
+  // badge; stores/organization.ts:100-102 totals each org's
+  // pending_join_request_count. Failures degrade to a hidden badge (the
+  // Vue store keeps last-known data and the total starts at 0) — no toast.
+  const [orgPendingJoinRequestCount, setOrgPendingJoinRequestCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    // Defensive lookup: bare test fakes and embed mounts may not provide
+    // the organizations namespace at all.
+    const organizationsApi = (client as unknown as {
+      organizations?: { list?: (signal?: AbortSignal) => Promise<{ items?: ReadonlyArray<Record<string, unknown>> }> };
+    }).organizations;
+    const listOrganizations = organizationsApi?.list?.bind(organizationsApi);
+    if (!listOrganizations) return;
+    void listOrganizations().then((page) => {
+      if (!active) return;
+      const total = (page.items ?? []).reduce((sum, org) => {
+        const pending = org.pending_join_request_count;
+        return sum + (typeof pending === 'number' && Number.isFinite(pending) && pending > 0 ? Math.floor(pending) : 0);
+      }, 0);
+      setOrgPendingJoinRequestCount(total);
+    }).catch(() => { /* keep 0 → badge stays hidden */ });
+    return () => { active = false; };
+  }, [client]);
+
+  // R452-A2 — Vue menu.vue:986-991: after mount the shell additionally
+  // probes GET /api/v1/system/info and upgrades the lite gating when the
+  // response reports edition 'lite'. The upgrade persists the durable key
+  // exactly like Vue authStore.setLiteMode(true) (stores/auth.ts:411-418);
+  // a non-lite edition never downgrades it and a failed probe is swallowed
+  // (menu.vue:991 `.catch(() => { })`).
+  const [liteEditionProbed, setLiteEditionProbed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    // Defensive lookup: bare test fakes and embed mounts may not provide
+    // the settings namespace at all (same posture as organizations above).
+    const systemApi = (client as unknown as {
+      settings?: { system?: { info?: (signal?: AbortSignal) => Promise<{ edition?: string }> } };
+    }).settings?.system;
+    const systemInfo = systemApi?.info?.bind(systemApi);
+    if (!systemInfo) return;
+    void systemInfo().then((info) => {
+      if (!active) return;
+      if (info?.edition === 'lite') {
+        window.localStorage.setItem('weknora_lite_mode', 'true');
+        setLiteEditionProbed(true);
+      }
+    }).catch(() => { /* Vue menu.vue:991 — silent */ });
     return () => { active = false; };
   }, [client]);
 
   const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
-  const tenantSwitcherVisible = shouldShowTenantSwitcher({
+  // Vue menu.vue:7 renders a literal "Lite" edition mark next to the logo
+  // when the edition flag is set; stores/auth.ts:538 sources it from the
+  // durable localStorage key (same one main.tsx seeds the shell with).
+  // R450-A2 — the same flag also gates the user menu / rail entries below.
+  // R452-A2 — Vue menu.vue:986-991 ORs in the system-info edition probe:
+  // localStorage decides first, then a lite server edition upgrades the
+  // gating (and persists the key) even on a first session where the key was
+  // never written; a non-lite probe never downgrades it.
+  const isLiteEdition = liteEditionProbed || window.localStorage.getItem('weknora_lite_mode') === 'true';
+  // R465-A2 — deployment capabilities for the command palette (Vue
+  // deploymentCapabilities store): the open-agents / open-organizations
+  // quick actions and the palette's agent search group follow
+  // GET /api/v1/system/capabilities. Fail-open like Vue: a missing
+  // administration namespace (bare test fakes / embed mounts) or a failed
+  // probe leaves everything visible; the backend still guards the routes.
+  const [paletteCapabilities, setPaletteCapabilities] = useState<PaletteDeploymentCapabilities | null>(null);
+  useEffect(() => {
+    let active = true;
+    const adminApi = (client as unknown as {
+      administration?: { capabilities?: (signal?: AbortSignal) => Promise<PaletteDeploymentCapabilities> };
+    }).administration;
+    const fetchCapabilities = adminApi?.capabilities?.bind(adminApi);
+    if (!fetchCapabilities) return;
+    void loadPaletteDeploymentCapabilities(fetchCapabilities).then((probed) => {
+      if (active) setPaletteCapabilities(probed);
+    });
+    return () => { active = false; };
+  }, [client]);
+  const paletteAccess = useMemo(
+    () => paletteAccessFromCapabilities(paletteCapabilities, {
+      liteMode: isLiteEdition,
+      // Vue authStore.hasRole('admin'): owner also passes.
+      isAdmin: user.role === 'admin' || user.role === 'owner',
+    }),
+    [paletteCapabilities, isLiteEdition, user.role],
+  );
+  const paletteRetrievalSettings = useMemo(
+    () => <PaletteRetrievalSettings client={client} locale={locale} />,
+    [client, locale],
+  );
+  const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
     canAccessAllTenants: user.canAccessAllTenants,
     collapsed,
     hasSwitchHandler: Boolean(onTenantSwitch),
@@ -274,6 +450,27 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       setTenantSwitchPending(null);
     }
   }, [activeTenantId, onTenantSwitch, tenantSwitchPending]);
+
+  // Vue UserMenu.vue:430-443 — opening the tenant submenu re-fetches
+  // /auth/me at most once per 2s (timestamp throttle) so membership
+  // invites/revokes surface without a reload. Failures are swallowed and
+  // the last-known membership list keeps rendering (refreshFromAuthMe
+  // returns false without a toast on the Vue side).
+  const lastTenantSubmenuMembershipRefreshRef = useRef(0);
+  const TENANT_SUBMENU_MEMBERSHIP_REFRESH_MS = 2000;
+  const toggleTenantSubmenu = useCallback(() => {
+    const next = !tenantMenuOpen;
+    setTenantMenuOpen(next);
+    if (!next) return;
+    const now = Date.now();
+    if (now - lastTenantSubmenuMembershipRefreshRef.current < TENANT_SUBMENU_MEMBERSHIP_REFRESH_MS) return;
+    lastTenantSubmenuMembershipRefreshRef.current = now;
+    void client.auth.me().then((me) => {
+      // A stale client's late response must not clobber the fresh one.
+      if (authResolvedClientRef.current !== client) return;
+      applyAuthMe(me);
+    }).catch(() => { /* keep last-known memberships; degrade silently */ });
+  }, [applyAuthMe, client, tenantMenuOpen]);
 
   // Recent ⌘K searches are namespaced per (user, tenant); reload whenever
   // that identity resolves (mirrors Vue commandPaletteStore's auth watcher).
@@ -308,15 +505,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [sessionSource, sessionSourceOptions]);
   const loadShellSessionPage = useCallback(async (page: number, generation: number) => {
     if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current || sessionsRequestRef.current) return;
+    sessionsRequestRef.current = true;
+    setSessionsLoading(true);
     // A bucket can disappear after an auth/client scope refresh. Let the
     // source effect restart from web rather than issuing a stale privileged
-    // request during that render transition.
+    // request during that render transition. The loading flag is raised
+    // before this early return so the reset frame keeps the skeleton (not
+    // the empty state); the effect run triggered by the source change resets
+    // sessionsRequestRef before reloading.
     if (!sessionSourceOptionsRef.current.some((option) => option.value === sessionSource)) {
       setSessionSource('web');
       return;
     }
-    sessionsRequestRef.current = true;
-    setSessionsLoading(true);
     try {
       const apiSource = sessionSource.startsWith('im:') ? sessionSource.slice('im:'.length) : sessionSource;
       const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: apiSource });
@@ -341,7 +541,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     const scopeChanged = sessionsClientRef.current !== null && sessionsScopeRef.current !== canSeeAdminSessionSources;
     sessionsClientRef.current = client;
     sessionsScopeRef.current = canSeeAdminSessionSources;
-    if (clientChanged || scopeChanged) {
+    // A bucket can disappear after an auth/client scope refresh. Restart from
+    // web rather than issuing a stale privileged request during that render
+    // transition. When the source is already web there is nothing to reset —
+    // falling through to the reload below is required: an early return here
+    // leaves sessionsMountedRef false so the in-flight request's finally
+    // never resets sessionsLoading and the sidebar strands on "Loading..."
+    // (R428 parity bug: the first admin auth/me flips the scope after mount).
+    if ((clientChanged || scopeChanged) && sessionSource !== 'web') {
       setSessionSource('web');
       return () => { sessionsMountedRef.current = false; };
     }
@@ -444,7 +651,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       // history patch mirrors into the active-row highlight.
       window.dispatchEvent(new CustomEvent(SHELL_SESSION_ROUTE_EVENT, { detail: { sessionId } }));
     } else {
-      window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`);
+      navigate(`/platform/chat/${encodeURIComponent(sessionId)}`);
     }
   }, []);
 
@@ -479,7 +686,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     setSessions(sessionsRef.current);
     // Vue menu.vue: deleting the open session routes back to creatChat.
     if (chatSessionIdFromPath(window.location.pathname) === sessionId) {
-      window.location.assign('/platform/creatChat');
+      navigate('/platform/creatChat');
     }
   }
 
@@ -490,7 +697,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - sessionIds.length);
     setSessions(sessionsRef.current);
     if (chatSessionIdFromPath(window.location.pathname) && selected.has(chatSessionIdFromPath(window.location.pathname)!)) {
-      window.location.assign('/platform/creatChat');
+      navigate('/platform/creatChat');
     }
     // Rebase the paginated window from page 1 after a destructive mutation so
     // rows shifted from later pages are not skipped by the old offset.
@@ -534,7 +741,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   }, [paletteOpen]);
 
   const closePalette = useCallback(() => setPaletteOpen(false), []);
-  const navigateFromPalette = useCallback((path: string) => { window.location.assign(path); }, []);
+  const navigateFromPalette = useCallback((path: string) => { navigate(path); }, []);
   const recordPaletteSearch = useCallback((query: string) => {
     setRecentQueries(pushRecentQuery(window.localStorage, recentQueriesKey, query));
   }, [recentQueriesKey]);
@@ -547,8 +754,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // Vue menu.ts:76-78 — drop the organizations entry below admin. Filtering
   // after the build keeps the item table (labels/icons/guides) authoritative.
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => item.key !== 'organizations' || canSeeOrganizations),
-    [navItems, canSeeOrganizations],
+    // R450-A2 — Vue stores/menu.ts:64,73 adds 'organizations' (and the
+    // sidebar logout) to liteHiddenPaths; the React rail only owns the
+    // organizations entry, so it drops out under lite mode too.
+    () => navItems.filter((item) => item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)),
+    [navItems, canSeeOrganizations, isLiteEdition],
   );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
@@ -573,7 +783,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   };
 
   const initial = (user.name || '?').charAt(0).toUpperCase();
-  const showTenantIdentityLine = !collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants);
+  // R450-A2 — Vue UserMenu.vue:247-253 gates the tenant identity line with
+  // !isLiteMode ("Lite 模式下没有 RBAC 概念，统一隐藏"); the same panel owns
+  // the tenant switcher, so the switcher collapses with it (UserMenu.vue:56).
+  const showTenantIdentityLine = !isLiteEdition && (!collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants));
   const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
 
   return (
@@ -584,8 +797,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
         : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
         <div className="flex items-center justify-between h-[42px] shrink-0 pr-[10px] pl-[14px]">
-          <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
+                <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  navigate('/platform/knowledge-bases');
+                }}>
             {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
+            {/* Vue menu.vue:7 `<sup class="lite-badge">Lite</sup>` — edition
+                mark, untranslated; styles port menu.vue:1289-1297. */}
+            {!collapsed && isLiteEdition && (
+              <sup className="ml-[2px] mt-[2px] shrink-0 self-start select-none whitespace-nowrap text-[9px] font-semibold leading-none text-[var(--wk-color-text-placeholder,rgba(0,0,0,0.4))]">Lite</sup>
+            )}
           </a>
           {!collapsed && (
             <div className="flex shrink-0 items-center gap-1">
@@ -639,7 +861,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
               return (
-                <a key={item.key} href={item.href} className={(collapsed
+                <a key={item.key} href={item.href} onClick={(event) => {
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  navigate(item.href);
+                }} className={(collapsed
                   ? 'justify-center mx-[4px] px-0 '
                   : 'mx-0 px-[14px] ')
                   + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold whitespace-nowrap '
@@ -649,6 +875,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
                   <span className="inline-flex shrink-0">{item.icon}</span>
                   {!collapsed && <span className="overflow-hidden text-ellipsis">{item.label}</span>}
+                  {/* Vue menu.vue:93-98 — amber pending-join pill on the
+                      organizations entry, expanded rail only, raw count. */}
+                  {!collapsed && item.key === 'organizations' && orgPendingJoinRequestCount > 0 && (
+                    <span data-testid="org-pending-badge" title={t('organization.settings.pendingJoinRequestsBadge')}
+                      className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-[9px] bg-[rgba(250,173,20,0.2)] px-[5px] text-[12px] font-semibold leading-[18px] text-[#e37318]">
+                      {orgPendingJoinRequestCount}
+                    </span>
+                  )}
                 </a>
               );
             })}
@@ -668,6 +902,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
               <SessionSidebarList
+                copy={shellSidebarCopy}
                 groups={sessionListGroups}
                 selectedSessionId={activeChatId}
                 loading={sessionsLoading}
@@ -736,16 +971,19 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 </button>
                 <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=userprofile"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
                   {labels.personalSettings}
                 </a>
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」
+                    quick link with !isLiteMode; lite deployments have no
+                    tenant surface to manage. */}
+                {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=tenant"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
                   {labels.workspaceSettings}
-                </a>
+                </a>}
                 {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
-                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={() => setTenantMenuOpen((open) => !open)}>
+                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={toggleTenantSubmenu}>
                     <span>{t('tenant.switcher.menuLabel')}</span><span aria-hidden="true">{tenantMenuOpen ? '⌃' : '⌄'}</span>
                   </button>
                   {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="mt-[2px] max-h-[180px] overflow-y-auto">
@@ -754,21 +992,45 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     </button>)}
                   </div> : null}
                 </div> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
                   {labels.membersSettings}
                 </a> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=models"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
                   {labels.modelsSettings}
                 </a> : null}
-                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=skills"
-                  onClick={() => setMenuOpen(false)}>
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
                   {labels.skillsSettings}
                 </a> : null}
+                {/* Vue UserMenu.vue:96-100 — a divider closes the section
+                    quick-link group, then the unconditional 「全部设置」 entry
+                    opens the settings surface WITHOUT a section query
+                    (handleSettings → router.push('/platform/settings')). It
+                    renders for every role so viewer-only users keep a path to
+                    the read-only rosters and model lists. */}
+                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
+                  {labels.allSettings}
+                </a>
+                {/* R449-A2 — Vue UserMenu.vue:104-113 renders 「系统管理」 only
+                    for is_system_admin users, between 全部设置 and a divider
+                    that precedes the docs entry. handleSystemAdmin lands on
+                    the settings modal opened at the system-global group
+                    (?section=system-global). UI gating only; the server-side
+                    RequireSystemAdmin middleware is the real boundary. */}
+                {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=system-global"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=system-global', () => setMenuOpen(false))}>
+                  {labels.systemAdministration}
+                </a> : null}
+                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                 <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
                   onClick={() => setMenuOpen(false)}>
@@ -805,11 +1067,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     </svg>
                   </span>
                 </a>
-                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
-                  onClick={() => { setMenuOpen(false); void onLogout(); }}>
-                  {t('auth.logout')}
-                </button>
+                {/* R450-A2 — Vue UserMenu.vue:136-144 keeps the divider and
+                    the logout item behind !isLiteMode: lite editions have no
+                    account session to end (Vue stores/auth.ts logout also
+                    clears the weknora_lite_mode key). */}
+                {!isLiteEdition && <>
+                  <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
+                  <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
+                    onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
+                    {t('auth.logout')}
+                  </button>
+                </>}
               </div>
             )}
           </div>
@@ -834,6 +1102,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         onNavigate={navigateFromPalette}
         onSearch={recordPaletteSearch}
         onClearRecent={clearPaletteRecent}
+        searchClient={client}
+        initialKbScope={kbScopeFromLocation()}
+        access={paletteAccess}
+        agentsEnabled={paletteAccess.canOpenAgents}
+        retrievalSettings={paletteRetrievalSettings}
       />
       {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
       <NewUserGuide locale={locale} actions={guideActions} />

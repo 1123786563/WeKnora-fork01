@@ -9,6 +9,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "dependencies": {
+    "@tanstack/react-router": "^1.170.38",
     "@weknora/api-client": "workspace:*",
     "@weknora/contracts": "workspace:*",
     "@weknora/core": "workspace:*",
@@ -16,6 +17,10 @@
     "@weknora/i18n": "workspace:*",
     "@weknora/ui": "file:../../packages/ui",
     "@weknora/views": "workspace:*",
+    "dompurify": "^3.4.11",
+    "katex": "^0.16.45",
+    "marked": "^17.0.5",
+    "marked-katex-extension": "^5.1.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "xlsx": "file:./vendor/xlsx-0.20.2.tgz"

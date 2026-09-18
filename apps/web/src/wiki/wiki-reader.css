@@ -1,0 +1,254 @@
+/*
+ * Wiki reader typography — ported from the Vue reader surface
+ * (frontend/src/views/knowledge/wiki/WikiBrowser.vue, `.wiki-reader-body`)
+ * so the React wiki page renders markdown bodies with the same visual
+ * rhythm. TDesign tokens map onto the shared wk design tokens:
+ *
+ *   --td-text-color-primary           → var(--wk-color-text)
+ *   --td-text-color-secondary         → var(--wk-color-text-secondary)
+ *   --td-bg-color-secondarycontainer  → var(--wk-color-surface-hover)
+ *   --td-bg-color-container           → var(--wk-color-surface)
+ *   --td-component-border             → var(--wk-color-component)
+ *   --td-component-stroke             → var(--wk-color-border)
+ *   --td-brand-color                  → var(--wk-color-brand)
+ *   --app-font-family-mono            → var(--wk-font-family-mono)
+ *
+ * Targets runtime-generated DOM (dangerouslySetInnerHTML), so per the
+ * migration conventions this stays as CSS instead of utilities.
+ */
+
+.wiki-reader-body {
+  line-height: 1.6;
+  font-size: 14px;
+  color: var(--wk-color-text);
+}
+
+.wiki-reader-body h1 {
+  font-size: 24px;
+  margin: 28px 0 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.wiki-reader-body h2 {
+  font-size: 18px;
+  margin: 24px 0 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.wiki-reader-body h3 {
+  font-size: 16px;
+  margin: 20px 0 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.wiki-reader-body h4,
+.wiki-reader-body h5,
+.wiki-reader-body h6 {
+  font-size: 14px;
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.wiki-reader-body p {
+  margin: 0 0 14px;
+}
+
+.wiki-reader-body ul,
+.wiki-reader-body ol {
+  margin: 0 0 14px;
+  padding-left: 24px;
+}
+
+.wiki-reader-body li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.wiki-reader-body li > p {
+  margin-bottom: 6px;
+}
+
+.wiki-reader-body blockquote {
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  background: var(--wk-color-surface-hover);
+  border-left: 4px solid var(--wk-color-component);
+  border-radius: 0 4px 4px 0;
+  color: var(--wk-color-text-secondary);
+}
+
+.wiki-reader-body code {
+  font-family: var(--wk-font-family-mono);
+  font-size: 13px;
+  padding: 2px 4px;
+  background: var(--wk-color-surface-hover);
+  border-radius: 4px;
+  color: var(--wk-color-brand);
+}
+
+.wiki-reader-body pre {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  background: var(--wk-color-surface-hover);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.wiki-reader-body pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.wiki-reader-body p:has(img) {
+  text-align: center;
+  color: var(--wk-color-text-secondary);
+  font-size: 13px;
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.wiki-reader-body img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto 8px;
+  cursor: zoom-in;
+  transition: opacity 0.2s;
+}
+
+.wiki-reader-body img:hover {
+  opacity: 0.9;
+}
+
+.wiki-reader-body a.wiki-content-link {
+  color: var(--wk-color-brand);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--wk-color-brand);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.wiki-reader-body a.wiki-content-link:hover {
+  border-bottom-style: solid;
+  text-decoration: none;
+}
+
+/* Markdown tables (GFM): shrink to content, scroll horizontally when wide. */
+.wiki-reader-body table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 16px;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--wk-color-surface);
+  border: 1px solid var(--wk-color-border);
+  border-radius: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wiki-reader-body table thead {
+  background: var(--wk-color-surface-hover);
+}
+
+.wiki-reader-body table th,
+.wiki-reader-body table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--wk-color-border);
+  border-right: 1px solid var(--wk-color-border);
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.wiki-reader-body table th {
+  font-weight: 600;
+  color: var(--wk-color-text);
+  white-space: nowrap;
+}
+
+.wiki-reader-body table th:last-child,
+.wiki-reader-body table td:last-child {
+  border-right: none;
+}
+
+.wiki-reader-body table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wiki-reader-body table tbody tr:hover {
+  background: var(--wk-color-surface-hover);
+}
+
+.wiki-reader-body table code {
+  font-size: 12px;
+}
+
+/* ── Reader footer: backlinks + sources (Vue WikiBrowser.vue 5973-6012) ── */
+.wiki-reader-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--wk-color-border, #e7e7e7);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wiki-reader-footer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.wiki-reader-footer-label {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--wk-color-text-muted, rgba(0, 0, 0, 0.4));
+}
+
+.wiki-reader-footer-value {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.wiki-reader-footer .wiki-content-link {
+  color: var(--wk-color-primary, #07c05f);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--wk-color-primary, #07c05f);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.wiki-reader-footer .wiki-content-link:hover {
+  border-bottom-style: solid;
+  text-decoration: none;
+}
+
+/* ── Index overview sentinel (Vue .wiki-index-sentinel) ── */
+.wiki-index-sentinel {
+  min-height: 32px;
+}
+
+/* ── Image preview (Vue picture-preview.vue / t-image-viewer) ── */
+.wk-wiki-img-preview {
+  font-family: inherit;
+}
+
+.wk-wiki-img-preview-image {
+  transition: transform 0.15s ease;
+}

@@ -39,7 +39,7 @@ Object.assign(globalThis, {
   CustomEvent: dom.window.CustomEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
-// zh-CN like the acceptance environment; resolveLocale reads navigator.language.
+// zh-CN like the acceptance environment (locale preference default).
 // Shadow the jsdom navigator's language (prototype getter) before react-dom loads.
 const jsdomNavigator = dom.window.navigator;
 try { Object.defineProperty(jsdomNavigator, 'language', { value: 'zh-CN', configurable: true }); } catch { /* keep default locale */ }
@@ -75,7 +75,9 @@ function fakeClient(role?: string): Record<string, unknown> {
 // The done-key is preset to '1': the tour counts as finished, so only the
 // user-menu reopen entry may bring it back (auto-open must stay off).
 async function mountShell(locale = 'zh-CN') {
-  try { Object.defineProperty(jsdomNavigator, 'language', { value: locale, configurable: true }); } catch { /* keep default locale */ }
+  // Shell locale follows the stored `locale` preference (Vue GeneralSettings
+  // parity), so tests drive it through localStorage like the panel does.
+  window.localStorage.setItem('locale', locale);
   window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
   const container = document.createElement('div');
   document.body.append(container);
@@ -126,6 +128,7 @@ test('admin user menu exposes the Vue management shortcuts for members, models a
     '/platform/settings?section=members',
     '/platform/settings?section=models',
     '/platform/settings?section=skills',
+    '/platform/settings',
     'https://github.com/Tencent/WeKnora/tree/main/docs',
     'https://github.com/Tencent/WeKnora',
   ]);

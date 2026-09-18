@@ -77,3 +77,36 @@ test('product auth calls the product login and refresh endpoints with product wi
     { url: 'https://weknora.example.test/api/v1/auth/refresh', body: { refreshToken: 'r' } },
   ]);
 });
+
+test('authenticated transport injects bearer and refreshes JSON, binary, and stream paths', async () => {
+  async function freshSession() {
+    let access = 'old';
+    let refreshes = 0;
+    const credentials: CredentialAdapter = {
+      read: async () => ({ kind: 'bearer', accessToken: access, refreshToken: 'refresh' }),
+      write: async (value) => { access = (value as { accessToken: string }).accessToken; },
+      clear: async () => undefined,
+    };
+    const transport = {
+      send: async (request: any) => request.headers.authorization === 'Bearer new' ? { status: 200, headers: {}, body: 'json' } : { status: 401, headers: {}, body: null },
+      sendBinary: async (request: any) => request.headers.authorization === 'Bearer new' ? { status: 200, headers: {}, body: new Uint8Array([1]) } : { status: 401, headers: {}, body: null },
+      sendStream: async (request: any) => request.headers.authorization === 'Bearer new' ? { status: 200, headers: {}, chunks: (async function* () { yield 'ok'; })() } : { status: 401, headers: {}, chunks: (async function* () {})() },
+    };
+    const session = createProductAuthSession({ baseURL: 'https://api.example', credentials, transport: {
+      ...transport,
+      send: async (request: any) => request.url.endsWith('/refresh')
+        ? (++refreshes, { status: 200, headers: {}, body: { access_token: 'new', refresh_token: 'rotated' } })
+        : transport.send(request),
+    } });
+    return { session, refreshes: () => refreshes };
+  }
+  const json = await freshSession();
+  assert.equal((await json.session.transport.send({ method: 'GET', url: 'https://api.example/data', headers: {} })).status, 200);
+  assert.equal(json.refreshes(), 1, 'JSON independently refreshes after 401');
+  const binary = await freshSession();
+  assert.equal((await binary.session.transport.sendBinary!({ method: 'GET', url: 'https://api.example/file', headers: {} })).status, 200);
+  assert.equal(binary.refreshes(), 1, 'binary independently refreshes after 401');
+  const stream = await freshSession();
+  assert.equal((await stream.session.transport.sendStream!({ method: 'GET', url: 'https://api.example/events', headers: {}, signal: new AbortController().signal })).status, 200);
+  assert.equal(stream.refreshes(), 1, 'stream independently refreshes after 401');
+});

@@ -6,9 +6,10 @@
 // All copy flows through the shared packages/i18n catalog (menu.*,
 // knowledgeEditor.*, knowledgeBase.*) — no literals in this file.
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { FocusEvent, ReactNode } from 'react';
 import { createTranslator } from '../i18n.ts';
+import { navigate } from '../platform/navigation.ts';
 import {
   documentsKBDetailPath,
   documentsKBListPath,
@@ -26,7 +27,7 @@ export interface KBChromeMeta {
   createdAt?: string;
 }
 
-function defaultNavigate(path: string): void { window.location.assign(path); }
+function defaultNavigate(path: string): void { navigate(path); }
 
 /** Vue dropdowns close on outside click — mirror it via focusout. */
 function closeOnBlur(event: FocusEvent<HTMLElement>, close: () => void): void {
@@ -63,6 +64,21 @@ function GearIcon(props: { size?: number; className?: string }) {
 
 // --- Breadcrumb (Vue .document-title-row + .kb-title-actions) ---------------------
 
+/**
+ * Vue isWiki renders the third crumb level as a 文档 / Wiki / 图谱 tab row
+ * (KnowledgeBase.vue L2359-2380) instead of the plain 文档 label. The pages
+ * describe their tabs (labels/hrefs/active state); the component only renders
+ * the shared anatomy.
+ */
+export interface DocumentsBreadcrumbTab {
+  key: string;
+  label: string;
+  href: string;
+  active?: boolean;
+  /** Vue wraps the graph tab in t-tooltip content=tabGraphTip. */
+  title?: string;
+}
+
 export interface DocumentsBreadcrumbProps {
   t: Translate;
   knowledgeBaseId: string;
@@ -73,14 +89,24 @@ export interface DocumentsBreadcrumbProps {
   supportedFileTypes?: string[];
   /** Vue gates the gear on canManage; the page maps it to its permission signal. */
   canManage?: boolean;
+  /**
+   * Vue ⚙ opens the in-place KB settings surface without leaving the page
+   * (KnowledgeBase.vue:2388 → uiStore.openKBSettings). Pages that host such
+   * an overlay pass this callback; without it the gear keeps the historical
+   * settings-route navigation (/knowledgeBase/<id>/settings).
+   */
+  onOpenSettings?: () => void;
   onNavigate?: (path: string) => void;
+  /** When present, the third crumb level is the Vue breadcrumb-tab row. */
+  tabs?: DocumentsBreadcrumbTab[];
 }
 
 export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
-  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, supportedFileTypes, canManage = false, onNavigate = defaultNavigate } = props;
+  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, supportedFileTypes, canManage = false, onOpenSettings, onNavigate = defaultNavigate, tabs } = props;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
+  const hasTabs = !!tabs && tabs.length > 0;
   return (
     <div className="document-title-row flex min-h-8 flex-wrap items-center gap-2">
       <h2 className="document-breadcrumb m-0 flex items-center gap-[6px] text-[20px] font-semibold leading-8 text-[var(--wk-text,#101828)]">
@@ -100,7 +126,31 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
-        <span className="breadcrumb-current font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeEditor.document.title')}</span>
+        {hasTabs ? (
+          <span className="breadcrumb-tabs inline-flex items-center">
+            {tabs!.map((tab, index) => (
+              <Fragment key={tab.key}>
+                {index > 0 ? <span className="breadcrumb-tab-sep mx-[6px] font-normal text-[var(--wk-muted,#98a2b8)]" aria-hidden="true">/</span> : null}
+                <a
+                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent [font:inherit] no-underline [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-text,#101828)]')}
+                  href={tab.href}
+                  title={tab.title}
+                  aria-current={tab.active ? 'page' : undefined}
+                  onClick={(event) => {
+                    // Vue flips activeKbTab in place; the React routes navigate
+                    // to the tab's ?tab= URL. Keep modified clicks / middle
+                    // click on the browser default (new tab, bookmark).
+                    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    onNavigate(tab.href);
+                  }}
+                >{tab.label}</a>
+              </Fragment>
+            ))}
+          </span>
+        ) : (
+          <span className="breadcrumb-current font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeEditor.document.title')}</span>
+        )}
       </h2>
       <div className="kb-title-actions ml-1 inline-flex shrink-0 items-center gap-[6px]">
         <span className="kb-info-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
@@ -125,7 +175,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(documentsKBSettingsPath(knowledgeBaseId))}>
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
             <GearIcon size={14} />
           </button>
         ) : null}

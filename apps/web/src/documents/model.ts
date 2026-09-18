@@ -79,6 +79,57 @@ export function canDocumentAction(action: 'preview' | 'download' | 'edit' | 'rep
 }
 
 export interface TimelineStep { key: 'uploaded' | 'parsing' | 'enriching' | 'indexed' | 'failed' | 'cancelled'; state: 'done' | 'active' | 'error' | 'muted' }
+
+export interface MergeableChunk { content?: string; start_at?: unknown; end_at?: unknown; chunk_index?: unknown; [key: string]: unknown }
+
+const MIN_CHUNK_OVERLAP = 12;
+
+/**
+ * Vue doc-content#appendChunkContent: stitch `next` onto the merged text while
+ * removing the overlap the chunker re-emits. Matching is done on the text
+ * itself (suffix of acc found in a bounded head window of next) so repadded
+ * table headers and entity-encoded length drift are both tolerated; a
+ * non-positive position overlap means strictly adjacent ranges and concat's
+ * directly to avoid cutting real repeated content.
+ */
+function appendChunkContent(acc: string, next: string, positionOverlap: number): string {
+  if (!acc) return next;
+  if (!next) return acc;
+  if (positionOverlap <= 0) return acc + next;
+  const span = Math.max(positionOverlap, 0);
+  const maxK = Math.min(acc.length, next.length, Math.max(span * 3, 400));
+  const headSlack = Math.max(span * 2, 320);
+  for (let k = maxK; k >= MIN_CHUNK_OVERLAP; k--) {
+    const suffix = acc.slice(acc.length - k);
+    const pos = next.indexOf(suffix);
+    if (pos !== -1 && pos <= headSlack) return acc + next.slice(pos + k);
+  }
+  return acc + next;
+}
+
+/**
+ * Vue doc-content#mergeChunks: order by start_at (chunk_index fallback), join
+ * real position gaps with a blank line, and trim re-emitted overlaps.
+ */
+export function mergeChunkContents(chunks: MergeableChunk[]): string {
+  if (!chunks || chunks.length === 0) return '';
+  const sorted = [...chunks].sort((left, right) =>
+    Number(left.start_at ?? left.chunk_index ?? 0) - Number(right.start_at ?? right.chunk_index ?? 0));
+  let merged = sorted[0].content || '';
+  let mergedEnd = Number(sorted[0].end_at ?? 0);
+  for (let index = 1; index < sorted.length; index++) {
+    const chunk = sorted[index];
+    const startAt = Number(chunk.start_at ?? 0);
+    const endAt = Number(chunk.end_at ?? 0);
+    const content = chunk.content || '';
+    if (!content) continue;
+    if (startAt > mergedEnd && mergedEnd > 0) merged = merged + '\n\n' + content;
+    else merged = appendChunkContent(merged, content, mergedEnd - startAt);
+    if (endAt > mergedEnd) mergedEnd = endAt;
+  }
+  return merged;
+}
+
 export function buildProcessingTimeline(document: Pick<KnowledgeDocument, 'parse_status' | 'summary_status'> & { id: string }): TimelineStep[] {
   const status = getDocumentStatus(document);
   const steps: TimelineStep[] = [

@@ -8,7 +8,10 @@ const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRou
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
-import { Button, Status } from '@weknora/ui';
+import { Button, Status, Alert } from '@weknora/ui';
+import { pushSettingsToast, SettingsToastHost } from './settings-toast.tsx';
+import { modelFormatMessage } from './model-settings.ts';
+import { navigate } from '../platform/navigation.ts';
 import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
 const MemoryWorkspacePanel = lazy(() => import('./PersonalMemoryPanel.tsx').then((m) => ({ default: m.MemoryWorkspacePanel })));
@@ -36,6 +39,30 @@ const SystemAuditLogPanel = lazy(() => import('./SystemAuditLogPanel.tsx').then(
 import './settings-wrapper.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
+
+/*
+ * R472 A2 — settings 分区错误态 UX 模式（对齐 .omc/state/r470/report-A3.md
+ * 锚定的 Vue 三种模式）：
+ * - 'toast-keep'   models：Toast 本地化「加载模型列表失败」+ 界面保持
+ *                  （ModelSettings.vue:488-490，骨架/默认态不清空）。
+ * - 'toast-retry'  skills/mcp：Toast + 中央空态 + 重试按钮；面板自加载并
+ *                  自行呈现错误（SkillSettings.vue:1161-1164、
+ *                  McpSettings.vue:144-147），中央读取失败不再顶替内容区。
+ * - 'banner-retry' members/storage：浅红横幅透传后端原文 + 重试
+ *                  （TenantMembers.vue:838-841、StorageEngineSettings.vue:920-921）。
+ *                  members 的横幅由面板自加载渲染（标题在面板内部）；
+ *                  storage 的横幅在壳层渲染并替代内容（标题由壳层 heading 保留）。
+ * - 'inline'       其余分区维持裸 Status 行为（本轮未对齐范围）。
+ * 共同点：错误态下分区标题保持渲染（R470 缺陷 4）。
+ */
+export type SettingsSectionErrorMode = 'inline' | 'toast-keep' | 'toast-retry' | 'banner-retry';
+
+export function sectionErrorMode(key: string): SettingsSectionErrorMode {
+  if (key === 'models') return 'toast-keep';
+  if (key === 'skills' || key === 'mcp') return 'toast-retry';
+  if (key === 'members' || key === 'storage') return 'banner-retry';
+  return 'inline';
+}
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
@@ -103,7 +130,12 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const [selectedKey, setSelectedKey] = useState(() => requestedSection(window.location.search));
-  const [payload, setPayload] = useState<unknown>(null);
+  // Per-section payload cache: revisiting a seen section renders its cached
+  // data instantly and refreshes silently. The previous single-slot payload
+  // forced "old data → 加载中 → content" through three paints on every tab
+  // switch, which read as a flicker.
+  const [payloadCache, setPayloadCache] = useState<Record<string, unknown>>({});
+  const payload = selectedKey in payloadCache ? payloadCache[selectedKey]! : null;
   const [models, setModels] = useState<readonly SettingsModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,15 +154,19 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const visibleSections = settingsSectionsForRole(role).filter((item) => sectionSupported(item.key));
   const roleDenied = !roleAtLeast(role, section.minRole);
 
-  async function load() {
+  async function load(force = false) {
     const generation = ++loadGenerationRef.current;
     const isCurrentLoad = () => generation === loadGenerationRef.current;
-    if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
-    setLoading(true); setError(null); setNotice(null);
+    if (!sectionSupported(selectedKey) || integrationTab || roleDenied) { setError(null); setLoading(false); return; }
+    // 首访（无缓存）与保存后的强制刷新才显示加载占位；普通切 tab 走静默刷新，
+    // 已渲染的面板保持不动，数据到达后静默更新。
+    const hasCache = selectedKey in payloadCache;
+    if (!hasCache || force) setLoading(true);
+    setError(null); setNotice(null);
     try {
       const next = await readSettingsSection(client, selectedKey, tenantId);
       if (!isCurrentLoad()) return;
-      setPayload(next);
+      setPayloadCache((prev) => ({ ...prev, [selectedKey]: next }));
       if (selectedKey === 'retrieval' || selectedKey === 'chathistory') {
         try {
           const nextModels = await client.configuration.models.list();
@@ -142,7 +178,27 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     }
     catch (reason) {
       if (!isCurrentLoad()) return;
-      setPayload(null); setError(errorText(reason, t('common.error')));
+      // 有缓存时静默保留旧数据；仅无缓存的失败才进入分区错误态。
+      if (!hasCache) {
+        const mode = sectionErrorMode(selectedKey);
+        if (mode === 'toast-keep') {
+          // Vue ModelSettings.vue:488-490 — Toast 本地化「加载模型列表失败」，
+          // 面板保持渲染（默认空态），不透传后端原文、不清空骨架。
+          setError(null);
+          pushSettingsToast(modelFormatMessage(locale, 'model.editor.loadModelListFailed'));
+        } else if (mode === 'toast-retry' || selectedKey === 'members') {
+          // skills/mcp/members 面板自加载并渲染各自的 Vue 对齐错误态
+          // （toast+空态+重试 / 横幅+重试）；中央失败不得顶替内容区，
+          // 面板以 undefined 初始数据自拉。
+          setError(null);
+        } else if (mode === 'banner-retry') {
+          // storage：壳层横幅透传后端原文 + 重试（Vue
+          // StorageEngineSettings.vue:920-921 t-alert theme=error）。
+          setError(errorText(reason, t('settings.storage.loadFailed')));
+        } else {
+          setError(errorText(reason, t('common.error')));
+        }
+      }
     }
     finally {
       if (isCurrentLoad()) setLoading(false);
@@ -225,7 +281,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   function closeSettings() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     if (settingsCloseMode(window.location.search) === 'knowledge-bases') {
-      window.location.assign('/platform/knowledge-bases');
+      navigate('/platform/knowledge-bases');
     } else {
       window.history.back();
     }
@@ -238,68 +294,133 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const select = useCallback((key: string) => {
     const next = settingsSectionMeta(key) ? key : SETTINGS_SECTIONS[0]!.key;
     setSelectedKey(next);
-    window.history.pushState(null, '', '/platform/settings?' + selectSettingsQuery(next, window.location.search));
+    // Section changes are state within the settings drawer, not new pages.
+    // Keep one history entry for opening settings so Close returns to the
+    // route that opened it even after several section changes.
+    navigate('/platform/settings?' + selectSettingsQuery(next, window.location.search), 'replace');
   }, []);
 
-  const generalPanel = selectedKey === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
-  const resourcePanel = selectedKey === 'storage' || selectedKey === 'vectorstore' || selectedKey === 'websearch'
-    ? <ResourceSettingsPanel client={client} section={selectedKey} initialValue={payload} />
-    : null;
-  const configPanel = selectedKey === 'retrieval'
-    ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={payload} models={models} />
-    : selectedKey === 'chathistory'
-      ? <ConfigSettingsPanel
+  // Keep-alive: once a section has been opened its panel stays mounted and is
+  // merely hidden on switch. Panels re-run their own requests on every
+  // remount (skills need catalog + sandbox configs; memory/ollama fetch
+  // internally), which read as a flicker on every revisit. Keeping them alive
+  // also preserves in-panel form state; everything unmounts when the drawer
+  // closes (the route leaves /platform/settings).
+  const [visitedSections, setVisitedSections] = useState<string[]>(() => [selectedKey]);
+  useEffect(() => {
+    setVisitedSections((prev) => (prev.includes(selectedKey) ? prev : [...prev, selectedKey]));
+  }, [selectedKey]);
+
+  function renderSectionPanel(key: string): ReactNode {
+    const section = settingsSectionMeta(key)!;
+    const sectionPayload = key in payloadCache ? payloadCache[key]! : null;
+    const sectionIntegrationTab = integrationTabForSection(key);
+    const sectionRoleDenied = !roleAtLeast(role, section.minRole);
+    const isActive = key === selectedKey;
+    const sectionError = isActive ? error : null;
+    const sectionLoading = isActive && loading;
+    const sectionDenied = sectionRoleDenied
+      ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
+      : null;
+    const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
+    const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
+      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} />
+      : null;
+    const configPanel = key === 'retrieval'
+      ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
+      : key === 'chathistory'
+        ? <ConfigSettingsPanel
+            client={client}
+            section="chathistory"
+            initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
+            models={models}
+            embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
+            stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
+            onSaved={() => void load(true)}
+          />
+        : key === 'parser'
+          ? <ConfigSettingsPanel client={client} section="parser" initialValue={((sectionPayload as Record<string, unknown> | null)?.config)} />
+          : null;
+    const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
+    const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
+    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
+    const runtimeQueuesPanel = key === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={sectionPayload as never} loading={sectionLoading} error={sectionError} /> : null;
+    const systemGlobalPanel = key === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
+    const platformApiKeysPanel = key === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(sectionPayload) ? sectionPayload as never : []} /> : null;
+    const systemAuditPanel = key === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={sectionPayload} /> : null;
+    const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} onMutated={() => void load(true)} /> : null;
+    const mcpPanel = key === 'mcp'
+      ? <McpSettingsPanel client={client} role={role} initialServices={key in payloadCache ? (Array.isArray(sectionPayload) ? sectionPayload as never : []) : undefined} />
+      : null;
+    const modelPanel = key === 'models'
+      ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(sectionPayload) ? sectionPayload as never : []} initialSubSection={initialSubSection ?? undefined} />
+      : null;
+    const sandboxPanel = key === 'sandbox'
+      ? <SandboxSettingsPanel
           client={client}
-          section="chathistory"
-          initialValue={((payload as Record<string, unknown> | null)?.config)}
-          models={models}
-          embeddingLocked={((payload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
-          stats={((payload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
-          onSaved={() => void load()}
+          role={role}
+          dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
+          // SandboxSettings.vue openSession (341-344): row click opens the chat
+          // session; full-page assign mirrors PlatformShell.openShellSession (204).
+          onOpenSession={(sessionId) => { navigate(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
         />
-      : selectedKey === 'parser'
-        ? <ConfigSettingsPanel client={client} section="parser" initialValue={((payload as Record<string, unknown> | null)?.config)} />
-        : null;
-  const ollamaPanel = selectedKey === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={payload} /> : null;
-  const cloudPanel = selectedKey === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={payload} /> : null;
-  const systemPanel = selectedKey === 'system' ? <SystemInfoPanel payload={payload} locale={locale} /> : null;
-  const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={payload as never} loading={loading} error={error} /> : null;
-  const systemGlobalPanel = selectedKey === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(payload) ? payload as never : []} /> : null;
-  const platformApiKeysPanel = selectedKey === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(payload) ? payload as never : []} /> : null;
-  const systemAuditPanel = selectedKey === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={payload} /> : null;
-  const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
-  const mcpPanel = selectedKey === 'mcp'
-    ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />
-    : null;
-  const modelPanel = selectedKey === 'models'
-    ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} initialSubSection={initialSubSection ?? undefined} />
-    : null;
-  const sandboxPanel = selectedKey === 'sandbox'
-    ? <SandboxSettingsPanel
-        client={client}
-        role={role}
-        dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
-        // SandboxSettings.vue openSession (341-344): row click opens the chat
-        // session; full-page assign mirrors PlatformShell.openShellSession (204).
-        onOpenSession={(sessionId) => { window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
-      />
-    : null;
-  const skillPanel = selectedKey === 'skills'
-    ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(payload) ? payload as never : (((payload as { items?: unknown } | null)?.items ?? []) as never)} />
-    : null;
-  const membersPanel = selectedKey === 'members'
-    ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={payload as never} />
-    : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : selectedKey === 'runtime-queues' ? runtimeQueuesPanel : selectedKey === 'system-global' ? systemGlobalPanel : selectedKey === 'platform-api-keys' ? platformApiKeysPanel : selectedKey === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
-    ? (selectedKey === 'sandbox'
-        ? <PortedSectionsPanel section={selectedKey} />
-        : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
-    : null;
-  const deniedPanel = roleDenied
-    ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
-    : null;
+      : null;
+    const skillPanel = key === 'skills'
+      ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(sectionPayload) ? sectionPayload as never : (((sectionPayload as { items?: unknown } | null)?.items ?? []) as never)} />
+      : null;
+    const membersPanel = key === 'members'
+      ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={key in payloadCache ? sectionPayload as never : undefined} />
+      : null;
+    const portedPanel = key === 'mcp' ? mcpPanel : key === 'models' ? modelPanel : key === 'sandbox' ? sandboxPanel : key === 'skills' ? skillPanel : key === 'members' ? membersPanel : key === 'runtime-queues' ? runtimeQueuesPanel : key === 'system-global' ? systemGlobalPanel : key === 'platform-api-keys' ? platformApiKeysPanel : key === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(key)
+      ? (key === 'sandbox'
+          ? <PortedSectionsPanel section={key} />
+          : <LiveSectionsPanel client={client} section={key} payload={sectionPayload} />)
+      : null;
+    return (
+      <div key={key} style={isActive
+        ? { visibility: 'visible' }
+        // Hidden sections stay mounted but are taken out of flow with
+        // visibility+position instead of display:none — toggling display
+        // would reset and replay the .wks-section fade-in animation on every
+        // revisit, which read as a flicker.
+        : { position: 'absolute', top: 0, left: 0, width: '100%', visibility: 'hidden', pointerEvents: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
+        {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
+          {/* Panels owning their full Vue section header render it themselves:
+              general/models here, and members — TenantMembers.vue:8-65 renders
+              the h2 + permissions popover + audit entry + section-description
+              with the RBAC doc link, so a wrapper heading would duplicate it
+              (previously it also leaked the registry apiDomain as the text);
+              skills — SkillSettings.vue:3-11 renders the h2 + help-circle
+              tooltip + section-description itself. */}
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' ? (
+            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+              <div className="w-full">
+                <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>
+                <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, key).description}</p>
+              </div>
+            </div>
+          ) : null}
+          {/* R472 A2 — banner-retry（storage）：壳层浅红横幅透传后端原文 +
+              重试按钮替代内容区（Vue StorageEngineSettings.vue:15-19
+              t-alert theme=error + retry）；分区标题由上方 heading 保留。
+              members 的横幅在 TenantMembersPanel 自加载内渲染。 */}
+          {sectionDenied ?? (
+          sectionError && sectionErrorMode(key) === 'banner-retry' ? (
+            <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
+              <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
+              <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
+            </div>
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
+        </div>}
+      </div>
+    );
+  }
   return createPortal((
     <main className="wk-settings-drawer-root">
+      {/* R472 A2 — settings 域错误 toast 宿主（对齐 Vue MessagePlugin 右上角
+          浮动 + 3s 自动消失语义）。 */}
+      <SettingsToastHost />
       <div className="wks-overlay">
         <div ref={modalRef} className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
           <button
@@ -337,26 +458,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                 ))}
               </div>
             </nav>
-            <section className="wks-content" aria-live="polite">
-              <div className={`wks-content-wrapper${selectedKey === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(selectedKey) || integrationTab ? ' wks-content-wrapper--full' : '')}`}>
-                {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
-                  {/* Panels owning their full Vue section header render it themselves:
-                      general/models here, and members — TenantMembers.vue:8-65 renders
-                      the h2 + permissions popover + audit entry + section-description
-                      with the RBAC doc link, so a wrapper heading would duplicate it
-                      (previously it also leaked the registry apiDomain as the text). */}
-                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' && selectedKey !== 'mcp' ? (
-                    <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-                      <div className="w-full">
-                        <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, selectedKey).title}</h2>
-                        <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, selectedKey).description}</p>
-                      </div>
-                    </div>
-                  ) : null}
-                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</></Suspense>)}
-                  {selectedKey === 'tenant' && role === 'owner' && !deniedPanel && !error && !loading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
-                </div>}
-              </div>
+            <section className="wks-content" aria-live="polite" style={{ position: 'relative' }}>
+              {visitedSections.map((key) => renderSectionPanel(key))}
             </section>
           </div>
         </div>

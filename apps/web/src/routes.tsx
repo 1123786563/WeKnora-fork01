@@ -115,13 +115,12 @@ export function organizationInviteCode(pathname: string): string | undefined {
   return code || undefined;
 }
 
-export function nextPathAfterAuth(search: string): string {
-  const next = new URLSearchParams(search).get('next');
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
-}
-
-export function authNavigationTarget(search: string, invited: boolean): string {
-  return invited ? '/platform/knowledge-bases' : nextPathAfterAuth(search);
+export function authNavigationTarget(): string {
+  // Vue parity: Login.vue persistLoginResponse always lands on the fixed
+  // workspace home (hasValidTenant ? '/platform/knowledge-bases' :
+  // '/onboarding/workspace') and never consumes a ?next return URL. The
+  // onboarding split is owned by guardRoute, so the auth target is constant.
+  return '/platform/knowledge-bases';
 }
 
 /**
@@ -159,6 +158,9 @@ function capabilityForPath(path: string): string | undefined {
 }
 
 export function guardRoute(pathname: string, context: RouteGuardContext): RouteGuardDecision {
+  // Login redirects carry no return URL (Vue parity — router/index.ts:368
+  // `next('/login')`): after authentication the app always lands on the
+  // default home, or onboarding when no tenant exists yet.
   const rawPath = pathname.split('?')[0] || '/';
   const resolved = resolveRoute(pathname, { development: context.development });
   const path = resolved.kind === 'platform' && resolved.path === '/platform/creatChat' ? resolved.path : rawPath;
@@ -166,7 +168,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
   if (path === '/login' || path === '/register') return { kind: 'allow' };
   if (path === '/craft' || path.startsWith('/craft/')) return { kind: 'allow' };
   if (path === '/join') {
-    if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+    if (!context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/organizations', reason: 'capability-unavailable' };
   }
   if (path === '/onboarding/workspace') {
@@ -174,17 +176,17 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     return context.tenantId ? { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'workspace-required' } : { kind: 'allow' };
   }
   if (path === '/') {
-    if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+    if (!context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
   if (resolved.kind === 'not-found') {
-    if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+    if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     return { kind: 'allow' };
   }
   if (!protectedPath(path)) return { kind: 'allow' };
-  if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+  if (!context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
   if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'system-admin-required' };
   if (path === '/platform' || path === '/platform/knowledge-search' || path === '/platform/tenant' || path === '/platform/administration') {

@@ -46,8 +46,21 @@ export function createEmbedBridge(options: { parentWindow: object; referrer?: st
 
   const targetOrigin = () => pinnedOrigin || null;
 
-  const post = (payload: Record<string, unknown>, send: (payload: Record<string, unknown>, targetOrigin: string) => void): boolean => {
-    if (!pinnedOrigin) return false;
+  // Vue postToParent parity (frontend/src/api/embed/index.ts:479-495): sensitive
+  // payloads (conversation content) are dropped when the parent origin is
+  // unknown rather than broadcast to '*'. Non-sensitive handshake messages
+  // (bootstrap_request/ready) may fall back to '*' so token handoff can still
+  // bootstrap when the referrer is stripped.
+  const post = (
+    payload: Record<string, unknown>,
+    send: (payload: Record<string, unknown>, targetOrigin: string) => void,
+    options: { sensitive?: boolean } = {},
+  ): boolean => {
+    if (!pinnedOrigin) {
+      if (options.sensitive) return false;
+      send(payload, '*');
+      return true;
+    }
     send(payload, pinnedOrigin);
     return true;
   };

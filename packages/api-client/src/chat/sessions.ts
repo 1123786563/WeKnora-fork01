@@ -62,6 +62,30 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
     async create(input: { title?: string; description?: string } = {}): Promise<ChatSession> {
       return parseChatSessionResponse(await request({ method: 'POST', path: '/api/v1/sessions', body: input }));
     },
+    /**
+     * Forks a session at a message (upstream api/chat forkSession → POST
+     * /sessions/:id/fork): user points copy history strictly before the
+     * question (client prefills it), assistant points copy through the
+     * answer. Returns the new session id plus the degradation flag.
+     */
+    async fork(sessionId: string, messageId: string, options: { title?: string; signal?: AbortSignal } = {}): Promise<{ sessionId: string; degraded: boolean; reason?: string }> {
+      if (sessionId.trim() === '') throw new Error('sessionId must not be empty');
+      if (messageId.trim() === '') throw new Error('messageId must not be empty');
+      const data = (await request({
+        method: 'POST',
+        path: `${sessionPath(sessionId)}/fork`,
+        body: { message_id: messageId, ...(options.title ? { title: options.title } : {}) },
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      })) as Record<string, unknown>;
+      const forkData = data?.data as Record<string, unknown> | undefined;
+      const forkSessionId = typeof forkData?.session_id === 'string' ? forkData.session_id : '';
+      if (!forkSessionId) throw new Error('/sessions/:id/fork response is missing session_id');
+      return {
+        sessionId: forkSessionId,
+        degraded: forkData?.degraded === true,
+        reason: typeof forkData?.reason === 'string' && forkData.reason !== '' ? forkData.reason : undefined,
+      };
+    },
     async update(sessionId: string, input: ChatSessionUpdateInput, signal?: AbortSignal): Promise<ChatSession> {
       if (typeof input.title !== 'string' || input.title.trim() === '') throw new Error('title must not be empty');
       return parseChatSessionResponse(await request({ method: 'PUT', path: sessionPath(sessionId), body: input, ...(signal === undefined ? {} : { signal }) }));

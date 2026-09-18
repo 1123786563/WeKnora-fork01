@@ -50,6 +50,10 @@ func shellExecTestContext() context.Context {
 }
 
 func TestShellExecAllowsWorkDirOutsideWorkspace(t *testing.T) {
+	// Upstream contract since the file-access/artifact split: an ordinary
+	// session's work_dir may select any directory inside the session sandbox
+	// (the container is the isolation boundary); only install mode narrows
+	// the roots.
 	executor := &fakeShellExecutor{}
 	tool := NewShellExecTool(executor, nil)
 

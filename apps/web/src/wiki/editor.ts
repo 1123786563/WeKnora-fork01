@@ -64,6 +64,36 @@ export async function saveWikiPage(
   }
 }
 
+type WikiReadApi = { get: (knowledgeBaseId: string, slug: string) => Promise<WikiPage> };
+
+/**
+ * Vue WikiBrowser.vue `overwriteSavePage`: resolve a 409 edit conflict by
+ * fetching the server's current page and re-saving the local draft on top of
+ * its latest version (last write wins; the losing version stays in revision
+ * history, so nothing is destroyed).
+ */
+export async function overwriteWikiPage(
+  api: WikiReadApi & WikiWriteApi,
+  knowledgeBaseId: string,
+  slug: string,
+  draft: { title: string; content: string; summary: string },
+  copy: WikiSaveCopy = defaultCopy,
+): Promise<WikiSaveState> {
+  const validationError = validateWikiPageInput(draft, copy);
+  if (validationError) return { status: 'error', message: validationError };
+  try {
+    const latest = await api.get(knowledgeBaseId, slug);
+    return {
+      status: 'saved',
+      page: await api.update(knowledgeBaseId, slug, { ...draft, version: latest.version }),
+    };
+  } catch {
+    // Vue surfaces the localized editSaveFailed copy here regardless of the
+    // underlying error (the raw error is only logged).
+    return { status: 'error', message: copy.saveFailed };
+  }
+}
+
 export function wikiSaveState(error: unknown): Exclude<WikiSaveState, { status: 'saved' }> {
   return { status: 'error', message: error instanceof Error ? error.message : 'Unable to save Wiki page' };
 }

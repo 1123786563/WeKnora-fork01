@@ -105,6 +105,8 @@
       "@weknora/views/chat/chat-copy": ["../../packages/views/src/chat/chat-copy.ts"],
       "@weknora/views/chat/composer": ["../../packages/views/src/chat/composer.tsx"],
       "@weknora/views/chat/markdown": ["../../packages/views/src/chat/markdown.ts"],
+      "@weknora/views/chat/live-thinking": ["../../packages/views/src/chat/live-thinking.ts"],
+      "@weknora/views/chat/fork-point": ["../../packages/views/src/chat/fork-point.ts"],
       "@weknora/views/chat/mermaid": ["../../packages/views/src/chat/mermaid.ts"],
       "@weknora/views/embed/bridge": ["../../packages/views/src/embed/bridge.ts"],
       "@weknora/views/guides/contextual-guides": ["../../packages/views/src/guides/contextual-guides.ts"],

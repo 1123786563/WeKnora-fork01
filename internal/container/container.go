@@ -36,6 +36,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v8"
@@ -54,12 +55,16 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/database"
 	"github.com/Tencent/WeKnora/internal/datasource"
+	confluenceConnector "github.com/Tencent/WeKnora/internal/datasource/connector/confluence"
+	dingtalkConnector "github.com/Tencent/WeKnora/internal/datasource/connector/dingtalk"
 	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/core"
 	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/drive"
 	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/wiki"
@@ -90,6 +95,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/sandbox"
@@ -99,6 +105,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
+	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/tencent/vectordatabase-sdk-go/tcvectordb"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/auth"
@@ -164,13 +171,40 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewAgentRunStore))
+	// W26: immutable artifact version rows live in the same business database
+	// scope as the run store so imports and downloads share one fence.
+	must(container.Provide(repository.NewArtifactVersionStore))
+	must(container.Provide(repository.NewNotificationStore))
+	must(container.Provide(repository.NewNotificationProviderStateStore))
+	must(container.Provide(workbenchservice.NewNotificationProjector))
+	must(container.Provide(workbenchservice.NewNotificationWorker))
+	must(container.Provide(newMobileNotificationProvider))
+	must(container.Provide(newMobileNotificationDeliveryWorker))
 	must(container.Provide(repository.NewMobileExchangeStore))
+	// W30: voice session rows (ownership, provider mapping, admission
+	// verdict, settled usage) share the same business database scope.
+	must(container.Provide(repository.NewVoiceSessionStore))
+	must(container.Provide(newMobileVoiceHandler))
 	// The dispatch intent/receipt log is a first-class dependency of the
 	// durable worker. Keep it in the same database scope as AgentRunStore so
 	// provider starts can never bypass the W20 fence.
 	must(container.Provide(repository.NewExecutionDispatchStore))
 	must(container.Provide(repository.NewExecutionObservationStore))
 	must(container.Provide(newPaseoRemoteProvider))
+	// Commercial execution-gate chain (gateway → gate → remote usage). These
+	// providers must precede the craft Invoke below: dig resolves lazily at
+	// Invoke time, so any provider registered after Invoke(registerCraftHTTPHandlers)
+	// leaves newAgentRuntime's *RemoteUsageService missing and panics boot.
+	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	// U05 execution gate: the billable outbound boundary (Begin reserves and
+	// persists dispatched intent before dispatch, Finish settles trusted
+	// usage). Registered only — no Invoke: arming an engine turn with it is
+	// an explicit SetCommercialGate by the commercial request path, so
+	// non-commercial behavior is unchanged.
+	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
+	// W24: all remote usage settlement is constructed behind the trusted
+	// gateway identity seam; callers never inject a client-reported fact.
+	must(container.Provide(workbenchservice.NewRemoteUsageServiceWithDB))
 	// Install the durable resource guard before any Docker client is resolved;
 	// idle cleanup must fail closed when the lookup is unavailable.
 	must(container.Provide(service.NewGormAgentRunResourceRepository))
@@ -186,8 +220,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewAgentRunSnapshotRepository))
 	must(container.Provide(repository.NewExecutionTargetStore))
 	must(container.Provide(repository.NewExecutionTargetIdentityProvider))
+	must(container.Provide(NewMobileDeviceStore))
+	must(container.Provide(NewMobileDeviceHandler))
 	must(container.Provide(NewWorkbenchReadHandler))
 	must(container.Provide(NewWorkbenchArtifactHandler))
+	must(container.Provide(repository.NewWorkbenchListStore))
+	must(container.Provide(NewWorkbenchListHandler))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))
 	must(container.Provide(NewWorkbenchInteractionStore))
@@ -388,6 +426,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// above panicked at boot because those providers appear later in the
 	// registration order (first observed booting the real server in W06).
 
+	// Local browser integration (A13): one gateway manager per process,
+	// validated at DI time and closed with the resource cleaner. The manager
+	// is disabled (zero-value Enabled) unless BROWSERSKILL_BINARY is set, so
+	// deployments without the integration boot unchanged.
+	must(container.Provide(func(cleaner interfaces.ResourceCleaner, db *gorm.DB) (*browserskill.Manager, error) {
+		manager := browserskill.NewManager(browserskill.NewStore(db))
+		if err := manager.ValidateConfiguration(); err != nil {
+			return nil, err
+		}
+		cleaner.RegisterWithName("BrowserSkill", func() error { manager.Close(); return nil })
+		return manager, nil
+	}))
+
 	must(container.Provide(service.NewAgentService))
 
 	// Session service (depends on agent service)
@@ -488,6 +539,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Craft handler registration now that its full dependency set exists
 	// (W03's eager Invoke position is moved here — see the craft block above).
 	must(container.Invoke(registerCraftHTTPHandlers))
+	// W26: the versioned artifact download entry mounts on the sessions route
+	// table through the package-level registration (routes_chat.go).
+	must(container.Invoke(registerArtifactVersionHTTPHandlers))
+	// W27: the isolated artifact preview handler mounts its issue route on
+	// the sessions table (routes_chat.go) and its redemption route before
+	// the global Auth middleware (router.go), both via the package-level
+	// registration.
+	must(container.Invoke(registerArtifactPreviewHTTPHandlers))
 	// C02: interaction decide surface + outbox redelivery sweep, plus the
 	// post-construction registrar wiring that breaks the provider cycle
 	// (see wireCraftInteractionRegistrar).
@@ -501,6 +560,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
+	// W33 cleanup worker uses the repository-owned observation source. It
+	// remains fail-closed for W26 file/blob/backup deletion until that adapter
+	// is registered.
+	must(container.Invoke(func(store *repository.AgentRunStore, files interfaces.FileService, cleaner interfaces.ResourceCleaner) {
+		store.SetCleanupFilePurger(repository.NewFileCleanupPurger(store.DB(), files))
+		StartExecutionCleanupSweep(store, cleaner)
+	}))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs
@@ -520,6 +586,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
 	must(container.Provide(handler.NewTagHandler))
+	// Session fork (A11) + pinned session sandbox (A17): the runner, ID
+	// lookup, and fork snapshot port resolve the session's pinned manager at
+	// request time; a nil pin keeps sandbox-carrying forks degrading instead
+	// of failing (message-only forks still copy history + lineage).
+	must(container.Provide(newPinnedSessionSandbox))
+	must(container.Provide(newSessionForkService))
+	must(container.Provide(newWorkspaceCheckpointer))
+	must(container.Provide(newSandboxIDLookup))
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
@@ -579,15 +653,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Commercial fulfillment: the V03-selected gateway (family official_v3;
 	// unconfigured env stays legal as blocked-env) and the background worker
 	// that drains paid orders' fulfillment outbox events into benefits.
-	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	// (The gateway/execution-gate/remote-usage providers this drains through
+	// are registered earlier, before the craft Invoke that first resolves
+	// newAgentRuntime.)
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
-	// U05 execution gate: the billable outbound boundary (Begin reserves and
-	// persists dispatched intent before dispatch, Finish settles trusted
-	// usage). Registered only — no Invoke: arming an engine turn with it is
-	// an explicit SetCommercialGate by the commercial request path, so
-	// non-commercial behavior is unchanged.
-	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
 	// A03 action approval pipeline: the persisted action store and the
 	// dispatch-time credential guard (A02) are always constructed; the U05
 	// execution gate above arms budget reservation. The provider-specific
@@ -699,6 +769,52 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+// newMobileNotificationProvider keeps push delivery behind a single
+// deployment-configured HTTP gateway. An empty endpoint is valid during local
+// development: the worker remains durable and fail-closed until the gateway
+// is configured.
+func newMobileNotificationProvider(cfg *config.Config, devices *repository.MobileDeviceStore) workbenchservice.NotificationProvider {
+	endpoint := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL"))
+	providerKind := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER"))
+	accessToken := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN"))
+	if endpoint == "" && cfg != nil && cfg.MobileNotification != nil {
+		endpoint = strings.TrimSpace(cfg.MobileNotification.ProviderURL)
+	}
+	if providerKind == "" && cfg != nil && cfg.MobileNotification != nil {
+		providerKind = strings.TrimSpace(cfg.MobileNotification.Provider)
+		if accessToken == "" {
+			accessToken = strings.TrimSpace(cfg.MobileNotification.AccessToken)
+		}
+	}
+	if strings.EqualFold(providerKind, "expo") {
+		return workbenchservice.NewPushNotificationProvider(pushnotification.NewExpoProvider(endpoint, accessToken), func(ctx context.Context, d repository.NotificationDelivery) (string, error) {
+			if devices == nil {
+				return "", errors.New("mobile_device_store_unavailable")
+			}
+			registration, err := devices.GetActiveForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID)
+			if err != nil {
+				return "", err
+			}
+			key := secutils.GetAESKey()
+			if len(key) != 32 {
+				return "", errors.New("mobile_device_token_decryption_not_configured")
+			}
+			return secutils.DecryptAESGCM(registration.TokenCiphertext, key)
+		})
+	}
+	if providerKind != "" && !strings.EqualFold(providerKind, "gateway") && !strings.EqualFold(providerKind, "http") {
+		return workbenchservice.NewHTTPNotificationProvider("")
+	}
+	// The gateway is the safe default and intentionally receives only the
+	// scoped device identity. Unknown modes fail closed rather than silently
+	// selecting a different vendor.
+	return workbenchservice.NewHTTPNotificationProvider(endpoint)
+}
+
+func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, provider workbenchservice.NotificationProvider, devices *repository.MobileDeviceStore, health *repository.NotificationProviderStateStore) *workbenchservice.NotificationDeliveryWorker {
+	return workbenchservice.NewNotificationDeliveryWorkerWithHealth(store, provider, "mobile-notification-delivery", devices, health, "mobile")
 }
 
 // registerChatLocalImageResolver wires the chat package's LocalImageResolver
@@ -1929,9 +2045,14 @@ func initConnectorRegistry() (*datasource.ConnectorRegistry, error) {
 	if err := registry.Register(gitlabConnector.NewConnector()); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("register gitlab connector: %w", err))
 	}
+	if err := registry.Register(confluenceConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register confluence connector: %w", err))
+	}
+	if err := registry.Register(dingtalkConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register dingtalk connector: %w", err))
+	}
 
 	// Future connectors will be registered here:
-	// if err := registry.Register(confluenceConnector.NewConnector()); err != nil { ... }
 	// if err := registry.Register(githubConnector.NewConnector()); err != nil { ... }
 
 	if errs != nil {
@@ -2115,6 +2236,48 @@ func newCraftPreviewService(
 	})
 }
 
+// newMobileVoiceHandler assembles the W30 mobile voice surface (fail-closed
+// like the W26 craft precedent): the managed provider's server-held wiring
+// (long-lived key, token/transcribe endpoints, media-proxy signing key) and
+// the charged-voice price version come from the WEKNORA_VOICE_* environment
+// references. None of it is required for boot — an unconfigured provider
+// answers ErrProviderUnavailable on call and an unpriced voice plane refuses
+// charged sessions, so the endpoints mount once and deny safely until the
+// deployment configures them. The provider's long-lived key never leaves
+// this process: token minting and transcription proxying both happen here.
+func newMobileVoiceHandler(
+	db *gorm.DB,
+	gate domain.ExecutionGate,
+) (*handler.MobileVoiceHandler, error) {
+	provider, err := voice.NewManagedProvider(voice.Config{
+		LongLivedAPIKey:    strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_API_KEY")),
+		Model:              strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_MODEL")),
+		TokenEndpoint:      strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_TOKEN_URL")),
+		TranscribeEndpoint: strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROVIDER_TRANSCRIBE_URL")),
+		SigningKey:         strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PROXY_SIGNING_KEY")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// The charged-voice admission source: the price version in force plus
+	// its audio_seconds rate. The rate resolver itself belongs to the
+	// commercial pricing administration (blocked-env); until one is wired
+	// the admission fails closed — charged voice is refused, never priced
+	// through a text dimension.
+	rates := &handler.PriceVersionVoiceAdmission{
+		Version: strings.TrimSpace(os.Getenv("WEKNORA_VOICE_PRICE_VERSION")),
+	}
+	return handler.NewMobileVoiceHandler(
+		repository.NewVoiceSessionStore(db),
+		repository.NewVoiceTranscriptionStore(db),
+		provider,
+		provider,
+		gate,
+		rates,
+		repocommercial.NewBudgetStore(db),
+	)
+}
+
 // newCraftKnowledgeService assembles C01's knowledge material build onto
 // the EXISTING ACL entrances — BindCraftKnowledgeAccess over the real
 // knowledgeService.GetKnowledgeBatchWithSharedAccess and
@@ -2201,4 +2364,34 @@ func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *servi
 	if snapshots != nil {
 		session.RegisterCraftSnapshotHandler(snapshots)
 	}
+}
+
+// registerArtifactVersionHTTPHandlers installs the W26 immutable artifact
+// version download handler for route mounting. The store scopes every read
+// to (tenant, session, ready version); routes_chat.go mounts the route only
+// when this registration ran (fail-closed).
+func registerArtifactVersionHTTPHandlers(
+	sessions interfaces.SessionService,
+	tenants interfaces.TenantService,
+	files interfaces.FileService,
+	storage interfaces.StorageBackendResolver,
+	versions *repository.ArtifactVersionStore,
+) {
+	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions))
+}
+
+// registerArtifactPreviewHTTPHandlers installs the W27 isolated artifact
+// preview handler for route mounting. Issuance re-runs the W26
+// (tenant, session, ready-version) authorization; the preview origin itself
+// is ticket-only. The version store is the same provider the versioned
+// downloads consume; the isolated origin comes from the handler's own env
+// configuration and stays disabled (fail-closed) when unset.
+func registerArtifactPreviewHTTPHandlers(
+	sessions interfaces.SessionService,
+	tenants interfaces.TenantService,
+	files interfaces.FileService,
+	storage interfaces.StorageBackendResolver,
+	versions *repository.ArtifactVersionStore,
+) {
+	handler.RegisterArtifactPreviewHandler(handler.NewArtifactPreviewHandler(sessions, tenants, files, storage, versions))
 }

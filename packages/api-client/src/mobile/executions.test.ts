@@ -146,3 +146,44 @@ test('parses the exact W04 start and W05 command acknowledgement fixtures', asyn
   assert.deepEqual(await api.start(input), { run_id: 'run-1', request_id: 'req-1', status: 'queued' });
   assert.deepEqual(await api.command('run-1', { action: 'cancel', expected_revision: 0 }), { run_id: 'run-1', action: 'cancel' });
 });
+
+test('list encodes facets without tenant/owner and parses the page', async () => {
+  const requests: ClientRequest[] = [];
+  const page = {
+    items: [{
+      run_id: 'run-1', session_id: 's-1', agent_id: 'a&tenant_id=other', target_id: 'platform',
+      workspace_ref: 'ws', space_id: 'sp', status: 'running', created_at: '2026-09-12T10:00:00Z', updated_at: '2026-09-12T10:00:01Z',
+    }],
+    next_cursor: 'cur-1',
+  };
+  const api = createExecutionsApi(async (input) => {
+    requests.push(input);
+    return { success: true, data: page };
+  });
+  const signal = new AbortController().signal;
+  const result = await api.list({ status: 'running', agent_id: 'a&tenant_id=other', cursor: 'cur-0', limit: 30 }, signal);
+  assert.equal(requests[0].method, 'GET');
+  assert.equal(requests[0].path, '/api/v1/workbench/executions?status=running&agent_id=a%26tenant_id%3Dother&cursor=cur-0&limit=30');
+  assert.equal(requests[0].signal, signal);
+  assert.deepEqual(result, {
+    items: [{
+      run_id: 'run-1', session_id: 's-1', agent_id: 'a&tenant_id=other', target_id: 'platform',
+      workspace_ref: 'ws', space_id: 'sp', status: 'running', created_at: '2026-09-12T10:00:00Z', updated_at: '2026-09-12T10:00:01Z',
+    }],
+    next_cursor: 'cur-1',
+  });
+
+  const emptyApi = createExecutionsApi(respond({ items: [] }));
+  assert.deepEqual(await emptyApi.list(), { items: [] });
+});
+
+test('list rejects malformed pages instead of trusting them', async () => {
+  const badStatus = createExecutionsApi(respond({ items: [{ run_id: 'r', session_id: 's', status: 'jogging', created_at: 'c', updated_at: 'u' }] }));
+  await assert.rejects(badStatus.list(), /status/);
+  const missingRun = createExecutionsApi(respond({ items: [{ session_id: 's', status: 'running', created_at: 'c', updated_at: 'u' }] }));
+  await assert.rejects(missingRun.list(), /run_id/);
+  const noItems = createExecutionsApi(respond({ next_cursor: 'c' }));
+  await assert.rejects(noItems.list(), /items/);
+  const badCursor = createExecutionsApi(respond({ items: [], next_cursor: 7 }));
+  await assert.rejects(badCursor.list(), /next_cursor/);
+});

@@ -4,7 +4,10 @@ import { consumeAuthState, validateAuthReturn } from '@weknora/domain/mobile';
  * Deep-link redirect the Go server returns to after the OIDC browser session.
  * Must stay in sync with the `scheme` in app.config.js and the auth-return route.
  */
-export const AUTH_RETURN_REDIRECT = 'weknora://auth-return';
+// The backend signs this exact marker into the OIDC state and uses it for
+// the final one-time-code handoff after its provider callback. Keep this
+// separate from the provider redirect URI (which is always the server URL).
+export const AUTH_RETURN_REDIRECT = 'weknora://oidc';
 
 export type AuthReturnParams = Record<string, string | string[] | undefined>;
 

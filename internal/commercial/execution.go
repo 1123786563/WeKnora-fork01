@@ -15,6 +15,10 @@ const (
 	ServiceRerank    = "rerank"
 	ServiceSandbox   = "sandbox"
 	ServiceConnector = "connector"
+	// ServiceVoice is the W30 voice plane: realtime voice sessions and
+	// server-proxied transcription. It bills through its own audio
+	// dimension — never through the text/model dimensions.
+	ServiceVoice = "voice"
 )
 
 // Per-service settlement dimensions. The model/parsing/sandbox names reuse
@@ -26,6 +30,14 @@ const (
 	DimensionConnector = "connector_calls"
 	DimensionOutput    = "output_tokens"
 	DimensionDuration  = "duration_seconds"
+	// DimensionAudioSeconds gates the voice service: provider-reported
+	// seconds of charged audio (realtime session time, transcribed audio
+	// duration). A voice fact without a positive audio quantity cannot
+	// settle on any text dimension instead.
+	DimensionAudioSeconds = "audio_seconds"
+	// DimensionImageInputs meters image inputs of a voice session (a
+	// multimodal capture billed per image alongside its audio seconds).
+	DimensionImageInputs = "image_inputs"
 )
 
 var (
@@ -68,6 +80,8 @@ func ServiceDimension(service string) (string, error) {
 		return DimensionSandbox, nil
 	case ServiceConnector:
 		return DimensionConnector, nil
+	case ServiceVoice:
+		return DimensionAudioSeconds, nil
 	}
 	return "", ErrUnknownService
 }

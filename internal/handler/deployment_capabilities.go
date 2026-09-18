@@ -30,10 +30,28 @@ type DeploymentCapability struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
+// The protocol compatibility window this server release advertises on
+// /system/capabilities (W36/W37). The constants MUST stay aligned with
+// packages/domain/src/mobile/compatibility.ts SERVER_PROTOCOL_WINDOW
+// {minimum: 2, maximum: 3}; deployments override via config
+// (workbench.protocol_minimum/protocol_maximum,
+// WEKNORA_WORKBENCH_PROTOCOL_MINIMUM/_MAXIMUM). Expanding the window keeps
+// the last released app working; contracting it is a deliberate release
+// decision taken only after old-app field compatibility has been validated.
+const (
+	DefaultProtocolMinimum = 2
+	DefaultProtocolMaximum = 3
+)
+
 // DeploymentCapabilitiesData is returned by GET /system/capabilities.
 type DeploymentCapabilitiesData struct {
 	Edition      string                          `json:"edition"`
 	Capabilities map[string]DeploymentCapability `json:"capabilities"`
+	// W37 carry-forward: protocol window the mobile app classifies itself
+	// against (clientGate in packages/domain/src/mobile/compatibility.ts).
+	// Unknown/absent window on the client side means NO control commands.
+	ProtocolMinimum int `json:"protocol_minimum"`
+	ProtocolMaximum int `json:"protocol_maximum"`
 }
 
 // DeploymentFeatureAvailability mirrors injected backend handlers/services.
@@ -93,7 +111,22 @@ func BuildDeploymentCapabilities(
 			"settings.sandbox":        supportedDeploymentCapability(available.Sandbox),
 			"settings.sandbox.docker": sandboxDocker,
 		},
+		ProtocolMinimum: DefaultProtocolMinimum,
+		ProtocolMaximum: DefaultProtocolMaximum,
 	}
+}
+
+// WithProtocolWindow applies a config-resolved window to the snapshot. An
+// invalid window (minimum < 1 or maximum < minimum) keeps the last valid
+// window: the server never advertises a window it cannot serve, and a bad
+// override degrades to the compiled defaults rather than to nonsense.
+func (d DeploymentCapabilitiesData) WithProtocolWindow(minimum, maximum int) DeploymentCapabilitiesData {
+	if minimum < 1 || maximum < minimum {
+		return d
+	}
+	d.ProtocolMinimum = minimum
+	d.ProtocolMaximum = maximum
+	return d
 }
 
 // BindDeploymentCapabilities stores the startup snapshot used by GetDeploymentCapabilities.
@@ -109,10 +142,18 @@ func (h *SystemHandler) BindDeploymentCapabilities(data DeploymentCapabilitiesDa
 // @Success      200  {object}  map[string]interface{}  "标准 code/msg/data 包装，data 为 DeploymentCapabilitiesData"
 // @Router       /system/capabilities [get]
 func (h *SystemHandler) GetDeploymentCapabilities(c *gin.Context) {
+	data := h.deploymentCapabilities
+	// Zero-valued snapshots (hand-built in partial test wiring) still
+	// advertise the compiled defaults; the server never broadcasts an
+	// unservable window.
+	if data.ProtocolMinimum < 1 || data.ProtocolMaximum < data.ProtocolMinimum {
+		data.ProtocolMinimum = DefaultProtocolMinimum
+		data.ProtocolMaximum = DefaultProtocolMaximum
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"msg":  "success",
-		"data": overlayLiveDockerSandboxCapability(h.deploymentCapabilities),
+		"data": overlayLiveDockerSandboxCapability(data),
 	})
 }
 

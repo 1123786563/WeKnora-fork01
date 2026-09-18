@@ -5,10 +5,12 @@ import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
-import { useColorScheme } from 'react-native';
+import { Platform, Text, useColorScheme } from 'react-native';
 import { createMobileHost, MobileHostProvider, useMobileHost, useSetMobileHost } from '@/weknora/platform/host';
 import { ProductAuthProvider, useProductAuth } from '@/weknora/auth/session';
 import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
+import { hasNativeExecutionStorageProvider } from '@/weknora/platform/native-execution-storage';
+import { NotificationRouter } from '@/weknora/notifications/NotificationRouter';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -35,7 +37,7 @@ function ProductHostGate() {
   const isServerEntry = segments.some((segment) => segment === 'server');
 
   const isLoginEntry = segments.some((segment) => segment === 'login');
-  const isAuthEntry = isLoginEntry || segments.some((segment) => segment === 'auth-return' || segment === 'invitation');
+  const isAuthEntry = isLoginEntry || segments.some((segment) => segment === 'auth-return' || segment === 'oidc' || segment === 'invitation');
   if (!host && !isServerEntry) {
     return <Redirect href="/(app)/server" />;
   }
@@ -57,6 +59,7 @@ function ProductHostBootstrap() {
   const current = useMobileHost();
   const setHost = useSetMobileHost();
   const [restoring, setRestoring] = React.useState(!current);
+  const [storageReady] = React.useState(Platform.OS === 'web' || hasNativeExecutionStorageProvider());
   React.useEffect(() => {
     if (current) { setRestoring(false); return; }
     nativeOriginStorage.read().then((origin) => {
@@ -65,7 +68,8 @@ function ProductHostBootstrap() {
     }).finally(() => setRestoring(false));
   }, [current, setHost]);
   if (restoring) return null;
-  return <ProductAuthProvider><ProductHostGate /></ProductAuthProvider>;
+  if (!storageReady && Platform.OS !== 'web') return <Text accessibilityRole="alert">Native encrypted execution storage is unavailable on this build.</Text>;
+  return <ProductAuthProvider><NotificationRouter><ProductHostGate /></NotificationRouter></ProductAuthProvider>;
 }
 
 /** Native shell boundary. Product identity and network clients are connected explicitly. */

@@ -87,13 +87,21 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	// Check if file already exists
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 	logger.Infof(ctx, "Checking if file exists, tenant ID: %d", tenantID)
-	exists, existingKnowledge, err := s.repo.CheckKnowledgeExists(ctx, tenantID, kbID, &types.KnowledgeCheckParams{
+	checkParams := &types.KnowledgeCheckParams{
 		Type:     "file",
 		FileName: fileName,
 		FileType: getFileType(fileName),
 		FileSize: file.Size,
 		FileHash: hash,
-	})
+	}
+	// Same-bytes files from different source identities are still distinct
+	// documents (GitLab README templates, copied Confluence pages). Scope the
+	// hash check to datasource_id + external_id so retries stay idempotent.
+	if usesSourceIdentityDuplicateCheck(channel) {
+		checkParams.DataSourceID = metadata["datasource_id"]
+		checkParams.ExternalID = metadata["external_id"]
+	}
+	exists, existingKnowledge, err := s.repo.CheckKnowledgeExists(ctx, tenantID, kbID, checkParams)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to check knowledge existence: %v", err)
 		return nil, err
@@ -1153,8 +1161,19 @@ func (s *knowledgeService) markKnowledgeEnqueueFailed(ctx context.Context, knowl
 	}
 }
 
-func ensureManualFileName(title string) string {
-	if title == "" {
+// usesSourceIdentityDuplicateCheck reports whether a channel's connectors emit
+// same-bytes files at distinct source identities, so the duplicate check must
+// be scoped to datasource_id + external_id instead of the raw hash.
+func usesSourceIdentityDuplicateCheck(channel string) bool {
+	switch channel {
+	case types.ConnectorTypeGitLab, types.ChannelConfluence:
+		return true
+	default:
+		return false
+	}
+}
+
+func ensureManualFileName(title string) string {	if title == "" {
 		return fmt.Sprintf("manual-%s%s", time.Now().Format("20060102-150405"), manualFileExtension)
 	}
 	trimmed := strings.TrimSpace(title)

@@ -1,3 +1,4 @@
+import { createProductSessionNavigation } from './productSessionNavigation';
 function getObjectValue(value: unknown, key: string): unknown {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return null;
@@ -20,7 +21,7 @@ function normalizeNotificationData(data: unknown): unknown {
     return data;
 }
 
-function getSessionRouteFromUrl(url: string): `/session/${string}` | null {
+function getSessionIdFromUrl(url: string): string | null {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) {
         return null;
@@ -45,7 +46,28 @@ function getSessionRouteFromUrl(url: string): `/session/${string}` | null {
         return null;
     }
 
-    return `/session/${encodeURIComponent(trimmedSessionId)}`;
+    return trimmedSessionId;
+}
+
+function getProductRoute(sessionId: string, data: Record<string, unknown>): `/session/${string}` | null {
+    const product = getObjectValue(data, 'productSession');
+    if (!product || typeof product !== 'object' || Array.isArray(product)) return null;
+    const value = product as Record<string, unknown>;
+    try {
+        const navigation = createProductSessionNavigation({
+            sessionId,
+            spaceId: value.spaceId as string,
+            agentId: value.agentId as string,
+            targetId: value.targetId as string,
+            workspaceRef: value.workspaceRef as string,
+            userId: value.resourceUserId as string,
+            tenantId: value.resourceTenantId as string,
+            runId: value.runId as string,
+        });
+        return `/session/${encodeURIComponent(sessionId)}?${new URLSearchParams(Object.entries(navigation)).toString()}` as `/session/${string}`;
+    } catch {
+        return null;
+    }
 }
 
 export function getSessionRouteFromNotificationData(data: unknown): `/session/${string}` | null {
@@ -56,10 +78,8 @@ export function getSessionRouteFromNotificationData(data: unknown): `/session/${
 
     const url = getObjectValue(normalizedData, 'url');
     if (typeof url === 'string') {
-        const routeFromUrl = getSessionRouteFromUrl(url);
-        if (routeFromUrl) {
-            return routeFromUrl;
-        }
+        const sessionId = getSessionIdFromUrl(url);
+        if (sessionId) return getProductRoute(sessionId, normalizedData as Record<string, unknown>);
     }
 
     const sessionId = getObjectValue(normalizedData, 'sessionId');
@@ -72,7 +92,7 @@ export function getSessionRouteFromNotificationData(data: unknown): `/session/${
         return null;
     }
 
-    return `/session/${encodeURIComponent(trimmedSessionId)}`;
+    return getProductRoute(trimmedSessionId, normalizedData as Record<string, unknown>);
 }
 
 export function getSessionRouteFromNotificationResponse(response: unknown): `/session/${string}` | null {

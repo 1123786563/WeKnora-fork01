@@ -110,6 +110,10 @@ type SessionBoundManagerConfig struct {
 	// Set by the per-tenant resolver, which builds a manager per request.
 	// See NewSessionBoundManager.
 	SkipHealthProbe bool
+
+	// Bootstrapper customises the first sandbox create of individual sessions
+	// (session fork). Optional: nil is the ordinary path.
+	Bootstrapper SessionBootstrapper
 }
 
 // NewSessionBoundManager wires the manager with an explicit RemoteSandboxClient
@@ -174,6 +178,11 @@ func NewSessionBoundManager(deps SessionBoundManagerConfig) (*SessionBoundManage
 
 	client := wrapLangfuseRemoteClient(deps.Client)
 
+	bootstrapper := deps.Bootstrapper
+	if withClient, ok := bootstrapper.(SessionBootstrapperWithClient); ok {
+		bootstrapper = withClient.WithClient(client)
+	}
+
 	lifecycle, err := newRemoteSessionLifecycle(
 		client,
 		deps.Store,
@@ -181,6 +190,7 @@ func NewSessionBoundManager(deps SessionBoundManagerConfig) (*SessionBoundManage
 		createRequest,
 		sessionLifecycleCleanupTimeout,
 		deps.ConfigID,
+		bootstrapper,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("session bound manager: %w", err)
@@ -449,6 +459,14 @@ func (m *SessionBoundManager) DeleteSnapshot(ctx context.Context, snapshotID str
 	return snapshots.DeleteSnapshot(ctx, snapshotID)
 }
 
+// DeleteForkSnapshot removes a fork snapshot. sessionID is accepted so the
+// method matches SessionForkSandboxPort; deletion is by snapshot ID.
+func (m *SessionBoundManager) DeleteForkSnapshot(
+	ctx context.Context, _ /* sessionID */, snapshotID string,
+) error {
+	return m.DeleteSnapshot(ctx, snapshotID)
+}
+
 // ListSnapshots forwards provider snapshot listing for audit and later cleanup
 // tasks.
 func (m *SessionBoundManager) ListSnapshots(
@@ -610,7 +628,7 @@ func (m *SessionBoundManager) ListSessionFiles(
 	if err != nil || !ok {
 		return nil, err
 	}
-	return m.listFilesRecursive(ctx, handle, dir)
+	return m.walkSessionFiles(ctx, handle, dir)
 }
 
 // StatSessionFile returns metadata for a single file without downloading
@@ -689,6 +707,11 @@ func (m *SessionBoundManager) WriteSessionFile(
 // flags select the installer working-directory allowlist and bootstrap. Both
 // ordinary and install calls currently execute as root.
 type ShellExecOptions struct {
+	// ExpectedSandboxID makes maintenance lookup-only: never allocate/rebuild,
+	// and fail if the binding changed since the caller selected this sandbox.
+	ExpectedSandboxID string
+	OnOutput          func(stream string, chunk []byte)
+
 	WorkDir string
 	Timeout time.Duration
 	Env     map[string]string
@@ -703,6 +726,10 @@ type ShellExecOptions struct {
 	// AllowSkillsRoot separately permits a work_dir under the skills image root;
 	// it is not a filesystem boundary for commands running as root.
 	AsRoot bool
+	// SkipWorkspacePrep omits prepareSessionDirs. Desktop maintenance and
+	// workspace checkpoints operate on an existing layout. Never set this from a model-authored tool
+	// such as shell_exec — agents still need the workspace contract.
+	SkipWorkspacePrep bool
 }
 
 // ExecShellCommand runs a shell one-liner inside the session's persistent
@@ -732,17 +759,43 @@ func (m *SessionBoundManager) ExecShellCommandWithOptions(
 	command string,
 	opts ShellExecOptions,
 ) (*ExecuteResult, error) {
+	result, _, err := m.execShellCommandWithOutputSnapshot(ctx, sessionID, command, opts, "")
+	return result, err
+}
+
+// ShellOutputSnapshot contains two complete metadata listings of the same sandbox.
+// A nil snapshot means inspection failed; an empty snapshot means no output files.
+type ShellOutputSnapshot struct {
+	Before []RemoteDirEntry
+	After  []RemoteDirEntry
+}
+
+// ExecShellCommandWithOutputSnapshot resolves the session once for the command
+// and both artifact probes. Handles never escape this call or survive a rebuild.
+func (m *SessionBoundManager) ExecShellCommandWithOutputSnapshot(
+	ctx context.Context, sessionID, command string, opts ShellExecOptions, outputDir string,
+) (*ExecuteResult, *ShellOutputSnapshot, error) {
+	clean, ok := ValidatedSessionOutputDir(outputDir)
+	if !ok {
+		return nil, nil, errors.New("sandbox: invalid output directory")
+	}
+	return m.execShellCommandWithOutputSnapshot(ctx, sessionID, command, opts, clean)
+}
+
+func (m *SessionBoundManager) execShellCommandWithOutputSnapshot(
+	ctx context.Context, sessionID, command string, opts ShellExecOptions, outputDir string,
+) (*ExecuteResult, *ShellOutputSnapshot, error) {
 	if err := m.requireRemoteBackend(); err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"sandbox: shell_exec requires the remote sandbox provider (current mode: %s)",
 			m.GetType(),
 		)
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, errors.New("sandbox: session_id required for ExecShellCommand")
+		return nil, nil, errors.New("sandbox: session_id required for ExecShellCommand")
 	}
 	if strings.TrimSpace(command) == "" {
-		return nil, errors.New("sandbox: command required for ExecShellCommand")
+		return nil, nil, errors.New("sandbox: command required for ExecShellCommand")
 	}
 	timeout := opts.Timeout
 	if timeout <= 0 {
@@ -758,37 +811,81 @@ func (m *SessionBoundManager) ExecShellCommandWithOptions(
 	}
 	workDir, err := cleanSessionWorkDir(workDir, opts.AllowSkillsRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	handle, err := m.resolveSession(ctx, sessionID)
-	if err != nil {
-		return nil, err
+	var handle RemoteSandboxHandle
+	if opts.ExpectedSandboxID != "" {
+		key, keyErr := m.sessionKey(ctx, sessionID)
+		if keyErr != nil {
+			return nil, nil, keyErr
+		}
+		exists, checkErr := m.checker.SessionExists(ctx, key)
+		if checkErr != nil {
+			return nil, nil, checkErr
+		}
+		if !exists {
+			return nil, nil, ErrSandboxSessionDeleted
+		}
+		var found bool
+		// Maintenance must recheck the binding even inside a file-operation scope.
+		handle, found, err = m.lookupSessionHandleForKey(ctx, key, opts.ExpectedSandboxID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !found || handle.ID() != opts.ExpectedSandboxID {
+			return nil, nil, errors.New("sandbox: bound sandbox changed before maintenance command")
+		}
+	} else {
+		handle, err = m.resolveSession(ctx, sessionID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	var snapshot *ShellOutputSnapshot
+	if outputDir != "" {
+		if before, err := m.snapshotOutputFiles(ctx, handle, outputDir); err == nil {
+			snapshot = &ShellOutputSnapshot{Before: before}
+		}
 	}
 	user := DefaultSandboxExecUser
 	if opts.AsRoot {
 		user = "root"
-		// Installation owns the skill directory and does not depend on a
-		// writable session workspace (which is cleaned before snapshotting).
-		if err := m.prepareSessionDirs(ctx, handle, user, workDir); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := m.prepareSessionDirs(ctx, handle, user, SessionInputRoot, SessionOutputRoot, workDir); err != nil {
-			return nil, err
+	}
+	if !opts.SkipWorkspacePrep {
+		if opts.AsRoot {
+			// Installation owns the skill directory and does not depend on a
+			// writable session workspace (which is cleaned before snapshotting).
+			if err := m.prepareSessionDirs(ctx, handle, user, workDir); err != nil {
+				return nil, nil, err
+			}
+		} else {
+			if err := m.prepareSessionDirs(
+				ctx, handle, user, SessionInputRoot, SessionOutputRoot, workDir,
+			); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 
 	start := time.Now()
 	execResult, execErr := m.client.Exec(ctx, handle, RemoteExecRequest{
-		Command: command,
-		Shell:   true,
-		Env:     opts.Env,
-		WorkDir: workDir,
-		User:    user,
-		Timeout: timeout,
+		Command:  command,
+		OnOutput: commandOutputCallback(ctx, opts.OnOutput),
+		Shell:    true,
+		Env:      opts.Env,
+		WorkDir:  workDir,
+		User:     user,
+		Timeout:  timeout,
 	})
 	duration := time.Since(start)
-	return remoteExecuteResult(execResult, execErr, duration), nil
+	if snapshot != nil {
+		if after, err := m.snapshotOutputFiles(ctx, handle, outputDir); err == nil {
+			snapshot.After = after
+		} else {
+			snapshot = nil
+		}
+	}
+	return remoteExecuteResult(execResult, execErr, duration), snapshot, nil
 }
 
 // SessionShellExecutor advertises the shell-execution capability while the
@@ -931,6 +1028,72 @@ func (m *SessionBoundManager) EndSessionTurn(ctx context.Context, sessionID stri
 		return err
 	}
 	return leaser.EndTurn(context.WithoutCancel(ctx), key)
+}
+
+// HasActiveTurn reports whether an agent turn currently holds the session's
+// sandbox lease. A store without turn-lease support is treated as not busy
+// so fork can proceed.
+func (m *SessionBoundManager) HasActiveTurn(ctx context.Context, sessionID string) (bool, error) {
+	if m == nil {
+		return false, nil
+	}
+	leaser, ok := m.bindings.(sessionTurnLeaseStore)
+	if !ok {
+		return false, nil
+	}
+	key, err := m.sessionKey(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	active, _, err := leaser.TurnState(ctx, key)
+	return active, err
+}
+
+// CreateForkSnapshot snapshots the session's already-bound sandbox. It never
+// provisions: an unbound session or a backend without snapshots returns an
+// error so fork can degrade.
+func (m *SessionBoundManager) CreateForkSnapshot(
+	ctx context.Context, sessionID, name string,
+) (string, error) {
+	if err := m.requireRemoteBackend(); err != nil {
+		return "", err
+	}
+	snapshots, ok := SnapshotManagerFrom(m.client)
+	if !ok || !m.client.Capabilities().SupportsSnapshots {
+		return "", errors.New("sandbox: remote provider does not support snapshots")
+	}
+	sandboxID, bound := m.BoundSandboxID(ctx, sessionID)
+	if !bound || sandboxID == "" {
+		return "", errors.New("sandbox: session has no bound sandbox")
+	}
+	ref, err := createForkOrProviderSnapshot(ctx, m.client, snapshots, sandboxID, name)
+	if err != nil {
+		return "", err
+	}
+	id := strings.TrimSpace(ref.ID)
+	if id == "" {
+		return "", errors.New("sandbox: snapshot returned empty id")
+	}
+	return id, nil
+}
+
+type forkSnapshotCreator interface {
+	CreateForkSnapshot(ctx context.Context, sandboxID, name string) (RemoteSnapshotRef, error)
+}
+
+// createForkOrProviderSnapshot uses a fork-specific commit when the client
+// has one (Docker's weknora-fork/ namespace). Cube and E2B have no extra
+// namespace, so they keep using CreateSnapshot.
+func createForkOrProviderSnapshot(
+	ctx context.Context,
+	client RemoteSandboxClient,
+	snapshots RemoteSnapshotManager,
+	sandboxID, name string,
+) (RemoteSnapshotRef, error) {
+	if creator, ok := client.(forkSnapshotCreator); ok {
+		return creator.CreateForkSnapshot(ctx, sandboxID, name)
+	}
+	return snapshots.CreateSnapshot(ctx, sandboxID, name)
 }
 
 var _ SessionTurnHolder = (*SessionBoundManager)(nil)
@@ -1086,6 +1249,33 @@ func (m *SessionBoundManager) peekBoundSandboxState(
 	return RemoteStateUnknown, true, nil
 }
 
+// BoundSandboxID returns the ID of the sandbox currently bound to sessionID.
+// It never provisions and never Connects: a session with no live binding
+// reports ok=false, which callers treat as "nothing to check point".
+func (m *SessionBoundManager) BoundSandboxID(
+	ctx context.Context, sessionID string,
+) (string, bool) {
+	if m.remoteDisabled() || strings.TrimSpace(sessionID) == "" {
+		return "", false
+	}
+	key, err := m.sessionKey(ctx, sessionID)
+	if err != nil {
+		return "", false
+	}
+	binding, err := m.bindings.Get(ctx, key)
+	if err != nil {
+		return "", false
+	}
+	if binding == nil || binding.Provider != m.client.Provider() {
+		return "", false
+	}
+	sandboxID := strings.TrimSpace(binding.SandboxID)
+	if sandboxID == "" {
+		return "", false
+	}
+	return sandboxID, true
+}
+
 // lookupSessionHandle reads the authoritative binding and, when one exists
 // with the current provider, connects to the remote sandbox without
 // allocating. Used by artifact / staging paths that must never provision.
@@ -1100,12 +1290,36 @@ func (m *SessionBoundManager) lookupSessionHandle(
 	if err != nil {
 		return nil, false, err
 	}
+	// Serialise scope lookups so even concurrent reads connect only once.
+	// The scope is owned by one operation, not by this long-lived manager.
+	if scope, ok := ctx.Value(sessionFileOperationKey{}).(*sessionFileOperation); ok {
+		scope.mu.Lock()
+		defer scope.mu.Unlock()
+		cacheKey := sessionFileHandleKey{manager: m, session: key}
+		if handle := scope.handles[cacheKey]; handle != nil {
+			return handle, true, nil
+		}
+		handle, found, err := m.lookupSessionHandleForKey(ctx, key, "")
+		if err == nil && found {
+			scope.handles[cacheKey] = handle
+		}
+		return handle, found, err
+	}
+	return m.lookupSessionHandleForKey(ctx, key, "")
+}
+
+func (m *SessionBoundManager) lookupSessionHandleForKey(
+	ctx context.Context, key SessionSandboxKey, expectedID string,
+) (RemoteSandboxHandle, bool, error) {
 	binding, err := m.bindings.Get(ctx, key)
 	if err != nil {
 		return nil, false, fmt.Errorf("sandbox: read session binding: %w", err)
 	}
 	if binding == nil || binding.Provider != m.client.Provider() {
 		return nil, false, nil
+	}
+	if expectedID != "" && binding.SandboxID != expectedID {
+		return nil, false, errors.New("sandbox: bound sandbox changed before maintenance command")
 	}
 	handle, err := m.client.Connect(ctx, RemoteConnectRequest{
 		SandboxID:          binding.SandboxID,
@@ -1125,22 +1339,19 @@ func (m *SessionBoundManager) lookupSessionHandle(
 	return handle, true, nil
 }
 
-func (m *SessionBoundManager) listFilesRecursive(
-	ctx context.Context,
-	handle RemoteSandboxHandle,
-	dir string,
+// snapshotOutputFiles does not probe with Stat: a missing output directory is
+// an empty baseline, while permission and transport errors remain failures.
+func (m *SessionBoundManager) snapshotOutputFiles(
+	ctx context.Context, handle RemoteSandboxHandle, dir string,
 ) ([]RemoteDirEntry, error) {
-	stat, err := m.client.Stat(ctx, handle, dir)
-	if err != nil {
-		if IsRemoteNotFound(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("sandbox: stat %s: %w", dir, err)
-	}
-	if stat == nil {
-		return nil, nil
-	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return m.walkSessionFiles(ctx, handle, dir)
+}
 
+func (m *SessionBoundManager) walkSessionFiles(
+	ctx context.Context, handle RemoteSandboxHandle, dir string,
+) ([]RemoteDirEntry, error) {
 	stack := []string{dir}
 	var files []RemoteDirEntry
 	for len(stack) > 0 {
@@ -1149,6 +1360,11 @@ func (m *SessionBoundManager) listFilesRecursive(
 
 		entries, err := m.client.ListDir(ctx, handle, cur)
 		if err != nil {
+			// Only a missing root is an empty listing. A vanished subdirectory
+			// makes this snapshot incomplete and must not publish partial links.
+			if cur == dir && IsRemoteNotFound(err) {
+				return nil, nil
+			}
 			return nil, err
 		}
 		for _, entry := range entries {

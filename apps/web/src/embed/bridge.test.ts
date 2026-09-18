@@ -17,16 +17,36 @@ test('pins the parent origin from the referrer and rejects other sources/origins
   assert.equal(bridge.targetOrigin(), 'https://host.example');
 });
 
-test('pins the first valid host message when no referrer is available and never broadcasts', () => {
+// Vue postToParent parity (frontend/src/api/embed/index.ts:479-495): the
+// handshake (bootstrap_request/ready) may fall back to '*' when the parent
+// origin is unknown so token handoff can still bootstrap, while sensitive
+// payloads (conversation content) are dropped rather than broadcast.
+test('falls back to * for handshake posts when the origin is unknown, never for sensitive posts', () => {
   const parent = {};
   const bridge = createEmbedBridge({ parentWindow: parent });
   const sent: Array<{ payload: unknown; targetOrigin: string }> = [];
   const post = (payload: unknown, targetOrigin: string) => sent.push({ payload, targetOrigin });
 
-  assert.equal(bridge.post({ source: 'weknora-embed', type: 'ready' }, post), false);
+  assert.equal(bridge.post({ source: 'weknora-embed', type: 'bootstrap_request', channel_id: 'c1' }, post), true);
+  assert.equal(bridge.post({ source: 'weknora-embed', type: 'message_sent', query: 'secret' }, post, { sensitive: true }), false);
+  assert.deepEqual(sent, [
+    { payload: { source: 'weknora-embed', type: 'bootstrap_request', channel_id: 'c1' }, targetOrigin: '*' },
+  ]);
+});
+
+test('pins every post to the verified parent origin once known', () => {
+  const parent = {};
+  const bridge = createEmbedBridge({ parentWindow: parent });
+  const sent: Array<{ payload: unknown; targetOrigin: string }> = [];
+  const post = (payload: unknown, targetOrigin: string) => sent.push({ payload, targetOrigin });
+
   assert.equal(bridge.accept(message('https://host.example', parent, { source: 'weknora-host', type: 'context', context: {} })), true);
   assert.equal(bridge.post({ source: 'weknora-embed', type: 'ready' }, post), true);
-  assert.deepEqual(sent, [{ payload: { source: 'weknora-embed', type: 'ready' }, targetOrigin: 'https://host.example' }]);
+  assert.equal(bridge.post({ source: 'weknora-embed', type: 'message_received', content: 'answer' }, post, { sensitive: true }), true);
+  assert.deepEqual(sent, [
+    { payload: { source: 'weknora-embed', type: 'ready' }, targetOrigin: 'https://host.example' },
+    { payload: { source: 'weknora-embed', type: 'message_received', content: 'answer' }, targetOrigin: 'https://host.example' },
+  ]);
 });
 
 test('rejects an invalid configured parent origin', () => {

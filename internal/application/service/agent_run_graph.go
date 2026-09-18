@@ -17,6 +17,8 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -174,6 +176,14 @@ func (s *sessionService) submitDurableAgentRun(
 ) error {
 	if s.cfg == nil || s.cfg.Agent == nil || !s.cfg.Agent.Recovery.RecoveryAdmissionEnabled() {
 		return errors.New("tRPC agent runs are disabled")
+	}
+	// W34 capability wiring: worker drain (workbench.worker_drain /
+	// WEKNORA_WORKBENCH_WORKER_DRAIN) refuses NEW admissions process-wide
+	// while the durable worker keeps draining already-admitted runs to
+	// completion — the same drain semantics as internal/container's
+	// AgentRuntime. Reads and cleanup paths are deliberately not gated.
+	if s.cfg.IsWorkbenchWorkerDraining() {
+		return errors.New("workbench worker drain refuses new admissions")
 	}
 	runs := RegisteredAgentRunService()
 	if runs == nil {
@@ -486,6 +496,10 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 func durableRunFailureEvent(execErr error) (string, map[string]string) {
 	payload := map[string]string{"error": execErr.Error()}
 	eventType := "run_failed"
+	if errors.Is(execErr, repocommercial.ErrTaskBudgetExhausted) ||
+		errors.Is(execErr, craft.ErrBudgetDenied) || errors.Is(execErr, craft.ErrGrantExhausted) {
+		return "budget_exhausted", map[string]string{"error": execErr.Error(), "reason": "budget_exhausted"}
+	}
 	if errors.Is(execErr, agentruntime.ErrMCPOAuthWait) {
 		// The run is durably parked waiting for the user to reconnect
 		// authorization; this is a wait, not a failure.

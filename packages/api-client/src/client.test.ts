@@ -212,7 +212,7 @@ test('routes native file uploads through the cancellable transport seam', async 
   assert.deepEqual({ ...call, signal: undefined }, {
     method: 'POST',
     url: 'https://api.example.test/api/v1/knowledge-bases/kb-1/knowledge/file',
-    headers: { accept: 'application/json' },
+    headers: { accept: 'application/json', 'accept-language': 'zh-CN' },
     file: { uri: 'content://picker/notes.txt', name: 'notes.txt', type: 'text/plain' },
     fields: { metadata: JSON.stringify({ source: 'mobile' }) },
     signal: undefined,
@@ -318,4 +318,36 @@ test('exposes the embed API with an isolated credential profile', async () => {
   });
 
   assert.equal((await client.embed.public.config('c-1', 'ems-1')).agent_id, 'a-1');
+});
+
+test('every request carries Accept-Language from the stored locale, defaulting to zh-CN', async () => {
+  // Upstream frontend/src/utils/request.ts injects Accept-Language:
+  // getCurrentLanguage() on every API call (i18n locale || localStorage
+  // 'locale' || zh-CN), so server-side localized payloads (builtin agent
+  // names, error copy) follow the UI language instead of the browser's
+  // default header. The api client must do the same.
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const captured: Array<Record<string, string>> = [];
+  const captureTransport = {
+    send: async ({ headers }: { headers: Record<string, string> }) => {
+      captured.push(headers);
+      return { status: 200, headers: {}, body: { success: true, data: [] } };
+    },
+  };
+
+  try {
+    // No stored preference: deployment default zh-CN (never the browser
+    // language — mirrors the app locale convention).
+    (globalThis as { window?: unknown }).window = { localStorage: { getItem: () => null } };
+    const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport: captureTransport });
+    await client.configuration.agents.list();
+    assert.equal(captured.at(-1)?.['accept-language'], 'zh-CN');
+
+    // Stored language switch wins.
+    (globalThis as { window?: unknown }).window = { localStorage: { getItem: (key: string) => (key === 'locale' ? 'ja-JP' : null) } };
+    await client.configuration.agents.list();
+    assert.equal(captured.at(-1)?.['accept-language'], 'ja-JP');
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+  }
 });

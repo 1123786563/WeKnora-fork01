@@ -6,7 +6,7 @@ import (
 )
 
 func deploymentCapabilitiesFromRouter(params RouterParams) handler.DeploymentCapabilitiesData {
-	return handler.BuildDeploymentCapabilities(handler.Edition, handler.DeploymentFeatureAvailability{
+	data := handler.BuildDeploymentCapabilities(handler.Edition, handler.DeploymentFeatureAvailability{
 		Organizations: params.OrganizationHandler != nil,
 		Agents:        params.CustomAgentHandler != nil,
 		IM:            params.IMHandler != nil,
@@ -24,4 +24,10 @@ func deploymentCapabilitiesFromRouter(params RouterParams) handler.DeploymentCap
 		Sandbox:       params.SandboxConfigHandler != nil,
 		SandboxDocker: sandbox.DockerBackendEnabled(),
 	})
+	// W37 carry-forward: advertise the config-resolved protocol compatibility
+	// window (defaults aligned with the TS SERVER_PROTOCOL_WINDOW; env/yaml
+	// override). WithProtocolWindow keeps the last valid window on a bad
+	// override, so a misconfiguration degrades to the compiled defaults.
+	minimum, maximum := params.Config.ProtocolWindow()
+	return data.WithProtocolWindow(minimum, maximum)
 }

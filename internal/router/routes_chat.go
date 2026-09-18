@@ -4,6 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/handler"
+	// Alias: RegisterSessionRoutes' `handler *session.Handler` parameter
+	// shadows the package name inside the function body; the W27 preview
+	// issue route still needs the top-level handler package.
+	handlerapi "github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 )
 
@@ -58,6 +62,7 @@ func RegisterSessionRoutes(
 		sessions.DELETE("/:id", handler.DeleteSession)
 		sessions.DELETE("/:id/messages", handler.ClearSessionMessages)
 		sessions.POST("/:session_id/generate_title", handler.GenerateTitle)
+		sessions.POST("/:session_id/fork", handler.ForkSession)
 		sessions.POST("/:session_id/attachments", handler.UploadTemporaryDocument)
 		sessions.GET("/:id/attachments", handler.ListTemporaryDocuments)
 		sessions.GET("/:id/attachments/:attachment_id", handler.GetTemporaryDocument)
@@ -109,6 +114,27 @@ func RegisterSessionRoutes(
 		sessions.GET("/:id/artifacts", handler.ListSessionArtifacts)
 		sessions.GET("/:id/messages/:message_id/artifacts", handler.ListMessageArtifacts)
 		sessions.GET("/:id/messages/:message_id/artifacts/:index/download", handler.DownloadMessageArtifact)
+
+		// W26 immutable artifact version downloads. The explicit version ID
+		// (instead of the message index above) keeps a regenerated message
+		// from resolving a stale index to different bytes. Mounted only when
+		// the container-level assembly registered a version source
+		// (fail-closed: without wiring no route exists, like the craft
+		// routes below). Same :id wildcard as the sibling GET routes.
+		if artifactVersions := session.RegisteredArtifactVersionDownloadHandler(); artifactVersions != nil {
+			sessions.GET("/:id/artifact-versions/:version_id/download", artifactVersions.DownloadArtifactVersion)
+		}
+
+		// W27 isolated artifact preview: ticket issuance runs on the MAIN
+		// origin with this group's full auth chain (Viewer+ / chat API-key
+		// capability); the opaque short-lived ticket is redeemed on the
+		// ISOLATED preview origin, whose /ap route router.go mounts before
+		// the global Auth middleware (craft preview shape). Mounted only
+		// when the container-level assembly registered a handler
+		// (fail-closed, like the versioned download above).
+		if artifactPreview := handlerapi.RegisteredArtifactPreviewHandler(); artifactPreview != nil {
+			handlerapi.RegisterArtifactPreviewIssueRoute(sessions, artifactPreview)
+		}
 	}
 
 	// Craft workbench API (W03): the create/list group carries the same

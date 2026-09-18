@@ -53,7 +53,11 @@ function isSystemAdmin(me: KBSurfaceMe): boolean {
 function isCreator(kb: KBSurfaceKB, me: KBSurfaceMe): boolean {
   const userId = me.user?.id;
   if (userId === undefined || userId === null) return false;
-  return kb.user_id !== undefined && String(kb.user_id) === String(userId)
+  // Vue isOwner (KnowledgeBase.vue:250-258) matches creator_id — the only
+  // creator field the live KB payload carries (internal/types/knowledgebase.go);
+  // user_id/created_by are legacy fallbacks kept for older snapshots.
+  return kb.creator_id !== undefined && String(kb.creator_id) === String(userId)
+    || kb.user_id !== undefined && String(kb.user_id) === String(userId)
     || kb.created_by !== undefined && String(kb.created_by) === String(userId);
 }
 
@@ -94,12 +98,53 @@ export function kbTypeRedirectPath(kb: KBSurfaceKB): string | undefined {
   return `/knowledgeBase/${encodeURIComponent(id)}/faq`;
 }
 
+/**
+ * Moved verbatim from KnowledgeDocumentsPage so every KB surface (documents,
+ * graph, …) gates management chrome (settings gear) with the same signal.
+ * Vue canEditKB parity for the upload surface, including shared editor grants.
+ */
+export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+  const userId = me?.user?.id;
+  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
+  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
+  // Vue checks ownership before the effective share projection. A stale
+  // my_permission=viewer on an owned KB must not hide the creator's upload
+  // controls (the share-first restriction is resolved by the KB context).
+  if (isCreator) return true;
+  const permission = kb.my_permission ?? kb.permission;
+  if (typeof permission === "string" && permission.trim()) {
+    return ["owner", "admin", "editor"].includes(permission.trim().toLowerCase());
+  }
+  const isAdmin = Boolean(me?.user?.is_superuser === true || me?.user?.role === "admin" || me?.user?.role === "system_admin"
+    || me?.memberships?.some((membership) => membership.role === "admin" || membership.role === "system_admin"));
+  return isAdmin;
+}
+
 export type KBSurfaceTab = 'documents' | 'wiki' | 'graph';
 
-/** Wiki/graph tabs only exist when the indexing strategy enables them. */
+/**
+ * Vue gates the whole 文档/Wiki/图谱 tab row on isWiki alone
+ * (KnowledgeBase.vue:89 `!!kbInfo.indexing_strategy.wiki_enabled`, template
+ * 2359-2381): a wiki KB always shows the three tabs — the graph view lives
+ * inside the wiki surface and is never gated separately — while a KB with the
+ * wiki off renders the plain 文档 crumb and no tab row at all, even when graph
+ * extraction is enabled. Empty result = the caller falls back to the crumb.
+ */
 export function resolveKBSurfaceTabs(kb: KBSurfaceKB): KBSurfaceTab[] {
-  const tabs: KBSurfaceTab[] = ['documents'];
-  if (kb.indexing_strategy?.wiki_enabled === true) tabs.push('wiki');
-  if (kb.indexing_strategy?.graph_enabled === true) tabs.push('graph');
-  return tabs;
+  if (kb.indexing_strategy?.wiki_enabled !== true) return [];
+  return ['documents', 'wiki', 'graph'];
+}
+
+/**
+ * The ?tab=wiki|graph views only exist for wiki KBs: Vue keeps the URL but
+ * renders the documents branch when isWiki is false (KnowledgeBase.vue:2412
+ * gates .wiki-main-area on isWiki, 2418 renders the documents branch on
+ * `!isWiki`). The React tab pages are separate routes, so a non-wiki deep
+ * link falls back to the canonical documents URL — the same view Vue shows.
+ * Mirrors kbTypeRedirectPath: undefined when the current URL is already right.
+ */
+export function kbWikiTabFallbackPath(kb: KBSurfaceKB): string | undefined {
+  const id = typeof kb.id === 'string' ? kb.id : undefined;
+  if (!id || kb.indexing_strategy?.wiki_enabled === true) return undefined;
+  return `/knowledgeBase/${encodeURIComponent(id)}`;
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -117,6 +118,8 @@ type agentService struct {
 	sandboxResolver      sandbox.TenantSandboxResolver
 	sandboxPinner        *SessionSandboxPinner
 	sandboxPolicy        WorkspaceSandboxPolicy
+	browserSkill         *browserskill.Manager
+	userRepo             interfaces.UserRepository
 	// craft is the optional Craft delegation assembly. nil leaves every
 	// session on the unchanged builtin tool set.
 	craft *CraftDelegation
@@ -147,6 +150,8 @@ func NewAgentService(
 	sandboxPinner *SessionSandboxPinner,
 	sandboxPolicy WorkspaceSandboxPolicy,
 	craftDelegation *CraftDelegation,
+	browserSkill *browserskill.Manager,
+	userRepo interfaces.UserRepository,
 ) interfaces.AgentService {
 	return &agentService{
 		cfg:                  cfg,
@@ -174,6 +179,8 @@ func NewAgentService(
 		sandboxResolver:  sandboxResolver,
 		sandboxPinner:    sandboxPinner,
 		sandboxPolicy:    sandboxPolicy,
+		browserSkill:     browserSkill,
+		userRepo:         userRepo,
 		craft:            craftDelegation,
 	}
 }

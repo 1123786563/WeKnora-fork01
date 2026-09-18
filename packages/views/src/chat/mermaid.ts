@@ -1,5 +1,10 @@
 /// <reference path="./mermaid-type-fest.d.ts" />
 
+// R463: the fullscreen viewer toolbar rides behind the existing engine export
+// so consumers already aliasing @weknora/views/chat/mermaid get it without
+// extra path wiring (vite/tsconfig pin this entry per-file).
+export { attachMermaidViewerToolbar, type MermaidViewerToolbarLabels, type MermaidViewerToolbarHandle } from './mermaid-viewer.ts';
+
 export const MERMAID_RENDER_CONFIG = Object.freeze({
   startOnLoad: false,
   securityLevel: 'strict' as const,

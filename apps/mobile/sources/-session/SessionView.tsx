@@ -27,7 +27,7 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
-import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive, type SpawnSessionResult } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionProjectAvatar, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
@@ -80,7 +80,9 @@ import {
 import { RigActivityBar } from '@/components/RigActivityBar';
 import { AnimatedFade } from '@/components/AnimatedOverlay';
 import { useConversationViewModel } from '@/weknora/conversations/context';
-import type { ConversationViewModel } from '@/weknora/conversations/view-model';
+import { createRequestID, type ConversationViewModel } from '@/weknora/conversations/view-model';
+import { deriveRemoteAdvancedCapabilities, invokeAdvanced } from '@/weknora/conversations/advanced';
+import { ProductConversationMessages } from '@/weknora/conversations/ProductConversationMessages';
 
 export const SessionView = React.memo((props: { id: string; viewModel?: ConversationViewModel }) => {
     const sessionId = props.id;
@@ -196,6 +198,19 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
     // (not in the panel) so the picker can create-and-focus a new one in one go.
     const rawSideChats = useSideChatSessions(sessionId);
     const sideChatForkSource = session ? getSessionForkSource(session) : null;
+    // W32: the remote advanced operations ride the capability gate — a session
+    // without a verified fork source (or a product conversation without any
+    // remote session) refuses with CAPABILITY_UNAVAILABLE at the port instead
+    // of silently falling back to another driver. Terminal is intentionally
+    // absent here: the remote machine terminal and the product sandbox
+    // terminal are separate providers (H33) and never mix paths or tickets.
+    const remoteAdvanced = React.useMemo(() => deriveRemoteAdvancedCapabilities({
+        goalActions: !!session,
+        forkSource: !!sideChatForkSource,
+        sessionPresent: !!session,
+        rewindSupported: !!sideChatForkSource,
+        duplicateSupported: !!sideChatForkSource,
+    }), [session, sideChatForkSource]);
     const [activeSideChatId, setActiveSideChatId] = React.useState<string | null>(null);
     // Optimistically hide a side chat the instant it's closed. The server's
     // /archive only flips active=false (not lifecycleState), so if the CLI is
@@ -220,11 +235,21 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
     }, [rawSideChats]);
 
     // Best-effort close: kill the agent, fall back to server-side archive.
+    // W32: the archive itself rides the advanced-operation gate — archive is a
+    // lifecycle operation, never a cancel (kill above is the remote close; the
+    // two stay distinct commands). A refused gate logs instead of firing any
+    // other driver; the refresh below still reconciles the store.
     const archiveSideChatSession = React.useCallback((id: string) => {
         (async () => {
             const killed = await sessionKill(id);
             if (!killed.success) {
-                await sessionArchive(id);
+                try {
+                    await invokeAdvanced('archive', remoteAdvanced, async () => {
+                        await sessionArchive(id);
+                    });
+                } catch (error) {
+                    console.error('Advanced archive unavailable:', error);
+                }
             }
             try {
                 await sync.refreshSessions();
@@ -232,18 +257,27 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
                 // Broadcast sync reconciles shortly even if this flaked.
             }
         })();
-    }, []);
+    }, [remoteAdvanced]);
 
     const [creatingSideChat, createSideChat] = useHappyAction(async () => {
         if (!sideChatForkSource) {
             throw new HappyError(t('sideChat.unavailable'), false);
         }
-        const result = await spawnSideChat(sideChatForkSource);
-        if (result.type === 'error') {
-            throw new HappyError(result.errorMessage, true);
+        // W32: the side-chat spawn rides the capability gate. The fork copies
+        // approved history/references only — pending approvals, budget
+        // balances and execution leases are server-side admission state the
+        // client never copies. The spawn result is captured in the closure so
+        // the gate's call signature stays the fixed operation only.
+        let spawned: SpawnSessionResult | undefined;
+        await invokeAdvanced('side_chat', remoteAdvanced, async () => {
+            spawned = await spawnSideChat(sideChatForkSource);
+        });
+        if (!spawned) return;
+        if (spawned.type === 'error') {
+            throw new HappyError(spawned.errorMessage, true);
         }
-        if (result.type === 'success') {
-            setActiveSideChatId(result.sessionId);
+        if (spawned.type === 'success') {
+            setActiveSideChatId(spawned.sessionId);
             openSidebarPanel('sideChat');
         }
     });
@@ -441,7 +475,7 @@ export const SessionView = React.memo((props: { id: string; viewModel?: Conversa
                         session={session}
                         viewModel={conversationViewModel ?? undefined}
                         onProductSend={conversationViewModel?.send
-                            ? (text) => conversationViewModel.send!.submit(text, `${sessionId}:${text}`)
+                            ? (text) => conversationViewModel.send!.submit(text, createRequestID())
                             : undefined}
                         active={isFocused}
                         onHeaderBackdropVisibilityChange={contentRunsUnderHeader
@@ -933,6 +967,17 @@ export function SessionViewLoaded({
         session.metadata?.codexThreadId,
     ]);
     const [goalActionInFlight, setGoalActionInFlight] = React.useState<AgentGoalAction | null>(null);
+    // W32: goal commands are an advanced operation — the dispatch rides the
+    // capability gate so an unproven session can never reach the remote goal
+    // RPC as a fallback. SessionViewLoaded only mounts with a live session,
+    // so the gate is a structural guard, not a behavior change.
+    const goalAdvanced = React.useMemo(() => deriveRemoteAdvancedCapabilities({
+        goalActions: true,
+        forkSource: !!getSessionForkSource(session),
+        sessionPresent: true,
+        rewindSupported: !!getSessionForkSource(session),
+        duplicateSupported: !!getSessionForkSource(session),
+    }), [session]);
     const handleGoalAction = React.useCallback(async (action: AgentGoalAction) => {
         await performAgentGoalAction({
             action,
@@ -943,11 +988,13 @@ export function SessionViewLoaded({
                 cancelText: t('common.cancel'),
                 confirmText: t('common.save'),
             }),
-            dispatchGoalAction: (nextAction, objective) => sessionGoalAction(sessionId, nextAction, objective),
+            dispatchGoalAction: (nextAction, objective) => invokeAdvanced('goal', goalAdvanced, async () => {
+                await sessionGoalAction(sessionId, nextAction, objective);
+            }),
             setInFlight: setGoalActionInFlight,
             onError: (error) => console.error('Failed to perform goal action', error),
         });
-    }, [sessionId, visibleAgentGoal?.text]);
+    }, [sessionId, goalAdvanced, visibleAgentGoal?.text]);
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
@@ -1006,25 +1053,27 @@ export function SessionViewLoaded({
     let content = (
         <>
             <Deferred>
-                {messages.length > 0 && (
-                    <ChatList
-                        session={session}
-                        conversation={viewModel}
-                        active={active}
-                        topContentInset={chatListTopContentInset}
-                        bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}
-                        scrollButtonInset={usesFloatingMobileDock ? scrollButtonInset : undefined}
-                        headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
-                        onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
-                        onBottomDockVisibilityChange={usesFloatingMobileDock
-                            ? handleChatBottomVisibilityChange
-                            : undefined}
-                    />
-                )}
+                {viewModel ? (
+                    <ProductConversationMessages viewModel={viewModel} />
+                ) : messages.length > 0 ? (
+                        <ChatList
+                            session={session}
+                            conversation={viewModel}
+                            active={active}
+                            topContentInset={chatListTopContentInset}
+                            bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}
+                            scrollButtonInset={usesFloatingMobileDock ? scrollButtonInset : undefined}
+                            headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
+                            onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
+                            onBottomDockVisibilityChange={usesFloatingMobileDock
+                                ? handleChatBottomVisibilityChange
+                                : undefined}
+                        />
+                ) : null}
             </Deferred>
         </>
     );
-    const placeholder = messages.length === 0 ? (
+    const placeholder = !viewModel && messages.length === 0 ? (
         <>
             {isLoaded ? (
                 <EmptyMessages session={session} />

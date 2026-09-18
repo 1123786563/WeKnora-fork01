@@ -40,6 +40,27 @@ test('join and onboarding copy keys resolve for zh-CN and en-US (S00 N-4)', () =
   }
 });
 
+// R445 A4: Vue Login.vue:636/647 falls back to auth.oidcLoginFailed when the
+// OIDC authorization-URL request fails. The React i18n bundle must carry the
+// byte-exact Vue copy in every supported locale.
+const vueOidcLoginFailedCopy: Record<string, string> = {
+  'zh-CN': 'OIDC 登录失败',
+  'en-US': 'OIDC login failed',
+  'ja-JP': 'OIDCログインに失敗しました',
+  'ko-KR': 'OIDC 로그인 실패',
+  'ru-RU': 'Ошибка входа через OIDC',
+};
+
+test('auth.oidcLoginFailed resolves to the byte-exact Vue copy in all locales (R445 A4)', () => {
+  for (const [locale, expected] of Object.entries(vueOidcLoginFailedCopy)) {
+    assert.equal(
+      formatMessage(locale as 'zh-CN', 'auth.oidcLoginFailed'),
+      expected,
+      `${locale} must carry the Vue auth.oidcLoginFailed copy`,
+    );
+  }
+});
+
 test('join intro interpolation renders tenant and role (S00 N-4)', () => {
   const zh = formatMessage('zh-CN', 'auth.join.asRole', { role: 'owner' });
   assert.ok(zh.includes('owner'), 'zh-CN asRole must keep the role token');

@@ -77,6 +77,23 @@ test('empty catalog renders the Vue empty state with the sandbox hint and shortc
   assert.match(html, /去配置沙箱/);
 });
 
+test('empty catalog renders the TDesign empty anatomy: illustration plus the 暂无数据 title line', () => {
+  const html = renderPanel('admin', { initialCatalog: [], initialSandboxConfigs: [] });
+  // t-empty default (type="empty"): 48px EmptySvg illustration above the
+  // zh-CN locale title "暂无数据" (SkillSettings.vue:20 + TDesign locale).
+  assert.match(html, /svg[^>]*viewBox="0 0 48 48"/, 'renders the TDesign "no result" illustration');
+  assert.match(html, /暂无数据/, 'renders the t-empty default title line');
+});
+
+test('catalog section header renders the Vue title with the help-circle tooltip trigger', () => {
+  const html = renderPanel('admin', { initialCatalog: [catalogItem('cat-1', 'PDF', [])], initialSandboxConfigs: [sandboxConfig('cfg-1', 'Docker dev')] });
+  assert.match(html, /技能管理/);
+  const helpLabel = formatMessage('zh-CN', 'settings.skills.helpTooltip');
+  assert.match(html, new RegExp(`aria-label="${helpLabel}"`), 'help icon carries the tooltip copy as its accessible name');
+  assert.match(html, /cursor-help/, 'help icon uses the Vue cursor: help affordance');
+  assert.doesNotMatch(html, new RegExp(`>${helpLabel}</`), 'tooltip content stays closed (portal) in static markup');
+});
+
 test('empty catalog with sandbox configs drops the sandbox shortcut (SkillSettings.vue:21-31)', () => {
   const html = renderPanel('admin', { initialCatalog: [], initialSandboxConfigs: [sandboxConfig('cfg-1', 'Docker dev')] });
   assert.match(html, /还没有技能/);
@@ -290,7 +307,13 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  ShadowRoot: dom.window.ShadowRoot,
   Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
+  FocusEvent: dom.window.FocusEvent,
+  KeyboardEvent: dom.window.KeyboardEvent,
   MouseEvent: dom.window.MouseEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
@@ -384,6 +407,33 @@ async function openManageDrawer(client: unknown) {
   });
   return { container, root };
 }
+
+// Radix popper positioning observes element resize; jsdom has no implementation.
+class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
+(globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver ?? ResizeObserverStub;
+
+test('the header help icon opens and closes the Vue tooltip on focus', async () => {
+  const { client } = skillStubClient();
+  const { container, root } = await openManageDrawer(client);
+  try {
+    const helpLabel = formatMessage('zh-CN', 'settings.skills.helpTooltip');
+    const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${helpLabel}"]`);
+    assert.ok(trigger, 'help-circle icon sits next to the section title');
+    assert.equal(trigger!.getAttribute('data-state'), 'closed', 'tooltip stays closed until interaction');
+    await act(async () => trigger!.focus());
+    await settle();
+    // Radix reflects the open tooltip on its trigger (portal DOM mounting is
+    // not reliably observable under node --test, so assert the open contract).
+    assert.equal(trigger!.getAttribute('data-state'), 'instant-open', 'focusing the help icon opens the tooltip (no delay, like the Vue t-tooltip)');
+    assert.ok(trigger!.getAttribute('aria-describedby'), 'trigger links the tooltip content by id');
+    await act(async () => trigger!.blur());
+    await settle();
+    assert.equal(trigger!.getAttribute('data-state'), 'closed', 'tooltip closes again on blur');
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});
 
 test('the manage drawer mounts the install timeline and live progress from the SSE sources', async () => {
   const { client, calls } = skillStubClient({

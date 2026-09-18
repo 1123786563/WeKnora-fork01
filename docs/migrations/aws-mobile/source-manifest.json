@@ -1,0 +1,158 @@
+{
+  "$schema": "weknora.aws-mobile.source-manifest/1",
+  "task": "W27 — 隔离预览与 AWS 组件来源（mobile-ai-saas-workbench）",
+  "generatedAt": "2026-09-17",
+  "policy": {
+    "declarationOnly": true,
+    "noFetch": "本清单只做静态声明：本任务不拉取、不 vendor 任何外部仓库或 tarball；仓库内没有任何字节来源于下列清单项。",
+    "selectionRule": "只选独立渲染组件（mermaid/katex 单文件构建）供隔离 preview origin 自托管；不导入 AWS 示例的服务器配置、构建链、个人 API Key 与本地历史模式（分册边界）。",
+    "activation": "后续任务真正 vendor 时必须按本清单固定的版本与 integrity 复核（npm pack 校验 + license 复查 + 安全扫描），并重新走规格审查；任何未在清单中的 AWS 侧文件不得进入仓库。"
+  },
+  "awsSampleContext": {
+    "role": "AWS 示例项目的多模态交互按能力移植（分册 §Architecture）；W27 只涉及其预览渲染面的独立组件选择。",
+    "portingBoundary": [
+      "取：独立、无服务端依赖的单文件渲染构建（图表/公式），在隔离 origin 上随 CSP sandbox 运行。",
+      "不取：AWS 侧任何服务器配置、代理/网关配置、构建流水线、个人 API Key 模式、本地会话历史模式。",
+      "AWS 仓库内容零字节进仓：本清单固定的均为上游渲染组件本身的发布物，AWS 示例仅作为能力选型参考，不作为代码来源。"
+    ]
+  },
+  "components": [
+    {
+      "name": "mermaid 单文件浏览器构建",
+      "role": "隔离预览 origin 的图表渲染（会话产物中的 mermaid 图表源码渲染为图）",
+      "license": "MIT",
+      "source": {
+        "type": "npm-tarball",
+        "package": "mermaid",
+        "version": "11.17.2",
+        "tarball": "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
+        "integrity": "sha512-V6K3C8EBdEsPFZXSKMJe6ppQOENxuHARr9GvHX4hh47lAbhMRD9qf4oEK7LoaRQxULMa80/qt5gHO73aCleBBg==",
+        "distPathInPackage": "dist/mermaid.min.js",
+        "upstreamRepository": "https://github.com/mermaid-js/mermaid",
+        "upstreamCommit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+        "upstreamTag": "mermaid@11.17.2",
+        "note": "dist 构建产物不入上游 git 仓库（raw 已核实 404），固定锚点为 npm tarball integrity；upstreamCommit 为该发布 tag 对应的源码 commit（GitHub API 核实，Version Packages (#8130)，2026-08-25）。版本与 apps/mobile 既有依赖 mermaid 11.17.2 对齐。"
+      },
+      "portingRationale": "现状 apps/mobile/sources/components/markdown/MermaidRenderer.tsx 的 WebView 路径从公共 CDN 拉取 mermaid@11（未固定版本、供应链不可控），且在预览策略 connect-src 'none' 下不可用。改为在隔离 preview origin 自托管固定版本的单文件构建：与 CSP default-src 'none' / script-src 'unsafe-inline' 兼容（内联调用渲染，无任何外部网络请求），并使图表预览与产品凭据彻底隔离。",
+      "dependencies": [
+        "运行时零外部请求：mermaid.min.js 为自包含 bundle（上游依赖已打包进单文件），无需字体或其他子资源即可出图。",
+        "宿主约束：仅可在预览 origin 的 CSP sandbox allow-scripts 文档内以内联脚本调用；不进入 React Native bundle，不经 metro 打包。"
+      ],
+      "exclusions": [
+        "不引入上游 monorepo 的构建链（pnpm workspace/vite）与开发依赖。",
+        "不引入任何 AWS 示例侧的 server/proxy 配置。"
+      ]
+    },
+    {
+      "name": "KaTeX 单文件构建",
+      "role": "隔离预览 origin 的数学公式排版（LaTeX/公式类产物渲染）",
+      "license": "MIT",
+      "source": {
+        "type": "npm-tarball",
+        "package": "katex",
+        "version": "0.16.45",
+        "tarball": "https://registry.npmjs.org/katex/-/katex-0.16.45.tgz",
+        "integrity": "sha512-pQpZbdBu7wCTmQUh7ufPmLr0pFoObnGUoL/yhtwJDgmmQpbkg/0HSVti25Fu4rmd1oCR6NGWe9vqTWuWv3GcNA==",
+        "distPathInPackage": [
+          "dist/katex.min.js",
+          "dist/katex.min.css",
+          "dist/fonts/*.woff2"
+        ],
+        "upstreamRepository": "https://github.com/KaTeX/KaTeX",
+        "upstreamCommit": "90de97946bb60aa82108d6dbb217cf10602d8709",
+        "upstreamTag": "v0.16.45",
+        "note": "upstreamCommit 取自 npm registry gitHead（GitHub API 核实 commit 存在，chore(release): 0.16.45 [ci skip]，2026-04-05）；dist 产物同为由 tarball 固定。版本与 apps/web 既有依赖 katex 0.16.45 对齐。"
+      },
+      "portingRationale": "公式类产物预览需要一致的排版引擎；与产品 web 端（apps/web katex 0.16.45）同版本固定，保证移动隔离预览与产品渲染结果一致，同时不把渲染器塞进 React Native bundle。",
+      "dependencies": [
+        "katex.min.js + katex.min.css 自包含（除字体外无子资源请求）。",
+        "dist/fonts/*.woff2 必须与 css 同源放置在预览 origin（相对路径 fonts/ 引用）。",
+        "上游 npm 依赖 commander（^8.3.0）仅服务 CLI 入口，不随 dist 引入。"
+      ],
+      "exclusions": [
+        "不引入 KaTeX 的 node/CLI 入口与 contrib 扩展（auto-render 除外、按需另行声明）。",
+        "不引入任何 AWS 示例侧的 server/proxy 配置。"
+      ]
+    }
+  ],
+  "verification": {
+    "mermaid": {
+      "localWorkspaceVersion": "apps/mobile 依赖 mermaid@11.17.2（node_modules package.json 核实）",
+      "upstreamCommitCheckedVia": "GitHub API /repos/mermaid-js/mermaid/commits/mermaid@11.17.2",
+      "distNotInGitCheckedVia": "raw.githubusercontent.com 对 packages/mermaid/dist/mermaid.min.js 于该 commit 返回 404（产物只存在于 npm tarball）"
+    },
+    "katex": {
+      "localWorkspaceVersion": "apps/web 依赖 katex@0.16.45（frontend node_modules package.json 核实）",
+      "upstreamCommitCheckedVia": "GitHub API /repos/KaTeX/KaTeX/commits/90de97946bb60aa82108d6dbb217cf10602d8709",
+      "distNotInGitCheckedVia": "raw.githubusercontent.com 对 dist/katex.min.js 于该 commit 返回 404（产物只存在于 npm tarball）"
+    }
+  },
+  "addenda": [
+    {
+      "task": "W31 — 实时语音、打断与后台进度展示（mobile-ai-saas-workbench）",
+      "generatedAt": "2026-09-17",
+      "policy": {
+        "declarationOnly": true,
+        "noFetch": "与 W27 主清单同一策略：本任务不拉取、不 vendor 任何外部仓库内容；仓库内没有任何字节来源于下列清单项。AWS 示例仅作为展示能力选型参考。",
+        "portingRule": "只移植『展示能力』的形态与原生依赖清单（Live Activity 进度卡、前台进度通知）；产品语义按本仓架构分册执行（Run 状态-only 提示、不泄露内容、不持有 worker、不以后台音频保活）。"
+      },
+      "source": {
+        "repository": "https://github.com/aws-samples/sample-mobile-ai-assistant",
+        "defaultBranch": "main",
+        "referenceCommit": "a356f7adbbe6dddebd7b8b0672064f9dea4243fc",
+        "referenceCommitDate": "2026-07-24",
+        "license": "MIT-0",
+        "verifiedVia": "GitHub API（repo 元数据 + /commits?per_page=1 + git/trees recursive）于 2026-09-17 实时核实；license 字段 spdx_id=MIT-0。"
+      },
+      "capabilities": [
+        {
+          "name": "iOS Live Activity 进度展示",
+          "role": "Run 执行状态在锁屏/灵动岛的常驻进度提示（仅状态标签，无对话内容）",
+          "awsReferencePaths": [
+            "react-native/ios/SwiftChatLiveActivity/LiveActivityAttributes.swift",
+            "react-native/ios/SwiftChatLiveActivity/SwiftChatLiveActivity.swift",
+            "react-native/ios/SwiftChatLiveActivity/SwiftChatLiveActivityBundle.swift",
+            "react-native/ios/SwiftChatLiveActivityExtension.entitlements"
+          ],
+          "nativeDependencies": [
+            "iOS ActivityKit（iOS 16.1+）+ WidgetKit/SwiftUI Widget Extension（上列 SwiftChatLiveActivity 形态）",
+            "Expo 接入面：app.config.ts 需增加 Widget Extension target/config-plugin（Expo 无官方 Live Activity 插件，需社区模块或自写 Expo Module；apps/mobile 当前未引入，落地时按本清单另行审查）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/notifications/live-progress.ts（LiveProgressPorts.setLiveActivity/clearLiveActivity 为 seam；缺失时降级普通通知，harness 测试覆盖）",
+          "divergence": "AWS 示例的 Live Activity 内容由其自有会话流驱动；WeKnora 仅消费 Run 状态映射的固定标签（runProgressStatusLabel），消息/工具内容结构性不可达通知面。"
+        },
+        {
+          "name": "Android/iOS 普通前台进度通知（Live Activity 缺失时的降级面）",
+          "role": "Run 状态变化的普通通知提示与点按回前台恢复",
+          "awsReferencePaths": [
+            "react-native/src/chat/service/BackgroundTaskService.ts"
+          ],
+          "nativeDependencies": [
+            "expo-notifications ~55.0.0（apps/mobile 已有依赖，node_modules package.json 核实）",
+            "Android 13+ POST_NOTIFICATIONS 运行时权限（真机验收 blocked-env）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/notifications/live-progress.ts（LiveProgressPorts.notify；前台恢复由 W12 恢复控制器负责，presenter 不持有导航）",
+          "divergence": "AWS 示例 BackgroundTaskService 在端侧驱动/持有后台任务；WeKnora 的 presenter 是纯订阅面（结构上仅有 onRunStatus/clear），Run 执行在服务端。"
+        },
+        {
+          "name": "实时语音媒体面（参考声明，本任务未接入）",
+          "role": "实时语音连接、打断播放与麦克风静音的原生媒体 leg",
+          "awsReferencePaths": [
+            "react-native/ios/Modules/VoiceChat/VoiceChatModule.swift",
+            "react-native/ios/Modules/VoiceChat/VoiceChatModule.m"
+          ],
+          "nativeDependencies": [
+            "真实供应商媒体传输（WebRTC/实时供应商 SDK；W30 已定产品侧 grant/转写端点，媒体接入为后续任务+blocked-env）"
+          ],
+          "weknoraImplementation": "apps/mobile/sources/weknora/voice/realtime.ts（RealtimeVoicePort seam；生产装配 createUnavailableRealtimeVoicePort fail-closed）",
+          "divergence": "AWS 示例直接持有供应商连接与本地历史；WeKnora 连接按 W30 短期 grant 创建、过期重新准入、系统断开走 W12 恢复查询。"
+        }
+      ],
+      "explicitExclusions": [
+        "react-native/ios/Services/BackgroundAudioService.swift 与 react-native/ios/Modules/BackgroundKeepAlive/、react-native/patches/@sayem314+react-native-keep-awake+1.4.0.patch：AWS 示例以后台音频/保活维持端侧执行——WeKnora 明确不移植（Run 在服务端执行，live-progress 只订阅状态，不得以后台音频保活）。",
+        "AWS 示例的本地会话历史/个人模型配置与导航结构：整体不合并（分册边界）。",
+        "react-native/src/chat/service/BackgroundStreamManager.ts 的端侧流管理工作形态：WeKnora 的流订阅归 W09/W10 事件存储与 W12 恢复控制器。"
+      ]
+    }
+  ]
+}

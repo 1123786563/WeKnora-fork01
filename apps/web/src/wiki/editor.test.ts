@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyWikiSearch, saveWikiPage, validateWikiPageInput, wikiSaveState } from './editor.ts';
+import type { WikiPageUpdateInput } from '@weknora/api-client';
+
+import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiSaveState } from './editor.ts';
 
 test('only applies the Wiki search query on submit and trims empty clears', () => {
   assert.deepEqual(applyWikiSearch('  architecture  '), { draft: '  architecture  ', keyword: 'architecture' });
@@ -41,4 +43,37 @@ test('validates Wiki create input before issuing a write', () => {
 
 test('keeps loading and error states explicit instead of returning an empty Wiki list', () => {
   assert.deepEqual(wikiSaveState(new Error('403 forbidden')), { status: 'error', message: '403 forbidden' });
+});
+
+// Vue WikiBrowser.vue `overwriteSavePage`: on a 409 the editor offers
+// "覆盖保存" — fetch the server's current page and re-save the local draft
+// on top of the latest version (last write wins; the losing version stays
+// in revision history).
+test('conflict overwrite re-saves the local draft on top of the latest server version', async () => {
+  const calls: Array<{ slug: string; input: WikiPageUpdateInput }> = [];
+  const latest = { id: 'p1', slug: 'docs/start', title: 'Start (server)', content: 'server body', summary: 'server intro', version: 9 };
+  const api = {
+    get: async (_kb: string, slug: string) => {
+      assert.equal(slug, 'docs/start');
+      return latest;
+    },
+    update: async (_kb: string, slug: string, input: WikiPageUpdateInput) => {
+      calls.push({ slug, input });
+      return { ...latest, ...input };
+    },
+  };
+  const result = await overwriteWikiPage(api, 'kb-1', 'docs/start', { title: 'Start (mine)', content: 'my body', summary: 'my intro' });
+  assert.deepEqual(result, { status: 'saved', page: { ...latest, title: 'Start (mine)', content: 'my body', summary: 'my intro' } });
+  assert.deepEqual(calls, [{ slug: 'docs/start', input: { title: 'Start (mine)', content: 'my body', summary: 'my intro', version: 9 } }]);
+});
+
+test('conflict overwrite reports the localized save failure when the latest fetch fails', async () => {
+  const result = await overwriteWikiPage(
+    { get: async () => { throw new Error('boom'); }, update: async () => { throw new Error('unexpected'); } },
+    'kb-1',
+    'docs/start',
+    { title: 'T', content: 'C', summary: 'S' },
+    { titleRequired: '请输入标题', contentRequired: '请输入正文', conflict: '页面已更新', saveFailed: '保存失败' },
+  );
+  assert.deepEqual(result, { status: 'error', message: '保存失败' });
 });

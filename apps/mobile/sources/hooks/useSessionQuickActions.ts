@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNavigateToProductSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
@@ -19,6 +19,7 @@ import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
 import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
 import { isRigMetadata } from '@/sync/rig';
+
 
 export interface SessionActionItem {
     id: SessionActionShortcutId;
@@ -129,7 +130,7 @@ export function useSessionQuickActions(
         onAfterCopySessionMetadata,
     } = options;
     const router = useRouter();
-    const navigateToSession = useNavigateToSession();
+    const navigateToProduct = useNavigateToProductSession();
     const sessionStatus = useSessionStatus(session);
     const machineId = session.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
@@ -221,7 +222,7 @@ export function useSessionQuickActions(
                 // Model / effort picks survive resume on their own — they live
                 // in the session's synced metadata (#1492).
 
-                navigateToSession(result.sessionId);
+                navigateToProduct(storage.getState().sessions[result.sessionId] ?? session);
                 return;
             }
             case 'requestToApproveDirectoryCreation':
@@ -272,7 +273,7 @@ export function useSessionQuickActions(
         if (result.type !== 'success') {
             throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
         }
-        navigateToSession(result.sessionId);
+        navigateToProduct(storage.getState().sessions[result.sessionId] ?? session);
     });
 
     const forkSession = React.useCallback(() => {

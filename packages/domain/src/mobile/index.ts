@@ -9,3 +9,7 @@ export * from './resource-presentation.ts';
 export * from './task-form.ts';
 export * from './execution-presentation.ts';
 export * from './target-options.ts';
+// W37 carry-forward (W36 review Important): the compatibility window ships on
+// the package surface mobile imports, so the app handshake can consume
+// clientGate/CLIENT_PROTOCOL_VERSION without reaching into file paths.
+export * from './compatibility.ts';

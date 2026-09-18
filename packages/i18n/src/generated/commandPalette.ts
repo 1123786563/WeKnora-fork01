@@ -1,14 +1,25 @@
 // AUTO-PORTED from frontend/src/i18n/locales/*.ts commandPalette block.
 // Only the keys used by the React GlobalCommandPalette (apps/web/src/platform)
 // are ported: placeholder, recent/quick-actions group labels, quick command
-// labels, clear-recent, no-results empty state, and the Esc hotkey hint used
-// for the close button's aria-label. Chunk/message/KB/agent search result
-// groups, the retrieval-settings drawer, and the KB-scope chip are not ported
-// in this slice (S03) — see command-palette.ts for the scope rationale.
+// labels, clear-recent, no-results empty state, the Esc hotkey hint used
+// for the close button's aria-label, the live-search result groups
+// (chunks/messages/KBs/agents/sessions, R464), and the retrieval-settings
+// drawer triggers + empty-state actions (R465-A2) — see command-palette.ts
+// for the scope rationale.
 import type { Locale } from '../index.ts';
 
 export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
   "zh-CN": {
+    "commandPalette.untitledSession": "未命名对话",
+    "commandPalette.scope.placeholder": "在本知识库中搜索…",
+    "commandPalette.scope.remove": "移除范围过滤（Backspace）",
+    "commandPalette.group.chunks": "知识库文件",
+    "commandPalette.group.messages": "对话消息",
+    "commandPalette.group.kbs": "知识库",
+    "commandPalette.group.agents": "智能体",
+    "commandPalette.group.sessionsByTitle": "对话（按标题）",
+    "commandPalette.match.vector": "向量",
+    "commandPalette.match.keyword": "关键字",
     "commandPalette.placeholder": "搜索知识库、文件、对话…",
     "commandPalette.clearRecent": "清除",
     "commandPalette.group.recent": "最近搜索",
@@ -20,6 +31,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "打开共享空间",
     "commandPalette.quick.settings": "打开设置",
     "commandPalette.empty.noResults": "没有找到匹配结果",
+    "commandPalette.empty.askAi": "直接向 AI 提问",
+    "commandPalette.empty.adjustRetrieval": "调整检索参数",
+    "commandPalette.retrieval": "检索参数",
     "commandPalette.hotkey.select": "选择",
     "commandPalette.hotkey.enter": "打开",
     "commandPalette.hotkey.cmdNumber": "直接打开",
@@ -27,6 +41,16 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.hotkey.esc": "关闭",
   },
   "en-US": {
+    "commandPalette.untitledSession": "Untitled conversation",
+    "commandPalette.scope.placeholder": "Search within this knowledge base…",
+    "commandPalette.scope.remove": "Remove scope (Backspace)",
+    "commandPalette.group.chunks": "Files",
+    "commandPalette.group.messages": "Messages",
+    "commandPalette.group.kbs": "Knowledge bases",
+    "commandPalette.group.agents": "Agents",
+    "commandPalette.group.sessionsByTitle": "Chats (by title)",
+    "commandPalette.match.vector": "Vector",
+    "commandPalette.match.keyword": "Keyword",
     "commandPalette.placeholder": "Search knowledge bases, files, conversations…",
     "commandPalette.clearRecent": "Clear",
     "commandPalette.group.recent": "Recent",
@@ -38,6 +62,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "Open shared spaces",
     "commandPalette.quick.settings": "Open settings",
     "commandPalette.empty.noResults": "No matches found",
+    "commandPalette.empty.askAi": "Ask the AI directly",
+    "commandPalette.empty.adjustRetrieval": "Adjust retrieval",
+    "commandPalette.retrieval": "Retrieval settings",
     "commandPalette.hotkey.select": "Navigate",
     "commandPalette.hotkey.enter": "Open",
     "commandPalette.hotkey.cmdNumber": "Jump to",
@@ -45,6 +72,16 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.hotkey.esc": "Close",
   },
   "ja-JP": {
+    "commandPalette.untitledSession": "無題の会話",
+    "commandPalette.scope.placeholder": "このナレッジベース内を検索…",
+    "commandPalette.scope.remove": "範囲を解除（Backspace）",
+    "commandPalette.group.chunks": "ファイル",
+    "commandPalette.group.messages": "メッセージ",
+    "commandPalette.group.kbs": "ナレッジベース",
+    "commandPalette.group.agents": "エージェント",
+    "commandPalette.group.sessionsByTitle": "チャット（タイトル）",
+    "commandPalette.match.vector": "ベクトル",
+    "commandPalette.match.keyword": "キーワード",
     "commandPalette.placeholder": "ナレッジベース、ファイル、会話を検索…",
     "commandPalette.clearRecent": "クリア",
     "commandPalette.group.recent": "最近",
@@ -56,6 +93,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "共有スペースを開く",
     "commandPalette.quick.settings": "設定を開く",
     "commandPalette.empty.noResults": "一致する項目がありません",
+    "commandPalette.empty.askAi": "AIに直接質問する",
+    "commandPalette.empty.adjustRetrieval": "検索設定を調整",
+    "commandPalette.retrieval": "検索設定",
     "commandPalette.hotkey.select": "移動",
     "commandPalette.hotkey.enter": "開く",
     "commandPalette.hotkey.cmdNumber": "直接開く",
@@ -63,6 +103,16 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.hotkey.esc": "閉じる",
   },
   "ko-KR": {
+    "commandPalette.untitledSession": "제목 없는 대화",
+    "commandPalette.scope.placeholder": "이 지식베이스에서 검색…",
+    "commandPalette.scope.remove": "범위 해제 (Backspace)",
+    "commandPalette.group.chunks": "지식베이스 파일",
+    "commandPalette.group.messages": "대화 메시지",
+    "commandPalette.group.kbs": "지식베이스",
+    "commandPalette.group.agents": "에이전트",
+    "commandPalette.group.sessionsByTitle": "대화（제목별）",
+    "commandPalette.match.vector": "벡터",
+    "commandPalette.match.keyword": "키워드",
     "commandPalette.placeholder": "지식베이스, 파일, 대화 검색…",
     "commandPalette.clearRecent": "지우기",
     "commandPalette.group.recent": "최근 검색",
@@ -74,6 +124,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "공유 공간 열기",
     "commandPalette.quick.settings": "설정 열기",
     "commandPalette.empty.noResults": "일치하는 결과 없음",
+    "commandPalette.empty.askAi": "AI에게 직접 질문하기",
+    "commandPalette.empty.adjustRetrieval": "검색 설정 조정",
+    "commandPalette.retrieval": "검색 설정",
     "commandPalette.hotkey.select": "이동",
     "commandPalette.hotkey.enter": "열기",
     "commandPalette.hotkey.cmdNumber": "바로 이동",
@@ -81,6 +134,16 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.hotkey.esc": "닫기",
   },
   "ru-RU": {
+    "commandPalette.untitledSession": "Безымянный диалог",
+    "commandPalette.scope.placeholder": "Поиск в этой базе знаний…",
+    "commandPalette.scope.remove": "Убрать область (Backspace)",
+    "commandPalette.group.chunks": "Файлы базы знаний",
+    "commandPalette.group.messages": "Сообщения",
+    "commandPalette.group.kbs": "Базы знаний",
+    "commandPalette.group.agents": "Агенты",
+    "commandPalette.group.sessionsByTitle": "Диалоги (по названию)",
+    "commandPalette.match.vector": "Вектор",
+    "commandPalette.match.keyword": "Ключ.",
     "commandPalette.placeholder": "Поиск по базам знаний, файлам, диалогам…",
     "commandPalette.clearRecent": "Очистить",
     "commandPalette.group.recent": "Недавние",
@@ -92,6 +155,9 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.organizations": "Открыть общие пространства",
     "commandPalette.quick.settings": "Открыть настройки",
     "commandPalette.empty.noResults": "Совпадений не найдено",
+    "commandPalette.empty.askAi": "Спросить ИИ",
+    "commandPalette.empty.adjustRetrieval": "Настроить поиск",
+    "commandPalette.retrieval": "Параметры поиска",
     "commandPalette.hotkey.select": "Навигация",
     "commandPalette.hotkey.enter": "Открыть",
     "commandPalette.hotkey.cmdNumber": "Быстрый переход",

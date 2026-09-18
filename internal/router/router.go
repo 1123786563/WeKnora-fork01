@@ -53,12 +53,15 @@ type RouterParams struct {
 	ChunkHandler                 *handler.ChunkHandler
 	SessionHandler               *session.Handler
 	WorkbenchHandler             *session.WorkbenchReadHandler     `optional:"true"`
+	WorkbenchListHandler         *session.WorkbenchListHandler     `optional:"true"`
 	WorkbenchStartHandler        *session.WorkbenchStartHandler    `optional:"true"`
 	WorkbenchCommandHandler      *session.WorkbenchCommandHandler  `optional:"true"`
 	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler `optional:"true"`
 	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler `optional:"true"`
 	WorkbenchInboxHandler        *session.WorkbenchInboxHandler    `optional:"true"`
 	ExecutionTargetHandler       *handler.ExecutionTargetHandler   `optional:"true"`
+	MobileVoiceHandler           *handler.MobileVoiceHandler       `optional:"true"`
+	MobileDeviceHandler          *handler.MobileDeviceHandler      `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
 	ModelHandler                 *handler.ModelHandler
@@ -216,6 +219,14 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// routes answering 404.
 	session.RegisterCraftPreviewRoutes(r, session.RegisteredCraftPreviewRouteHandler())
 
+	// Isolated artifact preview (W27): same isolated-origin shape as the
+	// craft preview — the opaque short-lived ticket minted by the
+	// authenticated sessions API carries its own authorization, and the
+	// preview origin never receives main-site credentials (no product
+	// cookie/token injection), so it must precede the global Auth
+	// middleware. A nil handler (preview not assembled) mounts nothing.
+	handler.RegisterArtifactPreviewRoutes(r, handler.RegisteredArtifactPreviewHandler())
+
 	// 认证中间件
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 
@@ -308,12 +319,14 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterFAQRoutes(v1, params.FAQHandler, rbacGuards)
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
-		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, rbacGuards, params.ExecutionTargetHandler)
+		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, params.WorkbenchListHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
+		RegisterMobileVoiceRoutes(v1, params.MobileVoiceHandler, rbacGuards)
+		RegisterMobileDeviceRoutes(v1, params.MobileDeviceHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)

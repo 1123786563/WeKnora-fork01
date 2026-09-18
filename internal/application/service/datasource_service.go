@@ -820,8 +820,15 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 	var fetchErr error
 
 	if payload.ForceFull || ds.SyncMode == types.SyncModeFull {
-		// Full sync
-		items, fetchErr = connector.FetchAll(ctx, config, config.ResourceIDs)
+		// Full sync. FullSyncWithCursor connectors (DingTalk) re-fetch every
+		// document while still reconciling deletions against the previous
+		// cursor; plain FetchAll connectors keep the no-cursor behaviour.
+		if full, ok := connector.(datasource.FullSyncWithCursor); ok {
+			cursor, _ := ds.ParseSyncCursor()
+			items, nextCursor, fetchErr = full.FetchAllFromCursor(ctx, config, config.ResourceIDs, cursor)
+		} else {
+			items, fetchErr = connector.FetchAll(ctx, config, config.ResourceIDs)
+		}
 		logger.Infof(ctx, "full sync fetched %d items", len(items))
 	} else {
 		// Incremental sync
@@ -1109,6 +1116,26 @@ func (s *DataSourceService) applyFetchedItem(
 	}
 }
 
+// streamingFetch dispatches to FetchFullStream when a connector can re-fetch
+// every item while keeping the stored cursor as the deletion baseline. Other
+// streaming connectors keep FetchStream, including force-full runs that drop
+// the cursor on the first attempt via streamStartCursor.
+func streamingFetch(
+	ctx context.Context,
+	sc datasource.StreamingConnector,
+	config *types.DataSourceConfig,
+	forceFull bool,
+	startCursor, fullBaseline *types.SyncCursor,
+	h datasource.StreamHandler,
+) (*types.SyncCursor, error) {
+	if forceFull {
+		if full, ok := sc.(datasource.FullStreamingConnector); ok {
+			return full.FetchFullStream(ctx, config, fullBaseline, h)
+		}
+	}
+	return sc.FetchStream(ctx, config, startCursor, h)
+}
+
 // streamStartCursor decides which cursor a streaming fetch should resume from.
 // A user-triggered full sync on its first attempt drops the cursor so every
 // item is re-fetched; a retried full sync (attempt > 0) and every incremental
@@ -1242,7 +1269,23 @@ func (s *DataSourceService) processSyncStreaming(
 		authVersion:  authVersion,
 	}
 
-	nextCursor, fetchErr := sc.FetchStream(ctx, config, startCursor, handler)
+	// Full-stream connectors (Confluence) re-fetch every item on a force-full
+	// run while retaining the stored cursor purely as the deletion baseline,
+	// so Asynq retries continue instead of restarting.
+	fullBaseline := startCursor
+	if forceFull {
+		if _, ok := sc.(datasource.FullStreamingConnector); ok {
+			baseline, cursorErr := ds.ParseSyncCursor()
+			if cursorErr != nil {
+				logger.Errorf(ctx, "failed to parse full-sync cursor: %v", cursorErr)
+				s.updateSyncRunResult(ctx, ds, syncLog, &types.SyncResult{}, nil,
+					types.SyncLogStatusFailed, fmt.Sprintf("Invalid cursor: %v", cursorErr), wasPaused)
+				return cursorErr
+			}
+			fullBaseline = baseline
+		}
+	}
+	nextCursor, fetchErr := streamingFetch(ctx, sc, config, forceFull, startCursor, fullBaseline, handler)
 	if fetchErr != nil {
 		// Progress so far is already checkpointed onto ds.LastSyncCursor; leave
 		// it in place so the Asynq retry resumes from there. Persist counts.

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
+import { ApiError } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
-import { ChatPage } from '@weknora/views/chat/page';
+import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/composer';
@@ -22,10 +24,24 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
-import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import {
+  clearSteerQueue,
+  dropSteerItem,
+  enqueueSteerItem,
+  failSteerItem,
+  markSteerAwaitingIdleSend,
+  nextSteerIdleSend,
+  settleSteerItem,
+  steerQueueChips,
+  syncSteerQueueFromServer,
+  type WebSteerQueueItem,
+} from './steer-queue.ts';
+import type { SteerMutationResponse } from '@weknora/contracts';
+import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, streamFailureMessage, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
-import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution } from './approval-state.ts';
+import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
+import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -70,12 +86,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Sidebar group-by toggle persists across reloads (Vue sessionGrouping.ts).
   const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>(() => readStoredGroupMode());
   const [streamState, setStreamState] = useState(initialChatStreamState);
+  // Mirror for async handlers captured before a re-render (steer/promote read
+  // the live phase the same turn the feed flips it); the feed and stop keep it
+  // current alongside every setStreamState.
+  const streamStateRef = useRef(initialChatStreamState());
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
   // Chat models for the composer chip (Vue chatResources chatModels); the
   // KnowledgeQA filter lives in model-chip.ts like the Vue store.
   const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(() => readStoredChatModelId(scope.scope));
+  // Vue readLastChatModelID: the chip resolves the user's *explicit* pick, not
+  // the synthetic first-model default the loader seeds selectedModelId with.
+  const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope));
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -94,11 +117,44 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Per-assistant-message approval snapshots so pending/resolved cards survive
   // the post-turn history refresh and revisiting a session.
   const approvalMemoryRef = useRef<Map<string, ChatApproval[]>>(new Map());
+  // Vue ToolApprovalCard countdown inputs (SSE requested_at/timeout_seconds);
+  // the domain reducer drops them, so remember them per pendingId here.
+  const approvalTimingRef = useRef<Map<string, ApprovalTiming>>(new Map());
   // continue-stream is started at most once per persisted incomplete message.
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
-  const [draft, setDraft] = useState('');
+  // R466-A2 — Vue menuStore.prefillQuery equivalent: the R465 palette 问 AI
+  // deep link /platform/creatChat?q=… is consumed exactly once on the
+  // new-chat entry. Vue Input-field.vue fills query.value + focuses the
+  // textarea (nextTick) and never auto-sends; a session route ignores the
+  // stray parameter because the prefill belongs to the new-conversation view.
+  const prefillQueryRef = useRef<string | null>(null);
+  if (prefillQueryRef.current === null) {
+    // String(window.location) is the href in the browser (and stays a plain
+    // href string in embedded/test hosts), so the ?q= read works on both.
+    const prefillUrl = new URL(String(window.location));
+    prefillQueryRef.current = chatSessionIdFromPath(prefillUrl.pathname) ? '' : readPrefillQuery(prefillUrl.search);
+  }
+  const [draft, setDraft] = useState((): string => prefillQueryRef.current ?? '');
+  const [composerFocusSignal] = useState(() => (prefillQueryRef.current ? 1 : 0));
   const [mentionOptions, setMentionOptions] = useState<ChatMentionView[]>([]);
-  const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>([]);
+  // R467-A2 — Vue startChat(query, kbIds) KB preselect equivalent: the scoped
+  // ask-AI deep link /platform/creatChat?…&kbIds=… is consumed exactly once on
+  // the new-chat entry (session routes ignore it, same rule as ?q=). Vue
+  // settingsStore.selectKnowledgeBases(kbIds) renders the KBs as composer
+  // selection chips; the React composer's KB selector is the mention chip
+  // list, so the scope seeds kb-type mentionedItems whose ids flow into the
+  // stream body knowledge_base_ids via buildWebChatStreamOptions.
+  const prefillKbIdsRef = useRef<string[] | null>(null);
+  if (prefillKbIdsRef.current === null) {
+    const prefillUrl = new URL(String(window.location));
+    prefillKbIdsRef.current = chatSessionIdFromPath(prefillUrl.pathname) ? [] : readPrefillKbIds(prefillUrl.search);
+  }
+  // Seeded chips carry the raw id as the display name until the mention
+  // options load (backfill effect below) — mirrors the Vue KB list resolving
+  // the store's raw ids into names.
+  const [prefillKbSeededRef] = useState(() => new Set(prefillKbIdsRef.current));
+  const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>(() =>
+    prefillKbIdsRef.current!.map((id) => ({ id, name: id, type: 'kb' as const })));
   const [mentionLoading, setMentionLoading] = useState(false);
   const [mentionError, setMentionError] = useState<string>();
   const mentionLoadedRef = useRef(false);
@@ -123,8 +179,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelChip = useMemo(() => resolveChatModelChip({
     models: chatModels,
     agentModelId,
+    selectedModelId: userModelPick,
     notConfiguredLabel: MODEL_CHIP_NOT_CONFIGURED[readStoredLocale()] ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'],
-  }), [agentModelId, chatModels]);
+  }), [agentModelId, chatModels, userModelPick]);
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
@@ -137,12 +194,29 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }, [scope.scope, selectedModelId]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  // R473-A2 — Vue steerQueue ref parity: queued after-messages shown as
+  // composer chips with promote/remove/retry; consumed one-per-boundary after
+  // a turn completes (frontend/src/views/chat/index.vue).
+  const [steerQueue, setSteerQueue] = useState<WebSteerQueueItem[]>([]);
+  const steerQueueRef = useRef<WebSteerQueueItem[]>([]);
+  const steerConsumeInFlightRef = useRef(false);
+  // The ref is the source of truth (async handlers read it mid-turn, before
+  // any re-render lands); the state is the render mirror.
+  const applySteerQueue = (updater: (current: WebSteerQueueItem[]) => WebSteerQueueItem[]): void => {
+    const next = updater(steerQueueRef.current);
+    steerQueueRef.current = next;
+    setSteerQueue(next);
+  };
   // History refresh in-flight flag (Vue sessions.messages loader).
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [suggestions, setSuggestions] = useState<MessageSuggestionSet | undefined>();
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
+  const [agentToast, setAgentToast] = useState<string | null>(null);
+  const agentToastTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current); }, []);
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
   const storageKey = useMemo(
@@ -174,6 +248,24 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  // R467-A2 — backfill the seeded KB chips' display names once the mention
+  // options resolve (the deep link only carries raw ids). Mirrors the Vue KB
+  // list resolving settingsStore's raw selection ids into KB names.
+  useEffect(() => {
+    if (prefillKbSeededRef.size === 0) return;
+    setMentionedItems((current) => {
+      let changed = false;
+      const next = current.map((item) => {
+        if (item.type !== 'kb' || !prefillKbSeededRef.has(item.id) || item.name !== item.id) return item;
+        const match = mentionOptions.find((option) => option.id === item.id);
+        if (!match) return item;
+        changed = true;
+        return { ...item, name: match.name, ...(match.kbType ? { kbType: match.kbType } : {}) };
+      });
+      return changed ? next : current;
+    });
+  }, [mentionOptions]);
 
   // Vue creatChat.vue:81-83 + line 50 — the chat contextual tour arms on chat
   // entry (globalCreatChat / kbCreatChat routes); the React chat page IS that
@@ -273,6 +365,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     void client.configuration.models.list(scope.signal).then(
       (result) => {
         if (active && scopeController.isCurrent(scope.scope)) {
+          // Agent readiness needs every model type (chat + rerank), while the
+          // composer chip keeps the Vue KnowledgeQA-only dropdown.
+          setAgentModels(result.map((model) => ({ id: String(model.id), type: typeof model.type === 'string' ? model.type : undefined })));
           const models = listChatModels(result);
           setChatModels(models);
           setSelectedModelId((current) => current && models.some((model) => String(model.id) === current) ? current : String(models[0]?.id ?? ''));
@@ -291,8 +386,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setSuggestions(undefined);
       suggestionForMessage.current = null;
       impressionForSuggestion.current = null;
+      applySteerQueue(clearSteerQueue);
       return;
     }
+    // Vue chat/index.vue session switch: the queue belongs to the previous
+    // turn's session and is dropped on selection change.
+    applySteerQueue(clearSteerQueue);
     let active = true;
     setSuggestions(undefined);
     suggestionForMessage.current = null;
@@ -327,15 +426,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const sessionId = selectedSessionId;
     if (resumeStartedRef.current.get(sessionId) === resumeId) return;
     resumeStartedRef.current.set(sessionId, resumeId);
+    // Vue hydrateSteerQueue (only when the local queue is empty): restoring a
+    // session mid-run also restores the server-owned steer backlog as chips.
+    void hydrateSteerQueue(sessionId);
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const runId = ++chatRunIdRef.current;
     setStreamState(initialChatStreamState());
     const feed = createStreamFeed(sessionId, runId, resumeId);
-    void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch(() => {
+    void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch((cause: unknown) => {
       // Non-IM resume failures surface as errors; the partial answer stays.
+      // Vue parity: the localized stream prefix plus the HTTP status, not a
+      // generic 「操作失败」.
       if (runId === chatRunIdRef.current && selectedSessionIdRef.current === sessionId) {
-        setError(copy.operationFailed);
+        setError(streamFailureMessage(cause, copy.streamFailed));
       }
     }).finally(() => {
       if (streamAbortRef.current === controller) streamAbortRef.current = null;
@@ -399,8 +503,25 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   useEffect(() => {
-    setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : '');
-  }, [storageKey]);
+    // Vue Input-field.vue mount consume: menuStore.consumePrefillQuery() is
+    // one-shot, so the ?q= seed is read once here (the browser draft-restore
+    // effect re-runs on every session switch; the ref keeps the prefill from
+    // re-applying after it has been consumed).
+    const prefill = prefillQueryRef.current ?? '';
+    prefillQueryRef.current = '';
+    setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : prefill);
+    // Vue nextTick(() => textarea.focus()): the signal is seeded at mount
+    // (SSR-visible) from the prefill, so the composer focuses exactly once.
+    // Vue fork landing: after forking at a user message the question is
+    // prefilled in the new session (index.vue readForkLanding). Consume the
+    // stash once the forked session becomes the selected one so the history
+    // reload above cannot clobber it.
+    if (selectedSessionId) {
+      const landing = takeForkLanding(selectedSessionId);
+      if (landing && landing.text) setDraft(landing.text);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, selectedSessionId]);
 
   useEffect(() => {
     terminalController.current?.close();
@@ -609,6 +730,67 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentId) url.searchParams.set('agentId', agentId);
     else url.searchParams.delete('agentId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    // Vue Input-field toasts 已切换到… after a successful mode switch.
+    const next = agents.find((agent) => agent.id === agentId);
+    const mode = (next?.config as { agent_mode?: unknown } | undefined)?.agent_mode;
+    showAgentToast(mode === 'smart-reasoning' ? copy.agentSwitchedOn : copy.agentSwitchedOff);
+  }
+
+  function showAgentToast(message: string) {
+    setAgentToast(message);
+    if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current);
+    agentToastTimer.current = window.setTimeout(() => setAgentToast(null), 2400);
+  }
+
+  /** SPA navigation to the agents page (manage entry / configure jump). */
+  function navigateToAgentsPage(query?: string) {
+    const target = query ? `/platform/agents?${query}` : '/platform/agents';
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
+  // Vue index.vue handleFork (L365-410): fork at the message, carry the
+  // user question across navigation in sessionStorage, refresh the sidebar
+  // list, and land on the forked chat. 409 → 请等本轮回答结束后再分叉.
+  const forkInFlightRef = useRef(false);
+  async function forkAtMessage(messageId: string) {
+    if (forkInFlightRef.current) return;
+    if (!messageId || !selectedSessionId) return;
+    const source = messages.find((m) => m.id === messageId);
+    if (!source) return;
+    const sourceSessionId = selectedSessionId;
+    forkInFlightRef.current = true;
+    try {
+      const result = await client.sessions.fork(sourceSessionId, messageId);
+      if (!result.sessionId) return;
+      const prefill = source.role === 'user' ? String(source.content ?? '') : '';
+      stashForkLanding(result.sessionId, prefill);
+      // Sidebar refresh: the forked session appears immediately (Vue
+      // updataMenuChildren). The list effect keys on scope+filters, so bump
+      // the page state to force one reload.
+      setSessionPage((page) => page);
+      void client.sessions.list({ page: 1, pageSize: 30, source: sessionSource || undefined, keyword: sessionKeyword || undefined }).then((list) => {
+        setSessions(list.data);
+        const pageCount = sessionPageCount(list.total, list.page_size);
+        setSessionPageCountValue(pageCount);
+        if (list.page !== 1) setSessionPage(1);
+      }, () => undefined);
+      window.history.pushState({}, '', `/platform/chat/${result.sessionId}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 409 || /FORK_SOURCE_BUSY|active turn/.test(error.message))) {
+        showAgentToast(copy.forkBusyToast);
+        return;
+      }
+      const status = (error as { status?: number })?.status;
+      if (status === 409) {
+        showAgentToast(copy.forkBusyToast);
+        return;
+      }
+      showAgentToast(copy.forkFailedToast);
+    } finally {
+      forkInFlightRef.current = false;
+    }
   }
 
   function changeSessionSource(source: string): void {
@@ -633,8 +815,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
-  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void> {
-    await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}) }, scope.signal);
+  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>, reason?: string): Promise<void> {
+    await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}), ...(reason ? { reason } : {}) }, scope.signal);
     rememberApprovalResolution(pendingId, decision);
     setStreamState((current) => ({ ...current, approvals: applyToolApprovalResolution(current.approvals, pendingId, decision) }));
   }
@@ -649,10 +831,43 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return uuid ?? 'steer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   }
 
-  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems): Promise<void> {
-    const sessionId = selectedSessionId;
+  /**
+   * Applies the enqueue receipt to the local queue. Returns true when the
+   * caller must degrade to a plain send: the POST answered new_run on an
+   * already-idle page (R474-A2 N1, Vue handleSteerMsg ~899 drops the item and
+   * falls back to sendMsg — the message is never silently dropped).
+   */
+  function applySteerEnqueueResult(sessionId: string, clientSteerId: string, result: SteerMutationResponse): boolean {
+    if (selectedSessionIdRef.current !== sessionId) return false;
+    if (result.status === 'queued') {
+      // Settled onto the server-issued id; the backlog fires as a follow-up
+      // run once the current turn exits (Vue queued.steer_id = serverId).
+      applySteerQueue((current) => settleSteerItem(current, clientSteerId, result.steer_id));
+      return false;
+    }
+    if (result.status === 'new_run') {
+      // No live run accepted the message. Still attached to a stream: keep it
+      // and send locally once the current SSE settles (Vue awaitingIdleSend);
+      // idle means the caller falls back to a plain send right away.
+      if (streamStateRef.current.phase === 'streaming' || streamAbortRef.current) {
+        applySteerQueue((current) => markSteerAwaitingIdleSend(settleSteerItem(current, clientSteerId), clientSteerId));
+        return false;
+      }
+      applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+      return true;
+    }
+    // already_injected: the running turn read it; no queue residue (Vue drops
+    // the item and clears the pending preview).
+    applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+    return false;
+  }
+
+  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems, retrySteerId?: string, delivery: 'after' | 'inject' = 'after'): Promise<void> {
+    // selectSession keeps the ref current even before the re-render lands, so
+    // the steer dispatched right after a fresh session-create still resolves.
+    const sessionId = selectedSessionIdRef.current;
     if (!sessionId) throw new Error('Create or select a conversation first.');
-    const streaming = streamState.phase === 'streaming';
+    const streaming = streamStateRef.current.phase === 'streaming';
     const steerMentions: SteerMentionItem[] = selectedMentions.map((item) => ({
       id: item.id,
       name: item.name,
@@ -662,24 +877,147 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       ...(item.kbName ? { kbName: item.kbName } : {}),
       ...(item.skillName ? { skillName: item.skillName } : {}),
     }));
+    const clientSteerId = retrySteerId ?? newSteerId();
     const action = buildSteerAction({
       streaming,
       content,
       assistantMessageId: streamState.assistantMessageId,
       mentionedItems: steerMentions,
-      newSteerId,
+      newSteerId: () => clientSteerId,
+      // R474-A2 — the ⌘Enter/Alt+Enter inject shortcut passes delivery
+      // 'inject' through (Vue handleSteerMsg(query, mentions, delivery)).
+      delivery: retrySteerId ? undefined : delivery,
     });
     if (action.kind === 'send') return send(action.submission);
+    // R473-A2: the follow-up lands as a composer chip while the POST is in
+    // flight (Vue pushes the pending item before awaiting steerSession).
+    applySteerQueue((current) => retrySteerId
+      ? current.map((item) => item.steerId === retrySteerId ? { ...item, status: 'pending' as const } : item)
+      : enqueueSteerItem(current, { steerId: clientSteerId, content, mentionedItems: steerMentions }));
     try {
-      await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
+      const result = await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
+      // N1 race: the enqueue answered new_run on an idle page — degrade to a
+      // plain send (Vue sendMsg fallback) instead of dropping the message.
+      if (applySteerEnqueueResult(sessionId, clientSteerId, result)) {
+        await send({ content, status: 'pending' });
+      }
     } catch (cause) {
-      if (!isSteerConflict(cause)) throw cause;
-      // 409: the run moved past the message id we expected. Re-base onto the
-      // freshest assistant message id and retry once.
-      const rebased = streamState.assistantMessageId;
-      if (!rebased || rebased === action.input.expectedAssistantMessageId) throw cause;
-      await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
+      if (isSteerConflict(cause)) {
+        // 409: the run moved past the message id we expected. Re-base onto the
+        // freshest assistant message id and retry once.
+        const rebased = streamState.assistantMessageId;
+        if (rebased && rebased !== action.input.expectedAssistantMessageId) {
+          try {
+            const result = await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
+            if (applySteerEnqueueResult(sessionId, clientSteerId, result)) {
+              await send({ content, status: 'pending' });
+            }
+            return;
+          } catch (retryCause) {
+            applySteerQueue((current) => failSteerItem(current, clientSteerId));
+            throw retryCause;
+          }
+        }
+      }
+      applySteerQueue((current) => failSteerItem(current, clientSteerId));
+      throw cause;
     }
+  }
+
+  /** Vue promote-steer: flip a queued after-message to inject (send now). */
+  async function promoteSteer(steerId: string): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId || !steerId) return;
+    const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
+    if (!item || item.status !== 'queued') return;
+    try {
+      const result = await client.chat.steer.promote(sessionId, steerId, scope.signal);
+      if (result.status === 'new_run' && (streamStateRef.current.phase === 'streaming' || streamAbortRef.current)) {
+        applySteerQueue((current) => markSteerAwaitingIdleSend(current, steerId));
+        return;
+      }
+      if (result.status === 'new_run') {
+        applySteerQueue((current) => dropSteerItem(current, steerId));
+        await send({ content: item.content, status: 'pending' });
+        return;
+      }
+      // queued (flipped to inject) and already_injected both leave the chip
+      // strip: the message surfaces as an injected user bubble in the stream.
+      applySteerQueue((current) => dropSteerItem(current, steerId));
+    } catch (cause) {
+      // Vue rolls the item back to after and toasts; the chip stays.
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+    }
+  }
+
+  /** Vue remove-steer: cancel one queued message (DELETE /steer/:id). */
+  async function removeSteer(steerId: string): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId || !steerId) return;
+    try {
+      await client.chat.steer.remove(sessionId, steerId, scope.signal);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+      return;
+    }
+    applySteerQueue((current) => dropSteerItem(current, steerId));
+  }
+
+  /** Vue retry-steer: re-run the failed enqueue with the same steer id. */
+  async function retrySteer(steerId: string): Promise<void> {
+    const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
+    if (!item || item.status !== 'failed') return;
+    await steer(item.content, item.mentionedItems ?? mentionedItems, steerId);
+  }
+
+  /**
+   * Vue flushSteerAfterTurn + attachSteerFollowUp: once the stream settles,
+   * locally owned items (new_run races) are sent one per boundary, then the
+   * server list re-syncs the backlog — items the follow-up run claimed leave
+   * the queue, and the refreshed history lets the resume pipeline attach the
+   * follow-up run's stream.
+   */
+  async function consumeSteerAfterTurn(sessionId: string): Promise<void> {
+    if (steerConsumeInFlightRef.current || selectedSessionIdRef.current !== sessionId) return;
+    steerConsumeInFlightRef.current = true;
+    try {
+      // The feed's completed event fires before the outer send() releases its
+      // in-flight guard; wait for the turn to fully settle first.
+      for (let attempt = 0; attempt < 100 && sendInFlightRef.current; attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+      }
+      if (selectedSessionIdRef.current !== sessionId) return;
+      const idle = nextSteerIdleSend(steerQueueRef.current);
+      if (idle) {
+        applySteerQueue((current) => dropSteerItem(current, idle.steerId));
+        void send({ content: idle.content, status: 'pending' }).catch(() => undefined);
+        return;
+      }
+      if (steerQueueRef.current.length === 0) return;
+      try {
+        const remote = await client.chat.steer.list(sessionId, scope.signal);
+        if (selectedSessionIdRef.current !== sessionId) return;
+        applySteerQueue((current) => syncSteerQueueFromServer(current, remote.items));
+      } catch { /* keep the local queue view */ }
+      if (steerQueueRef.current.length === 0) return;
+      try {
+        const persisted = await client.sessions.messages(sessionId, { limit: 50, signal: scope.signal });
+        if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setMessages(appendMessages([], persisted));
+      } catch { /* follow-up attach happens on the next history refresh */ }
+    } finally {
+      steerConsumeInFlightRef.current = false;
+    }
+  }
+
+  /** Vue hydrateSteerQueue: restore the server backlog once per resume target. */
+  async function hydrateSteerQueue(sessionId: string): Promise<void> {
+    if (steerQueueRef.current.length > 0) return;
+    try {
+      const remote = await client.chat.steer.list(sessionId, scope.signal);
+      if (selectedSessionIdRef.current !== sessionId || steerQueueRef.current.length > 0) return;
+      const synced = syncSteerQueueFromServer([], remote.items);
+      if (synced.length > 0) applySteerQueue(() => synced);
+    } catch { /* queue restore is best-effort */ }
   }
 
   async function downloadArtifact(messageId: string, artifactIndex: number): Promise<void> {
@@ -793,6 +1131,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   function updateDraft(value: string) {
     setDraft(value);
     if (storageKey) window.localStorage.setItem(storageKey, value);
+    // R466-A2 prefill lifecycle: clearing the consumed query strips ?q= from
+    // the URL (replaceState only — the deep link must not re-apply on the
+    // next new-chat mount, and the history stack stays clean).
+    if (value === '') clearPrefillParamsFromUrl(window.history, String(window.location));
   }
 
   function loadMentionOptions(): void {
@@ -942,19 +1284,35 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const injectedId = (steerId: string, userMessageId?: string) => userMessageId ?? `injected-${steerId}`;
     return (event: ChatStreamEvent) => {
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
+      // Remember the countdown window before the reducer drops those fields.
+      const timing = extractApprovalTiming(event);
+      if (timing) {
+        const payload = typeof event.data === 'object' && event.data !== null ? event.data as Record<string, unknown> : {};
+        const pendingId = typeof payload.pending_id === 'string' ? payload.pending_id : '';
+        if (pendingId) approvalTimingRef.current.set(pendingId, timing);
+      }
       runState = reduceChatStream(runState, event);
       setStreamState(runState);
+      streamStateRef.current = runState;
       rememberApprovalSnapshot(runState.assistantMessageId, Object.values(runState.approvals));
       if (runState.phase === 'error') throw new ChatStreamApplicationError(runState.error ?? 'Chat stream failed');
       const injectedRows = runState.injectedUserMessages.map((injected) => ({
         id: injectedId(injected.steerId, injected.userMessageId),
         session_id: sessionId, role: 'user' as const, content: injected.content, is_completed: true,
       }));
+      // Vue onUserMessageInjected: an injected steer leaves the queue (both
+      // the enqueue-then-promote and direct inject paths converge here).
+      for (const injected of runState.injectedUserMessages) {
+        applySteerQueue((current) => dropSteerItem(current, injected.steerId));
+      }
       const hasLiveAssistant = Boolean(runState.answer) || Boolean(runState.thinking) || Object.keys(runState.toolCalls).length > 0;
       if (hasLiveAssistant || injectedRows.length > 0) {
         const injectedIds = new Set(injectedRows.map((row) => row.id));
         setMessages((current) => [...current.filter((item) => item.id !== transientId && !injectedIds.has(item.id)), ...injectedRows, ...(hasLiveAssistant ? [{
-          id: transientId, session_id: sessionId, role: 'assistant' as const, content: runState.answer,
+          id: transientId, session_id: sessionId, role: 'assistant' as const,
+          // Vue processStreamChunk holds the answer back while `<think>` is
+          // open; the reasoning renders through the live deepThink block only.
+          content: splitLiveThinking(runState.answer).answer,
           is_completed: runState.phase === 'completed',
           thinking: runState.thinking,
           tool_calls: Object.values(runState.toolCalls),
@@ -965,18 +1323,31 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         suggestionForMessage.current = runState.assistantMessageId;
         void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
       }
+      // R473-A2 — Vue onTurnComplete → flushSteerAfterTurn: consume the steer
+      // queue once the turn settles (idle-send first, then server backlog
+      // re-sync). Deferred because send() still holds its in-flight guard.
+      if (runState.phase === 'completed') {
+        window.setTimeout(() => { void consumeSteerAfterTurn(sessionId); }, 0);
+      }
     };
   }
 
   async function stopStream(): Promise<void> {
     const sessionId = selectedSessionIdRef.current;
-    if (!sessionId || streamState.phase !== 'streaming') return;
+    if (!sessionId) return;
+    // Vue isReplying spans the whole turn: a stop during the pre-stream window
+    // (request dispatched, phase still 'idle', first SSE event not arrived)
+    // must still abort the pending fetch, not no-op on the phase guard.
+    if (streamState.phase !== 'streaming' && !streamAbortRef.current) return;
     const messageId = streamState.assistantMessageId;
     const controller = streamAbortRef.current;
     streamAbortRef.current = null;
     controller?.abort();
     chatRunIdRef.current += 1;
     setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
+    streamStateRef.current = { ...streamStateRef.current, phase: 'stopped', artifactsPending: false };
+    // Vue handleStopConfirmed: stopping the turn cancels the whole steer queue.
+    applySteerQueue(clearSteerQueue);
     if (messageId) {
       try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
     }
@@ -986,6 +1357,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
     sendInFlightRef.current = true;
+    // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
+    // from the URL (replaceState) even if the turn later fails, mirroring the
+    // one-shot menuStore.consumePrefillQuery semantics.
+    clearPrefillParamsFromUrl(window.history, String(window.location));
     // The stream controller is created inside prepareSendRun AFTER the inline
     // session-create/selectSession teardown: selectSession aborts the
     // registered controller, so a pre-installed one would abort this send
@@ -1036,9 +1411,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         } catch (retryCause) {
           if (runController.signal.aborted) return;
           if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
-            setStreamState((current) => ({ ...current, phase: 'error', error: retryCause instanceof Error ? retryCause.message : copy.operationFailed, artifactsPending: false }));
+            setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
+            streamStateRef.current = { ...streamStateRef.current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false };
           }
-          throw retryCause;
+          // Application errors keep the server-provided message (Vue renders
+          // the SSE error event content); transport errors carry the copy.
+          throw isChatStreamApplicationError(retryCause) ? retryCause : new Error(streamFailureMessage(retryCause, copy.streamFailed));
         }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
@@ -1066,11 +1444,18 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
-  return <ChatPage
+  return <>
+    {agentToast ? (
+      <div role="status" aria-live="polite" className="fixed bottom-[76px] left-1/2 z-[10050] -translate-x-1/2 rounded-[8px] bg-[rgba(0,0,0,0.78)] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+        {agentToast}
+      </div>
+    ) : null}
+    <ChatPage
     sessions={sessions}
     selectedSessionId={selectedSessionId}
     messages={messages}
     draft={draft}
+    composerFocusSignal={composerFocusSignal}
     loadingSessions={loadingSessions}
     loadingMessages={loadingMessages}
     error={error}
@@ -1088,31 +1473,55 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onMentionOpen={loadMentionOptions}
     onMentionSelect={selectMention}
     onMentionRemove={removeMention}
-    agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
+    agents={agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      disabled: disabledAgentIds.includes(agent.id),
+      description: typeof agent.description === 'string' ? agent.description : undefined,
+      is_builtin: agent.is_builtin,
+      config: agent.config,
+    }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
+    agentModels={agentModels}
+    onManageAgents={() => navigateToAgentsPage()}
+    onConfigureAgent={(agent, section, highlight) => {
+      const params = new URLSearchParams({ edit: agent.id, section });
+      if (highlight) params.set('highlight', highlight);
+      navigateToAgentsPage(params.toString());
+    }}
+    onAgentNotReady={(_agent, labels) => {
+      showAgentToast(copy.agentNotReadyHint.replace('{items}', labels.join('、')));
+    }}
     modelLabel={modelChipLabel}
     modelContext={modelChipContext}
     modelContextIsDefault={modelChipIsDefault}
     modelOptions={modelOptions}
     selectedModelId={selectedModelId}
-    onModelChange={setSelectedModelId}
+    onModelChange={(modelId) => { setUserModelPick(modelId); setSelectedModelId(modelId); }}
     starterQuestions={starterQuestions}
+    onForkMessage={forkAtMessage}
+    canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
     starterQuestionsLoading={starterQuestionsLoading}
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}
     toolApprovals={(() => {
-      const live = Object.values(streamState.approvals);
+      const live = withApprovalTiming(Object.values(streamState.approvals), approvalTimingRef.current);
       if (live.length > 0) return live;
       const latestAssistantId = streamState.assistantMessageId
         ?? messages.filter((message) => message.role === 'assistant').at(-1)?.id;
-      return latestAssistantId ? approvalMemoryRef.current.get(latestAssistantId) ?? [] : [];
+      const remembered = latestAssistantId ? approvalMemoryRef.current.get(latestAssistantId) ?? [] : [];
+      return withApprovalTiming(remembered, approvalTimingRef.current);
     })()}
     oauthApprovals={Object.values(streamState.oauthApprovals)}
     onResolveToolApproval={resolveToolApproval}
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
     onSteer={steer}
+    steerQueue={steerQueueChips(steerQueue)}
+    onSteerPromote={(steerId) => { void promoteSteer(steerId); }}
+    onSteerRemove={(steerId) => { void removeSteer(steerId); }}
+    onSteerRetry={(steerId) => { void retrySteer(steerId); }}
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}
@@ -1143,8 +1552,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onTerminalInput={selectedSessionId ? terminalInput : undefined}
     onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
-    stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    stream={{ phase: streamState.phase, thinking: streamState.thinking, answer: streamState.answer, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    /* R471-A1 — Vue canSteer parity (chat/index.vue isAgentStreamSession()):
+     * steer capability belongs to the session's pipeline, not to the presence
+     * of a steer handler. selectedAgentId drives buildWebChatStreamOptions
+     * mode 'agent' vs 'knowledge', so it is the React counterpart of the
+     * Vue quick-answer/agent-stream split: without an agent the turn is
+     * quick-answer and stop is the composer's only running-turn action. */
+    canSteer={Boolean(selectedAgentId)}
     onStopStream={() => void stopStream()}
     send={send}
-  />;
+  />
+  </>;
 }

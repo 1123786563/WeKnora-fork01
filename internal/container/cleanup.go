@@ -100,6 +100,31 @@ func (c *ResourceCleaner) Reset() {
 // lifecycle lock, so a sweep tick never needs to pause the service.
 type PeriodicSweepFn func(ctx context.Context) error
 
+// ExecutionCleanupWorker is the production cleanup port. Its observation
+// source is assembled by the repository; callers cannot inject hand-written
+// facts into the periodic worker.
+type ExecutionCleanupWorker interface {
+	RunCleanupOnce(ctx context.Context, worker string, lease time.Duration) error
+}
+
+// StartExecutionCleanupSweep drives stop/usage/replay/restore reconciliation.
+// File/blob/backup deletion remains fail-closed until the W26 adapter is
+// installed on the repository.
+func StartExecutionCleanupSweep(worker ExecutionCleanupWorker, cleaner interfaces.ResourceCleaner) {
+	if worker == nil || cleaner == nil || parseCraftLifecycleBoolEnv("EXECUTION_CLEANUP_DISABLED") {
+		return
+	}
+	interval := 10 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("EXECUTION_CLEANUP_INTERVAL")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			interval = parsed
+		}
+	}
+	StartPeriodicSweep(cleaner, "ExecutionCleanupSweep", interval, func(ctx context.Context) error {
+		return worker.RunCleanupOnce(ctx, "execution-cleanup-worker", 2*interval)
+	})
+}
+
 // StartPeriodicSweep runs fn every interval until the cleaner stops it.
 // One pass at a time: a slow pass (a wedged provider, a big batch) makes the
 // next tick skip instead of piling up goroutines, and shutdown waits for the

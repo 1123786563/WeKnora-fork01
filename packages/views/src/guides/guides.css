@@ -72,6 +72,7 @@
   position: fixed;
   z-index: 1;
   pointer-events: auto;
+  box-sizing: border-box; /* Vue renders inside TDesign's global border-box; without it the 340px card grows by its 38px padding and overflows the right viewport edge. */
   display: flex;
   flex-direction: column;
   gap: 8px;
