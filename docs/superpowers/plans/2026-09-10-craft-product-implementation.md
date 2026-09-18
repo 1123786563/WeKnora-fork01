@@ -1,5 +1,7 @@
 # WeKnora Craft 完整产品 Implementation Plan
 
+> **状态（2026-09-18）：本计划的执行由 CFT 36 任务体系接管（CFT-S00-T001…CFT-S05-T036），其验收基线、映射与证据见 `docs/craft/execution/`（BASELINE/STATUS/task-status）与 `docs/craft/evidence/`。** 旧 G2 决策"不安装 @assistant-ui/react、用纯 React 模拟 ExternalStoreRuntime 语义"已被 DECISIONS.md D001 正式替代（CFT-S00-T006 锁版 0.15.20 真挂载）。本文的进度勾选不作为当前验收事实来源——一切以 CFT 台账为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 交付基于企业资料创作、预览、持续修改、保存版本和再次打开作品的 React 工作台，按阶段开放网页、文档、表格和演示稿。

@@ -1,5 +1,7 @@
 # Craft P1 OpenCode Adapter Implementation Plan
 
+> **状态（2026-09-18）：本计划已被替代（SUPERSEDED）。** 生产唯一的 OpenCode 适配器实现与运行入口是 `internal/agent/opencode/`（R01-R05 交付；CFT-S02-T013 协议锁定 pin）。本计划规划的 `internal/craft/delegation` 与 `internal/craft/opencode` 双目录从未成为运行代码，按架构边界亦不得再建（见 docs/craft/execution/BASELINE.md 与 DECISIONS.md D001 同节）。本文保留仅作历史追溯。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现独立 Go OpenCode Adapter，以可控 HTTP/SSE 测试服务和固定版本真实 OpenCode 验证委派执行；不接管现有聊天或 React 迁移。
