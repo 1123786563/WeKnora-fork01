@@ -5445,3 +5445,18 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   requires C ≤ 1 row (15-16 to close) with a per-row plan in the report.
 - Gates: six PASS (pnpm gates, v26). Evidence: `evidence/vue-react-parity/2026-09-18-r478-code-parity-round.md`.
   No Vue, mobile, or Go code was modified by this round's agents. R479 queue head: the settings 9-row batch.
+
+## 2026-09-19 Round R479 — Settings error-state batch: EnvVar guard fixed, inline verdict closed, 9-row anchoring deferred
+
+- Four agents dispatched; the two browser anchors (A1/A2) and the verifier (A4) hit the 600s
+  infrastructure-inactivity interruption (browser-agent flakiness class) with partial screenshots landed
+  (vue-r028 ollama-500 + probes) but no reports — NO row upgrades claimed. A3 DELIVERED in full; the 9-row
+  batch re-queues to R480 with the same method.
+- A3: inline KB-modal sections VERDICT aligned (Vue fails fully silently on load — console.error only;
+  React's inline Status raw text is an informational superset of silence, both without retry — kept).
+  R022 REAL GAP FIXED: Vue rejectBadValue's pre-submit empty/oversize guard ported (8192-byte cap, zero new
+  copy; the red test proved programmatic payload penetration before). R021 verified aligned + 3 anchor
+  tests. settings+platform 489/489 (+7). Deferred: a全域 toast 化立项选项 (pushSettingsToast ready).
+- Gates: pnpm gates exit 0 — shared 811/811, web 1873/1873, typecheck ×2, integrity, build all PASS.
+  Evidence: `evidence/vue-react-parity/2026-09-19-r479-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round. R480 queue head: the 9-row browser anchoring (same method) + N015 evidence.
