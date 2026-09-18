@@ -361,13 +361,13 @@
    "env": "-",
    "acceptance": "GET /apps/connections；Provider/归属/范围/状态；重新授权走系统浏览器；撤销二次确认；不展示 token/secret",
    "evidence": "tests/features/resources/connections/**",
-   "note": "页面行为测试 6/6（范围推导/无 token/系统浏览器授权路径/撤销二次确认/forbidden/空态）；真机 OAuth 浏览器回跳实测仍 blocked-env"
+   "note": "OAuth 浏览器授权实测 blocked-env；页面实现+视觉验证已有，无专属页面测试"
   },
   {
    "id": "RW-022",
    "title": "M14 任务成果",
    "group": "G5",
-   "status": "accepted",
+   "status": "integrating",
    "files": [
     "apps/mobile-next/src/features/resources/artifacts/**",
     "app/artifacts/[id].tsx"
@@ -378,7 +378,7 @@
    "env": "-",
    "acceptance": "不可变版本+来源 Run；预览/下载/分享分别授权；签名过期重授权；离线只读",
    "evidence": "tests/features/resources/artifacts/**",
-   "note": "最小后端补充（HMAC 签名链接三端点，Go 测试 13）+ 客户端下载状态机 7（401 自动重签）+ M14 页面 6 + 真实 roundtrip（独立 WeKnoraLive 库：列表→签发→无凭证下载真实 bytes）"
+   "note": "签名链接下载/分享服务未接（D-10）；页面实现+视觉验证已有"
   },
   {
    "id": "RW-023",
