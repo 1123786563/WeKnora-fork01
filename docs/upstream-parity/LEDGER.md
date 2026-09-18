@@ -33,7 +33,7 @@
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
 | A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ✅ 完成（第 10-13 轮四阶段：schema/迁移/历史查询→service+路由→沙箱 checkpoint 基建+trpc 挂点→React 入口 C1；第 17 轮 A17 落地后 SessionForkSandboxPort 真实接线） |
 | A12 | 记忆提取（memory extraction/lifecycle/vector） | `e42f09d` internal/application/repository/memory_*.go + 迁移 | 内部为旧形态（接缝已同形） | ✅ 完成（2026-09-18 第 16 轮，worktree 865c82fa：租约协议/SaveItem 替换序列化/全库向量排序+6 一致性测试套件；迁移 000153/000154+sqlite 074/075；容器实测 v154+表落地） |
-| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/`（19 文件 5223 行）+ agent/tools/browserskill*（1463 行）+ handler/session/browserskill.go + 前端 C2/C5 | 阶段 1-3 已落地（bdd3a4a2/c1cb798a/360bbd5b；阶段 2 生产载体=外部提交 751b3d71） | 🔄 进行中（阶段 1 ✅ 2 ✅ 3 ✅——HTTP 面+删除清理；阶段 4=React C2/C5+i18n+extension_test 适配（需真 Chromium rig）） |
+| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/`（19 文件 5223 行）+ agent/tools/browserskill*（1463 行）+ handler/session/browserskill.go + 前端 C2/C5 | 阶段 1-3+4a 已落地（bdd3a4a2/c1cb798a/360bbd5b/307d6ee9；阶段 2 生产载体=外部提交 751b3d71） | 🔄 进行中（阶段 4a ✅——C5 browserToolDisplay+C2 BrowserToolDetails+42 键×5 语言；**4b 余量**：浮动 BrowserTaskPreview 面板（拖拽+Document PiP+轮询）+浏览器连接设置区+剩余 ~60 locale 键+extension_test 真 rig） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
 | A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：工具发射器 8KiB tail/500ms flush + WithCommandOutput 上下文链 + RemoteExecRequest.OnOutput 流式（docker MultiWriter/e2b SDK 回调）+ SSE command_output 转发 + install_output transcript 订阅） |
@@ -68,10 +68,10 @@
 | # | 功能 | 状态 |
 |---|---|---|
 | C1 | 会话 fork 入口（forkPoint.ts + 消息操作） | ✅ 完成（第 13 轮，worktree 45461fa8：fork-point 解析+sessionStorage stash+消息级入口+谱系角标+端到端实测） |
-| C2 | BrowserSkill 聊天内 UI（BrowserTaskPreview/BrowserToolDetails） | ⬜ 等 A13 |
+| C2 | BrowserSkill 聊天内 UI（BrowserTaskPreview/BrowserToolDetails） | 🔄 4a ✅（307d6ee9：BrowserToolDetails React 等价+tool-result local_browser 分支）；BrowserTaskPreview 浮动面板属 4b |
 | C3 | SandboxDesktop 桌面组件 + Document Picture-in-Picture | ⬜ 等 A14 |
 | C4 | KnowledgeTagFilter 组件化 | ⬜ 等 B13 |
-| C5 | SandboxCommandProgress / pptxPreview / browserToolDisplay | ⬜ 等 A13/A14 |
+| C5 | SandboxCommandProgress / pptxPreview / browserToolDisplay | browserToolDisplay ✅（4a，307d6ee9）；SandboxCommandProgress/pptxPreview 随 A14/C3 |
 | C6 | useCitationPopover / useFloatingPreviewDrag 共享化 | ⬜ 等 B13 |
 | C7 | 批量文件下载 React 侧（apps/web 等价实现：选择多文档→批量下载入口→request blob 拼装） | ✅ 完成（2026-09-18 第 9 轮，worktree 2c9cd480：决策层+api-client+批量条按钮+8×5 i18n；后端路由从 main 38dc29bc 移植到 worktree 分支并重建镜像，端到端 200/zip+toast 逐字验证；上游 UI 截图未采集、以上游源码为基线） |
 
@@ -345,6 +345,18 @@
 - **extension_test 适配评估（结论：继续推迟至阶段 4）**：需要 BROWSERSKILL_TEST_EXTENSION/CHROMIUM/PLAYWRIGHT 四环境变量+真实守护进程二进制，本环境不可达；其 node 脚本 harness 触发安全钩子，待阶段 4 做真浏览器端到端时一并处理。
 - **门禁（worktree 内）**：go build ./internal/... 0、vet 0、**router+handler 包 PASS**；handler/session 失败=已记录 Craft/agent-run 预存家族（stash 基线复核 TestCraftHTTPOwnerCreatesUploadsRunsTwoRounds 同败）。
 - **A13 状态：🔄 阶段 3 完成（3/4）**；下轮=阶段 4（React C2：BrowserTaskPreview/BrowserToolDetails 等价组件+C5 browserToolDisplay+i18n 五语言）。
+
+### 2026-09-18 第 22 轮（A13 阶段 4a：browserToolDisplay（C5）+ 聊天内工具详情（C2））✅
+
+> worktree 提交 `307d6ee9`（5 文件）。阶段 4 拆 4a/4b：本轮 4a=纯函数层+聊天内详情渲染；4b=浮动预览面板+设置区（下轮）。
+
+- **C5 browser-tool-display.ts**（上游 utils/browserToolDisplay.ts 全量移植）：方法→文案映射、页面地址净化（去凭据/query/fragment、仅 http(s)）、incomplete 判定（导航 timeout+显式失败）、title/summary 分类（busy/参数错误/中断/重连/通用失败五族）、内容模型（console/network 诊断格式化+evaluate 值+error/hint/title/text 有界+截图 base64 门控进 Data 通道+标签页列表+帮助提示+截断标志）。**适配点**：上游 t('localBrowser.xxx') 扁平化为 ChatCopyTable 的 browserToolXxx 键；base64 形状正则用 RegExp 构造器规避 Write 工具的转义字节坑（首轮写入曾产出真实 CR 控制字节致工具拒读，删文件重写）。
+- **C2 browser-tool-details.tsx**：上游 BrowserToolDetails.vue 的 React 等价（状态行/错误/恢复提示/标题/地址/帮助提示/截图/标签页/页面文本/截断注记）。
+- **接线**：ToolResultView 对 `local_browser` 走 browserToolTitle 摘要+BrowserToolDetails 正文（其余工具不变）。
+- **i18n**：42 键 ×5 语言逐字节镜像上游 localBrowser.* 子集（此两界面所用）；键数漂移守卫覆盖。
+- **测试**：browser-tool-display.test.ts 9 套（地址净化/映射/incomplete/title 标记/summary 五族/console·network 格式化/截图门控/帮助提示/截断）——9/9 绿。
+- **门禁**：typecheck:web 0；test:shared **806 过（+9）/3 预存**（kbDetail 三连，基线同形）；test:web 38=基线 38（外部 lane WIP，零新增）。
+- **A13 状态：🔄 阶段 4a 完成**；4b=BrowserTaskPreview 浮动面板（拖拽+Document PiP+轮询+动作）+浏览器连接设置区+剩余 ~60 locale 键+extension_test 真浏览器 rig。
 
 ## G. 纪律与教训
 
