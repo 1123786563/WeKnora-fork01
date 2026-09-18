@@ -25,6 +25,9 @@ type runtimeFake struct {
 	eventsAt      time.Time
 	promptID      string
 	hijackPrompt  bool
+	// CFT-S02-T015 fault injection: hangs GET /message until the request
+	// context ends (a read timeout against a live serve).
+	hangMessages bool
 	status        string
 	aborts        int
 	events        chan string
@@ -83,6 +86,13 @@ func newRuntimeFake(t *testing.T) *runtimeFake {
 	})
 	mux.HandleFunc("GET /session/ses_oc/message", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
+		hang := f.hangMessages
+		f.mu.Unlock()
+		if hang {
+			<-r.Context().Done()
+			return
+		}
+		f.mu.Lock()
 		promptID := f.promptID
 		body := f.buildMessages(promptID)
 		f.mu.Unlock()
@@ -125,6 +135,12 @@ func (f *runtimeFake) promptCount() int {
 	return f.prompts
 }
 
+func (f *runtimeFake) setHangMessages(hang bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hangMessages = hang
+}
+
 func (f *runtimeFake) currentPromptID() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,8 +165,7 @@ func (f *runtimeFake) setStatus(status string) {
 	f.mu.Unlock()
 }
 
-func (f *runtimeFake) cutStream() {
-	f.mu.Lock()
+func (f *runtimeFake) cutStream() {	f.mu.Lock()
 	close(f.cut)
 	f.cut = make(chan struct{})
 	f.mu.Unlock()
@@ -206,8 +221,18 @@ func (s *memStore) PrepareTask(ctx context.Context, in craft.Task) (craft.Task, 
 	return in, nil
 }
 
-func (s *memStore) GetTask(ctx context.Context, scope craft.Scope, taskID string) (craft.Task, error) {
-	return craft.Task{}, craft.ErrNotFound
+// lastPreparedPromptID exposes the persisted prompt message id so re-entry
+// tests can reuse the SAME delegation identity (CFT-S02-T015).
+func (s *memStore) lastPreparedPromptID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if task, ok := s.tasks["call_r04"]; ok {
+		return task.PromptMessageID
+	}
+	return ""
+}
+
+func (s *memStore) GetTask(ctx context.Context, scope craft.Scope, taskID string) (craft.Task, error) {	return craft.Task{}, craft.ErrNotFound
 }
 
 func (s *memStore) SaveResult(ctx context.Context, fence agentruntime.Fence, result craft.Result) error {

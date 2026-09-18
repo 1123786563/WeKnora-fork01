@@ -133,10 +133,15 @@ func (e *Executor) Execute(ctx context.Context, task craft.Task) (craft.Result, 
 
 	// Retry check: if the runtime already holds this exact prompt message
 	// id, the delegation was accepted earlier and must not be submitted
-	// again.
+	// again. A FAILED pre-flight read can neither prove acceptance nor the
+	// lack of it — re-submitting a side-effecting prompt against an
+	// unreadable runtime would be a blind retry (CFT-S02-T015), so the
+	// execution stays unknown and reconcilable instead.
 	alreadyAccepted := false
 	if pre, err := snapshotObservation(runCtx, e.client, run.sessionID, run.promptID); err == nil {
 		alreadyAccepted = pre.promptSeen
+	} else {
+		return e.unresolved(run, nil, "pre-flight snapshot failed, refusing to re-submit the prompt: %v", err)
 	}
 
 	run.state = newSubState(run.sessionID, run.promptID, func(kind, partID string) {

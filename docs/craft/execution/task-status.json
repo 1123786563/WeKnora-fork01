@@ -128,10 +128,12 @@
     },
     {
       "id": "CFT-S02-T015",
-      "status": "planned",
+      "status": "verified",
       "deps": [
         "CFT-S02-T014"
-      ]
+      ],
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S02-T015/"
     },
     {
       "id": "CFT-S02-T016",
