@@ -19,3 +19,17 @@
 
 - 目标 DraftIntent 携带 `expectedWorkspaceRevision`（提交时工作区 CAS），现有 `craftRunRequestDTO` / api-client submit 均无该字段；服务端 CAS 目前存在于 interaction decide（ExpectedRevision）与 restore。
 - T002 冻结合同时三选一：后端补字段（推荐，语义已在设计中明确）；或前端合同降级记录为后续演进；或复用既有 live-run guard 视为等价保护。不允许各任务自行猜测。
+
+## D004 · CFT 证据/台账曾被主线清理误删，T027/T031 证据从未入库——恢复与重生成策略
+
+- 日期：2026-09-18 · 决策人：CFT 总控（恢复轮）
+- 事实：合并提交 b08a67a6（craft/cft-execution → main）之后，清理提交 a35b0389 误删 `docs/craft/**` 与 `docs/testing/craft/**` 共 84 个文件（36 项证据、执行台账、发布门禁与 O05 钻井记录）。已由 cbb60257 从 b08a67a6 以 plumbing（临时索引，零触碰工作区）恢复并 fast-forward 并回 main。
+- 另发现：`CFT-S04-T027/`、`CFT-S05-T031/` 两个证据目录在**任何分支上都不存在**（EVIDENCE.md 未及提交即随 worktree 清理丢失），index/task-status 的指针此前是悬空的。
+- 决定：不凭记忆伪造原证据；在 main 上真实重跑同一名义测试重生成这两份证据（见各自 EVIDENCE.md），并在重跑中如实记录暴露的回归（D005）。台账其余内容按恢复原样保留，不改写历史结论。
+
+## D005 · migrations/sqlite 三 lane 撞号 000058——保留最早、重编号其余
+
+- 日期：2026-09-18 · 决策人：CFT 总控（恢复轮）
+- 事实：mobile（000058_mobile_devices）、paseo（000058_paseo_control）、w24/execution（000058_execution_registrations）三条并行 lane 各自占用 000058；golang-migrate 加载 `migrations/sqlite` 即失败（duplicate migration file），阻断全部依赖迁移 harness 的 Go 测试（含 CFT-S05-T031 首轮重跑 4/4 FAIL），全新库部署/测试同样不可建。
+- 决定：仅重编号、零内容改动——paseo_control→000077、execution_registrations→000078；保留 mobile_devices 的 000058（三者最早提交，且 000059/000060 同链）。已核实 000059-000076 无对被重命名表的依赖。
+- 影响：长期存在的开发库若按旧号应用过 paseo/registrations 之一，重编号后会被视为新迁移而撞已有表，需重建该开发库；测试临时库与全新库不受影响。此修复同时解除非 Craft 测试面的同类阻断。
