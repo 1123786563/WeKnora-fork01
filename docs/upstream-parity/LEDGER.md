@@ -32,7 +32,7 @@
 | A9 | 钉钉连接器（stream-only） | `5d3114f` internal/datasource/connector/dingtalk + d7ccd5b 迁移 | 无 | ✅ 完成（2026-09-18 第 15 轮，worktree 035d710b：整包 32 测试+FullSyncWithCursor+迁移重编 000152+容器实测 oauth2/deletion_sync） |
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
 | A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ⬜ 待办（大条目，需适配 trpc-agent-go checkpoint） |
-| A12 | 记忆提取（memory extraction/lifecycle/vector） | `internal/application/repository/memory_*.go` + 迁移 | 仅旧 memory.go | ⬜ 待办（大条目） |
+| A12 | 记忆提取（memory extraction/lifecycle/vector） | `e42f09d` internal/application/repository/memory_*.go + 迁移 | 内部为旧形态（接缝已同形） | ✅ 完成（2026-09-18 第 16 轮，worktree 865c82fa：租约协议/SaveItem 替换序列化/全库向量排序+6 一致性测试套件；迁移 000153/000154+sqlite 074/075；容器实测 v154+表落地） |
 | A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/` + agent/tools/browserskill* + 迁移 | 无 | ⬜ 待办（最大条目，依赖 sandbox 基础设施） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
@@ -265,6 +265,19 @@
 
 **门禁**：go build ./... 0；dingtalk 32/32、im 包 ok。
 - **A9/A18 状态：✅ 完成**（钉钉前端表单/i18n 与 confluence 同留 UI 对齐轮）。
+
+### 2026-09-18 第 16 轮（A12 记忆提取全家桶对齐）✅
+
+> worktree 提交 `865c82fa`（36 文件 +2732/-566）。fork 的 memory 外部接缝（search_memory 工具/chat_pipeline 插件/handler）此前已与上游同形，本轮把**内部实现整体对齐到 e42f09d 上游态**。
+
+- **仓库层**：memory_extraction.go（withSubject 租约协议——Claim/Checkpoint/RecordExtractionFailure/Finish/Release，每会话索引进度行+遗留队列导入）、memory_lifecycle.go（SaveItem/ConfirmPendingItem——替换序列化+ErrMemoryConflict+重放容忍）、memory_vector.go（**全库语义排序**：rankInDatabase pgvector halfvec 余弦 / rankInProcess 容量上限兜底 / SyncVectorColumn blob→向量列排水）；memory.go 刷新为上游形态。
+- **类型/接口**：MemoryMessageCursor/ExtractionSession/State/Batch、冲突哨兵、MemoryVectorQuery/Hit、租约协议新签名全套。
+- **service/memory**：extract.go 换租约协议（每会话游标取代主题级水位线遍历）、service.go writeReplacing→SaveItem 冲突路径、vector/search/recall_trace 升级；**6 个上游一致性/向量测试文件移植**（迁移路径按 fork 编号适配）。
+- **message 仓库**：补 ListMessagesBySessionAfterCursor 组合游标分页（提取遍历用）。
+- **迁移**（fork 编号）：versioned **000153**（=94 一致性：extraction_state+replaces_id+提取会话表+存量 pending 目标恢复）+ **000154**（=95 向量搜索：halfvec 镜像列+域索引）；sqlite **000074/000075** 镜像。
+- **门禁与容器复验**：go build ./... 0；service/memory 全量 ok（含 6 个新一致性套件）；handler/repo Memory 测试 ok。镜像重建 healthy，**schema_migrations 实测推进到 154**，`memory_subjects.extraction_state` 列与 `memory_extraction_sessions` 表均已在生产库落地。
+- **⚠️ 主仓分支事故与修复（记录）**：外部进程在主仓建 `fix/miniprogram-qa-regression` 分支后把 main 留在旧位（6a70c35a），第 6-15 轮台账提交一度不在 main 上——本轮发现后用 `git branch -f main d387df7e` 快进修复（main 为其祖先，无分叉丢失；外部 craft docs 7d74b7af 留在该分支未带入）。
+- **A12 状态：✅ 完成**。
 
 ## G. 纪律与教训
 
