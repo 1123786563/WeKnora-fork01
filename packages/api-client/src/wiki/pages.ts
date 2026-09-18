@@ -267,6 +267,32 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       const suffix = query.toString();
       return list(await request({ method: 'GET', path: `${base(kbId)}/pages${suffix ? `?${suffix}` : ''}` }));
     },
+    // Vue getWikiStats: per-page_type counts drive the sidebar bucket tabs.
+    async stats(kbId: string): Promise<{ total_pages: number; pages_by_type: Record<string, number>; pending_issues: number }> {
+      const row = object(await request({ method: 'GET', path: `${base(kbId)}/stats` }), 'Invalid Wiki stats response');
+      const pages_by_type: Record<string, number> = {};
+      if (typeof row.pages_by_type === 'object' && row.pages_by_type !== null && !Array.isArray(row.pages_by_type)) {
+        for (const [key, value] of Object.entries(row.pages_by_type as Record<string, unknown>)) {
+          pages_by_type[key] = typeof value === 'number' ? value : 0;
+        }
+      }
+      return {
+        total_pages: typeof row.total_pages === 'number' ? row.total_pages : 0,
+        pages_by_type,
+        pending_issues: typeof row.pending_issues === 'number' ? row.pending_issues : 0,
+      };
+    },
+    async search(kbId: string, q: string, limit = 20): Promise<WikiPageListResponse> {
+      const suffix = `?q=${encodeURIComponent(q)}&limit=${limit}`;
+      return list(await request({ method: 'GET', path: `${base(kbId)}/search${suffix}` }));
+    },
+    async issues(kbId: string, slug?: string): Promise<unknown[]> {
+      const suffix = slug ? `?slug=${encodeURIComponent(slug)}` : '';
+      const value = await request({ method: 'GET', path: `${base(kbId)}/issues${suffix}` });
+      const root = object(value, 'Invalid Wiki issues response');
+      const items = root.issues ?? root.data ?? root;
+      return Array.isArray(items) ? items : [];
+    },
     async folders(kbId: string, parentId = '', pageTypes: string[] = []): Promise<WikiFolderListResponse> {
       const query = new URLSearchParams();
       if (parentId) query.set('parent_id', parentId);

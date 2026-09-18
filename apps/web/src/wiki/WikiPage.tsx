@@ -277,6 +277,10 @@ export function WikiPage({
   const [searchDraft, setSearchDraft] = useState("");
   const [keyword, setKeyword] = useState("");
   const [pages, setPages] = useState<WikiPageModel[]>([]);
+  // Vue WikiBrowser sidebar buckets: 知识 folds entity/concept/synthesis/
+  // comparison; 摘要 keeps its own tab. Counts come from /wiki/stats.
+  const [pagesByType, setPagesByType] = useState<Record<string, number>>({});
+  const [activeBucket, setActiveBucket] = useState("");
   const [pageTotal, setPageTotal] = useState(0);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [folderId, setFolderId] = useState("");
@@ -356,7 +360,11 @@ export function WikiPage({
     return () => { active = false; };
   }, [client, knowledgeBaseId, canContributeProp]);
 
+  // Vue space-epoch parity: a slow unfiltered response must not clobber the
+  // newer bucket-filtered one.
+  const loadEpoch = useRef(0);
   async function loadPages() {
+    const run = ++loadEpoch.current;
     setState({ status: "loading" });
     try {
       // Must-fix #3: server-backed pagination replaces the 50-entry hard cap.
@@ -365,9 +373,19 @@ export function WikiPage({
         page_size: WIKI_PAGE_SIZE,
         keyword: keyword || undefined,
         ...(viewMode === "tree" && folderPath ? { category_path: folderPath } : {}),
+        // The backend pages list ignores page_types — Vue buckets client-side.
       });
-      setPages(response.pages);
-      setPageTotal(response.total ?? response.pages.length);
+      if (run !== loadEpoch.current) return; // stale response: drop
+      // Vue groupedPages: the active bucket filters the visible list
+      // client-side (知识 = entity/concept/synthesis/comparison).
+      const bucketTypes = activeBucket === "knowledge"
+        ? ["entity", "concept", "synthesis", "comparison"]
+        : activeBucket === "summary" ? ["summary"] : null;
+      const kept = bucketTypes
+        ? response.pages.filter((page) => bucketTypes.includes(String((page as Record<string, unknown>).page_type ?? "")))
+        : response.pages;
+      setPages(kept);
+      setPageTotal(bucketTypes ? kept.length : (response.total ?? response.pages.length));
       const requested = initialSlug?.trim();
       const requestedPage = requested
         ? response.pages.find((page) => page.slug === requested)
@@ -386,7 +404,26 @@ export function WikiPage({
   }
   useEffect(() => {
     void loadPages();
-  }, [client, knowledgeBaseId, keyword, initialSlug, page, folderPath, viewMode]);
+  }, [client, knowledgeBaseId, keyword, initialSlug, page, folderPath, viewMode, activeBucket]);
+  useEffect(() => {
+    let active = true;
+    void client.wiki.stats(knowledgeBaseId).then((value) => {
+      if (active) {
+        setPagesByType(value.pages_by_type);
+        // Vue preferredDefaultTab: 知识 first, then 摘要 — applied only while
+        // the user has not picked a bucket themselves.
+        setActiveBucket((current) => {
+          if (current) return current;
+          const knowledge = (value.pages_by_type.entity ?? 0) + (value.pages_by_type.concept ?? 0)
+            + (value.pages_by_type.synthesis ?? 0) + (value.pages_by_type.comparison ?? 0);
+          if (knowledge > 0) return "knowledge";
+          if ((value.pages_by_type.summary ?? 0) > 0) return "summary";
+          return "";
+        });
+      }
+    }).catch(() => { if (active) setPagesByType({}); });
+    return () => { active = false; };
+  }, [client, knowledgeBaseId]);
   useEffect(() => {
     setPage(1);
   }, [keyword, folderPath, viewMode]);
@@ -740,8 +777,30 @@ export function WikiPage({
         : [],
     [revision, selected],
   );
+  const KNOWLEDGE_TYPES = ["entity", "concept", "synthesis", "comparison"];
+  const bucketTabs = (["knowledge", "summary"] as const)
+    .map((type) => ({
+      type,
+      label: type === "knowledge" ? t("wikiBrowser.filterKnowledge") : t("wikiBrowser.filterSummary"),
+      total: type === "knowledge"
+        ? KNOWLEDGE_TYPES.reduce((sum, key) => sum + (pagesByType[key] ?? 0), 0)
+        : (pagesByType[type] ?? 0),
+    }))
+    .filter((tab) => tab.total > 0);
   const directory = (
     <>
+      {bucketTabs.length > 0 ? <div className="wk-wiki-bucket-bar flex flex-wrap items-center gap-1.5 pb-2" role="tablist" aria-label={t("wikiBrowser.viewModeToggle")}>
+        {bucketTabs.map((tab) => <button
+          key={tab.type}
+          type="button"
+          role="tab"
+          aria-selected={activeBucket === tab.type}
+          className={`cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] [font:inherit] ${activeBucket === tab.type ? "border-accent bg-accent-wash text-accent" : "border-line-soft bg-transparent text-muted hover:border-accent/50"}`}
+          onClick={() => { setActiveBucket((current) => (current === tab.type ? "" : tab.type)); setPage(1); }}
+        >
+          {tab.label} ({tab.total})
+        </button>)}
+      </div> : null}
       <div className="wk-wiki-directory-toolbar flex flex-wrap items-center gap-[0.35rem] pb-2" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
         {/* Vue renders these as icon-only buttons with tooltips — the labels
             live in aria-label/title, not on the button face. */}

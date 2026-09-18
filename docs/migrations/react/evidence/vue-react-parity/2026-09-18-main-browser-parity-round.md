@@ -293,3 +293,24 @@ fixture；聊天页模型芯片显示差异已判定为 Vue mount 竞态假象�
 复验：暂无 Wiki 页面/上传文档并启用 Wiki… 空态出现、树形/列表文本按钮消失、
 索引入口在、占位符正确（/tmp/verify-wiki-v2-texts.json）。test:web 1873/1873、
 typecheck:web 0。
+
+## 追加轮：Wiki 分桶/目录/索引深化（第七轮，2026-09-19）
+
+按台账五子项推进 WikiBrowser 移植的可落地部分：
+
+1. **wiki API 客户端面**：补 stats（/wiki/stats，pages_by_type 计数）、search（/wiki/search）、
+   issues（/wiki/issues）三个方法（graph 已支持 overview/ego 参数；list 支持全部通用查询）；
+2. **分桶页签**：侧栏新增 知识（entity/concept/synthesis/comparison 合并计数）与 摘要 两个
+   分桶页签（计数来自 /wiki/stats；零计数隐藏；点击切换过滤、再点取消）；
+3. **默认分桶**：统计加载后默认选中 知识（同 Vue preferredDefaultTab），仅摘要时选 摘要；
+4. **客户端过滤**：后端 list 忽略 page_types（实测确认），按 Vue groupedPages 在客户端按
+   分桶过滤列表（Index 页继续排除）；
+5. **真实数据对照**：通过页面代理创建 3 个真实 Wiki 页面（summary/concept/entity），
+   双端验证——React：知识 (2)/摘要 (1) 页签 + 知识桶仅显示 概念/实体 两页 ✓；Vue：知识/
+   摘要 页签 + 同样两页 ✓。
+
+门禁：test:shared 869/869、test:web 1873/1873、typecheck:shared/typecheck:web 0、
+check:integrity PASS（/tmp/gates-round7.log）。
+剩余（如实）：目录树的拖拽移动/内联重命名、修订抽屉的完整差异视图、graph 的 ego 扩边等
+深度交互仍为 React 旧实现的等价功能，未逐像素复刻 Vue；分类目录的文件夹层级（当前 fixture
+无文件夹）待有层级数据后再对照。
