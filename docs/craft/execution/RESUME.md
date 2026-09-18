@@ -1,6 +1,6 @@
 # CFT 续跑入口（RESUME）
 
-最后更新：2026-09-18（T014 完成后；累计 verified 14/36：S00+T007-T012 全闭 + T013/T014）
+最后更新：2026-09-18（T015 完成后；累计 verified 15/36：S00+S01 全闭 + T013/T014/T015）
 
 ## 已完成（verified，自审；证据目录 docs/craft/evidence/<task-id>/）
 
@@ -20,6 +20,7 @@
 | CFT-S01-T012 | d186b567 | CraftDecisionCard 四层送达状态 + 终态零控件 + StatusNotice 非失败横幅 |
 | CFT-S02-T013 | 1646a846 | 协议 pin 3 测试 + CRAFT_LIVE=1 真实 serve 两轮 PASS |
 | CFT-S02-T014 | b0cb7666 | TestDelegationIdentity*（幂等/冲突/重启读回） |
+| CFT-S02-T015 | b2a3961a | **修复真实缺口**：预检读失败盲重发 prompt → 拒绝重提交转 unknown；3 注入测试 + live 50.8s 复验 |
 
 测试基线：test:craft:shared **108 pass**；playwright mock **6/6**；go craft 103 + handler/service 全绿；typecheck:shared/web 通过。
 
