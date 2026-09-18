@@ -34,7 +34,13 @@
 工具 Stable 2.02.2608070，项目窗口完整在屏。第二轮（下午）补齐 16 分包页逐页验证 +
 真实登录链路（Up 栈后端、parity-up 测试账号、表单输入→提交→选空间→进入工作台全程真实请求），
 20/20 页渲染通过，证据见 [test-matrix.md](./test-matrix.md) 下午轮表格与
-[evidence/sim-tour/](./evidence/sim-tour/) 20 张截图。第一轮（上午）为 dev 栈 4 Tab 验证：
+[evidence/sim-tour/](./evidence/sim-tour/) 20 张截图。第三轮（晚间）交互层测试：Tab 切换、
+二级导航返回、搜索过滤、表单禁用态、无效 ID 恢复降级、审批空态（无批准入口）、退出确认取消、
+长中文输入、冷启动会话恢复（曾疑"重启丢会话"，查实为 dist 被并行会话替换成别的 origin
+导致的预期 key 不匹配，非缺陷）、尺寸转换链路核验（token→rpx 一次性 ×2，无重复乘二，
+实测 .wk-card 左缘 20px 与 40rpx 换算一致）——断言 24/25 通过，唯一 FAIL 为脚本断言
+错位且实际行为更严。证据见 test-matrix 交互层表格与
+[evidence/sim-interactions/](./evidence/sim-interactions/)。第一轮（上午）为 dev 栈 4 Tab 验证：
 
 工具 Stable 2.02.2608070，项目窗口完整在屏。已登录真实会话（既往手动登录的存储 + 本次真实 origin 重建后 bootstrap 复验通过）：
 
