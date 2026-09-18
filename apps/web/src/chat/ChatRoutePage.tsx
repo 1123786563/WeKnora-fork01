@@ -25,6 +25,13 @@ import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
 import {
+  clearSteerPreviewPending,
+  discardSteerPreviews,
+  markSteerPreviewFailed,
+  previewSteerUserMessage,
+  reconcileSteerPreview,
+} from './steer-preview.ts';
+import {
   clearSteerQueue,
   dropSteerItem,
   enqueueSteerItem,
@@ -839,6 +846,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
    */
   function applySteerEnqueueResult(sessionId: string, clientSteerId: string, result: SteerMutationResponse): boolean {
     if (selectedSessionIdRef.current !== sessionId) return false;
+    // R475-A3 — Vue reconcileSteerMessageId: settle the optimistic row onto the
+    // server-issued steer id (or drop it when the SSE receipt beat the POST).
+    // new_run answers carry no steer id — the optimistic row keeps the client id.
+    const serverSteerId = 'steer_id' in result ? result.steer_id : '';
+    if (serverSteerId) {
+      setMessages((current) => reconcileSteerPreview(current, clientSteerId, serverSteerId));
+    }
     if (result.status === 'queued') {
       // Settled onto the server-issued id; the backlog fires as a follow-up
       // run once the current turn exits (Vue queued.steer_id = serverId).
@@ -854,11 +868,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         return false;
       }
       applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+      // Vue new_run idle: discardSteerPreview then sendMsg re-surfaces it.
+      setMessages((current) => discardSteerPreviews(current, [clientSteerId]));
       return true;
     }
     // already_injected: the running turn read it; no queue residue (Vue drops
     // the item and clears the pending preview).
     applySteerQueue((current) => dropSteerItem(current, clientSteerId));
+    setMessages((current) => clearSteerPreviewPending(current, result.steer_id || clientSteerId));
     return false;
   }
 
@@ -878,6 +895,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       ...(item.skillName ? { skillName: item.skillName } : {}),
     }));
     const clientSteerId = retrySteerId ?? newSteerId();
+    // R475-A3 — Vue handleRetrySteer passes item.delivery: the retry keeps the
+    // delivery mode the item was submitted with instead of degrading to after.
+    const retryItem = retrySteerId ? steerQueueRef.current.find((entry) => entry.steerId === retrySteerId) : undefined;
+    const effectiveDelivery = retryItem?.delivery ?? delivery;
     const action = buildSteerAction({
       streaming,
       content,
@@ -886,14 +907,21 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       newSteerId: () => clientSteerId,
       // R474-A2 — the ⌘Enter/Alt+Enter inject shortcut passes delivery
       // 'inject' through (Vue handleSteerMsg(query, mentions, delivery)).
-      delivery: retrySteerId ? undefined : delivery,
+      delivery: effectiveDelivery,
     });
     if (action.kind === 'send') return send(action.submission);
     // R473-A2: the follow-up lands as a composer chip while the POST is in
     // flight (Vue pushes the pending item before awaiting steerSession).
     applySteerQueue((current) => retrySteerId
       ? current.map((item) => item.steerId === retrySteerId ? { ...item, status: 'pending' as const } : item)
-      : enqueueSteerItem(current, { steerId: clientSteerId, content, mentionedItems: steerMentions }));
+      : enqueueSteerItem(current, { steerId: clientSteerId, content, delivery: effectiveDelivery, mentionedItems: steerMentions }));
+    // R475-A3 — Vue handleSteerMsg delivery === 'inject' → previewSteerMessage:
+    // the typed draft surfaces immediately as a pending user bubble before the
+    // POST goes out (a retry also clears its failed flag); after-messages only
+    // ever surface as chips.
+    if (effectiveDelivery === 'inject') {
+      setMessages((current) => previewSteerUserMessage(current, { sessionId, steerId: clientSteerId, content, mentionedItems: steerMentions }));
+    }
     try {
       const result = await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
       // N1 race: the enqueue answered new_run on an idle page — degrade to a
@@ -915,11 +943,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
             return;
           } catch (retryCause) {
             applySteerQueue((current) => failSteerItem(current, clientSteerId));
+            setMessages((current) => markSteerPreviewFailed(current, clientSteerId));
             throw retryCause;
           }
         }
       }
       applySteerQueue((current) => failSteerItem(current, clientSteerId));
+      // R475-A3 — Vue catch: preview._steerFailed = true keeps the optimistic
+      // bubble on screen for the retry affordance.
+      setMessages((current) => markSteerPreviewFailed(current, clientSteerId));
       throw cause;
     }
   }
@@ -930,22 +962,35 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (!sessionId || !steerId) return;
     const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
     if (!item || item.status !== 'queued') return;
+    // R475-A3 — Vue handlePromoteSteer previews the bubble before the POST
+    // (item.delivery flips to inject, so the chip leaves the strip either way).
+    setMessages((current) => previewSteerUserMessage(current, { sessionId, steerId: item.steerId, content: item.content, mentionedItems: item.mentionedItems }));
     try {
       const result = await client.chat.steer.promote(sessionId, steerId, scope.signal);
-      if (result.status === 'new_run' && (streamStateRef.current.phase === 'streaming' || streamAbortRef.current)) {
-        applySteerQueue((current) => markSteerAwaitingIdleSend(current, steerId));
+      if (result.status === 'already_injected') {
+        applySteerQueue((current) => dropSteerItem(current, steerId));
+        setMessages((current) => clearSteerPreviewPending(current, steerId));
         return;
       }
       if (result.status === 'new_run') {
+        if (streamStateRef.current.phase === 'streaming' || streamAbortRef.current) {
+          applySteerQueue((current) => markSteerAwaitingIdleSend(current, steerId));
+          return;
+        }
         applySteerQueue((current) => dropSteerItem(current, steerId));
+        setMessages((current) => discardSteerPreviews(current, [steerId]));
         await send({ content: item.content, status: 'pending' });
         return;
       }
-      // queued (flipped to inject) and already_injected both leave the chip
-      // strip: the message surfaces as an injected user bubble in the stream.
-      applySteerQueue((current) => dropSteerItem(current, steerId));
+      // queued (flipped to inject): Vue keeps the item with delivery 'inject'
+      // (the chip strip only shows after-messages); the SSE receipt
+      // (user_message_injected) then drops both the queue item and the
+      // optimistic row it replaces.
+      applySteerQueue((current) => current.map((entry) => entry.steerId === steerId ? { ...entry, delivery: 'inject' as const } : entry));
     } catch (cause) {
-      // Vue rolls the item back to after and toasts; the chip stays.
+      // Vue rolls the item back to after, discards the preview and toasts.
+      applySteerQueue((current) => current.map((entry) => entry.steerId === steerId ? { ...entry, delivery: 'after' as const } : entry));
+      setMessages((current) => discardSteerPreviews(current, [steerId]));
       setError(cause instanceof Error ? cause.message : copy.operationFailed);
     }
   }
@@ -960,14 +1005,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setError(cause instanceof Error ? cause.message : copy.operationFailed);
       return;
     }
+    // Vue handleRemoveSteer: a cancelled inject also drops its optimistic row.
+    setMessages((current) => discardSteerPreviews(current, [steerId]));
     applySteerQueue((current) => dropSteerItem(current, steerId));
   }
 
-  /** Vue retry-steer: re-run the failed enqueue with the same steer id. */
+  /** Vue retry-steer: re-run the failed enqueue with the same steer id and delivery. */
   async function retrySteer(steerId: string): Promise<void> {
     const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
     if (!item || item.status !== 'failed') return;
-    await steer(item.content, item.mentionedItems ?? mentionedItems, steerId);
+    await steer(item.content, item.mentionedItems ?? mentionedItems, steerId, item.delivery);
   }
 
   /**
@@ -990,6 +1037,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       const idle = nextSteerIdleSend(steerQueueRef.current);
       if (idle) {
         applySteerQueue((current) => dropSteerItem(current, idle.steerId));
+        // Vue flushSteerAfterTurn: the awaiting bubble's optimistic preview goes
+        // away right before the local send re-surfaces the message.
+        setMessages((current) => discardSteerPreviews(current, [idle.steerId]));
         void send({ content: idle.content, status: 'pending' }).catch(() => undefined);
         return;
       }
@@ -1346,12 +1396,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     chatRunIdRef.current += 1;
     setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
     streamStateRef.current = { ...streamStateRef.current, phase: 'stopped', artifactsPending: false };
-    // Vue handleStopConfirmed: stopping the turn cancels the whole steer queue.
+    // Vue handleStopConfirmed: stopping the turn cancels the whole steer queue
+    // and every optimistic inject preview still on screen.
+    const stoppedSteerIds = steerQueueRef.current.map((item) => item.steerId);
     applySteerQueue(clearSteerQueue);
     if (messageId) {
       try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
     }
-    setMessages((current) => markChatMessageStopped(current, sessionId, messageId));
+    setMessages((current) => markChatMessageStopped(discardSteerPreviews(current, stoppedSteerIds), sessionId, messageId));
   }
 
   async function send(submission: ChatSubmission): Promise<void> {
@@ -1517,7 +1569,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onResolveToolApproval={resolveToolApproval}
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
-    onSteer={steer}
+    /* R475-A3 — the ChatPage contract passes delivery as the third argument
+     * (SteerComposer onSteer(content, mentionedItems, delivery)); steer()
+     * keeps retrySteerId third (host-internal retries), so adapt here. */
+    onSteer={(content, selectedMentions, delivery) => steer(content, selectedMentions ?? mentionedItems, undefined, delivery)}
     steerQueue={steerQueueChips(steerQueue)}
     onSteerPromote={(steerId) => { void promoteSteer(steerId); }}
     onSteerRemove={(steerId) => { void removeSteer(steerId); }}

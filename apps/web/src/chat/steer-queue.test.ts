@@ -88,10 +88,10 @@ test('clearSteerQueue empties the queue (Vue stop confirmed / session switch)', 
  */
 test('nextSteerIdleSend returns the first non-failed awaiting item', () => {
   let queue: WebSteerQueueItem[] = [
-    { steerId: 's1', content: 'a', status: 'queued' },
-    { steerId: 's2', content: 'b', status: 'queued', awaitingIdleSend: true },
-    { steerId: 's3', content: 'c', status: 'queued', awaitingIdleSend: true },
-    { steerId: 's4', content: 'd', status: 'failed', awaitingIdleSend: true },
+    { steerId: 's1', content: 'a', status: 'queued', delivery: 'after' },
+    { steerId: 's2', content: 'b', status: 'queued', delivery: 'after', awaitingIdleSend: true },
+    { steerId: 's3', content: 'c', status: 'queued', delivery: 'after', awaitingIdleSend: true },
+    { steerId: 's4', content: 'd', status: 'failed', delivery: 'after', awaitingIdleSend: true },
   ];
   assert.equal(nextSteerIdleSend(queue)?.steerId, 's2');
   queue = dropSteerItem(queue, 's2');
