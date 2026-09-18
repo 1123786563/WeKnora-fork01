@@ -25,7 +25,7 @@ function isBearer(value:unknown):value is BearerCredential {
  *  talk to the same server and must share one session identity. */
 export function normalizeApiOrigin(origin:string):string{
   const trimmed=origin.replace(/\/+$/,'');
-  const match=/^(https:\/\/)([^/?#]+)([/?#].*)?$/i.exec(trimmed);
+  const match=trimmed.match(/^(https:\/\/)([^/?#]+?)([\/?#].*)?$/i);
   return match?match[1]+match[2].toLowerCase()+(match[3]??''):trimmed;
 }
 /** Credentials are private implementation state, never included in observable UI state. */
