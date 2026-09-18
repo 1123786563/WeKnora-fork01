@@ -5316,3 +5316,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r473-code-parity-round.md`. No Vue, mobile, or Go code was modified by
   this round. R474 queue: compose dev stack full-up (vectorstore/docreader P0), N1 race fix, questions popup
   form factor, legacy guard review, pending-span status text.
+
+## 2026-09-18 Round R474 — Dev-stack root causes overturned & fixed, N1 race + ⌘Enter, pending contract + legacy guard
+
+- Four parallel agents (A1 dev-stack P0, A2 N1 + shortcut, A3 pending contract + legacy guard, A4 verifier).
+  Verdict: all delivered; gates test:web 1833/1833 (+7), test:shared 799/799 (+4), typecheck 0, build ✓,
+  integrity PASS.
+- A1 (zero business code): the assumed root causes were FALSE — RETRIEVE_DRIVER=postgres means pgvector
+  (wiki-only skips BatchIndex entirely; R472's VECTORSTORE_WRITE_FAILED was the SSRF-blocked embedding call
+  whose failure branch deleted the chunks), and the docreader break was a LEFTOVER main-repo backend process
+  (PID 15483) sharing the queue and reading the main repo's .local-data. Fixed: stale process killed, a
+  socat docreader host-port proxy container added (original publishes none), files synced. E2E verified md+pdf
+  (real remote parse chain) chunks land; documents rest at finalizing (unreachable mock LLM — known limit).
+- A2: N1 fixed (idle new_run degrades to a plain send per Vue handleSteerMsg, main+409 paths); ⌘Enter/
+  Alt+Enter per Vue (draft-first inject, empty-draft promotes the first queued steer; tooltip suffix;
+  promoting disabled state). chat 197+124. Deferred: retry-delivery degradation, inject optimistic preview.
+- A3: pending contract fixed at three roots (spanStatus no timestamp swallowing; current_stage NEVER infers
+  running; waterfall pending '—'/no copy) + the low-cost drawer chrome (LIVE badge, 当前阶段 n/5; copy ×5
+  byte-exact); legacy delete function-layer guard added. documents 240/240, domain 28/28. A4 live-verified
+  chunks + drawer rendering; questions C→U→D smoke (the D 400 hits Vue identically — backend embedding
+  limitation). NEW P2 queued: the upload confirm dialog click issues no POST.
+- Gates: test:web 1833/1833, test:shared 799/799, typecheck 0, build ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r474-code-parity-round.md`. No Vue, mobile, or Go code was modified by
+  this round. R475 queue: upload-dialog no-POST P2, attempt-tabs/live-duration立项, inject preview, retry
+  delivery, reachable mock LLM (SSRF_WHITELIST).
