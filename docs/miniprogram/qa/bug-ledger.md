@@ -59,6 +59,23 @@
   修复后 weapp 构建复验通过，9.04s）。
 - 回归：`tests/assembly.test.mjs` 整个文件即为其回归（导入失败会全红）。
 
+## D7｜P2｜inherited｜auth 存储 key 未做 host 大小写归一化，同源变体间会话孤立且凭证残留
+
+- 复现（修复前证据 ✖）：微信开发者工具 storage 实测存在
+  `wk:auth:https://WeKnora-app.orb.local`（大写）凭证；改用小写 origin
+  `https://weknora-app.orb.local` 构建后（URL host 大小写不敏感，同一后端），
+  home 回到 anonymous 只剩"登录"按钮；`clear()/logout()` 只清当前 key，
+  其他大小写变体的 bearer token 永久残留本机（凭证卫生）。
+- 根因：`core/auth.ts` 构造器 `wk:auth:${origin}` 直接字符串拼接，host 未归一化。
+- 修复：`normalizeApiOrigin()`（host 小写）+ 构造器归一化 + `migrateCaseVariants()`
+  （同 host 变体的有效凭证迁移到规范 key、变体 key 一律删除，不同 host 不动）；
+  `runtime.ts` 注入 origin 统一归一化（baseURL/信任校验/key 一致）；
+  `ValueStore` 增加可选 `keys()`，Taro storage 用 `getStorageInfoSync` 实现。
+- 回归：`tests/auth.test.mjs` 3 项（变体迁移恢复会话、logout 不动其他容器凭证、
+  垃圾变体只删不迁移），修复前 3/3 红（41 tests / 38 pass），修复后 41/41 绿。
+- 真实环境复验：切换 Up 栈 origin 构建后，storage 大写 `Up-WeKnora-app` key 自动迁移
+  为 `up-weknora-app` 规范 key；旧 dev 栈 key 因不同 host 正确保留。
+
 ## D3｜P2｜inherited｜README 引用的验证文档不存在
 
 - 复现：`apps/miniprogram/README.md` 链接 `docs/miniprogram/submission-v0.1.md` 404。

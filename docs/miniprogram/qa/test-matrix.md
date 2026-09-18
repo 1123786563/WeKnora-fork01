@@ -48,14 +48,37 @@
 
 ## 明确未验证（blocked-env / not-implemented）
 
-- 16 个分包页的逐页 SIM 导航与 Android/iOS 真机：本轮已完成 4 个主 Tab 的真实后端 SIM 验证
-  （见 [report.md](./report.md) 第 3 节与 evidence/ 截图）；分包页与真机待后续复验
-  （复验步骤见 report.md 第 7 节）。
-- 真实后端全链路（聊天流式回答、执行快照/事件流、上传解析、订单查询）带副作用操作：
-  未在本轮执行（登录与端点探测为只读；产生模型消耗的操作未获授权）。
+- Android/iOS 真机：未执行（复验步骤见 report.md 第 7 节）。
+- 真实后端带副作用的流式链路（聊天流式回答、执行事件流、上传解析、订单查询、审批决策）：
+  未在本轮执行（会产生模型消耗/业务写操作，未获授权）。
 - 微信支付、快捷登录、审批正向批准：not-implemented，入口关闭。
 
-## 模拟器实测补充（2026-09-18，真实 OrbStack 后端）
+## 模拟器逐页实测（2026-09-18 下午轮，真实后端 + 真实登录会话）
+
+环境变化记录：验证中途原 dev 栈容器 `WeKnora-app` 被外部进程移除（`.orb.local` DNS 随之失效），
+曾导致 account 分包页请求挂起与会话丢失假象；切换到 Up 栈
+（`https://up-weknora-app.orb.local`，parity-up@local.dev 真实登录）后全部恢复——
+判定为 blocked-env，非小程序缺陷。kb/upload 两页为 dev 栈会话（带真实 KB）所验，
+其余 14 分包页与 4 Tab 为 Up 栈会话所验。
+
+| 页面 | 结果 | 截图（evidence/sim-tour/） |
+| --- | --- | --- |
+| login | 表单渲染 + **真实登录链路通过**（输入→提交→自动进 workspace） | tour-login.png / login-result.png |
+| workspace | 真实空间"parity-up's Workspace"选择→进入 home | tour-workspace.png |
+| home (Tab) | 真实会话 + hero + Agent 数据 | tour-home-tab.png / home-after-login.png |
+| tasks (Tab) | 列表端点 404 诚实降级 | tour-tasks-tab.png |
+| knowledge (Tab) | 知识库列表（Up 栈空列表为真实空态） | tour-knowledge-tab.png |
+| me (Tab) | 真实用户 parity-up；summary 404 降级不伪造 | tour-me-tab.png |
+| agents / agent | Agent 列表 + 详情（builtin-quick-answer） | tour-agents.png / tour-agent.png |
+| chat | 参数装配渲染（未发送消息，无副作用） | tour-chat.png |
+| execution / approval / artifact | 无效 ID 诚实降级，不猜定位 | tour-execution.png 等 |
+| kb / upload | dev 栈真实 KB 详情 + 上传表单 | （文字证据见矩阵，截图因 /tmp 清理未存档） |
+| document | 文档页渲染（无效 doc 降级） | tour-document.png |
+| usage | "暂时无法读取…当前部署尚未开放该能力" | tour-usage.png |
+| checkout | 支付关闭说明，无虚构报价 | tour-checkout.png |
+| order / invitations / states | 表单与静态说明渲染 | tour-order.png 等 |
+
+## 模拟器实测补充（2026-09-18 上午轮，dev 栈 OrbStack 后端）
 
 | 页面 | 实测结果 |
 | --- | --- |

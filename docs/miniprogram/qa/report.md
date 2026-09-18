@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `pnpm install --frozen-lockfile`（隔离干净检出） | 0（29.5s，2340 resolved） | 未重复（无锁文件变更） |
 | `pnpm --filter @weknora/miniprogram run tokens:check` | 0 | 0（125 tokens / 31 引用） |
-| `pnpm --filter @weknora/miniprogram run test` | 0（25/25） | **0（38/38**，新增 13 项：auth 2 + 装配 11） |
+| `pnpm --filter @weknora/miniprogram run test` | 0（25/25） | **0（41/41**，累计新增 16 项：auth 2+3、装配 11） |
 | `pnpm --filter @weknora/miniprogram run typecheck` | 0 | 0 |
 | `WEKNORA_API_ORIGIN=占位 pnpm --filter @weknora/miniprogram run build:weapp` | 0（10.28s） | 0（9.04s） |
 | `pnpm exec tsx --test packages/api-client/src/chat/mini-regression.test.ts` | 0（7/7） | 0（7/7） |
@@ -31,6 +31,11 @@
 
 ## 3. 微信开发者工具模拟器（SIM，真实 origin 构建）
 
+工具 Stable 2.02.2608070，项目窗口完整在屏。第二轮（下午）补齐 16 分包页逐页验证 +
+真实登录链路（Up 栈后端、parity-up 测试账号、表单输入→提交→选空间→进入工作台全程真实请求），
+20/20 页渲染通过，证据见 [test-matrix.md](./test-matrix.md) 下午轮表格与
+[evidence/sim-tour/](./evidence/sim-tour/) 20 张截图。第一轮（上午）为 dev 栈 4 Tab 验证：
+
 工具 Stable 2.02.2608070，项目窗口完整在屏。已登录真实会话（既往手动登录的存储 + 本次真实 origin 重建后 bootstrap 复验通过）：
 
 | 页面 | 结果 | 截图 |
@@ -46,8 +51,9 @@
 ## 4. 修复缺陷清单
 
 见 [bug-ledger.md](./bug-ledger.md)：D1（测试吞导入错误）、D2（CI 缺门禁）、D3（文档断链）、
-D4（refresh 401 僵尸会话，P1）、D5（unknown 后提交永久卡死，P1）、D6（core-js 目录导入阻断直测）。
-D4/D5 均有修复前红证据（stash 还原源码复跑测试确认失败）。
+D4（refresh 401 僵尸会话，P1）、D5（unknown 后提交永久卡死，P1）、D6（core-js 目录导入阻断直测）、
+**D7（auth 存储 key host 大小写归一化 + 变体凭证迁移，P2）**。
+D4/D5/D7 均有修复前红证据（stash/新增测试先红后绿复跑确认）。
 
 ## 5. 依赖、锁文件与共享包影响
 
@@ -58,9 +64,13 @@ D4/D5 均有修复前红证据（stash 还原源码复跑测试确认失败）�
 ## 6. 未解决与风险
 
 1. **inherited（非本分支）**：desktop-renderer 构建、mobile 测试与类型检查在 main 即失败（详见第 1 节），需对应泳道处理；合并本分支不会使其恶化。
-2. **部署缺口**：本地后端未注册 execution-targets / commercial 路由；正式联调环境需确认。
+2. **部署缺口**：本地后端未注册 execution-targets / commercial 路由（dev 与 Up 栈均 404）；正式联调环境需确认。
 3. **not-implemented**：任务集合读模型（Go 无路由）、微信支付、快捷登录、审批正向批准、产物下载定位。
-4. 真机与 16 分包页 SIM 逐页验证未做（时间盒）；聊天/执行流式回答未在真实后端跑通（产生模型消耗的副作用操作未获授权执行）。
+4. 真机验证未做（时间盒）；聊天/执行流式回答未在真实后端跑通（产生模型消耗的副作用操作未获授权执行）。
+5. **环境事件（blocked-env，已恢复）**：验证中段 dev 栈容器 `WeKnora-app` 被外部进程移除导致
+   `.orb.local` DNS 失效、account 分包页一度挂起；根目录 node_modules 亦被外部进程清空一次
+   （`pnpm install --frozen-lockfile` 27.7s 恢复，反向验证了锁文件可重复安装）。
+   上述均非本分支代码问题，完整记录见 test-matrix.md。
 
 ## 7. 干净环境复验命令
 
@@ -78,7 +88,9 @@ pnpm exec tsx --test packages/api-client/src/chat/mini-regression.test.ts
 
 ## 8. 合并建议
 
-- 小程序门禁（安装/令牌/测试/类型/构建/共享回归）在本分支全绿，且新增 CI 门禁持续盯防——**可合入**。
+- 小程序门禁（安装/令牌/测试/类型/构建/共享回归）在本分支全绿，且新增 CI 门禁持续盯防；
+  20 页（4 Tab + 16 分包页）已在微信开发者工具模拟器对真实后端逐页渲染验证，
+  登录链路（表单→提交→选空间→进入工作台）真实后端走通——**可合入**。
 - 因 desktop/mobile 的 inherited 失败仍在 main 存在（非本分支引入、亦非本分支职责），
-  PR 建议保持 **Draft** 直至：① 对应泳道修复或独立豁免；② 16 分包页 SIM 逐页与真机抽验完成。
+  PR 建议**合入前保持 Draft** 直至：① 对应泳道修复或独立豁免；② 真机抽验完成。
 - 严禁在补齐真实支付渠道、审批动作详情前提交微信审核或对外发布。
