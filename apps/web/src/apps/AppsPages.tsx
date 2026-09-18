@@ -1,103 +1,262 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
+import { formatMessage } from '@weknora/i18n';
 import { Badge, Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
-import { actionControls, appDigest, appErrorMessage, appRisk, appRows, appShort, appStatus, authorizationStatus, installationState, type AppRow } from './model.ts';
+import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
+import { pollBackoffDelayMs } from './pollBackoff.ts';
+import { actionControls, type ActionViewModel } from './actionState.ts';
 import { navigate } from '../platform/navigation.ts';
+import { usePreferredLocale } from '../locale.ts';
 
 type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
 type Props = { client: WeKnoraClient; mode: AppMode; id?: string; role?: string };
-// zh copy mirrors frontend/src/i18n/locales/zh-CN.ts apps.* byte-exactly
-// (Vue AppsView/ConnectionsView/AuthorizationView/ActionView baselines).
-const copy = {
-  catalog: {
-    title: '应用目录',
-    description: '当前空间经评审发布的动作及其权限范围；下方为本空间已安装的应用版本。界面不展示运行地址、密钥引用或内部别名。',
-    empty: '暂无可用动作',
-    installed: '已安装应用',
-    installedEmpty: '暂无已安装应用',
-    published: '已发布',
-    unpublished: '未发布',
-    colAction: '动作', colApp: '应用', colVersion: '版本', colProvider: '提供方', colRisk: '风险',
-    colPermissions: '所需权限', colSchemaDigest: 'Schema 指纹', colPublished: '发布状态',
-    colState: '状态', colScopes: '权限范围',
-  },
-  connections: {
-    title: '应用连接',
-    description: '当前空间的应用连接：区分个人与空间连接及其账号归属。界面不展示运行地址、密钥引用或内部别名。',
-    empty: '暂无连接',
-    memberCannotManage: '当前角色无法管理连接（需要空间所有者或管理员）。',
-    colId: '连接', colKind: '类型', colAccount: '账号归属', colState: '状态', colActions: '操作',
-    kindPersonal: '个人', kindSpace: '空间', accountSpace: '空间共享',
-    startAuthorization: '授权', revoke: '断开',
-    revokeConfirmContent: '断开后本空间立即失去该连接授权；远端清理可能仍在后台进行。确定断开吗？',
-    remoteCleanupNote: '本地已断开；远端清理由后台异步完成',
-  },
-  authorization: {
-    title: '授权状态',
-    description: '轮询本地授权记录，等待外部授权完成。',
-    attemptLabel: '授权记录', connectionLabel: '连接', statusLabel: '状态', expiresLabel: '过期时间',
-    noUrlGuidance: '此部署不返回外部授权链接：请在 open-connector 控制面发出的通知中完成外部授权；完成后本页会自动更新。',
-    back: '返回连接列表',
-  },
-  action: {
-    title: '动作审批',
-    description: '以下为服务器冻结的调用快照（账号、目标、参数）；审批即绑定该快照。',
-    accountLabel: '账号（连接）', targetLabel: '目标', riskLabel: '风险', stateLabel: '状态',
-    digestLabel: '内容指纹', fenceLabel: '版本围栏', argsLabel: '参数',
-    approve: '批准', execute: '执行',
-    noResendHint: '结果待核对期间不支持重发；请等待提供方查询结果。',
-    memberCannotApprove: '当前角色无法审批或执行动作（需要空间所有者或管理员）。',
-  },
-} as const;
 
-function isAbortError(cause: unknown): boolean { const error = cause as { name?: string; code?: string }; return error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED'; }
-function responseRecord(value: unknown): AppRow { const root = value && typeof value === 'object' ? value as AppRow : {}; const data = root.data; return data && typeof data === 'object' && !Array.isArray(data) ? data as AppRow : root; }
+type ToastTone = 'success' | 'warning' | 'error';
+type ToastState = { tone: ToastTone; text: string } | null;
 
-function PageFrame({ title, description, loading, onReload, children }: { title: string; description: string; loading: boolean; onReload: () => void; children: ReactNode }) {
-  return <main className="wk-page flex h-full flex-col gap-5 overflow-y-auto p-6"><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold text-ink">{title}</h1><p className="m-0 mt-1 text-sm text-muted">{description}</p></div><Button size="small" onClick={onReload} loading={loading}>刷新</Button></header>{loading ? <div role="status"><Status>加载中…</Status></div> : null}{children}</main>;
+function isAbortError(cause: unknown): boolean {
+  const error = cause as { name?: string; code?: string };
+  return error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED';
+}
+function responseRecord(value: unknown): AppRow {
+  const root = value && typeof value === 'object' ? value as AppRow : {};
+  const data = root.data;
+  return data && typeof data === 'object' && !Array.isArray(data) ? data as AppRow : root;
+}
+/** ApiError parity for the Vue err.status / err.error.code checks. */
+function errorStatus(cause: unknown): number | undefined {
+  return (cause as { status?: number } | null)?.status;
+}
+function errorCode(cause: unknown): string {
+  const nested = (cause as { code?: string } | null)?.code;
+  return typeof nested === 'string' ? nested : '';
+}
+function errorMessage(cause: unknown): string {
+  const message = (cause as { message?: unknown } | null)?.message;
+  return typeof message === 'string' ? message : '';
 }
 
-function CatalogTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
-  const fields = [['action_id', copy.catalog.colAction], ['app_id', copy.catalog.colApp], ['app_version', copy.catalog.colVersion], ['provider', copy.catalog.colProvider], ['risk', copy.catalog.colRisk], ['required_scopes', copy.catalog.colPermissions], ['schema_digest', copy.catalog.colSchemaDigest], ['published', copy.catalog.colPublished]] as const;
-  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = appRisk(value); return <Badge tone={risk.tone}>{risk.label}</Badge>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Badge tone={value ? 'success' : 'neutral'}>{value ? copy.catalog.published : copy.catalog.unpublished}</Badge> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
-}
-function InstallationsTable({ rows, empty }: { rows: AppRow[]; empty: string }) {
-  const fields = [['app_key', copy.catalog.colApp], ['version', copy.catalog.colVersion], ['state', copy.catalog.colState], ['scopes', copy.catalog.colScopes]] as const;
-  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'state' ? (() => { const state = installationState(value); return <Badge tone={state.tone}>{state.label}</Badge>; })() : appStatus(value); return <TableCell key={field}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+/* Toast mirrors the local-toast pattern used by OrganizationsPage (Vue shows
+   MessagePlugin toasts on these flows). */
+function Toast({ toast }: { toast: ToastState }) {
+  if (!toast) return null;
+  return <div role="status" aria-live="polite" className={`fixed left-1/2 top-[24px] z-[10060] -translate-x-1/2 rounded-[8px] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)] ${toast.tone === 'success' ? 'bg-[rgba(7,192,95,0.9)]' : toast.tone === 'warning' ? 'bg-[rgba(250,173,20,0.92)]' : 'bg-[rgba(213,73,65,0.92)]'}`}>{toast.text}</div>;
 }
 
-function CatalogPage({ client }: { client: WeKnoraClient }) {
-  const [catalog, setCatalog] = useState<AppRow[]>([]); const [installed, setInstalled] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null);
-  const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(''); try { const [catalogResponse, installedResponse] = await Promise.all([client.request({ method: 'GET', path: '/api/v1/apps/catalog', signal: controller.signal }), client.request({ method: 'GET', path: '/api/v1/apps/installations', signal: controller.signal })]); if (run !== generation.current) return; setCatalog(appRows(catalogResponse)); setInstalled(appRows(installedResponse)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setCatalog([]); setInstalled([]); setError(appErrorMessage(cause)); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
+/* TDesign t-popconfirm counterpart: an anchored confirm bubble with a danger
+   confirm button (loading supported) and a default cancel button. */
+function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, children }: { content: string; confirmLabel: string; cancelLabel: string; busy: boolean; onConfirm: () => void; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (wrapper.current && !wrapper.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  return <span className="relative inline-flex" ref={wrapper}>
+    {children}
+    {open ? <span className="absolute right-0 top-full z-[60] mt-[6px] flex w-[240px] flex-col gap-[8px] rounded-[8px] border border-[#e7e7ea] bg-white p-[12px] text-[13px] text-[rgba(23,26,29,0.92)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+      <span>{content}</span>
+      <span className="flex items-center justify-end gap-[8px]">
+        <Button size="small" variant="text" onClick={() => setOpen(false)}>{cancelLabel}</Button>
+        <Button size="small" variant="text" loading={busy} className="text-[#d54941]" onClick={() => onConfirm()}>{confirmLabel}</Button>
+      </span>
+    </span> : null}
+  </span>;
+}
+
+function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; children: ReactNode }) {
+  return <main className="wk-page flex h-full flex-col gap-5 overflow-y-auto p-6"><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold text-ink">{title}</h1><p className="m-0 mt-1 max-w-[640px] text-sm text-muted">{description}</p></div><Button size="small" disabled={loading} onClick={onReload} loading={loading}>{refreshLabel}</Button></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
+}
+
+function useAppsCopy() {
+  const locale = usePreferredLocale();
+  const t = (key: string, values?: Record<string, string | number>): string => formatMessage(locale, key, values);
+  return { t };
+}
+type AppsTranslate = (key: string, values?: Record<string, string | number>) => string;
+
+function CatalogTable({ rows, empty, t }: { rows: AppRow[]; empty: string; t: AppsTranslate }) {
+  const fields = [['action_id', t('apps.catalog.colAction')], ['app_id', t('apps.catalog.colApp')], ['app_version', t('apps.catalog.colVersion')], ['provider', t('apps.catalog.colProvider')], ['risk', t('apps.catalog.colRisk')], ['required_scopes', t('apps.catalog.colPermissions')], ['schema_digest', t('apps.catalog.colSchemaDigest')], ['published', t('apps.catalog.colPublished')]] as const;
+  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = String(value ?? '').trim(); const raw = t(`apps.risk.${risk}`); const label = risk ? (raw === `apps.risk.${risk}` ? risk : raw) : '—'; const tone = risk === 'read' ? 'success' : risk === 'write' ? 'warning' : risk === 'send' || risk === 'delete' ? 'danger' : 'neutral'; return <Badge tone={tone as 'success' | 'warning' | 'danger' | 'neutral'}>{label}</Badge>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Badge tone={value ? 'success' : 'neutral'}>{value ? t('apps.catalog.published') : t('apps.catalog.unpublished')}</Badge> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+}
+
+function InstallationsTable({ rows, empty, t }: { rows: AppRow[]; empty: string; t: AppsTranslate }) {
+  const fields = [['app_key', t('apps.catalog.colApp')], ['version', t('apps.catalog.colVersion')], ['state', t('apps.catalog.colState')], ['scopes', t('apps.catalog.colScopes')]] as const;
+  return <Table><TableHead><TableRow>{fields.map(([, title]) => <TableHeader key={title}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={fields.length}>{empty}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'state' ? (() => { const state = String(value ?? '').trim(); const label = state === 'active' ? t('apps.common.stateActive') : state === 'disabled' ? t('apps.common.stateDisabled') : state ? t('apps.common.stateOther', { state }) : '—'; const tone = state === 'active' ? 'success' : 'neutral'; return <Badge tone={tone}>{label}</Badge>; })() : appStatus(value); return <TableCell key={field}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+}
+
+function CatalogPage({ client, t }: { client: WeKnoraClient; t: (key: string, values?: Record<string, string | number>) => string }) {
+  const [catalog, setCatalog] = useState<AppRow[]>([]); const [installed, setInstalled] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const generation = useRef(0); const request = useRef<AbortController | null>(null);
+  const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(false); try { const [catalogResponse, installedResponse] = await Promise.all([client.request({ method: 'GET', path: '/api/v1/apps/catalog', signal: controller.signal }), client.request({ method: 'GET', path: '/api/v1/apps/installations', signal: controller.signal })]); if (run !== generation.current) return; setCatalog(appRows(catalogResponse)); setInstalled(appRows(installedResponse)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setCatalog([]); setInstalled([]); setError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client]);
-  return <PageFrame title={copy.catalog.title} description={copy.catalog.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}<Card><CatalogTable rows={catalog} empty={copy.catalog.empty} /></Card><Card><h2 className="m-0 mb-3 text-base font-semibold text-ink">{copy.catalog.installed}</h2><InstallationsTable rows={installed} empty={copy.catalog.installedEmpty} /></Card></PageFrame>;
+  return <PageFrame title={t('apps.catalog.title')} description={t('apps.catalog.description')} loading={loading} onReload={() => void load()} refreshLabel={t('apps.catalog.refresh')} loadingLabel={t('common.loading')}>{error ? <Status tone="error">{t('apps.catalog.loadFailed')}</Status> : null}<Card><CatalogTable rows={catalog} empty={t('apps.catalog.empty')} t={t} /></Card><Card><h2 className="m-0 mb-3 text-base font-semibold text-ink">{t('apps.catalog.installedTitle')}</h2><InstallationsTable rows={installed} empty={t('apps.catalog.installedEmpty')} t={t} /></Card></PageFrame>;
 }
 
-function ConnectionsPage({ client, role }: { client: WeKnoraClient; role?: string }) {
-  const [data, setData] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [busy, setBusy] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null); const canManage = role === 'owner' || role === 'admin';
-  const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(''); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setError(appErrorMessage(cause)); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
+/* Vue shortId (ConnectionsView/AuthorizationView): 14 chars, then an ellipsis. */
+function vueShortId(id: unknown): string {
+  const text = String(id ?? '').trim();
+  return text.length > 14 ? text.slice(0, 14) + '…' : text || '—';
+}
+
+function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
+  const [data, setData] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [revokingId, setRevokingId] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null); const canManage = role === 'owner' || role === 'admin';
+  const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setLoadError(false); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setLoadError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client]);
-  const startAuthorization = async (row: AppRow) => { if (!canManage || busy) return; setBusy(String(row.id)); setError(''); try { const value = responseRecord(await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/authorization-attempts`, body: {} })); const attemptId = String(value.attempt_id ?? ''); if (!attemptId) throw new Error('授权尝试未返回 ID'); navigate('/platform/apps/authorization/' + encodeURIComponent(attemptId)); } catch (cause) { setError(appErrorMessage(cause)); } finally { setBusy(''); } };
-  const revoke = async (row: AppRow) => { if (!canManage || busy || !window.confirm(copy.connections.revokeConfirmContent)) return; setBusy(String(row.id)); setError(''); try { await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/revoke`, body: { expected_version: row.auth_version } }); await load(); } catch (cause) { setError(appErrorMessage(cause)); } finally { setBusy(''); } };
-  return <PageFrame title={copy.connections.title} description={copy.connections.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canManage ? <Status>{copy.connections.memberCannotManage}</Status> : null}<Card><Table><TableHead><TableRow>{[copy.connections.colId, copy.connections.colKind, copy.connections.colAccount, copy.connections.colState, copy.connections.colActions].map((header) => <TableHeader key={header}>{header}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><TableCell colSpan={5}>{copy.connections.empty}</TableCell></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id)}>{appShort(row.id)}</TableCell><TableCell>{row.kind === 'space' ? copy.connections.kindSpace : copy.connections.kindPersonal}</TableCell><TableCell>{row.kind === 'space' ? copy.connections.accountSpace : (appStatus(row.owner_id) || '—')}</TableCell><TableCell>{appStatus(row.state)}</TableCell><TableCell>{canManage && row.state === 'active' ? <><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void startAuthorization(row)}>{copy.connections.startAuthorization}</Button><Button variant="text" size="small" loading={busy === String(row.id)} onClick={() => void revoke(row)}>{copy.connections.revoke}</Button></> : row.state === 'revoked' ? copy.connections.remoteCleanupNote : '—'}</TableCell></TableRow>)}</TableBody></Table></Card></PageFrame>;
+  // Vue startAuthorization: a missing attempt id is an error toast, never a
+  // fabricated navigation (T13-F-3).
+  const startAuthorization = async (row: AppRow) => { if (!canManage || revokingId) return; setRevokingId(String(row.id)); try { const value = responseRecord(await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/authorization-attempts`, body: {} })); if (value.attempt_id) { navigate('/platform/apps/authorization/' + encodeURIComponent(String(value.attempt_id))); return; } showToast('error', t('apps.connections.startAuthorizationFailed')); } catch (cause) { showToast('error', errorMessage(cause) || t('apps.connections.startAuthorizationFailed')); } finally { setRevokingId(''); } };
+  // Vue revoke: echo the live auth_version (?? 1 covers a stale backend and
+  // can only produce a safe 409), then reload. 409/VERSION_CONFLICT warns and
+  // re-reads; local success is stated exactly, remote cleanup stays async.
+  const revoke = async (row: AppRow) => { if (!canManage || revokingId) return; setRevokingId(String(row.id)); try { await client.request({ method: 'POST', path: `/api/v1/apps/connections/${encodeURIComponent(String(row.id))}/revoke`, body: { expected_version: Number(row.auth_version ?? 1) } }); showToast('success', t('apps.connections.revokeSuccess')); await load(); } catch (cause) { if (errorStatus(cause) === 409 || errorCode(cause) === 'VERSION_CONFLICT') { showToast('warning', t('apps.connections.revokeConflict')); await load(); } else { showToast('error', errorMessage(cause) || t('apps.connections.revokeFailed')); } } finally { setRevokingId(''); } };
+  const kindLabel = (kind: unknown): string => { const text = String(kind ?? ''); if (text === 'personal') return t('apps.connections.kindPersonal'); if (text === 'space') return t('apps.connections.kindSpace'); return text; };
+  const accountLabel = (row: AppRow): string => { if (row.kind === 'space') return t('apps.connections.accountSpace'); const owner = String(row.owner_id ?? '').trim(); return owner ? vueShortId(owner) : t('apps.connections.accountUnknown'); };
+  const accountTitle = (row: AppRow): string => row.kind === 'space' ? t('apps.connections.accountSpace') : String(row.owner_id ?? '') || '';
+  const stateLabel = (state: unknown): string => { const text = String(state ?? ''); if (text === 'active') return t('apps.common.stateActive'); if (text === 'revoked') return t('apps.common.stateRevoked'); return t('apps.common.stateOther', { state: text }); };
+  return <PageFrame title={t('apps.connections.title')} description={t('apps.connections.description')} loading={loading} onReload={() => void load()} refreshLabel={t('apps.connections.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.connections.loadFailed')}</Status> : null}{!canManage ? <Status>{t('apps.connections.memberCannotManage')}</Status> : null}<Card><Table><TableHead><TableRow>{[t('apps.connections.colId'), t('apps.connections.colKind'), t('apps.connections.colAccount'), t('apps.connections.colState'), t('apps.connections.colActions')].map((header) => <TableHeader key={header}>{header}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><TableCell colSpan={5}>{t('apps.connections.empty')}</TableCell></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id ?? '')}><span className="font-mono">{vueShortId(row.id)}</span></TableCell><TableCell><Badge tone={row.kind === 'space' ? 'success' : 'neutral'}>{kindLabel(row.kind)}</Badge></TableCell><TableCell title={accountTitle(row)}>{accountLabel(row)}</TableCell><TableCell><Badge tone={row.state === 'active' ? 'success' : row.state === 'revoked' ? 'danger' : 'neutral'}>{stateLabel(row.state)}</Badge></TableCell><TableCell><span className="flex items-center gap-[4px]">{canManage && row.state === 'active' ? <><Button variant="text" size="small" onClick={() => void startAuthorization(row)}>{t('apps.connections.startAuthorization')}</Button><Popconfirm content={t('apps.connections.revokeConfirmContent')} confirmLabel={t('apps.connections.revoke')} cancelLabel={t('apps.common.cancel')} busy={revokingId === String(row.id)} onConfirm={() => void revoke(row)}><Button variant="text" size="small" disabled={revokingId !== ''} className="text-[#d54941]">{t('apps.connections.revoke')}</Button></Popconfirm></> : row.state === 'revoked' ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t('apps.connections.remoteCleanupNote')}</span> : '—'}</span></TableCell></TableRow>)}</TableBody></Table></Card></PageFrame>;
 }
 
-function AuthorizationPage({ client, id }: { client: WeKnoraClient; id: string }) {
-  const [attempt, setAttempt] = useState<AppRow>({}); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const timer = useRef<ReturnType<typeof setTimeout> | null>(null); const generation = useRef(0); const request = useRef<AbortController | null>(null);
-  const poll = async (showLoading = false) => { if (!id) return; if (timer.current) { clearTimeout(timer.current); timer.current = null; } request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; if (showLoading) setLoading(true); setError(''); try { const value = responseRecord(await client.request({ method: 'GET', path: `/api/v1/apps/authorization-attempts/${encodeURIComponent(id)}`, signal: controller.signal })); if (run !== generation.current) return; setAttempt(value); if (authorizationStatus(value.status).poll) timer.current = setTimeout(() => void poll(), 3000); } catch (cause) { if (run === generation.current && !isAbortError(cause)) setError(appErrorMessage(cause)); } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
-  useEffect(() => { void poll(true); return () => { generation.current += 1; if (timer.current) clearTimeout(timer.current); request.current?.abort(); }; }, [client, id]);
-  return <PageFrame title={copy.authorization.title} description={copy.authorization.description} loading={loading} onReload={() => void poll(true)}>{error ? <Status tone="error">{error}</Status> : null}<Status>{copy.authorization.noUrlGuidance}</Status><Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">{copy.authorization.attemptLabel}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.connectionLabel}</dt><dd className="m-0 font-mono">{appShort(attempt.connection_id)}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.statusLabel}</dt><dd className="m-0">{appStatus(attempt.status)}</dd></div><div><dt className="font-medium text-muted">{copy.authorization.expiresLabel}</dt><dd className="m-0">{appStatus(attempt.expires_at)}</dd></div></dl></Card><Button variant="text" onClick={() => navigate('/platform/apps/connections')}>{copy.authorization.back}</Button></PageFrame>;
+/* Vue formatTime: locale date string, em dash when absent. */
+function formatTime(value: unknown): string {
+  const text = String(value ?? '');
+  if (!text) return '—';
+  try { return new Date(text).toLocaleString(); } catch { return text; }
 }
 
-function ActionPage({ client, id, role }: { client: WeKnoraClient; id: string; role?: string }) {
-  const [detail, setDetail] = useState<AppRow>({}); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const canDrive = role === 'owner' || role === 'admin'; const generation = useRef(0); const request = useRef<AbortController | null>(null);
-  const load = async () => { if (!id) return; request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(''); try { const value = responseRecord(await client.request({ method: 'GET', path: `/api/v1/apps/actions/${encodeURIComponent(id)}`, signal: controller.signal })); if (run === generation.current) setDetail(value); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setDetail({}); setError(appErrorMessage(cause)); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
-  useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client, id]);
-  const action = detail.action && typeof detail.action === 'object' ? detail.action as AppRow : detail; const controls = actionControls(action.state, canDrive);
-  const mutate = async (kind: 'approve' | 'execute') => { if (saving || !(kind === 'approve' ? controls.approve : controls.execute)) return; setSaving(true); setError(''); try { await client.request({ method: 'POST', path: `/api/v1/apps/actions/${encodeURIComponent(id)}/${kind}`, body: kind === 'approve' ? { digest: action.digest, expected_version: detail.expected_version } : {} }); await load(); } catch (cause) { setError(appErrorMessage(cause)); await load(); } finally { setSaving(false); } };
-  const content = appStatus(action.content); let pretty = content; try { pretty = JSON.stringify(JSON.parse(content), null, 2); } catch { /* server content may be non-JSON legacy data */ }
-  return <PageFrame title={copy.action.title} description={copy.action.description} loading={loading} onReload={() => void load()}>{error ? <Status tone="error">{error}</Status> : null}{!canDrive ? <Status>{copy.action.memberCannotApprove}</Status> : null}<Card><dl className="grid gap-3 text-sm"><div><dt className="font-medium text-muted">{copy.action.accountLabel}</dt><dd className="m-0 font-mono">{appStatus(action.connection_name)}</dd></div><div><dt className="font-medium text-muted">{copy.action.targetLabel}</dt><dd className="m-0 font-mono">{appStatus(action.target)}</dd></div><div><dt className="font-medium text-muted">{copy.action.riskLabel}</dt><dd className="m-0">—</dd></div><div><dt className="font-medium text-muted">{copy.action.stateLabel}</dt><dd className="m-0">{appStatus(action.state)}</dd></div><div><dt className="font-medium text-muted">{copy.action.digestLabel}</dt><dd className="m-0 font-mono">{appShort(action.digest)}</dd></div><div><dt className="font-medium text-muted">{copy.action.fenceLabel}</dt><dd className="m-0 font-mono">{appStatus(detail.expected_version)}</dd></div><div><dt className="font-medium text-muted">{copy.action.argsLabel}</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3">{pretty}</dd></div></dl><div className="mt-4 flex gap-2">{controls.approve ? <Button loading={saving} onClick={() => void mutate('approve')}>{copy.action.approve}</Button> : null}{controls.execute ? <Button loading={saving} onClick={() => void mutate('execute')}>{copy.action.execute}</Button> : null}</div>{action.state === 'unknown' ? <Status>{copy.action.noResendHint}</Status> : null}</Card></PageFrame>;
+function AuthorizationPage({ client, id, t }: { client: WeKnoraClient; id: string; t: (key: string, values?: Record<string, string | number>) => string }) {
+  const [attempt, setAttempt] = useState<AppRow>({}); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [polled, setPolled] = useState(false); const timer = useRef<ReturnType<typeof setTimeout> | null>(null); const generation = useRef(0); const request = useRef<AbortController | null>(null);
+  // Vue pollFailures: consecutive failures double the next delay; a success
+  // resets the counter (pollBackoff.ts).
+  const pollFailures = useRef(0);
+  const pollingStatuses = new Set(['pending', 'authorizing', 'verifying']);
+  const status = String(attempt.status ?? '');
+  const polling = pollingStatuses.has(status);
+  const succeeded = status === 'active';
+  const cancelTimer = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  const pollRef = useRef<() => Promise<void>>(async () => undefined);
+  const scheduleNext = (isPolling: boolean, expires: unknown) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (!isPolling) return; // terminal: stop polling, keep the last state
+    // expires_at stop: an attempt stuck pending past its TTL must not poll
+    // for the page's whole lifetime (T15 QF-3).
+    const expiresMs = expires ? Date.parse(String(expires)) : NaN;
+    if (!Number.isNaN(expiresMs) && expiresMs <= Date.now()) return;
+    timer.current = setTimeout(() => { timer.current = null; void pollRef.current(); }, pollBackoffDelayMs(pollFailures.current));
+  };
+  const pollOnce = async () => {
+    if (!id) return;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    request.current?.abort();
+    const run = ++generation.current;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true); setLoadError(false);
+    try {
+      const value = responseRecord(await client.request({ method: 'GET', path: `/api/v1/apps/authorization-attempts/${encodeURIComponent(id)}`, signal: controller.signal }));
+      if (run !== generation.current) return;
+      setAttempt(value); setPolled(true); pollFailures.current = 0;
+      scheduleNext(pollingStatuses.has(String(value.status ?? '')), value.expires_at);
+    } catch (cause) {
+      if (run === generation.current && !isAbortError(cause)) {
+        pollFailures.current += 1; setLoadError(true); setPolled(true);
+      }
+      if (run === generation.current) scheduleNext(pollingRefStatus(), undefined);
+    } finally {
+      if (run === generation.current) { setLoading(false); request.current = null; }
+    }
+  };
+  // After a failed poll the last known status still governs whether the
+  // attempt is worth another try (Vue reads attempt.value?.status).
+  const pollingRefStatus = (): boolean => pollingStatuses.has(String(attempt.status ?? ''));
+  pollRef.current = pollOnce;
+  useEffect(() => {
+    void pollOnce();
+    return () => { generation.current += 1; cancelTimer(); request.current?.abort(); pollFailures.current = 0; };
+  }, [client, id]);
+  const statusTheme = status === 'active' ? 'success' : status === 'failed' || status === 'expired' || status === 'revoked' ? 'danger' : polling ? 'warning' : 'neutral';
+  const statusLabel = (() => { if (!status) return '—'; const label = t(`apps.authorization.status.${status}`); return label === `apps.authorization.status.${status}` ? t('apps.authorization.status.other', { state: status }) : label; })();
+  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="flex flex-col gap-[12px]"><dl className="m-0 grid gap-3 text-sm"><div><dt className="font-medium text-muted">{t('apps.authorization.attemptLabel')}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.connectionLabel')}</dt><dd className="m-0 font-mono" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.statusLabel')}</dt><dd className="m-0"><Badge tone={statusTheme as 'success' | 'danger' | 'warning' | 'neutral'}>{statusLabel}</Badge></dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.expiresLabel')}</dt><dd className="m-0">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="m-0 text-[13px] text-[#0a7f43]">{t('apps.authorization.completedHint')}</p> : null}</div></Card><Button variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</Button></PageFrame>;
 }
 
-export function AppsPage({ client, mode, id, role }: Props) { return mode === 'catalog' ? <CatalogPage client={client} /> : mode === 'connections' ? <ConnectionsPage client={client} role={role} /> : mode === 'authorization' ? <AuthorizationPage client={client} id={id ?? ''} /> : <ActionPage client={client} id={id ?? ''} role={role} />; }
+function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient; id: string; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
+  const [detail, setDetail] = useState<AppRow | null>(null); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [notFound, setNotFound] = useState(false); const [approving, setApproving] = useState(false); const [submitting, setSubmitting] = useState(false); const canDrive = role === 'owner' || role === 'admin'; const generation = useRef(0); const request = useRef<AbortController | null>(null);
+  const action: AppRow = detail && detail.action && typeof detail.action === 'object' ? detail.action as AppRow : {};
+  const reload = async () => {
+    if (!id) return;
+    request.current?.abort();
+    const run = ++generation.current;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true); setLoadError(false); setNotFound(false);
+    try {
+      const value = responseRecord(await client.request({ method: 'GET', path: `/api/v1/apps/actions/${encodeURIComponent(id)}`, signal: controller.signal }));
+      if (run !== generation.current) return;
+      setDetail(value); setNotFound(false);
+    } catch (cause) {
+      if (run !== generation.current || isAbortError(cause)) return;
+      setNotFound(errorStatus(cause) === 404); setLoadError(true); setDetail(null);
+    } finally {
+      if (run === generation.current) { setLoading(false); request.current = null; }
+    }
+  };
+  useEffect(() => { void reload(); return () => { generation.current += 1; request.current?.abort(); }; }, [client, id]);
+  const hasAction = Boolean(detail && detail.action && typeof detail.action === 'object');
+  const digest = String(action.digest ?? '');
+  const viewModel: ActionViewModel | null = hasAction ? { id: String(action.id ?? id), state: String(action.state ?? ''), digest, canApprove: canDrive, canExecute: canDrive } : null;
+  const controls = viewModel ? actionControls(viewModel) : { approve: false, execute: false, retry: false };
+  // Vue approve/execute: bind the CURRENT snapshot (digest + fence echo), then
+  // RE-READ from the server — success is never assumed from a 200 alone.
+  const mutate = async (kind: 'approve' | 'execute') => {
+    if (!hasAction || !(kind === 'approve' ? controls.approve : controls.execute)) return;
+    const run = generation.current;
+    const busy = kind === 'approve' ? setApproving : setSubmitting;
+    busy(true);
+    try {
+      await client.request({ method: 'POST', path: `/api/v1/apps/actions/${encodeURIComponent(id)}/${kind}`, body: kind === 'approve' ? { digest: action.digest, expected_version: detail?.expected_version } : {} });
+      if (run !== generation.current) return;
+      await reload();
+    } catch (cause) {
+      if (run !== generation.current) return;
+      showToast('error', errorMessage(cause) || t(kind === 'approve' ? 'apps.actions.approveFailed' : 'apps.actions.executeFailed'));
+      await reload();
+    } finally { busy(false); }
+  };
+  const riskValue = String(action.risk ?? '');
+  const riskLabel = riskValue ? ((label) => label === `apps.risk.${riskValue}` ? riskValue : label)(t(`apps.risk.${riskValue}`)) : '';
+  const state = String(action.state ?? '');
+  const stateLabel = (() => { if (state === 'unknown') return t('apps.actions.unknown'); if (!state) return '—'; const label = t(`apps.actions.state.${state}`); return label === `apps.actions.state.${state}` ? t('apps.actions.state.other', { state }) : label; })();
+  const stateTheme = state === 'succeeded' ? 'success' : state === 'failed' || state === 'unknown' ? 'danger' : state === 'awaiting_approval' ? 'warning' : 'neutral';
+  const prettyArgs = (() => { const raw = String(action.content ?? ''); if (!raw) return '—'; try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; } })();
+  const shortText = (value: string): string => value && value.length > 16 ? value.slice(0, 16) + '…' : value || '—';
+  return <PageFrame title={t('apps.actions.title')} description={t('apps.actions.description')} loading={loading} onReload={() => void reload()} refreshLabel={t('apps.actions.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{notFound ? t('apps.actions.notFound') : t('apps.actions.loadFailed')}</Status> : null}{hasAction ? <>
+    <Card><dl className="m-0 grid gap-3 text-sm">
+      <div><dt className="font-medium text-muted">{t('apps.actions.accountLabel')}</dt><dd className="m-0 font-mono">{appStatus(action.connection_name)}</dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.targetLabel')}</dt><dd className="m-0 font-mono">{appStatus(action.target)}</dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.riskLabel')}</dt><dd className="m-0" title={riskLabel ? undefined : t('apps.actions.riskUnknownHint')}>{riskLabel ? <Badge tone={riskValue === 'read' ? 'success' : riskValue === 'write' ? 'warning' : riskValue === 'send' || riskValue === 'delete' ? 'danger' : 'neutral'}>{riskLabel}</Badge> : <span className="text-[rgba(23,26,29,0.4)]">—</span>}</dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.stateLabel')}</dt><dd className="m-0"><Badge tone={stateTheme as 'success' | 'danger' | 'warning' | 'neutral'}>{stateLabel}</Badge></dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.digestLabel')}</dt><dd className="m-0 font-mono" title={digest}>{shortText(digest)}</dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.fenceLabel')}</dt><dd className="m-0 font-mono">{appStatus(detail?.expected_version, '0')}</dd></div>
+      <div><dt className="font-medium text-muted">{t('apps.actions.argsLabel')}</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3 font-mono text-[12px]" tabIndex={0}>{prettyArgs}</dd></div>
+    </dl></Card>
+    <div className="flex items-center gap-[12px]">{controls.approve ? <Button loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</Button> : null}{controls.execute ? <Button loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</Button> : null}{state === 'unknown' ? <p className="m-0 text-[13px] text-[#ad4b00]">{t('apps.actions.unknown')}</p> : null}</div>
+    {state === 'unknown' ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{t('apps.actions.noResendHint')}</p> : null}
+    {!canDrive ? <Status>{t('apps.actions.memberCannotApprove')}</Status> : null}
+  </> : null}</PageFrame>;
+}
+
+export function AppsPage({ client, mode, id, role }: Props) {
+  const { t } = useAppsCopy();
+  const [toast, setToast] = useState<ToastState>(null);
+  const showToast = (tone: ToastTone, text: string) => setToast({ tone, text });
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  return <><Toast toast={toast} />{mode === 'catalog' ? <CatalogPage client={client} t={t} /> : mode === 'connections' ? <ConnectionsPage client={client} role={role} t={t} showToast={showToast} /> : mode === 'authorization' ? <AuthorizationPage client={client} id={id ?? ''} t={t} /> : <ActionPage client={client} id={id ?? ''} role={role} t={t} showToast={showToast} />}</>;
+}

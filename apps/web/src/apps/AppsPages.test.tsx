@@ -4,8 +4,6 @@ import test from 'node:test';
 import React from 'react';
 import { act } from 'react';
 
-import { appDigest, appRisk, appRows, appErrorMessage, installationState } from './model.ts';
-
 const hooks = createRequire(import.meta.url)('node:module') as typeof import('node:module') & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
@@ -13,52 +11,77 @@ const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html:
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 const { AppsPage } = await import('./AppsPages.tsx');
 
-test('normalizes standard app list envelopes without dropping nested rows', () => {
-  assert.deepEqual(appRows({ data: { items: [{ id: 'a-1' }] } }), [{ id: 'a-1' }]);
-  assert.deepEqual(appRows({ data: { rows: [{ id: 'a-2' }] } }), [{ id: 'a-2' }]);
-  assert.deepEqual(appRows({ items: [{ id: 'a-3' }] }), [{ id: 'a-3' }]);
-  assert.deepEqual(appRows([{ id: 'a-4' }]), [{ id: 'a-4' }]);
-});
-
-test('preserves server errors and gives non-error failures a stable message', () => {
-  assert.equal(appErrorMessage(new Error('provider unavailable')), 'provider unavailable');
-  assert.equal(appErrorMessage('failure'), '应用页面加载失败');
-});
-
-test('matches the Vue AppsView semantic tags and digest preview', () => {
-  assert.deepEqual(appRisk('read'), { label: '只读', tone: 'success' });
-  assert.deepEqual(appRisk('write'), { label: '写入', tone: 'warning' });
-  assert.deepEqual(appRisk('delete'), { label: '删除', tone: 'danger' });
-  assert.deepEqual(appRisk('future'), { label: 'future', tone: 'neutral' });
-  assert.equal(appDigest('1234567890123456'), '123456789012…');
-  assert.deepEqual(installationState('active'), { label: '活跃', tone: 'success' });
-  assert.deepEqual(installationState('disabled'), { label: '已停用', tone: 'neutral' });
-  assert.deepEqual(installationState('paused'), { label: '状态：paused', tone: 'neutral' });
-});
-
-test('renders unknown action risk as an em dash even when the DTO contains delete', async () => {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps/actions/action-1' });
-  const previousWindow = globalThis.window;
-  const previousDocument = globalThis.document;
-  Object.assign(globalThis, { window: dom.window, document: dom.window.document });
-  const { createRoot } = await import('react-dom/client');
-  const container = dom.window.document.createElement('div');
-  dom.window.document.body.appendChild(container);
-  const root = createRoot(container);
-  const client = { request: async () => ({ action: { risk: 'delete', state: 'completed', content: '{}' } }) } as never;
-
-  try {
+/* Vue ActionView parity: the approval card renders the FROZEN risk from the
+   persisted snapshot (apps.risk.* label verbatim); an empty payload degrades
+   to an honest em dash with the riskUnknownHint — never a guess. */
+function renderActionPage(actionDto: unknown, props: Record<string, unknown> = {}): Promise<{ container: HTMLElement; cleanup: () => Promise<void> }> {
+  return (async () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps/actions/action-1' });
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    Object.assign(globalThis, { window: dom.window, document: dom.window.document });
+    const { createRoot } = await import('react-dom/client');
+    const container = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(container);
+    const root = createRoot(container);
+    const client = { request: async () => actionDto } as never;
     await act(async () => {
-      root.render(React.createElement(AppsPage, { client, mode: 'action', id: 'action-1' }));
+      root.render(React.createElement(AppsPage, { client, mode: 'action', id: 'action-1', ...props }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await act(async () => { await new Promise((resolve) => setImmediate(resolve)); });
+    return {
+      container,
+      cleanup: async () => {
+        await act(async () => { root.unmount(); });
+        Object.assign(globalThis, { window: previousWindow, document: previousDocument });
+        dom.window.close();
+      },
+    };
+  })();
+}
+
+test('renders the frozen delete risk verbatim like the Vue ActionView', async () => {
+  const { container, cleanup } = await renderActionPage({ action: { risk: 'delete', state: 'awaiting_approval', content: '{}' } });
+  try {
     const riskLabel = Array.from(container.querySelectorAll('dt')).find((element) => element.textContent === '风险');
     assert.ok(riskLabel, 'renders the risk field');
+    assert.equal(riskLabel.nextElementSibling?.textContent, '删除');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('renders an unknown action risk as an em dash with the honest hint', async () => {
+  const { container, cleanup } = await renderActionPage({ action: { state: 'awaiting_approval', content: '{}' } });
+  try {
+    const riskLabel = Array.from(container.querySelectorAll('dt')).find((element) => element.textContent === '风险');
+    assert.ok(riskLabel, 'renders the risk field');
+    assert.equal(riskLabel.nextElementSibling?.getAttribute('title'), '当前接口未返回该字段；风险以服务端冻结数据为准');
     assert.equal(riskLabel.nextElementSibling?.textContent, '—');
   } finally {
-    await act(async () => { root.unmount(); });
-    Object.assign(globalThis, { window: previousWindow, document: previousDocument });
-    dom.window.close();
+    await cleanup();
+  }
+});
+
+test('approve controls follow actionControls: awaiting_approval + permission shows 批准', async () => {
+  const { container, cleanup } = await renderActionPage({ action: { risk: 'read', state: 'awaiting_approval', content: '{"a":1}' } }, { role: 'owner' });
+  try {
+    const approve = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '批准');
+    assert.ok(approve, 'approve button present for awaiting_approval');
+    const execute = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '执行');
+    assert.equal(execute, undefined, 'no execute button before approval');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('a non-admin viewer sees the member hint and no approval controls', async () => {
+  const { container, cleanup } = await renderActionPage({ action: { risk: 'read', state: 'awaiting_approval', content: '{}' } });
+  try {
+    assert.equal(Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '批准'), undefined);
+    assert.match(container.textContent ?? '', /当前角色无法审批或执行动作/);
+  } finally {
+    await cleanup();
   }
 });

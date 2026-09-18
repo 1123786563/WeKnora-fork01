@@ -80,7 +80,53 @@ c1cb798a（Go A13 余量：preference API + 工具测试）与两个 docs 提交
 - 新用户引导弹窗仅 React 出现：per-origin localStorage，两端功能一致（R007 已落地）。
 - creatChat/聊天页模型芯片"未配置 vs mock-stream-model"：见第 3 项说明（Vue 竞态假象）。
 
-## 门禁与证据
+## 追加轮：Apps 四页行为层对齐（同日第二轮）
+
+继上表文案对齐后，把 React 简化实现补齐为与 Vue 行为一致：
+
+1. **i18n 迁移**：apps.* 全量 101 键 ×5 locale，从 frontend/src/i18n/locales/*.ts
+   程序化提取（tsx 脚本 import + flatten，值字节一致，非手抄），生成
+   packages/i18n/src/generated/apps.ts 并接入 index.ts 合并表；AppsPages 文案全部
+   改走 formatMessage（locale 由 usePreferredLocale 提供，响应语言切换）。
+2. **ConnectionsView 行为**：断开改为 Popconfirm 确认气泡（内容/危险确认键 loading/
+   取消键，点击外部关闭）；revoke 回传 `auth_version ?? 1`；成功 → revokeSuccess toast +
+   重载；409/VERSION_CONFLICT → revokeConflict 警告 + 重读；其余 → revokeFailed。
+   startAuthorization 缺 attempt_id → startAuthorizationFailed toast（不虚构跳转）。
+   kind/账号/状态标签回退语义对齐（未知 kind 回退原值、owner 14 字符省略、状态
+   其他值 → 状态：{state}）。
+3. **AuthorizationView 行为**：移植 pollBackoff.ts（3s 起步、连续失败翻倍、30s 封顶、
+   成功清零）；pollingStatuses={pending,authorizing,verifying} 终态停轮；expires_at
+   过期停轮；pollingHint/completedHint 分支；状态标签 apps.authorization.status.* 回退
+   状态：{state}；浏览器实测坏 id 场景只发 1 次请求即停（无无限轮询）。
+4. **ActionView 行为**：404 → notFound 文案分支；风险字段按冻结快照渲染
+   （apps.risk.*，缺失 → 破折号 + riskUnknownHint 提示，**修正旧测试钉住的错误行为**——
+   旧实现即便 DTO 带 risk 也渲染破折号）；actionControls(viewModel) 逐字移植
+   （approve=awaiting_approval+权限、execute=authorized+权限、retry 恒 false）；批准/
+   执行后强制重读服务器，不凭 200 假定成功；memberCannotApprove 提示。
+5. **测试**：pollBackoff.test.ts / actionState.test.ts 逐字移植；model.test.ts 合并
+   envelope/digest/backoff/i18n 断言；AppsPages.test.tsx 改为 Vue 行为锚定（delete 风险
+   渲染删除标签、缺失渲染破折号+提示、批准按钮门控、非管理员提示）。
+
+### c1cb798a（后端 A13 余量）评估结论：不拣选
+
+main 已由 upstream-parity 车道落地 `PUT /auth/me/preferences`
+（internal/handler/auth.go UpdateMyPreferences + routes_auth_tenant.go），且 Vue 前端
+不使用 browser_search_instructions / preference_defaults（frontend/src 无引用）。两端
+前端打到同一后端，该 API 面不构成 Vue/React 行为差异；c1cb798a 与 main 的实现谱系不同，
+拣选只会制造冲突。归属 upstream 车道 A13 后续接线。
+
+### 门禁与证据（第二轮）
+
+- `pnpm gates`（Node v26.4.0）：test:shared 869/869、test:web 1871/1871（+9）、
+  typecheck:shared/typecheck:web 0、check:integrity 首跑 P0=新文件未暂存（门禁正确
+  报警），git add 后 0 P0 PASS。
+- 浏览器：目录页/连接页五项文案断言过；en-US locale 冒烟（desc/empty/账号归属英文，
+  恢复 zh-CN 正常）；授权页坏 id → 加载失败提示 + 仅 1 次请求即停。
+- 本轮改动文件：apps/web/src/apps/{AppsPages.tsx,AppsPages.test.tsx,model.ts,
+  model.test.ts,pollBackoff.ts,pollBackoff.test.ts,actionState.ts,actionState.test.ts}、
+  packages/i18n/src/{index.ts,generated/apps.ts}。
+
+## 门禁与证据（第一轮，存档）
 
 - `pnpm gates`（Node v26.4.0，main @ 本轮）：test:shared 869/869、test:web 1862/1862
   （含新增 2 条）、typecheck:shared/typecheck:web 0、check:integrity PASS。
