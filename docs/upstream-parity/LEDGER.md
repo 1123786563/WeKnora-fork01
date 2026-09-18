@@ -40,7 +40,7 @@
 | A17 | workspace_checkpointer / pinned_session_sandbox | `internal/application/service/` | workspace_checkpointer 已有（A11 阶段 3），pinned 解析链缺 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：PinnedSessionSandbox 落地+容器接线升级——**A11 的 SessionForkSandboxPort 从恒 nil 变为真实 per-session 解析**，无 pin 时按上游语义降级） |
 | A18 | im channel_security | `d7ccd5b` internal/im/channel_security.go | 无 | ✅ 完成（第 15 轮，同上：三入口拦截+4 组合单测） |
 | A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ⬜ 待办 |
-| A20 | embedpolicy 目录 | `internal/embedpolicy/` | 无 | ⬜ 待办（评估：fork embed-secure-mode 已有自有实现，可能 ⛔） |
+| A20 | embedpolicy 目录 | `internal/embedpolicy/` | 内联弱化实现（originAllowed/validateAllowedOrigins/自制 CSP） | ✅ 完成（2026-09-18 第 18 轮，worktree 85ac8dc5：评估裁决=移植非 ⛔——fork 内联实现缺默认端口规约/严格输入拒绝，且 `*.` 模式产出非法 CSP 语法；origin 包照搬+三处接线换 embedpolicy.Allows/NormalizePattern/FrameAncestors fail-closed 形态；embedpolicy/middleware/handler/router 四包测试全绿） |
 | A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | fork 编号已独立至 000135，需新编号追加 | ⬜ 随 A11/A12/A13 |
 
 ## B. 检索与数据修复（上游 bugfix 回移植）
@@ -290,6 +290,28 @@
 - **测试**：5 个上游测试文件移植全绿——session_connect（四客户端复用句柄/仅确定性失败可替换）、session_file_operation（scope 单连接/租户隔离/不缓存失败）、session_shell_snapshot（单句柄五操作/失败不重放/超时保留/递归无 Stat/部分列表拒绝）、sandbox_operation_requests（读文件/收集器/维护检查点操作序列）、pinned_session_sandbox（6 场景）。
 - **门禁**：go build ./... 0；sandbox 包全量 PASS；tools/service 新套件 PASS。**分支预存红（stash 基线逐一证实，非本轮引入）**：TestToolJournal*（tools）、Craft/agent-run sqlite NoTxWrap 家族（service 13 个+handler/session）、TestWireCraftInteractionRegistrarRegistersPendingInteractions（container）。
 - **A16/A17/B9 状态：✅ 完成**（A16 前端展示层属 C5，待 A13/A14 轮）。
+
+### 2026-09-18 第 18 轮（t-image 定性结案 + A20 embedpolicy 移植 + A13 BrowserSkill 立项）✅
+
+> worktree 提交 `85ac8dc5`（5 文件）。小条目先行轮：双栈浏览器实测定性 + 评估裁决 + 大条目立项。
+
+**环境**：上游栈 Up-WeKnora-* 曾被删除、卷被清——本轮 compose 重建后 parity-up 账号重注册（tenant 10000 不变，密码同 D2）；fork 栈后端为 worktree 源码进程（:8080，cwd=react-multiclient）+ React dev :5181；四端点全 200。浏览器对照经 Playwright CDP（browser-use CLI 本环境未装）。
+
+**t-image 空占位定性（第 6 轮遗留，本轮结案 ⛔ 不改）**：
+- 方法：上游库注入含三种空 URL 变体（`![]()`、`![]( )`、`![]("")`）图片 markdown 的 agent 会话 → 浏览器实测 DOM/几何 + 渲染链源码走查。
+- 结论：①上游 agent 路径（AgentStreamDisplay）图片走 marked **默认渲染器（无校验）**→ `<img src="">` 破图框（alt 文本尺寸）；②DOM 中的 `t-image` 痕迹（t-image-viewer__trigger/t-image__error「图片无法显示」）是 TDesign 组件挂载的**不可见脚手架（实测 height=0）**，仅 innerText 可见——第 6 轮的「3 个空 src 的 t-image 占位」即此；③上游自己的知识库聊天路径（botmsg）对无效 URL 是校验过的：`<p>无效的图片链接</p>`（error.invalidImageLink）。即**上游两路径行为不一致，agent 路径是未校验疏漏**。
+- fork React 统一校验：`renderer.image` → `safeUrl` 失败 → `<p>无效的图片链接</p>`，**与上游 botmsg 有意契约及 zh-CN 文案逐字一致**（上游 zh-CN error.invalidImageLink='无效的图片链接'）。
+- 裁决：**⛔ fork 不模仿上游疏漏**（不渲染破图框）；差异仅存在于「模型输出空 URL 图片」异常输入下，属上游自身缺陷非功能差异，不计入差异预算。测试数据已清理；证据 `evidence/browser-timage/r18-up-empty-src-img.png`。
+
+**A20 embedpolicy（评估→移植完成，非 ⛔）**：fork 的内联实现（originAllowed/validateAllowedOrigins/自制 CSP 拼接）是上游共享包的弱化前身——缺默认端口规约（https://x:443≠https://x）、缺严格输入拒绝（userinfo/path/query/fragment/CSP 元字符）、**`*.` 模式产出非法 CSP 语法**（`frame-ancestors *.example.com` 原样拼入，正确形态为 `https://*.example.com`）。本轮照搬上游 origin 包（115 行+62 行测试全绿）并接线三处：embed_auth.originAllowed→embedpolicy.Allows；embed_channel.validateAllowedOrigins→NormalizePattern 循环；routes_agent 的 CSP 中间件→上游 fail-closed 形态（/embed/ GET/HEAD 先 'none'+no-store，通道策略规范化后覆盖，全无效列表保持 403）。门禁：go build ./internal/... 0；embedpolicy/middleware/handler/router 四包测试 PASS。
+
+**A13 BrowserSkill 立项（4 阶段，下轮起实施）**：
+- 规模：`internal/browserskill/` 19 文件 5223 行（生产 ~3326：manager 1219/store 289/authorization 246/cluster 253/daemon 192/focus 184/stop 89 等）+ `agent/tools/browserskill*` 1463 行（工具+schema+result+prompt+image）+ `handler/session/browserskill.go` 端点 + 前端 C2（BrowserTaskPreview 135/BrowserToolDetails 42）与 C5。
+- 关键依赖与适配点：①**chromedp v0.15.1**（fork go.mod 无，需经 goproxy.cn 引入）；②agent/tools 属原版自研循环接入——需 trpc-agent-go 工具注册适配（同 B8/A11 模式）；③daemon.go 管理外部浏览器守护进程（扩展桥），focus/human/authorization 为人工介入协作面（A19 随其评估）；④沙箱基建前置已就绪（B8 文件/artifact 分离+A17 pinned 解析链均完成）。
+- 阶段 1：go.mod 依赖 + internal/browserskill 整包移植 + 包级测试全绿；阶段 2：trpc 工具适配（browserskill/_result/_schema/_prompt/_image 注册）+ agent_service 接线；阶段 3：handler/session 端点 + 路由 + 容器 DI + 迁移（fork 新编号）+ A19 评估；阶段 4：React C2（聊天内 BrowserTaskPreview/BrowserToolDetails 等价）+ C5 browserToolDisplay + i18n 五语言。
+- 预估 2-4 轮完成（比照 A11 四阶段节奏）。
+
+- **A20 状态：✅ 完成；t-image：⛔ 定性结案不改；A13：🔄 已立项拆 4 阶段**。
 
 ## G. 纪律与教训
 
