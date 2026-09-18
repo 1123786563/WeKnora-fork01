@@ -5288,3 +5288,31 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: test:web 1808/1808, test:shared 795/795, typecheck 0, build ✓. Evidence:
   `evidence/vue-react-parity/2026-09-18-r472-code-parity-round.md`. No Vue, mobile, or Go code was modified by
   this round. R473 queue: fixture rebuild + questions Vue-side pairing + steer chips + skipped live capture.
+
+## 2026-09-18 Round R473 — Fixture library rebuilt (tenant 10002), queued-steer chips landed, questions pairing partial
+
+- Four parallel agents (A1 fixture rebuild, A2 queued-steer chips, A3 questions pairing + skipped capture, A4
+  verifier). Verdict: A1 DELIVERED (report past A4's deadline — the empty-DB diagnosis found 154 tables
+  missing, two backend restarts + two commercial-constraint renames restored it); A2 PASS (+18 tests,
+  1826/1826); A3 environment-blocked with valuable captures. Gates: test:web 1826/1826, test:shared 795/795,
+  typecheck 0, build ✓.
+- A1's NEW FIXTURE TABLE (tenant 10001 gone — taken by a parallel agent; parity now tenant 10002): Parity KB
+  Demo `76b81ceb` (docs 29df436f smoke + 55a1ed54 mermaid), wiki-fixture `09d5ab6b` (4 pages incl.
+  concept/source-doc-traceability → ca54abb4), shared `165f9c5f` (org 013ae9d3, share 95bc3f21 viewer),
+  session 知识库检索讨论 `faeb6017`. Operational keys: wiki-only indexing works around the unreachable
+  embedding (chunks generate; docs rest at finalizing); uploads write the worktree .local-data while reparse
+  reads the main repo's (delete+re-upload > reparse); React :5181 is IPv6-only.
+- A2: queued-steer chips per Vue (delivery==='after' chips with clock icon/truncated text/failed-retry/
+  pending-loading/promote/remove; promote = after→inject at the next round boundary, NOT reorder; one
+  awaiting steer consumed per turn chained; stop/session-switch clear; resume rehydrates) — steer-queue.ts
+  pure model + handlers with two stale-closure fixes; +4 keys ×5 byte-exact. +18 tests. A4 found N1 (enqueue
+  on idle dropping a message without the send fallback — promote path correct) queued R474; also ⌘Enter
+  promote shortcut and two minor states deferred.
+- A3: environment-broken pipeline (docreader can't read local files; vectorstore container absent) blocked
+  live questions CRUD; delivered the CODE-level form diff (Vue t-popup + popconfirm vs React inline panel —
+  queued), a possible missing legacy-question guard (P2), and a NEW capture: the same pending span renders
+  React 进行中 vs Vue 「—」+LIVE badge/attempt switch/stage n/5/停止解析 controls. 6 screenshots.
+- Gates: test:web 1826/1826, test:shared 795/795, typecheck 0, build ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r473-code-parity-round.md`. No Vue, mobile, or Go code was modified by
+  this round. R474 queue: compose dev stack full-up (vectorstore/docreader P0), N1 race fix, questions popup
+  form factor, legacy guard review, pending-span status text.
