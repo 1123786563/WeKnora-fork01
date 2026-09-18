@@ -110,3 +110,13 @@
   .wk-craft-pane[data-narrow-hidden='true'] { display: none; }
   .wk-craft-side-tabs { display: none; }
 }
+
+/* CFT-S00-T004 host shell composition */
+.wk-craft-shell { box-sizing: border-box; margin: 0 auto; max-width: 1180px; min-width: 0; overflow-x: clip; padding: 1.5rem 1.25rem 3rem; }
+.wk-craft-panel-header { align-items: baseline; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; justify-content: space-between; margin-bottom: 0.75rem; }
+.wk-craft-panel-title { font-size: 1rem; margin: 0; }
+.wk-craft-panel-reason { font-size: 0.8rem; }
+.wk-craft-notice { border-radius: 6px; font-size: 0.85rem; margin: 0 0 0.6rem; padding: 0.4rem 0.6rem; }
+.wk-craft-notice[data-kind='reconnect'] { background: var(--craft-brand-soft); color: var(--craft-brand-ink); }
+.wk-craft-notice[data-kind='failed'] { background: var(--craft-danger-wash); color: var(--craft-danger); }
+.wk-craft-notice[data-kind='canceled'], .wk-craft-notice[data-kind='unknown'], .wk-craft-notice[data-kind='readonly'], .wk-craft-notice[data-kind='expired'] { background: var(--craft-canvas); color: var(--craft-secondary-text); border: 1px solid var(--craft-line); }

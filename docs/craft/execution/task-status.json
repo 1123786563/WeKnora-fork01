@@ -25,10 +25,12 @@
     },
     {
       "id": "CFT-S00-T004",
-      "status": "planned",
+      "status": "verified",
       "deps": [
         "CFT-S00-T003"
-      ]
+      ],
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S00-T004/"
     },
     {
       "id": "CFT-S00-T005",
