@@ -74,6 +74,7 @@ import (
 	rssConnector "github.com/Tencent/WeKnora/internal/datasource/connector/rss"
 	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/execution"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	imPkg "github.com/Tencent/WeKnora/internal/im"
@@ -600,6 +601,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
 	must(container.Provide(handler.NewExecutionTargetHandler))
+	must(container.Provide(repository.NewPersonalTargetProvisioner))
+	must(container.Provide(execution.NewRegistrationService))
+	must(container.Provide(handler.NewExecutionRegistrationHandler))
 	must(container.Provide(func(
 		s *service.TenantSkillService, streams interfaces.StreamManager,
 	) *handler.SandboxSkillHandler {

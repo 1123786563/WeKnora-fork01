@@ -28,6 +28,54 @@ type ExecutionTargetStore interface {
 	GetOwnedWorkspace(ctx context.Context, tenantID uint64, actor, workspaceID string) (execution.Workspace, error)
 }
 
+// ProvisionPersonalTarget is consumed by the registration transaction. It is
+// deliberately a separate method so the registration service cannot create a
+// grant whose target identity is absent from the W18 admission store.
+func (s *executionTargetStore) ProvisionPersonalTarget(ctx context.Context, tx *gorm.DB, target execution.Target) error {
+	if tx == nil {
+		tx = s.db
+	}
+	identity := executionTargetIdentityRow{TenantID: target.TenantID, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID, OwnerID: target.OwnerID, CredentialVersion: target.CredentialVersion, State: "active"}
+	if err := tx.WithContext(ctx).Create(&identity).Error; err != nil {
+		return err
+	}
+	return tx.WithContext(ctx).Create(&executionTargetRow{TenantID: target.TenantID, ID: target.ID, OwnerID: target.OwnerID, Kind: target.Kind, State: target.State, CredentialVersion: target.CredentialVersion, RuntimeID: target.RuntimeID, ExternalTargetID: target.ExternalTargetID}).Error
+}
+
+func (s *executionTargetStore) RevokePersonalTarget(ctx context.Context, tx *gorm.DB, expected execution.Target, now time.Time) error {
+	if tx == nil {
+		tx = s.db
+	}
+	var target executionTargetRow
+	if err := tx.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion).First(&target).Error; err != nil {
+		return err
+	}
+	// The legacy registration alias updates its registration row after this
+	// method returns. Preflight that projection here so the target and identity
+	// rows cannot be fenced while a divergent registration remains active.
+	var registration registrationProjectionRow
+	if err := tx.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion, "active").First(&registration).Error; err != nil {
+		return err
+	}
+	result := tx.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, expected.ID, expected.RuntimeID, expected.ExternalTargetID, expected.CredentialVersion, "active").Updates(map[string]any{
+		"state": "revoked", "revoked_at": now.UTC(), "credential_version": gorm.Expr("credential_version + 1"),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrExecutionTargetNotFound
+	}
+	identityResult := tx.WithContext(ctx).Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", expected.TenantID, expected.OwnerID, target.RuntimeID, target.ExternalTargetID, expected.CredentialVersion, "active").Updates(map[string]any{"state": "revoked", "credential_version": gorm.Expr("credential_version + 1")})
+	if identityResult.Error != nil {
+		return identityResult.Error
+	}
+	if identityResult.RowsAffected != 1 {
+		return ErrExecutionTargetNotFound
+	}
+	return nil
+}
+
 // executionTargetIdentityProvider is backed by the node-registration
 // projection. It is intentionally separate from execution_targets: a target
 // cannot authorize its own first registration.
@@ -85,6 +133,12 @@ func (executionWorkspaceRow) TableName() string { return "execution_workspaces" 
 type executionTargetStore struct{ db *gorm.DB }
 
 func NewExecutionTargetStore(db *gorm.DB) ExecutionTargetStore {
+	return &executionTargetStore{db: db}
+}
+
+// NewPersonalTargetProvisioner exposes only the registration seam to DI;
+// request handlers continue to depend on ExecutionTargetStore.
+func NewPersonalTargetProvisioner(db *gorm.DB) execution.TargetProvisioner {
 	return &executionTargetStore{db: db}
 }
 
@@ -147,15 +201,69 @@ func (s *executionTargetStore) ListOwnedTargets(ctx context.Context, tenantID ui
 
 func (s *executionTargetStore) RevokeTarget(ctx context.Context, tenantID uint64, actor, targetID string) error {
 	now := time.Now().UTC()
-	result := s.db.WithContext(ctx).Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenantID, actor, targetID, "active").Updates(map[string]any{"state": "revoked", "revoked_at": now})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrExecutionTargetNotFound
-	}
-	return nil
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var target executionTargetRow
+		if err := tx.Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenantID, actor, targetID, "active").First(&target).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrExecutionTargetNotFound
+			}
+			return err
+		}
+		result := tx.Model(&executionTargetRow{}).Where("tenant_id = ? AND owner_id = ? AND id = ? AND state = ?", tenantID, actor, targetID, "active").Updates(map[string]any{
+			"state": "revoked", "revoked_at": now, "credential_version": gorm.Expr("credential_version + 1"),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrExecutionTargetNotFound
+		}
+		// Personal targets have a registration and identity projection with the
+		// same target ID/runtime binding. Revoke the projections in this same
+		// transaction so the public target facade cannot leave an active grant
+		// behind. Managed targets may not have these rows, so they remain a
+		// target-only revoke.
+		if target.Kind != "personal_node" {
+			return nil
+		}
+		registration := tx.Model(&registrationProjectionRow{}).Where("tenant_id = ? AND owner_id = ? AND registration_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", tenantID, actor, targetID, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active").Updates(map[string]any{
+			"state": "revoked", "revoked_at": now, "credential_version": gorm.Expr("credential_version + 1"),
+		})
+		if registration.Error != nil {
+			return registration.Error
+		}
+		if registration.RowsAffected != 1 {
+			return ErrExecutionTargetNotFound
+		}
+		identity := tx.Model(&executionTargetIdentityRow{}).Where("tenant_id = ? AND owner_id = ? AND runtime_id = ? AND external_target_id = ? AND credential_version = ? AND state = ?", tenantID, actor, target.RuntimeID, target.ExternalTargetID, target.CredentialVersion, "active").Updates(map[string]any{
+			"state": "revoked", "credential_version": gorm.Expr("credential_version + 1"),
+		})
+		if identity.Error != nil {
+			return identity.Error
+		}
+		if identity.RowsAffected != 1 {
+			return ErrExecutionTargetNotFound
+		}
+		return nil
+	})
 }
+
+// registrationProjectionRow deliberately mirrors only the columns needed by
+// the cross-package target facade. The execution package owns registration
+// lifecycle semantics; this projection lets the public target revoke route
+// use the same transaction and fencing seam without importing private models.
+type registrationProjectionRow struct {
+	TenantID          uint64     `gorm:"column:tenant_id"`
+	OwnerID           string     `gorm:"column:owner_id"`
+	ID                string     `gorm:"column:registration_id"`
+	RuntimeID         string     `gorm:"column:runtime_id"`
+	ExternalTargetID  string     `gorm:"column:external_target_id"`
+	CredentialVersion int64      `gorm:"column:credential_version"`
+	State             string     `gorm:"column:state"`
+	RevokedAt         *time.Time `gorm:"column:revoked_at"`
+}
+
+func (registrationProjectionRow) TableName() string { return "execution_registrations" }
 
 func (s *executionTargetStore) CreateWorkspace(ctx context.Context, workspace execution.Workspace) error {
 	return s.db.WithContext(ctx).Create(&executionWorkspaceRow{TenantID: workspace.TenantID, ID: workspace.ID, TargetID: workspace.TargetID, RootRef: workspace.RootRef}).Error

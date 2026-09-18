@@ -6,12 +6,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AuthError, createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential, type WeKnoraClient } from '@weknora/api-client';
 import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
+import { createMobilePersonalNodeRuntime, type MobilePersonalNodeRuntimeInput } from '../sources/platform/personalNodeRuntime.ts';
+import type { PersonalNodeConnector } from '@weknora/paseo-adapter';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
 import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, resetMobileSessionState, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { createMobileOIDCPKCE, matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
 import { isLocale, type Locale } from '@weknora/i18n';
+export { createMobilePersonalNodeRuntime } from './platform/personalNodeRuntime.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
 const OIDC_VERIFIER_KEY = 'weknora.mobile.oidc-verifier';
@@ -40,7 +43,13 @@ interface MobileRuntimeValue {
 
 const RuntimeContext = createContext<MobileRuntimeValue | null>(null);
 
-export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
+export interface MobileRuntimeProviderProps {
+  children: ReactNode;
+  /** Authenticated registration/transport composition supplied by the app shell. */
+  personalNode?: MobilePersonalNodeRuntimeInput;
+}
+
+export function MobileRuntimeProvider({ children, personalNode }: MobileRuntimeProviderProps) {
   const adapter = useMemo(() => createSecureCredentialAdapter(), []);
   const serverAdapter = useMemo(() => createServerAddressAdapter(SecureStore), []);
   const workspaceAdapter = useMemo(() => createWorkspaceSelectionAdapter(SecureStore), []);
@@ -55,6 +64,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<MobileWorkspace[]>([]);
   const [canCreateTenant, setCanCreateTenant] = useState(false);
   const [oidcError, setOidcError] = useState('');
+  const personalNodeRef = useRef<PersonalNodeConnector | null>(null);
   const [locale, setCurrentLocale] = useState<Locale>('zh-CN');
   const setLocale = useCallback(async (value: Locale) => {
     setCurrentLocale(value);
@@ -73,6 +83,26 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const updateUserId = useCallback((next: string | null) => {
     setUserId(next);
   }, []);
+  useEffect(() => {
+    if (!personalNode) {
+      personalNodeRef.current = null;
+      return;
+    }
+    let active = true;
+    void createMobilePersonalNodeRuntime(personalNode).then((connector) => {
+      if (active) personalNodeRef.current = connector;
+      else void connector.revoke().catch(() => undefined);
+    }).catch(() => {
+      // Missing/revoked OS credentials keep the mobile runtime fail-closed.
+      if (active) personalNodeRef.current = null;
+    });
+    return () => {
+      active = false;
+      const connector = personalNodeRef.current;
+      personalNodeRef.current = null;
+      if (connector) void connector.revoke().catch(() => undefined);
+    };
+  }, [personalNode]);
   const refreshClient = useMemo(() => createWeKnoraClient({
     baseURL,
     transport: createMobileTransport({ credential: () => ({ kind: 'anonymous' }) }),
@@ -312,6 +342,9 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     sessionTransitions.current += 1;
     const startedAt = sessionEpoch.invalidate();
     try {
+      const personalNode = personalNodeRef.current;
+      personalNodeRef.current = null;
+      if (personalNode) await personalNode.revoke().catch(() => undefined);
       await refreshCoordinator.logout();
       await workspaceWriter.write(null);
       if (!sessionEpoch.isCurrent(startedAt)) return;

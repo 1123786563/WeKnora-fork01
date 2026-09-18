@@ -19,8 +19,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/storageurl"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/workbench"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
+	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 )
 
@@ -591,11 +591,11 @@ func (h *ArtifactVersionDownloadHandler) DownloadArtifactVersion(c *gin.Context)
 	}
 	name := artifactVersionFileName(version)
 	if err := filetransport.Serve(c.Writer, c.Request, reader, filetransport.Options{
-		Filename:    name,
-		Download:    true,
-		ContentType: version.MIME,
-		Disposition: buildAttachmentHeader(name),
-		Size:        version.Size,
+		Filename:     name,
+		Download:     true,
+		ContentType:  version.MIME,
+		Disposition:  buildAttachmentHeader(name),
+		Size:         version.Size,
 		CacheControl: "private, no-store",
 	}); err != nil {
 		logger.Warnf(ctx, "artifact version download stream failed: session=%s version=%s err=%v", sessionID, versionID, err)

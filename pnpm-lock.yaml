@@ -32,6 +32,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@weknora/paseo-adapter':
+        specifier: workspace:*
+        version: link:../../services/paseo-adapter
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -398,6 +401,9 @@ importers:
       '@weknora/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@weknora/paseo-adapter':
+        specifier: workspace:*
+        version: link:../../services/paseo-adapter
       abort-controller:
         specifier: ^3.0.0
         version: 3.0.0

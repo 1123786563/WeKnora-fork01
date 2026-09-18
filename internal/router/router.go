@@ -52,16 +52,17 @@ type RouterParams struct {
 	AuditLogService              interfaces.AuditLogService
 	ChunkHandler                 *handler.ChunkHandler
 	SessionHandler               *session.Handler
-	WorkbenchHandler             *session.WorkbenchReadHandler     `optional:"true"`
-	WorkbenchListHandler         *session.WorkbenchListHandler     `optional:"true"`
-	WorkbenchStartHandler        *session.WorkbenchStartHandler    `optional:"true"`
-	WorkbenchCommandHandler      *session.WorkbenchCommandHandler  `optional:"true"`
-	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler `optional:"true"`
-	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler `optional:"true"`
-	WorkbenchInboxHandler        *session.WorkbenchInboxHandler    `optional:"true"`
-	ExecutionTargetHandler       *handler.ExecutionTargetHandler   `optional:"true"`
-	MobileVoiceHandler           *handler.MobileVoiceHandler       `optional:"true"`
-	MobileDeviceHandler          *handler.MobileDeviceHandler      `optional:"true"`
+	WorkbenchHandler             *session.WorkbenchReadHandler         `optional:"true"`
+	WorkbenchListHandler         *session.WorkbenchListHandler         `optional:"true"`
+	WorkbenchStartHandler        *session.WorkbenchStartHandler        `optional:"true"`
+	WorkbenchCommandHandler      *session.WorkbenchCommandHandler      `optional:"true"`
+	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler     `optional:"true"`
+	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler     `optional:"true"`
+	WorkbenchInboxHandler        *session.WorkbenchInboxHandler        `optional:"true"`
+	ExecutionTargetHandler       *handler.ExecutionTargetHandler       `optional:"true"`
+	ExecutionRegistrationHandler *handler.ExecutionRegistrationHandler `optional:"true"`
+	MobileVoiceHandler           *handler.MobileVoiceHandler           `optional:"true"`
+	MobileDeviceHandler          *handler.MobileDeviceHandler          `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
 	ModelHandler                 *handler.ModelHandler
@@ -321,6 +322,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, params.WorkbenchListHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
+		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
