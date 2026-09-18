@@ -1,6 +1,6 @@
 # CFT 续跑入口（RESUME）
 
-最后更新：2026-09-18（T009 完成后；本轮已交付 9 项，S00 全闭 + S01 过半）
+最后更新：2026-09-18（T014 完成后；累计 verified 14/36：S00+T007-T012 全闭 + T013/T014）
 
 ## 已完成（verified，自审；证据目录 docs/craft/evidence/<task-id>/）
 
@@ -15,8 +15,13 @@
 | CFT-S01-T008 | efb0e369 | core command-bridge（顺序所有者 + 意图级幂等键） |
 | CFT-S01-T007 | 6f0bbb4b | 重放稳定组合契约 + thread.tsx 工具/交互卡 |
 | CFT-S01-T009 | d3198f20 | library/templates 新页 + kind 选择器接服务端能力 |
+| CFT-S01-T010 | 1a47857d | 对话列切真实 assistant-ui Thread（composer=false 保留锚点）；spec05 定位器更新 |
+| CFT-S01-T011 | 587dc369 | domain version-selection 四断言 + versions.tsx 恢复确认 + sources 撤权占位 |
+| CFT-S01-T012 | d186b567 | CraftDecisionCard 四层送达状态 + 终态零控件 + StatusNotice 非失败横幅 |
+| CFT-S02-T013 | 1646a846 | 协议 pin 3 测试 + CRAFT_LIVE=1 真实 serve 两轮 PASS |
+| CFT-S02-T014 | b0cb7666 | TestDelegationIdentity*（幂等/冲突/重启读回） |
 
-测试基线：test:craft:shared **94 pass**；playwright mock **6/6**；go craft 103 + handler/service 全绿；typecheck:shared/web 通过。
+测试基线：test:craft:shared **108 pass**；playwright mock **6/6**；go craft 103 + handler/service 全绿；typecheck:shared/web 通过。
 
 ## 进行中
 
