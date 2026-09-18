@@ -1,0 +1,1296 @@
+{
+  "version": "1.0",
+  "baseline": "0cba2f85f8998a28691d564690a1261dcc041643",
+  "task_count": 36,
+  "tasks": [
+    {
+      "id": "CFT-S00-T001",
+      "number": 1,
+      "phase": "S00",
+      "title": "固定源码与验证入口",
+      "legacy": "CR-01",
+      "role": "架构/QA",
+      "module_key": "baseline",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [],
+      "file_locks": [
+        "repo-baseline",
+        "root-scripts"
+      ],
+      "goal": "记录HEAD、依赖锁、Craft服务注册、类型开关与现有测试覆盖；消除测试脚本漏掉Craft造成的假通过。",
+      "files": [
+        "修改 package.json",
+        "修改 docs/superpowers/plans/2026-09-10-craft-product-implementation.md",
+        "新增建议 docs/craft/baseline.md",
+        "新增建议 scripts/test_craft_shared.sh"
+      ],
+      "consumes": "当前仓库与八份旧计划",
+      "produces": "固定基线清单、API落点清单、test:craft:shared与test:craft:web入口",
+      "acceptance_checks": [
+        "记录HEAD与本设计差异",
+        "遍历contracts/domain/api-client/core/views的Craft测试文件并加入显式入口",
+        "类型检查包含Craft而不是仅引用旧白名单"
+      ],
+      "test_target": "scripts/test_craft_shared.sh",
+      "test_command": "bash scripts/test_craft_shared.sh",
+      "expected": "所有Craft测试均被枚举且0漏项；旧测试数量不下降",
+      "avoid": "在全仓绿灯中遗漏Craft；把旧文档勾选当实际验收",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S00-T002",
+      "number": 2,
+      "phase": "S00",
+      "title": "冻结命令、能力与事件适配合同",
+      "legacy": "CR-03",
+      "role": "全栈/架构",
+      "module_key": "contracts",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T001"
+      ],
+      "file_locks": [
+        "craft-contracts"
+      ],
+      "goal": "把本包内部端口映射到既有HTTP DTO，保持tenant/user服务器派生，明确幂等、revision和能力字段。",
+      "files": [
+        "修改 packages/contracts/src/index.ts",
+        "新增建议 packages/contracts/src/craft/command-ports.ts",
+        "新增建议 packages/contracts/test/craft-commands.test.ts"
+      ],
+      "consumes": "T001路由清单、examples/command-bridge.types.ts",
+      "produces": "经过校验的提交/恢复/决策类型及错误适配",
+      "acceptance_checks": [
+        "缺少requestId或非法revision被拒绝",
+        "同意图的输入/知识/baseVersion完整保留",
+        "拒绝客户端提供的sandbox URL与身份授权事实"
+      ],
+      "test_target": "packages/contracts/test/craft-commands.test.ts",
+      "test_command": "pnpm exec tsx --test packages/contracts/test/craft-commands.test.ts",
+      "expected": "输入校验与序列化fixture逐字段一致",
+      "avoid": "将目标类型不经核对直接当现有API",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S00-T003",
+      "number": 3,
+      "phase": "S00",
+      "title": "继承品牌并建立Craft作用域令牌",
+      "legacy": "CR-04",
+      "role": "前端/设计",
+      "module_key": "tokens",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T001"
+      ],
+      "file_locks": [
+        "design-tokens"
+      ],
+      "goal": "把本包色板、字体和圆角映射到原design-tokens/theme，保留蓝品牌与绿动作并修正文字对比度。",
+      "files": [
+        "修改 packages/design-tokens/src/tokens.ts",
+        "修改 packages/ui/src/theme.css",
+        "新增建议 packages/design-tokens/src/craft.test.ts"
+      ],
+      "consumes": "R01/R02真实主题、design/tokens.css",
+      "produces": "Craft语义别名、对比度和主题不回归测试",
+      "acceptance_checks": [
+        "蓝品牌仍是#2e6de6、绿动作仍是#07c05f",
+        "未在Craft外覆盖全局primary",
+        "绿色正常字号按钮前景至少4.5:1"
+      ],
+      "test_target": "packages/design-tokens/src/craft.test.ts",
+      "test_command": "pnpm exec tsx --test packages/design-tokens/src/craft.test.ts",
+      "expected": "核心token快照一致，浅色按钮对比度满足目标",
+      "avoid": "把全部primary机械替换成蓝或绿；捏造完整dark支持",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S00-T004",
+      "number": 4,
+      "phase": "S00",
+      "title": "共享组件与Craft宿主壳",
+      "legacy": "CR-04",
+      "role": "前端",
+      "module_key": "ui-shell",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T003"
+      ],
+      "file_locks": [
+        "ui-primitives",
+        "craft-shell"
+      ],
+      "goal": "复用现有Button/Input/Dialog等primitive，新增必要Craft组合，统一尺寸、键盘与焦点。",
+      "files": [
+        "修改 packages/ui/src/button.tsx",
+        "新增建议 packages/views/src/craft/shell.tsx",
+        "新增建议 packages/views/src/craft/shell.test.tsx"
+      ],
+      "consumes": "T003令牌、现有@weknora/ui",
+      "produces": "Shell、PanelHeader、Notice、Drawer等受控组件",
+      "acceptance_checks": [
+        "Dialog Escape关闭并归还焦点",
+        "只读/disabled不触发命令",
+        "1440与390视口无页面级横向溢出"
+      ],
+      "test_target": "packages/views/src/craft/shell.test.tsx",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/shell.test.tsx",
+      "expected": "键盘和DOM语义测试通过，宿主旧按钮样式不改变",
+      "avoid": "复制第二套弹窗/焦点管理",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S00-T005",
+      "number": 5,
+      "phase": "S00",
+      "title": "能力与发布门禁映射",
+      "legacy": "CR-01/12",
+      "role": "全栈",
+      "module_key": "capabilities",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002"
+      ],
+      "file_locks": [
+        "craft-gates"
+      ],
+      "goal": "把读取/写入/类型/输入限制绑定服务端真实能力，保留Craft零值关闭与逐类型开放。",
+      "files": [
+        "修改 internal/application/service/craft_session.go",
+        "新增建议 packages/domain/src/craft/capabilities.ts",
+        "新增建议 packages/domain/src/craft/capabilities.test.ts"
+      ],
+      "consumes": "T002能力合同、现有服务Gate",
+      "produces": "能力投影与统一disabledReason",
+      "acceptance_checks": [
+        "未启用时入口不可提交",
+        "没有write时仍可按read查看历史",
+        "不允许的类型被后端拒绝且前端保留草稿"
+      ],
+      "test_target": "packages/domain/src/craft/capabilities.test.ts",
+      "test_command": "pnpm exec tsx --test packages/domain/src/craft/capabilities.test.ts",
+      "expected": "全组合能力矩阵一致；服务端同样校验",
+      "avoid": "仅隐藏按钮就当安全",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S00-T006",
+      "number": 6,
+      "phase": "S00",
+      "title": "assistant-ui锁版与最小真实挂载",
+      "legacy": "CR-02",
+      "role": "前端",
+      "module_key": "aui",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T001"
+      ],
+      "file_locks": [
+        "aui-dependencies"
+      ],
+      "goal": "验证依赖与React peer兼容，在共享视图包真实挂载ExternalStoreRuntime，而不是相似React界面。",
+      "files": [
+        "修改 packages/views/package.json",
+        "修改 pnpm-lock.yaml",
+        "新增建议 packages/views/src/craft/assistant-runtime.tsx",
+        "新增建议 packages/views/src/craft/assistant-runtime.test.tsx"
+      ],
+      "consumes": "现有React与workspace依赖锁、官方ExternalStoreRuntime文档",
+      "produces": "可构建Provider及最小外部消息适配",
+      "acceptance_checks": [
+        "真实渲染一条user和assistant消息",
+        "StrictMode挂载/卸载不重复订阅",
+        "依赖图只有预期React实例"
+      ],
+      "test_target": "packages/views/src/craft/assistant-runtime.test.tsx",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/assistant-runtime.test.tsx",
+      "expected": "真实Provider可构建，peer冲突为零或有明确支持证据",
+      "avoid": "为了示例新增Node聊天API；仅装包不接页面",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T007",
+      "number": 7,
+      "phase": "S01",
+      "title": "稳定消息与工具卡投影",
+      "legacy": "CR-02",
+      "role": "前端",
+      "module_key": "aui",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002",
+        "CFT-S00-T006"
+      ],
+      "file_locks": [
+        "craft-message-projection"
+      ],
+      "goal": "把既有消息日志映射assistant-ui，稳定ID与工具卡关联，主/子运行状态不混淆。",
+      "files": [
+        "修改 packages/views/src/craft/presentation.ts",
+        "新增建议 packages/views/src/craft/thread.tsx",
+        "新增建议 packages/views/src/craft/presentation-replay.test.ts"
+      ],
+      "consumes": "T002事件合同、T006Provider、既有持久化消息",
+      "produces": "稳定消息转换与工具/产物卡",
+      "acceptance_checks": [
+        "同seq重放两次消息不增加",
+        "增量文字不重复拼接",
+        "子任务完成后主消息仍可running"
+      ],
+      "test_target": "packages/views/src/craft/presentation-replay.test.ts",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/presentation-replay.test.ts",
+      "expected": "消息数量、ID、正文和主状态与fixture一致",
+      "avoid": "用随机ID生成历史；子finish结束主任务",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T008",
+      "number": 8,
+      "phase": "S01",
+      "title": "统一附件与提交命令桥",
+      "legacy": "CR-03",
+      "role": "全栈前端",
+      "module_key": "commands",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002"
+      ],
+      "file_locks": [
+        "craft-controller",
+        "craft-command-bridge"
+      ],
+      "goal": "收敛controller纯文本submit与routes附件发送装配，冻结一次意图并保留资料与编辑基线。",
+      "files": [
+        "修改 packages/core/src/craft/controller.ts",
+        "新增建议 packages/core/src/craft/command-bridge.ts",
+        "修改 apps/web/src/features/craft/routes.tsx",
+        "新增建议 packages/core/src/craft/command-bridge.test.ts"
+      ],
+      "consumes": "T002目标端口、已验证上传/输入/Run API",
+      "produces": "submitDraft及上传关联顺序，重试复用键",
+      "acceptance_checks": [
+        "上传失败时Run提交次数为0",
+        "响应丢失后重试键不变且Run计数为1",
+        "baseVersion与查看历史版本不同也不被覆盖"
+      ],
+      "test_target": "packages/core/src/craft/command-bridge.test.ts",
+      "test_command": "pnpm exec tsx --test packages/core/src/craft/command-bridge.test.ts",
+      "expected": "调用顺序和完整payload快照一致",
+      "avoid": "只从onNew抽text；重连自动提交",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T009",
+      "number": 9,
+      "phase": "S01",
+      "title": "首页、作品库与模板接线",
+      "legacy": "CR-04",
+      "role": "前端",
+      "module_key": "entry-pages",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T004",
+        "CFT-S00-T005",
+        "CFT-S01-T008"
+      ],
+      "file_locks": [
+        "craft-entry-views"
+      ],
+      "goal": "按P01–P03实现目标输入、授权作品列表、过滤/分页、模板填充与创建恢复。",
+      "files": [
+        "新增建议 packages/views/src/craft/home.tsx",
+        "新增建议 packages/views/src/craft/library.tsx",
+        "新增建议 packages/views/src/craft/templates.tsx",
+        "新增建议 packages/views/src/craft/entry-pages.test.tsx"
+      ],
+      "consumes": "T004壳、T005能力、T008命令桥",
+      "produces": "可创建并进入真实会话的三个页面",
+      "acceptance_checks": [
+        "空目标不能提交",
+        "模板只填表不授权/执行",
+        "列表404/空/无匹配/分页失败分开",
+        "创建成功后上传失败不重复创建Session"
+      ],
+      "test_target": "packages/views/src/craft/entry-pages.test.tsx",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/entry-pages.test.tsx",
+      "expected": "主路径与四种空错态可复现",
+      "avoid": "保留原型硬编码6件与模拟资料",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T010",
+      "number": 10,
+      "phase": "S01",
+      "title": "双栏工作台与响应式作品容器",
+      "legacy": "CR-04",
+      "role": "前端",
+      "module_key": "workbench",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T004",
+        "CFT-S01-T007"
+      ],
+      "file_locks": [
+        "craft-workbench",
+        "craft-web-assembly"
+      ],
+      "goal": "替换现有普通对话呈现，保留预览/文件组件并接入assistant-ui与移动标签切换。",
+      "files": [
+        "修改 packages/views/src/craft/workbench.tsx",
+        "修改 apps/web/src/features/craft/routes.tsx",
+        "新增建议 packages/views/src/craft/workbench-layout.test.tsx"
+      ],
+      "consumes": "T007Thread、T004Shell、原预览组件",
+      "produces": "桌面双栏与窄屏分视图工作台",
+      "acceptance_checks": [
+        "Composer位置与独立滚动不冲突",
+        "切面板保留草稿与运行订阅",
+        "长标题与390px下按钮不越界"
+      ],
+      "test_target": "packages/views/src/craft/workbench-layout.test.tsx",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/workbench-layout.test.tsx",
+      "expected": "组件与浏览器1440/1280/1024/768/390基线一致",
+      "avoid": "将整页原型JS直接粘到React；页面管理第二份消息",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T011",
+      "number": 11,
+      "phase": "S01",
+      "title": "版本与来源视图的独立状态",
+      "legacy": "CR-04/07",
+      "role": "前端",
+      "module_key": "version-sources",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S01-T008",
+        "CFT-S01-T010"
+      ],
+      "file_locks": [
+        "craft-version-ui",
+        "craft-sources-ui"
+      ],
+      "goal": "实现查看版本/恢复基线分离、版本引用与下一次资料选择分离，按ACL处理来源展开。",
+      "files": [
+        "新增建议 packages/views/src/craft/versions.tsx",
+        "修改 packages/views/src/craft/sources.tsx",
+        "新增建议 packages/domain/src/craft/version-selection.test.ts"
+      ],
+      "consumes": "T008命令、版本/来源API",
+      "produces": "可追溯Drawer与显式恢复确认",
+      "acceptance_checks": [
+        "查看v1不改变base=v3/revision",
+        "下一次来源选择不修改v1引用",
+        "撤权不显示原文缓存",
+        "缺快照禁用恢复但可读下载"
+      ],
+      "test_target": "packages/domain/src/craft/version-selection.test.ts",
+      "test_command": "pnpm exec tsx --test packages/domain/src/craft/version-selection.test.ts",
+      "expected": "查看、恢复、权限、快照不完整四组断言成立",
+      "avoid": "把可下载等同可恢复",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S01-T012",
+      "number": 12,
+      "phase": "S01",
+      "title": "问题审批、取消与异常反馈UI",
+      "legacy": "CR-08",
+      "role": "前端",
+      "module_key": "interaction-ui",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S01-T008",
+        "CFT-S01-T010"
+      ],
+      "file_locks": [
+        "craft-interaction-ui"
+      ],
+      "goal": "实现区别明确的Question/Permission卡、记录与送达状态、取消中及连接/预览错误横幅。",
+      "files": [
+        "新增建议 packages/views/src/craft/interaction-card.tsx",
+        "新增建议 packages/views/src/craft/status-notice.tsx",
+        "新增建议 packages/views/src/craft/interaction-card.test.tsx"
+      ],
+      "consumes": "T008决策/取消端口与状态合同",
+      "produces": "可键盘操作的交互卡与异常状态",
+      "acceptance_checks": [
+        "批准response仅recorded不展示执行已继续",
+        "问题回答不增加权限",
+        "取消accepted仍显示取消中",
+        "断线和票据到期不显示任务失败"
+      ],
+      "test_target": "packages/views/src/craft/interaction-card.test.tsx",
+      "test_command": "pnpm exec tsx --test packages/views/src/craft/interaction-card.test.tsx",
+      "expected": "每种状态及过期请求按钮行为可测",
+      "avoid": "客户端tool result充当执行许可",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T013",
+      "number": 13,
+      "phase": "S02",
+      "title": "锁定OpenCode二进制与协议",
+      "legacy": "CR-05",
+      "role": "后端/平台",
+      "module_key": "opencode",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T001"
+      ],
+      "file_locks": [
+        "craft-opencode-protocol"
+      ],
+      "goal": "验证部署二进制/镜像digest与HTTP/SSE契约一致；复用当前Adapter，不并行建旧目录。",
+      "files": [
+        "修改 internal/agent/opencode/protocol.go",
+        "修改 internal/agent/opencode/client.go",
+        "新增建议 internal/agent/opencode/protocol_pin_test.go"
+      ],
+      "consumes": "T001部署清单、已有live_test",
+      "produces": "固定协议fixture与真实服务兼容证据",
+      "acceptance_checks": [
+        "版本变化导致清晰失败而非猜字段",
+        "事件/消息/取消协议与固定镜像一致",
+        "不将/doc OpenAPI版本当二进制版本"
+      ],
+      "test_target": "internal/agent/opencode/protocol_pin_test.go",
+      "test_command": "go test ./internal/agent/opencode -run TestProtocolPin -count=1",
+      "expected": "固定镜像真实读写/流测试和离线fixture均有证据",
+      "avoid": "趁接入升级不相关大版本",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T014",
+      "number": 14,
+      "phase": "S02",
+      "title": "持久化委派身份与幂等",
+      "legacy": "CR-05",
+      "role": "后端",
+      "module_key": "delegation",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002",
+        "CFT-S02-T013"
+      ],
+      "file_locks": [
+        "craft-delegation-store"
+      ],
+      "goal": "保证先保存Task/远端标识再提交，重复请求与payload冲突可判定，主Run复用既有事实。",
+      "files": [
+        "修改 internal/agent/opencode/executor.go",
+        "修改 internal/craft/contracts.go（仅必要兼容扩展）",
+        "新增建议 internal/agent/opencode/delegation_identity_test.go"
+      ],
+      "consumes": "T002命令身份、T013协议、既有Store.PrepareTask",
+      "produces": "可重启核对的Task及提交关联",
+      "acceptance_checks": [
+        "重复键相同payload返回同Task",
+        "相同键不同payload返回冲突",
+        "进程在准备后退出仍可定位远端消息"
+      ],
+      "test_target": "internal/agent/opencode/delegation_identity_test.go",
+      "test_command": "go test ./internal/agent/opencode -run TestDelegationIdentity -count=1",
+      "expected": "请求哈希与持久化顺序可追踪",
+      "avoid": "只有内存map去重；把messageID当exactly-once证明",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T015",
+      "number": 15,
+      "phase": "S02",
+      "title": "结果不明的核对与防盲重发",
+      "legacy": "CR-05/07",
+      "role": "后端",
+      "module_key": "reconcile",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T014"
+      ],
+      "file_locks": [
+        "craft-opencode-executor"
+      ],
+      "goal": "覆盖远端已接受但读端超时、worker重启场景；不能证明安全时保留unknown并停止盲目副作用重试。",
+      "files": [
+        "修改 internal/agent/opencode/executor.go",
+        "修改 internal/agent/opencode/normalizer.go",
+        "新增建议 internal/agent/opencode/unknown_acceptance_test.go"
+      ],
+      "consumes": "T014持久化身份、现有Execute/Observe",
+      "produces": "接受证据核对与有界未知恢复",
+      "acceptance_checks": [
+        "远端接受后GET超时不二次POST",
+        "断流不解释成成功",
+        "未知保持主ToolCall等待",
+        "达到核对截止时间有诊断状态"
+      ],
+      "test_target": "internal/agent/opencode/unknown_acceptance_test.go",
+      "test_command": "go test ./internal/agent/opencode -run TestUnknownAcceptance -count=1",
+      "expected": "固定版故障注入证明副作用提交次数；未知状态未被吞掉",
+      "avoid": "将timeout转success或直接再跑一次",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T016",
+      "number": 16,
+      "phase": "S02",
+      "title": "工作区互斥、CAS与worker隔离",
+      "legacy": "CR-07",
+      "role": "后端",
+      "module_key": "workspace",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002"
+      ],
+      "file_locks": [
+        "craft-workspace"
+      ],
+      "goal": "同工作区串行写入，revision与generation/fence共同防止旧worker覆盖新执行。",
+      "files": [
+        "修改 internal/application/service/craft_session.go",
+        "新增建议 internal/application/service/craft_workspace_guard.go",
+        "新增建议 internal/application/service/craft_workspace_guard_test.go"
+      ],
+      "consumes": "T002合同、既有Workspace与runtime.Fence",
+      "produces": "单写槽和CAS行为；复用已有存储实现",
+      "acceptance_checks": [
+        "并发修改只接受一个写入者",
+        "stale revision失败且不写文件",
+        "旧generation/fence不能发布",
+        "读旧版本不占写槽"
+      ],
+      "test_target": "internal/application/service/craft_workspace_guard_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftWorkspaceGuard -count=1",
+      "expected": "并发与故障恢复断言通过",
+      "avoid": "用进程mutex代替跨实例互斥",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T017",
+      "number": 17,
+      "phase": "S02",
+      "title": "授权资料解析与输入边界",
+      "legacy": "CR-06",
+      "role": "后端",
+      "module_key": "sources",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002"
+      ],
+      "file_locks": [
+        "craft-source-guard"
+      ],
+      "goal": "资料引用由既有资源ACL解析并最小化送入执行环境，索引状态和上传状态分开。",
+      "files": [
+        "修改 internal/application/service/craft_session.go",
+        "新增建议 internal/application/service/craft_source_guard.go",
+        "新增建议 internal/application/service/craft_source_guard_test.go"
+      ],
+      "consumes": "T002输入合同、原Session/知识资源授权",
+      "produces": "授权输入快照与citation映射",
+      "acceptance_checks": [
+        "跨租户/用户未授权资料拒绝",
+        "共享知识按资源ACL而非仅同租户",
+        "撤权后下一次读取失败",
+        "文档指令不能扩大网络与工具权限"
+      ],
+      "test_target": "internal/application/service/craft_source_guard_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftSourceGuard -count=1",
+      "expected": "ACL正反例及索引未就绪行为明确",
+      "avoid": "把请求中的tenant_id作为身份；索引未完成当可检索",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S02-T018",
+      "number": 18,
+      "phase": "S02",
+      "title": "有限预算与物理调用计量接线",
+      "legacy": "CR-12",
+      "role": "后端/平台",
+      "module_key": "budget-usage",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T005",
+        "CFT-S02-T013"
+      ],
+      "file_locks": [
+        "craft-budget-usage"
+      ],
+      "goal": "在首条真实执行前限制并发/调用/时长/资源，并接既有用量入口；主子运行只做归属不重复收费。",
+      "files": [
+        "新增建议 internal/application/service/craft_execution_budget.go",
+        "新增建议 internal/application/service/craft_execution_budget_test.go",
+        "修改 internal/agent/opencode/client.go（请求归属接缝）"
+      ],
+      "consumes": "T005Gate、T013真实调用、宿主商业入口",
+      "produces": "有限执行预算、去重用量与未知标志",
+      "acceptance_checks": [
+        "预算拒绝时无模型请求",
+        "同物理请求事件重放不重复记",
+        "实际重试不同请求如实计量",
+        "未知usage不显示0"
+      ],
+      "test_target": "internal/application/service/craft_execution_budget_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftExecutionBudget -count=1",
+      "expected": "实耗与请求记录对账；无第二账本",
+      "avoid": "把汇总usage再加到底层调用；未接预算allow-all",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T019",
+      "number": 19,
+      "phase": "S03",
+      "title": "文件收集、检查与不可变发布",
+      "legacy": "CR-06",
+      "role": "后端",
+      "module_key": "artifacts",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T016"
+      ],
+      "file_locks": [
+        "craft-manifest-version"
+      ],
+      "goal": "将staging文件经策略、真实检查和hash计算后发布，保证历史版本不变且无半成品发布。",
+      "files": [
+        "新增建议 internal/application/service/craft_artifact_publish.go",
+        "新增建议 internal/application/service/craft_artifact_publish_test.go",
+        "修改 internal/craft/contracts.go（必要manifest扩展）"
+      ],
+      "consumes": "T016workspace/fence、既有VersionStore",
+      "produces": "不可变manifest、检查记录、发布指针",
+      "acceptance_checks": [
+        "路径逃逸/软链接/secret文件拒绝",
+        "检查失败不发新版本",
+        "对象上传后事务失败留下可清理staging而非公开版本",
+        "v2发布后v1 hash不变"
+      ],
+      "test_target": "internal/application/service/craft_artifact_publish_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftArtifactPublish -count=1",
+      "expected": "真实文件hash和事务失败证据齐全",
+      "avoid": "仅复制目录或后缀验证",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T020",
+      "number": 20,
+      "phase": "S03",
+      "title": "隔离预览、文件授权与续期",
+      "legacy": "CR-06",
+      "role": "全栈/安全",
+      "module_key": "preview",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S03-T019"
+      ],
+      "file_locks": [
+        "craft-preview"
+      ],
+      "goal": "接现有PreviewTicket及独立Origin，按固定版本授权所有资源；续期不执行作品生成。",
+      "files": [
+        "修改 packages/views/src/craft/preview.tsx",
+        "修改 internal/handler/session/craft.go",
+        "新增建议 internal/application/service/craft_preview_policy_test.go"
+      ],
+      "consumes": "T019manifest、现有preview服务",
+      "produces": "授权文件/预览端到端链路",
+      "acceptance_checks": [
+        "票据过期只取新票",
+        "跨租户和撤权访问失败",
+        "子资源在合法机制下可读但越界失败",
+        "预览不能读取业务cookie"
+      ],
+      "test_target": "internal/application/service/craft_preview_policy_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftPreviewPolicy -count=1",
+      "expected": "HTTP测试+CSP/Origin浏览器证据",
+      "avoid": "同Origin路径假装隔离；一次性token耗尽导致资源全失败",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T021",
+      "number": 21,
+      "phase": "S03",
+      "title": "主Agent委派与发布结果归并",
+      "legacy": "CR-06",
+      "role": "后端",
+      "module_key": "main-run",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T014",
+        "CFT-S02-T015",
+        "CFT-S02-T017",
+        "CFT-S02-T018",
+        "CFT-S03-T019"
+      ],
+      "file_locks": [
+        "craft-mainrun-integration"
+      ],
+      "goal": "tRPC-Agent-Go主循环通过工具委派并接回结果，保留修复/等待能力，主终态和版本可用性独立。",
+      "files": [
+        "修改 internal/application/service/craft_session.go",
+        "新增建议 internal/application/service/craft_run_integration_test.go"
+      ],
+      "consumes": "Task/Result、授权资料、预算、不可变版本",
+      "produces": "既有主Run中的完整委派与交付关联",
+      "acceptance_checks": [
+        "子结束时主Run仍可继续修复",
+        "unknown不终结ToolCall",
+        "失败不替换旧交付版",
+        "最终回答引用真实已发布版本"
+      ],
+      "test_target": "internal/application/service/craft_run_integration_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftRunIntegration -count=1",
+      "expected": "真实Runtime装配和事件关联可追踪",
+      "avoid": "平行维护另一Craft主Run表",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T022",
+      "number": 22,
+      "phase": "S03",
+      "title": "完整快照与显式恢复",
+      "legacy": "CR-07",
+      "role": "后端",
+      "module_key": "restore",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T016",
+        "CFT-S03-T019"
+      ],
+      "file_locks": [
+        "craft-restore"
+      ],
+      "goal": "区分交付文件和可重建快照；恢复前校验完整性、环境、权限、工作槽与revision。",
+      "files": [
+        "新增建议 internal/application/service/craft_restore_guard.go",
+        "新增建议 internal/application/service/craft_restore_guard_test.go",
+        "修改 internal/handler/session/craft.go（复用restore入口）"
+      ],
+      "consumes": "T016互斥、T019版本/恢复源",
+      "produces": "幂等恢复与新revision/generation",
+      "acceptance_checks": [
+        "缺源允许下载但拒绝恢复",
+        "重复restore request只提升一次revision",
+        "恢复v1不产生v4",
+        "并发run导致恢复冲突"
+      ],
+      "test_target": "internal/application/service/craft_restore_guard_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftRestoreGuard -count=1",
+      "expected": "真实快照重建与失败前后工作目录证据",
+      "avoid": "从不完整构建产物假装恢复工程",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T023",
+      "number": 23,
+      "phase": "S03",
+      "title": "持久化审批送达与取消竞态",
+      "legacy": "CR-08",
+      "role": "后端",
+      "module_key": "interaction",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T014",
+        "CFT-S02-T015"
+      ],
+      "file_locks": [
+        "craft-decision-delivery",
+        "craft-cancel"
+      ],
+      "goal": "把问题/许可/取消绑定已有交互服务，记录决定、送达与远端确认，不允许过期许可复活任务。",
+      "files": [
+        "新增建议 internal/application/service/craft_decision_delivery_test.go",
+        "新增建议 internal/agent/opencode/cancel_reconcile_test.go",
+        "修改 internal/agent/opencode/executor.go（既有Abort/Observe）"
+      ],
+      "consumes": "T014身份、T015核对、既有主运行交互服务",
+      "produces": "决策状态与取消最终核对",
+      "acceptance_checks": [
+        "取消后到达批准被拒绝",
+        "决定写入成功但响应丢失不重复许可",
+        "payload revision变化令旧批准失效",
+        "abort受理不直接声称已终止"
+      ],
+      "test_target": "internal/application/service/craft_decision_delivery_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftDecisionDelivery -count=1 && go test ./internal/agent/opencode -run TestCancelReconcile -count=1",
+      "expected": "DB/远端故障注入及竞态断言通过",
+      "avoid": "在浏览器里直接返回permission accepted",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S03-T024",
+      "number": 24,
+      "phase": "S03",
+      "title": "网页纵向闭环与断流恢复验收",
+      "legacy": "CR-06/07",
+      "role": "全栈/QA",
+      "module_key": "web-e2e",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S01-T008",
+        "CFT-S01-T009",
+        "CFT-S01-T010",
+        "CFT-S01-T011",
+        "CFT-S01-T012",
+        "CFT-S03-T020",
+        "CFT-S03-T021",
+        "CFT-S03-T022",
+        "CFT-S03-T023"
+      ],
+      "file_locks": [
+        "craft-e2e-assembly"
+      ],
+      "goal": "完成真实创建/生成/修改/历史下载，并验证浏览器断线与worker恢复不新增Run。",
+      "files": [
+        "新增建议 apps/web/e2e/craft-web.spec.ts",
+        "新增建议 docs/craft/evidence/web-gate.md",
+        "修改 apps/web/src/features/craft/routes.tsx（最后装配）"
+      ],
+      "consumes": "完整Web前后端及有限预算",
+      "produces": "网页G1通过证据与可回滚开关",
+      "acceptance_checks": [
+        "上传CSV+选知识生成真实v1",
+        "修改v2后下载v1 hash不变",
+        "SSE重复/缺口/离线不重发",
+        "旧worker不能发布到新generation"
+      ],
+      "test_target": "apps/web/e2e/craft-web.spec.ts",
+      "test_command": "pnpm exec playwright test apps/web/e2e/craft-web.spec.ts",
+      "expected": "真实文件、浏览器、trace、镜像digest均齐全；mock测试不替代",
+      "avoid": "只有原型截图和单元绿灯就宣布完成",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T025",
+      "number": 25,
+      "phase": "S04",
+      "title": "文档类型的可重建生成链",
+      "legacy": "CR-09",
+      "role": "后端/内容",
+      "module_key": "document-engine",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S03-T024"
+      ],
+      "file_locks": [
+        "craft-document-engine"
+      ],
+      "goal": "以结构化源/Markdown生成同版DOCX并保存重建输入，转换器与运行镜像锁定。",
+      "files": [
+        "新增建议 internal/application/service/craft_document_render_test.go",
+        "新增建议 docs/craft/artifact-document-contract.md",
+        "修改现有文档类型生成接缝（由T001路径清单定位，禁止平行生成器）"
+      ],
+      "consumes": "网页已验证版本底座、授权输入与固定转换器",
+      "produces": "真正DOCX及同版源文档",
+      "acceptance_checks": [
+        "中文/表格/引用在实际OOXML中可读",
+        "转换失败不发布文件",
+        "修改后旧DOCX hash不变"
+      ],
+      "test_target": "internal/application/service/craft_document_render_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftDocumentRender -count=1",
+      "expected": "真实打开/渲染证据，不以扩展名通过",
+      "avoid": "临时下载最新版转换器",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T026",
+      "number": 26,
+      "phase": "S04",
+      "title": "文档预览、引用与版本下载",
+      "legacy": "CR-09",
+      "role": "前端/QA",
+      "module_key": "document-view",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S04-T025",
+        "CFT-S01-T010",
+        "CFT-S03-T020"
+      ],
+      "file_locks": [
+        "craft-document-view"
+      ],
+      "goal": "将同版本文档安全呈现并下载真实文件，长段落/目录/表格/引用都可用。",
+      "files": [
+        "新增建议 packages/views/src/craft/document-preview.tsx",
+        "新增建议 apps/web/e2e/craft-document.spec.ts"
+      ],
+      "consumes": "T025源与DOCX、预览授权",
+      "produces": "文档类型独立G2证据",
+      "acceptance_checks": [
+        "预览版本与下载版本一致",
+        "Markdown脚本/危险链接被处理",
+        "查看历史不改编辑基线"
+      ],
+      "test_target": "apps/web/e2e/craft-document.spec.ts",
+      "test_command": "pnpm exec playwright test apps/web/e2e/craft-document.spec.ts",
+      "expected": "生成/修改/历史/下载完整通过后才开文档类型",
+      "avoid": "拿HTML改后缀为DOCX",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T027",
+      "number": 27,
+      "phase": "S04",
+      "title": "表格真实重算与安全检查",
+      "legacy": "CR-10",
+      "role": "后端/数据",
+      "module_key": "spreadsheet-engine",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S03-T024"
+      ],
+      "file_locks": [
+        "craft-spreadsheet-engine"
+      ],
+      "goal": "生成可重建XLSX，经受控计算引擎实际重算，保留公式和有效缓存并扫描宏/外部连接。",
+      "files": [
+        "新增建议 internal/application/service/craft_spreadsheet_recalc_test.go",
+        "新增建议 docs/craft/artifact-spreadsheet-contract.md",
+        "修改现有表格生成接缝（复用T001定位结果）"
+      ],
+      "consumes": "版本底座、结构化数据、固定重算工具",
+      "produces": "XLSX、公式/结果一致检查、只读预览数据",
+      "acceptance_checks": [
+        "SUM等实际计算不是仅写公式",
+        "预览数值与重新打开XLSX一致",
+        "外链/宏按政策拒绝或隔离"
+      ],
+      "test_target": "internal/application/service/craft_spreadsheet_recalc_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftSpreadsheetRecalc -count=1",
+      "expected": "真实引擎重算与缓存证据",
+      "avoid": "用JS展示结果冒充XLSX重算",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T028",
+      "number": 28,
+      "phase": "S04",
+      "title": "表格只读网格与版本验证",
+      "legacy": "CR-10",
+      "role": "前端/QA",
+      "module_key": "spreadsheet-view",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S04-T027",
+        "CFT-S01-T010",
+        "CFT-S03-T020"
+      ],
+      "file_locks": [
+        "craft-spreadsheet-view"
+      ],
+      "goal": "呈现受验证JSON、sheet切换、格式/公式说明与同版下载，不承诺完整在线编辑器。",
+      "files": [
+        "新增建议 packages/views/src/craft/spreadsheet-preview.tsx",
+        "新增建议 apps/web/e2e/craft-spreadsheet.spec.ts"
+      ],
+      "consumes": "T027真实XLSX与只读数据",
+      "produces": "表格独立G3证据",
+      "acceptance_checks": [
+        "宽表局部横滚不撑页面",
+        "金额日期与错误值格式正确",
+        "v1/v2数据与各自下载一一对应"
+      ],
+      "test_target": "apps/web/e2e/craft-spreadsheet.spec.ts",
+      "test_command": "pnpm exec playwright test apps/web/e2e/craft-spreadsheet.spec.ts",
+      "expected": "公式重算文件与网格内容对比通过",
+      "avoid": "前端默默计算出另一份真相",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T029",
+      "number": 29,
+      "phase": "S04",
+      "title": "演示稿可重建生成与逐页检查",
+      "legacy": "CR-11",
+      "role": "后端/内容",
+      "module_key": "slides-engine",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S03-T024"
+      ],
+      "file_locks": [
+        "craft-slides-engine",
+        "office-runtime-image"
+      ],
+      "goal": "记录结构化内容、图片与字体环境，生成PPTX并实际渲染每页用于检查。",
+      "files": [
+        "新增建议 internal/application/service/craft_slides_render_test.go",
+        "新增建议 docs/craft/artifact-slides-contract.md",
+        "修改现有演示稿生成接缝（复用T001定位结果）"
+      ],
+      "consumes": "版本底座、锁定图文渲染镜像",
+      "produces": "PPTX与同版分页预览/检查",
+      "acceptance_checks": [
+        "真实打开页数正确",
+        "中文/图表/文本无溢出",
+        "失败页检查为failed而非not_run转passed",
+        "修改后历史稿不变"
+      ],
+      "test_target": "internal/application/service/craft_slides_render_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftSlidesRender -count=1",
+      "expected": "全部页面截图与检查清单",
+      "avoid": "只检查封面；缺字体时仍假装通过",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S04-T030",
+      "number": 30,
+      "phase": "S04",
+      "title": "演示稿分页浏览与类型门禁",
+      "legacy": "CR-11",
+      "role": "前端/QA",
+      "module_key": "slides-view",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S04-T029",
+        "CFT-S01-T010",
+        "CFT-S03-T020"
+      ],
+      "file_locks": [
+        "craft-slides-view"
+      ],
+      "goal": "实现缩略图/前后页/当前页、清晰分页加载与同版下载，接独立类型能力。",
+      "files": [
+        "新增建议 packages/views/src/craft/slides-preview.tsx",
+        "新增建议 apps/web/e2e/craft-slides.spec.ts"
+      ],
+      "consumes": "T029真PPTX和分页预览",
+      "produces": "演示稿独立G4证据",
+      "acceptance_checks": [
+        "页边界按钮正确禁用",
+        "某页加载失败可重试不重生成",
+        "窄屏分页与版本查看正常"
+      ],
+      "test_target": "apps/web/e2e/craft-slides.spec.ts",
+      "test_command": "pnpm exec playwright test apps/web/e2e/craft-slides.spec.ts",
+      "expected": "所有页+修改+历史下载通过后开放演示稿",
+      "avoid": "原型4张HTML页面冒充PPTX",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T031",
+      "number": 31,
+      "phase": "S05",
+      "title": "生命周期与保守清理",
+      "legacy": "CR-12",
+      "role": "后端/平台",
+      "module_key": "lifecycle",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T016",
+        "CFT-S03-T019",
+        "CFT-S03-T022"
+      ],
+      "file_locks": [
+        "craft-lifecycle"
+      ],
+      "goal": "区分活跃工作区、版本对象、恢复源和staging；清理不删除仍被引用的历史资产。",
+      "files": [
+        "新增建议 internal/application/service/craft_retention_test.go",
+        "新增建议 docs/craft/retention-policy.md"
+      ],
+      "consumes": "版本引用、恢复源、工作区lease",
+      "produces": "幂等GC与保留策略",
+      "acceptance_checks": [
+        "版本或恢复快照仍引用的对象不删",
+        "活跃工作槽不回收",
+        "staging过期可清理",
+        "GC重试不会错误增加删除范围"
+      ],
+      "test_target": "internal/application/service/craft_retention_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftRetention -count=1",
+      "expected": "对象依赖图与删除dry-run证据",
+      "avoid": "按目录mtime暴力删除",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T032",
+      "number": 32,
+      "phase": "S05",
+      "title": "诊断、审计与关联观测",
+      "legacy": "CR-12",
+      "role": "后端/平台",
+      "module_key": "observability",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T002",
+        "CFT-S03-T021"
+      ],
+      "file_locks": [
+        "craft-observability"
+      ],
+      "goal": "关联scope/session/run/tool/task/preview/check/usage，不记录凭据或隐私原文。",
+      "files": [
+        "新增建议 internal/application/service/craft_audit_redaction_test.go",
+        "新增建议 docs/craft/operations-runbook.md"
+      ],
+      "consumes": "T002身份、主子运行trace、日志系统",
+      "produces": "可排障的关联日志、指标与runbook",
+      "acceptance_checks": [
+        "日志含关联ID与阶段",
+        "日志不含secret/ticket/敏感附件正文",
+        "unknown与取消超时可定位",
+        "未知usage单独可观测"
+      ],
+      "test_target": "internal/application/service/craft_audit_redaction_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftAuditRedaction -count=1",
+      "expected": "一条失败任务可从UI关联到执行与发布阶段",
+      "avoid": "为排查问题记录全部prompt/原文",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T033",
+      "number": 33,
+      "phase": "S05",
+      "title": "灰度发布与回滚策略",
+      "legacy": "CR-12",
+      "role": "平台/架构",
+      "module_key": "release",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S00-T005",
+        "CFT-S03-T024",
+        "CFT-S02-T018",
+        "CFT-S05-T031",
+        "CFT-S05-T032"
+      ],
+      "file_locks": [
+        "craft-release-gates"
+      ],
+      "goal": "按Web及Office类型独立开关，给受控试用、正式收费和故障回滚不同门槛。",
+      "files": [
+        "新增建议 docs/craft/release-gates.md",
+        "新增建议 internal/application/service/craft_release_gate_test.go"
+      ],
+      "consumes": "能力、预算、G1证据、生命周期、观测",
+      "produces": "发布开关矩阵与rollback runbook",
+      "acceptance_checks": [
+        "关闭某类型后不接受新任务",
+        "已发布可读版本不因关闭类型删除",
+        "活动Run按排空/取消明确策略",
+        "未过商业门禁不得收费开放"
+      ],
+      "test_target": "internal/application/service/craft_release_gate_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftReleaseGate -count=1",
+      "expected": "灰度与回滚演练有实际证据",
+      "avoid": "开一个总开关同时放开未验收Office",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T034",
+      "number": 34,
+      "phase": "S05",
+      "title": "视觉、键盘与响应式回归",
+      "legacy": "CR-04/12",
+      "role": "前端/QA",
+      "module_key": "visual-a11y",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S01-T011",
+        "CFT-S01-T012",
+        "CFT-S03-T024"
+      ],
+      "file_locks": [
+        "craft-visual-baseline"
+      ],
+      "goal": "按高保真目标验证实际React而非只测HTML，覆盖长内容、字体和关键状态。",
+      "files": [
+        "新增建议 apps/web/e2e/craft-visual.spec.ts",
+        "新增建议 docs/craft/evidence/visual.md"
+      ],
+      "consumes": "实际React页面、本包设计token与截图",
+      "produces": "多尺寸截图、焦点/键盘/对比度结果",
+      "acceptance_checks": [
+        "1440/1280/1024/768/390无全页横滚",
+        "Dialog Escape/焦点返回正常",
+        "中文IME不误发送",
+        "只读与失败状态可读且主操作不可误触"
+      ],
+      "test_target": "apps/web/e2e/craft-visual.spec.ts",
+      "test_command": "pnpm exec playwright test apps/web/e2e/craft-visual.spec.ts",
+      "expected": "实际组件截图与本包目标差异经review认可",
+      "avoid": "拿独立HTML测试代替真实React无障碍结论",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T035",
+      "number": 35,
+      "phase": "S05",
+      "title": "安全与故障注入总回归",
+      "legacy": "CR-05/07/08/12",
+      "role": "安全/QA",
+      "module_key": "resilience",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S02-T015",
+        "CFT-S02-T016",
+        "CFT-S02-T017",
+        "CFT-S03-T020",
+        "CFT-S03-T022",
+        "CFT-S03-T023"
+      ],
+      "file_locks": [
+        "craft-security-evidence"
+      ],
+      "goal": "把跨scope、撤权、恶意资料、路径、断流、未知副作用、旧worker与取消竞态作为阻断发布反例。",
+      "files": [
+        "新增建议 internal/application/service/craft_security_matrix_test.go",
+        "新增建议 docs/craft/evidence/security.md"
+      ],
+      "consumes": "前述安全执行规则与固定镜像",
+      "produces": "攻击面与故障矩阵证据",
+      "acceptance_checks": [
+        "跨租户文件/票据/快照全部拒绝",
+        "来源prompt injection不扩大工具范围",
+        "旧fence结果不能发布",
+        "取消批准竞态与读超时不重复执行"
+      ],
+      "test_target": "internal/application/service/craft_security_matrix_test.go",
+      "test_command": "go test ./internal/application/service -run TestCraftSecurityMatrix -count=1",
+      "expected": "全部阻断项通过；任何unknown未被解释为成功",
+      "avoid": "将UI按钮禁用当服务端授权",
+      "status": "planned"
+    },
+    {
+      "id": "CFT-S05-T036",
+      "number": 36,
+      "phase": "S05",
+      "title": "整体验收、证据与旧计划收敛",
+      "legacy": "CR-01/12",
+      "role": "架构/QA",
+      "module_key": "handoff",
+      "repository": "1123786563/WeKnora-fork01",
+      "dependencies": [
+        "CFT-S05-T033",
+        "CFT-S05-T034",
+        "CFT-S05-T035"
+      ],
+      "file_locks": [
+        "craft-evidence-index",
+        "craft-docs"
+      ],
+      "goal": "汇总源码/测试/镜像/trace/截图/回滚证据，旧计划条目与新36项建立追溯；未过类型门禁保持关闭。",
+      "files": [
+        "修改 docs/superpowers/plans/2026-09-10-craft-product-implementation.md",
+        "修改 docs/superpowers/plans/2026-09-10-craft-opencode-adapter.md",
+        "新增建议 docs/craft/evidence/index.md"
+      ],
+      "consumes": "T033/034/035证据；按类型选择T026/T028/T030",
+      "produces": "可审计发布台账与开发交接",
+      "acceptance_checks": [
+        "旧Adapter标记替代且唯一运行入口",
+        "发布范围与已通过类型证据一致",
+        "每项完成记录包含commit/命令/结果/PR或review",
+        "所有未验证项显式列出而非划完成"
+      ],
+      "test_target": "docs/craft/evidence/index.md",
+      "test_command": "pnpm run test:craft:shared && pnpm run typecheck:web && pnpm run build:web",
+      "expected": "Web证据齐全可单独发布；Office按各自门禁决定",
+      "avoid": "宣称全部支持而相应类型仍只有mock",
+      "status": "planned"
+    }
+  ]
+}
