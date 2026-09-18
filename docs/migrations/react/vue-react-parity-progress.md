@@ -5371,3 +5371,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r475-code-parity-round.md`. No Vue, mobile, or Go code was modified
   by this round. R476 queue: node-version pinning, AI-question auto-populate check, differentiated steer
   toasts, mock restart automation, old finalizing batch retry.
+
+## 2026-09-18 Round R476 — gates harness + persistent mock, differentiated steer toasts, question-generation attributed to backend gating
+
+- Four parallel agents (A1 node pin + gates + mock persistence, A2 steer toasts, A3 question-populate
+  investigation, A4 verifier). Verdict: all PASS; gates under Node v26: test:web 1860/1860, test:shared
+  800/800, typecheck 0, build ✓.
+- A1: engines>=26 + .nvmrc (blocked by the `.*` gitignore — exception queued) + `pnpm gates` (serial five
+  gates with a v22→v26 re-exec via a node-symlinks-only shim; fronting the whole dir drops pnpm to v11.1.2 —
+  live-found trap); v26 full web 1858/1858. Mock persistence: dev-mock-llm.py/sh supervisor
+  (start/stop/status, adopts legacy instances) — both the loopback and LAN SSRF paths verified 200 with live
+  backend calls. INCIDENT recovered: an external reset+clean deleted both agents' uncommitted deliverables;
+  re-created from context (mock daemon survived on its inode) — early-staging lesson promoted.
+- A2: Vue's eight steer MessagePlugin sites mapped (steerFailed/steerPromoteFailed/steerRemoveFailed errors +
+  already_injected info with the remove gone/already/refused distinction; server-message-first; a swallowed
+  retrySteer rejection fixed); +4 keys ×5 byte-exact; only the steer chain's operationFailed replaced.
+  chat 219+125. Deferred: follow-up-timeout key, attachment-warning duals, failure carrier.
+- A3: the AI-question auto-populate observation is attributed to BACKEND gating, not parity — the payload
+  contract is identical three ways (process_config persisted as process_overrides proving receipt), but
+  knowledge_post_process.go gates question spawn on kb.NeedsEmbeddingModel() and the wiki-only fixture KB
+  has vector/keyword both off → silently skipped (Vue identical). +2 characterization tests. Queued product
+  issue: no dialog↔index-strategy linkage; positive path still needs a reachable embedding model.
+- Gates: test:web 1860/1860, test:shared 800/800, typecheck 0, build ✓ (Node v26). Evidence:
+  `evidence/vue-react-parity/2026-09-18-r476-code-parity-round.md`. No Vue, mobile, or Go code was modified by
+  this round. R477 queue: early-stage discipline, .nvmrc exception, embedding model for the positive path,
+  attachment-warning duals, gates+build inclusion.
