@@ -414,6 +414,7 @@ export default function ApprovalScreen() {
           variant: sheetMode === "approve" ? "primary" : "danger",
           busy,
           onPress: () => void doDecide(),
+          testID: "confirm-decide",
         }}
         dismiss={{ label: "返回核对", variant: "secondary", onPress: () => setSheetMode(null) }}
         testID="approval-decision-sheet"

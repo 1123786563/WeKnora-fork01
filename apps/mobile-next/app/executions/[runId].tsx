@@ -424,7 +424,7 @@ export default function ExecutionScreen() {
           `当前状态：${runStatusLabel(run.status)}`,
           `revision ${run.revision ?? ""}`,
         ]}
-        confirm={{ label: "确认申请取消", variant: "danger", busy: cancelBusy, onPress: () => void doCancel() }}
+        confirm={{ label: "确认申请取消", variant: "danger", busy: cancelBusy, onPress: () => void doCancel(), testID: "confirm-cancel" }}
         dismiss={{ label: "再想想", variant: "secondary", onPress: () => setCancelSheet(false) }}
         testID="cancel-decision-sheet"
       />

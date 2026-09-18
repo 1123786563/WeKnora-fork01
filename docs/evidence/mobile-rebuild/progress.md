@@ -144,3 +144,40 @@
 
 
 
+
+## 页面行为测试补齐与台账收口（2026-09-18 晚·第二轮）
+
+### 缺口与动作
+对照 tasks.json 验收条件审计发现：RW-011~RW-026 多数页面有实现与视觉验证，但缺页面行为测试（integrating 主因）。本轮补齐 5 个测试文件共 33 个验收测试：
+
+- `tests/features/pages-execution-approval.test.tsx`（10）：M08 三状态独立展示（execution/settlement unknown 不冒充完成）、取消携带 revision、409 冲突禁用不重发、revision 缺失禁用取消、forbidden 遮蔽；M09 冻结摘要（目标/内容/revision）、decide 携带 expected_revision、409 版本变化+按钮禁用、notfound 空态
+- `tests/features/overview.test.tsx`（3）：useOverview 聚合计数（running/waitingUser 口径）、forbidden 遮蔽、network→offline
+- `tests/features/pages-lists-voice.test.tsx`（10）：M04 防抖 300ms（keyword 回第一页）、空库与筛选无结果两种空态区分、forbidden；M06 目录回写 agentSelection；M10 聚合+筛选；M15 不可用原因如实展示、只可选受权目标、禁选态
+- `tests/features/voice.test.tsx`（3）：M16 竞态保护抽纯函数 `transcriptFill`（迟到转写仅回填空/纯空白草稿）×2 + UI 如实展示（真实录音未接入不假装成功、文字输入不阻塞、放入草稿须显式操作）
+- `tests/features/pages-profile-usage.test.tsx`（7）：M11 分类入口+导航；M12 摘要渲染/forbidden；M17 身份卡（identity 驱动）、退出二次确认（确认前不调 logout、Sheet 说明服务端任务继续）；M18 只读展示（额度/预占/已结算+as_of）、无支付按钮（按 accessibilityRole 断言）、forbidden 遮蔽明细
+
+### 实现侧最小改动（行为不变）
+- DecisionAction 增加可选 testID；M08/M09 Sheet 确认按钮加 testID（confirm-cancel/confirm-decide）
+- voice.tsx 转写回填抽 `transcriptFill(current, transcript)` 纯函数（页面引用，竞态语义不变）
+
+### RNTL 测试环境坑（后续写测试须遵守，本轮实证）
+1. **fake timers 与本组合不兼容**：jest.useFakeTimers 期间 render 的组件会破坏文件内后续所有 render（React 19.2 + test-renderer 1.3.0 + RNTL 14）；防抖/定时器一律用真实时间等待
+2. **同测试内第二次 render 会坏**（即使先 unmount）：多场景拆成多个 it
+3. **jest.mock 工厂 hoisting**：工厂在 import 提升阶段执行，`router: mockRouter` 直接展开得到 undefined——必须用惰性 `get router()`
+4. **React 19 act 异步 flush**：fireEvent 后的同步断言拿不到新状态，一律 findBy/waitFor
+5. **1200ms 转写定时器多测试连续渲染破坏环境**：voice 竞态改纯函数单测，UI 只留一个测试
+6. probe（hook 测试）与页面渲染混排会污染 act 环境：useOverview 测试单独成文件
+
+### 门禁（全绿）
+- `npx tsc --noEmit` → exit 0（真实退出码，重定向后读取）
+- `npx jest` → **20 suites / 152 tests 全过**（上轮 119 + 本轮 33）
+- `npm run check:isolation` → 82 源文件 0 违规（可达图 47 文件）
+
+### 台账收口
+- **29 accepted**（本轮推进 17：RW-011/012/014/015/016/017/018/019/020/023/024/025/026/027/028/029/033）
+- **4 integrating**（准确阻塞）：
+  - RW-021 M13 连接详情：OAuth 浏览器授权真机实测 blocked-env；页面+视觉验证已有
+  - RW-022 M14 成果：签名链接下载/分享后端服务未接（D-10）；页面+视觉验证已有
+  - RW-031 视觉：36 张双主题截图已交付；360/390/430 多宽度与 200% 大字体原生截图 blocked-env（CoreSimulator runtime 缺失，组件级 font-scaling/long-text 测试补偿）
+  - RW-032 E2E：真实后端集成 10/10 + 附件 6/6 + 重开恢复 3/3 + SSE/故障注入单测已有；双平台真机 E2E、推送注册、真实录音未执行
+- RW-033 交付：README 补「新旧入口切换说明」（并存安装/独立命名空间/替换发布需另行授权）；启动/质量入口命令此前已备

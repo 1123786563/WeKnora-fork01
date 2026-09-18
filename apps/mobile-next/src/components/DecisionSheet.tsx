@@ -13,6 +13,7 @@ export interface DecisionAction {
   variant: ButtonVariant;
   onPress: () => void;
   busy?: boolean;
+  testID?: string;
 }
 
 export interface DecisionSheetProps {

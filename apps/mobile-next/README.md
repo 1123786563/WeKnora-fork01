@@ -51,6 +51,13 @@ tests/               theme/components/api/domain/sse/features
 
 - SQLite 库 `weknora_mobile_next_v1.db`；凭证仅 expo-secure-store；缓存按 `origin+userId+tenantId` scope 隔离；不读取旧 App 任何数据。
 
+## 新旧入口切换说明
+
+- 本工程 `apps/mobile-next` 是新版（Calm Emerald v2 设计）的正式开发目录，独立 npm 工程、独立缓存命名空间（`weknora_mobile_next_v1.db` + 独立 SecureStore key），不读取旧 App 任何数据。
+- 旧 `apps/mobile` 保持原样、不被本工程依赖，也不在本任务中删除；两套 App 可并存安装调试。
+- 切换到新版：按上文「环境与启动」在 `apps/mobile-next` 内安装并启动；构建产物 bundle id 为 `com.weknora.mobilenext`（iOS/Android 原生工程由 `npx expo prebuild` 生成，`ios/`、`android/` 已提交）。
+- 实际替换发布入口（以下架旧 App、接管旧 bundle id、迁移用户数据为准）需另行授权，属独立任务；当前阶段新旧并行。
+
 ## 已知边界（见 docs/evidence/mobile-rebuild/decisions.md）
 
 - 后端暂缺 `/workbench/overview`、通用 inbox、统一四类交互、实时语音端点 → 客户端聚合/专端点/如实展示不可用（D-04~D-07）

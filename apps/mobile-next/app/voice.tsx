@@ -16,6 +16,14 @@ type VoicePhase = "idle" | "recording" | "transcribing" | "done";
 const DRAFT_ID = "voice-draft";
 const DEMO_TRANSCRIPT = "整理本周客户反馈，生成一份优先处理建议。";
 
+/**
+ * 迟到转写回填规则：仅当草稿为空（或纯空白）时回填转写结果；
+ * 用户已编辑的草稿不被迟到的转写覆盖（RW-024 竞态保护，纯函数以便单测）。
+ */
+export function transcriptFill(current: string, transcript: string): string {
+  return current.trim() ? current : transcript;
+}
+
 export default function VoiceScreen() {
   const { theme } = useTheme();
   const app = useApp();
@@ -60,7 +68,7 @@ export default function VoiceScreen() {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         setPhase("done");
-        setText((current) => (current.trim() ? current : DEMO_TRANSCRIPT));
+        setText((current) => transcriptFill(current, DEMO_TRANSCRIPT));
       }, 1200);
     }
   };
