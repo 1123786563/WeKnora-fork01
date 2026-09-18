@@ -14,10 +14,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/stretchr/testify/require"
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -94,7 +94,7 @@ func wiringRuntime(t *testing.T) (*localCraftRuntime, *CraftInteractionAssembly,
 	_, err = runs.Admit(context.Background(), agentruntime.Admission{
 		Key: key, SessionID: "s-wiring", UserID: "u-wiring", RequestID: "req-wiring",
 		AssistantMessageID: "asst-wiring", RequestHash: "rh-wiring",
-		Snapshot: json.RawMessage(`{"version":1,"craft":true}`),
+		Snapshot:    json.RawMessage(`{"version":1,"craft":true}`),
 		UserMessage: user, AssistantMessage: assistant,
 		Deadline: time.Now().Add(time.Hour),
 	})
@@ -162,10 +162,10 @@ func TestWireCraftInteractionRegistrarRegistersPendingInteractions(t *testing.T)
 	require.Equal(t, int64(1), after, "interaction.pending must register the durable interaction")
 
 	var row struct {
-		Kind         string
-		RunID        string
-		TaskID       string
-		OcRequestID  string `gorm:"column:oc_request_id"`
+		Kind        string
+		RunID       string
+		TaskID      string
+		OcRequestID string `gorm:"column:oc_request_id"`
 	}
 	require.NoError(t, runtime.db.Table("craft_interactions").Take(&row).Error)
 	require.Equal(t, craft.InteractionQuestion, row.Kind)

@@ -10,7 +10,7 @@ describe('ExecutionSSEParser', () => {
     const split = bytes.findIndex((value, index) => index > 0 && (value & 0xc0) === 0x80);
     const result = [...parser.push(bytes.slice(0, split)), ...parser.push(bytes.slice(split))];
     expect(result[0]?.event).toBe('future.event');
-    expect(result[0]?.data.payload.value).toBe('你');
+    expect(result[0]?.kind === 'business' ? result[0].data.payload.value : undefined).toBe('你');
   });
 
   it('handles CRLF split across chunks and heartbeats', () => {
@@ -18,7 +18,7 @@ describe('ExecutionSSEParser', () => {
     const source = `: heartbeat\r\n\r\n${frame(2)}`;
     const bytes = new TextEncoder().encode(source);
     const out = [...parser.push(bytes.slice(0, 7)), ...parser.push(bytes.slice(7), true)];
-    expect(out.map((item) => item.data.seq)).toEqual([2]);
+    expect(out.filter((item) => item.kind === 'business').map((item) => (item as { data: { seq: number } }).data.seq)).toEqual([2]);
   });
 
   it('rejects invalid event envelopes', () => {
@@ -39,7 +39,8 @@ describe('ExecutionSSEParser', () => {
     const bytes = new TextEncoder().encode(source);
     const out = [...parser.push(bytes.slice(0, 1234)), ...parser.push(bytes.slice(1234), true)];
     expect(out).toHaveLength(257);
-    expect(out.at(-1)?.data.seq).toBe(257);
+    const last = out.at(-1);
+    expect(last?.kind === 'business' ? last.data.seq : undefined).toBe(257);
   });
 
   it('passes AbortSignal through the native reader', async () => {

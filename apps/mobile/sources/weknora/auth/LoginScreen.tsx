@@ -9,8 +9,8 @@ import { useMobileHost } from '@/weknora/platform/host';
 import { validateLoginCredentials } from './loginValidation';
 import { generatePKCE } from '@/utils/oauth';
 
-const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
-const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
+const NATIVE_PKCE_VERIFIER_KEY = 'weknora.native-oidc.pkce-verifier';
+const NATIVE_OIDC_STATE_KEY = 'weknora.native-oidc.state';
 const AUTH_RETURN_REDIRECT = 'weknora://auth-return';
 
 export default function LoginScreen() {

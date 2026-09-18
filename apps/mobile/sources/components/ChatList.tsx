@@ -711,12 +711,15 @@ const ChatListInternal = React.memo((props: {
                 ? `conversation-pending-${props.conversation.pendingInteractions.length}`
                 : 'conversation'}
         >
+            // @ts-expect-error duplicate @types/react instances make Ref nominal across flash-list 2.0.2 peers (doctor-known duplicate-react); runtime ref compatible
             <FlashList
                 key={`${props.sessionId}:${handoffListRevision}`}
+                // flash-list 2.0.2 Ref<T> vs React19 RefObject<T|null>: runtime-compatible type shim
                 ref={listRef}
                 data={listItems}
                 // See MAINTAIN_VISIBLE_CONTENT_POSITION: item 0 is the newest
                 // message and offset 0 is the bottom of the screen.
+                // @ts-expect-error duplicate @types/react instances (doctor-known) make Ref nominal across flash-list 2.0.2 peers; runtime ref compatible
                 inverted
                 keyExtractor={keyExtractor}
                 getItemType={getItemType}

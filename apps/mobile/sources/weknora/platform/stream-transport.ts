@@ -1,4 +1,5 @@
 import { parseExecutionEvent, type ExecutionEvent } from '@weknora/contracts';
+import { parseStreamControl, type StreamControl } from '@weknora/domain/mobile';
 
 export interface StreamRequest {
   url: string;
@@ -6,11 +7,10 @@ export interface StreamRequest {
   signal: AbortSignal;
 }
 
-export interface ParsedExecutionFrame {
-  id?: string;
-  event: string;
-  data: ExecutionEvent;
-}
+/** v2 联合帧：业务帧携带完整 envelope；控制帧（control/legacy error）不占业务 seq。 */
+export type ParsedExecutionFrame =
+  | { kind: 'business'; id?: string; event: string; data: ExecutionEvent }
+  | { kind: 'control'; event: string; control: StreamControl };
 
 export interface StreamTransport {
   open(request: StreamRequest, onEvent: (frame: ParsedExecutionFrame) => Promise<void> | void): Promise<void>;
@@ -33,13 +33,21 @@ function parseFrame(raw: string): ParsedExecutionFrame | undefined {
   if (data.length === 0) return undefined;
   let decoded: unknown;
   try { decoded = JSON.parse(data.join('\n')) as unknown; } catch { throw new Error('invalid execution SSE JSON'); }
+  // 控制帧（v2 显式 control / v1 legacy error）不携带业务 envelope：单独解析，绝不推进业务 cursor
+  if (event === 'control' || event === 'error') {
+    const control = parseStreamControl(decoded);
+    if (id !== undefined) {
+      throw new Error('control frames must not carry a business id');
+    }
+    return { kind: 'control', event, control };
+  }
   const parsed = parseExecutionEvent(decoded);
   if (id !== undefined) {
     if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) < 0 || String(parsed.seq) !== id) {
       throw new Error('execution SSE id must equal payload.seq');
     }
   }
-  return { ...(id === undefined ? {} : { id }), event, data: parsed };
+  return { kind: 'business', ...(id === undefined ? {} : { id }), event, data: parsed };
 }
 
 /** Incremental SSE parser: CRLF may be split between any two byte chunks. */

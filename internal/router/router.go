@@ -56,6 +56,8 @@ type RouterParams struct {
 	WorkbenchStartHandler        *session.WorkbenchStartHandler    `optional:"true"`
 	WorkbenchCommandHandler      *session.WorkbenchCommandHandler  `optional:"true"`
 	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler `optional:"true"`
+	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler `optional:"true"`
+	WorkbenchInboxHandler        *session.WorkbenchInboxHandler    `optional:"true"`
 	ExecutionTargetHandler       *handler.ExecutionTargetHandler   `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
@@ -309,6 +311,8 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
+		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
+		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)

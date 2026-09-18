@@ -36,6 +36,30 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 	}
 }
 
+// RegisterWorkbenchOverviewRoutes exposes the aggregate workbench read model
+// (MX-013, B-class GET /workbench/overview). Same Viewer/API-key boundary as
+// the per-run reads; the handler applies the tenant+owner predicate.
+func RegisterWorkbenchOverviewRoutes(r *gin.RouterGroup, h *session.WorkbenchOverviewHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	overview := g.apiKeyGroup(r.Group("/workbench", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	overview.GET("/overview", h.Overview)
+}
+
+// RegisterWorkbenchInboxRoutes exposes the notification inbox read model and
+// device registration (MX-021, B-class). Notifications are hints only: no
+// approval bodies, no authorization semantics on the client.
+func RegisterWorkbenchInboxRoutes(r *gin.RouterGroup, h *session.WorkbenchInboxHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	inbox := g.apiKeyGroup(r.Group("/workbench", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	inbox.GET("/inbox", h.Inbox)
+	inbox.POST("/inbox/read", h.MarkRead)
+	inbox.POST("/inbox/devices", h.RegisterDevice)
+}
+
 // RegisterWorkbenchStartRoutes adds the write and request-reconciliation
 // endpoints. They share the same authenticated API-key policy as reads.
 func RegisterWorkbenchStartRoutes(r *gin.RouterGroup, h *session.WorkbenchStartHandler, g *rbacGuards) {

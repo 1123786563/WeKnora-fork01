@@ -1,0 +1,8 @@
+name: mobile-v2-scope-e2e
+# MX-034 空间切换/杀进程恢复链
+appId:
+  ios: com.weknora.mobile
+  android: com.weknora.mobile
+tags: [scope-recovery]
+---
+- runFlow: flows/core.yaml

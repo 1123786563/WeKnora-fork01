@@ -12,6 +12,7 @@ function driver(): ExecutionStorageDriver {
     findEvent: async (scope, run, seq) => rows.get(`${scope}:${run}:${seq}`),
     insertEvent: async (row) => { rows.set(`${row.scopeKey}:${row.runID}:${row.seq}`, row); },
     setCursor: async (scope, run, seq) => { cursors.set(`${scope}:${run}`, seq); },
+    deleteRun: async (scope, run) => { for (const key of [...rows.keys()]) if (key.startsWith(`${scope}:${run}:`)) rows.delete(key); cursors.delete(`${scope}:${run}`); },
   });
   return { transaction: async (work) => work(tx()), clearScope: async (scope) => { for (const key of rows.keys()) if (key.startsWith(`${scope}:`)) rows.delete(key); } };
 }
@@ -46,12 +47,18 @@ describe('execution storage', () => {
     const events = new Map<string, string>();
     const cursors = new Map<string, number>();
     const db: ExpoSQLiteDatabase = {
-      withTransactionAsync: async (work) => work(),
+      withTransactionAsync: async (work: () => Promise<void>) => { await work(); },
       runAsync: async (sql, ...params) => {
         if (sql.startsWith('INSERT INTO execution_events')) events.set(`${params[0]}:${params[1]}:${params[2]}`, String(params[3]));
         if (sql.startsWith('INSERT INTO execution_cursors')) cursors.set(`${params[0]}:${params[1]}`, Number(params[2]));
-        if (sql.startsWith('DELETE FROM execution_events')) for (const key of events.keys()) if (key.startsWith(`${params[0]}:`)) events.delete(key);
-        if (sql.startsWith('DELETE FROM execution_cursors')) for (const key of cursors.keys()) if (key.startsWith(`${params[0]}:`)) cursors.delete(key);
+        if (sql.startsWith('DELETE FROM execution_events')) {
+          if (sql.includes('run_id')) { for (const key of [...events.keys()]) if (key.startsWith(`${params[0]}:${params[1]}:`)) events.delete(key); }
+          else for (const key of [...events.keys()]) if (key.startsWith(`${params[0]}:`)) events.delete(key);
+        }
+        if (sql.startsWith('DELETE FROM execution_cursors')) {
+          if (sql.includes('run_id')) cursors.delete(`${params[0]}:${params[1]}`);
+          else for (const key of [...cursors.keys()]) if (key.startsWith(`${params[0]}:`)) cursors.delete(key);
+        }
       },
       getFirstAsync: async (sql, ...params) => {
         if (sql.startsWith('SELECT seq')) return (cursors.has(`${params[0]}:${params[1]}`) ? { seq: cursors.get(`${params[0]}:${params[1]}`) } : null) as never;
@@ -89,4 +96,18 @@ describe('execution storage', () => {
     expect(encrypted.ciphertext.length).toBeGreaterThan(200_000);
     expect(await cipher.decrypt(encrypted, 'scope\u0000run\u00001')).toEqual(payload);
   });
+
+  it('replaceRun atomically rebuilds a run from a snapshot (cursor_expired path)', async () => {
+    const storage = createExecutionStorage(driver(), cipher, { origin: 'https://a', tenantID: 't', userID: 'u' });
+    // 旧底：1..2
+    await storage.commit(event(1));
+    await storage.commit(event(2));
+    // cursor_expired：以快照 1..4 原子替换
+    const cursor = await storage.replaceRun('r', [event(4), event(3), event(1), event(2)]);
+    expect(cursor).toBe(4);
+    const events = await storage.read('r');
+    expect(events.map((row) => row.seq)).toEqual([1, 2, 3, 4]);
+    expect(await storage.readCursor('r')).toBe(4);
+  });
+
 });

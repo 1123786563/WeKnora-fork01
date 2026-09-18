@@ -62,6 +62,18 @@ func storeDB(store *workbenchservice.GormInteractionStore) *gorm.DB {
 	return store.DB()
 }
 
+func NewWorkbenchOverviewService(db *gorm.DB) *workbenchservice.OverviewService {
+	return workbenchservice.NewWorkbenchOverviewService(db, nil)
+}
+
+func NewWorkbenchOverviewHandler(overview *workbenchservice.OverviewService) *session.WorkbenchOverviewHandler {
+	return session.NewWorkbenchOverviewHandler(overview)
+}
+
+func NewWorkbenchInboxHandler(db *gorm.DB) *session.WorkbenchInboxHandler {
+	return session.NewWorkbenchInboxHandler(session.NewWorkbenchInboxService(db, nil))
+}
+
 func NewWorkbenchCommandHandler(interactions *workbenchservice.Service) *session.WorkbenchCommandHandler {
 	return session.NewWorkbenchCommandHandler(interactions)
 }

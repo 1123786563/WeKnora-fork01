@@ -64,8 +64,11 @@ func (h *WorkbenchCommandHandler) DecideInteraction(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
 		return
 	}
-	if strings.TrimSpace(input.DecisionID) == "" || strings.TrimSpace(input.ArgsHash) == "" {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "decision_id and args_hash are required"})
+	// Wire takes the interaction id from the URL param; bind it before the
+	// shared admission rule so client-side and server-side validation agree.
+	input.ID = c.Param("id")
+	if err := input.Validate(); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 	decision, err := h.interactions.Decide(commandContext(c), c.Param("id"), input)

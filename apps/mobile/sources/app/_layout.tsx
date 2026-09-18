@@ -1,6 +1,6 @@
 import '../theme.css';
 import * as React from 'react';
-import { Redirect, Slot, useSegments } from 'expo-router';
+import { Redirect, Slot, usePathname, useSegments } from 'expo-router';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -30,6 +30,8 @@ function ProductHostGate() {
   // executions continue independently and can be looked up after remount.
   const scopeGeneration = auth.scope.capture().generation;
   const segments = useSegments();
+  // Hooks must all run before any early return（Rules of Hooks——设备实测教训）
+  const pathname = usePathname();
   const isServerEntry = segments.some((segment) => segment === 'server');
 
   const isLoginEntry = segments.some((segment) => segment === 'login');
@@ -37,7 +39,17 @@ function ProductHostGate() {
   if (!host && !isServerEntry) {
     return <Redirect href="/(app)/server" />;
   }
-  if (host && !auth.loading && !auth.credential && !isAuthEntry) return <Redirect href="/(app)/login" />;
+  // 凭据读取期间不渲染业务路由：legacy (app)/index 依赖 Happy AuthProvider，
+  // 身份未定就渲染会崩（设备实测）——loading 是 gate 的显式中间态。
+  if (host && auth.loading) return null;
+  if (host && !auth.credential && !isAuthEntry) return <Redirect href="/(app)/login" />;
+  // 产品落地页（MX-013/D-023）：认证且身份已引导的用户访问索引时进入产品壳
+  const identity = auth.scope.identity();
+  // 实测：expo-router 在索引路由的 segments 为 ['']（而非空数组）——以 pathname 判定
+  const atIndex = pathname === '/' || (segments as string[]).every((segment) => segment === '' || segment === undefined);
+  if (host && !auth.loading && auth.credential && identity.userId && atIndex) {
+    return <Redirect href="/(app)/product" />;
+  }
   return <Slot key={scopeGeneration} />;
 }
 

@@ -132,6 +132,11 @@ func (e ExecutionEvent) Validate() error {
 	if strings.TrimSpace(e.Type) == "" {
 		return invalid("type", "required")
 	}
+	// 'control'/'error' are reserved frame names: a business event using them
+	// would be misclassified by v2 parsers as a control frame (MX-004 review P2-1).
+	if e.Type == "control" || e.Type == "error" {
+		return invalid("type", "reserved frame name")
+	}
 	if !iso8601.MatchString(e.OccurredAt) {
 		return invalid("occurred_at", "expected ISO-8601 timestamp")
 	}
@@ -162,6 +167,9 @@ func (s ExecutionSnapshot) Validate() error {
 	}
 	if s.Watermark < 0 || s.Watermark > MaxSafeInteger {
 		return fmt.Errorf("%w: watermark", ErrSequenceOverflow)
+	}
+	if s.ConfirmedWatermark < 0 || s.ConfirmedWatermark > MaxSafeInteger {
+		return fmt.Errorf("%w: confirmed_watermark", ErrSequenceOverflow)
 	}
 	for index, event := range s.Events {
 		if err := event.Validate(); err != nil {

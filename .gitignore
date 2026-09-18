@@ -30,6 +30,8 @@ logs/
 
 WeKnora
 WeKnora-lite
+# 大小写不敏感文件系统上上面的规则会误伤移动产品源码目录；精确恢复（MX-006）
+!apps/mobile/sources/weknora/
 cmd/desktop/build/bin/
 apps/embed/dist/
 apps/desktop/dist/
@@ -86,3 +88,4 @@ artifacts/alipay-sandbox/qr.png
 artifacts/alipay-sandbox/order_id.txt
 artifacts/alipay-sandbox/ali05-evidence.json
 DSH_*.txt
+tests/mobile-v2/fixtures/*.bin

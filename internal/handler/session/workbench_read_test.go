@@ -155,6 +155,42 @@ func testWorkbenchEvent(seq int64) workbench.ExecutionEvent {
 	return workbench.ExecutionEvent{SchemaVersion: 1, RunID: "r1", AttemptID: "a1", Seq: seq, Type: "text.delta", OccurredAt: "2026-09-16T00:00:00Z", Payload: json.RawMessage(`{"seq":1}`)}
 }
 
+func TestStreamWorkbenchVersionNegotiation(t *testing.T) {
+	// version=2：业务帧 data 携带完整 envelope（含 run_id/schema_version）
+	reader := &workbenchStreamReaderStub{pages: [][]workbench.ExecutionEvent{{testWorkbenchEvent(1)}}, statuses: []string{"succeeded"}}
+	runs := &workbenchRunReaderStub{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}}}
+	c, recorder, cancel := workbenchStreamRequest(t)
+	defer cancel()
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/workbench/executions/r1/events?version=2", nil).WithContext(c.Request.Context())
+	NewWorkbenchReadHandler(runs, reader).StreamWorkbenchEvents(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	body := recorder.Body.String()
+	require.Contains(t, body, `"schema_version":1`)
+	require.Contains(t, body, `"run_id":"r1"`)
+	require.Contains(t, body, `"attempt_id":"a1"`)
+	require.Contains(t, body, `"occurred_at":"2026-09-16T00:00:00Z"`)
+
+	// 非法 version：400，不进入流
+	reader2 := &workbenchStreamReaderStub{pages: [][]workbench.ExecutionEvent{{testWorkbenchEvent(1)}}, statuses: []string{"succeeded"}}
+	runs2 := &workbenchRunReaderStub{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}}}
+	c2, recorder2, cancel2 := workbenchStreamRequest(t)
+	defer cancel2()
+	c2.Request = httptest.NewRequest(http.MethodGet, "/api/v1/workbench/executions/r1/events?version=3", nil).WithContext(c2.Request.Context())
+	NewWorkbenchReadHandler(runs2, reader2).StreamWorkbenchEvents(c2)
+	require.Equal(t, http.StatusBadRequest, recorder2.Code)
+
+	// 默认（无参）：v1 payload-only 兼容行为
+	reader3 := &workbenchStreamReaderStub{pages: [][]workbench.ExecutionEvent{{testWorkbenchEvent(1)}}, statuses: []string{"succeeded"}}
+	runs3 := &workbenchRunReaderStub{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}}}
+	c3, recorder3, cancel3 := workbenchStreamRequest(t)
+	defer cancel3()
+	NewWorkbenchReadHandler(runs3, reader3).StreamWorkbenchEvents(c3)
+	require.Equal(t, http.StatusOK, recorder3.Code)
+	body3 := recorder3.Body.String()
+	require.Contains(t, body3, `data: {"seq":1}`)
+	require.NotContains(t, body3, `"schema_version"`)
+}
+
 func TestNormalizeWorkbenchEventsDeduplicatesAndOrdersByProductSeq(t *testing.T) {
 	events := normalizeWorkbenchEvents([]workbench.ExecutionEvent{testWorkbenchEvent(3), testWorkbenchEvent(1), testWorkbenchEvent(3), testWorkbenchEvent(2)})
 	require.Equal(t, []int64{1, 2, 3}, []int64{events[0].Seq, events[1].Seq, events[2].Seq})
