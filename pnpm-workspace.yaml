@@ -1,5 +1,4 @@
 packages:
-  - services/paseo-adapter
   - packages/contracts
   - packages/api-client
   - packages/domain
@@ -10,8 +9,6 @@ packages:
   - packages/views
   - apps/web
   - apps/embed
-  - apps/desktop
-  - apps/mobile
   - apps/miniprogram
   - packages/happy-wire
 
@@ -20,6 +17,3 @@ onlyBuiltDependencies:
   - unrs-resolver
   - '@shopify/react-native-skia'
   - '@more-tech/react-native-libsodium'
-
-patchedDependencies:
-  react-native-audio-api@0.8.4: patches/react-native-audio-api@0.8.4.patch

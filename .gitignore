@@ -81,3 +81,5 @@ miniprogram/project.private.config.json
 artifacts/
 DSH_*.txt
 tests/mobile-v2/fixtures/*.bin
+android/
+ios/
