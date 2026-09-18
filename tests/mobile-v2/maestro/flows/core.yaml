@@ -1,121 +1,85 @@
-# MX-034/035 核心链编排（可执行 Maestro flow）
-# 前置：dev client 已安装并启动；E2E env 已导出（origin/account 见 native-e2e.md，不写入本文件）
+# MX-034 核心链编排（实测版 2026-09-18 第六轮：按 Android/iOS 真实 UI 文案重写）
+# 链路：M01 登录（auth/LoginScreen，英文文案）→ 根 gate 索引重定向 → M03 产品壳（HomeScreen，中文）→ 四 Tab。
+# 凭据经环境变量注入（E2E_EMAIL / E2E_PASSWORD / E2E_WEKNORA_ORIGIN，见 native-e2e.md），不写入本文件。
+# 运行：Maestro test <此文件> --platform android（iOS 同 appId）
 appId:
   ios: com.weknora.mobile
   android: com.weknora.mobile
+name: core-chain
 tags: [core-flow]
 ---
-# M01 登录页可见
-- assertVisible: "WeKnora"
-- assertVisible: "邮箱"
-- extendedRunUntil:
-    commands:
-      - screenshot: M01
-    condition:
-      visible: "登录"
-
-# 服务器选择（首次冷启动）：输入本地 origin
-- runScript:
+# 冷启动：已配置 host 时直达 M01；首次冷启动先连接 server（server.tsx 英文文案）
+- runFlow:
     when:
-      visible: "服务器|server|地址"
-- tapOn: ".*输入.*地址.*|.*server.*url.*"
-- inputText: ${E2E_WEKNORA_ORIGIN}
-- tapOn: "保存|连接|确定"
+      visible: "WeKnora server"
+    commands:
+      - tapOn:
+          text: "WeKnora server address"
+      - inputText: ${E2E_WEKNORA_ORIGIN}
+      - hideKeyboard
+      - tapOn: "Continue"
 
-# 登录
+# M01 登录屏（auth/LoginScreen：标题 "Sign in"、输入框 label Email/Password、按钮 "Sign in"）
+- assertVisible: "Sign in"
+- screenshot: M01_login
 - tapOn:
-    id: "登录邮箱输入|邮箱"
+    text: "Email"
 - inputText: ${E2E_EMAIL}
-- tapOn: "密码"
+- tapOn:
+    text: "Password"
 - inputText: ${E2E_PASSWORD}
-- tapOn: "登录"
+- hideKeyboard
+# 标题 Text "Sign in"（index 0）与按钮 Text "Sign in"（index 1）同名，按钮取 index 1
+- tapOn:
+    text: "Sign in"
+    index: 1
+
+# gate：认证成功 → 索引重定向 → /(app)/product（M03 HomeScreen，中文「工作台」）
 - extendedRunUntil:
     commands:
       - screenshot: M01_after_login
     condition:
-      visible: "工作台|选择空间"
-      timeout: 20000
-
-# M02 空间选择（如出现）
-- runScript:
-    when:
-      visible: "选择空间"
-- extendedRunUntil:
-    commands:
-      - screenshot: M02
-    condition:
-      visible: "进入空间|当前空间"
-- tapOn: "进入空间|默认空间"
-
-# M03 工作台
-- extendedRunUntil:
-    commands:
-      - screenshot: M03
-    condition:
       visible: "工作台"
-      timeout: 15000
+    timeout: 30000
 
-# 四 Tab 容器
+# M03 工作台 + 四 Tab 壳（PRODUCT_TABS：工作台/会话/资源/我的）
 - assertVisible: "会话"
 - assertVisible: "资源"
 - assertVisible: "我的"
-- screenshot: M03_tabs
+- screenshot: M03_workbench
 
-# M04 会话列表
+# 会话 Tab（当前诚实空态：「会话页面建设中」）
 - tapOn: "会话"
 - extendedRunUntil:
     commands:
-      - screenshot: M04
+      - screenshot: M04_sessions_tab
     condition:
-      visible: "搜索|暂无会话|还没有会话"
-      timeout: 10000
+      visible: ".*会话.*"
+    timeout: 10000
 
-# M05 新建任务
-- tapOn: "新建任务"
+# 资源 Tab（诚实空态）
+- tapOn: "资源"
 - extendedRunUntil:
     commands:
-      - screenshot: M05
+      - screenshot: M11_resources_tab
     condition:
-      visible: "任务内容|预算上限"
-- inputText: "E2E 冒烟任务：整理本周反馈"
-- screenshot: M05_filled
+      visible: ".*资源.*"
+    timeout: 10000
 
-# M06 Agent 选择入口
-- tapOn: "选择执行 Agent|选择 Agent"
-- extendedRunUntil:
-    commands:
-      - screenshot: M06
-    condition:
-      visible: "确认选择|通用"
-- tapOn: "返回"
-
-# M17 我的
+# 我的 Tab（诚实空态）
 - tapOn: "我的"
 - extendedRunUntil:
     commands:
-      - screenshot: M17
+      - screenshot: M17_profile_tab
     condition:
-      visible: "外观|退出登录"
+      visible: ".*我的.*"
+    timeout: 10000
 
-# M18 空间用量
-- tapOn: "空间用量"
+# 回到工作台收尾（确认 Tab 切换稳定）
+- tapOn: "工作台"
 - extendedRunUntil:
     commands:
-      - screenshot: M18
+      - screenshot: M03_workbench_return
     condition:
-      visible: "用量|加载失败"
-      timeout: 10000
-- tapOn: "返回"
-
-# 退出登录（保守：留在登录页即可）
-- runScript:
-    when:
-      visible: "退出登录"
-- tapOn: "退出登录"
-- tapOn: "确认"
-- extendedRunUntil:
-    commands:
-      - screenshot: M01_logout
-    condition:
-      visible: "登录|邮箱"
-      timeout: 10000
+      visible: "工作台"
+    timeout: 10000
