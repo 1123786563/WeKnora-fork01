@@ -1,6 +1,8 @@
 import * as React from 'react';
 
 import { normalizeToolResult, type NormalizedToolResult } from '@weknora/domain/chat/tool-results';
+import { BrowserToolDetails } from './browser-tool-details.tsx';
+import { browserToolTitle } from './browser-tool-display.ts';
 import { CHAT_COPY, formatChatCopy, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ToolResultViewInput {
@@ -932,6 +934,22 @@ const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'],
 });
 
 export function ToolResultView({ toolCall, copy }: { toolCall: ToolResultViewInput; copy?: ChatCopyTable }) {
+  const table = copy ?? CHAT_COPY;
+  // local_browser renders its own detail surface (upstream BrowserToolDetails).
+  if (toolCall.name === 'local_browser') {
+    const result = record(toolCall.result);
+    const event = {
+      arguments: result.arguments,
+      output: result.output,
+      error: result.error,
+      success: result.success === true ? true : result.success === false ? false : undefined,
+      tool_data: result.tool_data,
+    };
+    return <details className="wk-chat-tool-result">
+      <summary>{browserToolTitle(table, event)}</summary>
+      <BrowserToolDetails event={event} copy={table} />
+    </details>;
+  }
   const presentation = toolResultPresentation(toolCall, copy ?? CHAT_COPY);
   if (!presentation.text && presentation.renderer === 'plain-text') {
     return <small>{presentation.title}: {(copy ?? CHAT_COPY).toolEmptyOutput}</small>;
