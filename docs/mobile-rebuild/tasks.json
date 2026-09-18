@@ -1,0 +1,547 @@
+{
+  "schema_version": 1,
+  "program": "mobile-rebuild",
+  "created": "2026-09-18",
+  "statuses": [
+    "pending",
+    "ready",
+    "implementing",
+    "review",
+    "integrating",
+    "accepted",
+    "blocked-env",
+    "blocked-dependency",
+    "blocked-review"
+  ],
+  "tasks": [
+    {
+      "id": "RW-001",
+      "title": "初始化 apps/mobile-next 独立 Expo 工程",
+      "group": "G1",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/**"
+      ],
+      "deps": [],
+      "env": "node/npm 本地",
+      "acceptance": "独立 npm 工程可启动（expo export 或 dev server 冷启）、tsc --noEmit 退出码 0、jest 可运行",
+      "evidence": "docs/evidence/mobile-rebuild/progress.md"
+    },
+    {
+      "id": "RW-002",
+      "title": "设计令牌 → 原生主题（双主题）",
+      "group": "G2",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/theme/**",
+        "apps/mobile-next/tests/theme.test.ts"
+      ],
+      "deps": [
+        "RW-001"
+      ],
+      "env": "-",
+      "acceptance": "主题值逐一来自 design-ref/tokens.json；light/dark 全语义色/间距/圆角/字体映射；单测比对令牌源",
+      "evidence": "tests/theme.test.ts"
+    },
+    {
+      "id": "RW-003",
+      "title": "基础组件库（10 必需组件 + 页面所需）",
+      "group": "G2",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/components/**",
+        "apps/mobile-next/tests/components/**"
+      ],
+      "deps": [
+        "RW-002"
+      ],
+      "env": "-",
+      "acceptance": "ActionButton/IconButton/FormField/StatusBadge/TaskCard/PendingCard/DecisionSheet/OfflineNotice/RunStatusStack/ArtifactCard 及列表/消息组件；双主题渲染快照+行为测试；触控尺寸/圆角/字体来自令牌",
+      "evidence": "tests/components/**"
+    },
+    {
+      "id": "RW-004",
+      "title": "Expo Router 路由与四 Tab 结构",
+      "group": "G2",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/app/**"
+      ],
+      "deps": [
+        "RW-003"
+      ],
+      "env": "-",
+      "acceptance": "工作台/会话/资源/我的四 Tab；二级页隐藏 Tab；18 页路由齐备且挂真实 Screen（非占位空页计入 G4/G5 各页任务）",
+      "evidence": "app/ 目录 + progress"
+    },
+    {
+      "id": "RW-005",
+      "title": "contracts：wire 类型与运行时校验器",
+      "group": "G3",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/contracts/**",
+        "apps/mobile-next/tests/contracts/**"
+      ],
+      "deps": [
+        "RW-001"
+      ],
+      "env": "-",
+      "acceptance": "login/bootstrap/session/message/run-event(含控制帧)/interaction/usage/tenant 等校验器；未知枚举保留不崩溃；错误 envelope 三形态（success 包装/裸 error string/HTTP 状态）都能分类",
+      "evidence": "tests/contracts/**"
+    },
+    {
+      "id": "RW-006",
+      "title": "api client：HTTP + 401 单飞刷新 + 错误分类",
+      "group": "G3",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/api/**",
+        "apps/mobile-next/tests/api/**"
+      ],
+      "deps": [
+        "RW-005"
+      ],
+      "env": "-",
+      "acceptance": "origin 规范化与不可信 origin 拒绝；Bearer 注入；401 单飞刷新一次；403 不刷新；错误分类（network/auth/forbidden/notfound/conflict/validation/server）；URL 仅 http/https 且拒绝私有/环回 host",
+      "evidence": "tests/api/**"
+    },
+    {
+      "id": "RW-007",
+      "title": "platform：SecureStore 凭证 + SQLite 持久化",
+      "group": "G3",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/platform/**",
+        "apps/mobile-next/tests/platform/**"
+      ],
+      "deps": [
+        "RW-001"
+      ],
+      "env": "-",
+      "acceptance": "execution_events/cursors/projections/pending_submissions 四表（scope_key 隔离）；写入串行队列；内存实现（测试）+ expo-sqlite 实现（运行）；凭证仅 SecureStore",
+      "evidence": "tests/platform/**"
+    },
+    {
+      "id": "RW-008",
+      "title": "M01 登录 + 冷启动身份恢复",
+      "group": "G3",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/features/auth/**",
+        "app/(auth)/login.tsx"
+      ],
+      "deps": [
+        "RW-004",
+        "RW-006",
+        "RW-007"
+      ],
+      "env": "本地后端(可选)",
+      "acceptance": "邮箱密码登录走 /auth/login；SSO 占位走 /auth/oidc/url + /auth/mobile/exchange（真实交换在模拟器验证）；冷启动：SecureStore→/auth/me→memberships→空间恢复或 M02；401 通用失败不泄漏账号存在性；状态：无凭证/提交中/失败/SSO取消/服务器不可信",
+      "evidence": "tests/features/auth/**"
+    },
+    {
+      "id": "RW-009",
+      "title": "M02 空间选择 + scope generation 切换",
+      "group": "G3",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/features/spaces/**",
+        "app/(auth)/spaces.tsx"
+      ],
+      "deps": [
+        "RW-008"
+      ],
+      "env": "-",
+      "acceptance": "切空间序：禁写→generation+1→abort 旧订阅→清可见数据→校验新空间→加载；迟到响应按 generation 丢弃（单测）；服务端任务不取消",
+      "evidence": "tests/features/spaces/**"
+    },
+    {
+      "id": "RW-010",
+      "title": "SSE parser + 事件投影 + 恢复控制器",
+      "group": "G4",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/features/executions/sse/**",
+        "apps/mobile-next/src/domain/**",
+        "tests/sse/**"
+      ],
+      "deps": [
+        "RW-005",
+        "RW-007"
+      ],
+      "env": "本地 Go 后端",
+      "acceptance": "字节级 parser：中文跨块、CRLF、多行 data、重复/缺口 seq、keepalive/error 控制帧不进业务投影；Last-Event-ID 游标；409 cursor_expired → 快照重取；用真实 Go writer 输出字节 fixture 验证（非旧客户端结论）；进程重启后投影+cursor 事务恢复",
+      "evidence": "tests/sse/**"
+    },
+    {
+      "id": "RW-011",
+      "title": "M03 工作台",
+      "group": "G4",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/workbench/**",
+        "app/(tabs)/index.tsx"
+      ],
+      "deps": [
+        "RW-004",
+        "RW-009"
+      ],
+      "env": "-",
+      "acceptance": "Hero/指标/需处理/进行中/最近成果；overview 数据=客户端聚合（runs+interactions 组合，见 decisions D-04）或最小后端补充；状态含 loading/offline/empty/error/forbidden；as_of 显示",
+      "evidence": "tests/features/workbench/**"
+    },
+    {
+      "id": "RW-012",
+      "title": "M04 会话列表（搜索/筛选/分页）",
+      "group": "G4",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/conversations/**",
+        "app/(tabs)/sessions.tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "GET /sessions 分页；防抖 300ms 搜索；筛选重取；下拉刷新保草稿；空态与搜索无结果区分",
+      "evidence": "tests/features/conversations/**"
+    },
+    {
+      "id": "RW-013",
+      "title": "M05 新建任务 + 持久提交状态机",
+      "group": "G4",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/src/features/workbench/submit/**",
+        "app/new-task.tsx"
+      ],
+      "deps": [
+        "RW-007",
+        "RW-011"
+      ],
+      "env": "本地后端(集成)",
+      "acceptance": "draft→prepared(落盘 request_id+canonical hash 后才发网络)→sending→accepted/rejected/uncertain；uncertain 走 GET /workbench/executions/requests/:request_id 对账，不新建 ID；存储失败不发送；离线存草稿不自动补发",
+      "evidence": "tests/features/workbench/submit/**"
+    },
+    {
+      "id": "RW-014",
+      "title": "M06 Agent 选择",
+      "group": "G4",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/workbench/agents/**",
+        "app/agents.tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "GET /agents 分类目录；能力状态+不可用原因；选择回写 M05 草稿；forbidden/空目录/搜索态",
+      "evidence": "tests/features/workbench/agents/**"
+    },
+    {
+      "id": "RW-015",
+      "title": "M07 对话（SSE 消息流 + 断线续流）",
+      "group": "G4",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/conversations/chat/**",
+        "app/sessions/[sessionId].tsx"
+      ],
+      "deps": [
+        "RW-010",
+        "RW-013"
+      ],
+      "env": "本地后端(集成)",
+      "acceptance": "消息按稳定 ID 投影；流式 answer/thinking/tool_call/response_type 全枚举安全展示；上翻不强制到底；发送失败保草稿；断线 continue-stream 恢复",
+      "evidence": "tests/features/conversations/chat/**"
+    },
+    {
+      "id": "RW-016",
+      "title": "M08 执行详情（三状态 + 取消）",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/executions/**",
+        "app/executions/[runId].tsx"
+      ],
+      "deps": [
+        "RW-010"
+      ],
+      "env": "-",
+      "acceptance": "run_status/execution_status/settlement_status 三行独立+最近同步时间；unknown 显示等待同步禁用控制；取消=申请（revision 校验）不等于停止确认；时间线",
+      "evidence": "tests/features/executions/**"
+    },
+    {
+      "id": "RW-017",
+      "title": "M09 审批（tool/budget/recovery + 差异记录）",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/interactions/**",
+        "app/interactions/[interactionId].tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "GET interactions 详情 + POST decisions（expected_revision 幂等）；DecisionSheet 捕获 revision/digest，变更即失效；409 冲突提示刷新；403 遮蔽；question/connection 后端无统一 kind → 差异记录（D-05）",
+      "evidence": "tests/features/interactions/**"
+    },
+    {
+      "id": "RW-018",
+      "title": "M10 收件箱（差异处理）",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/notifications/**",
+        "app/inbox.tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "后端无通用 inbox API → 客户端聚合 pending interactions + 邀请 inbox（/me/invitations）作为 v1 读模型（D-06 记录）；通知仅提示、深链重新授权不直接批准",
+      "evidence": "tests/features/notifications/**"
+    },
+    {
+      "id": "RW-019",
+      "title": "M11 资源",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/resources/**",
+        "app/(tabs)/resources.tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "知识/连接/成果/Agent/目标分类入口+计数；每类独立授权；空态/无权限区分",
+      "evidence": "tests/features/resources/**"
+    },
+    {
+      "id": "RW-020",
+      "title": "M12 知识详情",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/resources/knowledge/**",
+        "app/knowledge/[id].tsx"
+      ],
+      "deps": [
+        "RW-019"
+      ],
+      "env": "-",
+      "acceptance": "知识库摘要/文档/索引状态/引用片段；索引未就绪提示；用此知识→M05 草稿",
+      "evidence": "tests/features/resources/knowledge/**"
+    },
+    {
+      "id": "RW-021",
+      "title": "M13 连接详情",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/resources/connections/**",
+        "app/connections/[id].tsx"
+      ],
+      "deps": [
+        "RW-019"
+      ],
+      "env": "-",
+      "acceptance": "GET /apps/connections；Provider/归属/范围/状态；重新授权走系统浏览器；撤销二次确认；不展示 token/secret",
+      "evidence": "tests/features/resources/connections/**"
+    },
+    {
+      "id": "RW-022",
+      "title": "M14 任务成果",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/resources/artifacts/**",
+        "app/artifacts/[id].tsx"
+      ],
+      "deps": [
+        "RW-019"
+      ],
+      "env": "-",
+      "acceptance": "不可变版本+来源 Run；预览/下载/分享分别授权；签名过期重授权；离线只读",
+      "evidence": "tests/features/resources/artifacts/**"
+    },
+    {
+      "id": "RW-023",
+      "title": "M15 执行目标",
+      "group": "G6",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/targets/**",
+        "app/targets.tsx"
+      ],
+      "deps": [
+        "RW-006"
+      ],
+      "env": "-",
+      "acceptance": "GET /execution-targets + workspaces；能力与不可用原因；只选服务端引用，无任意 URL 输入",
+      "evidence": "tests/features/targets/**"
+    },
+    {
+      "id": "RW-024",
+      "title": "M16 语音输入（听写）",
+      "group": "G6",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/voice/**",
+        "app/voice.tsx"
+      ],
+      "deps": [
+        "RW-004"
+      ],
+      "env": "模拟器麦克风(验证)",
+      "acceptance": "录音→转写→编辑→回填草稿→用户显式发送；迟到转写不覆盖新编辑（单测竞态）；拒权不阻塞文字输入；实时语音=后端能力缺失，如实展示不可用",
+      "evidence": "tests/features/voice/**"
+    },
+    {
+      "id": "RW-025",
+      "title": "M17 我的",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/profile/**",
+        "app/(tabs)/profile.tsx"
+      ],
+      "deps": [
+        "RW-009"
+      ],
+      "env": "-",
+      "acceptance": "用户/空间/角色卡；主题切换；退出=清凭证+清可见数据+撤销绑定失败记录；账单角色独立",
+      "evidence": "tests/features/profile/**"
+    },
+    {
+      "id": "RW-026",
+      "title": "M18 空间用量",
+      "group": "G5",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/features/profile/usage/**",
+        "app/usage.tsx"
+      ],
+      "deps": [
+        "RW-025"
+      ],
+      "env": "-",
+      "acceptance": "GET /commercial/usage|summary 只读展示；额度/预占/已结算分列+as_of；无账单权限遮蔽明细；无支付按钮",
+      "evidence": "tests/features/profile/usage/**"
+    },
+    {
+      "id": "RW-027",
+      "title": "附件上传（真实 bytes）",
+      "group": "G5",
+      "status": "pending",
+      "files": [
+        "apps/mobile-next/src/features/workbench/attachments/**"
+      ],
+      "deps": [
+        "RW-013"
+      ],
+      "env": "本地后端(集成)",
+      "acceptance": "multipart 真实 bytes（非 file:// 路径提交）；selected→uploading→verifying→ready；未 ready 不提交任务；失败保文字草稿",
+      "evidence": "tests/features/workbench/attachments/**"
+    },
+    {
+      "id": "RW-028",
+      "title": "深链与通知接线",
+      "group": "G6",
+      "status": "pending",
+      "files": [
+        "apps/mobile-next/src/features/notifications/deeplink/**"
+      ],
+      "deps": [
+        "RW-018"
+      ],
+      "env": "模拟器(验证)",
+      "acceptance": "深链 → 认证 → 空间确认 → 资源授权 → 页面；URI 不携带批准动作",
+      "evidence": "tests/features/notifications/deeplink/**"
+    },
+    {
+      "id": "RW-029",
+      "title": "i18n 文案层",
+      "group": "G2",
+      "status": "integrating",
+      "files": [
+        "apps/mobile-next/src/i18n/**"
+      ],
+      "deps": [
+        "RW-001"
+      ],
+      "env": "-",
+      "acceptance": "业务文案集中管理（zh 为主）；状态文案表与设计规格一致；可切语言骨架",
+      "evidence": "tests/i18n/**"
+    },
+    {
+      "id": "RW-030",
+      "title": "旧代码依赖门禁",
+      "group": "G7",
+      "status": "accepted",
+      "files": [
+        "apps/mobile-next/scripts/check-isolation.*"
+      ],
+      "deps": [
+        "RW-004"
+      ],
+      "env": "-",
+      "acceptance": "脚本检查：import 源码路径、TS 路径别名、workspace 依赖、重导出、metro 解析；白名单=RN/Expo/第三方；结果写入 progress",
+      "evidence": "scripts 输出"
+    },
+    {
+      "id": "RW-031",
+      "title": "视觉验证（18 页双主题）",
+      "group": "G7",
+      "status": "integrating",
+      "files": [
+        "docs/evidence/mobile-rebuild/screenshots/**"
+      ],
+      "deps": [
+        "RW-011..RW-026"
+      ],
+      "env": "iOS/Android 模拟器",
+      "acceptance": "18 页 × light/dark 原生截图与设计截图对照表；360/390/430 宽度抽样；偏差清单；无模拟器环境则如实标注缺项",
+      "evidence": "screenshots/ + 对照表"
+    },
+    {
+      "id": "RW-032",
+      "title": "集成/E2E 与故障测试",
+      "group": "G7",
+      "status": "pending",
+      "files": [
+        "apps/mobile-next/tests/integration/**"
+      ],
+      "deps": [
+        "RW-013",
+        "RW-015",
+        "RW-017"
+      ],
+      "env": "本地 Go 后端",
+      "acceptance": "登录→切空间→发任务→SSE→审批→成果 链路（对本地后端或录制 fixture）；403/409/断流/杀进程恢复注入",
+      "evidence": "tests/integration/**"
+    },
+    {
+      "id": "RW-033",
+      "title": "交付文档与门禁汇总",
+      "group": "G7",
+      "status": "pending",
+      "files": [
+        "apps/mobile-next/README.md",
+        "docs/mobile-rebuild/**"
+      ],
+      "deps": [
+        "RW-030",
+        "RW-031",
+        "RW-032"
+      ],
+      "env": "-",
+      "acceptance": "启动/构建/测试命令、环境、结果与阻塞；需求覆盖表；新旧入口切换说明",
+      "evidence": "README + progress"
+    }
+  ]
+}
