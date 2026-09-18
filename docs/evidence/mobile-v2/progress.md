@@ -90,7 +90,7 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 - 未提交改动：app.config.ts / index.ts / origin-storage.ts / 三处 LoginScreen key / tsconfig / decisions(D-028) / native-e2e 第四轮记录 / artifacts/e2e 过程截图；已验证 mv2 42/42、tsc 13=新基线（D-028）。
 - 设备成果：Android+iOS dev client 均构建成功并运行；本地栈+测试账户就绪；三项真实缺陷修复（D-028）；产品树（sources/app）已在设备可达。
 - **下一安全动作**：定位 server 屏 Continue 无导航（疑 auth loading 挂起或 gate/replace 竞态）→ 打通后按 native-e2e.md 配方采集 18 页矩阵并回填 visual-baseline.json → MX-034/035 升级。
-- 运行态：Metro 8083（EXPO_ROUTER_APP_ROOT=./sources/app）、emulator-5554 在跑、iPhone 17 Pro booted、iOS app 产物在 ios/build/DerivedData。
+- 运行态：Metro 8083 已重启存活（nohup+disown，/tmp/metro6.log）、emulator-5554 在跑、iPhone 17 Pro booted、iOS app 产物在 ios/build/DerivedData。8085 端口属其他任务（apps/mobile-next）勿动。
 
 ## 接续说明（2026-09-18 第五轮——设备解封第二轮修复后收口）
 
