@@ -109,11 +109,17 @@ export function validateMetadataRows(rows: MetadataDraftRow[]): { ok: true; valu
   catch (error) { return { ok: false, message: error instanceof Error ? error.message : '元数据校验失败' }; }
 }
 
-export function knowledgeTraceNodeState(row: KnowledgeTimelineNode): 'pending' | 'running' | 'done' | 'failed' {
+export function knowledgeTraceNodeState(row: KnowledgeTimelineNode): 'pending' | 'running' | 'done' | 'failed' | 'skipped' {
   const rawStatus = typeof row.node.status === 'string' ? row.node.status.toLowerCase() : '';
   if (/(fail|error|cancel|abort)/.test(rawStatus)) return 'failed';
+  // R472-A1: a skipped stage never executed (multimodal disabled); Vue shows
+  // knowledgeStages.status.skipped 已跳过 instead of a running/pending dot.
+  if (rawStatus === 'skipped' || rawStatus === 'skip') return 'skipped';
   if (/(run|progress|active|start)/.test(rawStatus)) return 'running';
-  if (/(complete|done|success|finish|ok)/.test(rawStatus) || Boolean(row.node.end_time)) return 'done';
+  // Backend spans serialize finished_at/started_at — Vue nodeStart/nodeEnd —
+  // so both spellings close/open a statusless span.
+  if (/(complete|done|success|finish|ok)/.test(rawStatus) || Boolean(row.node.end_time ?? row.node.finished_at)) return 'done';
+  if (Boolean(row.node.start_time ?? row.node.started_at)) return 'running';
   return 'pending';
 }
 
@@ -473,7 +479,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
       patchChunkRow(chunk.id, (row) => upsertLocalQuestion(row, saved));
       setQuestionDraft('');
       setQuestionComposerId(null);
-      setQuestionNotice({ tone: 'success', message: t('common.success') });
+      setQuestionNotice({ tone: 'success', message: t('common.saveSuccess') });
     } catch (error: unknown) {
       setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
     } finally { setSavingQuestionComposer(null); }
@@ -496,7 +502,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
       patchChunkRow(chunk.id, (row) => upsertLocalQuestion(row, saved));
       setEditingQuestion(null);
       setQuestionEditDraft('');
-      setQuestionNotice({ tone: 'success', message: t('common.success') });
+      setQuestionNotice({ tone: 'success', message: t('common.saveSuccess') });
     } catch (error: unknown) {
       setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.error') });
     } finally { setSavingQuestionKey(null); }
@@ -516,7 +522,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         return writeChunkMetadata(row, metadata);
       });
       setConfirmingDelete(null);
-      setQuestionNotice({ tone: 'success', message: t('common.success') });
+      setQuestionNotice({ tone: 'success', message: t('common.deleteSuccess') });
     } catch (error: unknown) {
       setQuestionNotice({ tone: 'error', message: error instanceof Error ? error.message : t('common.deleteFailed') });
     } finally { setDeletingQuestion(null); }
@@ -583,7 +589,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         {canEdit && questionComposerId === chunk.id ? <div className="question-composer mb-2 flex items-center gap-1">
           <input value={questionDraft} placeholder={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[13px]" onChange={(event) => setQuestionDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void addQuestion(chunk); }} />
           <Button type="button" variant="text" title={t('common.cancel')} aria-label={t('common.cancel')} disabled={savingQuestionComposer === chunk.id} onClick={() => { setQuestionComposerId(null); setQuestionDraft(''); }}>×</Button>
-          <Button type="button" loading={savingQuestionComposer === chunk.id} disabled={!questionDraft.trim()} onClick={() => void addQuestion(chunk)}>{t('common.confirm')}</Button>
+          <Button type="button" loading={savingQuestionComposer === chunk.id} disabled={!questionDraft.trim()} onClick={() => void addQuestion(chunk)}>{t('common.add')}</Button>
         </div> : null}
         {rows.length ? <ul className="questions-list m-0 flex list-none flex-col gap-2 p-0">
           {rows.map((question) => <li key={question.id} className="question-item flex items-start gap-2 text-[13px]">

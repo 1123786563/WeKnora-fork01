@@ -75,3 +75,50 @@ test('trace rows preserve tree depth and stable keys for expandable waterfall re
     { key: 'root.0.0', depth: 2, hasChildren: false, name: 'provider-call' },
   ]);
 });
+
+// R472-A1 (R470 遗留): the backend serializes spans with started_at/
+// finished_at timestamps — Vue's nodeStart/nodeEnd read exactly those
+// fields — and a disabled multimodal stage closes as status 'skipped'.
+// The React domain model only knew start_time/end_time and had no
+// skipped state, so the fixture below rendered multimodal as 进行中
+// (running) instead of Vue's 已跳过.
+test('timeline renders a skipped multimodal span as skipped with started_at/finished_at timestamps', async () => {
+  const { buildKnowledgeTimeline } = await import('./processing.ts');
+  const spans = {
+    knowledge_id: 'k1',
+    parse_status: 'completed',
+    current_stage: 'postprocess',
+    trace: {
+      name: 'pipeline',
+      children: [
+        { name: 'docreader', status: 'done', started_at: '2026-09-18T10:00:00Z', finished_at: '2026-09-18T10:00:02Z', duration_ms: 2000 },
+        { name: 'chunking', status: 'done', started_at: '2026-09-18T10:00:02Z', finished_at: '2026-09-18T10:00:02Z', duration_ms: 300 },
+        { name: 'embedding', status: 'done', started_at: '2026-09-18T10:00:02Z', finished_at: '2026-09-18T10:00:05Z', duration_ms: 3000 },
+        { name: 'multimodal', status: 'skipped', started_at: '2026-09-18T10:00:05Z', finished_at: '2026-09-18T10:00:05Z', duration_ms: 1 },
+        { name: 'postprocess', status: 'done', started_at: '2026-09-18T10:00:05Z', finished_at: '2026-09-18T10:00:05Z', duration_ms: 9 },
+      ],
+    },
+  };
+  const steps = buildKnowledgeTimeline(spans);
+  assert.deepEqual(steps.map((step) => step.state), ['done', 'done', 'done', 'skipped', 'done']);
+});
+
+test('span status resolves finished_at/started_at aliases like Vue nodeStart/nodeEnd', async () => {
+  const { buildKnowledgeTimeline } = await import('./processing.ts');
+  // Backend spans without an explicit status still carry started_at/
+  // finished_at; a closed span is done, an open one is running.
+  const steps = buildKnowledgeTimeline({
+    parse_status: 'processing',
+    current_stage: 'embedding',
+    trace: {
+      name: 'pipeline',
+      children: [
+        { name: 'docreader', started_at: '2026-09-18T10:00:00Z', finished_at: '2026-09-18T10:00:02Z' },
+        { name: 'embedding', started_at: '2026-09-18T10:00:02Z' },
+      ],
+    },
+  });
+  assert.equal(steps[0]!.state, 'done');
+  assert.equal(steps[2]!.state, 'running');
+  assert.equal(steps[3]!.state, 'pending');
+});

@@ -43,6 +43,11 @@ export interface KnowledgeSpanNode {
   status?: string;
   start_time?: string;
   end_time?: string;
+  // Backend spans (internal/handler/knowledge.go GetKnowledgeSpans) serialize
+  // started_at/finished_at — the fields Vue's nodeStart/nodeEnd read. The
+  // start_time/end_time spellings above stay accepted for older fixtures.
+  started_at?: string;
+  finished_at?: string;
   duration_ms?: number;
   error?: unknown;
   children?: KnowledgeSpanNode[];
@@ -82,7 +87,7 @@ export function shouldGracePollKnowledgeSpans(
   return activity > 0 && now >= activity && now - activity < graceMs;
 }
 
-export type KnowledgeTimelineStepState = 'pending' | 'running' | 'done' | 'failed';
+export type KnowledgeTimelineStepState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 
 export interface KnowledgeTimelineStep {
   stage: KnowledgeProcessingStage;
@@ -93,10 +98,14 @@ export interface KnowledgeTimelineStep {
 function spanStatus(node: KnowledgeSpanNode): KnowledgeTimelineStepState {
   const raw = typeof node.status === 'string' ? node.status.toLowerCase() : '';
   if (/(fail|error|cancel|abort)/.test(raw)) return 'failed';
+  // A skipped stage never executed (e.g. multimodal disabled for the KB);
+  // Vue renders it as knowledgeStages.status.skipped (已跳过), never running.
+  if (raw === 'skipped' || raw === 'skip') return 'skipped';
   if (/(succe|complet|done|finish|ok)/.test(raw)) return 'done';
   if (raw === 'running' || raw === 'in_progress' || raw === 'started' || raw === 'active') return 'running';
-  if (typeof node.end_time === 'string' && node.end_time !== '') return 'done';
-  if (typeof node.start_time === 'string' && node.start_time !== '') return 'running';
+  // Backend spans carry started_at/finished_at; accept both spellings.
+  if (typeof (node.end_time ?? node.finished_at) === 'string' && (node.end_time ?? node.finished_at) !== '') return 'done';
+  if (typeof (node.start_time ?? node.started_at) === 'string' && (node.start_time ?? node.started_at) !== '') return 'running';
   return 'pending';
 }
 
@@ -151,7 +160,13 @@ export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTime
     const states = matches.map(spanStatus);
     if (states.includes('failed')) return 'failed';
     if (states.includes('running')) return 'running';
-    return states.every((state) => state === 'done') ? 'done' : 'running';
+    // Vue counts done and skipped alike as traversed (currentStageIndex);
+    // a stage whose spans all skipped (multimodal disabled) surfaces as
+    // skipped so the timeline reads 已跳过 instead of 进行中.
+    if (states.every((state) => state === 'done' || state === 'skipped')) {
+      return states.includes('done') ? 'done' : 'skipped';
+    }
+    return 'running';
   };
   return knowledgeProcessingStages.map((stage) => ({
     stage,

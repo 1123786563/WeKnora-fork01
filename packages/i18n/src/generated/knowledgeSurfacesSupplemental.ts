@@ -59,6 +59,8 @@ const enUS: Record<string, string> = {
   'knowledgeBase.timeline.running': 'Running',
   'knowledgeBase.timeline.done': 'Done',
   'knowledgeBase.timeline.failed': 'Failed',
+  // R472-A1: byte-exact from Vue knowledgeStages.status.skipped.
+  'knowledgeBase.timeline.skipped': 'Skipped',
   'knowledgeBase.timeline.stage.docreader': 'Parse',
   'knowledgeBase.timeline.stage.chunking': 'Chunking',
   'knowledgeBase.timeline.stage.embedding': 'Embedding',
@@ -176,6 +178,8 @@ const zhCN: Record<string, string> = {
   'knowledgeBase.timeline.running': '进行中',
   'knowledgeBase.timeline.done': '已完成',
   'knowledgeBase.timeline.failed': '失败',
+  // R472-A1: byte-exact from Vue knowledgeStages.status.skipped.
+  'knowledgeBase.timeline.skipped': '已跳过',
   'knowledgeBase.timeline.stage.docreader': '文档解析',
   'knowledgeBase.timeline.stage.chunking': '分块',
   'knowledgeBase.timeline.stage.embedding': '向量化',
@@ -283,6 +287,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
   'ja-JP': {
     ...enUS,
     ...jaJPGraph,
+    // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ja-JP).
+    'knowledgeBase.timeline.skipped': 'スキップ済み',
     'knowledgeBase.detail.backShort': '戻る',
     'knowledgeBase.detail.title': 'ファイルの詳細',
     'knowledgeBase.detail.loading': 'ファイルの詳細を読み込み中',
@@ -305,6 +311,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
   'ko-KR': {
     ...enUS,
     ...koKRGraph,
+    // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ko-KR).
+    'knowledgeBase.timeline.skipped': '건너뜀',
     'knowledgeBase.detail.backShort': '뒤로',
     'knowledgeBase.detail.title': '파일 세부 정보',
     'knowledgeBase.detail.loading': '파일 세부 정보 로드 중',
@@ -327,6 +335,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
   'ru-RU': {
     ...enUS,
     ...ruRUGraph,
+    // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ru-RU).
+    'knowledgeBase.timeline.skipped': 'Пропущено',
     'knowledgeBase.detail.backShort': 'Назад',
     'knowledgeBase.detail.title': 'Сведения о файле',
     'knowledgeBase.detail.loading': 'Загрузка сведений о файле',

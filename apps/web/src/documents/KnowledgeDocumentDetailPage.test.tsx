@@ -232,6 +232,16 @@ test('document trace nodes expose the same status semantics as the Vue trace sur
   assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: {} }), 'pending');
 });
 
+// R472-A1 (R470 遗留): a disabled multimodal stage closes as status
+// 'skipped' with started_at/finished_at timestamps (Vue timeline shows
+// knowledgeStages.status.skipped 已跳过); the trace rows must not fall
+// back to running/pending, and finished_at must read like Vue nodeEnd.
+test('trace node state recognizes skipped spans and finished_at/started_at aliases', () => {
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'skipped', started_at: '2026-09-18T10:00:05Z', finished_at: '2026-09-18T10:00:05Z' } }), 'skipped');
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { finished_at: '2026-09-18T10:00:02Z' } }), 'done');
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { started_at: '2026-09-18T10:00:02Z' } }), 'running');
+});
+
 // R469/A3 N009 capture: the /spans endpoint replies with the backend envelope
 // { success: true, data: { parse_status, current_stage, trace, ... } }
 // (internal/handler/knowledge.go GetKnowledgeSpans); the raw api-client body
@@ -977,7 +987,7 @@ test('an editor adds a question through the Vue composer contract', async () => 
     Object.getOwnPropertyDescriptor(input!.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')?.set?.call(input!, 'Brand new question?');
     input!.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  const submit = Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '确认') as HTMLButtonElement;
+  const submit = Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '添加') as HTMLButtonElement;
   assert.ok(submit!.disabled === false, 'a non-empty draft enables the add action');
   await act(async () => { submit!.click(); });
   await act(async () => {});
@@ -985,7 +995,9 @@ test('an editor adds a question through the Vue composer contract', async () => 
   assert.deepEqual(upserts, [['chunk-1', 'Brand new question?', undefined]], 'add sends the question without a question id');
   assert.ok(body().querySelector('.wk-chunk-questions')?.textContent?.includes('Brand new question?'), 'the saved question joins the local list from the response data');
   assert.equal(body().querySelector('input[placeholder="添加辅助召回问题"]'), null, 'the composer closes after a successful add');
-  assert.ok(body().textContent?.includes('成功'), 'the Vue save toast maps onto a success notice');
+  // R472-A1: the toast reads the ported Vue key common.saveSuccess (保存成功),
+  // not the R471 fallback common.success.
+  assert.ok(body().textContent?.includes('保存成功'), 'the Vue save toast maps onto a success notice');
 });
 
 test('an editor saves an inline question edit through the upsert endpoint', async () => {
@@ -1034,6 +1046,9 @@ test('delete confirms inline and removes the row through the questions endpoint'
   await act(async () => {});
 
   assert.deepEqual(deletes, [['chunk-1', 'q1']], 'delete targets the question id on the by-id questions endpoint');
+  // R472-A1: the toast reads the ported Vue key common.deleteSuccess (删除成功),
+  // not the R471 fallback common.success.
+  assert.ok(body().textContent?.includes('删除成功'), 'the Vue delete toast maps onto a success notice');
   const text = panel().textContent || '';
   assert.ok(!text.includes('Current question?') && text.includes('Stale question?'), 'only the deleted row leaves the local list');
 });

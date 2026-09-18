@@ -69,9 +69,10 @@ test('unwrapped completed trace renders real stage states, not the all-pending N
   // The failed postprocess.summary retries surface (Vue counts them as 失败任务×4);
   // the shared domain rolls them up onto the postprocess stage pill.
   assert.equal(steps.find((step) => step.stage === 'postprocess')?.state, 'failed');
-  // Recorded divergence: Vue labels the skipped multimodal stage 已跳过; the
-  // domain state model has no skipped state and maps it to running.
-  assert.equal(steps.find((step) => step.stage === 'multimodal')?.state, 'running');
+  // R472-A1 fixed the recorded divergence: Vue labels the skipped multimodal
+  // stage 已跳过, and the domain state model now carries a skipped state
+  // (the old model mapped the skipped span to running → 进行中).
+  assert.equal(steps.find((step) => step.stage === 'multimodal')?.state, 'skipped');
   // Vue waterfall rows: root + 5 stages + 4 failed summary sub-spans with durations.
   const nodes = flattenKnowledgeSpans(view.trace);
   assert.equal(nodes.filter((row) => row.node.name === 'postprocess.summary' && row.node.status === 'failed').length, 4);

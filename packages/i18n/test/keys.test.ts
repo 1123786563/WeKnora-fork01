@@ -28,6 +28,25 @@ test('keeps the React foundation keys and placeholders aligned across every loca
   }
 });
 
+// R472-A1 (R471 A3 遗留): the document-detail questions panel toasts the
+// Vue keys common.saveSuccess / common.deleteSuccess (doc-content.vue
+// addQuestion/saveQuestionEdit/handleDeleteQuestion) and its composer
+// button reads common.add (doc-content.vue:1961). R471 had to fall back to
+// common.success/common.confirm because the keys were absent; port them
+// byte-exact from frontend/src/i18n/locales/*.ts common block.
+test('keeps common.add/saveSuccess/deleteSuccess byte-exact from the Vue common block in every locale', () => {
+  const vueBaseline = {
+    'common.add': { 'zh-CN': '添加', 'en-US': 'Add', 'ja-JP': '追加', 'ko-KR': '추가', 'ru-RU': 'Добавить' },
+    'common.saveSuccess': { 'zh-CN': '保存成功', 'en-US': 'Saved successfully', 'ja-JP': '保存しました', 'ko-KR': '저장 성공', 'ru-RU': 'Успешно сохранено' },
+    'common.deleteSuccess': { 'zh-CN': '删除成功', 'en-US': 'Deleted successfully', 'ja-JP': '削除しました', 'ko-KR': '삭제 성공', 'ru-RU': 'Успешно удалено' },
+  } as const;
+  for (const [key, perLocale] of Object.entries(vueBaseline)) {
+    for (const locale of supportedLocales) {
+      assert.equal(formatMessage(locale, key), perLocale[locale as keyof typeof perLocale], `${locale} ${key} diverges from the Vue baseline`);
+    }
+  }
+});
+
 // R455 A1: the knowledge-settings overview tiles (activity/datasource/share/
 // graph) are a React-side addition with no Vue nav copy to port, so the
 // kbSettings.summary.* keys are fresh translations carried by all five
