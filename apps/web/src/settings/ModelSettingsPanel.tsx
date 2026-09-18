@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import * as React from "react";
 import type {
   ModelConfiguration,
@@ -836,9 +837,18 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     }
   }
 
-  // Type badge glyphs per ModelSettings.vue typeIcon (lines 395-404).
-  function badgeIcon(type: ModelType): string {
-    const map: Record<ModelType, string> = { chat: "💬", embedding: "📊", rerank: "⇅", vllm: "🖼", asr: "🔊" };
+  // Type badge icons per ModelSettings.vue typeIcon (lines 395-404) —
+  // stroke SVGs mirroring the t-icon names (chat / chart-bubble /
+  // filter-sort / image / sound).
+  function badgeIcon(type: ModelType): ReactNode {
+    const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+    const map: Record<ModelType, ReactNode> = {
+      chat: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>,
+      embedding: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M5 20V10M12 20V4M19 20v-7" /></svg>,
+      rerank: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M3 6h13M3 12h9M3 18h5" /><path d="M16 14l4 4 4-4" transform="scale(0.75) translate(4 4)" /></svg>,
+      vllm: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>,
+      asr: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M11 5L6 9H2v6h4l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" /></svg>,
+    };
     return map[type];
   }
   function typeLabelOf(type: ModelType): string {
@@ -978,7 +988,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     <h3 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4]">{label(model)}</h3>
                     {builtin ? (
                       <span className="shrink-0 text-[13px] text-[#8a97ab] opacity-60 group-hover/card:opacity-100" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
-                        {role === "system-admin" ? "✎" : "🔒"}
+                        {role === "system-admin"
+                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>}
                       </span>
                     ) : null}
                     {canEdit ? (
@@ -1013,7 +1025,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                             disabled={busy}
                             onClick={() => void remove(model)}
                           >
-                            🗑
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" /></svg>
                           </button>
                         ) : null}
                       </div>
@@ -1053,7 +1065,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           })}
           {canCreate ? (
             <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent px-4 py-[14px] font-[inherit] text-[#7a879c] hover:border-[#0a8f4c] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#0a8f4c] focus-visible:border-[#0a8f4c] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#0a8f4c]" onClick={openAdd}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[18px]" aria-hidden="true">＋</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
               <span className="text-[13px] font-medium">{t("modelSettings.actions.addModel")}</span>
             </button>
           ) : null}

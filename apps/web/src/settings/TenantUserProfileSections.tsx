@@ -87,7 +87,9 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
     if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    return (bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1) + ' ' + units[index];
+    // Vue TenantInfo formatBytes: parseFloat(toFixed(2)) drops trailing zeros
+    // (10 GB, not 10.0 GB).
+    return parseFloat((bytes / Math.pow(1024, index)).toFixed(2)) + ' ' + units[index];
   };
   const usage = hasQuota && quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
 
@@ -133,7 +135,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
               <>
                 <span className="info-value">{currentName || '-'}</span>
                 {canEditTenant ? (
-                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editName')} title={t('tenant.details.editName')} onClick={startEditName}>✎</button>
+                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editName')} title={t('tenant.details.editName')} onClick={startEditName}>{/* t-icon "edit" counterpart */}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
                 ) : null}
               </>
             )}
@@ -171,7 +173,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
               <>
                 <span className="info-value description-value">{currentDescription || t('tenant.details.descriptionEmptyPlaceholder')}</span>
                 {canEditTenant ? (
-                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editDescription')} title={t('tenant.details.editDescription')} onClick={startEditDescription}>✎</button>
+                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editDescription')} title={t('tenant.details.editDescription')} onClick={startEditDescription}>{/* t-icon "edit" counterpart */}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
                 ) : null}
               </>
             )}
@@ -263,6 +265,9 @@ export function UserProfileSection({ client, locale, payload }: {
   const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
   const info = payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
   const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);
+  // Vue UserProfile: the change-password form lives in a click popup off the
+  // masked row's edit button, not inline below the settings rows.
+  const [passwordPopupOpen, setPasswordPopupOpen] = useState(false);
   const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmation: '' });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -369,12 +374,20 @@ export function UserProfileSection({ client, locale, payload }: {
             <label>{t('userProfile.changePassword.label')}</label>
             <p className="desc">{t('userProfile.changePassword.description')}</p>
           </div>
-          <div className="setting-control">
+          <div className="setting-control flex items-center gap-2">
             <span className="info-value password-mask" aria-hidden="true">••••••••</span>
+            <button type="button" className="edit-btn inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-[#87909d] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={t('userProfile.changePassword.label')} title={t('userProfile.changePassword.label')} aria-expanded={passwordPopupOpen} onClick={() => setPasswordPopupOpen((open) => !open)}>
+              {/* t-icon "edit" counterpart */}
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+            </button>
           </div>
         </div>
       </div>
-      <form className="mt-1 grid gap-3 border-t border-dashed border-[rgba(120,135,155,0.3)] pt-4" onSubmit={(event) => void submit(event)}>
+      {passwordPopupOpen ? (
+      <div className="user-profile-password-popup relative ml-auto w-full max-w-[360px] rounded-[10px] border border-[#e7e7ea] bg-white p-4 shadow-[0_6px_24px_rgba(15,23,42,0.12)]">
+        <div className="text-[14px] font-semibold text-ink">{t('userProfile.changePassword.label')}</div>
+        <p className="m-0 mb-2 mt-1 text-[12px] text-muted-strong">{t('userProfile.changePassword.description')}</p>
+      <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
         <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.currentLabel')}
           <Input
@@ -415,10 +428,12 @@ export function UserProfileSection({ client, locale, payload }: {
           {fieldErrors.confirmation ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.confirmation}</span> : null}
         </label>
         <div className="inline-edit-actions">
-          <Button type="button" disabled={submitting} onClick={resetForm}>{t('common.cancel')}</Button>
+          <Button type="button" disabled={submitting} onClick={() => { resetForm(); setPasswordPopupOpen(false); }}>{t('common.cancel')}</Button>
           <Button type="submit" loading={submitting}>{t('userProfile.changePassword.submit')}</Button>
         </div>
       </form>
+      </div>
+      ) : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
     </div>
   );

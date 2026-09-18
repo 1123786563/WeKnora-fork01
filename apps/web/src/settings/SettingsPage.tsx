@@ -597,6 +597,15 @@ const SECTION_ICONS: Record<string, ReactNode> = {
   'runtime-queues': icon(<><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>),
   'platform-api-keys': icon(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9.5 12l2 2 3.5-3.5" /></>),
   'system-audit-log': icon(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></>),
+  // Integration nav icons mirror frontend/src/config/integrations.ts
+  // INTEGRATION_PREVIEW_ITEMS (chat-message / code / secured / extension /
+  // the claw lobster emoji).
+  'integration-im': icon(<><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></>),
+  'integration-embed': icon(<><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></>),
+  'integration-api': icon(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />),
+  'integration-cli': icon(<><path d="M4 17l6-6-6-6M12 19h8" /></>),
+  'integration-chrome': icon(<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><path d="M21.2 8H12M6.8 6.4L10 12M8 21.2L12.5 14" /></>),
+  'integration-claw': <span className="nav-icon-emoji" aria-hidden="true">🦞</span>,
 };
 
 const FALLBACK_ICON = icon(<circle cx="12" cy="12" r="9" />);

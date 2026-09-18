@@ -856,8 +856,8 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       </div>
     </div>
 
-    // Audit drawer — port of TenantMembers.vue:380-511 (SettingDrawer with
-    // width="1120px" min 720 max 1600, storage-key tenant-members-audit).
+    {/* Audit drawer — port of TenantMembers.vue:380-511 (SettingDrawer with
+        width="1120px" min 720 max 1600, storage-key tenant-members-audit). */}
     <TenantAuditDrawer
       open={auditOpen && canViewAudit}
       title={tr('tenantMember.audit.tabLabel')}

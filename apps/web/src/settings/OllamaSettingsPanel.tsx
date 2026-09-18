@@ -10,6 +10,28 @@ function object(value: unknown): Record<string, unknown> { return value !== null
 function payload(value: unknown): OllamaPayload { const row = object(value); return { status: object(row.status) as OllamaStatus, models: Array.isArray(row.models) ? row.models.filter((item): item is OllamaModel => item !== null && typeof item === 'object' && typeof (item as Record<string, unknown>).name === 'string') : [] }; }
 function taskId(value: SettingsPayload): string { const id = value.task_id ?? value.taskId ?? value.id; return typeof id === 'string' || typeof id === 'number' ? String(id) : ''; }
 
+// Vue OllamaSettings formatSize: tiered fixed-2 units.
+function formatSize(bytes: number | undefined): string {
+  const value = Number(bytes);
+  if (!value || value === 0 || Number.isNaN(value)) return '0 B';
+  if (value < 1024) return value + ' B';
+  if (value < 1024 * 1024) return (value / 1024).toFixed(2) + ' KB';
+  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + ' MB';
+  return (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+// Vue OllamaSettings formatDate: 今天/昨天/N 天前, then the locale date.
+function formatDate(dateStr: string | undefined, t: (key: string, values?: Record<string, string | number>) => string): string {
+  if (!dateStr) return t('ollama.unknown');
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return t('ollama.unknown');
+  const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (days === 0) return t('ollama.today');
+  if (days === 1) return t('ollama.yesterday');
+  if (days < 7) return t('ollama.daysAgo', { days });
+  return date.toLocaleDateString();
+}
+
 const OLLAMA_EXTRA_COPY: Record<Locale, { progressUpdated: string; task: string; accepted: string; progress: string; reported: string; sizeUnavailable: string; bytes: string }> = {
   'zh-CN': { progressUpdated: '进度已刷新', task: '任务', accepted: '已接受', progress: '进度', reported: '已返回', sizeUnavailable: '大小未知', bytes: '字节' },
   'en-US': { progressUpdated: 'Progress refreshed', task: 'Task', accepted: 'Accepted', progress: 'Progress', reported: 'Reported', sizeUnavailable: 'Size unavailable', bytes: 'bytes' },
@@ -64,8 +86,14 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
         <div><h3>{t('ollamaSettings.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.description')}</p></div>
         <Button type="button" disabled={busy} onClick={() => void refresh()}>{t('ollamaSettings.status.retest')}</Button>
       </div>
-      <Status tone={testing ? 'neutral' : status?.available ? 'success' : 'warning'}>{testing ? t('ollamaSettings.status.testing') : status?.available ? t('ollamaSettings.status.available') + (status.version ? ' · ' + status.version : '') : status ? t('ollamaSettings.status.unavailable') + (status.error ? ': ' + status.error : '') : t('ollamaSettings.status.untested')}</Status>
-      <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{t('ollamaSettings.address.label')}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{status?.baseUrl || '—'}</dd></div></dl>
+      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
+        <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.status.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.status.desc')}</p></div>
+        <div className="setting-control"><Status tone={testing ? 'neutral' : status?.available ? 'success' : 'warning'}>{testing ? t('ollamaSettings.status.testing') : status?.available ? t('ollamaSettings.status.available') : status ? t('ollamaSettings.status.unavailable') : t('ollamaSettings.status.untested')}</Status></div>
+      </div>
+      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
+        <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.address.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.address.desc')}</p></div>
+        <dd className="m-0 self-center font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{status?.baseUrl || '—'}</dd>
+      </div>
     </Card>
     {status?.available && !testing ? <>
       <Card>
@@ -76,7 +104,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
       </Card>
       <Card>
         <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h3>{t('ollamaSettings.installed.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.installed.desc')}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>
-        {models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list m-0 list-none p-0">{models.map((model) => <li key={model.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{model.name}</strong><span className="font-mono text-[0.8rem] text-muted">{model.size ? `${model.size} ${copy.bytes}` : copy.sizeUnavailable}{model.modified_at ? ` · ${model.modified_at}` : ''}</span></div></li>)}</ul>}
+        {models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list m-0 list-none p-0">{models.map((model) => <li key={model.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{model.name}</strong><span className="font-mono text-[0.8rem] text-muted">{model.size ? formatSize(Number(model.size)) : copy.sizeUnavailable}{model.modified_at ? ` · ${formatDate(model.modified_at, t)}` : ''}</span></div></li>)}</ul>}
       </Card>
     </> : null}
   </div>;

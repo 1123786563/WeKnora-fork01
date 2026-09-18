@@ -819,7 +819,9 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
       <span className="text-[14px] font-medium text-ink">{copy.channelsTitle}</span>
       <span className="rounded-[10px] bg-hover-wash px-2 py-0.5 text-[12px] text-[#98a2b3]">{items.length}</span>
     </div>
-    {items.length === 0 && !showCreate ? <div className="py-8"><p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{copy.emptyText}</p></div> : null}
+    {/* Vue IMChannelPanel/AgentEmbedChannelPanel: the empty description is a
+        viewer-only branch — admins see the bare grid with the add tile. */}
+    {items.length === 0 && !showCreate && !canEdit ? <div className="py-8"><p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{copy.emptyText}</p></div> : null}
     <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] items-stretch gap-3">
       {items.map((item) => {
         const platform = variant === 'im' && typeof item.platform === 'string' ? item.platform : '';

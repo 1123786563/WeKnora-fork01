@@ -217,8 +217,17 @@ export function canMutateKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | n
   return false;
 }
 
-function displayName(document: KnowledgeDocument): string {
+/** Vue useKnowledgeBase cardList mapping: the displayed document name drops
+ * the extension (lastIndexOf '.' rule) while the raw file name stays
+ * available for downloads. */
+function documentRawName(document: KnowledgeDocument): string {
   return document.file_name || document.title || document.id;
+}
+
+function displayName(document: KnowledgeDocument): string {
+  const raw = documentRawName(document);
+  const dotIndex = raw.lastIndexOf(".");
+  return dotIndex > 0 ? raw.slice(0, dotIndex) : raw;
 }
 
 export function folderPathCrumbs(path: string | undefined): Array<{ name: string; path: string }> {
@@ -3065,7 +3074,9 @@ export function KnowledgeDocumentsPage({
       const url = URL.createObjectURL(body);
       const anchor = window.document.createElement("a");
       anchor.href = url;
-      anchor.download = displayName(document);
+      // Downloads keep the RAW file name (with extension) — Vue strips the
+      // extension for display only; the persisted file_name stays authoritative.
+      anchor.download = documentRawName(document);
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (error) {
@@ -3607,6 +3618,20 @@ export function KnowledgeDocumentsPage({
                 </div>
               </div>
               <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
+                {/* Vue KnowledgeBase.vue L2661: standalone 批量管理 toggle in the
+                    trailing filter bar — visible whenever there is content and the
+                    viewer may download or mutate; entering/exiting clears nothing
+                    on entry and clears the selection on exit. */}
+                {(canDownload || canMutateKnowledge) && items.length ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="small"
+                    onClick={() => { setBatchMode((value) => !value); if (batchMode) setSelected(new Set()); }}
+                  >
+                    {t(batchMode ? "knowledgeBase.clearSelection" : "menu.batchManage")}
+                  </Button>
+                ) : null}
                 <div className="doc-view-toggle inline-flex items-center rounded-[6px] border border-[var(--wk-border,#e4e7ec)]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
                   <button type="button" className={`h-8 border-0 px-2 [font:inherit] ${viewMode === "grid" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
                   <button type="button" className={`h-8 border-0 border-l border-line-soft px-2 [font:inherit] ${viewMode === "list" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
