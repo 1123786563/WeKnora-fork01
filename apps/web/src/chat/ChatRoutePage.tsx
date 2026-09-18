@@ -24,6 +24,7 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
+import { steerFailureCopy, steerNoticeCopy } from './steer-toast.ts';
 import {
   clearSteerPreviewPending,
   discardSteerPreviews,
@@ -873,9 +874,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       return true;
     }
     // already_injected: the running turn read it; no queue residue (Vue drops
-    // the item and clears the pending preview).
+    // the item, clears the pending preview and toasts the info notice).
     applySteerQueue((current) => dropSteerItem(current, clientSteerId));
     setMessages((current) => clearSteerPreviewPending(current, result.steer_id || clientSteerId));
+    showAgentToast(steerNoticeCopy(copy, 'alreadyInjected'));
     return false;
   }
 
@@ -970,6 +972,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       if (result.status === 'already_injected') {
         applySteerQueue((current) => dropSteerItem(current, steerId));
         setMessages((current) => clearSteerPreviewPending(current, steerId));
+        // R476-A2 — Vue handlePromoteSteer already_injected: MessagePlugin.info.
+        showAgentToast(steerNoticeCopy(copy, 'alreadyInjected'));
         return;
       }
       if (result.status === 'new_run') {
@@ -988,10 +992,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       // optimistic row it replaces.
       applySteerQueue((current) => current.map((entry) => entry.steerId === steerId ? { ...entry, delivery: 'inject' as const } : entry));
     } catch (cause) {
-      // Vue rolls the item back to after, discards the preview and toasts.
+      // Vue rolls the item back to after, discards the preview and toasts the
+      // promote-specific failure copy (R476-A2: steerPromoteFailed, not
+      // operationFailed).
       applySteerQueue((current) => current.map((entry) => entry.steerId === steerId ? { ...entry, delivery: 'after' as const } : entry));
       setMessages((current) => discardSteerPreviews(current, [steerId]));
-      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+      setError(steerFailureCopy(copy, 'promoteFailed', cause));
     }
   }
 
@@ -1000,9 +1006,25 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const sessionId = selectedSessionIdRef.current;
     if (!sessionId || !steerId) return;
     try {
-      await client.chat.steer.remove(sessionId, steerId, scope.signal);
+      const result = await client.chat.steer.remove(sessionId, steerId, scope.signal);
+      // R476-A2 — Vue handleRemoveSteer inspects the DELETE answer:
+      // already_injected means the running answer took the message (info
+      // notice, the optimistic bubble stays); a refused removal keeps the chip
+      // with the remove-specific failure copy; gone/deleted drop everything.
+      if (result.status === 'already_injected') {
+        showAgentToast(steerNoticeCopy(copy, 'alreadyInjected'));
+        applySteerQueue((current) => dropSteerItem(current, steerId));
+        return;
+      }
+      if (result.status === 'deleted' && result.removed === false) {
+        const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
+        if (!item || item.status !== 'failed') {
+          setError(steerNoticeCopy(copy, 'removeFailed'));
+          return;
+        }
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : copy.operationFailed);
+      setError(steerFailureCopy(copy, 'removeFailed', cause));
       return;
     }
     // Vue handleRemoveSteer: a cancelled inject also drops its optimistic row.
@@ -1014,7 +1036,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   async function retrySteer(steerId: string): Promise<void> {
     const item = steerQueueRef.current.find((entry) => entry.steerId === steerId);
     if (!item || item.status !== 'failed') return;
-    await steer(item.content, item.mentionedItems ?? mentionedItems, steerId, item.delivery);
+    try {
+      await steer(item.content, item.mentionedItems ?? mentionedItems, steerId, item.delivery);
+    } catch (cause) {
+      // R476-A2 — Vue handleRetrySteer funnels into handleSteerMsg, whose
+      // catch toasts the enqueue failure copy; the chip action call sites
+      // fire-and-forget, so the notice surfaces here instead.
+      setError(steerFailureCopy(copy, 'enqueueFailed', cause));
+    }
   }
 
   /**

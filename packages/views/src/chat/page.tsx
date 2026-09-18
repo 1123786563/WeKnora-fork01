@@ -320,7 +320,9 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
       return;
     }
     setBusy(true); setError(null);
-    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : copy.sendFailed); } finally { setBusy(false); }
+    // R476-A2 — a rejected enqueue surfaces input.messages.steerFailed (Vue
+    // handleSteerMsg catch toasts the scenario copy, not the send fallback).
+    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error && cause.message ? cause.message : copy.steerFailed); } finally { setBusy(false); }
   }
 
   /*
