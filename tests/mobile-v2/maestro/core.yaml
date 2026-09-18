@@ -1,17 +1,8 @@
 name: mobile-v2-core-e2e
-# MX-034 核心产品链 E2E（Maestro）
-# 运行前提（全部满足才可执行；缺任一即 blocked-env，不得以降级替代记通过）：
-#   1. iOS 模拟器或 Android 模拟器已启动，且已安装本仓库 dev client 构建
-#      （apps/mobile：pnpm exec expo prebuild + eas build --profile development，或本地 xcodebuild/gradlew）
-#   2. 后端 WeKnora 栈运行中（docker compose：WeKnora-app/WeKnora-postgres-dev/...），
-#      EXPO_PUBLIC_WEKNORA_ORIGIN 指向该 origin
-#   3. 受控产品测试账户（docs/evidence/mobile-v2/native-e2e.md 记录，不写入本文件）
+# MX-034 入口（顶层）：调用 flows/ 下的可执行编排
 appId:
   ios: com.weknora.mobile
   android: com.weknora.mobile
-tags:
-  - core-flow
+tags: [core-flow]
 ---
-
-# M01 登录 → M02 空间 → M03 工作台 → M05 新建 → M07 对话 → M08 详情 → M09 审批 → M17 我的 → 退出
-- runFlow: core.yaml
+- runFlow: flows/core.yaml

@@ -1,6 +1,6 @@
 import '../theme.css';
 import * as React from 'react';
-import { Redirect, Slot, useSegments } from 'expo-router';
+import { Redirect, Slot, usePathname, useSegments } from 'expo-router';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -40,8 +40,9 @@ function ProductHostGate() {
   if (host && !auth.loading && !auth.credential && !isAuthEntry) return <Redirect href="/(app)/login" />;
   // 产品落地页（MX-013/D-023）：认证且身份已引导的用户访问索引时进入产品壳
   const identity = auth.scope.identity();
-  // typed-routes 将 segments 收窄为具体元组联合；以 string[] 视图判定索引路由
-  const atIndex = (segments as string[]).length === 0;
+  // 实测：expo-router 在索引路由的 segments 为 ['']（而非空数组）——以 pathname 判定
+  const pathname = usePathname();
+  const atIndex = pathname === '/' || (segments as string[]).every((segment) => segment === '' || segment === undefined);
   if (host && !auth.loading && auth.credential && identity.userId && atIndex) {
     return <Redirect href="/(app)/product" />;
   }

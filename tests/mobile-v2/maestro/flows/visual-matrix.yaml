@@ -1,0 +1,27 @@
+# MX-035 视觉矩阵截图采集（可执行 Maestro flow）
+# 用法：对每档位（设备×明暗×字体）由采集脚本以 env 注入；本 flow 遍历可达页面并逐页截图。
+appId:
+  ios: com.weknora.mobile
+  android: com.weknora.mobile
+tags: [visual-matrix]
+---
+- runFlow: core.yaml   # 复用登录链至工作台
+# M07–M16 需要既有 Run/交互/资源 fixture；无 fixture 时采集空态/未授权态（如实）
+- tapOn: "会话"
+- extendedRunUntil:
+    commands:
+      - screenshot: M04_dark_or_light
+    condition:
+      visible: "搜索|暂无会话"
+- tapOn: "资源"
+- extendedRunUntil:
+    commands:
+      - screenshot: M11
+    condition:
+      visible: "知识库|连接|任务成果"
+- tapOn: "知识库"
+- extendedRunUntil:
+    commands:
+      - screenshot: M11_knowledge_empty
+    condition:
+      visible: "暂无知识库|知识库是可选资源"

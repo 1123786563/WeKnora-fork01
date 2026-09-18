@@ -1,0 +1,121 @@
+# MX-034/035 核心链编排（可执行 Maestro flow）
+# 前置：dev client 已安装并启动；E2E env 已导出（origin/account 见 native-e2e.md，不写入本文件）
+appId:
+  ios: com.weknora.mobile
+  android: com.weknora.mobile
+tags: [core-flow]
+---
+# M01 登录页可见
+- assertVisible: "WeKnora"
+- assertVisible: "邮箱"
+- extendedRunUntil:
+    commands:
+      - screenshot: M01
+    condition:
+      visible: "登录"
+
+# 服务器选择（首次冷启动）：输入本地 origin
+- runScript:
+    when:
+      visible: "服务器|server|地址"
+- tapOn: ".*输入.*地址.*|.*server.*url.*"
+- inputText: ${E2E_WEKNORA_ORIGIN}
+- tapOn: "保存|连接|确定"
+
+# 登录
+- tapOn:
+    id: "登录邮箱输入|邮箱"
+- inputText: ${E2E_EMAIL}
+- tapOn: "密码"
+- inputText: ${E2E_PASSWORD}
+- tapOn: "登录"
+- extendedRunUntil:
+    commands:
+      - screenshot: M01_after_login
+    condition:
+      visible: "工作台|选择空间"
+      timeout: 20000
+
+# M02 空间选择（如出现）
+- runScript:
+    when:
+      visible: "选择空间"
+- extendedRunUntil:
+    commands:
+      - screenshot: M02
+    condition:
+      visible: "进入空间|当前空间"
+- tapOn: "进入空间|默认空间"
+
+# M03 工作台
+- extendedRunUntil:
+    commands:
+      - screenshot: M03
+    condition:
+      visible: "工作台"
+      timeout: 15000
+
+# 四 Tab 容器
+- assertVisible: "会话"
+- assertVisible: "资源"
+- assertVisible: "我的"
+- screenshot: M03_tabs
+
+# M04 会话列表
+- tapOn: "会话"
+- extendedRunUntil:
+    commands:
+      - screenshot: M04
+    condition:
+      visible: "搜索|暂无会话|还没有会话"
+      timeout: 10000
+
+# M05 新建任务
+- tapOn: "新建任务"
+- extendedRunUntil:
+    commands:
+      - screenshot: M05
+    condition:
+      visible: "任务内容|预算上限"
+- inputText: "E2E 冒烟任务：整理本周反馈"
+- screenshot: M05_filled
+
+# M06 Agent 选择入口
+- tapOn: "选择执行 Agent|选择 Agent"
+- extendedRunUntil:
+    commands:
+      - screenshot: M06
+    condition:
+      visible: "确认选择|通用"
+- tapOn: "返回"
+
+# M17 我的
+- tapOn: "我的"
+- extendedRunUntil:
+    commands:
+      - screenshot: M17
+    condition:
+      visible: "外观|退出登录"
+
+# M18 空间用量
+- tapOn: "空间用量"
+- extendedRunUntil:
+    commands:
+      - screenshot: M18
+    condition:
+      visible: "用量|加载失败"
+      timeout: 10000
+- tapOn: "返回"
+
+# 退出登录（保守：留在登录页即可）
+- runScript:
+    when:
+      visible: "退出登录"
+- tapOn: "退出登录"
+- tapOn: "确认"
+- extendedRunUntil:
+    commands:
+      - screenshot: M01_logout
+    condition:
+      visible: "登录|邮箱"
+      timeout: 10000
