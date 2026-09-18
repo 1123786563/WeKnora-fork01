@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=26"
+  },
   "pnpm": {
     "overrides": {}
   },
@@ -27,7 +30,11 @@
     "build:embed": "pnpm --filter @weknora/embed build",
     "test:mobile": "pnpm --filter @weknora/mobile test",
     "typecheck:mobile": "pnpm --filter @weknora/mobile typecheck",
-    "test:mobile-v2": "tsx --test tests/mobile-v2/*.test.ts"
+    "test:mobile-v2": "tsx --test tests/mobile-v2/*.test.ts",
+    "gates": "node scripts/run-gates.mjs",
+    "dev:mock-llm": "bash scripts/dev-mock-llm.sh start",
+    "dev:mock-llm:stop": "bash scripts/dev-mock-llm.sh stop",
+    "dev:mock-llm:status": "bash scripts/dev-mock-llm.sh status"
   },
   "devDependencies": {
     "@types/node": "22.14.0",
