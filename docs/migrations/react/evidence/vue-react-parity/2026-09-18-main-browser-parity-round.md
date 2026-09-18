@@ -136,3 +136,60 @@ main 已由 upstream-parity 车道落地 `PUT /auth/me/preferences`
 - 本轮改动文件：apps/web/src/apps/AppsPages.tsx、apps/web/src/auth/LoginPage.tsx、
   apps/web/src/chat/ChatRoutePage.tsx、apps/web/src/organizations/OrganizationsPage.tsx、
   packages/views/src/chat/page.tsx、apps/web/src/chat/chat-route-page-model-pick.test.ts（新）。
+
+## 追加轮：全页面可见文本扫描（第三轮，2026-09-19 复验）
+
+以"每个页面完全一致"为标准做系统性扫描：主路由 9 页 + 设置 24 分区，双端分别提取
+body.innerText 可见文本集合（框架无关），程序化求差后逐项人工分诊。
+
+### 判定为机制性噪音（非缺口）
+
+- 原生 select 的 option 文本整体进入 innerText（TDesign 下拉关闭时为空）——常规设置分区
+  React 侧的语言/主题/字体选项列表属此类；
+- 表格表头 innerText 分行差异（React 单行 tab 分隔 vs Vue 多行），内容相同；
+- Vue 卡片分隔点"·"为 CSS margin，React 为空格字符，视觉等宽；
+- 引导弹窗/上下文引导在抓取时未及关闭产生的单侧文本。
+
+### 真实差异 11 项（本轮全部修复并复验）
+
+1. members 页泄漏 JSX 注释为可见文本（TenantMembersPanel "// Audit drawer…" 渲染进 DOM）
+   → 改为 JSX 注释；
+2. KB 详情缺工具栏"批量管理"按钮（React 只有行内菜单入口；Vue 是 trailing 过滤栏独立
+   outline 按钮，批量态切换为"取消选择"，退出清空选择）→ 按 Vue 补齐；
+3. KB 详情文档名带扩展名（Vue useKnowledgeBase 列表映射即剥离最后一段扩展名，React 直用
+   file_name）→ displayName 按同规则剥离，下载锚点保留原始名防丢后缀；
+4. envvars 缺无沙箱守卫（Vue 无沙箱配置时整表单替换为"还没有沙箱/这个空间还没有配置沙箱
+   后端…"）→ React 加 GET /sandbox-configs 检测 + 守卫 + 真实沙箱下拉；
+5. tenant 配额格式 10.0 GB（Vue formatBytes 用 parseFloat(toFixed(2)) 去尾零）→ 对齐；
+   ✎ 文本字形换 SVG 铅笔；
+6. 模型页 emoji 图标（💬📊⇅🖼🔊/✎🔒/🗑/＋ vs Vue t-icon SVG）→ 全部换内联 SVG；
+7. chathistory 多"保存"按钮（Vue 为 500ms 防抖自动保存无按钮）→ 隐藏按钮（防抖逻辑本已存在）；
+8. 设置导航集成分区缺图标（Vue chat-message/code/secured/extension + claw 🦞 emoji；React
+   全部落 fallback 圆圈）→ 补六枚图标；
+9. IM/嵌入空态文案对管理员可见（Vue 仅非 admin 显示 t-empty，admin 见空网格+添加卡）→
+   ChannelListPanel 空态加 !canEdit 门控；
+10. Ollama 分区整页脆弱（models 探测失败令 section loader 整单拒绝 → 面板不挂载；且列表渲
+    染原始字节+ISO 时间戳、缺状态/地址标签说明）→ loader 双探测各自兜底（与 Vue 静默容错
+    一致）+ 移植 formatSize/formatDate（今天/昨天/N 天前）+ 状态/地址标签与说明行；
+11. UserProfile 密码表单常开（Vue 是掩码行 + 铅笔弹窗）→ 改为掩码行 + 编辑铅笔 + 折叠面板；
+    WeKnoraCloud 面板整板重写（按 Vue 611 行源移植：凭证三态横幅/重新配置折叠/云模型接入
+    四行三态+单行确认+缺失批量添加/embedding 维度先经 /initialization/embedding/test 探测/
+    三步使用说明；i18n 补 settings.weknoraCloud.* 47 键 ×5 locale 程序化提取）。
+
+### 门禁、fixture 与复验（第三轮）
+
+- `pnpm gates`（Node v26.4.0）：test:shared 869/869、test:web 1871/1871、
+  typecheck:shared/typecheck:web 0、check:integrity PASS。
+- 更新 5 个钉旧行为的测试断言：文档名剥离（下载 source/选择 guide）、锁/铅笔 SVG 正则、
+  密码弹窗折叠后点击展开、云凭证 configured 态收起表单。
+- 浏览器复验：KB 详情（批量管理出现、文档名无扩展名）；九个设置分区逐项断言过
+  （/tmp/verify-settings-v2.json + /tmp/verify-ollama-v3.txt）：userprofile 折叠✓、
+  weknoracloud 云模型接入/步骤/待配置凭证✓、envvars 守卫✓、tenant 10 GB✓、members 无泄
+  漏✓、models 无 emoji✓、chathistory 无保存✓、general 有 🦞✓、ollama 容错后标签/说明/
+  重新检测✓且无裸错误。
+- fixture 事故：并行会话的库操作重置了共享账号（parity-test@local.dev 登录 401）。经
+  /auth/register 重建同账号（tenant 10002），并用 API 重建 KB fixture（Parity KB Demo =
+  dca0db93-2aba-4cf2-b386-d75d9e069b1c，两个 md 文档）。旧 R473 fixtures（wiki-fixture、
+  5 文档、会话）未恢复——后续轮次如需再补。
+- 未扫页面说明：apps/authorization 与 actions 的数据态、onboarding（需无租户账号）、
+  register 邀请态依赖外部 fixture，维持失败分支已验 + 记录阻塞。

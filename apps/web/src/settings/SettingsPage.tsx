@@ -84,7 +84,12 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     case 'general': return client.settings.preferences.get();
     case 'tenant': return client.settings.tenant.get();
     case 'userprofile': return client.settings.profile.get();
-    case 'ollama': return Promise.all([client.settings.ollama.status(), client.settings.ollama.models()]).then(([status, models]) => ({ status, models }));
+    // Vue OllamaSettings keeps the page mounted when either probe fails —
+    // status degrades to 不可用 and the list to empty, never an inline error.
+    case 'ollama': return Promise.all([
+      client.settings.ollama.status().catch(() => ({ available: false })),
+      client.settings.ollama.models().catch(() => []),
+    ]).then(([status, models]) => ({ status, models }));
     case 'parser': return Promise.all([client.settings.parser.engines(), client.settings.parser.config.get()]).then(([engines, config]) => ({ engines, config }));
     case 'retrieval': return client.settings.retrieval.get();
     case 'memory': return client.settings.memory.workspace.get();

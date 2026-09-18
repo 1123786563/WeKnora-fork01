@@ -200,7 +200,15 @@ test('userprofile section shows the Vue rows and localized change-password copy'
   assert.ok(text.includes('用户名'), 'the username row renders');
   assert.ok(text.includes('邮箱'), 'the email row renders');
   assert.ok(text.includes('修改密码'), 'the change password row renders');
-  assert.ok(text.includes('更新密码'), 'the Vue submit label renders');
+  // Vue UserProfile: the change-password form is a popup opened by the masked
+  // row's edit button — collapsed until clicked.
+  assert.equal(text.includes('更新密码'), false, 'the password form stays collapsed until the edit button opens it');
+  const editButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.edit-btn'))
+    .find((button) => button.getAttribute('aria-label') === '修改密码');
+  assert.ok(editButton, 'the masked row exposes an edit pencil');
+  await act(async () => editButton?.click());
+  const openedText = container.textContent ?? '';
+  assert.ok(openedText.includes('更新密码'), 'the popup reveals the Vue submit label');
   assert.equal(text.includes('Change password'), false, 'no English button copy');
   assert.equal(text.includes('Profile identity fields are server-owned'), false, 'no English help copy');
 });

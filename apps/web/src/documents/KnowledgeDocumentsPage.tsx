@@ -3622,10 +3622,10 @@ export function KnowledgeDocumentsPage({
                     trailing filter bar — visible whenever there is content and the
                     viewer may download or mutate; entering/exiting clears nothing
                     on entry and clears the selection on exit. */}
-                {(canDownload || canMutateKnowledge) && items.length ? (
+                {(canDownload || canContribute) && items.length ? (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="default"
                     size="small"
                     onClick={() => { setBatchMode((value) => !value); if (batchMode) setSelected(new Set()); }}
                   >

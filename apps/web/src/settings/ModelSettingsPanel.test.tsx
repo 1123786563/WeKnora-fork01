@@ -196,7 +196,8 @@ test('model cards render Vue vendor labels, dimensions, context windows and buil
   // Vision chip + builtin lock carry their Vue titles (ModelSettings.vue lines 69-71, 118-124).
   assert.match(html, /title="支持视觉\/多模态"/);
   assert.match(html, /title="内置"/);
-  assert.match(html, /🔒/);
+  // Builtin lock is a stroke SVG (t-icon lock-on counterpart), not an emoji.
+  assert.match(html, /<svg[^>]*width="13"[^>]*viewBox="0 0 24 24"[^>]*>[\s\S]*?<rect x="3" y="11"[\s\S]*?<\/svg>/);
   // Tabs show localized labels with counts (ModelSettings.vue lines 39-45).
   assert.match(html, /全部\(4\)/);
   assert.match(html, /对话\(2\)/);
@@ -217,7 +218,8 @@ test('system-admin sees builtin edit affordances only', () => {
       ] as never}
     />,
   );
-  assert.match(html, /✎/);
+  // System-admin builtin edit affordance is an SVG pencil (t-icon edit-1 counterpart).
+  assert.match(html, /<svg[^>]*width="13"[^>]*viewBox="0 0 24 24"[^>]*>[\s\S]*?<path d="M17 3a2\.85[\s\S]*?<\/svg>/);
   assert.doesNotMatch(html, /复制<\/button>/);
   assert.doesNotMatch(html, /删除<\/button>/);
 });

@@ -65,14 +65,21 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone: 'success' | 'warning' | 'error'; text: string } | null>(null);
-  const [formExpanded, setFormExpanded] = useState(true);
+  // Vue checkStatus collapses the form once credentials are configured;
+  // derive the initial state during first render (static renders included).
+  const [formExpanded, setFormExpanded] = useState(() => {
+    const initial = row(initialValue);
+    return !(initial.has_models === true && initial.needs_reinit !== true);
+  });
   const [existingKinds, setExistingKinds] = useState<Set<WkcModelKind>>(new Set());
   const [addingModels, setAddingModels] = useState(false);
   const [addingKind, setAddingKind] = useState<WkcModelKind | null>(null);
   const [confirmAdd, setConfirmAdd] = useState<WkcModelKind[] | null>(null);
 
   const needsReinit = status.needs_reinit === true;
-  const hasCredentials = status.has_credentials === true || status.configured === true || (status.has_models === true && !needsReinit);
+  // Vue checkStatus: hasCredentials derives from has_models (the status
+  // endpoint carries no separate credential flag).
+  const hasCredentials = status.has_models === true && !needsReinit;
   const credentialState: 'unconfigured' | 'expired' | 'configured' = needsReinit ? 'expired' : hasCredentials ? 'configured' : 'unconfigured';
 
   const showToast = (tone: 'success' | 'warning' | 'error', text: string) => setToast({ tone, text });
@@ -91,15 +98,22 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
 
   useEffect(() => { void refreshExistingKinds(); }, [refreshExistingKinds]);
 
+
   async function reload() {
     setBusy(true); setError(null); setNotice(null);
-    try { setStatus(await client.settings.weknoraCloud.status()); }
+    try {
+      const next = await client.settings.weknoraCloud.status();
+      setStatus(next);
+      // Vue checkStatus: a configured credential collapses the form behind
+      // the 重新配置 button.
+      const nextReinit = next.needs_reinit === true;
+      if (next.has_models === true && !nextReinit) setFormExpanded(false);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : t('common.error')); }
     finally { setBusy(false); }
   }
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function save() {
     if (!appId.trim() || !appSecret.trim()) { showToast('warning', t('settings.weknoraCloud.fillRequired')); return; }
     setSaving(true); setError(null); setNotice(null);
     try {
@@ -114,12 +128,12 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
   }
 
   async function resolveEmbeddingDimension(): Promise<number> {
-    const result = await client.configuration.connection.embedding({
+    const result = await client.configuration.models.connection.embedding({
       source: 'remote',
       modelName: WKC_MODEL_NAME_BY_KIND.embedding,
       baseUrl: WEKNORA_CLOUD_BASE_URL,
       provider: WEKNORA_CLOUD_PROVIDER,
-    } as unknown as Record<string, unknown>);
+    });
     const payload = row(result);
     if (payload.available !== true || !payload.dimension) {
       throw new Error(typeof payload.message === 'string' && payload.message ? payload.message : t('settings.weknoraCloud.addModelsEmbeddingFailed'));
@@ -184,7 +198,7 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
         </div>
         <div className="flex items-center justify-between gap-3">
           <p className="m-0 text-[12px] text-muted-strong">{t('settings.weknoraCloud.saveHint')}</p>
-          <Button type="button" loading={saving} disabled={!appId.trim() || !appSecret.trim()} onClick={() => void save(new Event('submit') as unknown as React.FormEvent<HTMLFormElement>)}>{t('settings.weknoraCloud.saveBtn')}</Button>
+          <Button type="button" loading={saving} disabled={!appId.trim() || !appSecret.trim()} onClick={() => void save()}>{t('settings.weknoraCloud.saveBtn')}</Button>
         </div>
       </div> : null}
     </Card>

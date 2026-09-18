@@ -355,10 +355,11 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
   assert.ok(html.includes('aria-haspopup="menu"'), 'card has an accessible action-menu trigger');
   assert.ok(html.includes('编辑文档'), 'edit action is present for manual documents');
   assert.ok(html.includes('解析进度'), 'trace action is present while parsing');
-  assert.ok(html.includes('下载 source.pdf'), 'download action is present for file documents');
+  // Vue useKnowledgeBase strips the extension from the displayed name.
+  assert.ok(html.includes('下载 source'), 'download action is present for file documents');
   assert.ok(html.includes('移动到目录'), 'folder move action is present');
   assert.ok(html.includes('批量管理'), 'batch management action is present');
-  assert.ok(html.includes('选择 guide.md'), 'selection checkboxes appear only after entering batch mode');
+  assert.ok(html.includes('选择 guide'), 'selection checkboxes appear only after entering batch mode');
   assert.ok(html.includes('删除文档'), 'delete action is present');
 });
 
