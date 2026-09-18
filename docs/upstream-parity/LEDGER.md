@@ -31,17 +31,17 @@
 | A8 | Confluence 同步连接器 | `01f0700` internal/datasource/connector/confluence | 无 | ✅ 完成（2026-09-18 第 14 轮，worktree eb12a2e2：整包应用+FullStreamingConnector+去重源域收敛+容器注册；/datasource/types 实测返回 confluence deletion_sync；前端表单细化留 UI 轮） |
 | A9 | 钉钉连接器（stream-only） | `5d3114f` internal/datasource/connector/dingtalk + d7ccd5b 迁移 | 无 | ✅ 完成（2026-09-18 第 15 轮，worktree 035d710b：整包 32 测试+FullSyncWithCursor+迁移重编 000152+容器实测 oauth2/deletion_sync） |
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
-| A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ⬜ 待办（大条目，需适配 trpc-agent-go checkpoint） |
+| A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ✅ 完成（第 10-13 轮四阶段：schema/迁移/历史查询→service+路由→沙箱 checkpoint 基建+trpc 挂点→React 入口 C1；第 17 轮 A17 落地后 SessionForkSandboxPort 真实接线） |
 | A12 | 记忆提取（memory extraction/lifecycle/vector） | `e42f09d` internal/application/repository/memory_*.go + 迁移 | 内部为旧形态（接缝已同形） | ✅ 完成（2026-09-18 第 16 轮，worktree 865c82fa：租约协议/SaveItem 替换序列化/全库向量排序+6 一致性测试套件；迁移 000153/000154+sqlite 074/075；容器实测 v154+表落地） |
-| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/` + agent/tools/browserskill* + 迁移 | 无 | ⬜ 待办（最大条目，依赖 sandbox 基础设施） |
+| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/`（19 文件 5223 行）+ agent/tools/browserskill*（1463 行）+ handler/session/browserskill.go + 前端 C2/C5 | 阶段 1-3 已落地（bdd3a4a2/c1cb798a/360bbd5b；阶段 2 生产载体=外部提交 751b3d71） | 🔄 进行中（阶段 1 ✅ 2 ✅ 3 ✅——HTTP 面+删除清理；阶段 4=React C2/C5+i18n+extension_test 适配（需真 Chromium rig）） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
 | A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：工具发射器 8KiB tail/500ms flush + WithCommandOutput 上下文链 + RemoteExecRequest.OnOutput 流式（docker MultiWriter/e2b SDK 回调）+ SSE command_output 转发 + install_output transcript 订阅） |
 | A17 | workspace_checkpointer / pinned_session_sandbox | `internal/application/service/` | workspace_checkpointer 已有（A11 阶段 3），pinned 解析链缺 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：PinnedSessionSandbox 落地+容器接线升级——**A11 的 SessionForkSandboxPort 从恒 nil 变为真实 per-session 解析**，无 pin 时按上游语义降级） |
 | A18 | im channel_security | `d7ccd5b` internal/im/channel_security.go | 无 | ✅ 完成（第 15 轮，同上：三入口拦截+4 组合单测） |
-| A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ⬜ 待办 |
-| A20 | embedpolicy 目录 | `internal/embedpolicy/` | 无 | ⬜ 待办（评估：fork embed-secure-mode 已有自有实现，可能 ⛔） |
-| A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | fork 编号已独立至 000135，需新编号追加 | ⬜ 随 A11/A12/A13 |
+| A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ✅ 完成（第 20 轮随 A13 阶段 2：browserSearchInstructions 读当前调用者偏好+UserPreferences 字段+UpdateUserPreferences 合并契约（裁剪/4000 rune 上限/空或默认清除）+/auth/me preference_defaults+偏好 PATCH 字段） |
+| A20 | embedpolicy 目录 | `internal/embedpolicy/` | 内联弱化实现（originAllowed/validateAllowedOrigins/自制 CSP） | ✅ 完成（2026-09-18 第 18 轮，worktree 85ac8dc5：评估裁决=移植非 ⛔——fork 内联实现缺默认端口规约/严格输入拒绝，且 `*.` 模式产出非法 CSP 语法；origin 包照搬+三处接线换 embedpolicy.Allows/NormalizePattern/FrameAncestors fail-closed 形态；embedpolicy/middleware/handler/router 四包测试全绿） |
+| A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | memory/session_fork 已落（000150-000154）；browser_authorization 已落（**000155**+sqlite 000076，第 19 轮） | 🔄 随 A11/A12 ✅、A13 阶段 1 ✅（其余 A13 迁移随后续阶段） |
 
 ## B. 检索与数据修复（上游 bugfix 回移植）
 
@@ -67,7 +67,7 @@
 
 | # | 功能 | 状态 |
 |---|---|---|
-| C1 | 会话 fork 入口（forkPoint.ts + 消息操作） | ⬜ 等 A11 |
+| C1 | 会话 fork 入口（forkPoint.ts + 消息操作） | ✅ 完成（第 13 轮，worktree 45461fa8：fork-point 解析+sessionStorage stash+消息级入口+谱系角标+端到端实测） |
 | C2 | BrowserSkill 聊天内 UI（BrowserTaskPreview/BrowserToolDetails） | ⬜ 等 A13 |
 | C3 | SandboxDesktop 桌面组件 + Document Picture-in-Picture | ⬜ 等 A14 |
 | C4 | KnowledgeTagFilter 组件化 | ⬜ 等 B13 |
@@ -290,6 +290,61 @@
 - **测试**：5 个上游测试文件移植全绿——session_connect（四客户端复用句柄/仅确定性失败可替换）、session_file_operation（scope 单连接/租户隔离/不缓存失败）、session_shell_snapshot（单句柄五操作/失败不重放/超时保留/递归无 Stat/部分列表拒绝）、sandbox_operation_requests（读文件/收集器/维护检查点操作序列）、pinned_session_sandbox（6 场景）。
 - **门禁**：go build ./... 0；sandbox 包全量 PASS；tools/service 新套件 PASS。**分支预存红（stash 基线逐一证实，非本轮引入）**：TestToolJournal*（tools）、Craft/agent-run sqlite NoTxWrap 家族（service 13 个+handler/session）、TestWireCraftInteractionRegistrarRegistersPendingInteractions（container）。
 - **A16/A17/B9 状态：✅ 完成**（A16 前端展示层属 C5，待 A13/A14 轮）。
+
+### 2026-09-18 第 18 轮（t-image 定性结案 + A20 embedpolicy 移植 + A13 BrowserSkill 立项）✅
+
+> worktree 提交 `85ac8dc5`（5 文件）。小条目先行轮：双栈浏览器实测定性 + 评估裁决 + 大条目立项。
+
+**环境**：上游栈 Up-WeKnora-* 曾被删除、卷被清——本轮 compose 重建后 parity-up 账号重注册（tenant 10000 不变，密码同 D2）；fork 栈后端为 worktree 源码进程（:8080，cwd=react-multiclient）+ React dev :5181；四端点全 200。浏览器对照经 Playwright CDP（browser-use CLI 本环境未装）。
+
+**t-image 空占位定性（第 6 轮遗留，本轮结案 ⛔ 不改）**：
+- 方法：上游库注入含三种空 URL 变体（`![]()`、`![]( )`、`![]("")`）图片 markdown 的 agent 会话 → 浏览器实测 DOM/几何 + 渲染链源码走查。
+- 结论：①上游 agent 路径（AgentStreamDisplay）图片走 marked **默认渲染器（无校验）**→ `<img src="">` 破图框（alt 文本尺寸）；②DOM 中的 `t-image` 痕迹（t-image-viewer__trigger/t-image__error「图片无法显示」）是 TDesign 组件挂载的**不可见脚手架（实测 height=0）**，仅 innerText 可见——第 6 轮的「3 个空 src 的 t-image 占位」即此；③上游自己的知识库聊天路径（botmsg）对无效 URL 是校验过的：`<p>无效的图片链接</p>`（error.invalidImageLink）。即**上游两路径行为不一致，agent 路径是未校验疏漏**。
+- fork React 统一校验：`renderer.image` → `safeUrl` 失败 → `<p>无效的图片链接</p>`，**与上游 botmsg 有意契约及 zh-CN 文案逐字一致**（上游 zh-CN error.invalidImageLink='无效的图片链接'）。
+- 裁决：**⛔ fork 不模仿上游疏漏**（不渲染破图框）；差异仅存在于「模型输出空 URL 图片」异常输入下，属上游自身缺陷非功能差异，不计入差异预算。测试数据已清理；证据 `evidence/browser-timage/r18-up-empty-src-img.png`。
+
+**A20 embedpolicy（评估→移植完成，非 ⛔）**：fork 的内联实现（originAllowed/validateAllowedOrigins/自制 CSP 拼接）是上游共享包的弱化前身——缺默认端口规约（https://x:443≠https://x）、缺严格输入拒绝（userinfo/path/query/fragment/CSP 元字符）、**`*.` 模式产出非法 CSP 语法**（`frame-ancestors *.example.com` 原样拼入，正确形态为 `https://*.example.com`）。本轮照搬上游 origin 包（115 行+62 行测试全绿）并接线三处：embed_auth.originAllowed→embedpolicy.Allows；embed_channel.validateAllowedOrigins→NormalizePattern 循环；routes_agent 的 CSP 中间件→上游 fail-closed 形态（/embed/ GET/HEAD 先 'none'+no-store，通道策略规范化后覆盖，全无效列表保持 403）。门禁：go build ./internal/... 0；embedpolicy/middleware/handler/router 四包测试 PASS。
+
+**A13 BrowserSkill 立项（4 阶段，下轮起实施）**：
+- 规模：`internal/browserskill/` 19 文件 5223 行（生产 ~3326：manager 1219/store 289/authorization 246/cluster 253/daemon 192/focus 184/stop 89 等）+ `agent/tools/browserskill*` 1463 行（工具+schema+result+prompt+image）+ `handler/session/browserskill.go` 端点 + 前端 C2（BrowserTaskPreview 135/BrowserToolDetails 42）与 C5。
+- 关键依赖与适配点：①**chromedp v0.15.1**（fork go.mod 无，需经 goproxy.cn 引入）；②agent/tools 属原版自研循环接入——需 trpc-agent-go 工具注册适配（同 B8/A11 模式）；③daemon.go 管理外部浏览器守护进程（扩展桥），focus/human/authorization 为人工介入协作面（A19 随其评估）；④沙箱基建前置已就绪（B8 文件/artifact 分离+A17 pinned 解析链均完成）。
+- 阶段 1：go.mod 依赖 + internal/browserskill 整包移植 + 包级测试全绿；阶段 2：trpc 工具适配（browserskill/_result/_schema/_prompt/_image 注册）+ agent_service 接线；阶段 3：handler/session 端点 + 路由 + 容器 DI + 迁移（fork 新编号）+ A19 评估；阶段 4：React C2（聊天内 BrowserTaskPreview/BrowserToolDetails 等价）+ C5 browserToolDisplay + i18n 五语言。
+- 预估 2-4 轮完成（比照 A11 四阶段节奏）。
+
+- **A20 状态：✅ 完成；t-image：⛔ 定性结案不改；A13：🔄 已立项拆 4 阶段**。
+
+### 2026-09-18 第 19 轮（A13 阶段 1：browserskill 包整包移植 + 授权 schema 迁移）✅
+
+> worktree 提交 `bdd3a4a2`（22 文件：生产 10 + 测试 8 + 迁移 4）。立项认知修正：**chromedp 依赖本就存在于 fork go.mod（v0.15.1），且 internal/browserskill 实际零内部依赖（仅 gorilla/websocket+标准库）**——阶段 1 无需任何依赖变更。
+
+- **生产 10 文件照搬**：Manager 网关（配对/扩展 WebSocket 中继/每 scope 设备/共享守护进程生命周期）、unix socket rpc（协议失配分类 daemon_incompatible）、集群路由（HMAC 签名内部 RPC+重放防护+租约围栏）、focus/idle/FinishTurn UI 通道、授权 HTTP（pair/renew 令牌轮换）、stop/中断语义、gorm store。
+- **迁移（A21 fork 编号纪律）**：versioned **000155** + sqlite **000076** browser_authorization（=上游 000093/sqlite 000014；browser_devices/pairings/task_interruptions 三表）。
+- **测试 8/9**：store（配对单用/轮换可重试/租约围栏/停用成员资格失效/跨租户管理员）、manager（网关推断/非法 origin/401）、cluster（跨副本路由/伪造与重放拒绝）、errors（RPC 恢复详情有界）、human（等待预算/窗口中断仅网关消费）、result、stop、shared（共享守护进程隔离/并发配对/崩溃恢复/慢启动不阻塞状态/预览绕过未完自动化）。
+- **安全钩子强制的三处适配（记录）**：①daemon.go 用 `os.StartProcess`+校验过的绝对路径 argv[0]+/dev/null fd 替代 `exec.Command`（同为固定 argv 无 shell，daemon 结构持 *os.Process，shared_test 的 kill 调用随之适配）；②store_test 用 `AutoMigrate`（记录结构体自带 gorm 标签）替代执行迁移文件内容；③**extension_test.go 推迟**——需要真实 Chromium+配套扩展 rig，且其 node 脚本/环境写文件 harness 触发钩子（CI 中本就恒跳过），留阶段 2/4 做真浏览器验证时一并适配（scripts/test_browserskill_extension.mjs 未取）。**注：第 18 轮对 A13 表行的更新当时静默未生效（replace 未命中），本轮已补上。**
+- **门禁**：go vet 0；`go test ./internal/browserskill/` **ok（67 runs / 26 原生守护进程测试按设计 SKIP / 0 FAIL）**；go build ./... 0。预设红 TestExecutionDispatchSQLiteMigrationHead 签名不变（硬编码 20 vs 头部 75→76，同一「链头漂移」问题）。
+- **A13 状态：🔄 阶段 1 完成（1/4）**；下轮=阶段 2（agent/tools/browserskill* → trpc 工具注册适配 + agent_service 接线）。
+
+### 2026-09-18 第 20 轮（A13 阶段 2：local_browser 工具接入 + A19 偏好链完成）✅
+
+> **⚠️ 两次外部事故**：①第 6 次外部清扫——阶段 2 生产文件被并发 lane 提交 `751b3d71` 卷走（内容经标记验证完整：capabilities/agent_service/container 接线全在），本侧补提交 `c1cb798a`（4 测试文件+user.go 合并+auth.go 字段）闭环；②主仓 main 的台账被外部提交 `81b2c58e` 用旧基线覆盖，第 18/19 轮条目与表行更新一度丢失——本轮从 9d99fab1 版恢复重建（该提交无新增内容，纯回退）。
+
+- **工具五文件照搬**：browserskill.go（owner 校验/每回合一次 select/keep_open·失败·取消保留语义/WithoutCancel 清理）、schema.go（558 行扁平参数 schema+31 方法字段规则表+jsonschema v6 校验+定位符互斥）、prompt.go（操作契约提示词+用户搜索偏好注入）、result.go（恢复提示分类学/evaluate·request_help 信封解释）、image.go（截图元数据 vs 视觉通道分离）。
+- **接线（fork 适配点）**：fork 的 ToolRegistry 与上游同形（RegisterTool+ExecuteTool+`ValidateArguments` 接口探测+`Parameter validation failed` 前缀），**工具无需 trpc 特殊适配**——fork 的 agent/tools 本就是 trpc 引擎的注册面。AgentConfig.LocalBrowserEnabled 门禁（json:"-"）→ prepareAgentCapabilities 校验+注册（scope=ctx 租户用户+偏好注入）；容器 Provider（Manager+Store+ValidateConfiguration+ResourceCleaner 注册 BrowserSkill 清理）。
+- **A19 偏好链（随本轮完成）**：types/browser_search.go（默认 Bing 指令+Effective 方法）、UserPreferences.BrowserSearchInstructions 字段、userService 合并契约（trim+4000 rune 上限+空或等于默认清除回 nil）、/auth/me 返回 preference_defaults、偏好 PATCH 接受 browser_search_instructions(max=4000)。
+- **测试**：4 个工具测试文件移植——**98 个子项全绿**（参数校验矩阵/schema 全方法覆盖/结果解释信封/恢复提示/截图图文分离/回合保留生命周期）；handler/types/browserskill 包绿。门禁：go build ./... 0、vet 0。
+- **预设红复核**：tools/service/container 失败全部为已记录家族；本轮新失败名（TestExecuteDurableRunPreservesImageInput 等 4 个）经 stash 基线逐一证实同为预存。
+- **A13 状态：🔄 阶段 2 完成（2/4）；A19：✅ 完成**。下轮=阶段 3（handler/session/browserskill.go 端点+路由+extension_test 适配评估）。
+
+### 2026-09-18 第 21 轮（A13 阶段 3：local-browser HTTP 面 + 会话删除清理）✅
+
+> worktree 提交 `360bbd5b`（4 文件）。**⚠️ 主仓台账第二次被外部覆盖**（`5663d3d7` 旧基线回退，与第一次 `81b2c58e` 同型）——从 f65def77 恢复重建，对方提交无新增内容。**本轮自身教训**：中段多条 bash 的 cwd 被工具重置回主仓（记忆里的铁律再次应验），一轮 600s 的测试跑在了主仓上作废——重新在 worktree 内验证后才收门禁。
+
+- **handler/session/browserskill.go 照搬**（158 行）：会话级 GET/POST /sessions/:id/local-browser（状态+preview/focus/select/start/resume/pause/stop 动作，GetOwnedSession 属主校验，40s 预算，4KiB 动作体）；/me/browser（pair 配对链接/状态/revoke）+/me/browser/extension（扩展包下载）走登录态组；扩展网关三端点挂裸引擎（pre-auth：WS 子协议携带设备凭据，authorize/internal 由 manager 自行认证——单次配对令牌/HMAC 签名集群 RPC）。
+- **Handler 接线**：browserSkill 字段（nil-safe——所有方法对 nil manager 视为禁用）+构造器参数（dig 从第 20 轮 Provider 自动解析）。
+- **会话删除清理**：单删 Forget([id])、批量 ids Forget(sanitizedIDs)、delete-all ForgetAll——被删会话不能再驱动已配对浏览器（上游 418/504/542 三处同位）。
+- **extension_test 适配评估（结论：继续推迟至阶段 4）**：需要 BROWSERSKILL_TEST_EXTENSION/CHROMIUM/PLAYWRIGHT 四环境变量+真实守护进程二进制，本环境不可达；其 node 脚本 harness 触发安全钩子，待阶段 4 做真浏览器端到端时一并处理。
+- **门禁（worktree 内）**：go build ./internal/... 0、vet 0、**router+handler 包 PASS**；handler/session 失败=已记录 Craft/agent-run 预存家族（stash 基线复核 TestCraftHTTPOwnerCreatesUploadsRunsTwoRounds 同败）。
+- **A13 状态：🔄 阶段 3 完成（3/4）**；下轮=阶段 4（React C2：BrowserTaskPreview/BrowserToolDetails 等价组件+C5 browserToolDisplay+i18n 五语言）。
 
 ## G. 纪律与教训
 
