@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -77,6 +78,10 @@ func (s *agentService) prepareAgentCapabilities(
 	}
 	if chatModel == nil {
 		return nil, fmt.Errorf("chat model is nil after initialization")
+	}
+	if config.LocalBrowserEnabled && (!s.browserSkill.Enabled() || config.SkillInstallMode()) {
+		return nil, fmt.Errorf("local browser is unavailable for this turn; " +
+			"enable the browser integration or update the input-bar selection")
 	}
 
 	toolRegistry := tools.NewToolRegistry()
@@ -152,6 +157,18 @@ func (s *agentService) prepareAgentCapabilities(
 			logger.Infof(ctx, "Skills manager initialized with %d skills",
 				len(skillsManager.GetAllMetadata()))
 		}
+	}
+
+	// Browser operations are native BrowserSkill RPCs, independent of shell and sandbox setup.
+	if config.LocalBrowserEnabled && s.browserSkill.Enabled() && !config.SkillInstallMode() {
+		tenant, _ := types.TenantIDFromContext(ctx)
+		user, _ := types.UserIDFromContext(ctx)
+		scope := browserskill.Scope{Tenant: tenant, User: user}
+		instructions, err := s.browserSearchInstructions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		toolRegistry.RegisterTool(tools.NewBrowserSkillTool(s.browserSkill, scope, sessionID, instructions))
 	}
 
 	return capabilities, nil

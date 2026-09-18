@@ -324,11 +324,70 @@ test('the streaming steer composer and the host steer path carry the inject shor
   assert.match(steerSubmitSource, /delivery: SteerDeliveryMode/, 'the steer enqueue input models both delivery modes');
   const hostSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
   assert.match(hostSource, /retrySteerId\?: string, delivery: 'after' \| 'inject' = 'after'/, 'the host steer handler accepts the delivery mode');
-  assert.match(hostSource, /delivery: retrySteerId \? undefined : delivery/, 'the dispatch forwards the shortcut delivery to the enqueue input');
 
   const pageSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
   assert.match(pageSource, /onKeyDown=\{handleDraftKeyDown\}[^>]*disabled=\{busy\}/, 'the steer textarea handles keydown (Enter queue / ⌘Enter inject)');
   assert.match(pageSource, /isSteerInjectShortcut\(event, true\)/, 'the inject shortcut gates the promote-or-inject branch');
   assert.match(pageSource, /resolveSteerInjectAction\(\{ draft, steerQueue \}\)/, 'an empty draft resolves onto the first queued chip');
   assert.match(pageSource, /steerQueue=\{props\.steerQueue\} onSteerPromote=\{props\.onSteerPromote\}/, 'the page forwards the queue and promote handler to the steer composer');
+});
+
+/*
+ * R475-A3 — retry delivery parity (Vue handleRetrySteer → handleSteerMsg(...,
+ * item.delivery, steerId)): the queue item persists the delivery mode, so a
+ * failed inject retries as an inject instead of degrading to 'after'.
+ */
+test('a failed inject retry re-enqueues with the original inject delivery', async () => {
+  const enqueueDeliveries: Array<string | undefined> = [];
+  let enqueueCalls = 0;
+  let firstSteerId = '';
+  const stream = async (_options: unknown, feed: (event: unknown) => void) => {
+    feed({ type: 'answer', content: 'working' });
+    await new Promise(() => undefined);
+  };
+  const client = baseClient({
+    enqueue: async (_sessionId: string, input: { delivery?: string; steerId?: string }) => {
+      enqueueCalls += 1;
+      enqueueDeliveries.push(input.delivery);
+      if (enqueueCalls === 1) {
+        firstSteerId = input.steerId ?? '';
+        throw Object.assign(new Error('boom'), { status: 503 });
+      }
+      return { success: true as const, status: 'queued' as const, steer_id: input.steerId ?? 'steer-retry-1' };
+    },
+    list: async () => ({ success: true as const, items: [] }),
+  }, stream);
+
+  const props = await renderChatRoutePage({ client, scopeController, location: 'http://weknora.test/platform/creatChat' });
+  (globalThis.window as { history: { pushState: (...args: unknown[]) => void } }).history.pushState = () => undefined;
+  const streaming = props.send({ content: 'hello', status: 'pending' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // ⌘Enter inject while streaming: the first enqueue fails.
+  await props.onSteer!('现在就注入', [], 'inject').catch(() => undefined);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(enqueueCalls, 1);
+  assert.equal(enqueueDeliveries[0], 'inject', 'the initial inject flows through to the enqueue input');
+
+  // The failed chip retry must stay an inject (R474 recorded it degrading to after).
+  await props.onSteerRetry!(firstSteerId);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(enqueueCalls, 2, 'the retry re-runs the enqueue');
+  assert.equal(enqueueDeliveries[1], 'inject', 'the retry keeps the original inject delivery (Vue item.delivery)');
+  void streaming;
+});
+
+/*
+ * R475-A3 — inject optimistic preview (Vue handleSteerMsg delivery === 'inject'
+ * → previewSteerMessage before the POST): the draft surfaces immediately as a
+ * pending user bubble, survives an enqueue failure flagged steer_failed, is
+ * settled/cleared per the enqueue receipt, and is discarded when the message
+ * degrades to a plain send or the turn is stopped.
+ */
+test('ChatRoutePage wires the Vue inject optimistic preview into the steer pipeline', () => {
+  const source = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /previewSteerUserMessage\(/, 'an inject submit appends the optimistic pending user bubble');
+  assert.match(source, /markSteerPreviewFailed\(/, 'a failed enqueue flags the optimistic row instead of dropping it');
+  assert.match(source, /clearSteerPreviewPending\(/, 'an already_injected receipt settles the optimistic row');
+  assert.match(source, /discardSteerPreviews\(/, 'the degrade-to-send / stop paths discard the optimistic rows');
 });

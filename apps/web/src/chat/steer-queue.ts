@@ -1,4 +1,4 @@
-import type { SteerMentionItem } from './steer-submit.ts';
+import type { SteerDeliveryMode, SteerMentionItem } from './steer-submit.ts';
 
 /*
  * R473-A2 — Vue steer queue parity (frontend/src/views/chat/index.vue
@@ -25,6 +25,13 @@ export interface WebSteerQueueItem {
   steerId: string;
   content: string;
   status: WebSteerQueueStatus;
+  /**
+   * R475-A3 — Vue item.delivery parity: the queue item remembers how it was
+   * dispatched so a failed inject retries as an inject (handleRetrySteer
+   * passes item.delivery) and the chip strip only shows after-messages
+   * (inject surfaces as an optimistic user bubble instead).
+   */
+  delivery: SteerDeliveryMode;
   mentionedItems?: SteerMentionItem[];
   awaitingIdleSend?: boolean;
 }
@@ -39,12 +46,14 @@ export interface SteerServerQueueItem {
 export function enqueueSteerItem(queue: readonly WebSteerQueueItem[], input: {
   steerId: string;
   content: string;
+  delivery?: SteerDeliveryMode;
   mentionedItems?: SteerMentionItem[];
 }): WebSteerQueueItem[] {
   return [...queue, {
     steerId: input.steerId,
     content: input.content,
     status: 'pending' as const,
+    delivery: input.delivery ?? 'after',
     ...(input.mentionedItems && input.mentionedItems.length > 0 ? { mentionedItems: input.mentionedItems } : {}),
   }];
 }
@@ -98,6 +107,9 @@ export function syncSteerQueueFromServer(queue: readonly WebSteerQueueItem[], se
       steerId: item.steer_id,
       content: item.content,
       status: 'queued' as const,
+      // Vue hydrateSteerQueue: the server entry owns the delivery mode and a
+      // missing field normalises to 'after'.
+      delivery: item.delivery === 'inject' ? 'inject' : 'after',
       ...(local?.mentionedItems && local.mentionedItems.length > 0 ? { mentionedItems: local.mentionedItems } : {}),
     };
   });
@@ -107,7 +119,13 @@ export function syncSteerQueueFromServer(queue: readonly WebSteerQueueItem[], se
   return [...adopted, ...preserved];
 }
 
-/** Queue projection consumed by the composer chip strip. */
+/**
+ * Queue projection consumed by the composer chip strip. Vue index.vue line
+ * 163 filters `item.delivery === 'after'`: an inject already surfaces as an
+ * optimistic user bubble (previewSteerUserMessage), never as a chip.
+ */
 export function steerQueueChips(queue: readonly WebSteerQueueItem[]): Array<{ steerId: string; content: string; status: WebSteerQueueStatus }> {
-  return queue.map((item) => ({ steerId: item.steerId, content: item.content, status: item.status }));
+  return queue
+    .filter((item) => item.delivery !== 'inject')
+    .map((item) => ({ steerId: item.steerId, content: item.content, status: item.status }));
 }

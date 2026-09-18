@@ -48,6 +48,7 @@ import (
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
@@ -420,6 +421,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
 	// above panicked at boot because those providers appear later in the
 	// registration order (first observed booting the real server in W06).
+
+	// Local browser integration (A13): one gateway manager per process,
+	// validated at DI time and closed with the resource cleaner. The manager
+	// is disabled (zero-value Enabled) unless BROWSERSKILL_BINARY is set, so
+	// deployments without the integration boot unchanged.
+	must(container.Provide(func(cleaner interfaces.ResourceCleaner, db *gorm.DB) (*browserskill.Manager, error) {
+		manager := browserskill.NewManager(browserskill.NewStore(db))
+		if err := manager.ValidateConfiguration(); err != nil {
+			return nil, err
+		}
+		cleaner.RegisterWithName("BrowserSkill", func() error { manager.Close(); return nil })
+		return manager, nil
+	}))
 
 	must(container.Provide(service.NewAgentService))
 
