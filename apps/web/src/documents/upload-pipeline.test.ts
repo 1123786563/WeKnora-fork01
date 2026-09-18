@@ -310,6 +310,22 @@ test('dialog state seeds from knowledge base defaults like Vue initFromKbInfo', 
   assert.equal(uploadConfirmStateFromKb(null).chunkSize, 512);
 });
 
+// R475 A1 (R474 A4 P2 root cause): live KBs store chunk_size/chunk_overlap = 0
+// ("not customized"). Vue initFromKbInfo (UploadConfirmDialog.vue L1096-1101)
+// seeds with `kb.chunking_config?.chunk_size || 512` — the falsy 0 falls back
+// to the default. React's num() kept the 0, the page confirm guard then
+// rejected (< 100) and the confirm click silently issued no POST.
+test('zero chunking values fall back to Vue defaults like initFromKbInfo || semantics', () => {
+  const state = uploadConfirmStateFromKb({
+    chunking_config: { chunk_size: 0, chunk_overlap: 0, parent_chunk_size: 0, child_chunk_size: 0, strategy: '' },
+  });
+  assert.equal(state.chunkSize, 512, 'chunk_size 0 seeds the 512 default');
+  assert.equal(state.chunkOverlap, 80, 'chunk_overlap 0 seeds the 80 default');
+  assert.equal(state.parentChunkSize, 4096);
+  assert.equal(state.childChunkSize, 384);
+  assert.equal(state.chunkStrategy, 'auto');
+});
+
 test('reparse seeding applies stored overrides and reads back pdf_force_scanned', () => {
   const base = uploadConfirmStateFromKb({ chunking_config: { chunk_size: 512 } });
   const seeded = applyUploadOverrides(base, {

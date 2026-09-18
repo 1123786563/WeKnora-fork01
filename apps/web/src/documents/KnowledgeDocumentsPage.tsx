@@ -2771,19 +2771,13 @@ export function KnowledgeDocumentsPage({
       setUploadError(ct("uploadConfirm.noItems"));
       return;
     }
-    if (!Number.isInteger(confirmState.chunkSize) || confirmState.chunkSize < 100 || confirmState.chunkSize > 4000) {
-      setUploadError(t("knowledgeEditor.chunking.sizeDescription"));
-      return;
-    }
-    if (
-      !Number.isInteger(confirmState.chunkOverlap) ||
-      confirmState.chunkOverlap < 0 ||
-      confirmState.chunkOverlap > 500 ||
-      confirmState.chunkOverlap >= confirmState.chunkSize
-    ) {
-      setUploadError(t("knowledgeEditor.chunking.overlapDescription"));
-      return;
-    }
+    // No chunking range guard here: Vue handleConfirm only runs the
+    // multimodal/ASR validateBeforeConfirm (UploadConfirmDialog.vue L1380-1411)
+    // — the 100-4000 / 0-500 bounds are the number inputs' UI range (React
+    // UploadNumberInput min/max matches the Vue t-input-number bounds), and the
+    // KB seed falls back to the Vue defaults for "not customized" zeros. A
+    // submit-time guard here used to swallow the confirm click with no POST
+    // whenever a live KB stored chunk_size 0 (R474 A4 P2).
     const validationFailure = uploadConfirmValidationFailure({ state: confirmState, hasImages, hasAudio });
     if (validationFailure) {
       setUploadError(ct(validationFailure.messageKey));
