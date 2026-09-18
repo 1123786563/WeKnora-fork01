@@ -111,6 +111,9 @@ type MessageRepository interface {
 	ListMessagesBySessionUpTo(
 		ctx context.Context, sessionID string, boundary time.Time, boundaryID string,
 	) ([]*types.Message, error)
+	// ListMessagesBySessionAfterCursor uses (created_at, id) for lossless
+	// paging — the memory extraction walk reads a session this way.
+	ListMessagesBySessionAfterCursor(ctx context.Context, sessionID string, cursor types.MemoryMessageCursor, limit int) ([]*types.Message, error)
 	// GetMessagesByRequestIDs retrieves messages by request ID inside one session
 	// (used to fetch Q&A pair partners). Empty sessionID returns no rows.
 	GetMessagesByRequestIDs(
