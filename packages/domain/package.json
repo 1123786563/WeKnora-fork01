@@ -32,7 +32,8 @@
     "./scope": "./src/scope.ts",
     "./settings/local-preferences": "./src/settings/local-preferences.ts",
     "./settings/local-preferences.test": "./src/settings/local-preferences.test.ts",
-    "./wiki/diff": "./src/wiki/diff.ts"
+    "./wiki/diff": "./src/wiki/diff.ts",
+    "./craft/version-selection": "./src/craft/version-selection.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

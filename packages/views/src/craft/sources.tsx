@@ -36,6 +36,11 @@ export interface CraftSourcesProps {
   /** Citation currently being resolved (for pending state only). */
   openingCitation: string | null;
   /**
+   * Citations whose backing share was revoked (CFT-S01-T011): the row keeps
+   * only the citable placeholder — no cached excerpt, no title replay.
+   */
+  revokedCitationIds?: readonly string[];
+  /**
    * Opens one source by its durable ref. The assembly resolves it through
    * the existing resource permission chain on every click; it must never
    * cache or pre-sign a URL into this component.
@@ -54,6 +59,8 @@ interface SourceLabels {
   opening: string;
   truncated: string;
   shared: string;
+  revoked: string;
+  revokedTitle: string;
 }
 
 function sourceLabels(locale: CraftLocale): SourceLabels {
@@ -69,6 +76,8 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
       opening: '打开中…',
       truncated: '检索命中超出材料上限，仅保留前 20 条 / 64KiB。',
       shared: '共享库',
+      revoked: '已撤权',
+      revokedTitle: '该来源的共享授权已被撤回，引用占位保留，原文不可再打开。',
     };
   }
   return {
@@ -82,6 +91,8 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
     opening: 'Opening…',
     truncated: 'Retrieval exceeded the material caps; only the first 20 sources / 64 KiB are kept.',
     shared: 'Shared library',
+    revoked: 'Revoked',
+    revokedTitle: 'The backing share was revoked; the citation placeholder stays, the excerpt cannot reopen.',
   };
 }
 
@@ -106,28 +117,35 @@ export function CraftSources(props: CraftSourcesProps) {
             </tr>
           </thead>
           <tbody>
-            {props.sources.map((source) => (
-              <tr key={source.citationId} data-testid="craft-source-item">
-                <td>
-                  <code>{source.citationId}</code>
-                  <div>{source.title}</div>
-                </td>
-                <td><code>{source.digest.slice(0, 12)}…</code></td>
-                <td>{formatBytes(source.excerptBytes)}</td>
-                <td>
-                  {source.tenantId}
-                </td>
-                <td>
-                  <Button
-                    type="button"
-                    disabled={props.openingCitation === source.citationId}
-                    onClick={() => props.onOpenSource(source.citationId, source.ref)}
-                  >
-                    {props.openingCitation === source.citationId ? labels.opening : labels.open}
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {props.sources.map((source) => {
+              const revoked = props.revokedCitationIds?.includes(source.citationId) ?? false;
+              return (
+                <tr key={source.citationId} data-testid="craft-source-item" data-revoked={revoked}>
+                  <td>
+                    <code>{source.citationId}</code>
+                    <div>{revoked ? labels.revoked : source.title}</div>
+                  </td>
+                  <td>{revoked ? <span className="wk-craft-muted">{labels.revoked}</span> : <code>{source.digest.slice(0, 12)}…</code>}</td>
+                  <td>{revoked ? '—' : formatBytes(source.excerptBytes)}</td>
+                  <td>
+                    {source.tenantId}
+                  </td>
+                  <td>
+                    {revoked ? (
+                      <Button type="button" disabled title={labels.revokedTitle}>{labels.revoked}</Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        disabled={props.openingCitation === source.citationId}
+                        onClick={() => props.onOpenSource(source.citationId, source.ref)}
+                      >
+                        {props.openingCitation === source.citationId ? labels.opening : labels.open}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
