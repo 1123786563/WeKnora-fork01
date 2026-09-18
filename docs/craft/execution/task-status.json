@@ -338,7 +338,7 @@
     },
     {
       "id": "CFT-S05-T035",
-      "status": "planned",
+      "status": "verified",
       "deps": [
         "CFT-S02-T015",
         "CFT-S02-T016",
@@ -346,7 +346,9 @@
         "CFT-S03-T020",
         "CFT-S03-T022",
         "CFT-S03-T023"
-      ]
+      ],
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S05-T035/"
     },
     {
       "id": "CFT-S05-T036",
