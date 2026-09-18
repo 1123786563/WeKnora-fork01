@@ -5240,3 +5240,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r470-code-parity-round.md`. No Vue, mobile, or Go code was modified
   by this round. R471 queue: A2 stop live gap; settings error-UX alignment; generated-questions popover;
   image-upload reverse gap.
+
+## 2026-09-18 Round R471 — stop gap closed (live-verified), settings error-UX modes, generated-questions landed
+
+- Four parallel agents (A1 stop-button root cause, A2 settings error-UX, A3 generated-questions, A4 verifier
+  with live verification). Verdict: all PASS; gates test:web 1801/1801 (+23), test:shared 791/791, typecheck
+  0, build ✓, integrity PASS.
+- A1: R470's two candidates both confirmed (① primary — Vue canSteer is isAgentStreamSession so quick-answer
+  sessions have NO steer, while React's Boolean(onSteer) was always true; ② Vue clears the draft on both send
+  and steer emits, React never did). Fixed via an explicit canSteer prop (Boolean(selectedAgentId)),
+  SteerComposer hidden for quick-answer, and submitDraft clearing the draft. LIVE-VERIFIED first time: stop
+  appears in 84ms (replacing the send button), draft clears, stop click rolls back in 565ms. +10 tests.
+- A2: settings error-UX aligned per Vue's three modes (models localized toast + UI kept; skills/mcp toast +
+  central empty + retry; members/storage banner + raw message + retry) via a new imperative settings-toast
+  bus (3s auto-dismiss). Two SOURCE-vs-EVIDENCE discrepancies documented for upstream-Vue adjudication
+  (ModelSettings passes error.message through; skills/mcp empty states lack retry in source — React implements
+  the sanctioned superset). +6 tests; settings+platform 482/482.
+- A3: generated-questions landed in full with two contract corrections (DELETE carries {question_id} as a
+  JSON body — A4's decisive probe; regenerate has no confirm). api-client type + upsert/delete/regenerate
+  (envelope-validated); documents panel full CRUD with entry gating/stale hints/legacy ids/mutual
+  exclusion/canEditKB||admin. +9 tests; 36/237 green. Deferred: three common i18n keys degraded, questionDeleted
+  emit unconsumed.
+- Gates: test:web 1801/1801, test:shared 791/791, typecheck 0, build ✓. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r471-code-parity-round.md`. No Vue, mobile, or Go code was modified by
+  this round. R472 queue: questions UI live smoke (toggle-hidden root cause), main-box same-frame steer form,
+  A2 inline sections + system-admin capture, three i18n keys.
