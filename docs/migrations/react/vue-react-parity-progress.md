@@ -5189,3 +5189,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates and evidence as above; `evidence/vue-react-parity/2026-09-18-r468-audit-and-browser-round.md`. No
   Vue, mobile, or Go code was modified by this round. Next-round queue: api-client unblock → parent-context;
   A2 Top10; A3 P1 wizard adjudication.
+
+## 2026-09-18 Round R469 — parent-context landed, chat-tour adjudicated (P1 corrected), N009 spans defect found
+
+- Four parallel agents (A1 api-client unblock + parent-context, A2 chat-wizard adjudication, A3 Top10 browser
+  anchoring, A4 verifier with live verification). Verdict: all PASS; +11 tests; gates green after isolated
+  reruns attribute 3 failures (2 known flakes + 1 CPU-contention mobile perf).
+- A1: documents.getChunkById (GET /chunks/by-id, envelope-validated against the real handler) + the
+  parent-context popover per the R468 contract (lazy load + shared parent-id cache hoisted past the loading
+  unmount, failure toast, mutual exclusion, doc-switch close with cache retention — inline expansion form).
+  Live-verified end-to-end with a temp fixture (one request, zero re-fetch on toggle). documents 226/226.
+  Generated-questions evaluated high-cost (3 endpoints + CRUD UI) — contract recorded, own round queued.
+- A2: the R468 P1 "4-step wizard" was a MISREAD — it is the chat contextual spotlight guide (kb→input→send→
+  done, one-shot, gated on the welcome guide), already ported R464-R467; the real gap was 3 composer spotlight
+  anchors (data-guide), now added (+4 tests; live-verified four-step flow + persistence). 近7天 headers were
+  already inert on both ends (the guide's mask explained the Vue observation); semantics pinned by test.
+- A3 (17 paired screenshots): N019 composer C→A (sending-state stop-button diff + upload-button diff);
+  N021/N022 blocked by fixture void (no session carries tool_calls/knowledge_references); N023 C→B (bare
+  /login BOTH ends, redirect query dropped on BOTH — two-ended gap); **N009 C→A− with the round's big find:
+  React's processing panel shows all stages 等待中 while the spans API returns the complete trace Vue renders
+  (2m10.4s, 5/5 stages, 4 failures) — a functional defect in React's spans consumption**. Coverage A 50→52,
+  B 10→13.
+- Gates: test:web 1769/1771 (3 isolated-rerun-passed, attributed), test:shared 788/789 (same-class flake),
+  typecheck 0, build ✓, integrity PASS. Evidence:
+  `evidence/vue-react-parity/2026-09-18-r469-code-parity-round.md`. No Vue, mobile, or Go code was modified
+  by this round. Next-round queue head: N009 spans defect; then generated-questions popover.
