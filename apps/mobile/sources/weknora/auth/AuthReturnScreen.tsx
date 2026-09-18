@@ -8,8 +8,8 @@ import { useProductAuth } from './session';
 import { useMobileHost } from '@/weknora/platform/host';
 import { createOIDCApi } from '@weknora/api-client';
 
-const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
-const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
+const NATIVE_PKCE_VERIFIER_KEY = 'weknora.native-oidc.pkce-verifier';
+const NATIVE_OIDC_STATE_KEY = 'weknora.native-oidc.state';
 
 const COPY: Record<AuthReturnOutcome['status'], { title: string; body: string }> = {
   verified: {

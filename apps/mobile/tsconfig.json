@@ -6,9 +6,27 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./sources/*", "./src/*"],
-      "esbuild": ["../web/node_modules/esbuild"]
+      "@/*": [
+        "./sources/*",
+        "./src/*"
+      ],
+      "esbuild": [
+        "../web/node_modules/esbuild"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "app",
+    "android",
+    "ios",
+    "build",
+    "src/features"
+  ]
 }

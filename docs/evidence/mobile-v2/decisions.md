@@ -117,3 +117,10 @@ MX-017 产品对话重写消除了 ConversationScreen 的 3 个 G02/G04 继承�
 
 - python str.replace 无 assert 时静默无操作——曾导致 5cf0789c 提交信息与 diff 不符（声称清除 probe 参数实际未清除）。纪律固化：**一切脚本化替换必须 assert 命中或事后 grep 验证**；记录失实由复核抓获即真实修正+披露，不二次粉饰。
 - MX-015 锁路径偏离（weknora/workbench/task-form.ts → packages/domain/src/mobile/task-form.ts）已披露登记：纯领域模型落位 domain 使 node probe 可直接消费；无并发冲突（原路径无其他声明者）。
+
+## D-028 · 设备实测三项修复（2026-09-18，MX-034 解封会话）
+
+- 路由根遮蔽：app.config.ts 补 router.root='./sources/app'（841d4319 引入的 .ts 遮蔽 368eb42d 的 .js——产品链曾被 desktop 骨架 apps/mobile/app/ 整体接管）。
+- 入口初始化顺序：apps/mobile/index.ts 先 import sources/unistyles.ts（require-context 使 "(app)/" 先于 "_layout" 求值）。
+- SecureStore key 合法化：全部含 ':' 的 key 改为 '.'（Android Invalid key 实测）。
+- 附带：tsconfig 排除 app/、android/、ios/、build/、src/features（desktop 骨架与原生产物不入移动 typecheck；'/dev' 死链 2 项计入新基线 13=D-026 11+2）。

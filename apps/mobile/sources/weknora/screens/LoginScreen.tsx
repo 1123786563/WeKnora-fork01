@@ -16,8 +16,8 @@ import { useWeknoraTheme } from '../ui/theme.ts';
  * 真实命令：密码登录=useProductAuth().login（真实 /auth/login）；SSO=原生 OIDC startNative（PKCE+state 落 SecureStore）。
  * 不模拟成功：失败即错误态（StateView error），无假延迟/Toast。
  */
-const NATIVE_PKCE_VERIFIER_KEY = 'weknora:native-oidc:pkce-verifier';
-const NATIVE_OIDC_STATE_KEY = 'weknora:native-oidc:state';
+const NATIVE_PKCE_VERIFIER_KEY = 'weknora.native-oidc.pkce-verifier';
+const NATIVE_OIDC_STATE_KEY = 'weknora.native-oidc.state';
 const AUTH_RETURN_REDIRECT = 'weknora://auth-return';
 
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated?: () => void }) {
