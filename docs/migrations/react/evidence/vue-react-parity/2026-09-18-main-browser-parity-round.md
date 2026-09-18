@@ -193,3 +193,12 @@ body.innerText 可见文本集合（框架无关），程序化求差后逐项�
   5 文档、会话）未恢复——后续轮次如需再补。
 - 未扫页面说明：apps/authorization 与 actions 的数据态、onboarding（需无租户账号）、
   register 邀请态依赖外部 fixture，维持失败分支已验 + 记录阻塞。
+
+### 归属说明（第八次外部清扫）
+
+第三轮的未提交工作再次被并行进程收割：6072429e（"refactor: 完成多页面Vue代码迁移对齐与
+注释补充"）携带本轮全部代码修复的主体（members 注释/导航图标/批量管理/displayName/
+envvars 守卫/SVG 图标/Ollama 格式化/WeKnoraCloud 面板与 i18n），随提交一并卷入四条
+migration 改名（000136→000156/157，100% 纯改名，属并行车道内容）；f619eb6c 为其后残余增
+量（ollama loader 兜底、云凭证收起时序、5 个测试断言更新与本台账）。净内容与工作树一致，
+门禁在该树上全绿。
