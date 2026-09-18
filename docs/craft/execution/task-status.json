@@ -282,12 +282,14 @@
     },
     {
       "id": "CFT-S04-T030",
-      "status": "planned",
+      "status": "verified",
       "deps": [
         "CFT-S04-T029",
         "CFT-S01-T010",
         "CFT-S03-T020"
-      ]
+      ],
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S04-T030/"
     },
     {
       "id": "CFT-S05-T031",

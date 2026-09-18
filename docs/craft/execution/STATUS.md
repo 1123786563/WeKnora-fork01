@@ -4,7 +4,7 @@
 
 状态语义：planned → ready → in_progress → implemented → verified → reviewed → merged；blocked 必须写明原因/影响/解除条件。
 
-## 当前阶段：S00-S03 全部关闭（T001-T024 全 verified，24/36）——首个产品里程碑达成
+## 当前阶段：S00-S04 全部关闭（T001-T030 全 verified，30/36）——网页里程碑 + Office 三类型浏览器验收全部通过（模拟环境）
 
 | 任务 | 标题 | 状态 | 说明 |
 |---|---|---|---|
