@@ -31,7 +31,7 @@
 | A8 | Confluence 同步连接器 | `01f0700` internal/datasource/connector/confluence | 无 | ✅ 完成（2026-09-18 第 14 轮，worktree eb12a2e2：整包应用+FullStreamingConnector+去重源域收敛+容器注册；/datasource/types 实测返回 confluence deletion_sync；前端表单细化留 UI 轮） |
 | A9 | 钉钉连接器（stream-only） | `5d3114f` internal/datasource/connector/dingtalk + d7ccd5b 迁移 | 无 | ✅ 完成（2026-09-18 第 15 轮，worktree 035d710b：整包 32 测试+FullSyncWithCursor+迁移重编 000152+容器实测 oauth2/deletion_sync） |
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
-| A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ⬜ 待办（大条目，需适配 trpc-agent-go checkpoint） |
+| A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ✅ 完成（第 10-13 轮四阶段：schema/迁移/历史查询→service+路由→沙箱 checkpoint 基建+trpc 挂点→React 入口 C1；第 17 轮 A17 落地后 SessionForkSandboxPort 真实接线） |
 | A12 | 记忆提取（memory extraction/lifecycle/vector） | `e42f09d` internal/application/repository/memory_*.go + 迁移 | 内部为旧形态（接缝已同形） | ✅ 完成（2026-09-18 第 16 轮，worktree 865c82fa：租约协议/SaveItem 替换序列化/全库向量排序+6 一致性测试套件；迁移 000153/000154+sqlite 074/075；容器实测 v154+表落地） |
 | A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/` + agent/tools/browserskill* + 迁移 | 无 | ⬜ 待办（最大条目，依赖 sandbox 基础设施） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
@@ -67,7 +67,7 @@
 
 | # | 功能 | 状态 |
 |---|---|---|
-| C1 | 会话 fork 入口（forkPoint.ts + 消息操作） | ⬜ 等 A11 |
+| C1 | 会话 fork 入口（forkPoint.ts + 消息操作） | ✅ 完成（第 13 轮，worktree 45461fa8：fork-point 解析+sessionStorage stash+消息级入口+谱系角标+端到端实测） |
 | C2 | BrowserSkill 聊天内 UI（BrowserTaskPreview/BrowserToolDetails） | ⬜ 等 A13 |
 | C3 | SandboxDesktop 桌面组件 + Document Picture-in-Picture | ⬜ 等 A14 |
 | C4 | KnowledgeTagFilter 组件化 | ⬜ 等 B13 |
