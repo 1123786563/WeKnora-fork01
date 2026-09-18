@@ -29,14 +29,25 @@ export function injectedSteerRowId(steerId: string): string {
   return `injected-${steerId}`;
 }
 
-/** Append the optimistic pending user bubble for an inject submission (idempotent). */
+/**
+ * Append the optimistic pending user bubble for an inject submission
+ * (idempotent). A retry over an existing row clears the failed flag — Vue
+ * handleSteerMsg re-previews then runs `delete preview._steerFailed`.
+ */
 export function previewSteerUserMessage(messages: readonly ChatMessage[], input: {
   sessionId: string;
   steerId: string;
   content: string;
   mentionedItems?: readonly SteerMentionItem[];
 }): ChatMessage[] {
-  if (messages.some((row) => row.role === 'user' && row.steer_id === input.steerId)) return [...messages];
+  const existingIndex = messages.findIndex((row) => row.role === 'user' && row.steer_id === input.steerId);
+  if (existingIndex >= 0) {
+    const existing = messages[existingIndex];
+    if (existing.steer_failed === undefined) return [...messages];
+    const settled = { ...existing };
+    delete settled.steer_failed;
+    return messages.map((row, index) => (index === existingIndex ? settled : row));
+  }
   const row: ChatMessage = {
     id: injectedSteerRowId(input.steerId),
     session_id: input.sessionId,
@@ -81,4 +92,22 @@ export function discardSteerPreviews(messages: readonly ChatMessage[], steerIds?
     const byRowId = rowIds?.includes(row.id) ?? false;
     return !(bySteerId || byRowId);
   });
+}
+
+/**
+ * Receipt reconcile (Vue reconcileSteerMessageId): the POST answered with the
+ * server steer id. When the SSE receipt already landed the persisted row the
+ * optimistic duplicate goes away; otherwise the optimistic row rebases onto the
+ * server id (both `steer_id` and the `injected-<id>` row id) so the SSE
+ * receipt replaces it by id.
+ */
+export function reconcileSteerPreview(messages: readonly ChatMessage[], clientSteerId: string, serverSteerId: string): ChatMessage[] {
+  if (!serverSteerId || serverSteerId === clientSteerId) return [...messages];
+  const receiptLanded = messages.some((row) => row.role === 'user' && row.steer_id === serverSteerId && !row.steer_pending);
+  if (receiptLanded) {
+    return messages.filter((row) => !(row.role === 'user' && row.steer_id === clientSteerId && row.steer_pending));
+  }
+  return messages.map((row) => row.role === 'user' && row.steer_id === clientSteerId
+    ? { ...row, steer_id: serverSteerId, id: injectedSteerRowId(serverSteerId) }
+    : row);
 }

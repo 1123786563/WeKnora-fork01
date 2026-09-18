@@ -7,9 +7,10 @@ import { build } from 'esbuild';
 
 interface CapturedChatPageProps {
   send(submission: { content: string; status: 'pending' }): Promise<void>;
-  onSteer?(content: string, mentionedItems?: readonly unknown[]): Promise<void>;
+  onSteer?(content: string, mentionedItems?: readonly unknown[], delivery?: 'after' | 'inject'): Promise<void>;
   onSteerPromote?(steerId: string): void | Promise<void>;
   onSteerRemove?(steerId: string): void | Promise<void>;
+  onSteerRetry?(steerId: string): void | Promise<void>;
   steerQueue?: readonly unknown[];
 }
 
