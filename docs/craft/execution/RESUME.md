@@ -1,6 +1,6 @@
 # CFT 续跑入口（RESUME）
 
-最后更新：2026-09-18（T015 完成后；累计 verified 15/36：S00+S01 全闭 + T013/T014/T015）
+最后更新：2026-09-18（T018 完成后；累计 verified 18/36：S00+S01+S02 三阶段全闭）
 
 ## 已完成（verified，自审；证据目录 docs/craft/evidence/<task-id>/）
 
@@ -21,6 +21,9 @@
 | CFT-S02-T013 | 1646a846 | 协议 pin 3 测试 + CRAFT_LIVE=1 真实 serve 两轮 PASS |
 | CFT-S02-T014 | b0cb7666 | TestDelegationIdentity*（幂等/冲突/重启读回） |
 | CFT-S02-T015 | b2a3961a | **修复真实缺口**：预检读失败盲重发 prompt → 拒绝重提交转 unknown；3 注入测试 + live 50.8s 复验 |
+| CFT-S02-T016 | 6c15ace9 | TestCraftWorkspaceGuard* 四断言矩阵（单写者/stale 零写入/stale fence 全链拒绝/读不占写槽） |
+| CFT-S02-T017 | 5864d627 | TestCraftSourceGuard*（跨租户拒绝/共享按资源 ACL/注入文档纯数据结构白名单） |
+| CFT-S02-T018 | e455743f | TestCraftExecutionBudget*（拒绝零请求/重放去重/重试如实/unknown 计数非 0） |
 
 测试基线：test:craft:shared **108 pass**；playwright mock **6/6**；go craft 103 + handler/service 全绿；typecheck:shared/web 通过。
 
@@ -36,8 +39,9 @@
 
 ## S02/S03 提示（按差距核实模式）
 
-- 后端语义大量已有（internal/craft 20+ 模块 103 测试、W01-W06 报告）；T013-T023 按任务卡逐项核对现状（幂等/CAS/fence/预算/恢复/审批送达在 Go 测试与 docs/testing/craft/web-acceptance.md 有历史证据），缺什么补什么，不重建。
-- **T024 里程碑验收**：跑 craft-stack.sh real 模式（W06 历史通过，需本轮复跑）+ mock 全量 + 反例清单。
+- T019 不可变发布/T020 预览/T021 主 Agent 归并/T022 恢复/T023 审批取消：后端实现大量已有（W01-W06 + C02/C05 + 103 Go 测试 + e2e mock 6/6 全绿），按任务卡逐项核对 + pin 测试（S02 模式：Test<Task>* 汇总断言）。
+- **T024 里程碑**：mock 全量（当前绿）+ real 模式复跑（craft-stack.sh up/run real，W06 历史通过）+ 十反例清单核对（部分已有：跨租户/隔离/幂等/恶意 fixture 在 e2e 03-06；断流/游标/旧 worker/取消竞态/撤权/预算触顶/恢复冲突在 Go 层 pin——T024 汇总执行证据）。
+- 测试基线：test:craft:shared 108；go craft 103+；e2e mock 6/6；live serve 两轮绿。
 
 ## 未提交改动 / 锁 / 进程
 
