@@ -55,7 +55,7 @@ export function CraftHome(props: CraftHomeProps) {
   const goalTitle = goal.trim();
 
   return (
-    <main className="wk-craft-page" aria-label={strings.craftHomeTitle}>
+    <main className="wk-craft wk-craft-page" aria-label={strings.craftHomeTitle}>
       <header className="wk-craft-head">
         <div>
           <h1>{strings.craftHomeTitle}</h1>

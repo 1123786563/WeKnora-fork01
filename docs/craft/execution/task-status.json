@@ -19,7 +19,9 @@
     },
     {
       "id": "CFT-S00-T003",
-      "status": "ready"
+      "status": "verified",
+      "review": "self",
+      "evidence": "docs/craft/evidence/CFT-S00-T003/"
     },
     {
       "id": "CFT-S00-T004",

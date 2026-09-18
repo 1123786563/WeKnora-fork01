@@ -702,7 +702,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   };
 
   return (
-    <main className="wk-craft-page" aria-label={props.title || strings.craftHomeTitle}>
+    <main className="wk-craft wk-craft-page" aria-label={props.title || strings.craftHomeTitle}>
       <div className="wk-craft-head">
         <div>
           <h1>{props.title === '' ? props.sessionId : props.title}</h1>
