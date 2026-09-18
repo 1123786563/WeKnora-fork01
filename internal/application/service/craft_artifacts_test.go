@@ -93,6 +93,9 @@ type memVersionStore struct {
 	byID      map[string]craft.Version
 	order     []string
 	publishes int
+	// failPublish injects a publish-transaction failure (CFT-S03-T019):
+	// uploads already succeeded, so staging exists but no version lands.
+	failPublish bool
 }
 
 func newMemVersionStore() *memVersionStore {
@@ -100,6 +103,9 @@ func newMemVersionStore() *memVersionStore {
 }
 
 func (m *memVersionStore) Publish(_ context.Context, _ craft.Scope, v craft.Version) (craft.Version, error) {
+	if m.failPublish {
+		return craft.Version{}, stderrors.New("publish transaction failed (injected)")
+	}
 	digest, err := craft.ManifestDigest(v.Files)
 	if err != nil {
 		return craft.Version{}, err

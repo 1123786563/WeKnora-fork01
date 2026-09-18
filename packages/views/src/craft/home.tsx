@@ -3,12 +3,24 @@
 // Pure view component: every piece of data and every action arrives through
 // props — no global storage reads, no network. The assembly (apps/web
 // routes.tsx) owns sessions, uploads and navigation.
-import { useState } from 'react';
-import type { CraftSessionKind, CraftSessionSummaryView } from '@weknora/contracts';
+import React, { useState } from 'react';
+import type { CraftCapabilitiesView, CraftSessionKind, CraftSessionSummaryView } from '@weknora/contracts';
 import { CRAFT_SESSION_KINDS } from '@weknora/contracts';
 import { Button } from '@weknora/ui';
+import { craftKindDisabledReason, craftViewCapabilities, type CraftViewCapabilities } from '@weknora/domain/craft/capabilities';
 import { craftStrings, formatDateTime, type CraftLocale } from './presentation.ts';
 import './craft.css';
+
+/** Adapts the wire capabilities view through the domain projection rules. */
+export function capabilitiesFromView(view: CraftCapabilitiesView | null | undefined): CraftViewCapabilities | null {
+  if (view === null || view === undefined) return null;
+  return craftViewCapabilities({
+    gateEnabled: view.enabled,
+    allowedKinds: view.allowed_kinds,
+    canWrite: view.enabled,
+    maxInputBytes: null,
+  });
+}
 
 export interface CraftAttachmentDraft {
   id: string;
@@ -31,6 +43,10 @@ export interface CraftHomeProps {
   locale: CraftLocale;
   canCreate: boolean;
   createBusy: boolean;
+  /** Server gate projection; null keeps the legacy all-kinds assembly. */
+  capabilities?: CraftViewCapabilities | null;
+  /** One-shot prefill from a template pick (P03: fill the form only). */
+  initial?: { goal?: string; kind?: CraftSessionKind };
   createError: string | null;
   listStatus: 'loading' | 'error' | 'ready';
   listError: string | null;
@@ -46,16 +62,22 @@ export interface CraftHomeProps {
   onRetryList(): void;
 }
 
+export interface CraftHomeCreateInput {
+  title: string;
+  kind: CraftSessionKind;
+  knowledgeScope: string;
+}
+
 export function CraftHome(props: CraftHomeProps) {
   const strings = craftStrings(props.locale);
-  const [goal, setGoal] = useState('');
-  const [kind, setKind] = useState<CraftSessionKind>('web');
+  const [goal, setGoal] = useState(props.initial?.goal ?? '');
+  const [kind, setKind] = useState<CraftSessionKind>(props.initial?.kind ?? 'web');
   const [knowledgeScope, setKnowledgeScope] = useState('');
 
   const goalTitle = goal.trim();
 
   return (
-    <main className="wk-craft-page" aria-label={strings.craftHomeTitle}>
+    <main className="wk-craft wk-craft-page" aria-label={strings.craftHomeTitle}>
       <header className="wk-craft-head">
         <div>
           <h1>{strings.craftHomeTitle}</h1>
@@ -84,10 +106,21 @@ export function CraftHome(props: CraftHomeProps) {
               value={kind}
               onChange={(event) => setKind(event.target.value as CraftSessionKind)}
             >
-              {CRAFT_SESSION_KINDS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
+              {CRAFT_SESSION_KINDS.map((option) => {
+                // CFT-S01-T009: kinds outside the server gate are offered but
+                // disabled WITH their reason — the draft survives, nothing is
+                // silently degraded. No capabilities prop = legacy assembly.
+                const reason = props.capabilities ? craftKindDisabledReason(option, props.capabilities) : null;
+                return (
+                  <option key={option} value={option} disabled={reason !== null}>
+                    {option}{reason !== null ? `（${reason}）` : ''}
+                  </option>
+                );
+              })}
             </select>
+            {props.capabilities && craftKindDisabledReason(kind, props.capabilities) !== null ? (
+              <p className="wk-craft-error" role="alert">{craftKindDisabledReason(kind, props.capabilities)}</p>
+            ) : null}
           </div>
           <div className="wk-craft-field">
             <label htmlFor="craft-knowledge-select">{strings.craftKnowledgeScopeLabel}</label>

@@ -109,3 +109,39 @@
   --shadow-panel: 0 20px 60px rgb(23 32 51 / 20%);
   --shadow-popover: 0 8px 24px rgb(15 23 42 / 12%);
 }
+
+/* CFT-S00-T003 craft scope: semantic aliases for the craft surfaces.
+   Every alias RESOLVES an existing source variable above — the blue brand
+   stays --color-primary (#2e6de6) and the green create action stays
+   --color-accent (#07c05f); nothing here repaints :root. Two deliberate
+   accessibility/scope additions (per the hifi design doc §2.1):
+   - --craft-action-fg: ink (#172033) on the green action — the small-size
+     button foreground keeps >= 4.5:1 where white-on-green does not;
+   - --craft-secondary-text: the canvas-safe #506078 for secondary text
+     (raw --color-muted drops below 4.5:1 on the #f7f9fc canvas). */
+.wk-craft {
+  --craft-brand: var(--color-primary);
+  --craft-brand-strong: var(--color-primary-strong);
+  --craft-brand-soft: var(--color-surface-wash);
+  --craft-brand-ink: #2e4a78; /* status text on brand-soft; craft-scope-only */
+  --craft-accent: var(--color-accent);
+  --craft-accent-hover: var(--color-accent-hover);
+  --craft-accent-active: var(--color-accent-active);
+  --craft-accent-soft: var(--color-brand-light);
+  --craft-action-fg: var(--color-ink);
+  --craft-canvas: var(--color-canvas);
+  --craft-sidebar: var(--color-settings-panel, #f9f9f9);
+  --craft-surface: var(--color-surface);
+  --craft-ink: var(--color-ink);
+  --craft-muted: var(--color-muted);
+  --craft-secondary-text: var(--color-muted-strong);
+  --craft-line: var(--color-line);
+  --craft-line-soft: var(--color-line-soft);
+  --craft-line-strong: var(--color-line-strong);
+  --craft-success: var(--color-success);
+  --craft-success-text: var(--color-success-text);
+  --craft-warning: var(--color-warning);
+  --craft-warning-text: var(--color-warning-text);
+  --craft-danger: var(--color-danger);
+  --craft-danger-wash: var(--color-danger-wash);
+}

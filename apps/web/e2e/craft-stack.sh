@@ -256,6 +256,8 @@ note_pid "$(detach "$RUN/logs/server.log" "$RUN" env \
   WEKNORA_CRAFT_PREVIEW_ORIGIN="$PREVIEW_ORIGIN" \
   CRAFT_OPENCODE_BASE_URL="http://127.0.0.1:$OC_PORT" \
   CRAFT_OPENCODE_WORK_DIR="$SERVE_DIR" \
+  WEKNORA_AGENT_RECOVERY_ENABLED=true \
+  WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED=true \
   "$RUN/bin/weknora-server")" weknora-server
 wait_http "$API_ORIGIN/health" "go server" 120
 
@@ -301,6 +303,11 @@ INSERT INTO tenant_members (user_id, tenant_id, role, status, joined_at) VALUES 
 INSERT INTO tenant_members (user_id, tenant_id, role, status, joined_at) VALUES ('w06-viewer', 1, 'viewer', 'active', CURRENT_TIMESTAMP);
 INSERT INTO tenant_members (user_id, tenant_id, role, status, joined_at) VALUES ('w06-foreign', 2, 'owner', 'active', CURRENT_TIMESTAMP);
 INSERT INTO models (id, tenant_id, name, display_name, type, source, parameters, is_default, is_builtin, status) VALUES ('craft-main-fixture', 1, 'craft-main-fixture', 'Craft Main Fixture', 'VLLM', 'remote', '{"base_url":"http://127.0.0.1:$PORT_MAIN/v1","api_key":"local-main-fixture","provider":"openai","interface_type":"chat"}', 1, 0, 'active');
+-- config/builtin_models.yaml syncs builtin-llm-mock (a LAN mock endpoint,
+-- unreachable here) as is_default=true BEFORE this seed runs; craftChatModelID
+-- returns the first default it meets, so the builtin row would win and the
+-- run would die on the SSRF/unreachable base_url. Demote it explicitly.
+UPDATE models SET is_default = 0 WHERE id = 'builtin-llm-mock';
 SQLEOF
 echo "[stack] seeded identities (credentials only in this run dir)"
 

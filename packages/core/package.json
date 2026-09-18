@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./craft/controller": "./src/craft/controller.ts"
+    "./craft/controller": "./src/craft/controller.ts",
+    "./craft/command-bridge": "./src/craft/command-bridge.ts"
   },
   "dependencies": {
     "@weknora/api-client": "workspace:*",

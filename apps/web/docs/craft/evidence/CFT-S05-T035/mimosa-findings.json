@@ -1,0 +1,5489 @@
+{
+  "schemaVersion": "mimosa-security-scan-findings/v1",
+  "scanId": "scan-2026-09-18T11-15-57.437Z-f520b86e55ce",
+  "verdictEffect": "none",
+  "findings": [
+    {
+      "findingId": "finding:2a061942593cb6424965dce5",
+      "occurrenceId": "occurrence:e8957104c784a5723179cfbc",
+      "identity": {
+        "publicClass": "code-injection",
+        "anchor": "sha256:019d28f2ef5cbdf84f6e861aa7181978f6d9c5312a061942593cb6424965dce5",
+        "instance": "sha256:8b14eed2f46fe735cd61e4fedc0b68e13f1f076ae8957104c784a5723179cfbc"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "代码注入",
+      "message": "动态执行了外部输入，可被注入代码",
+      "cwe": [
+        "CWE-95"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/localeGapScan.ts",
+        "line": 164,
+        "endLine": 164
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f601cb7f05d1b616145f3051",
+      "occurrenceId": "occurrence:dcc2be08ff4412332e2bb656",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:179676a571902511a28e1dc51d15b2a548419518f601cb7f05d1b616145f3051",
+        "instance": "sha256:55f1e994ad20e8b0a25d14518848ee2321a5fbeadcc2be08ff4412332e2bb656"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据被拼进 shell 命令执行，可注入任意系统命令",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/sync/git-parsers/parseDiff.ts",
+        "line": 127,
+        "endLine": 127
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:c4251fd2ecdb4b691ed8fb15",
+      "occurrenceId": "occurrence:309ba26cf2464e6e39e9c562",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:117786042ce0e4bde0d97bc1655d2d67fd436db6c4251fd2ecdb4b691ed8fb15",
+        "instance": "sha256:b186fd2b89a2641948cb4aac2b41bf4fb474f711309ba26cf2464e6e39e9c562"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据被拼进同步 shell 命令，可注入任意系统命令",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/vite.config.ts",
+        "line": 15,
+        "endLine": 15
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:35dc5bd9cc8a3d4733ea5a7b",
+      "occurrenceId": "occurrence:73a9e6c325b6b63d3c7bd612",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:bd4722921f3670a4ef76e6dcf5d4df1dc6bf3cc835dc5bd9cc8a3d4733ea5a7b",
+        "instance": "sha256:70b397fc6c657d84ff60d9c4525e1a11b676c4a673a9e6c325b6b63d3c7bd612"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据进入进程执行接口，可能命令注入。",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "cmd/desktop/update.go",
+        "line": 332,
+        "endLine": 332
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:35dc5bd9cc8a3d4733ea5a7b",
+      "occurrenceId": "occurrence:c758c5a870ee41097442394a",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:bd4722921f3670a4ef76e6dcf5d4df1dc6bf3cc835dc5bd9cc8a3d4733ea5a7b",
+        "instance": "sha256:ff37681590f0220bdba4b719406935255d591bc8c758c5a870ee41097442394a"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据进入进程执行接口，可能命令注入。",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "cmd/desktop/update.go",
+        "line": 402,
+        "endLine": 402
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:60974c87a3f832183d116476",
+      "occurrenceId": "occurrence:47fe40f9eb06a660677b2b4a",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:c9733a3d74cf098b5f0adc2f5fcb0867047e22e560974c87a3f832183d116476",
+        "instance": "sha256:5fd65c68f763db0272923fb9c3596cb9b6e67c5347fe40f9eb06a660677b2b4a"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据进入进程执行接口，可能命令注入。",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/poc/docker-sandbox/main.go",
+        "line": 375,
+        "endLine": 375
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:60974c87a3f832183d116476",
+      "occurrenceId": "occurrence:0fd9de1a02e26ea3970db63a",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:c9733a3d74cf098b5f0adc2f5fcb0867047e22e560974c87a3f832183d116476",
+        "instance": "sha256:8f3ab03a8579fe0296f2dabd0e4455b49cc3d73d0fd9de1a02e26ea3970db63a"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据进入进程执行接口，可能命令注入。",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/poc/docker-sandbox/main.go",
+        "line": 380,
+        "endLine": 380
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:60974c87a3f832183d116476",
+      "occurrenceId": "occurrence:1d3d1c53c1c7033e75e15ab5",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:c9733a3d74cf098b5f0adc2f5fcb0867047e22e560974c87a3f832183d116476",
+        "instance": "sha256:9b76b9068bc966d291fad30297232990741b54461d3d1c53c1c7033e75e15ab5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据进入进程执行接口，可能命令注入。",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/poc/docker-sandbox/main.go",
+        "line": 383,
+        "endLine": 383
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:662294e62815a4d9b527ae72",
+      "occurrenceId": "occurrence:4c26888718ba062c51589d8e",
+      "identity": {
+        "publicClass": "command-injection",
+        "anchor": "sha256:06c62a1e8da6a649b464a7f6388f506914be531d662294e62815a4d9b527ae72",
+        "instance": "sha256:96fc2c8dd16614489340115c86f111477999c9784c26888718ba062c51589d8e"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "命令注入",
+      "message": "外部数据被拼进同步 shell 命令，可注入任意系统命令",
+      "cwe": [
+        "CWE-78"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/localeKeyAudit.ts",
+        "line": 709,
+        "endLine": 709
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:a14abfcd16c2c0937c725e06",
+      "occurrenceId": "occurrence:635aa4e010e7421673fa4b12",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:759940c42ffbae5f2cc64320061e9d00bf4a00bda14abfcd16c2c0937c725e06",
+        "instance": "sha256:b14d39da1142736ed5a14539855b9dc69a8a5ca2635aa4e010e7421673fa4b12"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/_default.ts",
+        "line": 105,
+        "endLine": 105
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:a14abfcd16c2c0937c725e06",
+      "occurrenceId": "occurrence:1849205eee211aeea1f8f653",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:759940c42ffbae5f2cc64320061e9d00bf4a00bda14abfcd16c2c0937c725e06",
+        "instance": "sha256:226f912c8b742d7a0033cd662b2d80668cabb7bc1849205eee211aeea1f8f653"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/_default.ts",
+        "line": 106,
+        "endLine": 106
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:a14abfcd16c2c0937c725e06",
+      "occurrenceId": "occurrence:df7d75b062a2f35b35d18691",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:759940c42ffbae5f2cc64320061e9d00bf4a00bda14abfcd16c2c0937c725e06",
+        "instance": "sha256:56d04d4672104a14113723f7314a3768b5fc390edf7d75b062a2f35b35d18691"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/_default.ts",
+        "line": 784,
+        "endLine": 784
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:a14abfcd16c2c0937c725e06",
+      "occurrenceId": "occurrence:3c3f8b16b4d1c7862aa7f23b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:759940c42ffbae5f2cc64320061e9d00bf4a00bda14abfcd16c2c0937c725e06",
+        "instance": "sha256:76aeba58e1d724d81ff06b8380f92b6b13fa46a63c3f8b16b4d1c7862aa7f23b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/_default.ts",
+        "line": 886,
+        "endLine": 886
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8c1eca821e2de4d718b34e85",
+      "occurrenceId": "occurrence:344b095e53f3161a8ebe4dd6",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:a7b64d09b58140b0197826d2a70ff0fa6f16a2cb8c1eca821e2de4d718b34e85",
+        "instance": "sha256:2d46e80f9bda6edb5d0b2566a7233934135efa68344b095e53f3161a8ebe4dd6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/ca.ts",
+        "line": 106,
+        "endLine": 106
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8c1eca821e2de4d718b34e85",
+      "occurrenceId": "occurrence:9cb7cab5ed09621960d3ce7d",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:a7b64d09b58140b0197826d2a70ff0fa6f16a2cb8c1eca821e2de4d718b34e85",
+        "instance": "sha256:a6e4cd0ca7e49fe4e5fe2d3e04693229f82caf419cb7cab5ed09621960d3ce7d"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/ca.ts",
+        "line": 107,
+        "endLine": 107
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8c1eca821e2de4d718b34e85",
+      "occurrenceId": "occurrence:a80ae43367464731d306d898",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:a7b64d09b58140b0197826d2a70ff0fa6f16a2cb8c1eca821e2de4d718b34e85",
+        "instance": "sha256:7bbd1e2e6e42f5a956bb62fd9645922ede7f7661a80ae43367464731d306d898"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/ca.ts",
+        "line": 756,
+        "endLine": 756
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8c1eca821e2de4d718b34e85",
+      "occurrenceId": "occurrence:6a31deda537966749c3866b6",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:a7b64d09b58140b0197826d2a70ff0fa6f16a2cb8c1eca821e2de4d718b34e85",
+        "instance": "sha256:d7f972099fdda40011a5cdb631e73f3c267974006a31deda537966749c3866b6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/ca.ts",
+        "line": 858,
+        "endLine": 858
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5780e31a090654ee545835c7",
+      "occurrenceId": "occurrence:784238a9d8902d6ea5dd7a39",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:d90c6f901a701df7346d0cdb9dc90f383fbf23ee5780e31a090654ee545835c7",
+        "instance": "sha256:0bdccec2c2edad4645d61e4c5d6d322e2a4045c7784238a9d8902d6ea5dd7a39"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/en.ts",
+        "line": 121,
+        "endLine": 121
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5780e31a090654ee545835c7",
+      "occurrenceId": "occurrence:e75eb7e7480feb53f97c4065",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:d90c6f901a701df7346d0cdb9dc90f383fbf23ee5780e31a090654ee545835c7",
+        "instance": "sha256:2a53c3034c17b5778e823987f1069c95a5b47abce75eb7e7480feb53f97c4065"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/en.ts",
+        "line": 122,
+        "endLine": 122
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5780e31a090654ee545835c7",
+      "occurrenceId": "occurrence:eec29ab0367896bcd2fd1422",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:d90c6f901a701df7346d0cdb9dc90f383fbf23ee5780e31a090654ee545835c7",
+        "instance": "sha256:eae862969cdeb1fe4a5f7109d8de8ef0f895430beec29ab0367896bcd2fd1422"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/en.ts",
+        "line": 770,
+        "endLine": 770
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5780e31a090654ee545835c7",
+      "occurrenceId": "occurrence:99768e8bb5c41175102d5bb2",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:d90c6f901a701df7346d0cdb9dc90f383fbf23ee5780e31a090654ee545835c7",
+        "instance": "sha256:567401b5f1fd45052fcfb83d05fbaf449672e26499768e8bb5c41175102d5bb2"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/en.ts",
+        "line": 872,
+        "endLine": 872
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f5224b0d40dcdb2be612f9a3",
+      "occurrenceId": "occurrence:1a087b9deb54a6bdf1e961e6",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c6431fb013f7ad6fee5f9a6e8e8518b48cfe0fc6f5224b0d40dcdb2be612f9a3",
+        "instance": "sha256:b7a02de2f0ce1a30c001ef4e3b695db6afcd102c1a087b9deb54a6bdf1e961e6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/es.ts",
+        "line": 106,
+        "endLine": 106
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f5224b0d40dcdb2be612f9a3",
+      "occurrenceId": "occurrence:0aad2eb1b466b6d2c826fc0c",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c6431fb013f7ad6fee5f9a6e8e8518b48cfe0fc6f5224b0d40dcdb2be612f9a3",
+        "instance": "sha256:d0159e64801aad1b7d4844a724c7c03ad2f2245e0aad2eb1b466b6d2c826fc0c"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/es.ts",
+        "line": 107,
+        "endLine": 107
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f5224b0d40dcdb2be612f9a3",
+      "occurrenceId": "occurrence:75a9cb21219a212e3f0422a9",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c6431fb013f7ad6fee5f9a6e8e8518b48cfe0fc6f5224b0d40dcdb2be612f9a3",
+        "instance": "sha256:457724bc9e93a8403f5f23ed7b62c06349d58a0775a9cb21219a212e3f0422a9"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/es.ts",
+        "line": 756,
+        "endLine": 756
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f5224b0d40dcdb2be612f9a3",
+      "occurrenceId": "occurrence:bb3dd5fb397ac9dd1d9ea03b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c6431fb013f7ad6fee5f9a6e8e8518b48cfe0fc6f5224b0d40dcdb2be612f9a3",
+        "instance": "sha256:c0647221a07e56c278f129ded98a6223b25099b1bb3dd5fb397ac9dd1d9ea03b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/es.ts",
+        "line": 858,
+        "endLine": 858
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5dd8fdedc51724cfb3ea9fea",
+      "occurrenceId": "occurrence:57d0abb95b9ce7452fa0966b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:1bbba269ed73b312e1e7e6dabb7b7ab9ff5b92b65dd8fdedc51724cfb3ea9fea",
+        "instance": "sha256:88443f247475141315d23f4e72df9e5ba26048d857d0abb95b9ce7452fa0966b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/it.ts",
+        "line": 105,
+        "endLine": 105
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5dd8fdedc51724cfb3ea9fea",
+      "occurrenceId": "occurrence:c8c041067219f98edf6d8274",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:1bbba269ed73b312e1e7e6dabb7b7ab9ff5b92b65dd8fdedc51724cfb3ea9fea",
+        "instance": "sha256:b338784847c2221c63156c358f183236474e7bd9c8c041067219f98edf6d8274"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/it.ts",
+        "line": 106,
+        "endLine": 106
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5dd8fdedc51724cfb3ea9fea",
+      "occurrenceId": "occurrence:8836d420adb85c72269bb967",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:1bbba269ed73b312e1e7e6dabb7b7ab9ff5b92b65dd8fdedc51724cfb3ea9fea",
+        "instance": "sha256:38abd5528aa819cac6ac0ba17f9e45c7b59356468836d420adb85c72269bb967"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/it.ts",
+        "line": 754,
+        "endLine": 754
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5dd8fdedc51724cfb3ea9fea",
+      "occurrenceId": "occurrence:a9d94ab1d783ec0d7b43bead",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:1bbba269ed73b312e1e7e6dabb7b7ab9ff5b92b65dd8fdedc51724cfb3ea9fea",
+        "instance": "sha256:1798388d9060e52ff8d979195e146fa89f27f5b1a9d94ab1d783ec0d7b43bead"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/it.ts",
+        "line": 856,
+        "endLine": 856
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:34a40beabb2bb892f2eed7f8",
+      "occurrenceId": "occurrence:15df29d2df18732111784d52",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:3fc0a5d2e73d4c2dd8d37cfdfcb17675fef8bb9734a40beabb2bb892f2eed7f8",
+        "instance": "sha256:35e858d0e32c9a1d722224f25595266a1339626a15df29d2df18732111784d52"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pl.ts",
+        "line": 117,
+        "endLine": 117
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:34a40beabb2bb892f2eed7f8",
+      "occurrenceId": "occurrence:aed6fd9c9ccedbd662d34d70",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:3fc0a5d2e73d4c2dd8d37cfdfcb17675fef8bb9734a40beabb2bb892f2eed7f8",
+        "instance": "sha256:ff8e12a704ee34a1813fa1dd9323f8fe19ef0752aed6fd9c9ccedbd662d34d70"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pl.ts",
+        "line": 118,
+        "endLine": 118
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:34a40beabb2bb892f2eed7f8",
+      "occurrenceId": "occurrence:c4e8ef93127ccde8f7f3ef5b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:3fc0a5d2e73d4c2dd8d37cfdfcb17675fef8bb9734a40beabb2bb892f2eed7f8",
+        "instance": "sha256:d212cafba810a46ee6219a85c85044c6a9ac7133c4e8ef93127ccde8f7f3ef5b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pl.ts",
+        "line": 772,
+        "endLine": 772
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:34a40beabb2bb892f2eed7f8",
+      "occurrenceId": "occurrence:fad88d4f0aebfdee7b1a1a2f",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:3fc0a5d2e73d4c2dd8d37cfdfcb17675fef8bb9734a40beabb2bb892f2eed7f8",
+        "instance": "sha256:91ae371c700efed0de555cd97113ce06dd4328a6fad88d4f0aebfdee7b1a1a2f"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pl.ts",
+        "line": 874,
+        "endLine": 874
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:217f15f702773d549acb1451",
+      "occurrenceId": "occurrence:996119610638d2c720dc5dbe",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:9e28b914e62508a65fd95d212130cd949d31f97e217f15f702773d549acb1451",
+        "instance": "sha256:c5938095d06a01d9724c214ca6290d6e439e34ae996119610638d2c720dc5dbe"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "enterSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pt.ts",
+        "line": 106,
+        "endLine": 106
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:217f15f702773d549acb1451",
+      "occurrenceId": "occurrence:91e25c081e53bdf587f033c0",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:9e28b914e62508a65fd95d212130cd949d31f97e217f15f702773d549acb1451",
+        "instance": "sha256:1063e350a6bca17e7177860f5c005824b103f2eb91e25c081e53bdf587f033c0"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "invalidSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pt.ts",
+        "line": 107,
+        "endLine": 107
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:217f15f702773d549acb1451",
+      "occurrenceId": "occurrence:bbbdec44e311def8db5cb68b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:9e28b914e62508a65fd95d212130cd949d31f97e217f15f702773d549acb1451",
+        "instance": "sha256:fb9728e56166bb76a6c662371abc8ab3b661fdc4bbbdec44e311def8db5cb68b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "secretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pt.ts",
+        "line": 755,
+        "endLine": 755
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:217f15f702773d549acb1451",
+      "occurrenceId": "occurrence:63540f14884802e3a3c7ca9b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:9e28b914e62508a65fd95d212130cd949d31f97e217f15f702773d549acb1451",
+        "instance": "sha256:e975a3ed021b6193233909bdb6692c433004639363540f14884802e3a3c7ca9b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "restoreWithSecretKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/text/translations/pt.ts",
+        "line": 857,
+        "endLine": 857
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:84da472c9970ab8b91f04d45",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:0d8bc389f6b715f8641e6882fd72bfde0956e9b784da472c9970ab8b91f04d45"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 54,
+        "endLine": 54
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:9148dc6dc7d1e67abb3ae945",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:b4b170507bca21164e5a7a8d845728e3f37a65dd9148dc6dc7d1e67abb3ae945"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 55,
+        "endLine": 55
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:325eabd6e3913aba31ab1b22",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:1a121d2b8edbb43dd830b3f09300280c452735d1325eabd6e3913aba31ab1b22"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 56,
+        "endLine": 56
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:1d2d58fa3626097dbc65b5a2",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:dc3a6b07f5d83a86c5529bb82db70eddbfa2732d1d2d58fa3626097dbc65b5a2"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 69,
+        "endLine": 69
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:6b4c432f12158313c2f4b166",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:6b3211e75f0b33dd3afd009c1f7460518845dedf6b4c432f12158313c2f4b166"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 70,
+        "endLine": 70
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:0a0a526424d69326f4835b1d",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:d0242660dfcd5320e1de709572ebf6252b6bc0330a0a526424d69326f4835b1d"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 71,
+        "endLine": 71
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:ff58a9f42a453bddd5d95fc6",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:2184aa1779a4e01aeb267e64ff549c006f68877cff58a9f42a453bddd5d95fc6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 73,
+        "endLine": 73
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:677c5181064db5816242fdb1",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:b0fff2ea7031b8b16884ab8831911ef39ff57c45677c5181064db5816242fdb1"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "confirmPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 75,
+        "endLine": 75
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:95ef00afc59239a7411c11b1",
+      "occurrenceId": "occurrence:5c058b5c9e10b142f5d7435e",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f70ba1822aa05e04b6a9d8c43213005606b50a6595ef00afc59239a7411c11b1",
+        "instance": "sha256:a6acdffcffcacf2933bca2ec0379809ea54e1e905c058b5c9e10b142f5d7435e"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "confirmPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/auth-state.ts",
+        "line": 76,
+        "endLine": 76
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f56f7344e215e0ce4f89174f",
+      "occurrenceId": "occurrence:fae92a20d2fa096877284af5",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:81f584bac16b17b0076946632c524d31c3066f7bf56f7344e215e0ce4f89174f",
+        "instance": "sha256:f0586eb5074f239483d736cedb6fda66c9083c93fae92a20d2fa096877284af5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/settings/ModelSettingsPanel.tsx",
+        "line": 744,
+        "endLine": 744
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:8739b64a7ba613bee19ee6a1",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:fbb0d6525663cf0b70bba6fd695c7d1d77d647858739b64a7ba613bee19ee6a1"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 2317,
+        "endLine": 2317
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:ad6bf08c10d06a46f3790ea5",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:de06155f6e7b4e632f218999de4273686d5635baad6bf08c10d06a46f3790ea5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "confirmPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 2319,
+        "endLine": 2319
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:68f6bfa755282e8356fe00bc",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:7c81853c16e66900c26de305a09d39ad94d4a07f68f6bfa755282e8356fe00bc"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 2339,
+        "endLine": 2339
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:680941a1ab47be7b503fb1af",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:9f40ac7a12b76138a95e186c6aa78282395c8b9f680941a1ab47be7b503fb1af"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "confirmPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 2340,
+        "endLine": 2340
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:468f41f5be00e32dfb247d50",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:e478916c89aa60c631334786d184483f66c57a71468f41f5be00e32dfb247d50"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "webhookSecret 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 2820,
+        "endLine": 2820
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:a89c69303603a0cda4aa7f56",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:58339c1db65147e68ffdcbaa12c980eebb001f11a89c69303603a0cda4aa7f56"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 4152,
+        "endLine": 4152
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:4881f35097db82cd58d8bd6e",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:5c0e416806ca6e1926c5014d33276ffb0ca5fe1c4881f35097db82cd58d8bd6e"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 4183,
+        "endLine": 4183
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:d2819e9735ae8b59729d16da",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:6eda98dd005e5e74e1b0518adaf8a4eef875316dd2819e9735ae8b59729d16da"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "missingPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 4300,
+        "endLine": 4300
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:f41b0153ba7d4d0b242e3332",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:35d3dfa1f8de77ea3782dae77d30c4564f2a6826f41b0153ba7d4d0b242e3332"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "authTypeApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 5172,
+        "endLine": 5172
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:f14afeff9d1232b3e50fdf28",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:34b88e1378023124c6cc13ba3ca1302119ed654ff14afeff9d1232b3e50fdf28"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "imaApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 6470,
+        "endLine": 6470
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:4e9d71b146a5e35df9ecb4ea",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:c2df6e0809d790fcbcffb371e54a2172a3e003384e9d71b146a5e35df9ecb4ea"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "createApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 6599,
+        "endLine": 6599
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e35de63837de21d0d85f661b",
+      "occurrenceId": "occurrence:efe4219afdc288432d43be7a",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:15944ed0ea6edc1688cec6c05570f49bcf9cc4aee35de63837de21d0d85f661b",
+        "instance": "sha256:cf06fdd7ae0ccc75693630b7c72e025f0c55d0dcefe4219afdc288432d43be7a"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "playgroundNeedApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/en-US.ts",
+        "line": 6725,
+        "endLine": 6725
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:06109b939ed373faf3bfc2ff",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:a941346bc13a8c3bc6eb0cd9af506aef5d615a3706109b939ed373faf3bfc2ff"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "webhookSecret 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 2816,
+        "endLine": 2816
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:c43001c25bdcfb4f65750591",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:27582c87a27aa874756a8d4b264f930c0f4adc14c43001c25bdcfb4f65750591"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 4148,
+        "endLine": 4148
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:e872fa261cb65c076990aa5c",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:f826f12e19a8db0c2650d8c6b0498465f914e7afe872fa261cb65c076990aa5c"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 4179,
+        "endLine": 4179
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:dcdbf60fe1f3661acb0b5310",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:a2adac3889673f0baa28bbd8e46ed8299ae101ebdcdbf60fe1f3661acb0b5310"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "authTypeApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 5168,
+        "endLine": 5168
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:c28893f6d10dacd9f434f50d",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:b970a96c631b832df91083b3d4484c7caed5b307c28893f6d10dacd9f434f50d"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "imaApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 6466,
+        "endLine": 6466
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:dbb06ab324bda405046f8947",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:8576a29be74200abe7fa56976aa0c3bbe31b6531dbb06ab324bda405046f8947"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "createApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 6595,
+        "endLine": 6595
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:45e1d43c8ed1df2d6f516090",
+      "occurrenceId": "occurrence:8fd26daef8581d61a2daad1d",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:705e6ef5a6ed79fe9ee0758ae0c531dea990976945e1d43c8ed1df2d6f516090",
+        "instance": "sha256:9c37690b14b461a98d03df9654311b7f4772bc528fd26daef8581d61a2daad1d"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "playgroundNeedApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ja-JP.ts",
+        "line": 6721,
+        "endLine": 6721
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:fb2302dfe517fa620ffe8a31",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:6c6060615a7c768a3f54c3d48d51301001b8b3dcfb2302dfe517fa620ffe8a31"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "createApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 541,
+        "endLine": 541
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:52427256491fcf9809991ea7",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:d4acde645e171977fed49b31c5eab678e17cf8fc52427256491fcf9809991ea7"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "playgroundNeedApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 667,
+        "endLine": 667
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:b96b639efba2075e892f29b3",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:a8897f283c22cab72e509561be6da0a0ae2437a4b96b639efba2075e892f29b3"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "imaApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 842,
+        "endLine": 842
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:00bb2ff6b2d323c2f82b666b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:684da51b54f9bd10bfe6079e30f63ec8a92c380600bb2ff6b2d323c2f82b666b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "authTypeApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 2103,
+        "endLine": 2103
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:728689bc8ae8d748e861042d",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:b1fb4b554b73559afcb5d8a7a025a22675d71895728689bc8ae8d748e861042d"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 3122,
+        "endLine": 3122
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:386bde199f130c2e80f887bc",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:6f08aa93c517258bc4026f07e0db222ca07b14b9386bde199f130c2e80f887bc"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 3153,
+        "endLine": 3153
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3c8886b8ad473f8e5c9c0a2c",
+      "occurrenceId": "occurrence:a23618dc75b88c29c7afe292",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:8ace149f799bf650a02720cdd6e96e8920b774493c8886b8ad473f8e5c9c0a2c",
+        "instance": "sha256:66adefe9e6f2110bcf46b2c06a865f2d461bef94a23618dc75b88c29c7afe292"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "webhookSecret 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ko-KR.ts",
+        "line": 4496,
+        "endLine": 4496
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:4a13bcce8b83c976b4fb9f13",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:9809bdd4aa5856fac2bd386ed1a35bb8222b6c274a13bcce8b83c976b4fb9f13"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "createApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 541,
+        "endLine": 541
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:836ba71888c6ae22976dc765",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:99acd46472ad8bf6ac97e658c83557f10a8a8fde836ba71888c6ae22976dc765"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "playgroundNeedApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 667,
+        "endLine": 667
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:95f666198261e8c59ebb8ab3",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:2a49cf41455d68a61f558dda1f017fae94d55fe495f666198261e8c59ebb8ab3"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "imaApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 842,
+        "endLine": 842
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:4b99ffd732ce39e38dc1c2c6",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:4a777068a614f6e88b9da64de15792d3336fd10e4b99ffd732ce39e38dc1c2c6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "authTypeApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 2103,
+        "endLine": 2103
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:05ef7031e66ff537d0d21d4b",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:ff92b72bf9fa344dfab8fad07e05934bfed7dbd905ef7031e66ff537d0d21d4b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 3122,
+        "endLine": 3122
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:daaad6a7947182bdf5a74a23",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:69045d24a9a2ae85288b562f9a3c74331377589cdaaad6a7947182bdf5a74a23"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 3153,
+        "endLine": 3153
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:685bc9df1e705e6da0d93640",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:2001a7837e0a705989d064b33fbf95219b69d9ad685bc9df1e705e6da0d93640"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "webhookSecret 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 4496,
+        "endLine": 4496
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:1efb4407ba65e159fa1792cc",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:6679e14211f53d150ce6336e360d26d95b30e32a1efb4407ba65e159fa1792cc"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "password 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 4942,
+        "endLine": 4942
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9c30485e614cd9f6e3e63d9c",
+      "occurrenceId": "occurrence:39ca2268a309ae4da75ab8bc",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:ce34866df38daf6be89c7bc4c309921b2fbb17139c30485e614cd9f6e3e63d9c",
+        "instance": "sha256:00db0ffb3eaa52737970a0fdda4bb1703ae7ee8f39ca2268a309ae4da75ab8bc"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "confirmPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/ru-RU.ts",
+        "line": 4944,
+        "endLine": 4944
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:c62ea478a29e6fc685c41b47",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:e8ff5fcc95198cdceb99220822e50bb3d4925213c62ea478a29e6fc685c41b47"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "createApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 545,
+        "endLine": 545
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:08884acdfff5628b2538aba7",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:e8ec6821eaaa28a3c3c2ca59eef48e49cf32d90408884acdfff5628b2538aba7"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "playgroundNeedApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 671,
+        "endLine": 671
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:ea794c03c0d0d913ce593715",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:48e75b67f8bcdb237f11f9e10fc2b128c106f22aea794c03c0d0d913ce593715"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "imaApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 848,
+        "endLine": 848
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:7c03d4188be51e02491325b5",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:2093bbcdb161d8a301038720eb4b239586a48dcf7c03d4188be51e02491325b5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "authTypeApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 2109,
+        "endLine": 2109
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:1eda5b956e201a58ba41acb9",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:dd4af13170185133a1423857eaaa12e9cb5de1731eda5b956e201a58ba41acb9"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 3128,
+        "endLine": 3128
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:4a35c83bb8b8bdc263b21511",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:123e6e09295145fca8969456a1fb6ffc1454e26e4a35c83bb8b8bdc263b21511"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "auto_create_api_key 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 3159,
+        "endLine": 3159
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f64c82c432182d21d52b3fc1",
+      "occurrenceId": "occurrence:f39aa2cfcdb8c8b583fd59a5",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:428b232be57291d34c930e13b67c1a0617cb8770f64c82c432182d21d52b3fc1",
+        "instance": "sha256:8047d0c65a8816515b61644d1cebbbb035a02e4bf39aa2cfcdb8c8b583fd59a5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "webhookSecret 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "frontend/src/i18n/locales/zh-CN.ts",
+        "line": 4502,
+        "endLine": 4502
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:d6c42826a97628c6fe5b80a5",
+      "occurrenceId": "occurrence:31f8468d04a9d385e9f0a75f",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c1d3699f13544954432397e532500cc132e0b599d6c42826a97628c6fe5b80a5",
+        "instance": "sha256:6317ba4387e180333ec393b26bc5882c17a2baea31f8468d04a9d385e9f0a75f"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "DetailInvalidOldPassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/user.go",
+        "line": 74,
+        "endLine": 74
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:d6c42826a97628c6fe5b80a5",
+      "occurrenceId": "occurrence:14cd307a53e71acc070f12f3",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:c1d3699f13544954432397e532500cc132e0b599d6c42826a97628c6fe5b80a5",
+        "instance": "sha256:79394bf26396657b1324362576f772b0a33ff80f14cd307a53e71acc070f12f3"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "DetailSamePassword 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/user.go",
+        "line": 76,
+        "endLine": 76
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:5df07fdfc86a5f0ed88ae722",
+      "occurrenceId": "occurrence:3dcd9b9700e67b0c13891ace",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:672881b8b53bd3681623c6ad7915b28ae5e268005df07fdfc86a5f0ed88ae722",
+        "instance": "sha256:b59776f3e475e7a02d81f8a54943adeaa2a767eb3dcd9b9700e67b0c13891ace"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "EnvAPIKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/infrastructure/openmeter/commercial.go",
+        "line": 39,
+        "endLine": 39
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:e9f1da009eda4a3c66ff4863",
+      "occurrenceId": "occurrence:2b57dd2bb755e72e54058cbb",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:4fe76d6c9345c3b35e633f798c7b00d26547b856e9f1da009eda4a3c66ff4863",
+        "instance": "sha256:881095b3c72fa34eb2207136faeb262928f8f9bd2b57dd2bb755e72e54058cbb"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "traffic_access_token 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/sandbox/session_binding_redis.go",
+        "line": 64,
+        "endLine": 64
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:ebaeb208e1d5c21ea8d0b99a",
+      "occurrenceId": "occurrence:8be63b15cbe694d542c582ce",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f831d292909f2028225646ba5589f72a362f0606ebaeb208e1d5c21ea8d0b99a",
+        "instance": "sha256:1b97f82b73fafcd9a4220cad49f8c840bb9963428be63b15cbe694d542c582ce"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "missingApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "miniprogram/utils/i18n.js",
+        "line": 46,
+        "endLine": 46
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:ebaeb208e1d5c21ea8d0b99a",
+      "occurrenceId": "occurrence:75289a7d49275f29453c7627",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:f831d292909f2028225646ba5589f72a362f0606ebaeb208e1d5c21ea8d0b99a",
+        "instance": "sha256:c765fb28e525038269d70d7c587e907ad81e34d175289a7d49275f29453c7627"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "missingApiKey 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "miniprogram/utils/i18n.js",
+        "line": 90,
+        "endLine": 90
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:08a056ecd55bb7902b9b423b",
+      "occurrenceId": "occurrence:83c512e9bf32cd86c67882b9",
+      "identity": {
+        "publicClass": "hardcoded-credential",
+        "anchor": "sha256:86509db78dcc4a49536559ca0ec676019e94e91b08a056ecd55bb7902b9b423b",
+        "instance": "sha256:2c42752a7c73b790cf3e5c43742b40c65bb08c8483c512e9bf32cd86c67882b9"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "硬编码凭据",
+      "message": "ENCODED_PASSWORD 的凭据值直接写在源码中，提交后可能造成密钥泄露。",
+      "cwe": [
+        "CWE-798"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "scripts/migrate.sh",
+        "line": 57,
+        "endLine": 57
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:04a7edeb12c58dc65fcfe4cd",
+      "occurrenceId": "occurrence:223e87c9fab5fbc4e74f51c2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:97701c8f630f656e830dc0d9039cd9f3fd94c8c304a7edeb12c58dc65fcfe4cd",
+        "instance": "sha256:b650b9d602cbbfae2e015f9cccf8a01940ec0c40223e87c9fab5fbc4e74f51c2"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → docparser/mineru_cloud_converter.go:165 的 SSRF 服务端请求",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/miniprogram/src/platform/transport.ts",
+        "line": 71,
+        "endLine": 71
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:d81f6967cefb8176c1e0f6d2",
+      "occurrenceId": "occurrence:4492f90ac544d74edf3c41ba",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:91e18944ed10c232896a3252e140bfa4a25d184ed81f6967cefb8176c1e0f6d2",
+        "instance": "sha256:27834b1f7dd2e1230313eb4b18c23312109577514492f90ac544d74edf3c41ba"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createMobileTransport 是 ssrf 入口",
+      "message": "不可信数据「环境变量」流入 createMobileTransport() → 污点链：createMobileTransport(sink:ssrf) （定义于 platform/transport.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/src/runtime.tsx",
+        "line": 117,
+        "endLine": 117
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:6b5e81e1fba14e5e5b48e5ac",
+      "occurrenceId": "occurrence:707cb520f0ecf30ef3fa7cc8",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c3f6e2e44130d4f5ee5eee51dae1d7afe0d731616b5e81e1fba14e5e5b48e5ac",
+        "instance": "sha256:43b2e579849d15271c342f179ee9543460988281707cb520f0ecf30ef3fa7cc8"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "环境变量 → auth/endpoints.ts:125 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/src/runtime.tsx",
+        "line": 225,
+        "endLine": 225
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:ad55255b181c71fb6e37bda1",
+      "occurrenceId": "occurrence:022ab050b152806b1db7ae9c",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:21eae0e5cb6d7e8e438a09391970e7bb0656a9cdad55255b181c71fb6e37bda1",
+        "instance": "sha256:249ef045a4d16076a0424dd71276b093b7bf7542022ab050b152806b1db7ae9c"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "oidcUrl 是 ssrf 入口",
+      "message": "不可信数据「环境变量」流入 oidcUrl() → 污点链：oidcUrl(sink:ssrf) （定义于 auth/endpoints.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/src/runtime.tsx",
+        "line": 225,
+        "endLine": 225
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:3a2558bbf7050ad5e2322ed4",
+      "occurrenceId": "occurrence:683d4cb7ec050a7f7de3930f",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:27b4322e4cf13f7c8d7b344837103467c209f9d23a2558bbf7050ad5e2322ed4",
+        "instance": "sha256:2b2ee249cc6a2b08cd645190e9126b06e6c2dbf2683d4cb7ec050a7f7de3930f"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → auth/api.ts:49 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 22,
+        "endLine": 22
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:24c8160cb30c744c5253a1ab",
+      "occurrenceId": "occurrence:4416dfc40d5b3d9927baad32",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:9da4b9b474753fcec2955780b63e15e922bc963424c8160cb30c744c5253a1ab",
+        "instance": "sha256:df346e5517769fa6c03b08771668e99f267df4784416dfc40d5b3d9927baad32"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "lookupInvite 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 lookupInvite() → 污点链：lookupInvite(sink:ssrf) （定义于 auth/api.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 22,
+        "endLine": 22
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:3a2558bbf7050ad5e2322ed4",
+      "occurrenceId": "occurrence:679a72a6a0d5832509981ccc",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:27b4322e4cf13f7c8d7b344837103467c209f9d23a2558bbf7050ad5e2322ed4",
+        "instance": "sha256:853e965e02760775308c1d669336948f21fa0f48679a72a6a0d5832509981ccc"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → auth/api.ts:53 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 23,
+        "endLine": 23
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:185d7e20dcc6a03562c0ac1d",
+      "occurrenceId": "occurrence:0b971b9c6548bd9d45555bea",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:3deae01de87fae37f19ef22aca788ea753efd2ea185d7e20dcc6a03562c0ac1d",
+        "instance": "sha256:80ddd5d51faa488d70c676d4084f8035d34fd2300b971b9c6548bd9d45555bea"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "acceptInvitation 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 acceptInvitation() → 污点链：acceptInvitation(sink:ssrf) （定义于 auth/api.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 23,
+        "endLine": 23
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:3a2558bbf7050ad5e2322ed4",
+      "occurrenceId": "occurrence:2e4fc54ea92bad8a09763185",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:27b4322e4cf13f7c8d7b344837103467c209f9d23a2558bbf7050ad5e2322ed4",
+        "instance": "sha256:d82a4d02e22905e946ea77e164c8847498f428672e4fc54ea92bad8a09763185"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → auth/api.ts:49 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 30,
+        "endLine": 30
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:24c8160cb30c744c5253a1ab",
+      "occurrenceId": "occurrence:2f5ec0079a4caec198e28aae",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:9da4b9b474753fcec2955780b63e15e922bc963424c8160cb30c744c5253a1ab",
+        "instance": "sha256:e519057ecac3514f4aa5b10b35bbfe055e5687592f5ec0079a4caec198e28aae"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "lookupInvite 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 lookupInvite() → 污点链：lookupInvite(sink:ssrf) （定义于 auth/api.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/auth/AuthPages.tsx",
+        "line": 30,
+        "endLine": 30
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:392c164a1d16077663cd16e0",
+      "occurrenceId": "occurrence:0d3d5b72e03ad9d58ed76e54",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:0b15d1cb565f783b47863d1999cf43e82e095583392c164a1d16077663cd16e0",
+        "instance": "sha256:ed1a345c2c6ff2f292c820a634f7f5ebd1df96940d3d5b72e03ad9d58ed76e54"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "stream 经 1 跳到达 ssrf",
+      "message": "不可信数据「URL 输入」流入 stream() → 污点链：stream → consumeChatTransport(sink:ssrf) （定义于 src/client.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/chat/ChatRoutePage.tsx",
+        "line": 1028,
+        "endLine": 1028
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:392c164a1d16077663cd16e0",
+      "occurrenceId": "occurrence:2b3b1283ef1effbd5de7732c",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:0b15d1cb565f783b47863d1999cf43e82e095583392c164a1d16077663cd16e0",
+        "instance": "sha256:d9ee550d5ee036865beb6e4840bd52c6185d7e1d2b3b1283ef1effbd5de7732c"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "stream 经 1 跳到达 ssrf",
+      "message": "不可信数据「URL 输入」流入 stream() → 污点链：stream → consumeChatTransport(sink:ssrf) （定义于 src/client.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/chat/ChatRoutePage.tsx",
+        "line": 1035,
+        "endLine": 1035
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:7a4b481aefa7e8ded1a4b61b",
+      "occurrenceId": "occurrence:cc417b1bf138789d07f244ca",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:38f0959c814f3a54d38310cfd0af057b47455a697a4b481aefa7e8ded1a4b61b",
+        "instance": "sha256:de7a3f244a8da649ef2b6204e71da84294a33cb4cc417b1bf138789d07f244ca"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → src/configuration.ts:599 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/configuration/ConfigurationEditor.tsx",
+        "line": 68,
+        "endLine": 68
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2af5e0abb23acbe137d9b2ad",
+      "occurrenceId": "occurrence:ecc8e854273d40997b638513",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:a99e5cb9414d0ed045e9cb50da373e75bc7ca65c2af5e0abb23acbe137d9b2ad",
+        "instance": "sha256:ac0d42439c38e6a67839f2001cf68dacacf1fa94ecc8e854273d40997b638513"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createBrowserTransport 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 createBrowserTransport() → 污点链：createBrowserTransport(sink:ssrf) （定义于 platform/http.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/main.tsx",
+        "line": 110,
+        "endLine": 110
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:7e3abe2955fad97c065127cc",
+      "occurrenceId": "occurrence:6c2f626ab13db56e172f46ad",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:cd926172e4f5e8765772ccc19fdcf8ca9fbd0c6c7e3abe2955fad97c065127cc",
+        "instance": "sha256:678eaca08b50466d5aad7f5199884a02dbf1ff156c2f626ab13db56e172f46ad"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → auth/endpoints.ts:142 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/main.tsx",
+        "line": 189,
+        "endLine": 189
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:9d80d266cfb386acba520b23",
+      "occurrenceId": "occurrence:c9562307051b9b50b9377ba5",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:778f46e1e882aa1c9eed20f5e575c3c6ec31a38a9d80d266cfb386acba520b23",
+        "instance": "sha256:01df0f6142dae97dd99f4dfe19f0b62fc7cf965ec9562307051b9b50b9377ba5"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "switchTenant 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 switchTenant() → 污点链：switchTenant(sink:ssrf) （定义于 auth/endpoints.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/main.tsx",
+        "line": 189,
+        "endLine": 189
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:7e3abe2955fad97c065127cc",
+      "occurrenceId": "occurrence:4e4f8ef892f3573fe94a19e0",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:cd926172e4f5e8765772ccc19fdcf8ca9fbd0c6c7e3abe2955fad97c065127cc",
+        "instance": "sha256:415aae04a46d1b77e629cee5a898d1afdc7620094e4f8ef892f3573fe94a19e0"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → auth/endpoints.ts:159 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/main.tsx",
+        "line": 302,
+        "endLine": 302
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:7d73cca0f6ecea51f3581c26",
+      "occurrenceId": "occurrence:d730bfeedbde8855d3f433ae",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:72a7bcc32ba606c9d09c43665c6e6bd8fc6370287d73cca0f6ecea51f3581c26",
+        "instance": "sha256:670681a4ba7a44a456986a930012c2218351a2b6d730bfeedbde8855d3f433ae"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "acceptInvitationByToken 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 acceptInvitationByToken() → 污点链：acceptInvitationByToken(sink:ssrf) （定义于 auth/endpoints.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/main.tsx",
+        "line": 302,
+        "endLine": 302
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2829ade9da4aed0fd1871598",
+      "occurrenceId": "occurrence:9ae6152b48de87cbd0f7ea09",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7cd9d3f1c39a9a3a725a1ad44bf8eebdeac98cb42829ade9da4aed0fd1871598",
+        "instance": "sha256:cbc48457cacc083cba57ec51b467323cde9a66f69ae6152b48de87cbd0f7ea09"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → identity/organization.ts:63 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 408,
+        "endLine": 408
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f3fc35d6ccd7da11fbf57f4a",
+      "occurrenceId": "occurrence:2d1c2b0521de40d7fea10ec9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:db83f8e56587cb77b7778c51a82a727218c02516f3fc35d6ccd7da11fbf57f4a",
+        "instance": "sha256:05a112401b23733ef1fda6af169aa5e73e55293c2d1c2b0521de40d7fea10ec9"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "listForOrganization 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 listForOrganization() → 污点链：listForOrganization(sink:ssrf) （定义于 identity/organization.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 408,
+        "endLine": 408
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2829ade9da4aed0fd1871598",
+      "occurrenceId": "occurrence:e0f84a5656421be2816d8d20",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7cd9d3f1c39a9a3a725a1ad44bf8eebdeac98cb42829ade9da4aed0fd1871598",
+        "instance": "sha256:c16ad94c8d01699fda89ea191df582f0031a3ed2e0f84a5656421be2816d8d20"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → identity/organization.ts:63 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 409,
+        "endLine": 409
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f3fc35d6ccd7da11fbf57f4a",
+      "occurrenceId": "occurrence:4997f395b7d9a9d10025cca0",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:db83f8e56587cb77b7778c51a82a727218c02516f3fc35d6ccd7da11fbf57f4a",
+        "instance": "sha256:257333f3712c7ef8a6e0683d85f1cc14136387c54997f395b7d9a9d10025cca0"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "listForOrganization 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 listForOrganization() → 污点链：listForOrganization(sink:ssrf) （定义于 identity/organization.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 409,
+        "endLine": 409
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2829ade9da4aed0fd1871598",
+      "occurrenceId": "occurrence:7a098a5a112e5759b7b3a08b",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7cd9d3f1c39a9a3a725a1ad44bf8eebdeac98cb42829ade9da4aed0fd1871598",
+        "instance": "sha256:0b0e9544f6494a48b74f067b2680a4f931afc7d37a098a5a112e5759b7b3a08b"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → identity/organization.ts:45 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 496,
+        "endLine": 496
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:153d17e6473a92adffe09830",
+      "occurrenceId": "occurrence:ec5b14395c7dd0abee9c85b9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:fb653a25e06b52fa27c11a018dcafb9afc4fa300153d17e6473a92adffe09830",
+        "instance": "sha256:fc5b24a68fc92286fe799aa88799345db48bc70eec5b14395c7dd0abee9c85b9"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "joinById 是 ssrf 入口",
+      "message": "不可信数据「URL 输入」流入 joinById() → 污点链：joinById(sink:ssrf) （定义于 identity/organization.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 496,
+        "endLine": 496
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:eb7d160f433f7a584e4486f1",
+      "occurrenceId": "occurrence:7c445124895e729015b6714f",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c0952078ae8bd6cfb39401e917fda0d18ac36aaaeb7d160f433f7a584e4486f1",
+        "instance": "sha256:0ebc62c4b97d6692906b0722ce896c1ed21e8aa47c445124895e729015b6714f"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "submitJoinRequest 经 1 跳到达 ssrf",
+      "message": "不可信数据「URL 输入」流入 submitJoinRequest() → 污点链：submitJoinRequest → shareMutation(sink:ssrf) （定义于 identity/organization.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 498,
+        "endLine": 498
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2829ade9da4aed0fd1871598",
+      "occurrenceId": "occurrence:58d86e42a1d22b7c04d357c9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7cd9d3f1c39a9a3a725a1ad44bf8eebdeac98cb42829ade9da4aed0fd1871598",
+        "instance": "sha256:28eb74563a517e3bea2e4df9a3535ee83046cb8c58d86e42a1d22b7c04d357c9"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → identity/tenant.ts:93 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 568,
+        "endLine": 568
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:1ded5646eb5526fff549e5b4",
+      "occurrenceId": "occurrence:214b0af97be5bca86a9cc5e6",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:0ccdbcecccbda54b0c84ac44e0ae94c703af383a1ded5646eb5526fff549e5b4",
+        "instance": "sha256:18aeecaafe9f2c6d10976a6469b05cc1732c1e8c214b0af97be5bca86a9cc5e6"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "review 经 1 跳到达 ssrf",
+      "message": "不可信数据「URL 输入」流入 review() → 污点链：review → shareMutation(sink:ssrf) （定义于 identity/organization.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 587,
+        "endLine": 587
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:2829ade9da4aed0fd1871598",
+      "occurrenceId": "occurrence:9fbc8d8b33ce8d67de7f24ae",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7cd9d3f1c39a9a3a725a1ad44bf8eebdeac98cb42829ade9da4aed0fd1871598",
+        "instance": "sha256:a0afb5354b2bcab6f2e289a4cc6ab8b2987eb8a29fbc8d8b33ce8d67de7f24ae"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → identity/tenant.ts:100 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/organizations/OrganizationsPage.tsx",
+        "line": 598,
+        "endLine": 598
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:a7a3d6cdfea3628614a362e4",
+      "occurrenceId": "occurrence:f924b7fd0df8a87797960372",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:b781d81ff0476c4ef90850483d6e15528c3e39fda7a3d6cdfea3628614a362e4",
+        "instance": "sha256:e81bbe2065dabf9279d013d7aefa3fcc01326521f924b7fd0df8a87797960372"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → src/configuration.ts:599 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/settings/McpSettingsPanel.tsx",
+        "line": 826,
+        "endLine": 826
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:a7a3d6cdfea3628614a362e4",
+      "occurrenceId": "occurrence:02d9bb15a398bfae5f50dcb2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:b781d81ff0476c4ef90850483d6e15528c3e39fda7a3d6cdfea3628614a362e4",
+        "instance": "sha256:1ceec7e5b00d5698f2763413bd7843c2db2bbe8f02d9bb15a398bfae5f50dcb2"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "URL 输入 → src/client.ts:298 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/web/src/settings/McpSettingsPanel.tsx",
+        "line": 830,
+        "endLine": 830
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f9bd8efdb77fe84a54e20668",
+      "occurrenceId": "occurrence:f5d59123d554100289b29c7a",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:1b4d18d9320082d5e8d5d59fa44dcd6eb04645eff9bd8efdb77fe84a54e20668",
+        "instance": "sha256:07174318bd893f06b31343d5b33e4d2a547c7103f5d59123d554100289b29c7a"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "confirmation 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 confirmation() → 污点链：confirmation(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/design/weknora-craft-hifi/prototype/app.js",
+        "line": 315,
+        "endLine": 315
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f9bd8efdb77fe84a54e20668",
+      "occurrenceId": "occurrence:30f5cc77637171cc4e040a86",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:1b4d18d9320082d5e8d5d59fa44dcd6eb04645eff9bd8efdb77fe84a54e20668",
+        "instance": "sha256:2a40d51bd11dd07bcdd06f1e3cd38e4ad26e85c930f5cc77637171cc4e040a86"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "confirmation 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 confirmation() → 污点链：confirmation(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/design/weknora-craft-hifi/prototype/app.js",
+        "line": 318,
+        "endLine": 318
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:fda99e7b845778202f790e9d",
+      "occurrenceId": "occurrence:806f3f8ebdaf9c1cfb0af24b",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:db42f370e8731e4e341ad2dab4e7593db7204dd5fda99e7b845778202f790e9d",
+        "instance": "sha256:519817887adb734a13546b4ba7320e81bb795187806f3f8ebdaf9c1cfb0af24b"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "render 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 render() → 污点链：render(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/WeKnora-Miniapp-Implementation-Kit/prototype/src/wireframe-base.js",
+        "line": 94,
+        "endLine": 94
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:fda99e7b845778202f790e9d",
+      "occurrenceId": "occurrence:ec785c49f68a30ae1ed9c75e",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:db42f370e8731e4e341ad2dab4e7593db7204dd5fda99e7b845778202f790e9d",
+        "instance": "sha256:edca4aab359705f3c9e92bf02ff53fca3df80a89ec785c49f68a30ae1ed9c75e"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "render 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 render() → 污点链：render(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/WeKnora-Miniapp-Implementation-Kit/prototype/src/wireframe-base.js",
+        "line": 95,
+        "endLine": 95
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:0273f9d096b5b24253b9928e",
+      "occurrenceId": "occurrence:3eecf947bf8fe9f80f7910ea",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:28601cf283d962b74e86a12717bf3feb384979540273f9d096b5b24253b9928e",
+        "instance": "sha256:a7a7b38a5f16badf6556136e6a0263c971ae0d3d3eecf947bf8fe9f80f7910ea"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "render 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 render() → 污点链：render(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/WeKnora-Taro-Design/wireframes/assets-source.js",
+        "line": 94,
+        "endLine": 94
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:0273f9d096b5b24253b9928e",
+      "occurrenceId": "occurrence:670358c8fa85d286adcff13d",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:28601cf283d962b74e86a12717bf3feb384979540273f9d096b5b24253b9928e",
+        "instance": "sha256:41c70bbb74f2b253357a250f165fb497dfc8fc8b670358c8fa85d286adcff13d"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "render 是 xss 入口",
+      "message": "不可信数据「URL 输入」流入 render() → 污点链：render(sink:xss)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docs/WeKnora-Taro-Design/wireframes/assets-source.js",
+        "line": 95,
+        "endLine": 95
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:ad92aabc5dab10b8ad8f762e",
+      "occurrenceId": "occurrence:ccd6de6848ba5419d6120690",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:6e5864c7dfaa59a607a3628fcf5c05950d73d20cad92aabc5dab10b8ad8f762e",
+        "instance": "sha256:96316e9d47ca7db17bda7a6266493d2d0f2282b9ccd6de6848ba5419d6120690"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "counterCount 是 ssrf 入口",
+      "message": "不可信数据「环境变量」流入 counterCount() → 污点链：counterCount(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 162,
+        "endLine": 162
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:b5770951aadbbd6adcbb5334",
+      "occurrenceId": "occurrence:81a7c7c515ded31a86ef05f9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:59954dc41da7f1e623bf3d36a81aa288d64a5dbfb5770951aadbbd6adcbb5334",
+        "instance": "sha256:c10f79bfdf00defb042c4f76fd62bb7addb33f9481a7c7c515ded31a86ef05f9"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "buildReport 经 1 跳到达 ssrf",
+      "message": "不可信数据「环境变量」流入 buildReport() → 污点链：buildReport → counterCount(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 212,
+        "endLine": 212
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:ad92aabc5dab10b8ad8f762e",
+      "occurrenceId": "occurrence:3da03dc4d72ccd20a1e3bf7c",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:6e5864c7dfaa59a607a3628fcf5c05950d73d20cad92aabc5dab10b8ad8f762e",
+        "instance": "sha256:710653ddb0885a031276fba3a45d859f6507b8373da03dc4d72ccd20a1e3bf7c"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "counterCount 是 ssrf 入口",
+      "message": "不可信数据「环境变量」流入 counterCount() → 污点链：counterCount(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 494,
+        "endLine": 494
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:6c116886c51155f980d105b8",
+      "occurrenceId": "occurrence:dad11c0d7a7553f4312e3ac2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:7e3eb94d95fd0ff533921a3d936978403a0d178c6c116886c51155f980d105b8",
+        "instance": "sha256:f56efdab6d3bfbaa4ae7ceb67329233804241e8ddad11c0d7a7553f4312e3ac2"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "环境变量 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 495,
+        "endLine": 495
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:b5770951aadbbd6adcbb5334",
+      "occurrenceId": "occurrence:3a79e3049764f69eb8eb28f1",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:59954dc41da7f1e623bf3d36a81aa288d64a5dbfb5770951aadbbd6adcbb5334",
+        "instance": "sha256:857c901aae1fc2f473d6c24b3d3c4dfd9b0f5a173a79e3049764f69eb8eb28f1"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "buildReport 经 1 跳到达 ssrf",
+      "message": "不可信数据「环境变量」流入 buildReport() → 污点链：buildReport → counterCount(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 794,
+        "endLine": 794
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:ad92aabc5dab10b8ad8f762e",
+      "occurrenceId": "occurrence:c525dec1e147620fdb3cfafb",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:6e5864c7dfaa59a607a3628fcf5c05950d73d20cad92aabc5dab10b8ad8f762e",
+        "instance": "sha256:3315c056f177ae300a495b1403df8a0b6a37398ec525dec1e147620fdb3cfafb"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "counterCount 是 ssrf 入口",
+      "message": "不可信数据「环境变量」流入 counterCount() → 污点链：counterCount(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/agent/recoverytest/provider/main.go",
+        "line": 799,
+        "endLine": 799
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:d4bda641ce78f7ac7156c8ee",
+      "occurrenceId": "occurrence:b20ebf026b3e97e7578c4ca7",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:346ecb16f722e1b39fb79d08b46770a16aa6ee61d4bda641ce78f7ac7156c8ee",
+        "instance": "sha256:89033b40e544ce6ff0cb8413cfd9d9bab5d66e41b20ebf026b3e97e7578c4ca7"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "环境变量 → utils/security.go:132 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/storagebackend.go",
+        "line": 208,
+        "endLine": 208
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:5695116a537477d4ac6e04a0",
+      "occurrenceId": "occurrence:8034fdbe7deda490b11a5bb9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:ef5b3fe29aa0dd3b233a3728286df197538bc07f5695116a537477d4ac6e04a0",
+        "instance": "sha256:e5d21b901918b8cfb162521a3371d03d88f736838034fdbe7deda490b11a5bb9"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "SafeJoinUnderBase 是 path-traversal 入口",
+      "message": "不可信数据「环境变量」流入 SafeJoinUnderBase() → 污点链：SafeJoinUnderBase(sink:path-traversal) （定义于 utils/security.go）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/storagebackend.go",
+        "line": 208,
+        "endLine": 208
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e7ce3109c2ffd6573e132145",
+      "occurrenceId": "occurrence:1b2745a8894e6605a5b1f1a9",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:184ec5c0c868b984616257ce6a7f09708574c3b3e7ce3109c2ffd6573e132145",
+        "instance": "sha256:ff4253bd6e6ff18bdb6fc0f8880df429ca9d7aac1b2745a8894e6605a5b1f1a9"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/app_connector_oauth.go",
+        "line": 110,
+        "endLine": 110
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e7ce3109c2ffd6573e132145",
+      "occurrenceId": "occurrence:a82019bb9d8a2d4c026d155d",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:184ec5c0c868b984616257ce6a7f09708574c3b3e7ce3109c2ffd6573e132145",
+        "instance": "sha256:a6126175a49a8969b71c56402b02b8eb68703182a82019bb9d8a2d4c026d155d"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/app_connector_oauth.go",
+        "line": 111,
+        "endLine": 111
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e7ce3109c2ffd6573e132145",
+      "occurrenceId": "occurrence:537dac85533cf8082d38a8b1",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:184ec5c0c868b984616257ce6a7f09708574c3b3e7ce3109c2ffd6573e132145",
+        "instance": "sha256:9b3dce93cafe99f8dce239ff1c093735fa0b1793537dac85533cf8082d38a8b1"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/app_connector_oauth.go",
+        "line": 201,
+        "endLine": 201
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e7ce3109c2ffd6573e132145",
+      "occurrenceId": "occurrence:51336b2713431e71e0853eed",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:184ec5c0c868b984616257ce6a7f09708574c3b3e7ce3109c2ffd6573e132145",
+        "instance": "sha256:10cc415ca7a129c9a213c994b2bf87dbf73c9f0e51336b2713431e71e0853eed"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/app_connector_oauth.go",
+        "line": 202,
+        "endLine": 202
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e7ce3109c2ffd6573e132145",
+      "occurrenceId": "occurrence:d119552ba04bc27b86dccc3d",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:184ec5c0c868b984616257ce6a7f09708574c3b3e7ce3109c2ffd6573e132145",
+        "instance": "sha256:29e8427b5b1a4991dc2093af9f58a87dd09da85ad119552ba04bc27b86dccc3d"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/app_connector_oauth.go",
+        "line": 204,
+        "endLine": 204
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:937ab0d9646f2c13e7fb1a14",
+      "occurrenceId": "occurrence:1e3d2b17344417a938ca8941",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:0b1514dba6a2cf5381d2e40ef9566976ad39de97937ab0d9646f2c13e7fb1a14",
+        "instance": "sha256:84bd7d0e2875b29bd378090fdeea66e5d232b1e71e3d2b17344417a938ca8941"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:71 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/auth.go",
+        "line": 658,
+        "endLine": 658
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:64306d9a999d9dab84b9fc14",
+      "occurrenceId": "occurrence:a1f2caa46a8bcfde8115252c",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:27e6e4d98cc7d33b05297553aeb855f2b6c5c00e64306d9a999d9dab84b9fc14",
+        "instance": "sha256:d792587605de8c43140633efcd55e23477691622a1f2caa46a8bcfde8115252c"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/custom_agent.go",
+        "line": 24,
+        "endLine": 24
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:4e0c517c7057a401d15d3566",
+      "occurrenceId": "occurrence:8852944113718232f4bf8663",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:1abc8af295c05660410ddfe0414be309e590c19a4e0c517c7057a401d15d3566",
+        "instance": "sha256:922d70cbe335e42702d930bb7c5151119a4bc4408852944113718232f4bf8663"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "UpsertFAQEntries 经 2 跳到达 path-traversal",
+      "message": "不可信数据「HTTP 请求输入」流入 UpsertFAQEntries() → 污点链：UpsertFAQEntries → faqImportEntriesFileName → SafeFileName(sink:path-traversal) （定义于 service/knowledge_faq_import.go）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/faq.go",
+        "line": 171,
+        "endLine": 171
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:016de1a8f3662c66a57caec0",
+      "occurrenceId": "occurrence:91f5c988cfd6d60248bed7ea",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:e0764d35a13e874a6e253df2703563c8325b5306016de1a8f3662c66a57caec0",
+        "instance": "sha256:8cff77d546531e8983976ebd1ccefef2a455faa191f5c988cfd6d60248bed7ea"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → client/knowledge.go:109 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/knowledge.go",
+        "line": 362,
+        "endLine": 362
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:1f8dbfef573553c5d9198e4d",
+      "occurrenceId": "occurrence:05e666017fb15ae2f85350b8",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:ea211c5dce8ae31b5a84e3456013139cc1b73a521f8dbfef573553c5d9198e4d",
+        "instance": "sha256:7751a1468cf16f4a29b53757d63fe43e10f83cf505e666017fb15ae2f85350b8"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/sandbox_config.go",
+        "line": 310,
+        "endLine": 310
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:8c6f68db94bb5a99d0a2d307",
+      "occurrenceId": "occurrence:afbb54b7217da1642d6a7aab",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:819ead21de32adc89509664ad4b3c4f4146058358c6f68db94bb5a99d0a2d307",
+        "instance": "sha256:58260821fa414e115fe31ac170d583840217f808afbb54b7217da1642d6a7aab"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/session/qa.go",
+        "line": 333,
+        "endLine": 333
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:8c6f68db94bb5a99d0a2d307",
+      "occurrenceId": "occurrence:2f982ca1436d38d8ead01708",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:819ead21de32adc89509664ad4b3c4f4146058358c6f68db94bb5a99d0a2d307",
+        "instance": "sha256:2ffa8198ce74f620c49c1cde6f9d035da98484822f982ca1436d38d8ead01708"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/session/qa.go",
+        "line": 1574,
+        "endLine": 1574
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:8c6f68db94bb5a99d0a2d307",
+      "occurrenceId": "occurrence:7326778b7926b53ffd639ec7",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:819ead21de32adc89509664ad4b3c4f4146058358c6f68db94bb5a99d0a2d307",
+        "instance": "sha256:2ee4b3f37e124785dca4b34b8cac7612c7ec9a257326778b7926b53ffd639ec7"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/session/qa.go",
+        "line": 1608,
+        "endLine": 1608
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:933c387eed86ba18292f38ac",
+      "occurrenceId": "occurrence:2d906981d60400a052241aff",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:32c61ac634bc63293ffeceab54bac9a29af113c6933c387eed86ba18292f38ac",
+        "instance": "sha256:4cb017019293cb09b488ba2ebc9fcf099d1d657c2d906981d60400a052241aff"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/session/temporary_document.go",
+        "line": 117,
+        "endLine": 117
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:77475c7436f8e2e2e702d61c",
+      "occurrenceId": "occurrence:6ab087331d2e7a9007e38cb4",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:27071359fa3395c7518c7e6d985cadda2ce6ceb277475c7436f8e2e2e702d61c",
+        "instance": "sha256:737abed62df6fe78c12c853828d35b6ccda409b26ab087331d2e7a9007e38cb4"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → secrets/secrets.go:60 的 文件路径操作",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/handler/system.go",
+        "line": 2237,
+        "endLine": 2237
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:b251c7bc16c456f6cd9e203f",
+      "occurrenceId": "occurrence:71138e273cb4583a77d414c1",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:9e7cfc083f7e900106eb7ef5110b1979305322b2b251c7bc16c456f6cd9e203f",
+        "instance": "sha256:ab6f3191014945b53b39d82af403951fe7e2d05d71138e273cb4583a77d414c1"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "dockerCurrentContextName 是 path-traversal 入口",
+      "message": "不可信数据「环境变量」流入 dockerCurrentContextName() → 污点链：dockerCurrentContextName(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/sandbox/docker_host.go",
+        "line": 40,
+        "endLine": 40
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:546295f8fd3a4133541d17bb",
+      "occurrenceId": "occurrence:a994d6d89fefd63b55f05eb2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c9b45e4167f6ff3dc831b7377242f210f0529c2d546295f8fd3a4133541d17bb",
+        "instance": "sha256:b7845253cf5831b21a9aa6bd396fabb93066fdd8a994d6d89fefd63b55f05eb2"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "dockerContextHost 是 path-traversal 入口",
+      "message": "不可信数据「环境变量」流入 dockerContextHost() → 污点链：dockerContextHost(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/sandbox/docker_host.go",
+        "line": 54,
+        "endLine": 54
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:b251c7bc16c456f6cd9e203f",
+      "occurrenceId": "occurrence:03091a1e5e4b5c0e975fd5d0",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:9e7cfc083f7e900106eb7ef5110b1979305322b2b251c7bc16c456f6cd9e203f",
+        "instance": "sha256:cd2e895957f631727a1b40f10b59aacb327dbb6e03091a1e5e4b5c0e975fd5d0"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "dockerCurrentContextName 是 path-traversal 入口",
+      "message": "不可信数据「环境变量」流入 dockerCurrentContextName() → 污点链：dockerCurrentContextName(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/sandbox/docker_host.go",
+        "line": 65,
+        "endLine": 65
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:6327c791aba618bf0a4d1587",
+      "occurrenceId": "occurrence:04b555d1479b32ed30c07a74",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:231e0c2105ee098e711ce03f71540c24688d54956327c791aba618bf0a4d1587",
+        "instance": "sha256:07de1894b870da2d76fa82cb300fca5e797dcb1c04b555d1479b32ed30c07a74"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "send 经 1 跳到达 ssrf",
+      "message": "不可信数据「HTTP 请求输入」流入 send() → 污点链：send → perform(sink:ssrf) （定义于 platform/transport.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 186,
+        "endLine": 186
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e4d4c244e8b6477818fbe069",
+      "occurrenceId": "occurrence:3937d84cab79d9c1e53b3f4e",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:af3d7b8b053912614154bfd13f9fd08168d09bfee4d4c244e8b6477818fbe069",
+        "instance": "sha256:3e00e5f56efa51c8c6a39b927f20d4812b1c8a323937d84cab79d9c1e53b3f4e"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "sendBinary 经 1 跳到达 ssrf",
+      "message": "不可信数据「HTTP 请求输入」流入 sendBinary() → 污点链：sendBinary → perform(sink:ssrf) （定义于 platform/transport.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 224,
+        "endLine": 224
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:944b04513dbe6b9d89332160",
+      "occurrenceId": "occurrence:b3310197f10617c937518085",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:708399ee49803adcd3b3b66b64934122434f68f4944b04513dbe6b9d89332160",
+        "instance": "sha256:f3d9607227d18d59eed2f8822693836d312f7762b3310197f10617c937518085"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createKnowledgeDocumentsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createKnowledgeDocumentsApi() → 污点链：createKnowledgeDocumentsApi(sink:ssrf) （定义于 knowledge/documents.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 243,
+        "endLine": 243
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e4a6f51a1e01086fa8e3c2e7",
+      "occurrenceId": "occurrence:ca522eaccefd14185d37dc81",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:fcf2311391de4d56a9d72f3fd0eaca2793638faae4a6f51a1e01086fa8e3c2e7",
+        "instance": "sha256:aa445461d62c62e4ba7b96c80861605daa6f2f01ca522eaccefd14185d37dc81"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createKnowledgeFaqApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createKnowledgeFaqApi() → 污点链：createKnowledgeFaqApi(sink:ssrf) （定义于 knowledge/faq.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 244,
+        "endLine": 244
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:346fbbb7bb0e87ed3c93f8ad",
+      "occurrenceId": "occurrence:078469c0f7cb360eff4842a2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:84aa89a1abad64c1e045169a341c90e2dbde0811346fbbb7bb0e87ed3c93f8ad",
+        "instance": "sha256:4ce3a50713535dae75f5cf11f25b4bfd11297c35078469c0f7cb360eff4842a2"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createKnowledgeSettingsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createKnowledgeSettingsApi() → 污点链：createKnowledgeSettingsApi(sink:ssrf) （定义于 knowledge/settings.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 245,
+        "endLine": 245
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:6b2807ca64899b3d4e25cf1f",
+      "occurrenceId": "occurrence:c85b77ee34ecb04773f86d3b",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:d549ee4c75b3a08c48659566d5bf6af05bb5ab816b2807ca64899b3d4e25cf1f",
+        "instance": "sha256:e8e16ae632284fe0a27baffdab58939c78b016e4c85b77ee34ecb04773f86d3b"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createWikiPagesApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createWikiPagesApi() → 污点链：createWikiPagesApi(sink:ssrf) （定义于 wiki/pages.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 246,
+        "endLine": 246
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:94441a71d952bdbf1eed5a3a",
+      "occurrenceId": "occurrence:3802af519b1778d73f807189",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:fb95d0684d91dc0254995de3519d4670b5d7def694441a71d952bdbf1eed5a3a",
+        "instance": "sha256:8fce1ea9e6373e53825e9e7f5ad008480a1eaa6f3802af519b1778d73f807189"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createDataSourcesApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createDataSourcesApi() → 污点链：createDataSourcesApi(sink:ssrf) （定义于 src/datasource.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 247,
+        "endLine": 247
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:67b4ad124b3801d4e20380b9",
+      "occurrenceId": "occurrence:92f6dcad564a77e12c26a6cc",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:b75ff99c6264308faeb2d6c650f22b7ebe6daad467b4ad124b3801d4e20380b9",
+        "instance": "sha256:ace2510ce422199bf2e877411d71759a3f3c649d92f6dcad564a77e12c26a6cc"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createCommercialApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createCommercialApi() → 污点链：createCommercialApi(sink:ssrf) （定义于 src/commercial.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 248,
+        "endLine": 248
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:be30370d16369a6d85627899",
+      "occurrenceId": "occurrence:d199246c71eddc47bd195ca2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:4b100a75eac6a060d0a63b49ea865a4b88a66818be30370d16369a6d85627899",
+        "instance": "sha256:96b13c574bb0682f2f459657e0fcc38c1761985dd199246c71eddc47bd195ca2"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createAppConnectorApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createAppConnectorApi() → 污点链：createAppConnectorApi(sink:ssrf) （定义于 src/appconnector.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 249,
+        "endLine": 249
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:480d1e73acb5606ccf3f173c",
+      "occurrenceId": "occurrence:edd53680b95bb3ae75ed1ea1",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:742ec2db8a4c5416b3fab39dddcb0642420269fc480d1e73acb5606ccf3f173c",
+        "instance": "sha256:85b4aa9ce64eaec7b01225010846cb947aac4138edd53680b95bb3ae75ed1ea1"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createAuthApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createAuthApi() → 污点链：createAuthApi(sink:ssrf) （定义于 auth/endpoints.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 250,
+        "endLine": 250
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:89bb1c32504a4e7bc1a556a3",
+      "occurrenceId": "occurrence:15e3ca480a24851a91c6eced",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:3e53f14234af43fa7b4fde80bfc6e5aa5fed22a989bb1c32504a4e7bc1a556a3",
+        "instance": "sha256:1080f7233e4b8955948b24cd823a718ecc522d4315e3ca480a24851a91c6eced"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatSessionsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatSessionsApi() → 污点链：createChatSessionsApi(sink:ssrf) （定义于 chat/sessions.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 251,
+        "endLine": 251
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:093a646e7b2dd181ffe8e923",
+      "occurrenceId": "occurrence:b110e1fc29383e20bde125d0",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:6b851694fad02bca89a4ea71689e9165c7fbd20b093a646e7b2dd181ffe8e923",
+        "instance": "sha256:cb03dce4fa0750e62c68ff4b336535f7c03f361eb110e1fc29383e20bde125d0"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createSandboxTerminalApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createSandboxTerminalApi() → 污点链：createSandboxTerminalApi(sink:ssrf) （定义于 sandbox/terminal.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 252,
+        "endLine": 252
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:02f19431693f4a37569a8be0",
+      "occurrenceId": "occurrence:ab2c8badf7cfa7029ef45ed8",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:f48da0b7f7c8a1446d013758de2215604f29689402f19431693f4a37569a8be0",
+        "instance": "sha256:36914fc55e7ba6131db0306a2cd7ac31cbd8253fab2c8badf7cfa7029ef45ed8"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createSandboxSkillInstallApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createSandboxSkillInstallApi() → 污点链：createSandboxSkillInstallApi(sink:ssrf) （定义于 sandbox/skill-install.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 256,
+        "endLine": 256
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:97bb7b3889fabbe849f37792",
+      "occurrenceId": "occurrence:5f98ba96be8c452be91016f5",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:05e1b119fbb7dfbcd4cd2e17717bc1dedaccad4597bb7b3889fabbe849f37792",
+        "instance": "sha256:f38211e2dd51cdc6b4724d4d13211daef09db9275f98ba96be8c452be91016f5"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createSandboxConfigurationsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createSandboxConfigurationsApi() → 污点链：createSandboxConfigurationsApi(sink:ssrf) （定义于 src/sandbox-configurations.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 270,
+        "endLine": 270
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:1b563b8c5ab1e03d78f670d0",
+      "occurrenceId": "occurrence:45b79258796595abaa38f103",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:b0d7579c651e4ab6227d9001c5f47b6bef9d0e911b563b8c5ab1e03d78f670d0",
+        "instance": "sha256:ff7f83f0830dfd47e6e248d452c0a8048527b59745b79258796595abaa38f103"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createConfigurationApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createConfigurationApi() → 污点链：createConfigurationApi(sink:ssrf) （定义于 src/configuration.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 271,
+        "endLine": 271
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:32a3967aa92a58a111a0891b",
+      "occurrenceId": "occurrence:2dcb36454b89f3cdbf2c5431",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:fe827e821fda98442ada9e301f51bddfdc60ec3d32a3967aa92a58a111a0891b",
+        "instance": "sha256:5eb753ccaaaeb0cab9e0b297d50b96a4552146442dcb36454b89f3cdbf2c5431"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatApprovalsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatApprovalsApi() → 污点链：createChatApprovalsApi(sink:ssrf) （定义于 chat/approvals.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 272,
+        "endLine": 272
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:6409c7bb78a4ba3d1a62f945",
+      "occurrenceId": "occurrence:a9198964de3512e9c2a6cf47",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:f36f3525a5a6ce4ca2acbbb9d92ce2f9cb1650516409c7bb78a4ba3d1a62f945",
+        "instance": "sha256:c430acd68d863a71309787da45518c09ccc1db33a9198964de3512e9c2a6cf47"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatSteerApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatSteerApi() → 污点链：createChatSteerApi(sink:ssrf) （定义于 chat/steer.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 273,
+        "endLine": 273
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:777461e7e1fd1721d1683e0e",
+      "occurrenceId": "occurrence:994ccddefe4a87618bf3cd26",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:fa3ab7dd92c28bc993f4147b84defaa36492e441777461e7e1fd1721d1683e0e",
+        "instance": "sha256:3a3a586647f493d09cbb10efd605873f47ad4919994ccddefe4a87618bf3cd26"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatAttachmentsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatAttachmentsApi() → 污点链：createChatAttachmentsApi(sink:ssrf) （定义于 chat/attachments.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 274,
+        "endLine": 274
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:35faf253405660bc8dfc5289",
+      "occurrenceId": "occurrence:f17937ad318b33d3af000773",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:4390fc9c8ab7af01f340bb0253ef15ba1888522e35faf253405660bc8dfc5289",
+        "instance": "sha256:fe69217b7a6d696740daec5311ed1d496a8d57d3f17937ad318b33d3af000773"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatSuggestionsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatSuggestionsApi() → 污点链：createChatSuggestionsApi(sink:ssrf) （定义于 chat/suggestions.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 275,
+        "endLine": 275
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:e81312eaeaede3223208d083",
+      "occurrenceId": "occurrence:31f16b64552a1cf9ad45f9ba",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:d15b35e11f4bb766cd8109d678c45d3188cb8b55e81312eaeaede3223208d083",
+        "instance": "sha256:aee359e84ff34aa628de719e2ddcb851e21e35b431f16b64552a1cf9ad45f9ba"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createChatArtifactsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createChatArtifactsApi() → 污点链：createChatArtifactsApi(sink:ssrf) （定义于 chat/artifacts.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 276,
+        "endLine": 276
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:19ec6e9ea9ab54ed90a10749",
+      "occurrenceId": "occurrence:634cb2489620014b175f9348",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:af92736e950e935053b10fc1e85a77433bd4628319ec6e9ea9ab54ed90a10749",
+        "instance": "sha256:8a1455a5daff3890e8dd574a6e66bd4b72afa4a0634cb2489620014b175f9348"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createIdentityApi 经 1 跳到达 ssrf",
+      "message": "不可信数据「HTTP 请求输入」流入 createIdentityApi() → 污点链：createIdentityApi → createTenantMembersApi(sink:ssrf) （定义于 identity/index.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 277,
+        "endLine": 277
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:fd1b3920f6cfd0eebc47cbfc",
+      "occurrenceId": "occurrence:00a36d4931470f801f60fa2e",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:f5928880e020f70f1e538773106ccc5487dce782fd1b3920f6cfd0eebc47cbfc",
+        "instance": "sha256:d98758341bb765a104dc6ea6e6b4020a869a8a5700a36d4931470f801f60fa2e"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createAdministrationApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createAdministrationApi() → 污点链：createAdministrationApi(sink:ssrf) （定义于 administration/index.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 278,
+        "endLine": 278
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:22cf135f11baf1dbe6d2050e",
+      "occurrenceId": "occurrence:f61b4bbebe44171e4f37c027",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:23b7184cd5491faeeddc3180c3b32a1ae378fc4122cf135f11baf1dbe6d2050e",
+        "instance": "sha256:14399de3639c0bb967393a43f794198ca7e15667f61b4bbebe44171e4f37c027"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createSettingsApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createSettingsApi() → 污点链：createSettingsApi(sink:ssrf) （定义于 settings/index.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 279,
+        "endLine": 279
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f29fa55c2fc87c803252cd9a",
+      "occurrenceId": "occurrence:4b9242f9db56508e85432f9a",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:f1767069ef95ec09930637b579282ee6704aeb1bf29fa55c2fc87c803252cd9a",
+        "instance": "sha256:4b8ce959a8ddd0f21336a1b4d2b96a17e8c1cf2d4b9242f9db56508e85432f9a"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "createEmbedApi 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 createEmbedApi() → 污点链：createEmbedApi(sink:ssrf) （定义于 embed/index.ts）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 280,
+        "endLine": 280
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:81b8c68a0040549bf64e10da",
+      "occurrenceId": "occurrence:7751430ff9e2713b17c5bf35",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c44842a9b9ba5114c3e42a2eccfdafa56917c41281b8c68a0040549bf64e10da",
+        "instance": "sha256:fac958808adf5da75745ce779206b09d72d7368e7751430ff9e2713b17c5bf35"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "request 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 request() → 污点链：request(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 328,
+        "endLine": 328
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:81b8c68a0040549bf64e10da",
+      "occurrenceId": "occurrence:333fcdc1d8587a71b9bc7857",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c44842a9b9ba5114c3e42a2eccfdafa56917c41281b8c68a0040549bf64e10da",
+        "instance": "sha256:911aec0d64ab07ab5d258875829a0c3d83b56097333fcdc1d8587a71b9bc7857"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "request 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 request() → 污点链：request(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 331,
+        "endLine": 331
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:81b8c68a0040549bf64e10da",
+      "occurrenceId": "occurrence:4cfc64a3e40ebe2160ea8602",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c44842a9b9ba5114c3e42a2eccfdafa56917c41281b8c68a0040549bf64e10da",
+        "instance": "sha256:fb0fe423922010a4ed8fc796dedd403b397136834cfc64a3e40ebe2160ea8602"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "request 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 request() → 污点链：request(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 337,
+        "endLine": 337
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:81b8c68a0040549bf64e10da",
+      "occurrenceId": "occurrence:771900fb640dbed72247ceb1",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c44842a9b9ba5114c3e42a2eccfdafa56917c41281b8c68a0040549bf64e10da",
+        "instance": "sha256:d79dc344883fcaacf7f74f9a3713a5a609c4ae58771900fb640dbed72247ceb1"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "request 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 request() → 污点链：request(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 353,
+        "endLine": 353
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:44394dd3516b50b2ee5136e0",
+      "occurrenceId": "occurrence:91dd2799451dbc0159936c04",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:3d566d1c0390f3de37cc7a6d8e4d27f75bb34fb044394dd3516b50b2ee5136e0",
+        "instance": "sha256:3470dee4074499a5cd7253ff0fd79d7ee3e62b2e91dd2799451dbc0159936c04"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "consumeChatTransport 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 consumeChatTransport() → 污点链：consumeChatTransport(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 401,
+        "endLine": 401
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:81b8c68a0040549bf64e10da",
+      "occurrenceId": "occurrence:e1f54feede374f60f955806e",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:c44842a9b9ba5114c3e42a2eccfdafa56917c41281b8c68a0040549bf64e10da",
+        "instance": "sha256:34a84640f258db33f296e2e2fe522c31fd8c1a12e1f54feede374f60f955806e"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "request 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 request() → 污点链：request(sink:ssrf)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/client.ts",
+        "line": 409,
+        "endLine": 409
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:8c49e60a55ad75bacacdaa12",
+      "occurrenceId": "occurrence:d1266a9d576ad08fbeb03b79",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:da21c97b2bb909ede83bf92b6444865dd0d687cd8c49e60a55ad75bacacdaa12",
+        "instance": "sha256:c48f968ee1cc165246590aada05caa22a312b04ad1266a9d576ad08fbeb03b79"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → src/EmbedApp.tsx:55 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/transport/json.ts",
+        "line": 133,
+        "endLine": 133
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:9789999478419cf65968a4ea",
+      "occurrenceId": "occurrence:098e8e4dbb5e1a4b5a370876",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:652e5459071d602865faed9aacdf1177e4237b669789999478419cf65968a4ea",
+        "instance": "sha256:1d4f00323373cf4deb89cb786868aacbabdf9d95098e8e4dbb5e1a4b5a370876"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "fetcher 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 fetcher() → 污点链：fetcher(sink:ssrf) （定义于 src/EmbedApp.tsx）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/transport/json.ts",
+        "line": 133,
+        "endLine": 133
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:8c49e60a55ad75bacacdaa12",
+      "occurrenceId": "occurrence:184fd6241524120a707a2231",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:da21c97b2bb909ede83bf92b6444865dd0d687cd8c49e60a55ad75bacacdaa12",
+        "instance": "sha256:6e38a20ebd81baba0fb7dc8be01bccf64efb2a7f184fd6241524120a707a2231"
+      },
+      "kind": "cross-file",
+      "severity": "medium",
+      "title": "疑似跨文件污点",
+      "message": "HTTP 请求输入 → src/EmbedApp.tsx:55 的 SSRF 服务端请求伪造 server-side request",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/transport/json.ts",
+        "line": 175,
+        "endLine": 175
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:9789999478419cf65968a4ea",
+      "occurrenceId": "occurrence:2640c9e2700a3583a2a3eed2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:652e5459071d602865faed9aacdf1177e4237b669789999478419cf65968a4ea",
+        "instance": "sha256:3eb864d6a557575b346a86334f6ef458939d9eff2640c9e2700a3583a2a3eed2"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "fetcher 是 ssrf 入口",
+      "message": "不可信数据「HTTP 请求输入」流入 fetcher() → 污点链：fetcher(sink:ssrf) （定义于 src/EmbedApp.tsx）",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "packages/api-client/src/transport/json.ts",
+        "line": 175,
+        "endLine": 175
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:f9b3cbfb2ce75d60c2ade1d5",
+      "occurrenceId": "occurrence:0c152e476ec77019600092d2",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:a02d0faeb668a00b2bfba14f5ca5dc2a00245ddcf9b3cbfb2ce75d60c2ade1d5",
+        "instance": "sha256:c5d191a827a18daa1d032c1a16ad554d8ca4ba520c152e476ec77019600092d2"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "main 是 path-traversal 入口",
+      "message": "不可信数据「命令行参数」流入 main() → 污点链：main(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "scripts/open-connector/check_deployment.py",
+        "line": 312,
+        "endLine": 312
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:a5db25622c028b3eee4e2b1b",
+      "occurrenceId": "occurrence:4ea87aba7b5092da4ea1cb9d",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:496fa59309bd78cddc61ad217c06909166d8cd60a5db25622c028b3eee4e2b1b",
+        "instance": "sha256:ceee345c04981a69f871bbd16b5772b394cc6f184ea87aba7b5092da4ea1cb9d"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "main 是 path-traversal 入口",
+      "message": "不可信数据「命令行参数」流入 main() → 污点链：main(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "scripts/open-connector/contract_gate.py",
+        "line": 72,
+        "endLine": 72
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:1e1e771e3c9ea50ebb602554",
+      "occurrenceId": "occurrence:4affb5882a40ba9871f9f949",
+      "identity": {
+        "publicClass": "other-security",
+        "anchor": "sha256:100af88765ed4d8815b3eaa6695f826ac3dfc7341e1e771e3c9ea50ebb602554",
+        "instance": "sha256:9ce04e0d39122b81126bd1e26e88dc9a41e9134a4affb5882a40ba9871f9f949"
+      },
+      "kind": "cross-file",
+      "severity": "high",
+      "title": "main 是 path-traversal 入口",
+      "message": "不可信数据「命令行参数」流入 main() → 污点链：main(sink:path-traversal)",
+      "cwe": [],
+      "advisory": true,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "scripts/open-connector/release_gate.py",
+        "line": 179,
+        "endLine": 179
+      },
+      "proofGaps": [
+        "静态 advisory 需要人工确认真实数据流和可利用性。"
+      ]
+    },
+    {
+      "findingId": "finding:fcdc0f83d344e0390446a0d2",
+      "occurrenceId": "occurrence:bbd58de9fc8aecad75a19509",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:91184a4bc9343960617472cfb528e88eb0ffba86fcdc0f83d344e0390446a0d2",
+        "instance": "sha256:051e34d89b8400f71550a04cc3072638eeacafaebbd58de9fc8aecad75a19509"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/excel_convert.py",
+        "line": 59,
+        "endLine": 59
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8372769f5d8bbcc4dc2ceba0",
+      "occurrenceId": "occurrence:81bea7339aecd93ed0fe8dae",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:2fe495856e5d6077e8bb8848c3ecaa7643f4ccfb8372769f5d8bbcc4dc2ceba0",
+        "instance": "sha256:42f4ca19fbac49185da9d73f342c7c1f8dd95b3981bea7339aecd93ed0fe8dae"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/markdown_parser.py",
+        "line": 432,
+        "endLine": 432
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:8edf3ed8e18cbf2070207d25",
+      "occurrenceId": "occurrence:a15db6eab756d20c8ac66b2a",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:3645db9d0f270532d76b15fa6030ecb588ce42bc8edf3ed8e18cbf2070207d25",
+        "instance": "sha256:e963adc8efb0ff2a4338aa986b6c40fd122398c0a15db6eab756d20c8ac66b2a"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/opendataloader_parser.py",
+        "line": 334,
+        "endLine": 334
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:d7797f17593ebb3ce2a65581",
+      "occurrenceId": "occurrence:4e2a4845ead45d0837c9f22f",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:bdd4e11827bab92d5d9b38ba7c0d6b26782a8fdfd7797f17593ebb3ce2a65581",
+        "instance": "sha256:43027490ef1d80d6c3d5e4382dd18048300720484e2a4845ead45d0837c9f22f"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/ppt_convert.py",
+        "line": 47,
+        "endLine": 47
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:350dd70b89759828b8f66753",
+      "occurrenceId": "occurrence:d976aeb3a1249936b67e0eab",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:0aee0893c6419ee598cb2189551192ea24a1d499350dd70b89759828b8f66753",
+        "instance": "sha256:7ebad5453aaf5f5b8813f4f8b3e56db5fc0ffd39d976aeb3a1249936b67e0eab"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/pptx_media.py",
+        "line": 45,
+        "endLine": 45
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9252d5ca5d98173fdd9fe467",
+      "occurrenceId": "occurrence:9a3e3c0eaf35e3d94914739b",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:6e26a7683088374d30a53ddfa9639791bf6f24db9252d5ca5d98173fdd9fe467",
+        "instance": "sha256:5c4c6cd0ea218669e8c356b9401b9c3b068a35e59a3e3c0eaf35e3d94914739b"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/scripts/parse_local.py",
+        "line": 97,
+        "endLine": 97
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9252d5ca5d98173fdd9fe467",
+      "occurrenceId": "occurrence:167e287d86bf3cb9ae829f8f",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:6e26a7683088374d30a53ddfa9639791bf6f24db9252d5ca5d98173fdd9fe467",
+        "instance": "sha256:fe6f3037fb6eb005a7850636f4724e2d2c980633167e287d86bf3cb9ae829f8f"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/scripts/parse_local.py",
+        "line": 109,
+        "endLine": 109
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:555c21159158c3baddf12de7",
+      "occurrenceId": "occurrence:40f27c643c3995847ed88683",
+      "identity": {
+        "publicClass": "path-traversal",
+        "anchor": "sha256:da8829e40f1db6c9552820427caae950514d139d555c21159158c3baddf12de7",
+        "instance": "sha256:c82b4a12b976d97bc05f6d9af149defb3ea4e67140f27c643c3995847ed88683"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "路径穿越",
+      "message": "未校验的路径含 ../ 可访问预期之外的文件",
+      "cwe": [
+        "CWE-22"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/splitter/splitter.py",
+        "line": 497,
+        "endLine": 497
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:4d801c5653368134d3f79630",
+      "occurrenceId": "occurrence:a6d3f6ba951cbdcc5746c816",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:9a61dac096a4c4a17b301c36b05f09cec21ab8ce4d801c5653368134d3f79630",
+        "instance": "sha256:016d356a5410d2c9f8478539340ae1e04c561fa3a6d3f6ba951cbdcc5746c816"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "服务端直接按用户提供的 URL 发起请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/miniprogram/src/platform/transport.ts",
+        "line": 54,
+        "endLine": 54
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:4d801c5653368134d3f79630",
+      "occurrenceId": "occurrence:af13d1afde8843441e947eb7",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:9a61dac096a4c4a17b301c36b05f09cec21ab8ce4d801c5653368134d3f79630",
+        "instance": "sha256:460db9e1e608a5018a116dfb6a7dd03954f47c8caf13d1afde8843441e947eb7"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "服务端直接按用户提供的 URL 发起请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/miniprogram/src/platform/transport.ts",
+        "line": 114,
+        "endLine": 114
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:4003b884d8430586f165a4f7",
+      "occurrenceId": "occurrence:2c3788c7e5b4f1a78a0b5943",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:434f9dfb752f3cd3599b2da015e53e2c62a0ad964003b884d8430586f165a4f7",
+        "instance": "sha256:acb78739cbaeb968c7a97167bc95fd27444657132c3788c7e5b4f1a78a0b5943"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "服务端直接按用户提供的 URL 发起请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx",
+        "line": 71,
+        "endLine": 71
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9fc4c64b2d462141ae7f0c92",
+      "occurrenceId": "occurrence:0698d7c256710648370df9cf",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:a3dec9d3de98a5bcb59ee46f6c5997a1189cdf8c9fc4c64b2d462141ae7f0c92",
+        "instance": "sha256:7ba9b1d4989df252a331ae68073cfecd48891d9f0698d7c256710648370df9cf"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "动态 URL 未经协议、目标主机和解析后 IP 边界校验就进入服务端请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "deploy/openmeter/smoke.py",
+        "line": 26,
+        "endLine": 26
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:9fc4c64b2d462141ae7f0c92",
+      "occurrenceId": "occurrence:f5ef9dc265f745e0bde3bf3f",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:a3dec9d3de98a5bcb59ee46f6c5997a1189cdf8c9fc4c64b2d462141ae7f0c92",
+        "instance": "sha256:2933bf7b4ad485c0989daa2029861e1475c6e4c6f5ef9dc265f745e0bde3bf3f"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "动态 URL 未经协议、目标主机和解析后 IP 边界校验就进入服务端请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "deploy/openmeter/smoke.py",
+        "line": 32,
+        "endLine": 32
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:811b63910d9f13f9d63c1147",
+      "occurrenceId": "occurrence:fdf6b1c8b4df1af6c015ecb6",
+      "identity": {
+        "publicClass": "ssrf",
+        "anchor": "sha256:d7229e5c21e7d72a12f3e2a3899b8f23970808bb811b63910d9f13f9d63c1147",
+        "instance": "sha256:aa2fddef1babe62dfcac6c79ecef4da550ab94cefdf6b1c8b4df1af6c015ecb6"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "SSRF 服务端请求伪造",
+      "message": "动态 URL 未经协议、目标主机和解析后 IP 边界校验就进入服务端请求，可能访问内网、云元数据或本机服务。",
+      "cwe": [
+        "CWE-918"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "scripts/saas/probe_case.py",
+        "line": 181,
+        "endLine": 181
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:b7ef0740128e74b8e6c876c0",
+      "occurrenceId": "occurrence:f5f89925310a42c2b9de9282",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:3b6e42d457870cfb1d43e3170e37d0cf1d80b2b1b7ef0740128e74b8e6c876c0",
+        "instance": "sha256:62f260b8d2db555b5d2b2bf794ec826b5a15a559f5f89925310a42c2b9de9282"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/knowledge_faq.go",
+        "line": 1821,
+        "endLine": 1821
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3623f43f3eafc979ecbb9cc8",
+      "occurrenceId": "occurrence:d8f2844deb7fed52bb187e8c",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:ee10e2cf03c61a8bdce971e2e0123de12b11ee8a3623f43f3eafc979ecbb9cc8",
+        "instance": "sha256:cc2e189e0812b9d1491a5ed4a7a6e38b64f0cbbbd8f2844deb7fed52bb187e8c"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/knowledge_util.go",
+        "line": 114,
+        "endLine": 114
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:3623f43f3eafc979ecbb9cc8",
+      "occurrenceId": "occurrence:ab9da4fd501187b3654e14cd",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:ee10e2cf03c61a8bdce971e2e0123de12b11ee8a3623f43f3eafc979ecbb9cc8",
+        "instance": "sha256:010020cbbdaa7ed451c8b860b87417c7b7682f3aab9da4fd501187b3654e14cd"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/application/service/knowledge_util.go",
+        "line": 128,
+        "endLine": 128
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:b1927769937315606b38e2c7",
+      "occurrenceId": "occurrence:9216efd45bccfe56e41107b0",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:3d6aa3e0f2a68aa5d52f696cf685d3467e3c207fb1927769937315606b38e2c7",
+        "instance": "sha256:ed89e14fcc55d0a7dce3b7c9cbc9831b02b0bc7e9216efd45bccfe56e41107b0"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/im/wecom/webhook_adapter.go",
+        "line": 440,
+        "endLine": 440
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:fd6f3c4fe5dd3a1591c2bc29",
+      "occurrenceId": "occurrence:ed9cf03c2bf034590a371b50",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:c502730bdfebcc35e76270b75ca9751f0e63a3e4fd6f3c4fe5dd3a1591c2bc29",
+        "instance": "sha256:72e5d1275599ff9e834dbaad9158176731d7df87ed9cf03c2bf034590a371b50"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/models/utils/signer.go",
+        "line": 66,
+        "endLine": 66
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f4f39e994d63b39077f4686e",
+      "occurrenceId": "occurrence:e0d1dede23125ff74aa4e0f5",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:09ab0ae02ae9488cb48e4f448206dcc602b170fef4f39e994d63b39077f4686e",
+        "instance": "sha256:a4337426b036d4a34ef019190115fdc3f2844326e0d1dede23125ff74aa4e0f5"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/payment/alipay.go",
+        "line": 260,
+        "endLine": 260
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:f4f39e994d63b39077f4686e",
+      "occurrenceId": "occurrence:c1c5e03cb92cb4be220412a2",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:09ab0ae02ae9488cb48e4f448206dcc602b170fef4f39e994d63b39077f4686e",
+        "instance": "sha256:9ddb7d8f692df4406f568b3f269fd14cdc51f1c2c1c5e03cb92cb4be220412a2"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/payment/alipay.go",
+        "line": 568,
+        "endLine": 568
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:892da72c7f1449e352028ea1",
+      "occurrenceId": "occurrence:f3e2372b9050e83201622f32",
+      "identity": {
+        "publicClass": "weak-crypto",
+        "anchor": "sha256:3095da19985fad6a1ac7e73fb1fdfbd161cbdfaa892da72c7f1449e352028ea1",
+        "instance": "sha256:6d15a61e722d9e1c1508f3dc04fca19fa9eca887f3e2372b9050e83201622f32"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "弱加密算法",
+      "message": "使用已被攻破的弱加密/哈希原语（DES/RC4/MD5/ECB 等）。",
+      "cwe": [
+        "CWE-327"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "internal/searchutil/textutil.go",
+        "line": 22,
+        "endLine": 22
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:dfad672bb203ec0fd76886b1",
+      "occurrenceId": "occurrence:e130653618c8a3f131ac002a",
+      "identity": {
+        "publicClass": "xxe",
+        "anchor": "sha256:7170f422adb3d058ffe9e211d8c61a3cdcb84ff3dfad672bb203ec0fd76886b1",
+        "instance": "sha256:1df403cec779707f24c411a253ca34a92385d8ece130653618c8a3f131ac002a"
+      },
+      "kind": "static",
+      "severity": "medium",
+      "title": "XXE（XML 外部实体）",
+      "message": "解析 XML 时启用外部实体，可读本地文件/发起请求",
+      "cwe": [
+        "CWE-611"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/docx_merge.py",
+        "line": 81,
+        "endLine": 81
+      },
+      "proofGaps": []
+    },
+    {
+      "findingId": "finding:6a10a5c2d717c4391ad34d24",
+      "occurrenceId": "occurrence:874ee02b9d0f0ca395595082",
+      "identity": {
+        "publicClass": "xxe",
+        "anchor": "sha256:4dde60edda6a966c30c03c8bf8561a570d9aef156a10a5c2d717c4391ad34d24",
+        "instance": "sha256:918879aecf854ac6cd3e179d5dd3683af8728e6d874ee02b9d0f0ca395595082"
+      },
+      "kind": "static",
+      "severity": "high",
+      "title": "XML 实体扩展",
+      "message": "标准库 ElementTree 会接受内部 DTD 实体扩展；解析不可信 XML 时可能造成资源耗尽。",
+      "cwe": [
+        "CWE-776"
+      ],
+      "advisory": false,
+      "evidenceState": "static-finding",
+      "verdictEffect": "none",
+      "location": {
+        "path": "docreader/parser/xmind_parser.py",
+        "line": 120,
+        "endLine": 120
+      },
+      "proofGaps": []
+    }
+  ],
+  "totals": {
+    "high": 179,
+    "medium": 40,
+    "low": 0,
+    "info": 0,
+    "businessLogic": 0
+  }
+}

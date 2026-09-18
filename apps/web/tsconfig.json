@@ -35,6 +35,9 @@
       "@weknora/core/craft/controller": [
         "../../packages/core/src/craft/controller.ts"
       ],
+      "@weknora/core/craft/command-bridge": [
+        "../../packages/core/src/craft/command-bridge.ts"
+      ],
       "@weknora/domain": [
         "../../packages/domain/src/query-key.ts"
       ],
@@ -46,6 +49,9 @@
       ],
       "@weknora/domain/craft/reconnect": [
         "../../packages/domain/src/craft/reconnect.ts"
+      ],
+      "@weknora/domain/craft/capabilities": [
+        "../../packages/domain/src/craft/capabilities.ts"
       ],
       "@weknora/domain/chat/reducer": [
         "../../packages/domain/src/chat/reducer.ts"
@@ -108,6 +114,9 @@
       "@weknora/views/integrations/settings-route": ["../../packages/views/src/integrations/settings-route.ts"],
       "@weknora/views/settings/registry": ["../../packages/views/src/settings/registry.ts"],
       "@weknora/views/craft/home": ["../../packages/views/src/craft/home.tsx"],
+      "@weknora/views/craft/library": ["../../packages/views/src/craft/library.tsx"],
+      "@weknora/views/craft/templates": ["../../packages/views/src/craft/templates.tsx"],
+      "@weknora/views/craft/assistant-runtime": ["../../packages/views/src/craft/assistant-runtime.tsx"],
       "@weknora/views/craft/workbench": ["../../packages/views/src/craft/workbench.tsx"],
       "@weknora/views/craft/preview": ["../../packages/views/src/craft/preview.tsx"],
       "@weknora/views/craft/files": ["../../packages/views/src/craft/files.tsx"],

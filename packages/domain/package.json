@@ -21,6 +21,7 @@
     "./craft/reconnect": "./src/craft/reconnect.ts",
     "./craft/state": "./src/craft/state.ts",
     "./craft/usage": "./src/craft/usage.ts",
+    "./craft/capabilities": "./src/craft/capabilities.ts",
     "./knowledge/folders": "./src/knowledge/folders.ts",
     "./knowledge/list": "./src/knowledge/list.ts",
     "./knowledge/preview": "./src/knowledge/preview.ts",
@@ -31,7 +32,8 @@
     "./scope": "./src/scope.ts",
     "./settings/local-preferences": "./src/settings/local-preferences.ts",
     "./settings/local-preferences.test": "./src/settings/local-preferences.test.ts",
-    "./wiki/diff": "./src/wiki/diff.ts"
+    "./wiki/diff": "./src/wiki/diff.ts",
+    "./craft/version-selection": "./src/craft/version-selection.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

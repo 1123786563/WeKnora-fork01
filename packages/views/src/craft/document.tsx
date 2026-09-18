@@ -9,6 +9,7 @@
 // as clickable buttons that resolve through the knowledge permission chain
 // on every click. Props carry data and callbacks only; no global state, no
 // localStorage (W05 contract).
+import React from 'react';
 import { useMemo } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, type CraftLocale } from './presentation.ts';

@@ -6,6 +6,7 @@
 // total, paginated rows (at most 1000 per page) and the fixed download
 // of report.xlsx for the selected immutable version. Props carry data and
 // callbacks only; no global state, no localStorage (W05 contract).
+import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, type CraftLocale } from './presentation.ts';

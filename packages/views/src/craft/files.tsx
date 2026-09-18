@@ -7,6 +7,7 @@
 // session's updated_at belongs to the current version; older rows stay
 // explicit "—"), and every Check with its recorded status. "Continue from this
 // version" is deliberately absent: restore lands with C05.
+import React from 'react';
 import type { CraftVersionView } from '@weknora/contracts';
 import { Button } from '@weknora/ui';
 import { craftStrings, downloadFileName, formatBytes, historyRows, type CraftLocale } from './presentation.ts';

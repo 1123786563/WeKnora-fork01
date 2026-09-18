@@ -57,6 +57,23 @@ func (g CraftFeatureGate) Allows(kind string) bool {
 	return false
 }
 
+// CraftGateCapabilities is the deployment gate projected for view
+// consumption (CFT-S00-T005): the UI offers exactly the open kinds and can
+// explain why a submit entrance is closed. It NEVER relaxes validation —
+// every create/run still goes through Allows below.
+type CraftGateCapabilities struct {
+	Enabled bool
+	Kinds   []string
+}
+
+// Capabilities projects the gate snapshot (copy, not alias).
+func (s *CraftSessionService) Capabilities() CraftGateCapabilities {
+	if s == nil {
+		return CraftGateCapabilities{}
+	}
+	return CraftGateCapabilities{Enabled: s.gate.Enabled, Kinds: append([]string(nil), s.gate.Kinds...)}
+}
+
 // ActiveRunConflict reports that the session's single run slot is held by a
 // live run (queued/running/recovering/waiting_user). The 409 carries the
 // existing run id so the client can attach to it instead of retrying blindly.

@@ -9,6 +9,7 @@
 // the EXPLICIT page number plus the current version id to the main agent.
 // Props carry data and callbacks only; no global state, no localStorage
 // (W05 contract).
+import React from 'react';
 import { useEffect, useState } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, type CraftLocale } from './presentation.ts';
