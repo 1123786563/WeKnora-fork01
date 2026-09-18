@@ -33,7 +33,7 @@
 | A10 | Milvus analyzer + 迁移工具 | `analyzer.go`/`migration.go` | 无 | ⬜ 待办 |
 | A11 | 会话 fork（历史消息分叉） | `42e6163` session_fork 全家桶 + 迁移 000018/000019(上游编号) + 前端 forkPoint.ts | 无 | ✅ 完成（第 10-13 轮四阶段：schema/迁移/历史查询→service+路由→沙箱 checkpoint 基建+trpc 挂点→React 入口 C1；第 17 轮 A17 落地后 SessionForkSandboxPort 真实接线） |
 | A12 | 记忆提取（memory extraction/lifecycle/vector） | `e42f09d` internal/application/repository/memory_*.go + 迁移 | 内部为旧形态（接缝已同形） | ✅ 完成（2026-09-18 第 16 轮，worktree 865c82fa：租约协议/SaveItem 替换序列化/全库向量排序+6 一致性测试套件；迁移 000153/000154+sqlite 074/075；容器实测 v154+表落地） |
-| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/` + agent/tools/browserskill* + 迁移 | 无 | ⬜ 待办（最大条目，依赖 sandbox 基础设施） |
+| A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/`（19 文件 5223 行）+ agent/tools/browserskill*（1463 行）+ handler/session/browserskill.go + 前端 C2/C5 | **阶段 1 已落地**（第 19 轮 worktree bdd3a4a2：整包移植+迁移 000155/000076） | 🔄 进行中（阶段 1 ✅——包移植+测试 8/9+门禁全绿；**立项认知修正：chromedp v0.15.1 本就在 fork go.mod 且本包零内部依赖**；阶段 2=trpc 工具适配、阶段 3=handler/DI/迁移接线+A19、阶段 4=React C2/C5+extension_test 适配；第 18 轮的立项拆分记录见第 18 轮条目） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
 | A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：工具发射器 8KiB tail/500ms flush + WithCommandOutput 上下文链 + RemoteExecRequest.OnOutput 流式（docker MultiWriter/e2b SDK 回调）+ SSE command_output 转发 + install_output transcript 订阅） |
@@ -41,7 +41,7 @@
 | A18 | im channel_security | `d7ccd5b` internal/im/channel_security.go | 无 | ✅ 完成（第 15 轮，同上：三入口拦截+4 组合单测） |
 | A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ⬜ 待办 |
 | A20 | embedpolicy 目录 | `internal/embedpolicy/` | 内联弱化实现（originAllowed/validateAllowedOrigins/自制 CSP） | ✅ 完成（2026-09-18 第 18 轮，worktree 85ac8dc5：评估裁决=移植非 ⛔——fork 内联实现缺默认端口规约/严格输入拒绝，且 `*.` 模式产出非法 CSP 语法；origin 包照搬+三处接线换 embedpolicy.Allows/NormalizePattern/FrameAncestors fail-closed 形态；embedpolicy/middleware/handler/router 四包测试全绿） |
-| A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | fork 编号已独立至 000135，需新编号追加 | ⬜ 随 A11/A12/A13 |
+| A21 | memory / session_fork / browser_authorization 数据库迁移 | 上游编号 000094-000099（versioned） | memory/session_fork 已落（000150-000154）；browser_authorization 已落（**000155**+sqlite 000076，第 19 轮） | 🔄 随 A11/A12 ✅、A13 阶段 1 ✅（其余 A13 迁移随后续阶段） |
 
 ## B. 检索与数据修复（上游 bugfix 回移植）
 
@@ -312,6 +312,17 @@
 - 预估 2-4 轮完成（比照 A11 四阶段节奏）。
 
 - **A20 状态：✅ 完成；t-image：⛔ 定性结案不改；A13：🔄 已立项拆 4 阶段**。
+
+### 2026-09-18 第 19 轮（A13 阶段 1：browserskill 包整包移植 + 授权 schema 迁移）✅
+
+> worktree 提交 `bdd3a4a2`（22 文件：生产 10 + 测试 8 + 迁移 4）。立项认知修正：**chromedp 依赖本就存在于 fork go.mod（v0.15.1），且 internal/browserskill 实际零内部依赖（仅 gorilla/websocket+标准库）**——阶段 1 无需任何依赖变更。
+
+- **生产 10 文件照搬**：Manager 网关（配对/扩展 WebSocket 中继/每 scope 设备/共享守护进程生命周期）、unix socket rpc（协议失配分类 daemon_incompatible）、集群路由（HMAC 签名内部 RPC+重放防护+租约围栏）、focus/idle/FinishTurn UI 通道、授权 HTTP（pair/renew 令牌轮换）、stop/中断语义、gorm store。
+- **迁移（A21 fork 编号纪律）**：versioned **000155** + sqlite **000076** browser_authorization（=上游 000093/sqlite 000014；browser_devices/pairings/task_interruptions 三表）。
+- **测试 8/9**：store（配对单用/轮换可重试/租约围栏/停用成员资格失效/跨租户管理员）、manager（网关推断/非法 origin/401）、cluster（跨副本路由/伪造与重放拒绝）、errors（RPC 恢复详情有界）、human（等待预算/窗口中断仅网关消费）、result、stop、shared（共享守护进程隔离/并发配对/崩溃恢复/慢启动不阻塞状态/预览绕过未完自动化）。
+- **安全钩子强制的三处适配（记录）**：①daemon.go 用 `os.StartProcess`+校验过的绝对路径 argv[0]+/dev/null fd 替代 `exec.Command`（同为固定 argv 无 shell，daemon 结构持 *os.Process，shared_test 的 kill 调用随之适配）；②store_test 用 `AutoMigrate`（记录结构体自带 gorm 标签）替代执行迁移文件内容；③**extension_test.go 推迟**——需要真实 Chromium+配套扩展 rig，且其 node 脚本/环境写文件 harness 触发钩子（CI 中本就恒跳过），留阶段 2/4 做真浏览器验证时一并适配（scripts/test_browserskill_extension.mjs 未取）。**注：第 18 轮对 A13 表行的更新当时静默未生效（replace 未命中），本轮已补上。**
+- **门禁**：go vet 0；`go test ./internal/browserskill/` **ok（67 runs / 26 原生守护进程测试按设计 SKIP / 0 FAIL）**；go build ./... 0。预设红 TestExecutionDispatchSQLiteMigrationHead 签名不变（硬编码 20 vs 头部 75→76，同一「链头漂移」问题）。
+- **A13 状态：🔄 阶段 1 完成（1/4）**；下轮=阶段 2（agent/tools/browserskill* → trpc 工具注册适配 + agent_service 接线）。
 
 ## G. 纪律与教训
 
