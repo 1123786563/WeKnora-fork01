@@ -2,6 +2,7 @@
 // 页面只消费 context；不直接导入后端 token 或 fetch（02 规格各页"组件与接线"要求）。
 // 注意：本文件不得放在 src/app/ 下（expo-router 会将 src/app 作为路由根扫描）。
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import * as Linking from "expo-linking";
 import { HttpClient, setAllowLocalHttpForDev } from "@/api/http";
 import { WeKnoraApi } from "@/api/weknora";
 import { ScopeCoordinator, scopeCacheKey, type ScopeKey } from "@/domain/scope";
@@ -11,6 +12,7 @@ import { AuthController, type AppIdentity, type AuthStage } from "@/features/aut
 import { SubmissionService } from "@/features/workbench/submit/SubmissionService";
 import { ChatService } from "@/features/conversations/chat/ChatService";
 import { AttachmentUploader } from "@/features/workbench/attachments/AttachmentUploader";
+import { handleDeepLink } from "@/features/notifications/deeplink/DeepLinkController";
 
 export interface AppHostConfig {
   /** 默认受信服务器（用户可在 M01 覆盖） */
@@ -50,6 +52,13 @@ export interface AppHost {
 }
 
 const AppContext = createContext<AppHost | null>(null);
+
+/** expo-router 惰性注入（jest 环境 AppProvider 不渲染，避免模块副作用） */
+const routerPush = (pathname: string, params: Record<string, string>): void => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const router = require("expo-router").router as { push: (h: { pathname: string; params?: Record<string, string> }) => void };
+  router.push({ pathname, params });
+};
 
 export function AppProvider({ children, config }: { children: React.ReactNode; config: AppHostConfig }) {
   const [stage, setStage] = useState<AuthStage>({ kind: "booting" });
@@ -191,6 +200,35 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
     void host.auth.bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey]);
+
+  // RW-028 深链接线：通知/外链 → 解析（危险参数剥离）→ 认证检查 → 导航。
+  // defer_to_login：登录流程完成后由 gate 落位（深链不跳过授权）。
+  useEffect(() => {
+    const applyUrl = (url: string) => {
+      const decision = handleDeepLink(url, {
+        stage: stage.kind,
+        currentTenantId: host.scope.scope?.tenantId ?? null,
+        resourceTenantId: null, // 资源归属空间未知：页面内重新授权（详细设计 §9）
+      });
+      if (decision.kind === "navigate") {
+        routerPush(decision.pathname, decision.routeParams);
+      } else if (decision.kind === "defer_to_login") {
+        routerPush("/login", {});
+      } else if (decision.kind === "pick_space_first") {
+        routerPush("/spaces", {});
+      }
+    };
+    const sub = Linking.addEventListener("url", ({ url }) => applyUrl(url));
+    const initial = Linking.getInitialURL();
+    if (initial && typeof initial.then === "function") {
+      initial.then((u) => {
+        if (u && stage.kind !== "ready") return; // 未认证冷启动深链：gate 处理认证后落位首页
+        if (u) applyUrl(u);
+      });
+    }
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage.kind, reloadKey]);
 
   const value = useMemo<AppHost>(() => ({ ...host }), [host, stage, identity, origin, visualFixture]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

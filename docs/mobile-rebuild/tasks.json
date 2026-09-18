@@ -452,7 +452,7 @@
       "id": "RW-028",
       "title": "深链与通知接线",
       "group": "G6",
-      "status": "pending",
+      "status": "integrating",
       "files": [
         "apps/mobile-next/src/features/notifications/deeplink/**"
       ],

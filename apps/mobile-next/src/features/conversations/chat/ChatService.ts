@@ -117,7 +117,7 @@ export class ChatProjection {
         if (chunk.content) this.pushPart({ kind: "text", text: chunk.content });
         break;
     }
-    if (chunk.done) this.settleStreaming();
+    if (isTerminalChunk(chunk)) this.settleStreaming();
   }
 
   /** 流结束（EOF/中断）：停止 streaming 标记；中断不是失败 */
@@ -156,6 +156,13 @@ export class ChatProjection {
   }
 }
 
+/** done=true 的终结语义只属于 answer/complete/stop；受理帧 agent_query 也带 done:true（真实后端核验），不表示流结束 */
+const TERMINAL_TYPES = new Set(["complete", "stop"]);
+
+export function isTerminalChunk(chunk: StreamChunkWire): boolean {
+  return TERMINAL_TYPES.has(chunk.response_type) || (chunk.response_type === "answer" && chunk.done) || chunk.response_type === "error";
+}
+
 export interface ChatStreamHandlers {
   onUpdate(projection: ChatProjection): void;
   onDone(projection: ChatProjection): void;
@@ -190,7 +197,7 @@ export async function consumeChatStream(
       const chunk = decodeStreamChunk(JSON.parse(dataText));
       projection.applyChunk(chunk);
       handlers.onUpdate(projection);
-      if (chunk.done || chunk.response_type === "complete" || chunk.response_type === "stop") sawDone = true;
+      if (isTerminalChunk(chunk)) sawDone = true; // error/complete/stop/answer+done 均为流终结；错误已由投影持久展示
     } catch {
       // 残缺帧不伪装成功；也不终止整条流（后续帧可能有效）
     }

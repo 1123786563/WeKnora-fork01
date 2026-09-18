@@ -78,6 +78,23 @@ describe("RW-015 ChatProjection 消息投影", () => {
     });
     expect((p.list[0]!.parts[0] as { text: string }).text).toBe("新版本事件");
   });
+
+  it("受理帧 agent_query 也带 done:true（真实后端核验）——不终结流，后续 answer 继续", () => {
+    const p = new ChatProjection();
+    const c = (type: string, content: string, done: boolean) =>
+      p.applyChunk({
+        id: null, response_type: type as never, content, done, session_id: null,
+        assistant_message_id: null, tool_calls: null, data: null, finish_reason: null,
+      });
+    c("agent_query", "", true); // 受理帧（done:true 但非终结）
+    expect(p.list).toHaveLength(0); // 无内容不入列
+    c("answer", "第一段", false);
+    expect(p.list).toHaveLength(1);
+    expect(p.list[0]!.streaming).toBe(true); // 未被受理帧提前 settle
+    c("answer", "第二段", true);
+    expect((p.list[0]!.parts[0] as { text: string }).text).toBe("第一段第二段");
+    expect(p.list[0]!.streaming).toBe(false);
+  });
 });
 
 describe("RW-015 consumeChatStream（真实 SSE 帧 event: message）", () => {

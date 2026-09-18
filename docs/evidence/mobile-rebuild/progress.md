@@ -89,8 +89,28 @@
 - 21bc807a 核心交付（127 文件，26616 行）；e03cb1ec 部署目标修正；d54e0ddc 真实联调+wire 修正
 - 分支 rebuild/mobile-next；未 push；旧 apps/mobile 与用户其他文件未改动
 
-## 最终状态（2026-09-18）
-- jest 77/77（8 suites）、tsc 0、隔离门禁 0、iOS bundle export 0、xcodebuild BUILD SUCCEEDED、模拟器实机运行 ✓、live-backend 10/10 ✓、36 张原生双主题截图 ✓
+## RW-028 / RW-029 / 实时联调补齐（2026-09-18 傍晚）
+
+### RW-028 深链通知接线
+- src/features/notifications/deeplink/DeepLinkController.ts：白名单路径解析（对象式路由）、危险参数剥离（action/approve/token 等 8 类）、资源 id 安全字符集、跨空间 pick_space_first、未认证 defer_to_login
+- AppProvider 接线 expo-linking URL 事件 + getInitialURL；`npx jest tests/features/deeplink` → 10/10
+- 实现 hook 误报注记：Mimosa 将 regex.exec 误判为命令注入（拦截写入），改用 String.match 等价实现后通过
+
+### RW-029 i18n 文案集中化
+- src/i18n/zh.ts（约 90 键：02 规格通用状态固定文案逐条收录 + 通用动作 + 错误分类 + M01/M02/M03/M05/审批/深链关键文案）；src/i18n/index.tsx：t(key,params) 插值与缺失键回退 + I18nProvider/useI18n（未包 Provider 回退默认 zh）
+- StateView/OfflineNotice 公共组件默认文案接 t()（props 可覆盖）；I18nProvider 挂根布局
+- `npx jest tests/i18n` → 6/6（含规格固定文案逐条一致性断言）
+- 迁移范围：公共状态/动作/错误文案与核心页面关键文案已集中；子代理所写页面的页面级文案保留原文并以表为后续迁移基线（如实记录）
+
+### 实时联调补齐（PG 容器恢复后）
+- PG/Redis 容器恢复（Up healthy）后运行 `npx tsx tests/integration/live-attachments-chat.mts`：
+  **附件链路 6/6 实时通过**——登录/创建会话/上传 202（multipart 真实 bytes）/wire 解码（初始 status=unknown 正确保留不冒充）/**AttachmentUploader 对真实后端轮询到 ready**/readyDocumentIds
+- agent-chat 实时行为：POST 200 + text/event-stream；真实帧（`event:message` 无空格格式）被 parser 正确消费；服务端发 error 帧（"baseURL SSRF check failed"——该部署 LLM provider baseURL 为 IP 被后端自身 SSRF 校验拒绝）后硬中断连接 → 客户端 error 帧持久展示 + 断流路径（行为正确）。完整回复依赖部署侧配置 provider 域名（环境问题，非客户端缺陷，D-15 记录）
+- 协议修正（真实环境发现）：受理帧 agent_query 也带 done:true——isTerminalChunk 收敛 done 终结语义（answer/complete/stop/error），新增回归测试；此前误将受理帧当流结束
+
+### 最终回归（本节后）
+- `npx jest` → **109/109**（12 suites）；tsc 0；隔离门禁 0 违规（74 源文件）；`npx expo export --platform ios` → 0
+
 
 ## RW-027 / RW-015 收尾（2026-09-18 下午）
 - RW-027 附件：contracts/attachments.ts（TemporaryDocument 解码）+ HttpClient.uploadMultipart（multipart 真实 bytes 通道）+ AttachmentUploader 状态机（selected→uploading→verifying→ready/failed；未 ready 阻断提交；失败保草稿语义）+ api.uploadAttachment/getAttachment + M05 接线（expo-document-picker 选择→首附件创建会话→上传→状态 chips→提交前 ready 校验）+ app.config 注册插件

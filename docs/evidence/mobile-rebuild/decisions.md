@@ -45,4 +45,11 @@ request_id 非安全敏感（幂等键），时间戳+随机即可；避免纯�
 ## D-14 幽灵路由修复：src/app → src/host
 typedRoutes 暴露 expo-router 将 `src/app/` 作为路由根扫描，组合根 AppProvider.tsx 曾被当成路由 `/AppProvider`。修复：移至 `src/host/AppProvider.tsx`。教训：expo-router 工程内不得使用 `src/app` 作为业务目录名。
 
+## D-15 聊天流 done 语义（真实后端核验）：受理帧 agent_query 也带 done:true
+live 探测（/tmp/probe3 抓帧）确认后端真实帧：`event:message`（无空格）+ `data:{...}`（无空格，parser 兼容）；首帧 `agent_query` 带 `done:true` 但只是受理回执，不代表流结束。裁决：done 的终结语义仅属于 answer/complete/stop/error（isTerminalChunk）；agent_query 的 done:true 不 settle 流。另：该部署 agent-chat 的 LLM provider baseURL 为 IP 地址，被后端自身 SSRF 校验拒绝并发 error 帧后硬中断连接——客户端将 error 帧持久展示、hard-abort 走断流路径（行为正确），完整回复依赖部署配置 provider 域名。
+
+## D-16 深链危险参数剥离 + 对象式路由
+RW-028：深链 URI 中 action/approve/reject/decide/decision/confirm/token/access_token 参数一律剥离（仅导航到只读详情，通知不能直接批准）；资源 id 限 [A-Za-z0-9_-]（路径穿越拒绝）；跨空间资源 → pick_space_first 显式确认；未认证 → defer_to_login。路由参数用 expo-router 对象式 push({pathname, params})，不做 query 字符串拼接。
+
+
 

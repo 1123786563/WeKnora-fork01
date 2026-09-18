@@ -2,18 +2,20 @@ import React from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Icon, type IconName } from "./Icon";
+import { useI18n } from "@/i18n";
 
-// 通用页面状态（02 规格固定文案）。loading 骨架无假业务计数；error 保留重试；
-// forbidden 不展示敏感正文；empty 只描述当前 scope。
+// 通用页面状态（02 规格固定文案；默认文案集中在 i18n，props 可覆盖）。loading 骨架无假业务计数；
+// error 保留重试；forbidden 不展示敏感正文；empty 只描述当前 scope。
 export type ViewState =
   | { kind: "loading" }
   | { kind: "empty"; title?: string; description?: string }
-  | { kind: "error"; retry?: () => void }
+  | { kind: "error"; retry?: () => void; message?: string }
   | { kind: "forbidden" }
   | { kind: "unknown" };
 
 export function StateView({ state, testID }: { state: ViewState; testID?: string }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const styles = StyleSheet.create({
     wrap: {
       padding: theme.space[24],
@@ -47,9 +49,9 @@ export function StateView({ state, testID }: { state: ViewState; testID?: string
 
   if (state.kind === "loading") {
     return (
-      <View style={styles.wrap} testID={testID ?? "state-loading"} accessibilityLabel="正在同步当前空间">
+      <View style={styles.wrap} testID={testID ?? "state-loading"} accessibilityLabel={t("state.loading")}>
         <ActivityIndicator size="small" color={theme.c.brand} />
-        <Text style={styles.desc}>正在同步当前空间</Text>
+        <Text style={styles.desc}>{t("state.loading")}</Text>
       </View>
     );
   }
@@ -57,7 +59,7 @@ export function StateView({ state, testID }: { state: ViewState; testID?: string
     return (
       <View style={styles.wrap} testID={testID ?? "state-forbidden"}>
         <Icon name="lock" size={24} color={theme.c.subtle} />
-        <Text style={styles.title}>无法访问这项资源</Text>
+        <Text style={styles.title}>{t("state.forbidden")}</Text>
       </View>
     );
   }
@@ -65,8 +67,8 @@ export function StateView({ state, testID }: { state: ViewState; testID?: string
     return (
       <View style={styles.wrap} testID={testID ?? "state-unknown"}>
         <Icon name="refresh" size={24} color={theme.c.subtle} />
-        <Text style={styles.title}>等待同步</Text>
-        <Text style={styles.desc}>正在核实原请求，请勿重复提交</Text>
+        <Text style={styles.title}>{t("state.unknown")}</Text>
+        <Text style={styles.desc}>{t("state.uncertain")}</Text>
       </View>
     );
   }
@@ -74,15 +76,15 @@ export function StateView({ state, testID }: { state: ViewState; testID?: string
     return (
       <View style={styles.wrap} testID={testID ?? "state-error"}>
         <Icon name="alert" size={24} color={theme.c.danger} />
-        <Text style={styles.title}>暂时无法连接，稍后重试</Text>
+        <Text style={styles.title}>{state.message ?? t("state.error")}</Text>
         {state.retry && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="重试"
+            accessibilityLabel={t("action.retry")}
             style={styles.retry}
             onPress={state.retry}
           >
-            <Text style={styles.retryText}>重试</Text>
+            <Text style={styles.retryText}>{t("action.retry")}</Text>
           </Pressable>
         )}
       </View>
@@ -91,7 +93,7 @@ export function StateView({ state, testID }: { state: ViewState; testID?: string
   return (
     <View style={styles.wrap} testID={testID ?? "state-empty"}>
       <Icon name="spark" size={24} color={theme.c.subtle} />
-      <Text style={styles.title}>{state.title ?? "这里还没有任务"}</Text>
+      <Text style={styles.title}>{state.title ?? t("state.empty.task")}</Text>
       {state.description && <Text style={styles.desc}>{state.description}</Text>}
     </View>
   );
