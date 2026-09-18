@@ -3,6 +3,8 @@ import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
+import { EmptyState } from "./EmptyState.tsx";
+import { pushSettingsToast } from "./settings-toast.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
@@ -676,6 +678,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   );
   const [loading, setLoading] = useState(initialServices === undefined);
   const [error, setError] = useState<string | null>(null);
+  // R472 A2 — 加载失败态与草稿校验错误分离：loadError 走 Vue 对齐的
+  // Toast + 中央空态 + 重试（McpSettings.vue:144-147），不复用草稿 error。
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [step, setStep] = useState<0 | 1>(0);
@@ -688,12 +693,14 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   async function load() {
     setLoading(true);
     setError(null);
+    setLoadError(null);
     try {
       setServices((await client.configuration.mcp.list()).map(asService));
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcpSettings.toasts.loadFailed"),
-      );
+    } catch {
+      // Vue McpSettings.vue:145 — MessagePlugin.error(t('mcpSettings.toasts.loadFailed'))：
+      // 纯本地化 toast，不透传后端原文；列表区由中央空态 + 重试替代。
+      setLoadError(t("mcpSettings.toasts.loadFailed"));
+      pushSettingsToast(t("mcpSettings.toasts.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -937,7 +944,15 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      {services.length === 0 && !canEdit ? (
+      {/* R472 A2 — Vue McpSettings.vue 加载失败：列表区替换为中央空态 +
+          重试（toast 已在 load catch 推送）；标题与说明保持渲染。 */}
+      {loadError ? (
+        <div data-testid="settings-load-empty" className="flex flex-col items-center justify-center px-4 py-16 text-center">
+          <EmptyState description={loadError}>
+            <Button type="button" variant="primary" onClick={() => { void load(); }}>{t("common.retry")}</Button>
+          </EmptyState>
+        </div>
+      ) : services.length === 0 && !canEdit ? (
         <Status>{t("mcpSettings.empty")}</Status>
       ) : (
         <div className="grid items-stretch gap-2.5 grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] max-[720px]:grid-cols-1">

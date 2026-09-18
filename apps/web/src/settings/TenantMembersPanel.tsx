@@ -794,7 +794,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             </> : null}
           </div>
         </div>
-        {error ? <div className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
+        {/* R472 A2 — Vue TenantMembers.vue:313-318 t-alert theme=error + retry：
+            浅红横幅透传后端原文 + 重试按钮（load() 重发同请求）。 */}
+        {error ? <div data-testid="tenant-members-error" role="alert" className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading && members.length === 0 ? <Status>{tr('tenantMember.loading')}</Status>
           : total === 0 ? <div className="py-2"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>

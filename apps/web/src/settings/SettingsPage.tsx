@@ -8,7 +8,9 @@ const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRou
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
-import { Button, Status } from '@weknora/ui';
+import { Button, Status, Alert } from '@weknora/ui';
+import { pushSettingsToast, SettingsToastHost } from './settings-toast.tsx';
+import { modelFormatMessage } from './model-settings.ts';
 import { navigate } from '../platform/navigation.ts';
 import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
@@ -37,6 +39,30 @@ const SystemAuditLogPanel = lazy(() => import('./SystemAuditLogPanel.tsx').then(
 import './settings-wrapper.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
+
+/*
+ * R472 A2 — settings 分区错误态 UX 模式（对齐 .omc/state/r470/report-A3.md
+ * 锚定的 Vue 三种模式）：
+ * - 'toast-keep'   models：Toast 本地化「加载模型列表失败」+ 界面保持
+ *                  （ModelSettings.vue:488-490，骨架/默认态不清空）。
+ * - 'toast-retry'  skills/mcp：Toast + 中央空态 + 重试按钮；面板自加载并
+ *                  自行呈现错误（SkillSettings.vue:1161-1164、
+ *                  McpSettings.vue:144-147），中央读取失败不再顶替内容区。
+ * - 'banner-retry' members/storage：浅红横幅透传后端原文 + 重试
+ *                  （TenantMembers.vue:838-841、StorageEngineSettings.vue:920-921）。
+ *                  members 的横幅由面板自加载渲染（标题在面板内部）；
+ *                  storage 的横幅在壳层渲染并替代内容（标题由壳层 heading 保留）。
+ * - 'inline'       其余分区维持裸 Status 行为（本轮未对齐范围）。
+ * 共同点：错误态下分区标题保持渲染（R470 缺陷 4）。
+ */
+export type SettingsSectionErrorMode = 'inline' | 'toast-keep' | 'toast-retry' | 'banner-retry';
+
+export function sectionErrorMode(key: string): SettingsSectionErrorMode {
+  if (key === 'models') return 'toast-keep';
+  if (key === 'skills' || key === 'mcp') return 'toast-retry';
+  if (key === 'members' || key === 'storage') return 'banner-retry';
+  return 'inline';
+}
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
@@ -152,8 +178,27 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     }
     catch (reason) {
       if (!isCurrentLoad()) return;
-      // 有缓存时静默保留旧数据；仅无缓存的失败才顶替整个内容区。
-      if (!hasCache) setError(errorText(reason, t('common.error')));
+      // 有缓存时静默保留旧数据；仅无缓存的失败才进入分区错误态。
+      if (!hasCache) {
+        const mode = sectionErrorMode(selectedKey);
+        if (mode === 'toast-keep') {
+          // Vue ModelSettings.vue:488-490 — Toast 本地化「加载模型列表失败」，
+          // 面板保持渲染（默认空态），不透传后端原文、不清空骨架。
+          setError(null);
+          pushSettingsToast(modelFormatMessage(locale, 'model.editor.loadModelListFailed'));
+        } else if (mode === 'toast-retry' || selectedKey === 'members') {
+          // skills/mcp/members 面板自加载并渲染各自的 Vue 对齐错误态
+          // （toast+空态+重试 / 横幅+重试）；中央失败不得顶替内容区，
+          // 面板以 undefined 初始数据自拉。
+          setError(null);
+        } else if (mode === 'banner-retry') {
+          // storage：壳层横幅透传后端原文 + 重试（Vue
+          // StorageEngineSettings.vue:920-921 t-alert theme=error）。
+          setError(errorText(reason, t('settings.storage.loadFailed')));
+        } else {
+          setError(errorText(reason, t('common.error')));
+        }
+      }
     }
     finally {
       if (isCurrentLoad()) setLoading(false);
@@ -305,7 +350,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const systemAuditPanel = key === 'system-audit-log' ? <SystemAuditLogPanel client={client} payload={sectionPayload} /> : null;
     const envVarPanel = key === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={sectionPayload} onMutated={() => void load(true)} /> : null;
     const mcpPanel = key === 'mcp'
-      ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(sectionPayload) ? sectionPayload as never : []} />
+      ? <McpSettingsPanel client={client} role={role} initialServices={key in payloadCache ? (Array.isArray(sectionPayload) ? sectionPayload as never : []) : undefined} />
       : null;
     const modelPanel = key === 'models'
       ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(sectionPayload) ? sectionPayload as never : []} initialSubSection={initialSubSection ?? undefined} />
@@ -324,7 +369,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
       ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(sectionPayload) ? sectionPayload as never : (((sectionPayload as { items?: unknown } | null)?.items ?? []) as never)} />
       : null;
     const membersPanel = key === 'members'
-      ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={sectionPayload as never} />
+      ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={key in payloadCache ? sectionPayload as never : undefined} />
       : null;
     const portedPanel = key === 'mcp' ? mcpPanel : key === 'models' ? modelPanel : key === 'sandbox' ? sandboxPanel : key === 'skills' ? skillPanel : key === 'members' ? membersPanel : key === 'runtime-queues' ? runtimeQueuesPanel : key === 'system-global' ? systemGlobalPanel : key === 'platform-api-keys' ? platformApiKeysPanel : key === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(key)
       ? (key === 'sandbox'
@@ -355,7 +400,17 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               </div>
             </div>
           ) : null}
-          {sectionDenied ?? (sectionError ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          {/* R472 A2 — banner-retry（storage）：壳层浅红横幅透传后端原文 +
+              重试按钮替代内容区（Vue StorageEngineSettings.vue:15-19
+              t-alert theme=error + retry）；分区标题由上方 heading 保留。
+              members 的横幅在 TenantMembersPanel 自加载内渲染。 */}
+          {sectionDenied ?? (
+          sectionError && sectionErrorMode(key) === 'banner-retry' ? (
+            <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
+              <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
+              <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
+            </div>
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
           {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
         </div>}
       </div>
@@ -363,6 +418,9 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   }
   return createPortal((
     <main className="wk-settings-drawer-root">
+      {/* R472 A2 — settings 域错误 toast 宿主（对齐 Vue MessagePlugin 右上角
+          浮动 + 3s 自动消失语义）。 */}
+      <SettingsToastHost />
       <div className="wks-overlay">
         <div ref={modalRef} className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
           <button

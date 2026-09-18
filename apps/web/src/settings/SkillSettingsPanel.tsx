@@ -5,6 +5,7 @@ import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { EmptyState } from './EmptyState.tsx';
+import { pushSettingsToast } from './settings-toast.tsx';
 import { navigate } from '../platform/navigation.ts';
 import { observeUploadProgress } from '../platform/http.ts';
 import './skill-settings.css';
@@ -383,7 +384,14 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
       setRecords(configResult.items);
       setCatalog(catalogResult);
     } catch (cause) {
-      if (!silent) setLoadError(errorText(cause, t('settings.skills.loadFailed')));
+      if (!silent) {
+        // Vue SkillSettings.vue:1163 — MessagePlugin.error(e?.message ||
+        // t('settings.skills.loadFailed'))：后端原文优先、本地化兜底；
+        // 列表区由中央空态 + 重试替代（R472 A2）。
+        const message = errorText(cause, t('settings.skills.loadFailed'));
+        setLoadError(message);
+        pushSettingsToast(message);
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -529,8 +537,15 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
   return <section data-testid="skill-settings" className="grid gap-3">
     <SkillSectionHeader helpContent={t('settings.skills.helpTooltip')} />
     {toast ? <Status tone={toast.tone}>{toast.message}</Status> : null}
-    {loadError ? <Status tone="error">{loadError}</Status> : null}
-    {loading ? <Status>{t('common.loading')}</Status> : empty ? (
+    {loading ? <Status>{t('common.loading')}</Status> : loadError ? (
+      /* R472 A2 — Vue SkillSettings.vue 加载失败：Toast + 中央空态 + 重试；
+         标题/说明保持渲染，列表区被空态替代。 */
+      <div data-testid="settings-load-empty" className="flex flex-col items-center justify-center px-4 py-20 text-center">
+        <EmptyState description={loadError}>
+          <Button type="button" variant="primary" onClick={() => { void load(); }}>{t('common.retry')}</Button>
+        </EmptyState>
+      </div>
+    ) : empty ? (
       <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
         <EmptyState
           description={t('settings.skills.emptyDesc')}
