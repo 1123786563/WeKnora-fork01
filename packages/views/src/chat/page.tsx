@@ -89,6 +89,12 @@ export interface ChatPageProps {
   selectedSessionId: string | null;
   messages: readonly ChatMessage[];
   draft: string;
+  /**
+   * R466-A2 — Vue prefillQuery focus pulse: bump the number (e.g. 0 → 1) to
+   * focus the composer textarea (Input-field.vue nextTick(textarea.focus)
+   * after consumePrefillQuery fills the draft). 0 keeps the default blur.
+   */
+  composerFocusSignal?: number;
   /** UI locale (chat-copy.ts tables); defaults to the app locale convention. */
   locale?: string;
   loadingSessions?: boolean;
@@ -674,6 +680,7 @@ export function ChatPage(props: ChatPageProps) {
         <ChatComposer
           copy={copy}
           draft={props.draft}
+          focusSignal={props.composerFocusSignal}
           disabled={sending || pending !== undefined || streaming}
           onDraftChange={props.onDraftChange}
           onSubmit={(submission) => void send(submission)}

@@ -20,6 +20,7 @@ import {
   type ArtifactPreviewPayload,
 } from './artifact-preview.tsx';
 import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { splitHistoryThinking, type LiveThinkingState } from './live-thinking.ts';
 
 /*
  * chat.css → utilities (Tailwind migration). The wk-* classes stay as
@@ -174,6 +175,33 @@ function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
   return <li className="wk-chat-typing m-0 flex min-h-[28px] list-none items-center border-b border-[#edf0f5] py-[0.8rem]" role="status" aria-label={copyTable.thinkingAlt}>
     <span className="wk-chat-typing-dots inline-flex gap-[4px]" aria-hidden="true"><i className={TYPING_DOT} /><i className={`${TYPING_DOT} [animation-delay:150ms]`} /><i className={`${TYPING_DOT} [animation-delay:300ms]`} /></span>
   </li>;
+}
+
+/*
+ * R466-A2 — Vue deepThink.vue over a restored history message: a persisted
+ * answer keeps its full `<think>…</think>` block, and the history face mounts
+ * with thinking=false, i.e. folded under chat.deepThoughtCompleted「已深度思考」
+ * (deepThink.vue onMounted isFold=true) with the reasoning one click away.
+ * An unclosed block (interrupted turn) restores the live「思考中...」state —
+ * content stays visible while thinking (v-show="!isFold || thinking").
+ */
+function HistoryDeepThink({ copy: copyTable, state }: { copy: ChatCopyTable; state: LiveThinkingState }) {
+  const content = state.thinkContent
+    ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{state.thinkContent}</p>
+    : null;
+  if (state.thinking) {
+    return <section className="wk-chat-history-think wk-chat-history-think--live mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copyTable.thinkingAlt}>
+      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
+        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+        {copyTable.thinking}
+      </p>
+      {content}
+    </section>;
+  }
+  return <details className="wk-chat-history-think wk-chat-history-think--done mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
+    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copyTable.deepThoughtCompleted}</summary>
+    {content}
+  </details>;
 }
 
 function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
@@ -370,12 +398,17 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label={t.messagesLabel}>
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
+      // Vue handleMsgList restore split: the persisted `<think>…</think>`
+      // block becomes the folded deepThink header and the message body keeps
+      // only the post-tag answer (tags never reach the markdown renderer).
+      const historyThink = isAssistant ? splitHistoryThinking(message.content) : null;
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
         {showSeparator ? <li className="wk-chat-timestamp block list-none select-none border-b border-[#edf0f5] px-0 py-[0.8rem] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
         <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]'}>
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
           {!isAssistant && onForkMessage && canForkMessage?.(message.id) === true ? (
             <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>⑂</button>
           ) : null}

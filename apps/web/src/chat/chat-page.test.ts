@@ -684,3 +684,73 @@ test('chat route feeds the raw streamed answer and strips think tags from the tr
   assert.match(routeSource, /answer: streamState\.answer/);
   assert.match(routeSource, /content: splitLiveThinking\(runState\.answer\)\.answer/);
 });
+
+/*
+ * R466-A2 history deepThink (Vue botmsg.vue + handleMsgList restore branch):
+ * a persisted assistant answer that still contains a full `<think>…</think>`
+ * block renders like the Vue history face — a folded 「已深度思考」 block with
+ * the reasoning inside, and the visible message body is only the post-tag
+ * answer (the tags never leak into the markdown).
+ */
+test('history assistant message renders the folded deepThink block with the tags stripped', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [
+      { id: 'u1', session_id: 's', role: 'user', content: '解释 RAG' },
+      { id: 'a1', session_id: 's', role: 'assistant', content: '<think>先拆解概念，再对比向量检索</think>RAG 是检索增强生成的缩写。', is_completed: true },
+    ],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  // deepThink.vue history mount: thinking=false → folded under 已深度思考.
+  assert.match(html, /wk-chat-history-think/);
+  assert.match(html, /已深度思考/);
+  assert.doesNotMatch(html, /<details open/);
+  // The reasoning text lives inside the foldable block.
+  assert.match(html, /先拆解概念，再对比向量检索/);
+  // The message body keeps only the post-tag answer.
+  assert.match(html, /RAG 是检索增强生成的缩写。/);
+  assert.doesNotMatch(html, /&lt;think&gt;/);
+  assert.doesNotMatch(html, /&lt;\/think&gt;/);
+});
+
+test('history assistant message without think tags renders no deepThink block', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'a1', session_id: 's', role: 'assistant', content: '普通历史回答', is_completed: true }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  assert.doesNotMatch(html, /wk-chat-history-think/);
+  assert.doesNotMatch(html, /已深度思考/);
+  assert.match(html, /普通历史回答/);
+});
+
+test('an unclosed think block in history restores the live thinking presentation', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'a1', session_id: 's', role: 'assistant', content: '<think>中断的推理过程', is_completed: false }],
+    locale: 'zh-CN',
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  // Vue restore branch: unclosed <think> keeps thinking=true (expanded, 思考中...).
+  assert.match(html, /wk-chat-history-think/);
+  assert.match(html, /思考中\.\.\./);
+  assert.match(html, /中断的推理过程/);
+  assert.doesNotMatch(html, /&lt;think&gt;/);
+});

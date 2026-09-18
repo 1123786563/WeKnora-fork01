@@ -613,3 +613,33 @@ test('chunk enabled state can be toggled and failed indexing can be retried', as
     { is_enabled: true, expected_revision: 4 },
   ]);
 });
+
+// ─── R466/A1 — merged/chunks bodies render markdown so inline mermaid hydrates ─
+// Vue doc-content renders 全文 (merged) and every chunk body through
+// processMarkdown (```mermaid fences become diagram blocks) and then runs the
+// post-render pipeline that hydrates them. The React bodies must therefore
+// render through the markdown pipeline (renderChatMarkdown) instead of plain
+// text so the shared mermaid engine has pre[data-markdown-diagram="mermaid"]
+// nodes to hydrate.
+test('merged and chunks views render markdown bodies with hydratable mermaid blocks (Vue processMarkdown)', async () => {
+  const chunkRows = [
+    { id: 'chunk-1', content: 'Intro text\n\n```mermaid\ngraph TD; A-->B\n```\n', content_revision: 3, is_enabled: true },
+  ];
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', title: 'Manual notes', type: 'manual', parse_status: 'completed',
+  }), 'contributor', 'user-1', chunkRows);
+  const container = await mountDetail(client);
+
+  const merged = container.ownerDocument.body.querySelector<HTMLElement>('.wk-document-merged');
+  assert.ok(merged, 'manual documents open on the merged view');
+  assert.ok(merged.querySelector('pre[data-markdown-diagram="mermaid"]'), 'the merged body renders the mermaid diagram block for post-render hydration');
+  assert.ok(merged.textContent?.includes('Intro text'), 'surrounding markdown text renders alongside the diagram');
+
+  const chunksTab = Array.from(container.ownerDocument.body.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    .find((button) => button.textContent === '查看分块');
+  assert.ok(chunksTab, 'the chunks tab is reachable');
+  await act(async () => { chunksTab!.click(); });
+  const chunkBody = container.ownerDocument.body.querySelector<HTMLElement>('.wk-document-chunks article .wk-document-chunk-content');
+  assert.ok(chunkBody, 'each chunk body renders through the markdown pipeline');
+  assert.ok(chunkBody.querySelector('pre[data-markdown-diagram="mermaid"]'), 'chunk bodies keep inline mermaid blocks hydratable like the Vue md-content v-html');
+});

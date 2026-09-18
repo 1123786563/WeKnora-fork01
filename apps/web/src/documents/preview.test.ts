@@ -11,7 +11,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
 
-import { DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type DocumentMermaidLoader } from './preview.ts';
+import { DocumentMarkdownBody, DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type DocumentMermaidLoader } from './preview.ts';
 
 test('builds an authenticated preview model without treating download URLs as public', () => {
   assert.deepEqual(buildDocumentPreview({ id: 'doc/a', type: 'file', file_name: 'guide.pdf', parse_status: 'completed' }, '/api/v1/knowledge/doc%2Fa/preview'), {
@@ -237,6 +237,154 @@ test('clicking a hydrated mermaid preview opens the viewer; no svg stays a no-op
   await act(async () => {
     root.unmount();
   });
+  host.remove();
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+// ─── R466/A1 — merged/chunks inline mermaid hydration (Vue doc-content parity) ─
+// Vue contract (frontend/src/components/doc-content.vue):
+//   - the merged (全文) view and each chunk body are rendered through
+//     processMarkdown, whose ```mermaid fenced blocks become .mermaid divs.
+//   - runMarkdownPostRenderPipeline runs after those views render: it scans the
+//     markdown root, mermaid.run()s every .mermaid node, then binds a click
+//     handler on each rendered container (cursor pointer + stopPropagation)
+//     that opens utils/mermaidViewer openMermaidFullscreen(svg.outerHTML).
+//   - no .mermaid nodes → the mermaid pass is skipped entirely.
+// React rides the shared views engine: renderChatMarkdown emits
+// pre[data-markdown-diagram="mermaid"], hydrateMermaidBlocksWithBrowserDefaults
+// replaces it with a .wk-chat-mermaid figure (failed diagrams degrade back to
+// the escaped code block — engine semantics, untouched here).
+
+test('DocumentMarkdownBody hydrates inline mermaid blocks and click-opens the fullscreen viewer (Vue post-render pipeline)', async () => {
+  const { createRoot } = await import('react-dom/client') as typeof import('react-dom/client');
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  const svgLoader: DocumentMermaidLoader = async (root: HTMLElement) => {
+    for (const block of [...root.querySelectorAll('[data-markdown-diagram="mermaid"]')]) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'wk-chat-mermaid';
+      wrapper.setAttribute('role', 'img');
+      wrapper.innerHTML = SVG_HTML;
+      block.replaceWith(wrapper);
+    }
+  };
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(DocumentMarkdownBody, {
+      markdown: '# Guide\n\n```mermaid\ngraph TD; A-->B\n```\n',
+      className: 'wk-document-merged',
+      labels: zhMermaidLabels,
+      loader: svgLoader,
+    }));
+  });
+
+  const body = host.querySelector<HTMLElement>('.wk-document-merged')!;
+  assert.ok(body, 'the markdown body renders inside the requested surface class');
+  const figure = body.querySelector<HTMLElement>('.wk-chat-mermaid')!;
+  assert.ok(figure, 'the injected engine loader hydrated the inline mermaid block');
+  assert.ok(figure.querySelector('svg'), 'the hydrated figure carries the diagram svg');
+
+  assert.equal(figure.style.cursor, 'pointer', 'Vue bindMermaidClickEvents marks diagrams clickable');
+  await act(async () => {
+    figure.dispatchEvent(new (window as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('click', { bubbles: true }));
+  });
+  const viewer = document.body.querySelector<HTMLElement>('.wk-document-mermaid-viewer');
+  assert.ok(viewer, 'clicking a hydrated diagram opens the fullscreen viewer (Vue handleMermaidClick)');
+  assert.equal(viewer.getAttribute('aria-label'), '全屏查看');
+  dismissOpenViewers();
+
+  await act(async () => {
+    root.unmount();
+  });
+  host.remove();
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+test('a re-rendered page of content re-hydrates its new mermaid blocks (Vue chunks pagination)', async () => {
+  const { createRoot } = await import('react-dom/client') as typeof import('react-dom/client');
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  let loaderRuns = 0;
+  const svgLoader: DocumentMermaidLoader = async (root: HTMLElement) => {
+    loaderRuns++;
+    for (const block of [...root.querySelectorAll('[data-markdown-diagram="mermaid"]')]) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'wk-chat-mermaid';
+      wrapper.innerHTML = SVG_HTML;
+      block.replaceWith(wrapper);
+    }
+  };
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(DocumentMarkdownBody, { markdown: '```mermaid\ngraph TD; A-->B\n```', labels: zhMermaidLabels, loader: svgLoader }));
+  });
+  assert.equal(loaderRuns, 1, 'the first page of content hydrates once');
+
+  await act(async () => {
+    root.render(createElement(DocumentMarkdownBody, { markdown: '```mermaid\ngraph TD; B-->C\n```', labels: zhMermaidLabels, loader: svgLoader }));
+  });
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(loaderRuns, 2, 'a content change (next chunk page) runs the pipeline again');
+  assert.ok(host.querySelector('.wk-chat-mermaid svg'), 'the new block is hydrated after the refresh');
+
+  await act(async () => { root.unmount(); });
+  host.remove();
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+test('markdown without mermaid blocks skips the hydration pass entirely (Vue empty querySelectorAll)', async () => {
+  const { createRoot } = await import('react-dom/client') as typeof import('react-dom/client');
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  let loaderRuns = 0;
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(DocumentMarkdownBody, {
+      markdown: '# Plain notes\n\n- one\n- two\n\n```js\nconsole.log(1);\n```\n',
+      labels: zhMermaidLabels,
+      loader: async () => { loaderRuns++; },
+    }));
+  });
+  assert.equal(loaderRuns, 0, 'no mermaid fences means the loader never runs');
+  assert.equal(host.querySelector('[data-markdown-diagram="mermaid"]'), null);
+  assert.ok(host.textContent?.includes('Plain notes'), 'the plain markdown still renders');
+
+  await act(async () => { root.unmount(); });
+  host.remove();
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+test('a failing hydration degrades to the ordinary code block (engine fallback semantics)', async () => {
+  const { createRoot } = await import('react-dom/client') as typeof import('react-dom/client');
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(DocumentMarkdownBody, {
+      markdown: '```mermaid\ngraph TD; A-->B\n```',
+      labels: zhMermaidLabels,
+      loader: async () => { throw new Error('engine down'); },
+    }));
+  });
+  await act(async () => { await Promise.resolve(); });
+  const block = host.querySelector<HTMLElement>('[data-markdown-diagram="mermaid"]');
+  assert.ok(block, 'the escaped mermaid source stays visible as a plain code block');
+  await act(async () => {
+    block!.dispatchEvent(new (window as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('click', { bubbles: true }));
+  });
+  assert.equal(document.body.querySelector('.wk-document-mermaid-viewer'), null, 'an unhydrated block never opens the viewer');
+
+  await act(async () => { root.unmount(); });
   host.remove();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
 });

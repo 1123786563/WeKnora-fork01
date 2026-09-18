@@ -1,6 +1,7 @@
 import type { KnowledgeDocument } from '@weknora/api-client';
-import { createElement, useEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
+import { createElement, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import * as XLSX from 'xlsx';
+import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 import { attachMermaidViewerToolbar, hydrateMermaidBlocksWithBrowserDefaults, type MermaidViewerToolbarLabels } from '@weknora/views/chat/mermaid';
 import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 
@@ -262,6 +263,72 @@ function MermaidPreview({
 }
 
 const AUDIO_PREVIEW_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac']);
+
+// ─── R466/A1 — merged/chunks inline mermaid hydration (Vue doc-content parity) ─
+//
+// Vue doc-content renders the 全文 (merged) view and every chunk body through
+// processMarkdown — ```mermaid fences become diagram nodes — then
+// runMarkdownPostRenderPipeline scans the markdown root, mermaid.run()s every
+// diagram and bindMermaidClickEvents marks each rendered container clickable
+// (cursor pointer, stopPropagation) so a click opens
+// utils/mermaidViewer openMermaidFullscreen(svg.outerHTML). The pipeline reruns
+// whenever the markdown body changes (chunk page turn / edit / view switch).
+//
+// React rides the shared views engine: renderChatMarkdown emits
+// pre[data-markdown-diagram="mermaid"] and
+// hydrateMermaidBlocksWithBrowserDefaults replaces it with a .wk-chat-mermaid
+// figure (a failed render degrades back to the escaped code block — engine
+// semantics). This face only owns the trigger and the click binding.
+
+export interface DocumentMarkdownBodyProps {
+  markdown: string;
+  className?: string;
+  labels: DocumentMermaidLabels;
+  /** Injectable hydrator for tests (defaults to the shared views loader). */
+  loader?: DocumentMermaidLoader;
+}
+
+/** Vue bindMermaidClickEvents: rendered diagrams become click-to-fullscreen. */
+function bindDocumentMermaidClicks(root: HTMLElement, labels: DocumentMermaidLabels): void {
+  root.querySelectorAll<HTMLElement>('.wk-chat-mermaid').forEach((figure) => {
+    // Vue removes and re-adds listeners to avoid double binding; a dataset
+    // flag gives the same idempotence for figures that survive a re-run.
+    if (figure.dataset.mermaidFullscreenBound === 'true') return;
+    figure.dataset.mermaidFullscreenBound = 'true';
+    figure.style.cursor = 'pointer';
+    figure.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const svg = figure.querySelector('svg');
+      if (svg) openDocumentMermaidFullscreen(svg.outerHTML, labels);
+    });
+  });
+}
+
+/**
+ * Markdown body for the merged/chunks views (Vue md-content): renders
+ * renderChatMarkdown HTML, then after render hydrates inline mermaid blocks
+ * with the shared engine and binds the Vue click-to-fullscreen behavior.
+ * Bodies without mermaid fences skip the hydration pass entirely.
+ */
+export function DocumentMarkdownBody({ markdown, className, labels, loader = hydrateMermaidBlocksWithBrowserDefaults }: DocumentMarkdownBodyProps): ReactElement {
+  const root = useRef<HTMLDivElement>(null);
+  const html = useMemo(() => renderChatMarkdown(markdown), [markdown]);
+  useEffect(() => {
+    const host = root.current;
+    if (!host || typeof document === 'undefined') return;
+    // Vue renderMermaidDiagrams only runs when the scan finds diagram nodes.
+    if (!host.querySelector('[data-markdown-diagram="mermaid"]')) return;
+    let cancelled = false;
+    void loader(host, 'wk-document-mermaid').then(() => {
+      if (cancelled || !host.isConnected) return;
+      bindDocumentMermaidClicks(host, labels);
+    }).catch(() => {
+      // Hydration failure keeps the escaped code block visible (engine fallback).
+    });
+    return () => { cancelled = true; };
+  }, [html, labels, loader]);
+  return createElement('div', { ref: root, className, dangerouslySetInnerHTML: { __html: html } });
+}
 
 /**
  * Vue doc-content#canPreview: only `type === 'file'` knowledge entries with a

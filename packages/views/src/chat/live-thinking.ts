@@ -42,3 +42,33 @@ export function splitLiveThinking(content: string): LiveThinkingState {
     answer: content.substring(closeIndex + THINK_CLOSE.length).trim(),
   };
 }
+
+/*
+ * History variant — Vue useChatStreamHandler handleMsgList restore branch:
+ * persisted answers that still carry their `<think>…</think>` block are split
+ * once at load time. Differences vs the streaming split: the content is
+ * trimmed first, a completed block's thinkContent is trimmed, the post-tag
+ * answer only loses the whole-content outer trim, and a lone close tag (no
+ * open) still counts as a completed block — branch order mirrors Vue exactly.
+ */
+export function splitHistoryThinking(content: string): LiveThinkingState {
+  const trimmed = content.trim();
+  if (!trimmed.includes(THINK_OPEN) && !trimmed.includes(THINK_CLOSE)) {
+    return { ...NO_THINK, answer: content };
+  }
+  if (trimmed.includes(THINK_CLOSE)) {
+    const closeIndex = trimmed.lastIndexOf(THINK_CLOSE);
+    return {
+      showThink: true,
+      thinking: false,
+      thinkContent: trimmed.substring(0, closeIndex).replace(THINK_OPEN, '').trim(),
+      answer: trimmed.substring(closeIndex + THINK_CLOSE.length),
+    };
+  }
+  return {
+    showThink: true,
+    thinking: true,
+    thinkContent: trimmed.replace(THINK_OPEN, '').trim(),
+    answer: '',
+  };
+}

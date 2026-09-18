@@ -28,6 +28,7 @@ import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicatio
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
+import { clearPrefillQueryFromUrl, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -104,7 +105,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const approvalTimingRef = useRef<Map<string, ApprovalTiming>>(new Map());
   // continue-stream is started at most once per persisted incomplete message.
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
-  const [draft, setDraft] = useState('');
+  // R466-A2 — Vue menuStore.prefillQuery equivalent: the R465 palette 问 AI
+  // deep link /platform/creatChat?q=… is consumed exactly once on the
+  // new-chat entry. Vue Input-field.vue fills query.value + focuses the
+  // textarea (nextTick) and never auto-sends; a session route ignores the
+  // stray parameter because the prefill belongs to the new-conversation view.
+  const prefillQueryRef = useRef<string | null>(null);
+  if (prefillQueryRef.current === null) {
+    // String(window.location) is the href in the browser (and stays a plain
+    // href string in embedded/test hosts), so the ?q= read works on both.
+    const prefillUrl = new URL(String(window.location));
+    prefillQueryRef.current = chatSessionIdFromPath(prefillUrl.pathname) ? '' : readPrefillQuery(prefillUrl.search);
+  }
+  const [draft, setDraft] = useState((): string => prefillQueryRef.current ?? '');
+  const [composerFocusSignal] = useState(() => (prefillQueryRef.current ? 1 : 0));
   const [mentionOptions, setMentionOptions] = useState<ChatMentionView[]>([]);
   const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>([]);
   const [mentionLoading, setMentionLoading] = useState(false);
@@ -417,7 +431,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   useEffect(() => {
-    setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : '');
+    // Vue Input-field.vue mount consume: menuStore.consumePrefillQuery() is
+    // one-shot, so the ?q= seed is read once here (the browser draft-restore
+    // effect re-runs on every session switch; the ref keeps the prefill from
+    // re-applying after it has been consumed).
+    const prefill = prefillQueryRef.current ?? '';
+    prefillQueryRef.current = '';
+    setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : prefill);
+    // Vue nextTick(() => textarea.focus()): the signal is seeded at mount
+    // (SSR-visible) from the prefill, so the composer focuses exactly once.
     // Vue fork landing: after forking at a user message the question is
     // prefilled in the new session (index.vue readForkLanding). Consume the
     // stash once the forked session becomes the selected one so the history
@@ -881,6 +903,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   function updateDraft(value: string) {
     setDraft(value);
     if (storageKey) window.localStorage.setItem(storageKey, value);
+    // R466-A2 prefill lifecycle: clearing the consumed query strips ?q= from
+    // the URL (replaceState only — the deep link must not re-apply on the
+    // next new-chat mount, and the history stack stays clean).
+    if (value === '') clearPrefillQueryFromUrl(window.history, String(window.location));
   }
 
   function loadMentionOptions(): void {
@@ -1084,6 +1110,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
     sendInFlightRef.current = true;
+    // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
+    // from the URL (replaceState) even if the turn later fails, mirroring the
+    // one-shot menuStore.consumePrefillQuery semantics.
+    clearPrefillQueryFromUrl(window.history, String(window.location));
     // The stream controller is created inside prepareSendRun AFTER the inline
     // session-create/selectSession teardown: selectSession aborts the
     // registered controller, so a pre-installed one would abort this send
@@ -1177,6 +1207,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     selectedSessionId={selectedSessionId}
     messages={messages}
     draft={draft}
+    composerFocusSignal={composerFocusSignal}
     loadingSessions={loadingSessions}
     loadingMessages={loadingMessages}
     error={error}

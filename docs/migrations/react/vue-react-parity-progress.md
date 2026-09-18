@@ -5128,6 +5128,29 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   (interim 4+2 failures were load flakes under a 50-60 machine). Evidence:
   `evidence/vue-react-parity/2026-09-18-r465-code-parity-round.md`. No Vue, mobile, or Go code was modified
   by this round.
+
+## 2026-09-18 Round R466 — merged-view mermaid, chat prefill + history deepThink, save-button loading gate
+
+- Four parallel agents (A1 documents merged mermaid, A2 chat ?q prefill + history deepThink, A3 save-button
+  loading disable, A4 verifier with live verification). Verdict: all PASS; gates test:web 1752/1752 (+22),
+  test:shared 787/787 (+5), typecheck 0, build ✓, integrity 0 P0 after staging.
+- A1: the merged and chunks views now render through DocumentMarkdownBody — markdown + shared-engine mermaid
+  hydration (idempotent binding, race guard, re-run on page turns) + click-to-fullscreen reusing the R465
+  preview-face interaction; chunks display state upgraded from plain <p> to markdown per Vue. documents
+  221/221 (+5). Left: chunks parent-context popover (feature absent in React — future).
+- A2: ?q= prefill per Vue Input-field (fill + focus, NEVER auto-send, one-shot; send/clear strips the param
+  via replaceState keeping sibling params) — ChatRoutePage consumes it only on the new-chat entry; history
+  deepThink per Vue handleMsgList (persisted <think> blocks split; closed-by-default 已深度思考 collapsible;
+  unclosed blocks render the live 思考中 state; the tag never leaks into markdown). +15 tests; chat 143+121.
+  Whitelist lesson held (named re-export only, no new subpath).
+- A3: the save button now stacks disabled={loading} over loading={saving} exactly per Vue :451-453 (loading
+  disables with unchanged copy and no spinner; cancel stays enabled per :448). anatomy 10/10 (+2).
+- A4 live-verified: prefill 6/6 assertions; palette empty-state buttons + 420px retrieval drawer + Esc-first
+  (R465 makeup evidence); merged mermaid hydration + fullscreen click with an uploaded r466-verify-mermaid.md
+  fixture (4 screenshots).
+- Gates: `pnpm test:web` 1752/1752, `pnpm test:shared` 787/787, `pnpm typecheck:web` 0, `pnpm build:web` ✓.
+  Evidence: `evidence/vue-react-parity/2026-09-18-r466-code-parity-round.md`. No Vue, mobile, or Go code was
+  modified by this round.
 __zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-76ee4977-d4b5-4762-b253-fe07a60efb30-cwd'; fi
+if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/zcode-44487539-7bfe-4cc5-bae7-0ef2df59b805-cwd'; fi
 exit "$__zcode_status"

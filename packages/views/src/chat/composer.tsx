@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 import { AgentSelectorPanel, type AgentSelectorAgent, type AgentSelectorModel } from './agent-selector.tsx';
 
@@ -52,6 +52,12 @@ export function shouldSubmitFromKeyboard(event: ChatKeyboardEvent, canSteer: boo
 
 export interface ChatComposerProps {
   draft: string;
+  /**
+   * R466-A2 — Vue prefillQuery focus pulse: when the number changes to a
+   * truthy value the textarea is focused (Input-field.vue consumes the
+   * prefill then focuses in nextTick). 0/undefined keeps default behavior.
+   */
+  focusSignal?: number;
   disabled?: boolean;
   onDraftChange(value: string): void;
   onSubmit(submission: ChatSubmission): void;
@@ -105,10 +111,15 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const mentionSearchRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  // Vue Input-field.vue prefill consume: nextTick(() => textarea.focus()).
+  useEffect(() => {
+    if (focusSignal) draftRef.current?.focus();
+  }, [focusSignal]);
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
@@ -200,6 +211,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
       </ul> : null}
       <textarea
         id="wk-chat-draft"
+        ref={draftRef}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
         onKeyDown={handleDraftKeyDown}

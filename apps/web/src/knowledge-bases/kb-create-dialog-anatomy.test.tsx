@@ -27,6 +27,16 @@ import { createScopeController } from '@weknora/domain';
 //       implicit-submission contract) and the name input carries no native
 //       `required` attribute (Vue t-input :165-169 is maxlength-only; blank
 //       names are blocked by the JS pipeline, `if (!name.trim()) return`)
+// R466 loading-disable slice (same Vue authority :451-454):
+//   (g) the footer save button is `:disabled="loading"` — while the editor's
+//       data (models/storage/vector/parser options) is still loading the save
+//       button is disabled with the SAME label (Vue only disables, the label
+//       stays saveButtonLabel), and the cancel button (:448) carries no
+//       loading disable so it stays clickable
+//   (h) `saving` keeps its own semantics independent of `loading`: once the
+//       editor data has settled, save is enabled; during the submit request
+//       the button shows the saving disable+spinner (aria-busy) and the
+//       double-submit guard keeps exactly one create call
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg?raw') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
@@ -86,19 +96,23 @@ function makeClient(calls: string[] = []): WeKnoraClient {
   } as unknown as WeKnoraClient;
 }
 
-async function mountPage(calls: string[] = []): Promise<void> {
+async function mountPageWithClient(client: WeKnoraClient): Promise<void> {
   const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' });
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<KnowledgeBasesPage client={makeClient(calls)} scopeController={scopeController} />);
+    mountedRoot?.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
   });
   await act(async () => {});
   await act(async () => {
     document.body.querySelector<HTMLButtonElement>('[data-guide="kb-list-create"]')?.click();
   });
   await act(async () => {});
+}
+
+async function mountPage(calls: string[] = []): Promise<void> {
+  await mountPageWithClient(makeClient(calls));
 }
 
 function getTypeFrame(): HTMLElement | null {
@@ -277,4 +291,94 @@ test('(f) Enter in the name input does not submit and the input carries no nativ
   });
   await act(async () => {});
   assert.deepEqual(calls, [], 'no implicit Enter submission contract — Vue has no form to submit');
+});
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => { resolve = res; });
+  return { promise, resolve };
+}
+
+function getFooterCancelButton(saveButton: HTMLButtonElement): HTMLButtonElement | undefined {
+  return Array.from(saveButton.parentElement?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    .find((button) => (button.textContent ?? '') === '取消');
+}
+
+test('(g) the save button is disabled (label unchanged) while editor data loads; the cancel button stays enabled', async () => {
+  // Vue KnowledgeBaseEditorModal.vue watch(visible) sets loading=true for every
+  // open and clears it in loadKBData's finally — the footer mirrors that with
+  // :disabled="loading". React's counterpart is editorOptions.loading, armed by
+  // loadEditorOptions() on both openCreate and openEdit.
+  const settingsGate = deferred<void>();
+  const client = makeClient();
+  (client.knowledgeBases as unknown as { settings: unknown }).settings = {
+    parserEngines: () => settingsGate.promise.then(() => ({ data: [] })),
+    storageBackends: () => settingsGate.promise.then(() => ({ data: [] })),
+    vectorStores: () => settingsGate.promise.then(() => ({ data: [] })),
+  };
+  await mountPageWithClient(client);
+
+  const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  assert.ok(saveButton, 'save button rendered');
+  assert.equal(saveButton.disabled, true, 'Vue :452 :disabled="loading" — editor data not ready blocks save');
+  assert.equal(saveButton.getAttribute('aria-busy'), null, 'loading-disable is a plain disable, not the saving spinner');
+  assert.equal(saveButton.textContent, '创建知识库', 'Vue keeps saveButtonLabel while loading (disable-only, no relabel)');
+
+  const cancelButton = getFooterCancelButton(saveButton);
+  assert.ok(cancelButton, 'footer cancel button rendered');
+  assert.equal(cancelButton.disabled, false, 'Vue cancel (:448-450) has no loading binding — stays clickable while loading');
+
+  await act(async () => { settingsGate.resolve(); });
+  await act(async () => {});
+  assert.equal(saveButton.disabled, false, 'save re-enables once the editor data settles (Vue loading=false)');
+});
+
+test('(h) saving keeps its own disable+aria-busy semantics once loading has settled', async () => {
+  const calls: string[] = [];
+  const createGate = deferred<void>();
+  const client = makeClient(calls);
+  (client.knowledgeBases as unknown as { create: unknown }).create = () => createGate.promise.then(() => { calls.push('create'); return { id: 'kb-new' }; });
+  await mountPageWithClient(client);
+
+  const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  assert.ok(saveButton, 'save button rendered');
+  assert.equal(saveButton.disabled, false, 'settings settled → loading no longer disables save');
+
+  const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  assert.ok(nameInput, 'name input rendered');
+  await act(async () => {
+    setInputValue?.call(nameInput, 'R466 保存态独立');
+    nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]')?.click();
+  });
+  await act(async () => {});
+  const embeddingInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-embedding"]');
+  const summaryInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-llm"]');
+  assert.ok(embeddingInput && summaryInput, 'model inputs rendered on the models section');
+  await act(async () => {
+    setInputValue?.call(embeddingInput, 'm-embed');
+    embeddingInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    setInputValue?.call(summaryInput, 'm-summary');
+    summaryInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {});
+
+  await act(async () => {
+    saveButton.click();
+  });
+  await act(async () => {});
+  assert.equal(saveButton.disabled, true, 'saving disables the button (Vue :loading="saving")');
+  assert.equal(saveButton.getAttribute('aria-busy'), 'true', 'saving carries the spinner affordance, distinct from the loading disable');
+  await act(async () => {
+    saveButton.click();
+  });
+  await act(async () => {});
+
+  await act(async () => { createGate.resolve(); });
+  await act(async () => {});
+  assert.deepEqual(calls, ['create'], 'double-submit guard holds: exactly one create while saving');
+  assert.ok(!saveButton.isConnected || !saveButton.disabled, 'a successful save closes the dialog (button gone or re-enabled)');
 });

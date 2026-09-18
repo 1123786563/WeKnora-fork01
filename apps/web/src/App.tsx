@@ -1127,8 +1127,11 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           </div>
           <div className="mt-3 flex justify-end gap-2">
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            {/* Vue :451 `<t-button @click="handleSubmit" :loading="saving">` */}
-            <Button type="button" data-guide="kb-create-submit" loading={saving} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
+            {/* Vue :451-453 `<t-button @click="handleSubmit" :loading="saving" :disabled="loading">` —
+                editorOptions.loading is the React counterpart of the Vue dialog-open `loading`
+                (watch(visible) arms it, loadEditorOptions settles it), so save is disabled while
+                the editor data is not ready, with saving's spinner/disable layered on top. */}
+            <Button type="button" data-guide="kb-create-submit" loading={saving} disabled={editorOptions.loading} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
           </div>
         </div>
       </Dialog>
