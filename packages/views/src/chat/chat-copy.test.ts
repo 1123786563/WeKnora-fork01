@@ -178,3 +178,46 @@ test('resolveChatCopy exposes the Vue invalid-image placeholder in every locale'
     assert.equal(resolveChatCopy(locale).invalidImageLink, expected[locale]);
   }
 });
+
+test('resolveChatCopy exposes the Vue steer scenario toasts in every locale', () => {
+  // R476-A2 — byte-exact mirrors of frontend/src/i18n/locales/*.ts
+  // input.messages.{steerFailed,steerPromoteFailed,steerRemoveFailed,
+  // steerAlreadyInjected}: Vue chat/index.vue MessagePlugin calls keyed per
+  // scenario (enqueue/promote/remove failures + the already_injected info
+  // notice) instead of one operationFailed bucket.
+  const expected = {
+    steerFailed: {
+      'zh-CN': '追加失败，请重试',
+      'en-US': 'Failed to append the message. Please try again.',
+      'ja-JP': 'メッセージの追加に失敗しました。再試行してください。',
+      'ko-KR': '메시지 추가에 실패했습니다. 다시 시도해주세요.',
+      'ru-RU': 'Не удалось добавить сообщение. Попробуйте ещё раз.',
+    },
+    steerPromoteFailed: {
+      'zh-CN': '立即发送失败，请重试',
+      'en-US': 'Failed to send now. Please try again.',
+      'ja-JP': '今すぐ送信に失敗しました。再試行してください。',
+      'ko-KR': '지금 보내기에 실패했습니다. 다시 시도해주세요.',
+      'ru-RU': 'Не удалось отправить сейчас. Попробуйте ещё раз.',
+    },
+    steerRemoveFailed: {
+      'zh-CN': '删除排队消息失败，请重试',
+      'en-US': 'Failed to remove the queued message. Please try again.',
+      'ja-JP': '待機中のメッセージを削除できませんでした。再試行してください。',
+      'ko-KR': '대기 중인 메시지를 삭제하지 못했습니다. 다시 시도해주세요.',
+      'ru-RU': 'Не удалось удалить сообщение из очереди. Попробуйте ещё раз.',
+    },
+    steerAlreadyInjected: {
+      'zh-CN': '该消息已被当前回答接收',
+      'en-US': 'This message has already been taken by the running answer.',
+      'ja-JP': 'このメッセージは既に現在の回答に取り込まれています。',
+      'ko-KR': '이 메시지는 이미 현재 응답에 반영되었습니다.',
+      'ru-RU': 'Это сообщение уже принято текущим ответом.',
+    },
+  } as const;
+  for (const [key, perLocale] of Object.entries(expected)) {
+    for (const locale of CHAT_COPY_LOCALES) {
+      assert.equal(resolveChatCopy(locale)[key as keyof typeof expected], perLocale[locale], `${key} must be byte-exact for ${locale}`);
+    }
+  }
+});
