@@ -28,6 +28,7 @@
     "./settings/registry": "./src/settings/registry.ts"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.20",
     "@weknora/contracts": "workspace:*",
     "@weknora/core": "workspace:*",
     "@weknora/domain": "workspace:*",
