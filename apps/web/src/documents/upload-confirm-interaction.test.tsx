@@ -157,3 +157,59 @@ test('a KB with zeroed chunking_config still uploads on confirm (R474 A4 regress
   const processConfig = uploadCalls[0]?.input.process_config as { chunking_config?: { chunk_size?: number } } | undefined;
   assert.equal(processConfig?.chunking_config?.chunk_size, 512, 'the Vue default 512 is submitted');
 });
+
+// R476 A3 contract lock: the Vue upload confirm dialog submits its AI question
+// generation section through the multipart process_config JSON field
+// (frontend/src/api/knowledge-base/index.ts uploadKnowledgeFile stringifies
+// data.process_config; handler knowledge.go reads PostForm("process_config")).
+// Whether the backend then auto-generates questions is gated server-side on
+// kb.NeedsEmbeddingModel() — but the React payload must keep carrying the
+// question_generation_config the dialog promised, byte-compatible with Vue
+// buildProcessOverrides, or auto-generation can never trigger.
+test('confirm carries the dialog question_generation_config into the upload process_config (R476 A3)', async () => {
+  const uploadCalls: UploadCall[] = [];
+  const client = pageClient({}, uploadCalls);
+  mountedRoot = await renderPage(client);
+
+  const file = new dom.window.File(['# r476 a3 question probe'], 'r476-a3-questions.md', { type: 'text/markdown' });
+  dropFiles([file]);
+
+  const confirm = confirmButton();
+  await act(async () => { confirm.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+  assert.equal(uploadCalls.length, 1, 'the staged file is uploaded once');
+  const processConfig = uploadCalls[0]?.input.process_config as {
+    question_generation_config?: { enabled?: boolean; question_count?: number; custom_instructions?: string };
+  } | undefined;
+  // Dialog defaults (Vue createDefaultUIState): question generation enabled
+  // with 3 questions. The upload payload must mirror that selection.
+  assert.deepEqual(
+    processConfig?.question_generation_config,
+    { enabled: true, question_count: 3, custom_instructions: '' },
+    'process_config.question_generation_config mirrors the Vue buildProcessOverrides payload',
+  );
+});
+
+// R476 A3 contract lock (seeded variant): a KB that stored its own
+// question_generation_config seeds the dialog from it (Vue initFromKbInfo),
+// and the confirmed upload round-trips the stored count instead of the default.
+test('a KB question_generation_config seeds the confirmed upload payload (R476 A3)', async () => {
+  const uploadCalls: UploadCall[] = [];
+  const client = pageClient({ question_generation_config: { enabled: true, question_count: 5 } }, uploadCalls);
+  mountedRoot = await renderPage(client);
+
+  const file = new dom.window.File(['# r476 a3 seeded probe'], 'r476-a3-seeded.md', { type: 'text/markdown' });
+  dropFiles([file]);
+
+  const confirm = confirmButton();
+  await act(async () => { confirm.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+  assert.equal(uploadCalls.length, 1, 'the staged file is uploaded once');
+  const processConfig = uploadCalls[0]?.input.process_config as {
+    question_generation_config?: { enabled?: boolean; question_count?: number; custom_instructions?: string };
+  } | undefined;
+  assert.equal(processConfig?.question_generation_config?.enabled, true, 'stored enabled flag round-trips');
+  assert.equal(processConfig?.question_generation_config?.question_count, 5, 'stored question_count 5 round-trips');
+});
