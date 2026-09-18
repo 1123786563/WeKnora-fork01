@@ -91,3 +91,11 @@ mx-005 fix 轮把 interactions.ts 的 kind 误改 modify，违反 mx-001 基线�
 - 设备成果：Android+iOS dev client 均构建成功并运行；本地栈+测试账户就绪；三项真实缺陷修复（D-028）；产品树（sources/app）已在设备可达。
 - **下一安全动作**：定位 server 屏 Continue 无导航（疑 auth loading 挂起或 gate/replace 竞态）→ 打通后按 native-e2e.md 配方采集 18 页矩阵并回填 visual-baseline.json → MX-034/035 升级。
 - 运行态：Metro 8083（EXPO_ROUTER_APP_ROOT=./sources/app）、emulator-5554 在跑、iPhone 17 Pro booted、iOS app 产物在 ios/build/DerivedData。
+
+## 接续说明（2026-09-18 第五轮——设备解封第二轮修复后收口）
+
+- HEAD `eee89daa`，工作区干净。本轮设备会话累计修复 **5 项真实缺陷**（D-028 三项 + D-029 两项，全部由 Android 真机实测发现）+ gate loading 中间态；插桩已清理。
+- **设备状态**：Android dev client（test36 模拟器 emulator-5554）冷启动全链贯通至 **M01 产品登录屏**（React 状态/按钮可点击均已插桩验证）；iOS WeKnora.app 已产出待安装（iPhone 17 Pro booted）；Metro 在 8083（EXPO_ROUTER_APP_ROOT=./sources/app）；本地后端+e2e_tester 账户就绪。
+- **唯一剩余单点**：Sign in 按钮的 raw `input tap` 进入系统输入队列但不触发 RN submit（状态正确，非代码缺陷；模拟器 input/RN Fabric 特性）。**下一轮第一动作**：`/Applications/Maestro.app/Contents/MacOS/Maestro test tests/mobile-v2/maestro/flows/core.yaml --platform android`（tapOn 可达性驱动）或先跑 `Maestro --version` 完成首启驱动下载。
+- 打通后：登录→索引重定向→/product 产品壳 M03→四 Tab 截图→明暗/宽度/大字体矩阵→回填 visual-baseline.json→升级 MX-034/035。
+- 回归基线：mv2 42/42、shared 590/590、tsc **13**（D-028：11+2 legacy '/dev' 死链）。
