@@ -82,7 +82,16 @@
 ### 视觉验证
 - 见 visual-verification.md：M01/M03/M08 深度核对通过；36 张存档；逐页像素比对/多宽度/大字体/Android 为 blocked-env 或未完成，如实记录
 
-### Expo Go（备用验证通道）
-- Expo Go 55.0.34 simulator build 经镜像下载安装成功（GitHub 直连被网络阻断，gh-proxy 镜像可用）；深链不自动连 Metro（记录，未再用）
+### 安全扫描（2026-09-18）
+- Mimosa 静态扫描（normal，scan-job-mu6iw5pe，seal sha256:5e7b1b27…）：全仓库 152 findings、依赖 2012 包（7 包匹配 15 advisory）。范围为整个仓库（含既有代码），不区分新旧；按约束不宣称项目安全；扫描档案 ~/.mimosa/security-scans/ 可复查。
+
+## 提交
+- 21bc807a 核心交付（127 文件，26616 行）；e03cb1ec 部署目标修正；d54e0ddc 真实联调+wire 修正
+- 分支 rebuild/mobile-next；未 push；旧 apps/mobile 与用户其他文件未改动
+
+## 最终状态（2026-09-18）
+- jest 77/77（8 suites）、tsc 0、隔离门禁 0、iOS bundle export 0、xcodebuild BUILD SUCCEEDED、模拟器实机运行 ✓、live-backend 10/10 ✓、36 张原生双主题截图 ✓
+- 明确未完成（如实）：RW-027 附件上传、RW-028 深链通知、RW-029 i18n 集中化、M07 发送接线（后端端点在）、M13 OAuth 浏览器授权实测、M14 下载/分享签名链接、SSO 模拟器回跳实测、Android 构建/E2E、逐页像素比对与多宽度/大字体场景（blocked-env 或待环境）
+
 
 
