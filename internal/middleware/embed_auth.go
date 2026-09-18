@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/embedpolicy"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/ratelimit"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -204,30 +205,7 @@ func requestOrigin(c *gin.Context) string {
 }
 
 func originAllowed(origin string, allowed []string) bool {
-	// Empty allowlist rejects all origins. Management create/update requires at
-	// least one origin; legacy rows with [] must be fixed before going live.
-	if len(allowed) == 0 {
-		return false
-	}
-	if origin == "" {
-		return false
-	}
-	for _, pattern := range allowed {
-		pattern = strings.TrimSpace(pattern)
-		if pattern == "" {
-			continue
-		}
-		if pattern == "*" || strings.EqualFold(pattern, origin) {
-			return true
-		}
-		if strings.HasPrefix(pattern, "*.") {
-			suffix := strings.TrimPrefix(pattern, "*")
-			if strings.HasSuffix(origin, suffix) {
-				return true
-			}
-		}
-	}
-	return false
+	return embedpolicy.Allows(origin, allowed)
 }
 
 // EmbedChannelFromContext returns the authenticated embed channel, if any.

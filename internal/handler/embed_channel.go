@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/embedpolicy"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -97,32 +97,23 @@ func stringOrEmpty(v *string) string {
 // rejected. In production a wildcard ("*") is also rejected; each entry must be
 // a well-formed http(s) origin (optionally a "*." subdomain wildcard).
 func validateAllowedOrigins(origins []string) error {
-	cleaned := make([]string, 0, len(origins))
-	for _, o := range origins {
-		o = strings.TrimSpace(o)
-		if o == "" {
+	count := 0
+	for _, raw := range origins {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
 			continue
 		}
-		cleaned = append(cleaned, o)
+		pattern, err := embedpolicy.NormalizePattern(raw)
+		if err != nil {
+			return err
+		}
+		if pattern == "*" && isProductionMode() {
+			return fmt.Errorf("wildcard origin '*' is not allowed in production")
+		}
+		count++
 	}
-	if len(cleaned) == 0 {
+	if count == 0 {
 		return fmt.Errorf("at least one allowed origin is required")
-	}
-	for _, o := range cleaned {
-		if o == "*" {
-			if isProductionMode() {
-				return fmt.Errorf("wildcard origin '*' is not allowed in production")
-			}
-			continue
-		}
-		host := o
-		if strings.HasPrefix(o, "*.") {
-			host = "https://" + strings.TrimPrefix(o, "*.")
-		}
-		u, err := url.Parse(host)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("invalid allowed origin: %q", o)
-		}
 	}
 	return nil
 }
