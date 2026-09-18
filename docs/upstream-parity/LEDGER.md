@@ -36,8 +36,8 @@
 | A13 | BrowserSkill 0.3.0（浏览器技能） | `internal/browserskill/` + agent/tools/browserskill* + 迁移 | 无 | ⬜ 待办（最大条目，依赖 sandbox 基础设施） |
 | A14 | 沙箱桌面（RFB/WS 远程桌面） | `sandbox_desktop_*` + handler/session/sandbox_desktop_* | 无 | ⬜ 待办（依赖 A13） |
 | A15 | tool_images（agent 图片工具） | `internal/agent/tool_images.go` | 无（trpc-agent-go 引擎侧需评估等价物） | ⬜ 待办（需 trpc 适配） |
-| A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ⬜ 待办 |
-| A17 | workspace_checkpointer / pinned_session_sandbox | `internal/application/service/` | 无 | ⬜ 待办（评估与 trpc checkpoint 关系） |
+| A16 | shell_command_output（命令输出截断/持久化） | `internal/agent/tools/shell_command_output.go` + `internal/sandbox/command_output.go` | 无 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：工具发射器 8KiB tail/500ms flush + WithCommandOutput 上下文链 + RemoteExecRequest.OnOutput 流式（docker MultiWriter/e2b SDK 回调）+ SSE command_output 转发 + install_output transcript 订阅） |
+| A17 | workspace_checkpointer / pinned_session_sandbox | `internal/application/service/` | workspace_checkpointer 已有（A11 阶段 3），pinned 解析链缺 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：PinnedSessionSandbox 落地+容器接线升级——**A11 的 SessionForkSandboxPort 从恒 nil 变为真实 per-session 解析**，无 pin 时按上游语义降级） |
 | A18 | im channel_security | `d7ccd5b` internal/im/channel_security.go | 无 | ✅ 完成（第 15 轮，同上：三入口拦截+4 组合单测） |
 | A19 | agent_browser_preferences | `internal/application/service/agent_browser_preferences.go` | 无（依赖 A13） | ⬜ 待办 |
 | A20 | embedpolicy 目录 | `internal/embedpolicy/` | 无 | ⬜ 待办（评估：fork embed-secure-mode 已有自有实现，可能 ⛔） |
@@ -55,7 +55,7 @@
 | B6 | KB 初始化创建模型补租户戳 | `c9d5987` | 待核 | ✅ 完成（本轮） |
 | B7 | Milvus 保留关键词检索分数 | `38fee1e` | 待核（fork 用 postgres/paradedb 为主） | ✅ 完成（本轮） |
 | B8 | sandbox：文件访问与 artifact 发布分离 | `5780cb0` | 已移植（18/22 文件补丁 + prompts.go/sandbox_ls.go/session_manager.go 手工改写 + 3 个旧行为测试重写 + prompts_shell_test 新增） | ✅ 完成 |
-| B9 | sandbox 远程调用去重（perf） | `1c43934` | **回退**：依赖 fork 缺失的 `ExecShellCommandWithOutputSnapshot`/`connectRemoteSession`/`validateSessionSummary` 基建（属 A17 链：session_connect/session_file_operation/workspace_checkpointer/pinned_session_sandbox），已用 `git apply -R` 精确回退 | ⬜ 随 A17 一起做 |
+| B9 | sandbox 远程调用去重（perf） | `1c43934` | 曾回退（基建缺失）；第 17 轮以 A16+A17+B9 一体移植闭环 | ✅ 完成（2026-09-18 第 17 轮，worktree e2520134：RemoteSessionConnector 四客户端 ConnectSession + connectBinding 单往返 + file-operation scope 单连接 + ExecShellCommandWithOutputSnapshot 一次解析 + walkSessionFiles 去 Stat；含 5 个上游测试文件移植全绿） |
 | B10 | MCP 并发策略更新测试稳定（SQLite） | `ac4dd59` | 补丁干净应用 | ✅ 完成 |
 | B11 | skill 后台安装竞态修复 | `fc7f37d` | 补丁干净应用 | ✅ 完成 |
 | B12 | 客户端会话与集成请求处理对齐 | `d7ccd5b` | 91 文件大提交，涉 client SDK + dingtalk 迁移，需单独立项评估 | ⬜ 待办（大条目） |
@@ -278,6 +278,18 @@
 - **门禁与容器复验**：go build ./... 0；service/memory 全量 ok（含 6 个新一致性套件）；handler/repo Memory 测试 ok。镜像重建 healthy，**schema_migrations 实测推进到 154**，`memory_subjects.extraction_state` 列与 `memory_extraction_sessions` 表均已在生产库落地。
 - **⚠️ 主仓分支事故与修复（记录）**：外部进程在主仓建 `fix/miniprogram-qa-regression` 分支后把 main 留在旧位（6a70c35a），第 6-15 轮台账提交一度不在 main 上——本轮发现后用 `git branch -f main d387df7e` 快进修复（main 为其祖先，无分叉丢失；外部 craft docs 7d74b7af 留在该分支未带入）。
 - **A12 状态：✅ 完成**。
+
+### 2026-09-18 第 17 轮（A16 命令输出流 + A17 pinned 会话沙箱 + B9 远程调用去重，1c43934 一体闭环）✅
+
+> worktree 提交 `e2520134`（33 文件）。三个条目同属上游 1c43934 链（第 2 轮 B9 回退时识别的 A17 家族），本轮在 A11 阶段 3 基建就绪后整体落地。
+
+- **A16 command_output 全链**：`shell_command_output.go`（8KiB 累积 tail/UTF-8 对齐/500ms 节流+完成帧，maskCommandAssignments 脱敏）→ `sandbox.WithCommandOutput` 上下文 → `RemoteExecRequest.OnOutput` 观测钩子 → docker streamExec MultiWriter（remoteOutputWriter）/e2b WithOnStdout|Stderr 流式回调（Cube 无流式，保持缓冲）→ `EventAgentCommandOutput`+`CommandOutputData` 事件 → handler `handleCommandOutput` SSE 转发（`ResponseTypeCommandOutput`，UI-only 不入模型对话）→ skill 安装 transcript 增订 `install_output`（`ResponseTypeInstallOutput`）。fork 此前整链缺失（连 baseline 事件类型都没有）。
+- **A17 PinnedSessionSandbox**：per-session pin（SessionSandboxPinner，fork 已有）+ TenantSandboxResolver 请求时解析——BoundSandboxID/ExecShellCommand(WithOptions)/HasActiveTurn/CreateForkSnapshot/DeleteForkSnapshot 全部走会话自有 manager。容器接线升级（session_fork_wiring.go）：进程级 Manager 类型断言优先，否则 pinned 兜底，**A11 的 SessionForkSandboxPort 从「恒 nil 降级」变为真实解析**（无 pin/沙箱缺失时按上游契约降级 SNAPSHOT_UNSUPPORTED/NO_CHECKPOINT 不失败）。
+- **B9 去重**：`RemoteSessionConnector` 接口（cube 复用 SDK handle 探活/docker 复用 Connect 检查/e2b 复用+暂停恢复/langfuse 打点）；`connectBinding` Get+Connect 两往返合一；`WithSessionFileOperation` scope（单操作内并发读只连一次，按 manager+tenant+session 键控，失败不缓存，artifact_collector/read_file 接线）；`ExecShellCommandWithOutputSnapshot` 一次解析跑命令+前后两次产物探测（5s 超时，walkSessionFiles 去 Stat、仅根缺失视为空、子目录消失丢弃快照）；`lookupSessionHandleForKey`+`ExpectedSandboxID` 维护命令 lookup-only 不重建。
+- **顺带对齐（移植中发现的 B8 残差）**：普通 shell_exec 的 work_dir 从 `/workspace` 限域放宽到**整沙箱任意目录**（上游 B8 后契约；构造器 workDirRoots `["/"]`+allowedWorkDirRoots 默认+提示词文本），旧测试改写为新契约；`sandboxOutputLinks` 空结果返回非 nil 空切片（上游带语义注释：nil=探测失败/empty=无产物）；`artifact_completion_test.go` 修复 A11 阶段 3 签名漏改（该预存构建破坏此前屏蔽整个 handler/session 测试包）。
+- **测试**：5 个上游测试文件移植全绿——session_connect（四客户端复用句柄/仅确定性失败可替换）、session_file_operation（scope 单连接/租户隔离/不缓存失败）、session_shell_snapshot（单句柄五操作/失败不重放/超时保留/递归无 Stat/部分列表拒绝）、sandbox_operation_requests（读文件/收集器/维护检查点操作序列）、pinned_session_sandbox（6 场景）。
+- **门禁**：go build ./... 0；sandbox 包全量 PASS；tools/service 新套件 PASS。**分支预存红（stash 基线逐一证实，非本轮引入）**：TestToolJournal*（tools）、Craft/agent-run sqlite NoTxWrap 家族（service 13 个+handler/session）、TestWireCraftInteractionRegistrarRegistersPendingInteractions（container）。
+- **A16/A17/B9 状态：✅ 完成**（A16 前端展示层属 C5，待 A13/A14 轮）。
 
 ## G. 纪律与教训
 
