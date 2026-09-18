@@ -5340,3 +5340,34 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `evidence/vue-react-parity/2026-09-18-r474-code-parity-round.md`. No Vue, mobile, or Go code was modified by
   this round. R475 queue: upload-dialog no-POST P2, attempt-tabs/live-duration立项, inject preview, retry
   delivery, reachable mock LLM (SSRF_WHITELIST).
+
+## 2026-09-18 Round R475 — Upload no-POST closed (double root cause), mock LLM unlocks completed, inject preview wired
+
+- Four parallel agents (A1 upload root cause, A2 mock LLM + SSRF whitelist, A3 inject preview + retry
+  delivery, A4 verifier). Verdict: all delivered; final gates under Node v26: test:web 1853/1853, test:shared
+  799/799, typecheck 0, build ✓. (An earlier dispatch of this round died to an API-credential interruption
+  with zero execution; re-dispatched clean.)
+- A1 (R474 P2 closed, DOUBLE root cause): the dialog opened with chunkSize 0 (fixture KBs store
+  chunk_size=0=unset; React's num() only falls back on non-finite while Vue's `|| 512` does), and a
+  Vue-absent hard guard (chunkSize<100||>4000) then silently blocked the POST with only an inline error —
+  the exact no-POST/no-console symptom. vueNumOr + guard removal; first jsdom interaction test for the flow;
+  live-verified POST 200.
+- A2 (completed-state pipeline UNLOCKED, zero business code): the SSRF guard HAS a legitimate
+  SSRF_WHITELIST_EXTRA env path (DB settings replace the primary list — EXTRA is the dev-safe channel);
+  192.168.3.30 is the machine's own LAN IP; the mock rebinds 0.0.0.0:18090 with the wiki-extraction prompt
+  shape, .env.local carries the whitelist, and the dev backend restarted with it applied. E2E: a document
+  now reaches parse+summary completed with 2 chunks. Left: session-scoped mock (manual restart).
+- A3: the external 751b3d71 was a PARTIAL (pure functions + red tests, no wiring, 4 typecheck breaks) —
+  completed the ChatRoutePage wiring (retry uses the persisted delivery + a hidden onSteer param
+  misalignment fixed; the inject optimistic preview per Vue's reconcileSteerMessageId with per-path
+  discards; promote keeps the item as delivery='inject'). steer 38/38, chat 214+124. The external process
+  swept this into ef62cbe7 mid-round (content verified in-tree). Left: differentiated toasts.
+- A4 meta-finding: the R474-declared 1833 baseline measured RED under Node v22 (38+3 createPortal failures
+  = toolchain issue, minimal repro done; SAME code green under v26 at 1853/1853+799/799) — future gates must
+  pin/record the node version. Live-verified the A1 closure, the completed timeline (postprocess.summary
+  green — the R474 long-failure), 5/5 stages, and the questions panel. New observation queued: the upload
+  config's AI 问题生成 did not auto-populate.
+- Gates: test:web 1853/1853, test:shared 799/799, typecheck 0, build ✓ (Node v26). Evidence:
+  `evidence/vue-react-parity/2026-09-18-r475-code-parity-round.md`. No Vue, mobile, or Go code was modified
+  by this round. R476 queue: node-version pinning, AI-question auto-populate check, differentiated steer
+  toasts, mock restart automation, old finalizing batch retry.
