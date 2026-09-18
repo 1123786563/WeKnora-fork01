@@ -22,7 +22,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.weknora.mobilenext",
-    deploymentTarget: "16.0", // expo-router LinkPreview 使用 iOS 16 API
+    // 部署目标 16.0 由 ios/Podfile.properties 的 deploymentTarget 承载（expo-router LinkPreview 需 iOS 16 API）
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true, // dev 阶段连接本地 http 后端；发布前收敛为 NSExceptionDomains
