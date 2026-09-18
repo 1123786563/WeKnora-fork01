@@ -22,20 +22,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
 import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
-import type { CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
+import type { CraftCapabilitiesView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createCraftWorkbenchController, type CraftEventFrame, type CraftEventTransport, type CraftSyncError } from '@weknora/core/craft/controller';
 import { authorizationHeader, type LegacyPlatformSession } from '../../platform/legacy-session.ts';
-import { CraftHome, type CraftAttachmentDraft, type CraftHomeCreateInput } from '@weknora/views/craft/home';
+import { CraftHome, capabilitiesFromView, type CraftAttachmentDraft, type CraftHomeCreateInput } from '@weknora/views/craft/home';
+import { CraftLibrary } from '@weknora/views/craft/library';
+import { CraftTemplates } from '@weknora/views/craft/templates';
 import { CraftWorkbench, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
-type CraftRoute = { name: 'home' } | { name: 'workbench'; sessionId: string };
+type CraftRoute =
+  | { name: 'home' }
+  | { name: 'library' }
+  | { name: 'templates' }
+  | { name: 'workbench'; sessionId: string };
 
 function parseCraftRoute(pathname: string): CraftRoute | null {
   if (pathname === '/craft' || pathname === '/craft/') return { name: 'home' };
-  const match = /^\/craft\/([^/]+)\/?$/.exec(pathname);
+  if (pathname === '/craft/library' || pathname === '/craft/library/') return { name: 'library' };
+  if (pathname === '/craft/templates' || pathname === '/craft/templates/') return { name: 'templates' };
+  const match = pathname.match(/^\/craft\/([^/]+)\/?$/);
   if (match !== null) return { name: 'workbench', sessionId: decodeURIComponent(match[1]) };
   return null;
 }
@@ -199,20 +207,21 @@ export function CraftRoutes(props: CraftRoutesProps) {
   }, [client, session]);
 
   // --- Home data -------------------------------------------------------------
-  const [homeList, setHomeList] = useState<{ status: 'loading' | 'error' | 'ready'; error: string | null; items: CraftSessionSummaryView[]; nextCursor: string | null }>({
+  const [homeList, setHomeList] = useState<{ status: 'loading' | 'error' | 'ready'; error: string | null; items: CraftSessionSummaryView[]; nextCursor: string | null; capabilities: CraftCapabilitiesView | null }>({
     status: 'loading',
     error: null,
     items: [],
     nextCursor: null,
+    capabilities: null,
   });
   const loadHomeList = useCallback(
     async (cursor?: string) => {
-      setHomeList((prev) => ({ status: 'loading', error: null, items: cursor === undefined ? prev.items : [], nextCursor: prev.nextCursor }));
+      setHomeList((prev) => ({ status: 'loading', error: null, items: cursor === undefined ? prev.items : [], nextCursor: prev.nextCursor, capabilities: prev.capabilities }));
       try {
         const page = await craftApi.list(cursor === undefined || cursor === '' ? {} : { cursor }, scopeController.current().signal);
-        setHomeList({ status: 'ready', error: null, items: page.data, nextCursor: page.next_cursor });
+        setHomeList({ status: 'ready', error: null, items: page.data, nextCursor: page.next_cursor, capabilities: page.capabilities ?? null });
       } catch (error) {
-        setHomeList({ status: 'error', error: error instanceof Error ? error.message : String(error), items: [], nextCursor: null });
+        setHomeList((prev) => ({ status: 'error', error: error instanceof Error ? error.message : String(error), items: [], nextCursor: null, capabilities: prev.capabilities }));
       }
     },
     [craftApi, scopeController],
@@ -239,6 +248,8 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // Attachments picked on Home travel with the creation into the workbench.
   const [attachments, setAttachments] = useState<HomeAttachment[]>([]);
+  // P03: a template fill lands here, then the home creator consumes it once.
+  const [templateDraft, setTemplateDraft] = useState<{ goal: string; kind: CraftSessionKind } | null>(null);
   const [creationPrompt, setCreationPrompt] = useState<string | null>(null);
   const [creationScope, setCreationScope] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
@@ -497,6 +508,8 @@ export function CraftRoutes(props: CraftRoutesProps) {
         <CraftHome
           locale={locale}
           canCreate={session.credential.kind !== 'anonymous'}
+          capabilities={capabilitiesFromView(homeList.capabilities)}
+          initial={templateDraft === null ? undefined : { goal: templateDraft.goal, kind: templateDraft.kind }}
           createBusy={createBusy}
           createError={createError}
           listStatus={homeList.status}
@@ -516,6 +529,42 @@ export function CraftRoutes(props: CraftRoutesProps) {
           onOpen={(id) => navigate('/craft/' + encodeURIComponent(id))}
           onNextPage={(cursor) => void loadHomeList(cursor)}
           onRetryList={() => void loadHomeList()}
+        />
+      </div>
+    );
+  }
+
+  if (route.name === 'library') {
+    return (
+      <div>
+        <LocaleToggle locale={locale} onChange={setLocale} />
+        <CraftLibrary
+          locale={locale}
+          sessions={homeList.items}
+          status={homeList.status}
+          error={homeList.error}
+          hasNextPage={homeList.nextCursor !== null && homeList.nextCursor !== ''}
+          loadingMore={homeList.status === 'loading' && homeList.items.length > 0}
+          onOpen={(id) => navigate('/craft/' + encodeURIComponent(id))}
+          onLoadMore={() => void loadHomeList(homeList.nextCursor ?? undefined)}
+          onRetry={() => void loadHomeList()}
+        />
+      </div>
+    );
+  }
+
+  if (route.name === 'templates') {
+    return (
+      <div>
+        <LocaleToggle locale={locale} onChange={setLocale} />
+        <CraftTemplates
+          capabilities={capabilitiesFromView(homeList.capabilities)}
+          onUse={(template) => {
+            // P03: a template ONLY fills the create form — never authorizes,
+            // never executes, never pre-selects knowledge.
+            setTemplateDraft({ goal: template.goal, kind: template.kind });
+            navigate('/craft');
+          }}
         />
       </div>
     );

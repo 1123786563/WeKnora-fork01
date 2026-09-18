@@ -21,6 +21,7 @@
     "./craft/reconnect": "./src/craft/reconnect.ts",
     "./craft/state": "./src/craft/state.ts",
     "./craft/usage": "./src/craft/usage.ts",
+    "./craft/capabilities": "./src/craft/capabilities.ts",
     "./knowledge/folders": "./src/knowledge/folders.ts",
     "./knowledge/list": "./src/knowledge/list.ts",
     "./knowledge/preview": "./src/knowledge/preview.ts",

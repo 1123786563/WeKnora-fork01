@@ -390,7 +390,13 @@ func (h *CraftSessionHandler) ListCraftSessions(c *gin.Context) {
 			"updated_at": s.UpdatedAt,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": data, "next_cursor": next})
+	caps := h.svc.Capabilities()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true, "data": data, "next_cursor": next,
+		// CFT-S01-T009: the entry pages need the open kinds BEFORE any session
+		// exists; the list call every home mount already makes carries them.
+		"capabilities": gin.H{"enabled": caps.Enabled, "allowed_kinds": caps.Kinds},
+	})
 }
 
 // GetCraftWorkspace serves GET /api/v1/sessions/:session_id/craft.

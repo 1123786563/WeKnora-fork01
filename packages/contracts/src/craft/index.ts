@@ -45,9 +45,17 @@ export interface CraftSessionSummaryView {
   updated_at: string;
 }
 
+/** Deployment gate snapshot riding on the list/create/workspace envelopes. */
+export interface CraftCapabilitiesView {
+  enabled: boolean;
+  allowed_kinds: CraftSessionKind[];
+}
+
 export interface CraftSessionPageView {
   data: CraftSessionSummaryView[];
   next_cursor: string | null;
+  /** Present since CFT-S01-T009 (list carries it for the entry pages). */
+  capabilities?: CraftCapabilitiesView | null;
 }
 
 export interface CraftRunView {
@@ -198,6 +206,16 @@ export function parseCraftSessionCreated(value: unknown): CraftSessionCreatedVie
 export function parseCraftSessionPage(value: unknown): CraftSessionPageView {
   const v = asRecord(value, 'craft session page');
   if (!Array.isArray(v.data)) throw new Error('invalid craft session page (data)');
+  const capabilities = v.capabilities === undefined || v.capabilities === null
+    ? null
+    : (() => {
+        const row = asRecord(v.capabilities, 'craft capabilities');
+        const kinds = Array.isArray(row.allowed_kinds) ? row.allowed_kinds : [];
+        return {
+          enabled: row.enabled === true,
+          allowed_kinds: kinds.map((kind) => oneOf(kind, CRAFT_SESSION_KINDS, 'allowed_kinds', 'craft capabilities')),
+        };
+      })();
   return {
     data: v.data.map((item) => {
       const row = asRecord(item, 'craft session summary');
@@ -211,6 +229,7 @@ export function parseCraftSessionPage(value: unknown): CraftSessionPageView {
       };
     }),
     next_cursor: cursor(v.next_cursor, 'craft session page'),
+    ...(capabilities !== null ? { capabilities } : {}),
   };
 }
 
