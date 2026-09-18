@@ -232,6 +232,97 @@ test('document trace nodes expose the same status semantics as the Vue trace sur
   assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: {} }), 'pending');
 });
 
+// R469/A3 N009 capture: the /spans endpoint replies with the backend envelope
+// { success: true, data: { parse_status, current_stage, trace, ... } }
+// (internal/handler/knowledge.go GetKnowledgeSpans); the raw api-client body
+// is the envelope itself, so the documents consumers must unwrap data like
+// Vue's res.data before reading the trace tree.
+const R469_COMPLETED_SPANS = {
+  success: true,
+  data: {
+    knowledge_id: 'a20e53a5',
+    attempt: 1,
+    latest_attempt: 1,
+    current_attempt: 1,
+    parse_status: 'completed',
+    current_stage: '',
+    trace: {
+      span_id: 'root-1',
+      kind: 'root',
+      name: 'knowledge_processing',
+      status: 'done',
+      started_at: '2026-09-17T10:00:00Z',
+      finished_at: '2026-09-17T10:02:10.400Z',
+      duration_ms: 130400,
+      children: [
+        { span_id: 's1', kind: 'stage', name: 'docreader', status: 'done', duration_ms: 7 },
+        { span_id: 's2', kind: 'stage', name: 'chunking', status: 'done', duration_ms: 13 },
+        { span_id: 's3', kind: 'stage', name: 'embedding', status: 'done', duration_ms: 5 },
+        { span_id: 's4', kind: 'stage', name: 'multimodal', status: 'skipped' },
+        {
+          span_id: 's5', kind: 'stage', name: 'postprocess', status: 'done', duration_ms: 9,
+          children: [
+            { span_id: 's5-1', kind: 'span', name: 'postprocess.summary', status: 'failed', duration_ms: 30017, error_code: 'LLM_TIMEOUT', error_message: 'summary timed out' },
+            { span_id: 's5-2', kind: 'span', name: 'postprocess.summary', status: 'failed', duration_ms: 30025, error_code: 'LLM_TIMEOUT', error_message: 'summary timed out' },
+            { span_id: 's5-3', kind: 'span', name: 'postprocess.summary', status: 'failed', duration_ms: 30031, error_code: 'LLM_TIMEOUT', error_message: 'summary timed out' },
+            { span_id: 's5-4', kind: 'span', name: 'postprocess.summary', status: 'failed', duration_ms: 30040, error_code: 'LLM_TIMEOUT', error_message: 'summary timed out' },
+          ],
+        },
+      ],
+    },
+    last_error: null,
+  },
+};
+
+test('trace drawer consumes the {success,data} spans envelope and renders the completed trace (N009)', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'weknora-upload-test.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }));
+  (client as { knowledgeBases: { documents: { spans: (id: string) => Promise<unknown> } } }).knowledgeBases.documents.spans = async () => R469_COMPLETED_SPANS;
+  const container = await mountDetail(client);
+  await act(async () => {
+    (Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '解析进度') as HTMLButtonElement).click();
+  });
+  await act(async () => {});
+  const text = container.ownerDocument.body.textContent || '';
+  // Pre-fix symptom: every pill rendered 等待中 because the trace tree was
+  // read off the unwrapped envelope (spans.trace === undefined).
+  assert.ok(text.includes('文档解析已完成'), 'docreader pill shows 已完成 like the Vue trace drawer');
+  assert.ok(text.includes('分块已完成'));
+  assert.ok(text.includes('向量化已完成'));
+  assert.ok(text.includes('后处理失败'), 'the 4 failed postprocess.summary retries roll up onto the postprocess pill');
+  // Waterfall rows: root total plus the failed summary sub-spans with durations.
+  assert.ok(text.includes('postprocess.summary'), 'failed summary sub-spans render in the waterfall');
+  assert.ok(text.includes('30017ms'));
+  assert.ok(text.includes('130400ms'), 'the root total duration (≈2m10.4s) renders like the Vue drawer');
+});
+
+test('inline processing timeline consumes envelope-wrapped spans while parsing (N009)', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'weknora-upload-test.md', type: 'file', file_type: 'md', parse_status: 'processing',
+  }));
+  (client as { knowledgeBases: { documents: { spans: (id: string) => Promise<unknown> } } }).knowledgeBases.documents.spans = async () => ({
+    success: true,
+    data: {
+      parse_status: 'processing',
+      current_stage: 'chunking',
+      trace: {
+        kind: 'root', name: 'knowledge_processing', status: 'running',
+        children: [
+          { kind: 'stage', name: 'docreader', status: 'done', duration_ms: 7 },
+          { kind: 'stage', name: 'chunking', status: 'running' },
+        ],
+      },
+    },
+  });
+  const container = await mountDetail(client);
+  await act(async () => {});
+  await act(async () => {});
+  const text = container.ownerDocument.body.textContent || '';
+  assert.ok(text.includes('文档解析 — 已完成'), 'the inline card shows the real docreader state while parsing');
+  assert.ok(text.includes('分块 — 进行中'));
+});
+
 test('document detail uses the Vue document title-row anatomy', () => {
   const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentDetailPage, {
     client: {} as never,

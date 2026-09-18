@@ -5,7 +5,7 @@ import { Button, Card, Sheet, Status } from '@weknora/ui';
 import { buildDocumentPreview, canPreviewDocument, DocumentMarkdownBody, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
-import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
+import { knowledgeSpansLastError, resolveKnowledgeSpansView, startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
 import { mergeChunkContents } from './model.ts';
 import type { KnowledgeTimelineStep } from '@weknora/domain/knowledge/processing';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
@@ -187,7 +187,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       if (!isKnowledgeProcessingActive(document.parse_status)) return;
       subscription = startProcessingTimeline({
         documentId,
-        getSpans: (id) => client.knowledgeBases.documents.spans(id),
+        getSpans: async (id) => resolveKnowledgeSpansView(await client.knowledgeBases.documents.spans(id)),
         onUpdate: (steps) => setTimelineSteps(steps),
       });
     }).catch(() => {});
@@ -203,11 +203,11 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       if (!active || inFlight) return;
       inFlight = true;
       try {
-        const spans = await client.knowledgeBases.documents.spans(documentId);
+        const spans = resolveKnowledgeSpansView(await client.knowledgeBases.documents.spans(documentId));
         if (!active) return;
         const parseStatus = typeof spans.parse_status === 'string' ? spans.parse_status : state.document.parse_status;
         const nodes = flattenKnowledgeSpans(spans.trace);
-        setTraceState({ status: 'success', steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: spans.last_error });
+        setTraceState({ status: 'success', steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: knowledgeSpansLastError(spans) });
         setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
         if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
           window.clearInterval(polling);

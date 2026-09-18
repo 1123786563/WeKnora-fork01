@@ -9,6 +9,7 @@ import {
   type KnowledgeTimelineStep,
   type KnowledgeTimelineNode,
 } from "@weknora/domain/knowledge/processing";
+import { knowledgeSpansLastError, resolveKnowledgeSpansView } from "./processing-timeline.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
@@ -2994,11 +2995,11 @@ export function KnowledgeDocumentsPage({
       if (!active || inFlight) return;
       inFlight = true;
       try {
-        const spans = await client.knowledgeBases.documents.spans(traceDocument.id);
+        const spans = resolveKnowledgeSpansView(await client.knowledgeBases.documents.spans(traceDocument.id));
         if (!active) return;
         const parseStatus = typeof spans.parse_status === "string" ? spans.parse_status : traceDocument.parse_status;
         const nodes = flattenKnowledgeSpans(spans.trace);
-        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: spans.last_error });
+        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: knowledgeSpansLastError(spans) });
         setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
         if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
           window.clearInterval(polling);
