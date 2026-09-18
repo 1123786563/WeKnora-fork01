@@ -59,10 +59,35 @@ test('timeline treats unstarted and failed stages explicitly', async () => {
   assert.deepEqual(steps.map((step) => step.state), ['failed', 'pending', 'pending', 'pending', 'pending']);
 });
 
-test('timeline without a trace still marks the current stage as running', async () => {
+// R474/A3: the Vue stages computed (knowledge-processing-timeline.vue
+// L149-158) maps a stage with no span onto a plain `{ status: 'pending' }`
+// placeholder — current_stage never flips a spanless stage to running —
+// so the same pending stage Vue renders as a grey dot renders 等待中,
+// never 进行中.
+test('timeline without a trace keeps every stage on the Vue pending placeholder', async () => {
   const { buildKnowledgeTimeline } = await import('./processing.ts');
   const steps = buildKnowledgeTimeline({ parse_status: 'processing', current_stage: 'docreader', trace: null });
-  assert.equal(steps[0]!.state, 'running');
+  assert.equal(steps[0]!.state, 'pending');
+  assert.equal(steps[1]!.state, 'pending');
+});
+
+// R474/A3: an explicit status 'pending' span that already serialized
+// started_at must stay pending. Vue reads node.status verbatim
+// (formatSpanDuration: pending → '—'); React's started_at fallback was
+// swallowing the explicit pending into running → 进行中.
+test('timeline keeps an explicit pending span pending even once started_at exists', async () => {
+  const { buildKnowledgeTimeline } = await import('./processing.ts');
+  const steps = buildKnowledgeTimeline({
+    parse_status: 'processing',
+    current_stage: 'chunking',
+    trace: {
+      name: 'pipeline',
+      children: [
+        { name: 'docreader', status: 'done', duration_ms: 7 },
+        { name: 'chunking', status: 'pending', started_at: '2026-09-18T10:00:02Z', duration_ms: 500 },
+      ],
+    },
+  });
   assert.equal(steps[1]!.state, 'pending');
 });
 

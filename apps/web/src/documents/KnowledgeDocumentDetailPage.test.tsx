@@ -39,7 +39,7 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 
 const { createRoot } = await import('react-dom/client');
 
-const { KnowledgeDocumentDetailPage, knowledgeTraceNodeState, metadataRowsFromObject, metadataRowsToObject, validateMetadataRows } = await import('./KnowledgeDocumentDetailPage.tsx');
+const { KnowledgeDocumentDetailPage, isLegacyGeneratedQuestion, knowledgeTraceNodeState, metadataRowsFromObject, metadataRowsToObject, validateMetadataRows } = await import('./KnowledgeDocumentDetailPage.tsx');
 
 let mountedRoot: Root | undefined;
 
@@ -240,6 +240,11 @@ test('trace node state recognizes skipped spans and finished_at/started_at alias
   assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'skipped', started_at: '2026-09-18T10:00:05Z', finished_at: '2026-09-18T10:00:05Z' } }), 'skipped');
   assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { finished_at: '2026-09-18T10:00:02Z' } }), 'done');
   assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { started_at: '2026-09-18T10:00:02Z' } }), 'running');
+  // R474/A3: an explicit status 'pending' span that already serialized
+  // started_at stays pending — Vue reads node.status verbatim (the drawer
+  // row then renders '—' with no status text); the started_at fallback
+  // must not swallow it into running/进行中.
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'pending', started_at: '2026-09-18T10:00:02Z', duration_ms: 500 } }), 'pending');
 });
 
 // R469/A3 N009 capture: the /spans endpoint replies with the backend envelope
@@ -331,6 +336,55 @@ test('inline processing timeline consumes envelope-wrapped spans while parsing (
   const text = container.ownerDocument.body.textContent || '';
   assert.ok(text.includes('文档解析 — 已完成'), 'the inline card shows the real docreader state while parsing');
   assert.ok(text.includes('分块 — 进行中'));
+});
+
+// R473 capture / R474-A3: the very same pending span — an explicit
+// status 'pending' stage that already serialized started_at — showed
+// 进行中 in React while the Vue trace drawer (knowledge-processing-timeline.vue)
+// reads node.status verbatim: the waterfall row carries no status text,
+// formatSpanDuration renders '—' for pending, and the drawer head shows
+// the LIVE badge plus the 当前阶段 n/5 counter.
+test('trace drawer matches the Vue pending contract: no per-row status text, — duration, LIVE badge, stage counter', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'weknora-upload-test.md', type: 'file', file_type: 'md', parse_status: 'processing',
+  }));
+  (client as { knowledgeBases: { documents: { spans: (id: string) => Promise<unknown> } } }).knowledgeBases.documents.spans = async () => ({
+    success: true,
+    data: {
+      parse_status: 'processing',
+      current_stage: 'chunking',
+      trace: {
+        kind: 'root', name: 'knowledge_processing', status: 'running',
+        children: [
+          { kind: 'stage', name: 'docreader', status: 'done', duration_ms: 7, started_at: '2026-09-18T10:00:00Z', finished_at: '2026-09-18T10:00:00Z' },
+          { kind: 'stage', name: 'chunking', status: 'pending', started_at: '2026-09-18T10:00:00Z', duration_ms: 500 },
+        ],
+      },
+    },
+  });
+  const container = await mountDetail(client);
+  await act(async () => {
+    (Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '解析进度') as HTMLButtonElement).click();
+  });
+  await act(async () => {});
+  // The inline processing card also carries .wk-processing-timeline, so the
+  // drawer assertions read the body: the LIVE badge, the stage counter, and
+  // the waterfall rows only exist inside the opened trace drawer.
+  const drawer = container.ownerDocument.body;
+  assert.ok(drawer.querySelector('.wk-trace-live'), 'the drawer shows the Vue LIVE badge while the trace is live');
+  const drawerText = drawer.textContent || '';
+  assert.ok(drawerText.includes('LIVE'), 'the drawer shows the Vue LIVE badge while the trace is live');
+  assert.ok(drawerText.includes('当前阶段'), 'the drawer shows the Vue stagesProgress counter');
+  assert.ok(drawerText.includes('2/5'), 'the counter counts done stages plus the pending one like Vue currentStageIndex');
+  // Waterfall rows: the pending chunking row carries no status text and a
+  // '—' duration even though duration_ms is present.
+  const waterfallRows = Array.from(drawer.querySelectorAll('.overflow-x-auto li')) as HTMLLIElement[];
+  const chunkingRow = waterfallRows.find((row) => (row.textContent || '').includes('chunking'));
+  assert.ok(chunkingRow, 'the chunking span renders a waterfall row');
+  assert.equal(chunkingRow.getAttribute('data-state'), 'pending');
+  assert.ok(!(chunkingRow.textContent || '').includes('进行中'), 'a pending row no longer reads 进行中');
+  assert.ok(!(chunkingRow.textContent || '').includes('等待中'), 'Vue waterfall rows carry no per-row status text');
+  assert.ok((chunkingRow.textContent || '').includes('—'), 'the pending row renders the Vue — duration placeholder');
 });
 
 test('document detail uses the Vue document title-row anatomy', () => {
@@ -966,6 +1020,16 @@ test('legacy string questions render but hide the Vue edit/delete affordances', 
   const panel = () => body().querySelector<HTMLElement>('.wk-chunk-questions');
   assert.ok(panel()!.textContent?.includes('Legacy string question?'), 'legacy string-array metadata maps onto displayable questions');
   assert.equal(Array.from(panel()!.querySelectorAll('button')).some((button) => button.textContent === '删除'), false, 'legacy-* questions cannot be deleted like Vue !startsWith(legacy-)');
+});
+
+// R474/A3: Vue handleDeleteQuestion (doc-content.vue L1443-1447) keeps a
+// defensive guard behind the hidden buttons — a legacy- id can never reach
+// DELETE /chunks/by-id/:id/questions; it toasts
+// knowledgeBase.legacyQuestionCannotDelete instead. The React delete path
+// carries the same guard so programmatic callers cannot bypass the row buttons.
+test('legacy question ids stay undeletable behind the row-button gate', () => {
+  assert.equal(isLegacyGeneratedQuestion({ id: 'legacy-0', question: 'Legacy question?' }), true);
+  assert.equal(isLegacyGeneratedQuestion({ id: 'q1', question: 'Saved question?' }), false);
 });
 
 test('an editor adds a question through the Vue composer contract', async () => {

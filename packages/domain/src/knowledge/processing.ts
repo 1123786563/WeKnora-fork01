@@ -101,6 +101,11 @@ function spanStatus(node: KnowledgeSpanNode): KnowledgeTimelineStepState {
   // A skipped stage never executed (e.g. multimodal disabled for the KB);
   // Vue renders it as knowledgeStages.status.skipped (已跳过), never running.
   if (raw === 'skipped' || raw === 'skip') return 'skipped';
+  // R474/A3: Vue reads span status verbatim — an explicit 'pending' span
+  // stays pending (drawer row: '—' duration, no status text) even once the
+  // backend has serialized started_at; the timestamp fallback below must
+  // not swallow it into running/进行中.
+  if (raw === 'pending') return 'pending';
   if (/(succe|complet|done|finish|ok)/.test(raw)) return 'done';
   if (raw === 'running' || raw === 'in_progress' || raw === 'started' || raw === 'active') return 'running';
   // Backend spans carry started_at/finished_at; accept both spellings.
@@ -142,7 +147,6 @@ export function flattenKnowledgeSpans(root: KnowledgeSpanNode | null | undefined
 export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTimelineStep[] {
   const collected: KnowledgeSpanNode[] = [];
   collectSpans(spans.trace ?? null, collected);
-  const currentStage = normalizeStageToken(spans.current_stage);
   const stageFor = (node: KnowledgeSpanNode): KnowledgeProcessingStage | undefined => {
     const tokens = [node.name, node.stage].map(normalizeStageToken).filter((token) => token !== '');
     for (const stage of knowledgeProcessingStages) {
@@ -154,8 +158,11 @@ export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTime
   const stateFor = (stage: KnowledgeProcessingStage): KnowledgeTimelineStepState => {
     const matches = collected.filter((node) => stageFor(node) === stage);
     if (matches.length === 0) {
-      // No span yet: the backend current_stage marks where parsing is right now.
-      return currentStage === normalizeStageToken(stage) ? 'running' : 'pending';
+      // R474/A3: the Vue stages computed maps a spanless stage onto a plain
+      // pending placeholder regardless of current_stage — the backend cursor
+      // never flips a stage without a span to running, so the same pending
+      // stage renders 等待中, never 进行中.
+      return 'pending';
     }
     const states = matches.map(spanStatus);
     if (states.includes('failed')) return 'failed';
@@ -166,6 +173,9 @@ export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTime
     if (states.every((state) => state === 'done' || state === 'skipped')) {
       return states.includes('done') ? 'done' : 'skipped';
     }
+    // R474/A3: an all-pending stage stays pending (Vue renders the span's
+    // own status); the running fallback below is only for ambiguous mixes.
+    if (states.every((state) => state === 'pending')) return 'pending';
     return 'running';
   };
   return knowledgeProcessingStages.map((stage) => ({

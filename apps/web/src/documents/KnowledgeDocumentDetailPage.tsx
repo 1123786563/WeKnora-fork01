@@ -50,6 +50,18 @@ const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string;
 
 type ContentView = 'preview' | 'merged' | 'chunks';
 
+// R474/A3 — trace drawer head copy, byte-exact from the Vue
+// knowledgeStages.head.stagesProgress string
+// (frontend/src/i18n/locales/*.ts). The LIVE badge text itself is the
+// brand-style 'LIVE' in every locale, like Vue knowledgeStages.live.
+const TRACE_HEAD_COPY: Record<Locale, { stagesProgress: string; liveTooltip: string }> = {
+  'zh-CN': { stagesProgress: '当前阶段', liveTooltip: '解析进行中，每 2 秒自动刷新一次' },
+  'en-US': { stagesProgress: 'Current stage', liveTooltip: 'Parsing in progress — auto-refreshes every 2s' },
+  'ja-JP': { stagesProgress: '現在のステージ', liveTooltip: '解析中です。2秒ごとに自動更新されます' },
+  'ko-KR': { stagesProgress: '현재 단계', liveTooltip: '파싱 진행 중 — 2초마다 자동 새로고침' },
+  'ru-RU': { stagesProgress: 'Current stage', liveTooltip: 'Parsing in progress — auto-refreshes every 2s' },
+};
+
 const CONTENT_TABS: Record<Locale, { preview: string; merged: string; chunks: string }> = {
   'zh-CN': { preview: '预览', merged: '全文', chunks: '查看分块' },
   'en-US': { preview: 'Preview', merged: 'Full Text', chunks: 'View Chunks' },
@@ -115,6 +127,10 @@ export function knowledgeTraceNodeState(row: KnowledgeTimelineNode): 'pending' |
   // R472-A1: a skipped stage never executed (multimodal disabled); Vue shows
   // knowledgeStages.status.skipped 已跳过 instead of a running/pending dot.
   if (rawStatus === 'skipped' || rawStatus === 'skip') return 'skipped';
+  // R474/A3: Vue reads node.status verbatim — an explicit 'pending' span
+  // stays pending ('—' duration, no row status text) even once started_at
+  // has been serialized; the timestamp fallbacks below must not swallow it.
+  if (rawStatus === 'pending') return 'pending';
   if (/(run|progress|active|start)/.test(rawStatus)) return 'running';
   // Backend spans serialize finished_at/started_at — Vue nodeStart/nodeEnd —
   // so both spellings close/open a statusless span.
@@ -269,6 +285,15 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       {traceState.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
       {traceState.status === 'error' ? <Status tone="error">{traceState.message}</Status> : null}
       {traceState.status === 'success' ? <div className="flex flex-col gap-4">
+        {/* R474/A3: Vue drawer head low-cost affordances — the LIVE badge
+            (kp-live-badge: parse polling or any running/pending span) and the
+            当前阶段 n/5 counter (currentStageIndex: first running/failed
+            stage, else traversed done/skipped + 1, capped). Attempt tabs and
+            the stop-parsing control remain interactive follow-ups. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {isKnowledgeProcessingActive(traceState.parseStatus) || traceState.nodes.some((row) => { const state = knowledgeTraceNodeState(row); return state === 'running' || state === 'pending'; }) ? <span className="wk-trace-live inline-flex items-center gap-1 rounded-full bg-surface-wash px-2 py-[2px] text-[11px] font-semibold text-warning-text" title={TRACE_HEAD_COPY[locale].liveTooltip}><span className="inline-block h-[6px] w-[6px] animate-pulse rounded-full bg-warning-text" aria-hidden="true" />LIVE</span> : null}
+          {traceState.steps.length ? (() => { const runningIdx = traceState.steps.findIndex((step) => step.state === 'running' || step.state === 'failed'); const traversed = traceState.steps.filter((step) => step.state === 'done' || step.state === 'skipped').length; const current = runningIdx >= 0 ? runningIdx + 1 : Math.min(traversed + 1, traceState.steps.length); return <span className="text-[12px] text-muted">{TRACE_HEAD_COPY[locale].stagesProgress} <strong className="font-mono">{current}/{traceState.steps.length}</strong></span>; })() : null}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</Button>
           {canMutateDocument && traceState.parseStatus === 'failed' ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</Button> : null}
@@ -281,7 +306,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
         {traceState.nodes.length > 0 ? <div className="overflow-x-auto rounded-[8px] border border-line-soft"><ol className="m-0 list-none divide-y divide-line-soft p-0" aria-label={t('knowledgeBase.timeline.title')}>
           {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf('.')))).map((row) => { const nodeState = knowledgeTraceNodeState(row); return <li key={row.key} data-state={nodeState} className="flex min-w-[480px] items-center gap-2 px-3 py-2 text-[13px] hover:bg-surface-wash" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
             {row.hasChildren ? <button type="button" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border-0 bg-transparent text-muted hover:bg-hover-wash" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t('knowledgeBase.timeline.title')} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? '⌄' : '›'}</button> : <span className="inline-block h-6 w-6 shrink-0" aria-hidden="true" />}
-            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{row.node.name || row.node.stage || row.key}</button><span className={nodeState === 'failed' ? 'text-danger' : nodeState === 'done' ? 'text-success' : nodeState === 'running' ? 'text-primary' : 'text-muted'}>{t(`knowledgeBase.timeline.${nodeState}`)}</span><span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{typeof row.node.duration_ms === 'number' ? `${row.node.duration_ms}ms` : '—'}</span>
+            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{row.node.name || row.node.stage || row.key}</button>{nodeState === 'pending' ? null : <span className={nodeState === 'failed' ? 'text-danger' : nodeState === 'done' ? 'text-success' : nodeState === 'running' ? 'text-primary' : 'text-muted'}>{t(`knowledgeBase.timeline.${nodeState}`)}</span>}<span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{nodeState === 'pending' || typeof row.node.duration_ms !== 'number' ? '—' : `${row.node.duration_ms}ms`}</span>
           </li>; })}
         </ol></div> : null}
         {selectedTraceNode ? <section className="rounded-[8px] border border-line-soft bg-surface-wash p-3"><div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px]">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t('knowledgeBase.documents.cancel')}</Button></div><pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre></section> : null}
@@ -330,7 +355,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
   const [regeneratingQuestions, setRegeneratingQuestions] = useState<string | null>(null);
   const [deletingQuestion, setDeletingQuestion] = useState<{ chunkId: string; questionId: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<{ chunkId: string; questionId: string } | null>(null);
-  const [questionNotice, setQuestionNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [questionNotice, setQuestionNotice] = useState<{ tone: 'success' | 'error' | 'warning'; message: string } | null>(null);
 
   const closeQuestions = () => {
     setQuestionsId(null);
@@ -511,6 +536,14 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
   /** Vue handleDeleteQuestion: DELETE by question id, then splice the row out
    * of the local metadata (the popconfirm gate lives on the row buttons). */
   const deleteQuestion = async (chunk: KnowledgeChunk, question: KnowledgeGeneratedQuestion) => {
+    // R474/A3: Vue handleDeleteQuestion (doc-content.vue) keeps a defensive
+    // guard behind the hidden row buttons — legacy- ids can never reach
+    // DELETE /chunks/by-id/:id/questions; they surface
+    // knowledgeBase.legacyQuestionCannotDelete instead.
+    if (isLegacyGeneratedQuestion(question)) {
+      setQuestionNotice({ tone: 'warning', message: t('knowledgeBase.legacyQuestionCannotDelete') });
+      return;
+    }
     setDeletingQuestion({ chunkId: chunk.id, questionId: question.id });
     try {
       await client.knowledgeBases.documents.deleteGeneratedQuestion(chunk.id, question.id);
@@ -761,10 +794,17 @@ function chunkMetadata(chunk: KnowledgeChunk): Record<string, unknown> {
   return typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 }
 
+/** R474/A3: Vue doc-content gates legacy- question ids twice — the row
+ * buttons hide (template !startsWith('legacy-')) and handleDeleteQuestion
+ * still guards (warning + return) so a legacy id can never reach the
+ * DELETE endpoint. */
+export function isLegacyGeneratedQuestion(question: KnowledgeGeneratedQuestion): boolean {
+  return question.id.startsWith('legacy-');
+}
+
 /** Vue getGeneratedQuestions: metadata.generated_questions with legacy string
  * entries mapped onto legacy-{index} ids that can never be edited or deleted. */
-function generatedQuestions(chunk: KnowledgeChunk): KnowledgeGeneratedQuestion[] {
-  const list = chunkMetadata(chunk).generated_questions;
+function generatedQuestions(chunk: KnowledgeChunk): KnowledgeGeneratedQuestion[] {  const list = chunkMetadata(chunk).generated_questions;
   if (!Array.isArray(list)) return [];
   return list.map((item, index) => {
     if (typeof item === 'string') return { id: `legacy-${index}`, question: item };
