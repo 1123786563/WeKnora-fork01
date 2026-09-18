@@ -20,6 +20,7 @@ const ResourceSettingsPanel = lazy(() => import('./ResourceSettingsPanel.tsx').t
 import type { SettingsModelOption } from './ConfigSettingsPanel.tsx';
 const ConfigSettingsPanel = lazy(() => import('./ConfigSettingsPanel.tsx').then((m) => ({ default: m.ConfigSettingsPanel })));
 const OllamaSettingsPanel = lazy(() => import('./OllamaSettingsPanel.tsx').then((m) => ({ default: m.OllamaSettingsPanel })));
+const ParserEngineSettingsPanel = lazy(() => import('./ParserEngineSettingsPanel.tsx').then((m) => ({ default: m.ParserEngineSettingsPanel })));
 const CloudSettingsPanel = lazy(() => import('./CloudSettingsPanel.tsx').then((m) => ({ default: m.CloudSettingsPanel })));
 const EnvVarSettingsPanel = lazy(() => import('./EnvVarSettingsPanel.tsx').then((m) => ({ default: m.EnvVarSettingsPanel })));
 import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -90,7 +91,8 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
       client.settings.ollama.status().catch(() => ({ available: false })),
       client.settings.ollama.models().catch(() => []),
     ]).then(([status, models]) => ({ status, models }));
-    case 'parser': return Promise.all([client.settings.parser.engines(), client.settings.parser.config.get()]).then(([engines, config]) => ({ engines, config }));
+    // Vue ParserEngineSettings loads engines/config/wkc itself on mount.
+    case 'parser': return Promise.resolve(null);
     case 'retrieval': return client.settings.retrieval.get();
     case 'memory': return client.settings.memory.workspace.get();
     // Vue mounts MemorySettings.vue (personal surface) under "mymemory"; the
@@ -344,7 +346,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             onSaved={() => void load(true)}
           />
         : key === 'parser'
-          ? <ConfigSettingsPanel client={client} section="parser" initialValue={((sectionPayload as Record<string, unknown> | null)?.config)} />
+          ? <ParserEngineSettingsPanel client={client} />
           : null;
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;

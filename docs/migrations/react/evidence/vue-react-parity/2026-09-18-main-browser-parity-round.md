@@ -237,3 +237,31 @@ FATAL（/tmp/wk-backend.log），两个前端全面失效。已回收端口并�
 
 test:shared 869/869、test:web 1871/1871、typecheck:shared/typecheck:web 0、check:integrity
 PASS（见 /tmp/gates-round4.log）。
+
+## 追加轮：Parser 引擎卡片面板移植（第五轮，2026-09-19）
+
+把上轮记录的 parser 结构性待办落地：新增 apps/web/src/settings/ParserEngineSettingsPanel.tsx，
+按 ParserEngineSettings.vue（1191 行）逐段移植并替换 ConfigSettingsPanel 的平面配置表单：
+
+- 引擎卡网格：monogram 徽章（本地化名首字母）+ 引擎名（kbSettings.parser.engines.* 本地化，
+  五 locale 已在包内）+ 可用性状态（可用/不可用，不可用带 UnavailableReason 提示）+ 引擎描
+  述；固定排序（builtin/weknoracloud/simple/anydoc/markitdown/mineru/mineru_cloud/
+  paddleocr_vl/paddleocr_vl_cloud）；后端缺 builtin 项时仍渲染 DocReader 状态卡；
+- 配置抽屉：支持文件类型 chips；builtin 状态区（已连接/已断开 + HTTP/gRPC 传输 + 环境变量地
+  址）；weknoracloud 凭证三态 inline alert + 前往设置；mineru（自建端点/Backend 五选/vLLM 地
+  址+说明/PDF 解析方式三选/公式+表格识别/语言）；mineru_cloud（API Key/Model Version 三选/
+  OCR+公式+表格/语言）；paddleocr_vl（端点/印章+图表识别）；paddleocr_vl_cloud（Token/
+  Model/印章+图表）；
+- 流程：测试连接（check 端点回读引擎可用性，builtin 看 connected；消息 3s 自清）与保存
+  （buildConfigPayload 含 mineru_enable_ocr 旧开关兼容行）逐字对齐；loader 对 parser 不再预
+  取，面板自加载（与 Vue onMounted(loadAll) 同构）；
+- i18n：settings.parser.* 与 kbSettings.parser.engines.* 均已在包内 ×5 locale，零新增键；
+- 测试：新增 ParserEngineSettingsPanel.test.tsx（引擎卡网格 + mineru 抽屉控件）；既有
+  ConfigSettingsPanel parser 表单测试保留（组件未删，生产路径已切换）。
+
+### 浏览器复验（第五轮）
+
+- 引擎卡：内置/WeKnora Cloud/Simple/anydoc/MinerU Cloud 等全部渲染，可用性状态与 Vue 一致
+  （/tmp/verify-parser-v3.txt）；
+- mineru 抽屉：文件类型 chips、Backend=pipeline、解析方式=自动识别（推荐）、公式/表格识别、
+  语言=ch、测试连接/保存齐全（截图 /tmp/parser-drawer.png）。
