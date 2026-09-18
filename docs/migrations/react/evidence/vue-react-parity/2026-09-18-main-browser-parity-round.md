@@ -280,3 +280,16 @@ kbSettings.wiki.* i18n 键检查补齐；⑤ 空 wiki 空态（暂无 Wiki 页�
 
 apps/authorization 与 actions 的真实数据态、onboarding（需无租户账号）、邀请注册态依赖外部
 fixture；聊天页模型芯片显示差异已判定为 Vue mount 竞态假象（见第一轮第 3 项说明）。
+
+## 追加轮：Wiki 页签文本/状态对齐（第六轮，2026-09-19）
+
+对齐 WikiBrowser 布局中 sweep 可见的差异（WikiPage.tsx）：
+1. 页面列表排除自动生成的 Index 页（page_type=index），仅索引页存在时列表区显示
+   暂无 Wiki 页面 空态（Vue 同构）；
+2. 目录工具栏的 树形视图/列表视图/目录操作 文本按钮改为 Vue 的图标+tooltip 形态
+   （标签移入 aria-label/title）；索引 保留文本入口（Vue 亦为文本导航项）；
+3. 搜索占位符从 page.searchPlaceholder（页面标题或 slug）改为 Vue 的
+   wikiBrowser.searchPlaceholder（搜索 Wiki 页面...）。
+复验：暂无 Wiki 页面/上传文档并启用 Wiki… 空态出现、树形/列表文本按钮消失、
+索引入口在、占位符正确（/tmp/verify-wiki-v2-texts.json）。test:web 1873/1873、
+typecheck:web 0。

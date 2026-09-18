@@ -717,6 +717,10 @@ export function WikiPage({
       setReverting(false);
     }
   }
+  // Vue WikiBrowser keeps the auto-generated index page out of the page list
+  // (it lives in the 索引 view) and shows the 暂无 Wiki 页面 empty state when
+  // only index pages exist.
+  const listPages = pages.filter((page) => String((page as Record<string, unknown>).page_type ?? "") !== "index");
   const pager = pagerState(pageTotal, page, WIKI_PAGE_SIZE);
   const revisionDiff = useMemo(
     () =>
@@ -739,10 +743,12 @@ export function WikiPage({
   const directory = (
     <>
       <div className="wk-wiki-directory-toolbar flex flex-wrap items-center gap-[0.35rem] pb-2" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
-        <Button type="button" onClick={() => switchViewMode("tree")} aria-pressed={viewMode === "tree"}>{t("wikiBrowser.viewTree")}</Button>
-        <Button type="button" onClick={() => switchViewMode("list")} aria-pressed={viewMode === "list"}>{t("wikiBrowser.viewList")}</Button>
-        <Button type="button" onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
-        {canContribute ? <Button type="button" disabled={folderBusy} onClick={() => void createFolder()}>{t("wikiBrowser.folderActions")}</Button> : null}
+        {/* Vue renders these as icon-only buttons with tooltips — the labels
+            live in aria-label/title, not on the button face. */}
+        <Button type="button" aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}>☰</Button>
+        <Button type="button" aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}>≡</Button>
+        <Button type="button" aria-label={t("wikiBrowser.indexTitle")} title={t("wikiBrowser.indexTitle")} onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
+        {canContribute ? <Button type="button" disabled={folderBusy} aria-label={t("wikiBrowser.folderActions")} title={t("wikiBrowser.folderActions")} onClick={() => void createFolder()}>＋</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
       </div>
       {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
@@ -773,13 +779,13 @@ export function WikiPage({
                 <Input
                   value={searchDraft}
                   onChange={(event) => setSearchDraft(event.target.value)}
-                  placeholder={t("wikiBrowser.page.searchPlaceholder")}
+                  placeholder={t("wikiBrowser.searchPlaceholder")}
                 />
               </form>
             </div>
             <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
               {directory}
-              {pages.map((page) => (
+              {listPages.map((page) => (
                 <button
                   className={`wk-wiki-page-item group/wiki-item grid min-h-[98px] cursor-pointer gap-0.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
@@ -801,7 +807,7 @@ export function WikiPage({
               {state.status === "error" ? (
                 <Status tone="error">{state.message}</Status>
               ) : null}
-              {state.status === "success" && pages.length === 0 ? (
+              {state.status === "success" && listPages.length === 0 ? (
                 <div className="wk-wiki-empty flex flex-1 flex-col items-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
                   <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">
                     ▧
