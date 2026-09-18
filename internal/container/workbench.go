@@ -20,6 +20,17 @@ func NewWorkbenchReadHandler(
 	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor)
 }
 
+// NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
+// to the same owned-run store as the read handler. The signing secret is read
+// from the environment per request; deployments without the key get an
+// honest 501 instead of links signed with a default secret.
+func NewWorkbenchArtifactHandler(
+	runs *repository.AgentRunStore,
+	messages interfaces.MessageService,
+) *session.WorkbenchArtifactHandler {
+	return session.NewWorkbenchArtifactHandler(runs, messages)
+}
+
 // NewWorkbenchAdmissionCoordinator keeps budget admission and durable run
 // creation behind one DI seam. Deployments with a credit ledger can replace
 // the no-op budget adapter without changing HTTP or repository code.

@@ -522,6 +522,19 @@ func (s *messageService) GetSessionArtifacts(
 	return s.messageRepo.GetSessionArtifacts(ctx, sessionID)
 }
 
+// GetSessionArtifactRefs is the message-bound variant used by workbench
+// signed download grants. Thin pass-through like GetSessionArtifacts: the
+// signed-link handler enforces run ownership before calling, and the public
+// download endpoint re-resolves through it after verifying the grant.
+func (s *messageService) GetSessionArtifactRefs(
+	ctx context.Context, sessionID string,
+) ([]types.SessionArtifactRef, error) {
+	if sessionID == "" {
+		return []types.SessionArtifactRef{}, nil
+	}
+	return s.messageRepo.GetSessionArtifactRefs(ctx, sessionID)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Message Search (Hybrid: Keyword + KB Vector Search)
 // ─────────────────────────────────────────────────────────────────────────────
