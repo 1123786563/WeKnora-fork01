@@ -19,6 +19,7 @@ import { build } from 'esbuild';
 interface CapturedChatRouteProps {
   draft: string;
   composerFocusSignal: number;
+  mentionedItems: Array<{ id: string; name: string; type: string; kbType?: string; kbId?: string; kbName?: string }>;
   send(submission: { content: string; status: 'pending' }): Promise<void>;
   onDraftChange(value: string): void;
 }
@@ -188,4 +189,38 @@ test('sending strips ?q= from the URL via replaceState while keeping sibling par
   assert.ok(history.includes('replace:/platform/creatChat?agentId=agent-1'), `replaceState calls: ${JSON.stringify(history)}`);
   // replaceState (not pushState) keeps the history stack clean.
   assert.ok(history.every((call) => call.startsWith('replace:') || call.startsWith('push:/platform/chat/')), JSON.stringify(history));
+});
+
+// ─── R467-A2 ?kbIds= knowledge-base scope preselect (Vue startChat kbIds) ───
+
+test('?kbIds= seeds the composer KB scope (kb mention chips) on the new-chat entry', async () => {
+  const props = await renderChatRoutePage({ location: 'http://weknora.test/platform/creatChat?q=hi&kbIds=kb-1,kb-2' });
+  // Vue settingsStore.selectKnowledgeBases(['kb-1','kb-2']) renders the same
+  // KBs as composer selection chips; the React composer's KB selector is the
+  // mention chip list, so the deep link seeds kb-type mentionedItems whose
+  // ids flow into the stream body knowledge_base_ids (buildWebChatStreamOptions).
+  // JSON-normalized: the captured props come out of the esbuild bundle whose
+  // arrays/objects carry the bundle realm's prototypes.
+  assert.deepEqual(JSON.parse(JSON.stringify(props.mentionedItems)), [
+    { id: 'kb-1', name: 'kb-1', type: 'kb' },
+    { id: 'kb-2', name: 'kb-2', type: 'kb' },
+  ]);
+});
+
+test('a session route ignores a stray ?kbIds= scope (new-chat entry only)', async () => {
+  const props = await renderChatRoutePage({ location: 'http://weknora.test/platform/chat/session-9?kbIds=kb-1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(props.mentionedItems)), []);
+});
+
+test('sending a kbIds-scoped chat strips both prefill params in one replaceState', async () => {
+  const props = await renderChatRoutePage({ location: 'http://weknora.test/platform/creatChat?q=hi&kbIds=kb-1&agentId=agent-1' });
+  await props.send({ content: 'hi', status: 'pending' });
+  const history = props.historyCalls();
+  assert.ok(history.includes('replace:/platform/creatChat?agentId=agent-1'), `replaceState calls: ${JSON.stringify(history)}`);
+});
+
+test('clearing the prefilled draft also strips a remaining ?kbIds= param', async () => {
+  const props = await renderChatRoutePage({ location: 'http://weknora.test/platform/creatChat?q=hi&kbIds=kb-1' });
+  props.onDraftChange('');
+  assert.deepEqual(props.historyCalls(), ['replace:/platform/creatChat']);
 });

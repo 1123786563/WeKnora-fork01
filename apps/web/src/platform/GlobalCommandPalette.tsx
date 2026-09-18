@@ -71,7 +71,7 @@ export interface GlobalCommandPaletteProps {
    * yet — see the R465 report), so shell-owned startChat wiring can replace
    * it later without touching this component again.
    */
-  onAskAi?: (query: string) => void;
+  onAskAi?: (query: string, kbIds: string[]) => void;
   /**
    * R465-A2 — retrieval-settings drawer content (Vue lines 153-157 host
    * RetrievalSettings inside a 420px t-drawer layered over the palette).
@@ -246,8 +246,16 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     if (!trimmed) return;
     onSearch(trimmed);
     onClose();
-    if (onAskAi) onAskAi(trimmed);
-    else onNavigate(`/platform/creatChat?q=${encodeURIComponent(trimmed)}`);
+    // R467-A2 — Vue startChat(query, kbIds): the palette's active KB scope
+    // rides along as ?kbIds= so the new chat starts scoped; the custom
+    // onAskAi receives the ids for shell-owned startChat wiring.
+    const kbIds = kbScope ? [kbScope.id] : [];
+    if (onAskAi) onAskAi(trimmed, kbIds);
+    else {
+      const params = new URLSearchParams({ q: trimmed });
+      if (kbIds.length > 0) params.set('kbIds', kbIds.join(','));
+      onNavigate(`/platform/creatChat?${params.toString()}`);
+    }
   };
 
   const runFlat = (index: number, fromKeyboard = false): void => {

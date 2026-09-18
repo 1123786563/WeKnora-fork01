@@ -28,7 +28,7 @@ import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicatio
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
-import { clearPrefillQueryFromUrl, readPrefillQuery } from './prefill-query.ts';
+import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -120,7 +120,24 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [draft, setDraft] = useState((): string => prefillQueryRef.current ?? '');
   const [composerFocusSignal] = useState(() => (prefillQueryRef.current ? 1 : 0));
   const [mentionOptions, setMentionOptions] = useState<ChatMentionView[]>([]);
-  const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>([]);
+  // R467-A2 — Vue startChat(query, kbIds) KB preselect equivalent: the scoped
+  // ask-AI deep link /platform/creatChat?…&kbIds=… is consumed exactly once on
+  // the new-chat entry (session routes ignore it, same rule as ?q=). Vue
+  // settingsStore.selectKnowledgeBases(kbIds) renders the KBs as composer
+  // selection chips; the React composer's KB selector is the mention chip
+  // list, so the scope seeds kb-type mentionedItems whose ids flow into the
+  // stream body knowledge_base_ids via buildWebChatStreamOptions.
+  const prefillKbIdsRef = useRef<string[] | null>(null);
+  if (prefillKbIdsRef.current === null) {
+    const prefillUrl = new URL(String(window.location));
+    prefillKbIdsRef.current = chatSessionIdFromPath(prefillUrl.pathname) ? [] : readPrefillKbIds(prefillUrl.search);
+  }
+  // Seeded chips carry the raw id as the display name until the mention
+  // options load (backfill effect below) — mirrors the Vue KB list resolving
+  // the store's raw ids into names.
+  const [prefillKbSeededRef] = useState(() => new Set(prefillKbIdsRef.current));
+  const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>(() =>
+    prefillKbIdsRef.current!.map((id) => ({ id, name: id, type: 'kb' as const })));
   const [mentionLoading, setMentionLoading] = useState(false);
   const [mentionError, setMentionError] = useState<string>();
   const mentionLoadedRef = useRef(false);
@@ -201,6 +218,24 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  // R467-A2 — backfill the seeded KB chips' display names once the mention
+  // options resolve (the deep link only carries raw ids). Mirrors the Vue KB
+  // list resolving settingsStore's raw selection ids into KB names.
+  useEffect(() => {
+    if (prefillKbSeededRef.size === 0) return;
+    setMentionedItems((current) => {
+      let changed = false;
+      const next = current.map((item) => {
+        if (item.type !== 'kb' || !prefillKbSeededRef.has(item.id) || item.name !== item.id) return item;
+        const match = mentionOptions.find((option) => option.id === item.id);
+        if (!match) return item;
+        changed = true;
+        return { ...item, name: match.name, ...(match.kbType ? { kbType: match.kbType } : {}) };
+      });
+      return changed ? next : current;
+    });
+  }, [mentionOptions]);
 
   // Vue creatChat.vue:81-83 + line 50 — the chat contextual tour arms on chat
   // entry (globalCreatChat / kbCreatChat routes); the React chat page IS that
@@ -906,7 +941,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     // R466-A2 prefill lifecycle: clearing the consumed query strips ?q= from
     // the URL (replaceState only — the deep link must not re-apply on the
     // next new-chat mount, and the history stack stays clean).
-    if (value === '') clearPrefillQueryFromUrl(window.history, String(window.location));
+    if (value === '') clearPrefillParamsFromUrl(window.history, String(window.location));
   }
 
   function loadMentionOptions(): void {
@@ -1113,7 +1148,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
     // from the URL (replaceState) even if the turn later fails, mirroring the
     // one-shot menuStore.consumePrefillQuery semantics.
-    clearPrefillQueryFromUrl(window.history, String(window.location));
+    clearPrefillParamsFromUrl(window.history, String(window.location));
     // The stream controller is created inside prepareSendRun AFTER the inline
     // session-create/selectSession teardown: selectSession aborts the
     // registered controller, so a pre-installed one would abort this send

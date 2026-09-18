@@ -177,6 +177,34 @@ test('a custom onAskAi handler replaces the default navigation (shell-owned star
   assert.deepEqual(spies.onNavigate, [], 'default creatChat navigation not fired when onAskAi is provided');
 });
 
+// ─── R467-A2 — scoped ask-AI carries the KB scope (Vue startChat kbIds) ───
+
+test('askAi in the scoped state navigates with the KB scope stacked onto ?q=', async () => {
+  const calls = { agents: 0 };
+  const { spies } = await driveToEmptyState({
+    searchClient: emptyClient(calls),
+    initialKbScope: { id: 'kb-9', name: 'Docs KB' },
+  });
+  await click(buttonByText('Ask the AI directly')!);
+  assert.deepEqual(
+    spies.onNavigate,
+    ['/platform/creatChat?q=zzz-nothing-matches&kbIds=kb-9'],
+    'scoped ask-AI deep link carries both the prefill query and the KB scope',
+  );
+});
+
+test('a custom onAskAi receives the scoped KB ids so the shell can wire its own startChat', async () => {
+  const calls = { agents: 0 };
+  const received: Array<{ query: string; kbIds: string[] }> = [];
+  await driveToEmptyState({
+    searchClient: emptyClient(calls),
+    initialKbScope: { id: 'kb-9', name: 'Docs KB' },
+    onAskAi: (query: string, kbIds: string[]) => { received.push({ query, kbIds }); },
+  });
+  await click(buttonByText('Ask the AI directly')!);
+  assert.deepEqual(received, [{ query: 'zzz-nothing-matches', kbIds: ['kb-9'] }]);
+});
+
 test('adjustRetrieval opens the layered retrieval-settings drawer; overlay click closes it, palette stays open', async () => {
   const calls = { agents: 0 };
   const { spies } = await driveToEmptyState({
