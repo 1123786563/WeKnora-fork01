@@ -136,6 +136,17 @@ export interface ChatPageProps {
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
+  /**
+   * R471-A1 — Vue canSteer parity (chat/index.vue :canSteer="isAgentStreamSession()"):
+   * only an agent-pipeline session has a loop that accepts a mid-run message.
+   * The presence of onSteer used to stand in for this, but hosts wire a steer
+   * handler unconditionally (its idle branch falls back to a plain send), which
+   * advertised steer capability on quick-answer turns and let the stop button
+   * (`streaming && (!canSteer || !draft)`) never win with a non-empty draft.
+   * Hosts pass the real per-session capability; the Boolean(onSteer) fallback
+   * preserves hosts that never differentiate.
+   */
+  canSteer?: boolean;
   onStopStream?(): void;
   stream?: ChatStreamPresentation;
   onRenameSession?(sessionId: string, title?: string): Promise<void>;
@@ -547,6 +558,8 @@ export function ChatPage(props: ChatPageProps) {
   })();
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
+  // R471-A1: Vue isAgentStreamSession() parity — see the canSteer prop doc.
+  const canSteer = props.canSteer ?? Boolean(props.onSteer);
   // Vue parity: once deepThink streams the typing dots are replaced by the
   // live thinking block (shouldShowGlobalTypingIndicator turns false when the
   // assistant message exists).
@@ -674,9 +687,11 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
         />}
-        {/* A follow-up queue only makes sense while a turn is actually running;
-            when idle the main composer handles the message (a steer would 409). */}
-        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {/* A follow-up queue only makes sense while an agent-pipeline turn is
+            actually running (Vue canSteer); when idle the main composer handles
+            the message (a steer would 409), and a quick-answer turn has no
+            steer affordance at all — stop is the only action. */}
+        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {/* Vue isReplying (Input-field.vue) flips true when a turn is
             dispatched, not when the first SSE event arrives; the composer's
             stop swap must cover the pre-stream send window too. */}
@@ -712,7 +727,7 @@ export function ChatPage(props: ChatPageProps) {
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
           streaming={streaming || sending}
-          canSteer={Boolean(props.onSteer)}
+          canSteer={canSteer}
           onStop={props.onStopStream}
         />
       </div>

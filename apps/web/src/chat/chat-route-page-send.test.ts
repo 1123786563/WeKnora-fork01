@@ -6,6 +6,8 @@ import { build } from 'esbuild';
 
 interface CapturedChatPageProps {
   send(submission: { content: string; status: 'pending' }): Promise<void>;
+  /** R471-A1: the host derives Vue isAgentStreamSession() parity here. */
+  canSteer?: boolean;
 }
 
 async function renderChatRoutePage(input: {
@@ -198,6 +200,43 @@ test('ChatRoutePage first creatChat send opens the stream request after session 
  * with 「流式连接失败: HTTP 404」 — the localized prefix plus the HTTP status —
  * instead of a generic 「操作失败」. The pending row keeps its retry entry.
  */
+/*
+ * R471-A1 root cause 1: ChatRoutePage always wires onSteer (the steer()
+ * helper with its idle fallback), and ChatPage used to derive canSteer from
+ * Boolean(onSteer) — so every session, including the default quick-answer
+ * chat, advertised steer capability and the stop button
+ * (`isReplying && (!canSteer || !draft)`) could never win with a non-empty
+ * draft. Vue computes canSteer from isAgentStreamSession(); the React
+ * counterpart is the selected agent pipeline (buildWebChatStreamOptions
+ * mode 'agent' ⇔ a selectedAgentId). Without an agent the page must report
+ * canSteer=false.
+ */
+test('ChatRoutePage reports canSteer=false for the default quick-answer session despite wiring onSteer', async () => {
+  const scopeController = {
+    current: () => ({ scope: { tenantId: 'tenant-1' }, signal: undefined }),
+    isCurrent: () => true,
+  };
+  const client = {
+    sessions: { create: async () => ({ id: 'session-1', title: '', is_pinned: false }), messages: async () => [] },
+    configuration: { agents: { listWithState: async () => ({ items: [], disabledOwnAgentIds: [] }) }, mcp: { oauth: {} } },
+    chat: {
+      stream: async () => undefined,
+      suggestions: { get: async () => ({ id: 'suggestions-1', questions: [] }), recordEvent: async () => undefined },
+      approvals: { resolveTool: async () => undefined, cancelOAuth: async () => undefined, resolveOAuth: async () => undefined },
+      artifacts: { message: async () => [], download: async () => ({ body: new Blob(), contentType: 'application/octet-stream' }) },
+      steer: { enqueue: async () => undefined },
+      stop: async () => undefined,
+    },
+  };
+  (globalThis.window as { history: { pushState: (...args: unknown[]) => void } }).history.pushState = () => undefined;
+  const props = await renderChatRoutePage({
+    client,
+    scopeController,
+    location: 'http://weknora.test/platform/creatChat',
+  });
+  assert.equal(props.canSteer, false, 'no selected agent means quick-answer: no steer capability');
+});
+
 test('a 404 stream handshake rejects with the Vue-localized stream failure message', async () => {
   const scopeController = {
     current: () => ({ scope: { tenantId: 'tenant-1' }, signal: undefined }),

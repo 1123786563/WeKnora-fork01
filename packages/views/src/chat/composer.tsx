@@ -128,6 +128,12 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   function submitDraft(): void {
     if (!draft.trim()) return;
     onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
+    // Vue Input-field.vue createSession → clearvalue(): the query is cleared
+    // the moment the message is emitted (send and steer path alike), before
+    // the turn resolves. With the draft cleared, the control-right stop
+    // condition `isReplying && (!canSteer || !draft.trim())` can actually win
+    // while a reply runs.
+    onDraftChange('');
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -286,9 +292,16 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
           </button>}
           {showStop && onStop ? <button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#08dd6e] disabled:cursor-not-allowed disabled:bg-[#8ce0af] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" /></svg>
-          </button> : <button type="submit" data-guide="chat-send" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#08dd6e] disabled:cursor-not-allowed disabled:bg-[#8ce0af] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={t.send} title={`${t.send} · Enter`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
-          </button>}
+          </button> : (() => {
+            // Vue steer-mode labelling: while replying on a steer-capable turn
+            // the same circular button queues the follow-up (input.steerAfter),
+            // so both the tooltip and aria-label swap away from input.send.
+            const steerMode = streaming && canSteer;
+            const actionLabel = steerMode ? t.steerQueued : t.send;
+            return <button type="submit" data-guide="chat-send" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#08dd6e] disabled:cursor-not-allowed disabled:bg-[#8ce0af] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={actionLabel} title={`${actionLabel} · Enter`}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
+            </button>;
+          })()}
         </div>
       </div>
     </div>

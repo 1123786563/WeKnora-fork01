@@ -1340,6 +1340,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
     stream={{ phase: streamState.phase, thinking: streamState.thinking, answer: streamState.answer, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    /* R471-A1 — Vue canSteer parity (chat/index.vue isAgentStreamSession()):
+     * steer capability belongs to the session's pipeline, not to the presence
+     * of a steer handler. selectedAgentId drives buildWebChatStreamOptions
+     * mode 'agent' vs 'knowledge', so it is the React counterpart of the
+     * Vue quick-answer/agent-stream split: without an agent the turn is
+     * quick-answer and stop is the composer's only running-turn action. */
+    canSteer={Boolean(selectedAgentId)}
     onStopStream={() => void stopStream()}
     send={send}
   />
