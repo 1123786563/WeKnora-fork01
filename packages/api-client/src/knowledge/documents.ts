@@ -308,6 +308,17 @@ export function createKnowledgeDocumentsApi(
         path: `/api/v1/chunks/${encodeURIComponent(id)}?page=${page}&page_size=${pageSize}`,
       }));
     },
+    /** Vue getChunkByIdOnly: GET /api/v1/chunks/by-id/{chunkId} (parent-context lazy load). */
+    async getChunkById(chunkId: string): Promise<KnowledgeChunk> {
+      const response = await request({
+        method: 'GET',
+        path: `/api/v1/chunks/by-id/${encodeURIComponent(chunkId)}`,
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') throw new Error('Invalid knowledge chunk');
+      return data as KnowledgeChunk;
+    },
     async updateDetails(id: string, input: KnowledgeDocumentDetailsUpdateInput): Promise<KnowledgeDocument> {
       return parseDocumentMutation(await request({
         method: 'PUT',

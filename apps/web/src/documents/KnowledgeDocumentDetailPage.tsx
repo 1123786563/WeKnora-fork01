@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Sheet, Status } from '@weknora/ui';
@@ -121,6 +121,10 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const copy = DETAIL_COPY[locale];
+  // Vue keeps the parent-context cache on the doc-content instance, which
+  // survives a details.id switch; DocumentChunks unmounts while the next
+  // document loads, so the cache lives on this persistent page component.
+  const parentContextCache = useRef<Map<string, string>>(new Map());
   const [state, setState] = useState<DocumentLoadState>({ status: 'loading' });
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [canMutateDocument, setCanMutateDocument] = useState(false);
@@ -252,7 +256,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       <Button type="button" role="tab" aria-selected={contentView === 'merged'} onClick={() => setContentView('merged')}>{tabs.merged}</Button>
       <Button type="button" role="tab" aria-selected={contentView === 'chunks'} onClick={() => setContentView('chunks')}>{tabs.chunks}</Button>
     </>; })()}
-  </div><DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} canDownload={canMutateDocument && documentCanDownload(state.document)} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} showPreview={contentView === 'preview'} /><DocumentChunks client={client} document={state.document} canEdit={canMutateDocument} view={contentView} /></> : null}
+  </div><DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} canDownload={canMutateDocument && documentCanDownload(state.document)} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} showPreview={contentView === 'preview'} /><DocumentChunks client={client} document={state.document} canEdit={canMutateDocument} view={contentView} parentContextCache={parentContextCache.current} /></> : null}
     </section>
   {traceOpen ? <Sheet open title={t('knowledgeBase.timeline.title')} onClose={() => setTraceOpen(false)} side="right" width="820px" resizable minWidth={560} maxWidth={1400} storageKey="weknora-trace-drawer-width" className="min-w-0 border-l border-line-soft">
     <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === 'loading'}>
@@ -282,7 +286,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   </Sheet>;
 }
 
-function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraClient; document: KnowledgeDocument; canEdit: boolean; view: ContentView }) {
+function DocumentChunks({ client, document, canEdit, view, parentContextCache }: { client: WeKnoraClient; document: KnowledgeDocument; canEdit: boolean; view: ContentView; parentContextCache: Map<string, string> }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
   // Vue doc-content keeps loadedChunkPage (displayed page) separate from the
@@ -301,6 +305,12 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryNotice, setRetryNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  // Vue parentContextPopup/Cache/Loading: the git-branch entry opens a
+  // parent-context panel that lazy-loads GET /chunks/by-id/{parent_chunk_id}
+  // once per parent id; failures surface parentContextLoadFailed and close.
+  const [parentContextId, setParentContextId] = useState<string | null>(null);
+  const [parentContextLoading, setParentContextLoading] = useState<string | null>(null);
+  const [parentContextError, setParentContextError] = useState<string | null>(null);
 
   const load = (page = 1) => {
     setPageError(null);
@@ -321,6 +331,10 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   useEffect(() => {
     setPageError(null);
     setState({ status: 'loading', chunks: [], total: 0, page: 1, pendingPage: undefined, message: undefined });
+    // Vue watch(details.id) closes the parent-context popup but keeps the
+    // parent cache (parentContextCache lives across documents).
+    setParentContextId(null);
+    setParentContextError(null);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, document.id]);
@@ -369,8 +383,34 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
   };
 
   const showHistory = (chunk: KnowledgeChunk) => {
+    setParentContextId(null);
     setHistoryLoading(chunk.id);
     void client.knowledgeBases.documents.chunkRevisions(document.id, chunk.id).then((rows) => setHistory({ id: chunk.id, rows })).catch((error: unknown) => setState((current) => ({ ...current, message: error instanceof Error ? error.message : t('common.error') }))).finally(() => setHistoryLoading(null));
+  };
+
+  /** Vue setParentContextPopupVisible + loadParentContext: opening the parent
+   * context closes the question/history expansions (mutex) and lazy-loads the
+   * parent chunk once per parent id; failures toast parentContextLoadFailed
+   * and close the popup. */
+  const openParentContext = (chunk: KnowledgeChunk) => {
+    if (parentContextId === chunk.id) {
+      setParentContextId(null);
+      return;
+    }
+    setParentContextId(chunk.id);
+    setEditingId(null);
+    setDraft('');
+    setHistory(null);
+    setParentContextError(null);
+    const parentId = parentChunkId(chunk);
+    if (!parentId || parentContextCache.has(parentId)) return;
+    setParentContextLoading(chunk.id);
+    void client.knowledgeBases.documents.getChunkById(parentId).then((parent) => {
+      parentContextCache.set(parentId, parent.content || '');
+    }).catch(() => {
+      setParentContextError(t('knowledgeBase.parentContextLoadFailed'));
+      setParentContextId(null);
+    }).finally(() => setParentContextLoading(null));
   };
 
   const mergedContent = mergeChunkContents(state.chunks);
@@ -378,6 +418,7 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
     <div className="mb-3 flex items-center justify-between gap-3"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.viewChunks')} {state.total ? `(${state.total})` : ''}</h3></div>
     {mutationError ? <Status tone="error">{mutationError}</Status> : null}
     {retryNotice ? <Status tone={retryNotice.tone}>{retryNotice.message}</Status> : null}
+    {parentContextError ? <Status tone="error">{parentContextError}</Status> : null}
     {state.status === 'loading' && !pageTransition ? <Status>{t('common.loading')}</Status> : null}
     {pageTransition ? <div className="wk-chunk-page-loading" role="status"><Status>{t('common.loading')}</Status></div> : null}
     {state.status === 'error' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
@@ -393,9 +434,15 @@ function DocumentChunks({ client, document, canEdit, view }: { client: WeKnoraCl
         : <div className="wk-document-merged text-[13px] text-muted">—</div>
       : null}
     {state.status === 'success' && view !== 'merged' ? <><div className="flex flex-col gap-3">{state.chunks.map((chunk, index) => <article key={chunk.id} className="rounded-[8px] border border-line-soft bg-surface p-3" data-chunk-id={chunk.id}>
-      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{canEdit ? <span className="flex flex-wrap gap-1"><Button type="button" onClick={() => { setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</span> : null}</div>
+      <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-[12px]">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{parentChunkId(chunk) || canEdit ? <span className="flex flex-wrap gap-1">{parentChunkId(chunk) ? <Button type="button" variant="text" className="wk-parent-context-toggle" title={t('knowledgeBase.viewParentContext')} aria-label={t('knowledgeBase.viewParentContext')} aria-expanded={parentContextId === chunk.id} onClick={() => openParentContext(chunk)}><GitBranchIcon /></Button> : null}{canEdit ? <><Button type="button" onClick={() => { setParentContextId(null); setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</> : null}</span> : null}</div>
       {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-[120px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <DocumentMarkdownBody markdown={chunk.content || '—'} labels={MERMAID_VIEWER_COPY[locale]} className="wk-document-chunk-content markdown-content m-0 min-w-0 text-[13px] text-ink [overflow-wrap:anywhere]" />}
       {history?.id === chunk.id ? <div className="mt-3 border-t border-line-soft pt-3"><strong className="text-[12px]">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="m-0 mt-2 list-decimal pl-5 text-[12px]">{history?.rows.map((row) => <li key={row.revision} className="mb-2"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="ml-2" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
+      {parentContextId === chunk.id && parentChunkId(chunk) ? <div className="wk-chunk-parent-context mt-3 border-t border-line-soft pt-3" aria-label={t('knowledgeBase.viewParentContext')}>
+        <div className="mb-2 flex items-center gap-1 text-[12px] font-semibold"><span className="text-muted"><GitBranchIcon /></span>{t('knowledgeBase.viewParentContext')}</div>
+        {parentContextLoading === chunk.id
+          ? <div className="chunk-popup-state" role="status"><Status>{t('common.loading')}</Status></div>
+          : <DocumentMarkdownBody markdown={parentContextCache.get(parentChunkId(chunk)!) || ''} labels={MERMAID_VIEWER_COPY[locale]} className="wk-chunk-parent-context-body markdown-content m-0 min-w-0 max-h-[480px] overflow-auto text-[13px] text-muted [overflow-wrap:anywhere]" />}
+      </div> : null}
     </article>)}</div></> : null}
     {/* Vue renders the chunk pagination for both merged and chunks views
         (viewMode merged || chunks), so 全文 can advance past page one, and
@@ -519,6 +566,17 @@ function formatDetailTime(value: unknown): string {
   if (typeof value !== 'string' || !value) return String(value ?? '');
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+/** Vue doc-content git-branch icon (15px, feather-style strokes). */
+function GitBranchIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>;
+}
+
+/** Vue hasParentChunk: the parent-context entry exists only while the chunk carries a parent_chunk_id. */
+function parentChunkId(chunk: KnowledgeChunk): string | null {
+  const value = chunk.parent_chunk_id;
+  return typeof value === 'string' && value ? value : null;
 }
 
 function MetadataEditor({ editing, rows, saving, canEdit, onStart, onChange, onCancel, onSave }: {

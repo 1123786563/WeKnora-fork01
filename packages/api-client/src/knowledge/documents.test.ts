@@ -245,6 +245,29 @@ test('keeps document chunk paging and revision mutations on the Vue endpoint con
   ]);
 });
 
+test('loads a single chunk through the Vue by-id endpoint contract', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return { success: true, data: { id: 'parent-1', content: '# Parent chunk' } };
+  });
+
+  const chunk = await api.getChunkById('chunk/1');
+
+  assert.equal(chunk.id, 'parent-1');
+  assert.equal(chunk.content, '# Parent chunk');
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/chunks/by-id/chunk%2F1', body: undefined },
+  ]);
+});
+
+test('rejects a by-id chunk envelope without a usable id', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true, data: { content: 'no id' } }));
+  await assert.rejects(() => api.getChunkById('chunk-1'), /Invalid knowledge chunk/);
+  const nullData = createKnowledgeDocumentsApi(async () => ({ success: true }));
+  await assert.rejects(() => nullData.getChunkById('chunk-1'), /Invalid knowledge chunk/);
+});
+
 test('updates document summary and custom metadata through the guarded detail endpoint', async () => {
   let request: { method: string; path: string; body?: unknown } | undefined;
   const api = createKnowledgeDocumentsApi(async (input) => {

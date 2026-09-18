@@ -49,7 +49,7 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
-function detailClient(get: () => Promise<Record<string, unknown>>, role = 'contributor', knowledgeBaseOwnerId = 'user-1', chunkRows: Array<Record<string, unknown>> = [{ id: 'chunk-1', content: 'Current chunk', content_revision: 3, is_enabled: true }]) {
+function detailClient(get: (id: string) => Promise<Record<string, unknown>>, role = 'contributor', knowledgeBaseOwnerId = 'user-1', chunkRows: Array<Record<string, unknown>> = [{ id: 'chunk-1', content: 'Current chunk', content_revision: 3, is_enabled: true }]) {
   return {
     knowledgeBases: {
       documents: {
@@ -642,4 +642,156 @@ test('merged and chunks views render markdown bodies with hydratable mermaid blo
   const chunkBody = container.ownerDocument.body.querySelector<HTMLElement>('.wk-document-chunks article .wk-document-chunk-content');
   assert.ok(chunkBody, 'each chunk body renders through the markdown pipeline');
   assert.ok(chunkBody.querySelector('pre[data-markdown-diagram="mermaid"]'), 'chunk bodies keep inline mermaid blocks hydratable like the Vue md-content v-html');
+});
+
+// ─── R469/A1 — parent chunk context (Vue doc-content git-branch popup, L1886-1908) ──
+// Vue contract: a chunk with parent_chunk_id shows a git-branch icon entry
+// (title=viewParentContext, not gated by edit permission); opening it closes
+// the question/history expansions, lazy-loads GET /chunks/by-id/{parent} once
+// per parent id (cache), renders the parent markdown, closes with the
+// parentContextLoadFailed notice on failure, and a document switch closes it
+// while the cache survives.
+
+function parentEntry(scope: ParentNode): HTMLButtonElement | undefined {
+  return Array.from(scope.querySelectorAll('button'))
+    .find((button) => button.getAttribute('title') === '查看父块上下文' || button.getAttribute('aria-label') === '查看父块上下文') as HTMLButtonElement | undefined;
+}
+
+async function openChunksView(container: HTMLElement) {
+  await act(async () => {
+    Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click();
+  });
+}
+
+test('the parent-context entry appears only for chunks with parent_chunk_id and stays visible to viewers', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'viewer', 'owner-1', [
+    { id: 'chunk-1', content: 'Child A', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+    { id: 'chunk-2', content: 'Child B', content_revision: 1, is_enabled: true },
+  ]);
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+
+  assert.ok(parentEntry(body()!), 'a chunk with parent_chunk_id keeps the Vue git-branch entry');
+  assert.equal(body().querySelectorAll('[title="查看父块上下文"]').length, 1, 'chunks without parent_chunk_id render no entry');
+  assert.equal(Array.from(body().querySelectorAll('button')).some((button) => button.textContent === '编辑历史'), false, 'the entry is not gated by edit permission like the Vue icon button');
+});
+
+test('parent context lazy-loads once per parent id, renders the parent markdown, and reuses the cache across chunks', async () => {
+  const getCalls: string[] = [];
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Child A', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+    { id: 'chunk-2', content: 'Child B', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+  ]);
+  let releaseParent!: (value: { id: string; content: string }) => void;
+  const parentResponse = new Promise<{ id: string; content: string }>((resolve) => { releaseParent = resolve; });
+  (client as any).knowledgeBases.documents.getChunkById = async (id: string) => { getCalls.push(id); return parentResponse; };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+
+  await act(async () => { parentEntry(body()!)!.click(); });
+  const panel = () => body().querySelector<HTMLElement>('.wk-chunk-parent-context');
+  assert.ok(panel(), 'opening the entry expands the parent-context panel');
+  assert.ok(panel()!.textContent?.includes('加载中'), 'the Vue popup keeps a common.loading state until the parent chunk arrives');
+
+  await act(async () => { releaseParent({ id: 'parent-1', content: '# Parent heading' }); });
+  await act(async () => {});
+  assert.ok(panel()!.querySelector('h1'), 'the parent body renders through the markdown pipeline (Vue processMarkdown)');
+  assert.equal(panel()!.textContent?.includes('加载中'), false);
+
+  // Cache hit: a sibling chunk sharing the same parent renders without a second fetch.
+  await act(async () => { parentEntry(body().querySelector('[data-chunk-id="chunk-2"]')!)!.click(); });
+  const siblingPanel = body().querySelector<HTMLElement>('[data-chunk-id="chunk-2"] .wk-chunk-parent-context');
+  assert.ok(siblingPanel?.querySelector('h1'), 'the shared parent content renders from the cache');
+  assert.ok(!body().querySelector('[data-chunk-id="chunk-1"] .wk-chunk-parent-context'), 'only the requesting chunk keeps its panel open');
+  assert.deepEqual(getCalls, ['parent-1'], 'the parent chunk is fetched exactly once per parent id');
+
+  // Toggle close like the Vue popup trigger.
+  await act(async () => { parentEntry(body().querySelector('[data-chunk-id="chunk-2"]')!)!.click(); });
+  assert.equal(body().querySelector('.wk-chunk-parent-context'), null, 'clicking the entry again closes the panel');
+  await act(async () => { parentEntry(body()!)!.click(); });
+  assert.ok(body().querySelector('.wk-chunk-parent-context')?.querySelector('h1'), 'reopening serves the cached parent without a refetch');
+  assert.deepEqual(getCalls, ['parent-1']);
+});
+
+test('a failed parent load closes the panel with the Vue parentContextLoadFailed notice', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Child A', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+  ]);
+  (client as any).knowledgeBases.documents.getChunkById = async () => { throw new Error('parent unavailable'); };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  await act(async () => { parentEntry(container.ownerDocument.body)!.click(); });
+  await act(async () => {});
+
+  const body = () => container.ownerDocument.body;
+  assert.equal(body().querySelector('.wk-chunk-parent-context'), null, 'Vue closes the popup after a failed parent fetch');
+  assert.ok(body().textContent?.includes('加载父上下文失败'), 'the parentContextLoadFailed copy is surfaced');
+});
+
+test('parent context is mutually exclusive with the edit and history expansions', async () => {
+  const client = detailClient(async () => ({
+    id: 'doc-1', knowledge_base_id: 'kb-1', file_name: 'Guide.md', type: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Child A', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+  ]);
+  (client as any).knowledgeBases.documents.getChunkById = async (id: string) => ({ id, content: 'Parent body' });
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  const chunkRow = () => body().querySelector('[data-chunk-id="chunk-1"]')!;
+  const chunkButton = (label: string) => Array.from(chunkRow().querySelectorAll('button')).find((button) => button.textContent?.includes(label));
+
+  await act(async () => { parentEntry(body()!)!.click(); });
+  assert.ok(body().querySelector('.wk-chunk-parent-context'));
+  await act(async () => { chunkButton('编辑')!.click(); });
+  assert.ok(chunkRow().querySelector('textarea'), 'edit mode opens');
+  assert.equal(body().querySelector('.wk-chunk-parent-context'), null, 'opening the editor closes the parent panel like the Vue popup mutex');
+
+  await act(async () => { parentEntry(body()!)!.click(); });
+  assert.equal(chunkRow().querySelector('textarea'), null, 'opening the parent panel closes the editor');
+  await act(async () => { chunkButton('编辑历史')!.click(); });
+  await act(async () => {});
+  assert.equal(body().querySelector('.wk-chunk-parent-context'), null, 'opening the chunk history closes the parent panel');
+  assert.ok(chunkRow().textContent?.includes('Previous chunk'), 'the history expansion still loads');
+});
+
+test('switching documents closes the parent panel but keeps the parent cache', async () => {
+  const getCalls: string[] = [];
+  const client = detailClient(async (id: string) => ({
+    id, knowledge_base_id: 'kb-1', file_name: `${id}.md`, type: 'file', file_type: 'md', parse_status: 'completed',
+  }), 'contributor', 'user-1', [
+    { id: 'chunk-1', content: 'Child A', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' },
+  ]);
+  (client as any).knowledgeBases.documents.chunks = async (id: string) => ({
+    data: [{ id: `${id}-c1`, content: 'Child row', content_revision: 1, is_enabled: true, parent_chunk_id: 'parent-1' }],
+    total: 1, page: 1, page_size: 25,
+  });
+  (client as any).knowledgeBases.documents.getChunkById = async (id: string) => { getCalls.push(id); return { id, content: '# Cached parent' }; };
+  const container = await mountDetail(client);
+  await openChunksView(container);
+  const body = () => container.ownerDocument.body;
+  await act(async () => { parentEntry(body()!)!.click(); });
+  await act(async () => {});
+  assert.ok(body().querySelector('.wk-chunk-parent-context')?.querySelector('h1'));
+
+  await act(async () => {
+    mountedRoot?.render(<KnowledgeDocumentDetailPage client={client} documentId="doc-2" onBack={() => {}} />);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  assert.equal(body().querySelector('.wk-chunk-parent-context'), null, 'a document switch closes the panel like the Vue watch(details.id)');
+
+  await openChunksView(container);
+  await act(async () => { parentEntry(body()!)!.click(); });
+  await act(async () => {});
+  assert.ok(body().querySelector('.wk-chunk-parent-context')?.querySelector('h1'), 'the cached parent content renders after the switch');
+  assert.deepEqual(getCalls, ['parent-1'], 'the parent cache survives the document switch');
 });
