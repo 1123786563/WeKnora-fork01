@@ -31,6 +31,7 @@ const SkillSettingsPanel = lazy(() => import('./SkillSettingsPanel.tsx').then((m
 const TenantMembersPanel = lazy(() => import('./TenantMembersPanel.tsx').then((m) => ({ default: m.TenantMembersPanel })));
 const GeneralPreferencesPanel = lazy(() => import('./GeneralPreferencesPanel.tsx').then((m) => ({ default: m.GeneralPreferencesPanel })));
 const UsagePanel = lazy(() => import('./UsagePanel.tsx').then((m) => ({ default: m.UsagePanel })));
+const QueryHistoryPanel = lazy(() => import('./QueryHistoryPanel.tsx').then((m) => ({ default: m.QueryHistoryPanel })));
 const TenantInfoSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.TenantInfoSection })));
 const UserProfileSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.UserProfileSection })));
 const SystemInfoPanel = lazy(() => import('./SystemInfoPanel.tsx').then((m) => ({ default: m.SystemInfoPanel })));
@@ -97,6 +98,10 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     // The usage panel self-fetches client.usage.my + commercial.summary for
     // its date window (parser precedent: no shell-level read needed).
     case 'usage': return Promise.resolve(null);
+    // The query-history panel self-fetches the KV privacy config first
+    // (disabled short-circuits the audit listing) and then
+    // client.queryHistory.adminList for its own filters (usage precedent).
+    case 'query-history': return Promise.resolve(null);
     case 'retrieval': return client.settings.retrieval.get();
     case 'memory': return client.settings.memory.workspace.get();
     // Vue mounts MemorySettings.vue (personal surface) under "mymemory"; the
@@ -354,6 +359,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           : null;
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
+    const queryHistoryPanel = key === 'query-history' ? <QueryHistoryPanel client={client} locale={locale} role={role} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
     // Vue Settings.vue: these two sections stay nav-visible but render no panel
@@ -425,7 +431,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
               <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
             </div>
-          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
           {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
         </div>}
       </div>
@@ -513,7 +519,11 @@ const NAV_HIDDEN_SECTIONS = new Set(['retrieval',
   // Round-22 parity (2026-09-19): SP12's 用量统计 section has no Vue
   // counterpart in Settings.vue navItems, so it joins retrieval as nav-hidden
   // while ?section=usage and the panel stay reachable for direct URLs.
-  'usage']);
+  'usage',
+  // SP13 query-history (2026-09-20): same ruling — no Vue navItems
+  // counterpart, so the admin audit panel stays nav-hidden while
+  // ?section=query-history keeps the deep link reachable.
+  'query-history']);
 
 // Vue label sources (Settings.vue navItems): every label is a settings.* i18n
 // string auto-ported into packages/i18n/src/settings.ts; ollama/weknoracloud

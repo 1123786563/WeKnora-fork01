@@ -49,6 +49,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'runtime-queues', viewId: 'RuntimeQueueSettings', apiDomain: 'administration.runtime.queues', scope: 'platform', minRole: 'system-admin', operations: ['read', 'save'], ported: false },
   { key: 'platform-api-keys', viewId: 'PlatformApiKeys', apiDomain: 'administration.apiKeys', scope: 'platform', minRole: 'system-admin', operations: ['read', 'save', 'delete'], ported: false },
   { key: 'system-audit-log', viewId: 'SystemAuditLog', apiDomain: 'administration.auditLog', scope: 'platform', minRole: 'system-admin', operations: ['read'], ported: false },
+  { key: 'query-history', viewId: 'QueryHistorySettings', apiDomain: 'queryHistory', scope: 'tenant', minRole: 'admin', operations: ['read'], ported: true },
   ...INTEGRATION_SECTIONS.map((item): SettingsSection => ({ key: `integration-${item.key}`, viewId: item.viewId, apiDomain: item.apiDomain ?? 'integration-guide', scope: 'tenant', minRole: item.minRole, operations: ['read'], ported: false })),
 ] as const;
 

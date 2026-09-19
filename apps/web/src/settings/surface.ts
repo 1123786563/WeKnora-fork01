@@ -51,6 +51,7 @@ const SECTION_HEADING_KEYS: Record<string, { title: string; description?: string
   websearch: { title: 'webSearchSettings.title', description: 'webSearchSettings.description' },
   sandbox: { title: 'settings.sandbox.title', description: 'settings.sandbox.description' },
   skills: { title: 'settings.skills.title', description: 'settings.skills.description' },
+  'query-history': { title: 'settings.queryHistory.title', description: 'settings.queryHistory.description' },
   mcp: { title: 'settings.mcpService' },
   system: { title: 'system.title', description: 'system.sectionDescription' },
 };
@@ -97,6 +98,7 @@ const descriptions: Record<string, { title: string; description: string }> = {
   'runtime-queues': { title: '运行时队列', description: '查看任务队列、工作池和模型限流状态。' },
   'platform-api-keys': { title: '平台 API Key', description: '管理平台级自动化凭据与能力范围。' },
   'system-audit-log': { title: '审计日志', description: '查看平台级管理操作和结果。' },
+  'query-history': { title: 'Query history', description: 'Tenant-wide session audit listing, snapshots and CSV export with the privacy policy controls.' },
 };
 
 const meta = new Map<string, SettingsSectionMeta>(SETTINGS_SECTIONS.map((section) => {
