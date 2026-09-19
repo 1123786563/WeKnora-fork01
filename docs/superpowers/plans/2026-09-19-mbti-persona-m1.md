@@ -56,7 +56,7 @@ import sys
 from pathlib import Path
 
 OCTOP = Path("/Users/wuyongjun/trea/Octop/src/octop")
-sys.path.insert(0, str(OCTOP.parent.parent.parent))
+sys.path.insert(0, str(OCTOP.parent.parent))  # Octop repo root, so `octop.*` resolves
 
 from octop.infra.agents.mbti_profiles import get_all_profiles  # noqa: E402
 
