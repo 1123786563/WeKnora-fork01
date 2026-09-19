@@ -33,3 +33,14 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+
+## Persona (MBTI)
+
+**Persona (MBTI)** is an optional per-agent personality layer, migrated from Octop: one of the 16 built-in MBTI profiles plus optional free-text style guidance, rendered as a leading segment of the agent's system prompt. It changes tone only — never retrieval, tools, or permissions.
+
+- **Config fields** (`types.CustomAgentConfig`, persisted with the agent): `persona_mbti` — an uppercase MBTI code (`"INTJ"`) selecting a built-in profile from `internal/agent/persona` (16 profiles, 28-question test, bilingual zh/en rendering); `persona_style` — free text appended after the MBTI block. Both live under the agent's `config` and are returned by the agent read APIs.
+- **Rendering point**: `prependPersonaSegment` in `internal/application/service/agent_capabilities.go`, called once inside `prepareAgentCapabilities` — the single capability-assembly point, so both execution engines (builtin ReAct and durable tRPC runs) get the persona segment prepended to the system prompt. Empty/unknown `persona_mbti` leaves the prompt untouched; `persona_style` only renders when a persona is set. Locale (zh/en) follows the request language context.
+- **API endpoints** (`internal/router/routes_persona.go`, JWT or full-access API key): `GET /api/v1/mbti/types`, `GET /api/v1/mbti/types/:code`, `GET /api/v1/mbti/preview/:code`, `GET /api/v1/mbti/test/questions`, `POST /api/v1/mbti/test/submit`; agent-scoped mutations share the agent-update guard (creator or Admin+, `manage_agents` keys): `PUT /api/v1/agents/:id/persona` `{code, style?}`, `DELETE /api/v1/agents/:id/persona`.
+- **Editor surface**: the React agent editor (`apps/web/src/agents/PersonaSection.tsx` + `MbtiTestModal.tsx`, via `packages/api-client/src/mbti.ts`) offers a 16-type grid with manual pick, an optional 28-question test modal that applies the scored code, and a style textarea. The type list is fetched from the API — never hardcoded in the frontend.
+
+When writing about it, keep the glossary discipline: "persona" is the MBTI capability on an agent, not a user profile or a custom system prompt.
