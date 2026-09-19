@@ -214,11 +214,57 @@ func TestNativeMemoryJobSessionKeyMigrationIsAdditive(t *testing.T) {
 			version, dirty, err := m.Version()
 			require.NoError(t, err)
 			require.False(t, dirty)
-			require.Equal(t, nativeMemoryJobSessionKeyMigrationVersion(dialect), version,
+			require.GreaterOrEqual(t, version, nativeMemoryJobSessionKeyMigrationVersion(dialect),
 				"memory-job SessionKey must be introduced by its own additive migration")
 			for _, column := range []string{"session_app_name", "session_user_id", "session_id"} {
 				require.Truef(t, db.Migrator().HasColumn("native_memory_jobs", column), "native_memory_jobs.%s must exist", column)
 			}
+		})
+	}
+}
+
+// TestNativeMemoryJobRetryMigrationPersistsBoundedRetryState catches a
+// migration that leaves retry scheduling only in process memory, admits an
+// unbounded attempt count, or makes due-job recovery scan every job.
+func TestNativeMemoryJobRetryMigrationPersistsBoundedRetryState(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			m := nativeSchemaMigrator(t, db)
+			defer func() { _, _ = m.Close() }()
+			version, dirty, err := m.Version()
+			require.NoError(t, err)
+			require.False(t, dirty)
+			require.GreaterOrEqual(t, version, nativeMemoryJobRetryMigrationVersion(dialect),
+				"memory-job retry state must be introduced by its own additive migration")
+			for _, column := range []string{"retry_attempt", "max_attempts", "retry_status", "next_attempt_at", "last_error"} {
+				require.Truef(t, db.Migrator().HasColumn("native_memory_jobs", column), "native_memory_jobs.%s must exist", column)
+			}
+			require.True(t, db.Migrator().HasIndex("native_memory_jobs", "idx_native_memory_jobs_retry_due"),
+				"due retry recovery must use its dedicated index")
+
+			seedNativeSchemaFixture(t, db)
+			require.NoError(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id,
+				 retry_attempt, max_attempts, retry_status, next_attempt_at, last_error)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+				1, "u1", "retryable-job", 3, "retryable-event", 2, 3, "scheduled", "temporary failure").Error)
+			require.Error(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id, retry_attempt)
+				VALUES (?, ?, ?, ?, ?, ?)`, 1, "u1", "negative-retry", 3, "negative-event", -1).Error,
+				"retry attempt must not become negative")
+			require.Error(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id, max_attempts)
+				VALUES (?, ?, ?, ?, ?, ?)`, 1, "u1", "zero-limit", 3, "zero-limit-event", 0).Error,
+				"retry policy must retain a positive finite attempt limit")
+			require.Error(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id, retry_attempt, max_attempts)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "u1", "over-limit", 3, "over-limit-event", 4, 3).Error,
+				"persisted retry attempt must not exceed the finite attempt limit")
+			require.Error(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id, retry_status)
+				VALUES (?, ?, ?, ?, ?, ?)`, 1, "u1", "unknown-retry-state", 3, "unknown-state-event", "unknown").Error,
+				"retry state must remain a known durable state")
 		})
 	}
 }
@@ -269,13 +315,6 @@ func TestNativeMemoryJobSessionKeyMigrationRollbackGuard(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			db := openNativeSchemaTestDB(t, dialect)
-			seedNativeSchemaFixture(t, db)
-			require.NoError(t, db.Exec(`INSERT INTO native_memory_jobs
-				(tenant_id, subject_id, job_id, generation, through_event_id,
-				 session_app_name, session_user_id, session_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				1, "u1", "job-with-session", 3, "event-with-session",
-				"weknora/native-v1/tenant/1", "owner/u1", "session/s1").Error)
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
 			for {
@@ -288,8 +327,43 @@ func TestNativeMemoryJobSessionKeyMigrationRollbackGuard(t *testing.T) {
 				require.Greater(t, version, nativeMemoryJobSessionKeyMigrationVersion(dialect))
 				require.NoError(t, m.Steps(-1), "empty migrations after memory-job SessionKey may roll back")
 			}
+			seedNativeSchemaFixture(t, db)
+			require.NoError(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id,
+				 session_app_name, session_user_id, session_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				1, "u1", "job-with-session", 3, "event-with-session",
+				"weknora/native-v1/tenant/1", "owner/u1", "session/s1").Error)
 			require.Error(t, m.Steps(-1), "a populated memory-job SessionKey migration must reject rollback")
 			require.True(t, db.Migrator().HasColumn("native_memory_jobs", "session_id"))
+		})
+	}
+}
+
+func TestNativeMemoryJobRetryMigrationRollbackGuard(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			seedNativeSchemaFixture(t, db)
+			require.NoError(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id,
+				 retry_attempt, max_attempts, retry_status, next_attempt_at, last_error)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+				1, "u1", "retry-rollback-guard", 3, "retry-rollback-event", 1, 3, "scheduled", "temporary failure").Error)
+			m := nativeSchemaMigrator(t, db)
+			defer func() { _, _ = m.Close() }()
+			for {
+				version, dirty, err := m.Version()
+				require.NoError(t, err)
+				require.False(t, dirty)
+				if version == nativeMemoryJobRetryMigrationVersion(dialect) {
+					break
+				}
+				require.Greater(t, version, nativeMemoryJobRetryMigrationVersion(dialect))
+				require.NoError(t, m.Steps(-1), "empty migrations after memory-job retry state may roll back")
+			}
+			require.Error(t, m.Steps(-1), "a populated memory-job retry migration must reject destructive rollback")
+			require.True(t, db.Migrator().HasColumn("native_memory_jobs", "retry_attempt"))
 		})
 	}
 }
@@ -368,6 +442,17 @@ func nativeMemoryJobSessionKeyMigrationVersion(dialect string) uint {
 		return 92
 	case "postgres":
 		return 171
+	default:
+		panic("unsupported native schema test dialect: " + dialect)
+	}
+}
+
+func nativeMemoryJobRetryMigrationVersion(dialect string) uint {
+	switch dialect {
+	case "sqlite":
+		return 93
+	case "postgres":
+		return 172
 	default:
 		panic("unsupported native schema test dialect: " + dialect)
 	}
