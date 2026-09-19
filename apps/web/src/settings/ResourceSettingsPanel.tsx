@@ -3,6 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Input, Sheet, Status, Textarea } from '@weknora/ui';
 import { settingsResourceInput, settingsResourceRows } from './surface.ts';
+import { providerLogo } from './providerLogos.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 type ResourceSection = 'storage' | 'vectorstore' | 'websearch';
@@ -218,6 +219,7 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
         const nameValue = rowText(row, 'name') || id || copy.unnamed;
         const isDefault = row.default === true || (typeof defaultId === 'string' && id === defaultId);
         const meta = resourceMeta(row, provider);
+        const logo = providerLogo(section, provider);
         return <article
           key={id || index}
           role="button"
@@ -226,7 +228,13 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
           onClick={() => edit(row)}
           onKeyDown={(event) => { if (event.key === 'Enter') edit(row); }}
         >
-          <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[14px] font-semibold text-[#66758b]" aria-label={provider}>{providerInitial(provider || nameValue)}</div>
+          {logo ? (
+            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3f3f3]" aria-label={provider}>
+              <img src={logo.url} alt="" className="h-7 w-7 object-contain" />
+            </div>
+          ) : (
+            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[14px] font-semibold text-[#66758b]" aria-label={provider}>{providerInitial(provider || nameValue)}</div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="backend-card__header flex items-center gap-2">
               <h3 className="backend-card__title m-0 min-w-0 truncate text-[15px] font-semibold text-[#101828]" title={nameValue}>{nameValue}</h3>
