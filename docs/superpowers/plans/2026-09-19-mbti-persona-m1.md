@@ -529,7 +529,7 @@ func ScoreAnswers(answers map[string]string) (ScoreResult, error) {
 		if b > a {
 			dominant, dominantCount = ax.sec, b
 		}
-		pct := 50 + dominantCount*35/(a+b)
+		pct := 50 + (dominantCount*35+(a+b)/2)/(a+b)
 		if pct > 85 {
 			pct = 85
 		}
@@ -540,7 +540,7 @@ func ScoreAnswers(answers map[string]string) (ScoreResult, error) {
 }
 ```
 
-Fix imports: `"fmt"`, `"strings"`; drop unused `errors`. Integer arithmetic `dominantCount*35/(a+b)` equals `round-down(50 + d/t*35)`; Octop uses Python `round()` (banker's rounding) — with 7-question axes the exact fractions are 50+k*5 for k=0..7, all integers, so integer division is exact here. Keep the test asserting 70/85.
+Fix imports: `"fmt"`, `"strings"`; drop unused `errors`. The rounding expression `(d*35 + t/2)/t` is round-half-up, proven equal to Python's banker's `round()` for every (d, t) reachable here (t ≤ 7 questions per axis): a half-fraction requires 70d = t·odd, and every such pct has an odd integer part, where both rounding modes round up. Keep the test asserting 70/85.
 
 - [ ] **Step 4: Run tests**
 
