@@ -1,0 +1,93 @@
+id: stock-assistant
+label:
+  zh: 老钱 · 证券观察员
+  en: Lao Qian · Market Observer
+description:
+  zh: 市场观察者「老钱」— 查行情、看基本面、做技术分析、追市场热点。以 A 股为主，兼顾港美股及全球市场，用老股民的风格给你说人话，严格合规不荐股。
+  en: Market observer 'Lao Qian' — real-time quotes, fundamental analysis, technical
+    indicators (MA/MACD/RSI/BOLL), market trends. Primarily A-shares, also covers
+    HK & US stocks and global markets. Veteran investor style, strictly compliant,
+    no stock recommendations.
+icon_name: candlestick-chart
+color: '#e74c3c'
+prompt_files:
+- SOUL.md
+- IDENTITY.md
+- HEARTBEAT.md
+quick_prompts:
+- title:
+    zh: 查个股行情
+    en: Stock quote lookup
+  description:
+    zh: 实时报价、涨跌幅和成交量
+    en: Real-time price, change, and volume
+  prompt:
+    zh: 请帮我查一下___（股票代码/名称）的最新行情，包括现价、涨跌幅、成交量和换手率。
+    en: Please look up the latest quote for ___ (ticker/name) — price, change %, volume,
+      and turnover rate.
+  color: '#e8f4ff'
+  icon_name: line-chart
+- title:
+    zh: 板块资金流向
+    en: Sector fund flow
+  description:
+    zh: 查看行业板块资金净流入排名
+    en: Sector net fund inflow rankings
+  prompt:
+    zh: 请查询今天 A 股各板块的资金流向，列出净流入和净流出最多的板块。
+    en: Please check today's A-share sector fund flows — top net inflows and outflows.
+  color: '#dcfce7'
+  icon_name: arrow-up-down
+- title:
+    zh: 涨停跌停池
+    en: Limit-up/down pool
+  description:
+    zh: 今日涨停、跌停股票一览
+    en: Today's limit-up and limit-down stocks
+  prompt:
+    zh: 请查询今天 A 股的涨停池和跌停池，列出股票名称、代码和涨停/跌停原因（如有）。
+    en: Please fetch today's A-share limit-up and limit-down pools with names, tickers,
+      and reasons if available.
+  color: '#fef3c7'
+  icon_name: zap
+- title:
+    zh: 技术面分析
+    en: Technical analysis
+  description:
+    zh: K 线、均线、MACD 等技术指标
+    en: Candlesticks, MA, MACD, and other indicators
+  prompt:
+    zh: 请对___（股票代码）做技术面分析，包括近期 K 线走势、均线系统和 MACD/RSI 等指标。
+    en: Please run technical analysis on ___ — recent candlesticks, moving averages,
+      MACD/RSI, etc.
+  color: '#f1f5f9'
+  icon_name: candlestick-chart
+- title:
+    zh: 基本面解读
+    en: Fundamental analysis
+  description:
+    zh: 财报、估值、盈利能力分析
+    en: Financials, valuation, and profitability
+  prompt:
+    zh: 请帮我分析___（股票代码）的基本面，包括最新财报要点、PE/PB 估值和盈利能力。
+    en: Please analyze fundamentals for ___ — latest earnings highlights, PE/PB valuation,
+      and profitability.
+  color: '#eef2ff'
+  icon_name: pie-chart
+- title:
+    zh: 今日市场综述
+    en: Market overview
+  description:
+    zh: 大盘走势、热点板块和市场情绪
+    en: Index moves, hot sectors, and market sentiment
+  prompt:
+    zh: 请给我今天 A 股市场的综述，包括大盘指数表现、热点板块和市场整体情绪。
+    en: Please give me today's A-share market overview — index performance, hot sectors,
+      and overall sentiment.
+  color: '#fff1f2'
+  icon_name: bar-chart-3
+skills:
+- stock-info
+agent_config:
+  agent_mode: smart-reasoning
+  web_search_enabled: true
