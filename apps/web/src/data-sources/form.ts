@@ -148,6 +148,18 @@ export const VUE_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
   yuque: [{ key: 'api_token', label: 'dataSource.field.apiToken', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://www.yuque.com', optional: true, hint: 'dataSource.field.baseUrlHint' }],
   ima: [{ key: 'client_id', label: 'dataSource.field.imaClientId', secret: true }, { key: 'api_key', label: 'dataSource.field.imaApiKey', secret: true }, { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://ima.qq.com', optional: true, hint: 'dataSource.field.baseUrlHint' }],
   gitlab: [{ key: 'base_url', label: 'dataSource.gitlab.baseUrl', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'dataSource.gitlab.accessToken', secret: true }],
+  confluence: [
+    { key: 'edition', label: 'dataSource.field.confluenceEdition', placeholder: 'server' },
+    { key: 'base_url', label: 'dataSource.field.baseUrl', placeholder: 'https://confluence.example.com' },
+    { key: 'username', label: 'dataSource.field.confluenceUsername', placeholder: 'user@example.com' },
+    { key: 'api_token', label: 'dataSource.field.confluenceApiToken', secret: true, optional: true, hint: 'dataSource.field.confluenceApiTokenHint' },
+    { key: 'password', label: 'dataSource.field.confluencePassword', secret: true, optional: true, hint: 'dataSource.field.confluencePasswordHint' },
+  ],
+  dingtalk: [
+    { key: 'client_id', label: 'dataSource.field.dingtalkClientId', secret: true },
+    { key: 'client_secret', label: 'dataSource.field.dingtalkClientSecret', secret: true },
+    { key: 'operator_id', label: 'dataSource.field.dingtalkOperatorId', secret: true },
+  ],
 };
 
 export type ConnectorGuide = { docUrl: string; permissionPageUrl: string; requiredPermissions: string[] };
@@ -165,6 +177,8 @@ export const VUE_CONNECTOR_GUIDES: Record<string, ConnectorGuide> = {
   yuque: { docUrl: 'https://www.yuque.com/yuque/developer/api', permissionPageUrl: 'https://www.yuque.com/settings/tokens', requiredPermissions: ['repo:read', 'doc:read'] },
   notion: { docUrl: 'https://www.notion.so/my-integrations', permissionPageUrl: '', requiredPermissions: [] },
   ima: { docUrl: 'https://ima.qq.com/agent-interface', permissionPageUrl: 'https://ima.qq.com/agent-interface', requiredPermissions: [] },
+  confluence: { docUrl: 'https://developer.atlassian.com/cloud/confluence/rest/intro/', permissionPageUrl: '', requiredPermissions: [] },
+  dingtalk: { docUrl: 'https://open.dingtalk.com/document/orgapp/obtain-orgapp-exclusive-access-token', permissionPageUrl: '', requiredPermissions: [] },
 };
 
 // Vue renders rss feed URLs as a dedicated settings field with its hint line
