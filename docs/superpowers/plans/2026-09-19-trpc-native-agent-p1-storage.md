@@ -254,4 +254,3 @@ git diff --check
 - Type consistency：身份探针只消费 SDK key；Session/Memory helpers 为各 module 测试内定义；没有共享 Go 文件、没有跨 Track import。
 - Review Focus：五类风险各自落到 A/B/C 与串行关卡；P1 未把原生方法成功当业务授权。
 - User execution method：保持 parallel Superpowers + per-track review + controller integration + full tests。
-
