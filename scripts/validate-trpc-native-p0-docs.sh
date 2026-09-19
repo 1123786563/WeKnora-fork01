@@ -32,11 +32,47 @@ awk -F '\t' '
   END { if (NR != 91 || verified != 4 || source_only != 79 || blocked_env != 2 || incompatible != 5) exit 1 }
 ' docs/superpowers/plans/trpc-native/sdk-capabilities.tsv
 
-grep -Fq 'GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v' \
-  docs/superpowers/plans/trpc-native/{sdk-probes.md,p0-decision.md,interfaces.md,progress.md}
-grep -Fq 'v1.10.0 remains **NO-GO**' docs/superpowers/plans/trpc-native/p0-decision.md
-grep -Fq '`5c77dd3a`, `da16fcf5`, `a64d2640`, `df82068b`, `7399b707`' \
-  docs/superpowers/plans/trpc-native/progress.md
-grep -Fq '`ea10b352`, `1d347947`, `3f78f055`' docs/superpowers/plans/trpc-native/progress.md
+race_gate='GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v'
+for path in \
+  docs/superpowers/plans/trpc-native/sdk-probes.md \
+  docs/superpowers/plans/trpc-native/p0-decision.md \
+  docs/superpowers/plans/trpc-native/interfaces.md \
+  docs/superpowers/plans/trpc-native/progress.md; do
+  grep -Fq "${race_gate}" "${path}"
+done
+
+validate_ledger_row() {
+  local task="$1"
+  shift
+
+  awk -F '|' -v task="${task}" -v anchors="$*" '
+    function is_complete(value) {
+      return value ~ /^[[:space:]]*complete([[:space:]]|（|\(|$)/
+    }
+    $2 ~ "^[[:space:]]*" task "[[:space:]]" {
+      rows++
+      if (!is_complete($6) || !is_complete($7) || !is_complete($8)) {
+        invalid = 1
+      }
+      anchor_count = split(anchors, expected, " ")
+      for (anchor_index = 1; anchor_index <= anchor_count; anchor_index++) {
+        if (index($5, "`" expected[anchor_index] "`") == 0) {
+          invalid = 1
+        }
+      }
+    }
+    END {
+      if (rows != 1 || invalid) {
+        exit 1
+      }
+    }
+  ' docs/superpowers/plans/trpc-native/progress.md
+}
+
+validate_ledger_row P0-1 5c77dd3a da16fcf5 a64d2640 df82068b 7399b707
+validate_ledger_row P0-2 8b1ba101 d1d18575
+validate_ledger_row P0-3 d63879ab ba6dfcc6
+validate_ledger_row P0-4 5b65a570 950716d6
+validate_ledger_row P0-5 ea10b352 1d347947 3f78f055
 
 echo 'PASS: tRPC native P0 documentation consistency'
