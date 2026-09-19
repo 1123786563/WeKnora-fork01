@@ -552,12 +552,65 @@ void main() {
       );
     });
   });
+
+  group('WeKnoraAdapter explicit session binding', () {
+    test('uses parameters[weknora_session_id] without creating a session',
+        () async {
+      final http = _QueuedAdapter([
+        // The first and only request must be agent-chat on the existing
+        // session, not a prior POST to api/v1/sessions.
+        _sse([
+          {'response_type': 'answer', 'content': 'hi'},
+          _completeFrame(),
+        ]),
+      ]);
+      final adapter = WeKnoraAdapter(dioFactory: (_) => _dio(http));
+
+      final run = adapter.startCompletion(
+        _weknoraProfile(),
+        _request(
+          [DirectChatMessage.text(role: 'user', text: 'hello')],
+          model: 'agent:ag1',
+          parameters: const {'weknora_session_id': 'sess-existing'},
+        ),
+      );
+      await run.done;
+
+      expect(http.requests.single.path, contains('sess-existing'));
+      expect(http.requests.single.path, contains('agent-chat'));
+      expect(
+        adapter.boundSessionIdFor(
+          profileId: _weknoraProfile().id,
+          remoteModelId: 'agent:ag1',
+          priorUserQueries: const ['hello'],
+        ),
+        'sess-existing',
+      );
+    });
+
+    test('boundSessionIdFor returns null on mismatch', () {
+      final adapter = WeKnoraAdapter();
+      expect(
+        adapter.boundSessionIdFor(
+          profileId: 'p',
+          remoteModelId: 'agent:ag1',
+          priorUserQueries: const ['x'],
+        ),
+        isNull,
+      );
+    });
+  });
 }
 
 DirectCompletionRequest _request(
   List<DirectChatMessage> messages, {
   required String model,
-}) => DirectCompletionRequest(remoteModelId: model, messages: messages);
+  Map<String, dynamic> parameters = const {},
+}) => DirectCompletionRequest(
+  remoteModelId: model,
+  messages: messages,
+  parameters: parameters,
+);
 
 Future<List<DirectStreamEvent>> _drain(DirectCompletionRun run) async {
   final events = await run.events.toList();

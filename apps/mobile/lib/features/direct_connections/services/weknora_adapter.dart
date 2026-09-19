@@ -470,9 +470,21 @@ final class WeKnoraAdapter
           }
           budget.add(lastQuery);
 
+          final explicitSessionId = request.parameters['weknora_session_id'];
           binding = _matchBinding(profile.id, model, priorQueries);
           var queryToSend = lastQuery;
-          if (binding == null) {
+          if (explicitSessionId is String && explicitSessionId.isNotEmpty) {
+            // Login-driven conversations know their server session; exact
+            // binding replaces prefix guessing and never creates a
+            // replacement session.
+            weknoraSessionId = explicitSessionId;
+            binding = _registerBinding(
+              profile.id,
+              model,
+              explicitSessionId,
+              priorQueries,
+            );
+          } else if (binding == null) {
             final sessionId = await _createSession(
               dio,
               profile,
@@ -873,6 +885,19 @@ final class WeKnoraAdapter
       if (binding.matches(priorQueries)) return binding;
     }
     return null;
+  }
+
+  /// Reads back the server session a conversation was bound to, keyed by the
+  /// same prior-user-query sequence the binding table matches on. The login
+  /// flow uses this to persist `weknoraSessionId` onto the conversation after
+  /// a locally started turn.
+  String? boundSessionIdFor({
+    required String profileId,
+    required String remoteModelId,
+    required List<String> priorUserQueries,
+  }) {
+    final model = _WeKnoraModelRef.parse(remoteModelId);
+    return _matchBinding(profileId, model, priorUserQueries)?.sessionId;
   }
 
   _WeKnoraSessionBinding _registerBinding(
