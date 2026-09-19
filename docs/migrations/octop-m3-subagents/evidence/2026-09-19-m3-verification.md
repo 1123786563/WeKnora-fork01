@@ -23,7 +23,7 @@ scripted, the server side is real.
 | Retrieval | `RETRIEVE_DRIVER=sqlite` |
 | Auth | self-serve registration; registered `subagents-e2e@local.dev`, `POST /api/v1/auth/login` → JWT (279 chars; short TTL — re-login between phases) |
 | LLM | **scripted mock** `e2e-scripted-mock`: a python OpenAI-compatible server written for this E2E (scratch only, not committed) at `127.0.0.1:18093`, registered through `BUILTIN_MODELS_CONFIG=<scratch>/builtin_models.yaml` (scratch copy of the repo's entry + the scripted one; the repo's `config/` stayed untouched). This is what made **scripted tool-calling** feasible: the mock dispatches on each request's `tools`/message roles and emits either a `subagent_delegate` tool call (main run round 1), the role's final summary (sub-run), or a final answer quoting the tool result (main run round 2). It also serves `/resource` (a fixed page) for `web_fetch`. |
-| SSRF | `SSRF_WHITELIST=127.0.0.1,192.168.3.30` (raw-IP mock base URLs) |
+| SSRF | `SSRF_WHITELIST=127.0.0.1,<mock-host LAN IP>` (raw-IP mock base URLs; actual IP redacted — private LAN detail) |
 | LLM request dump | `WEKNORA_LLM_STREAM_RAW_DUMP_DIR=<scratch>/llm-dump` — one JSONL per streaming call; line 1 = the request wrapper (`data.messages`, `data.tools`), later lines = streamed chunks |
 | Durable chat | `WEKNORA_AGENT_RECOVERY_ENABLED=true WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED=true` |
 | Storage | `LOCAL_STORAGE_BASE_DIR=<scratch>/files` |
@@ -139,7 +139,9 @@ session id, single model round (toolless role → empty intersection is
 first-class; the tool result carries the `[no tools available]` note).
 
 **Summary returns to the model.** Dump 2 (main run round 2) contains
-`messages` = [user, user, assistant(tool_calls), **tool**] where the tool
+`messages` = [user, user, assistant(tool_calls), **tool**] — the doubled
+user entry is the durable run's history import plus this turn's user message,
+pre-existing engine behavior, not a delegation artifact — where the tool
 message content is the delegate's summary (`[no tools available]\n\n
 E2E-SUBAGENT-SUMMARY-MARKER 产品经理 Alex …`), and the streamed final
 answer quotes it: "Delegation complete. The specialist returned: <[no tools
