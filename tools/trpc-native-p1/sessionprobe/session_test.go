@@ -125,9 +125,9 @@ func scopeKey(tenant string, suffix string) session.Key {
 	return session.Key{AppName: "weknora/native-v1/tenant/" + tenant, UserID: "owner/dQ", SessionID: "session/" + suffix}
 }
 
-func validEvent(id, content string) *event.Event {
+func validEvent(content string) *event.Event {
 	return event.NewResponseEvent("inv-1", "assistant", &model.Response{
-		ID: id, Object: model.ObjectTypeChatCompletion, Done: true,
+		ID: "response-" + content, Object: model.ObjectTypeChatCompletion, Done: true,
 		Choices: []model.Choice{{Message: model.Message{Role: model.RoleAssistant, Content: content}}},
 	})
 }
@@ -147,6 +147,25 @@ func assistantEventCount(events []event.Event) int {
 		}
 	}
 	return count
+}
+
+func sessionIDs(sessions []*session.Session) []string {
+	ids := make([]string, len(sessions))
+	for i, sess := range sessions {
+		ids[i] = sess.ID
+	}
+	return ids
+}
+
+func sessionByID(t *testing.T, sessions []*session.Session, id string) *session.Session {
+	t.Helper()
+	for _, sess := range sessions {
+		if sess.ID == id {
+			return sess
+		}
+	}
+	t.Fatalf("session %q not found", id)
+	return nil
 }
 
 func TestSessionPersistenceAndIsolation(t *testing.T) {
@@ -192,13 +211,37 @@ func TestSessionListPagingAndCloseOwnership(t *testing.T) {
 	eachBackend(t, func(t *testing.T, _ string, svc session.Service, reopen func() session.Service) {
 		ctx := context.Background()
 		user := session.UserKey{AppName: "weknora/native-v1/tenant/1", UserID: "owner/dQ"}
+		require.NoError(t, svc.UpdateAppState(ctx, user.AppName, session.StateMap{session.StateAppPrefix + "shared": []byte("app")}))
+		require.NoError(t, svc.UpdateUserState(ctx, user, session.StateMap{session.StateUserPrefix + "shared": []byte("user")}))
 		for _, id := range []string{"one", "two", "three"} {
-			_, err := svc.CreateSession(ctx, session.Key{AppName: user.AppName, UserID: user.UserID, SessionID: id}, nil)
+			_, err := svc.CreateSession(ctx, session.Key{AppName: user.AppName, UserID: user.UserID, SessionID: id}, session.StateMap{"session": []byte(id)})
 			require.NoError(t, err)
+			time.Sleep(time.Millisecond)
 		}
-		listed, err := svc.ListSessions(ctx, user, session.WithListSessionPage(1, 1), session.WithListSessionOnlyMeta())
+		one, err := svc.GetSession(ctx, session.Key{AppName: user.AppName, UserID: user.UserID, SessionID: "one"})
+		require.NoError(t, err)
+		require.NoError(t, svc.AppendEvent(ctx, one, bootstrapUserEvent()))
+		require.NoError(t, svc.AppendEvent(ctx, one, validEvent("listed")))
+		listed, err := svc.ListSessions(ctx, user)
+		require.NoError(t, err)
+		require.Equal(t, []string{"one", "three", "two"}, sessionIDs(listed), "list is updated_at DESC")
+		listedOne := sessionByID(t, listed, "one")
+		require.Equal(t, []byte("app"), listedOne.State[session.StateAppPrefix+"shared"])
+		require.Equal(t, []byte("user"), listedOne.State[session.StateUserPrefix+"shared"])
+		require.Equal(t, []byte("one"), listedOne.State["session"])
+		require.Equal(t, 1, assistantEventCount(listedOne.Events))
+		listed, err = svc.ListSessions(ctx, user, session.WithListSessionPage(1, 1), session.WithListSessionOnlyMeta())
 		require.NoError(t, err)
 		require.Len(t, listed, 1)
+		require.Equal(t, "three", listed[0].ID)
+		require.Empty(t, listed[0].Events, "OnlyMeta omits persisted event history")
+		listed, err = svc.ListSessions(ctx, user, session.WithListSessionPage(10, 1))
+		require.NoError(t, err)
+		require.Empty(t, listed)
+		_, err = svc.ListSessions(ctx, user, session.WithListSessionPage(-1, 1))
+		require.ErrorIs(t, err, session.ErrInvalidListSessionPage)
+		_, err = svc.ListSessions(ctx, user, session.WithListSessionPage(0, 0))
+		require.ErrorIs(t, err, session.ErrInvalidListSessionPage)
 		closed := svc.(closableService)
 		require.NoError(t, closed.Close())
 		_, err = svc.ListSessions(ctx, user)
@@ -217,7 +260,9 @@ func TestSessionAppendCharacterization(t *testing.T) {
 		sess, err := svc.CreateSession(ctx, key, nil)
 		require.NoError(t, err)
 		require.NoError(t, svc.AppendEvent(ctx, sess, bootstrapUserEvent()))
-		first := validEvent("event-1", "one")
+		first := validEvent("one")
+		first.ID = "event-1"
+		require.Equal(t, "event-1", first.ID)
 		require.NoError(t, svc.AppendEvent(ctx, sess, first))
 		require.NoError(t, svc.AppendEvent(ctx, sess, first))
 		require.Equal(t, 2, assistantEventCount(sess.Events), "current Session object records duplicate assistant event IDs")
@@ -225,7 +270,12 @@ func TestSessionAppendCharacterization(t *testing.T) {
 		got, err := svc.GetSession(ctx, key)
 		require.NoError(t, err)
 		require.Equal(t, 2, assistantEventCount(got.Events), "native backend stores duplicate event IDs")
-		changed := validEvent("event-1", "changed")
+		changed := first.Clone()
+		changed.ID = first.ID
+		changed.Timestamp = first.Timestamp
+		changed.Response.Choices[0].Message.Content = "changed"
+		require.Equal(t, first.ID, changed.ID)
+		require.Equal(t, first.Timestamp, changed.Timestamp)
 		require.NoError(t, svc.AppendEvent(ctx, got, changed))
 		svc = reopen()
 		got, err = svc.GetSession(ctx, key)
@@ -243,15 +293,22 @@ func TestSessionAppendCharacterization(t *testing.T) {
 }
 
 func TestSessionAppendCancelledContextReturnsPersistenceError(t *testing.T) {
-	eachBackend(t, func(t *testing.T, _ string, svc session.Service, _ func() session.Service) {
+	eachBackend(t, func(t *testing.T, _ string, svc session.Service, reopen func() session.Service) {
 		ctx := context.Background()
 		sess, err := svc.CreateSession(ctx, scopeKey("1", "cancelled"), nil)
 		require.NoError(t, err)
+		require.NoError(t, svc.AppendEvent(ctx, sess, bootstrapUserEvent()))
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
-		err = svc.AppendEvent(cancelled, sess, validEvent("event-cancelled", "will not persist"))
+		failed := validEvent("will not persist")
+		failed.ID = "event-cancelled"
+		err = svc.AppendEvent(cancelled, sess, failed)
 		require.Error(t, err, "synchronous append must expose its persistence failure")
-		require.Len(t, sess.Events, 0, "characterization: cancelled append leaves this Session object's Events unchanged")
+		require.Equal(t, 1, assistantEventCount(sess.Events), "characterization: in-memory Session is updated before failed persistence")
+		svc = reopen()
+		got, err := svc.GetSession(ctx, scopeKey("1", "cancelled"))
+		require.NoError(t, err)
+		require.Equal(t, 0, assistantEventCount(got.Events), "cancelled assistant append was not persisted")
 	})
 }
 
@@ -265,9 +322,15 @@ func TestSessionContractReplayRejection(t *testing.T) {
 		sess, err := svc.CreateSession(ctx, key, nil)
 		require.NoError(t, err)
 		require.NoError(t, svc.AppendEvent(ctx, sess, bootstrapUserEvent()))
-		require.NoError(t, svc.AppendEvent(ctx, sess, validEvent("event-1", "one")))
+		first := validEvent("one")
+		first.ID = "event-1"
+		require.NoError(t, svc.AppendEvent(ctx, sess, first))
 		// Required P1 contract: a changed replay under the same stable ID must conflict.
-		require.Error(t, svc.AppendEvent(ctx, sess, validEvent("event-1", "changed")))
+		changed := first.Clone()
+		changed.ID = first.ID
+		changed.Timestamp = first.Timestamp
+		changed.Response.Choices[0].Message.Content = "changed"
+		require.Error(t, svc.AppendEvent(ctx, sess, changed))
 		svc = reopen()
 		got, err := svc.GetSession(ctx, key)
 		require.NoError(t, err)

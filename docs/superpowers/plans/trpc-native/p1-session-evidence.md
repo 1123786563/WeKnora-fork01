@@ -26,9 +26,10 @@ were read from the local module cache.
 
 | Command | Exit | Actual result |
 | --- | ---: | --- |
-| `P1_SESSION_PG_DSN=... GOWORK=off go test -count=1 ./...` | 0 | SQLite and PostgreSQL subtests executed. Persistence/isolation/reopen/delete/list paging/Close/error characterization passed; opt-in contract was skipped. |
-| `P1_SESSION_PG_DSN=... GOWORK=off go test -race -count=20 -timeout=5m ./...` | 0 | 20 repeated SQL probe executions completed in 14.145s; no race report. |
-| `P1_SESSION_PG_DSN=... P1_REQUIRE_CONTRACT=1 GOWORK=off go test -run TestSessionContractReplayRejection -count=1 -v ./...` | 1 | Both SQLite and PostgreSQL returned nil for a changed-content replay under the same stable event ID. Required conflict rejection failed visibly. |
+| `P1_SESSION_PG_DSN=... GOWORK=off go test -count=1 -v ./...` | 0 | SQLite and PostgreSQL subtests executed. Persistence/isolation/reopen/delete/list paging/state merge/OnlyMeta/Close/error characterization passed; opt-in contract was skipped. |
+| `P1_SESSION_PG_DSN=... GOWORK=off go test -race -count=20 -timeout=5m ./...` | 0 | 20 repeated SQL probe executions completed in 23.989s; no race report. |
+| `GOWORK=off go vet ./...` | 0 | Standalone module vet completed without findings. |
+| `P1_SESSION_PG_DSN=... P1_REQUIRE_CONTRACT=1 GOWORK=off go test -run TestSessionContractReplayRejection -count=1 -v ./...` | 1 | Both SQLite and PostgreSQL returned nil for a changed-content replay under the same stable `event.Event.ID`. Required conflict rejection failed visibly. |
 
 The DSN was supplied through the environment and is intentionally omitted from
 this record.
@@ -38,11 +39,11 @@ this record.
 | Check | SQLite | PostgreSQL | Classification |
 | --- | --- | --- | --- |
 | Create/get/reopen/delete tenant-key isolation | Passed in an isolated file | Passed in an isolated schema | PASS for SDK key-space persistence only |
-| Session state update, list offset/limit, service-owned Close, then reopen | Passed | Passed | PASS for measured API behavior |
+| Session state update, list offset/limit/order, out-of-range/invalid bounds, merged app/user/session state, OnlyMeta, service-owned Close, then reopen | Passed | Passed | PASS for measured API behavior |
 | GetSession event pagination | Returns `session.ErrEventPageUnsupported` | One-event page returned | SQLite unsupported; PostgreSQL PASS |
-| Synchronous cancelled append exposes persistence error | Passed | Passed | PASS; async persistence explicitly disabled |
-| Current Session object and reopened persisted events for same-ID replay | Both contain duplicate assistant events | Both contain duplicate assistant events | incompatible with P1 stable-ID dedupe contract |
-| Changed content with same stable event ID | Accepted without conflict | Accepted without conflict | incompatible; red opt-in acceptance retained |
+| Synchronous cancelled append exposes persistence error | Caller Session gained the assistant before the error; reopen contained no assistant | Caller Session gained the assistant before the error; reopen contained no assistant | PASS for measured error exposure; pre-persist in-memory mutation requires a caller-side barrier |
+| Current Session object and reopened persisted events for same `event.Event.ID` replay | Both contain duplicate assistant events | Both contain duplicate assistant events | incompatible with P1 stable-ID dedupe contract |
+| Changed content with same `event.Event.ID` and timestamp | Accepted without conflict | Accepted without conflict | incompatible; red opt-in acceptance retained |
 | Default PostgreSQL `NewService` schema initialization | `n/a` | Fails required-unique-index verification in a new schema | incompatible composition |
 
 For PostgreSQL CRUD tests, the fixture creates the SDK source-defined tables
@@ -55,6 +56,6 @@ convert default schema initialization into PASS.
 These tests prove only database behavior under caller-provided key strings.
 They do not prove authentication, authorization, tenant resolution, request
 barriers, projection repair, cross-process commits, or production recovery.
-P1 must add a durable event receipt keyed by stable event identity plus a
+P1 must add a durable event receipt keyed by `event.Event.ID` plus a
 content hash and return a conflict on a changed replay. It must also resolve
 the PostgreSQL schema-initialization defect or select a reviewed alternative.
