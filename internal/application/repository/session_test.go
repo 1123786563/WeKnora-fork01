@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -344,4 +345,166 @@ func TestSessionRepositoryQueryPagedHidesMaintenanceSessions(t *testing.T) {
 		require.EqualValues(t, 1, total,
 			"source=%q count must not include the maintenance session", source)
 	}
+}
+
+// The "all" source is the admin audit view: every tenant session across
+// origins (web, API key, embed) shows up, while "web" keeps exposing only the
+// caller's own chats and other tenants never leak in.
+func TestSessionRepositoryQueryPagedAllSourceReturnsEveryTenantSession(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
+	ctx := context.Background()
+
+	web := createSessionForTest(t, db, 1, "alice")
+	apiKey := createSessionForTest(t, db, 1, types.SessionOwnerAPITenantKeyPrefix+"1:10")
+	embed := createSessionForTest(t, db, 1, "alice")
+	require.NoError(t, db.Model(&types.Session{}).Where("id = ?", embed.ID).
+		Update("description", types.EmbedSessionMarkerPrefix+"ch-1").Error)
+	_ = createSessionForTest(t, db, 2, "alice")
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "", Source: types.SessionListSourceAll, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 3, total)
+	require.ElementsMatch(t,
+		[]string{web.ID, apiKey.ID, embed.ID}, listItemIDsForTest(items),
+		"source=all must return every tenant-1 session regardless of origin")
+
+	// The "web" source stays owner-scoped: no API-key or embed leakage.
+	webItems, _, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: "web", Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{web.ID}, listItemIDsForTest(webItems))
+}
+
+// An admin can drill the audit listing into one principal: with source=all the
+// caller-supplied UserID filter applies on top of the tenant-wide view.
+func TestSessionRepositoryQueryPagedAllSourceHonorsCallerUserIDFilter(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
+	ctx := context.Background()
+
+	alice := createSessionForTest(t, db, 1, "alice")
+	_ = createSessionForTest(t, db, 1, "bob")
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: types.SessionListSourceAll, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{alice.ID}, listItemIDsForTest(items))
+}
+
+// The audit window filters on created_at as a half-open range: inclusive at
+// StartTime, exclusive at EndTime; zero values leave the range open.
+func TestSessionRepositoryQueryPagedTimeRangeFilters(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
+	ctx := context.Background()
+
+	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	before := createSessionForTest(t, db, 1, "alice")
+	insideStart := createSessionForTest(t, db, 1, "alice")
+	middle := createSessionForTest(t, db, 1, "alice")
+	endBoundary := createSessionForTest(t, db, 1, "alice")
+	after := createSessionForTest(t, db, 1, "alice")
+	for row, at := range map[string]time.Time{
+		before.ID:      base.Add(-time.Hour),
+		insideStart.ID: base,
+		middle.ID:      base.Add(24 * time.Hour),
+		endBoundary.ID: base.Add(48 * time.Hour),
+		after.ID:       base.Add(49 * time.Hour),
+	} {
+		require.NoError(t, db.Model(&types.Session{}).Where("id = ?", row).
+			Update("created_at", at).Error)
+	}
+
+	// [base, base+48h): includes the exact start, excludes the exact end.
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: types.SessionListSourceAll,
+		StartTime: base, EndTime: base.Add(48 * time.Hour), Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.ElementsMatch(t, []string{insideStart.ID, middle.ID}, listItemIDsForTest(items))
+
+	// Only StartTime: everything from base onwards.
+	items, total, err = repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: types.SessionListSourceAll,
+		StartTime: base, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 4, total)
+	require.ElementsMatch(t,
+		[]string{insideStart.ID, middle.ID, endBoundary.ID, after.ID}, listItemIDsForTest(items))
+
+	// Only EndTime: everything strictly before base+48h.
+	items, total, err = repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: types.SessionListSourceAll,
+		EndTime: base.Add(48 * time.Hour), Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 3, total)
+	require.ElementsMatch(t,
+		[]string{before.ID, insideStart.ID, middle.ID}, listItemIDsForTest(items))
+
+	// No bounds: everything.
+	_, total, err = repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "alice", Source: types.SessionListSourceAll, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 5, total)
+}
+
+// createFeedbackForTest inserts a message_feedback rating row for a session.
+func createFeedbackForTest(t *testing.T, db *gorm.DB, tenantID uint64, sessionID, rating string) {
+	t.Helper()
+	require.NoError(t, db.Create(&types.MessageFeedback{
+		TenantID: tenantID, UserID: "alice", SessionID: sessionID, Rating: rating,
+	}).Error)
+}
+
+// Feedback drill-down: like/dislike keep only sessions whose messages carry a
+// matching rating row; the tenant predicate inside EXISTS stops a cross-tenant
+// row (same session id, other tenant) from leaking into the result.
+func TestSessionRepositoryQueryPagedFeedbackRatingFilter(t *testing.T) {
+	repo, db := newSessionRepositoryForTest(t)
+	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}, &types.MessageFeedback{}))
+	ctx := context.Background()
+
+	liked := createSessionForTest(t, db, 1, "alice")
+	disliked := createSessionForTest(t, db, 1, "alice")
+	_ = createSessionForTest(t, db, 1, "alice") // unrated: matches no feedback filter
+	foreign := createSessionForTest(t, db, 1, "alice")
+
+	createFeedbackForTest(t, db, 1, liked.ID, types.FeedbackRatingLike)
+	createFeedbackForTest(t, db, 1, disliked.ID, types.FeedbackRatingDislike)
+	// A same-session-id rating recorded under another tenant must not match.
+	createFeedbackForTest(t, db, 2, foreign.ID, types.FeedbackRatingLike)
+
+	items, total, err := repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "", Source: types.SessionListSourceAll,
+		FeedbackRating: types.FeedbackRatingLike, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{liked.ID}, listItemIDsForTest(items),
+		"feedback=like must match only the liked session in this tenant")
+
+	items, total, err = repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "", Source: types.SessionListSourceAll,
+		FeedbackRating: types.FeedbackRatingDislike, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, []string{disliked.ID}, listItemIDsForTest(items))
+
+	// Empty rating: no feedback filter, all four sessions return.
+	_, total, err = repo.QueryPaged(ctx, &types.SessionListQuery{
+		TenantID: 1, UserID: "", Source: types.SessionListSourceAll, Page: 1, PageSize: 50,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 4, total)
 }

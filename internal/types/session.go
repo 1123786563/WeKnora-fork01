@@ -184,8 +184,17 @@ const SessionSourceAPI = "api"
 // SessionSourceWeb is the source filter for a user's own Web-console chats.
 const SessionSourceWeb = "web"
 
+// SessionListSourceAll is the admin audit view over every session in the
+// tenant, regardless of origin (web, API key, IM, embed). It is Admin+ only:
+// SessionListSourceRequiresAdmin includes it, and unlike the channel-specific
+// sources it additionally honors the tenant's query-history privacy policy at
+// the service layer (disabled blocks the view, anonymized masks owner ids).
+const SessionListSourceAll = "all"
+
 // SessionListSourceRequiresAdmin reports whether a session-list source filter
-// exposes tenant-wide channel traffic (API / IM / embed) in the Web console.
+// exposes tenant-wide traffic in the Web console: channel sources (API / IM /
+// embed) and the cross-source audit listing ("all"). Only the caller's own
+// chats ("" or "web") stay available to non-admin users.
 func SessionListSourceRequiresAdmin(source string) bool {
 	src := strings.TrimSpace(source)
 	if src == "" || strings.EqualFold(src, SessionSourceWeb) {
@@ -240,17 +249,25 @@ func SanitizeClientSessionDescription(incoming, existing string) string {
 // UserID empty means "tenant-wide" (used by API-key callers / legacy rows).
 // Keyword matches title ILIKE '%keyword%'.
 // Source values: "web" (user chats, no IM/embed), "embed" / "embed:{channelID}",
-// "api" (all API-key sessions, Admin+ only), or an IM platform name
-// (e.g. "feishu", "wechat"). IM and embed sources are also Admin+ only.
+// "api" (all API-key sessions, Admin+ only), an IM platform name
+// (e.g. "feishu", "wechat"), or "all" (every session in the tenant, the
+// Admin+ audit listing). IM, embed, and "all" sources are also Admin+ only.
 // AgentID currently only filters sessions that have an IM channel mapping.
+// StartTime/EndTime bound created_at as a half-open range [StartTime, EndTime);
+// zero values leave that side of the range open.
+// FeedbackRating, when "like" or "dislike", keeps only sessions that carry a
+// matching message_feedback row; empty means no feedback filter.
 type SessionListQuery struct {
-	TenantID uint64
-	UserID   string
-	Keyword  string
-	Source   string
-	AgentID  string
-	Page     int
-	PageSize int
+	TenantID       uint64
+	UserID         string
+	Keyword        string
+	Source         string
+	AgentID        string
+	StartTime      time.Time
+	EndTime        time.Time
+	FeedbackRating string
+	Page           int
+	PageSize       int
 }
 
 // SessionListItem is a session row enriched with its IM origin (when any).

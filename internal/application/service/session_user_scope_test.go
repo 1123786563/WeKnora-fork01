@@ -521,3 +521,140 @@ type testListSessionsIMChannelSession struct {
 }
 
 func (testListSessionsIMChannelSession) TableName() string { return "im_channel_sessions" }
+
+// newAuditSessionService wires a sessionService with an in-memory session store
+// plus the given tenant row behind a stub tenant repository, so ListSessions
+// tests can exercise the query-history policy on the "all" audit source.
+func newAuditSessionService(t *testing.T, tenant *types.Tenant) (*sessionService, *gorm.DB) {
+	t.Helper()
+	svc, db := newTestSessionService(t)
+	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
+	svc.tenantRepo = &stubTenantRepoForHistory{tenant: tenant}
+	return svc, db
+}
+
+func adminAuditContext() context.Context {
+	return context.WithValue(
+		testSessionScopeContext(1, "admin-user"),
+		types.TenantRoleContextKey,
+		types.TenantRoleAdmin,
+	)
+}
+
+// seedAuditSessions returns one web, one API-key, and one cross-user session
+// so the audit listing has every origin to observe.
+func seedAuditSessions(t *testing.T, db *gorm.DB) (web, apiKey, bob *types.Session) {
+	t.Helper()
+	web = &types.Session{TenantID: 1, UserID: "alice", Title: "alice web"}
+	apiKey = &types.Session{TenantID: 1, UserID: types.SessionOwnerAPITenantKeyPrefix + "1:10", Title: "api key"}
+	bob = &types.Session{TenantID: 1, UserID: "bob", Title: "bob web"}
+	require.NoError(t, db.Create(web).Error)
+	require.NoError(t, db.Create(apiKey).Error)
+	require.NoError(t, db.Create(bob).Error)
+	return web, apiKey, bob
+}
+
+// The "all" audit source is Admin+ gated exactly like the channel sources.
+func TestListSessionsAllSourceRequiresAdmin(t *testing.T) {
+	svc, db := newAuditSessionService(t, &types.Tenant{ID: 1})
+	seedAuditSessions(t, db)
+
+	_, err := svc.ListSessions(testSessionScopeContext(1, "alice"), &types.SessionListQuery{
+		Source: types.SessionListSourceAll,
+	})
+	require.Error(t, err)
+	var appErr *apperrors.AppError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, apperrors.ErrForbidden, appErr.Code)
+}
+
+// Normal mode (and no config): the audit listing returns every tenant session
+// across origins with owner ids intact, and an admin's user_id filter narrows
+// it to one principal.
+func TestListSessionsAllSourceAuditModes(t *testing.T) {
+	normalTenant := &types.Tenant{ID: 1}
+	anonymizedTenant := tenantWithQueryHistoryMode(t, types.QueryHistoryModeAnonymized)
+	disabledTenant := tenantWithQueryHistoryMode(t, types.QueryHistoryModeDisabled)
+
+	t.Run("normal returns all origins with owner ids", func(t *testing.T) {
+		svc, db := newAuditSessionService(t, normalTenant)
+		web, apiKey, bob := seedAuditSessions(t, db)
+
+		result, err := svc.ListSessions(adminAuditContext(), &types.SessionListQuery{
+			Source: types.SessionListSourceAll,
+		})
+		require.NoError(t, err)
+		require.EqualValues(t, 3, result.Total)
+		rows := result.Data.([]*types.SessionListItem)
+		ids := make([]string, 0, len(rows))
+		owners := make(map[string]string, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+			owners[row.ID] = row.UserID
+		}
+		require.ElementsMatch(t, []string{web.ID, apiKey.ID, bob.ID}, ids)
+		require.Equal(t, "alice", owners[web.ID],
+			"normal mode must keep owner ids visible to the admin")
+	})
+
+	t.Run("anonymized masks owner ids", func(t *testing.T) {
+		svc, db := newAuditSessionService(t, anonymizedTenant)
+		seedAuditSessions(t, db)
+
+		result, err := svc.ListSessions(adminAuditContext(), &types.SessionListQuery{
+			Source: types.SessionListSourceAll,
+		})
+		require.NoError(t, err)
+		rows := result.Data.([]*types.SessionListItem)
+		require.NotEmpty(t, rows)
+		for _, row := range rows {
+			require.Equal(t, "anonymous", row.UserID,
+				"anonymized mode must mask owner ids on audit rows")
+		}
+	})
+
+	t.Run("disabled is forbidden", func(t *testing.T) {
+		svc, db := newAuditSessionService(t, disabledTenant)
+		seedAuditSessions(t, db)
+
+		_, err := svc.ListSessions(adminAuditContext(), &types.SessionListQuery{
+			Source: types.SessionListSourceAll,
+		})
+		require.Error(t, err)
+		var appErr *apperrors.AppError
+		require.ErrorAs(t, err, &appErr)
+		require.Equal(t, apperrors.ErrForbidden, appErr.Code)
+		require.Contains(t, appErr.Message, "query history is disabled for this tenant")
+	})
+
+	t.Run("admin user_id filter narrows the audit view", func(t *testing.T) {
+		svc, db := newAuditSessionService(t, normalTenant)
+		web, _, _ := seedAuditSessions(t, db)
+
+		result, err := svc.ListSessions(adminAuditContext(), &types.SessionListQuery{
+			Source: types.SessionListSourceAll,
+			UserID: "alice",
+		})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, result.Total)
+		rows := result.Data.([]*types.SessionListItem)
+		require.Equal(t, web.ID, rows[0].ID)
+	})
+}
+
+// A non-admin's own listing never applies the caller-supplied user_id: the
+// non-admin branch overwrites the scope from the authenticated principal.
+func TestListSessionsNonAdminUserIDParamCannotEscapeScope(t *testing.T) {
+	svc, db := newAuditSessionService(t, &types.Tenant{ID: 1})
+	_, _, bob := seedAuditSessions(t, db)
+
+	// bob asks for alice's rows via the user_id filter on his own listing.
+	result, err := svc.ListSessions(testSessionScopeContext(1, "bob"), &types.SessionListQuery{
+		UserID: "alice",
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, result.Total)
+	rows := result.Data.([]*types.SessionListItem)
+	require.Equal(t, bob.ID, rows[0].ID,
+		"a non-admin's user_id param must not override the owner scope")
+}

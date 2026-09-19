@@ -120,6 +120,7 @@ type sessionService struct {
 	knowledgeBaseService  interfaces.KnowledgeBaseService        // Service for knowledge base operations
 	modelService          interfaces.ModelService                // Service for model operations
 	tenantService         interfaces.TenantService               // Service for tenant operations
+	tenantRepo            interfaces.TenantRepository            // Repository for tenant rows (query-history policy lookups)
 	eventManager          *chatpipeline.EventManager             // Event manager for chat pipeline
 	agentService          interfaces.AgentService                // Service for agent operations
 	knowledgeService      interfaces.KnowledgeService            // Service for knowledge operations
@@ -149,6 +150,7 @@ func NewSessionService(cfg *config.Config,
 	chunkService interfaces.ChunkService,
 	modelService interfaces.ModelService,
 	tenantService interfaces.TenantService,
+	tenantRepo interfaces.TenantRepository,
 	eventManager *chatpipeline.EventManager,
 	agentService interfaces.AgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
@@ -172,6 +174,7 @@ func NewSessionService(cfg *config.Config,
 		chunkService:          chunkService,
 		modelService:          modelService,
 		tenantService:         tenantService,
+		tenantRepo:            tenantRepo,
 		eventManager:          eventManager,
 		agentService:          agentService,
 		webSearchStateRepo:    webSearchStateRepo,
@@ -388,19 +391,42 @@ func (s *sessionService) ListSessions(
 		query = &types.SessionListQuery{}
 	}
 	query.TenantID = types.MustTenantIDFromContext(ctx)
-	// API / IM / embed source filters are tenant-wide admin views over channel
-	// traffic. Gate them behind Admin+ and drop the per-user owner scope so an
-	// Owner/admin can observe sessions that are otherwise isolated per key,
-	// visitor, or IM identity; everyone else stays scoped to their own principal.
+	sourceAll := strings.EqualFold(strings.TrimSpace(query.Source), types.SessionListSourceAll)
+	// Channel source filters ("api" / IM / embed) and the cross-source audit
+	// listing ("all") are tenant-wide admin views. Gate them behind Admin+ and
+	// drop the per-user owner scope so an Owner/admin can observe sessions that
+	// are otherwise isolated per key, visitor, or IM identity; everyone else
+	// stays scoped to their own principal.
 	if types.SessionListSourceRequiresAdmin(query.Source) {
 		if !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
 			return nil, apperrors.NewForbiddenError(
 				"listing channel sessions requires tenant admin or owner role",
 			)
 		}
-		query.UserID = ""
+		if !sourceAll {
+			query.UserID = ""
+		}
+		// The "all" audit view keeps a caller-supplied UserID: an admin
+		// drilling into one principal narrows the audit listing via the
+		// repo's user filter, an empty filter means the whole tenant.
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid
+	}
+
+	// The audit listing additionally honors the tenant's query-history
+	// privacy policy: disabled blocks the view before any row is read,
+	// anonymized masks owner ids on the returned rows.
+	auditMode := ""
+	if sourceAll {
+		var err error
+		auditMode, err = CheckQueryHistoryAccess(ctx, s.tenantRepo, query.TenantID)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"tenant_id": query.TenantID,
+				"source":    query.Source,
+			})
+			return nil, err
+		}
 	}
 
 	items, total, err := s.sessionRepo.QueryPaged(ctx, query)
@@ -414,6 +440,7 @@ func (s *sessionService) ListSessions(
 		})
 		return nil, err
 	}
+	AnonymizeSessionOwner(auditMode, items)
 
 	pagination := &types.Pagination{Page: query.Page, PageSize: query.PageSize}
 	return types.NewPageResult(total, pagination, items), nil

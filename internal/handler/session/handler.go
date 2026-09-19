@@ -4,7 +4,9 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -304,17 +306,22 @@ func (h *Handler) GetSession(c *gin.Context) {
 
 // GetSessionsByTenant godoc
 // @Summary      获取会话列表
-// @Description  获取当前空间的会话列表，支持分页、关键字搜索、按来源/Agent 筛选
+// @Description  获取当前空间的会话列表，支持分页、关键字搜索、按来源/Agent 筛选；source=all 为 Admin+ 审计视图，支持按用户/时间范围/反馈筛选
 // @Tags         会话
 // @Accept       json
 // @Produce      json
-// @Param        page       query     int     false  "页码"
-// @Param        page_size  query     int     false  "每页数量"
-// @Param        keyword    query     string  false  "标题模糊搜索"
-// @Param        source     query     string  false  "来源过滤：web / embed / api / feishu / wechat / slack / ...（api、embed、IM 渠道需 Admin+）"
-// @Param        agent_id   query     string  false  "按 Agent 过滤（仅对 IM 会话生效）"
-// @Success      200        {object}  map[string]interface{}  "会话列表"
-// @Failure      400        {object}  errors.AppError         "请求参数错误"
+// @Param        page         query     int     false  "页码"
+// @Param        page_size    query     int     false  "每页数量"
+// @Param        keyword      query     string  false  "标题模糊搜索"
+// @Param        source       query     string  false  "来源过滤：web / embed / api / feishu / wechat / all（api、embed、IM 渠道、all 需 Admin+）"
+// @Param        agent_id     query     string  false  "按 Agent 过滤（仅对 IM 会话生效）"
+// @Param        user_id      query     string  false  "按用户过滤（仅 Admin+ 的 source=all 审计视图生效）"
+// @Param        start_time   query     string  false  "创建时间下界（含），RFC3339 或 2006-01-02"
+// @Param        end_time     query     string  false  "创建时间上界（不含），RFC3339 或 2006-01-02"
+// @Param        feedback     query     string  false  "反馈过滤：like / dislike（空为不过滤）"
+// @Success      200          {object}  map[string]interface{}  "会话列表"
+// @Failure      400          {object}  errors.AppError         "请求参数错误"
+// @Failure      403          {object}  errors.AppError         "无权限（非 Admin+ 使用受限 source，或租户停用查询历史）"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /sessions [get]
@@ -329,17 +336,50 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 		return
 	}
 
+	// Audit-listing filters. Times follow the parseFilterTime layouts used by
+	// the knowledge list filters; the feedback rating only accepts like /
+	// dislike (empty = no filter). user_id is honored only on the Admin+
+	// source=all audit view — the service overwrites it with the caller's own
+	// principal on every non-admin path.
+	startTime, err := parseSessionFilterTime(c.Query("start_time"))
+	if err != nil {
+		c.Error(errors.NewBadRequestError("invalid start_time: " + err.Error()))
+		return
+	}
+	endTime, err := parseSessionFilterTime(c.Query("end_time"))
+	if err != nil {
+		c.Error(errors.NewBadRequestError("invalid end_time: " + err.Error()))
+		return
+	}
+	feedback := strings.TrimSpace(c.Query("feedback"))
+	switch feedback {
+	case "", types.FeedbackRatingLike, types.FeedbackRatingDislike:
+	default:
+		c.Error(errors.NewBadRequestError("invalid feedback: must be like or dislike"))
+		return
+	}
+
 	// Response items always include pin state and (when available) IM origin
 	// fields so the frontend can render pin icons / source badges without a
 	// second roundtrip. Unset filter params behave like "no filter".
 	result, err := h.sessionService.ListSessions(ctx, &types.SessionListQuery{
-		Keyword:  c.Query("keyword"),
-		Source:   c.Query("source"),
-		AgentID:  c.Query("agent_id"),
-		Page:     pagination.Page,
-		PageSize: pagination.PageSize,
+		Keyword:        c.Query("keyword"),
+		Source:         c.Query("source"),
+		AgentID:        c.Query("agent_id"),
+		UserID:         c.Query("user_id"),
+		StartTime:      startTime,
+		EndTime:        endTime,
+		FeedbackRating: feedback,
+		Page:           pagination.Page,
+		PageSize:       pagination.PageSize,
 	})
 	if err != nil {
+		// Policy denials (Admin+ gate, query history disabled) carry their own
+		// status; everything else is an internal error.
+		if appErr, ok := errors.IsAppError(err); ok {
+			c.Error(appErr)
+			return
+		}
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return
@@ -352,6 +392,29 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 		"page":      result.Page,
 		"page_size": result.PageSize,
 	})
+}
+
+// parseSessionFilterTime parses an optional session-list timestamp filter.
+// It accepts the same layouts as the knowledge list filters (parseFilterTime
+// in the parent handler package; duplicated here because that package imports
+// this one): RFC3339 (with or without fractional seconds), "2006-01-02
+// 15:04:05", and the date-only "2006-01-02" form interpreted at start of day
+// in the local timezone. An empty value leaves the range bound open.
+func parseSessionFilterTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	layouts := []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"}
+	var lastErr error
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return t, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return time.Time{}, lastErr
 }
 
 // UpdateSession godoc
