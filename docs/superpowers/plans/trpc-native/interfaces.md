@@ -1,8 +1,8 @@
 # 原生 Agent 业务接口 v1（P0-4）
 
-2026-09-19；源码基线 `ba6dfcc69f167ef6250aa983484930b462ce0900`。这是后续 P1–P7 的契约草案交付，不是已实现 API。固定 SDK 为 `trpc.group/trpc-go/trpc-agent-go v1.10.0`；`sdk:` 路径相对于此模块根，`repo:` 相对于仓库根。[能力矩阵](sdk-capabilities.tsv) 的 `source-only` 表示只读了源码，`verified` 仅适用于行内命名的具体探针。本文所有新类型均是待实现的 `nativecontract` v1，不能冒充当前包导出类型。
+2026-09-19；源码基线 `ba6dfcc69f167ef6250aa983484930b462ce0900`。这是后续 P1–P7 的契约草案交付，不是已实现 API。P0-4 的 `sdk:` 源码核对固定在历史 `trpc.group/trpc-go/trpc-agent-go v1.10.0`；根模块当前固定 `v1.11.0`，但它只有 Task 1 的候选 race slice 证据，尚非获批产品组合。`sdk:` 路径相对于被核对模块根，`repo:` 相对于仓库根。[能力矩阵](sdk-capabilities.tsv) 的 `source-only` 表示只读了源码，`verified` 仅适用于行内命名的具体探针。本文所有新类型均是待实现的 `nativecontract` v1，不能冒充当前包导出类型。
 
-**执行门仍关闭。** Task 2 已记录 Runner + in-memory Session 的 SDK race。产品任务必须先批准确切 SDK/Session/Memory 配置，且连续二十次通过 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v`（零退出、无 race report）；一次通过不解锁。当前 v1.10.0 的历史单次探针已失败，仍是 **NO-GO**，本门禁加固不构成修复。即使后续通过该项，Session append 错误传播、逐工具恢复边界、数据库组合和真实 Provider 仍要分别验收。文档交付可完成，不能据此解锁实现接线或发布。
+**执行门仍关闭。** 历史 `v1.10.0` 在 Runner + in-memory Session 的 repeated race gate 上是 RED；Task 1 的当前 `v1.11.0` 候选在同一 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v` 命令是 GREEN（零退出、无 race report）。这只排除了该候选的已复现 SDK race，不能解除整体 **NO-GO**。`internal/application/service` 的预算耗尽通知 consumer 在当前候选和精确 `75523c9c9` 历史基线都失败，故它是既有失败而非候选回归；直接 consumers 因此尚未完整验收。Session/Memory 持久化组合、Session append 错误传播、逐工具恢复边界、SQLite/PostgreSQL 持久化、真实 Provider 与客户端仍须分别验收。文档交付可完成，不能据此解锁实现接线或发布。
 
 ## 阶段责任映射
 
@@ -23,7 +23,7 @@
 | 工具/Skills | SDK `tool.Tool/CallableTool/StreamableTool`、`skill.Repository`、`codeexecutor.Engine/InteractiveProgramRunner` | 协议原生；授权安装、租户、工作区、审批和耐久外部调用为业务边界 |
 | 旧数据 | `types.Session`、现有消息/附件/审批/审计记录；已确认规格 §8 | 独立归档读取，保留历史；不能恢复旧 run 或自动注入新 Session/Memory |
 
-SDK Session service 的数据库实现尚未固定。本任务没有把本机另装的 v1.11.0 SQLite/PostgreSQL 子模块混入 v1.10.0 结论。P1 必须固定每个子模块的版本/校验和、其 root SDK 依赖与 Session 实例并发语义；也可在既有业务数据库上实现固定 `session.Service` 的最小存储适配器，但需同样通过 race、分页、幂等、故障测试。选型未完成前此处为**明确阻塞**，不能只靠 root `go.mod` 声称 SQL 存储已可用。Memory 持久化实现有相同选型与版本门槛。
+SDK Session service 的数据库实现尚未固定。P0-4 的 v1.10.0 源码核对不覆盖当前 v1.11.0 候选的持久化子模块；Task 1 的 in-memory candidate probe 也不选择 SQLite/PostgreSQL Session 或 Memory backend。P1 必须固定每个子模块的版本/校验和、其 root SDK 依赖与 Session 实例并发语义；也可在既有业务数据库上实现固定 `session.Service` 的最小存储适配器，但需同样通过 race、分页、幂等、故障测试。选型未完成前此处为**明确阻塞**，不能只靠 root `go.mod` 声称 SQL 存储已可用。Memory 持久化实现有相同选型与版本门槛。
 
 ## 2. 认证范围与键映射（P1 权威；P2 治理、P3 执行消费）
 

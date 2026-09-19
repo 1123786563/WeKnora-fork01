@@ -92,6 +92,45 @@ if ! expect_failure "progress.md with a non-terminal P0-3 implementation status"
   failures=$((failures + 1))
 fi
 
+pending_status_fixture="${FIXTURE}/pending-status"
+copy_fixture "${pending_status_fixture}"
+awk '
+  /^\| P0-3 / { sub(/complete（基线记录；无生产代码改动）/, "complete(pending)") }
+  { print }
+' "${pending_status_fixture}/docs/superpowers/plans/trpc-native/progress.md" \
+  > "${pending_status_fixture}/progress.md"
+mv "${pending_status_fixture}/progress.md" \
+  "${pending_status_fixture}/docs/superpowers/plans/trpc-native/progress.md"
+if ! expect_failure "progress.md with a pending parenthesized P0-3 implementation status" "${pending_status_fixture}"; then
+  failures=$((failures + 1))
+fi
+
+partial_status_fixture="${FIXTURE}/partial-status"
+copy_fixture "${partial_status_fixture}"
+awk '
+  /^\| P0-3 / { sub(/complete（基线记录；无生产代码改动）/, "complete（partial）") }
+  { print }
+' "${partial_status_fixture}/docs/superpowers/plans/trpc-native/progress.md" \
+  > "${partial_status_fixture}/progress.md"
+mv "${partial_status_fixture}/progress.md" \
+  "${partial_status_fixture}/docs/superpowers/plans/trpc-native/progress.md"
+if ! expect_failure "progress.md with a partial Chinese-parenthesized P0-3 implementation status" "${partial_status_fixture}"; then
+  failures=$((failures + 1))
+fi
+
+unverified_status_fixture="${FIXTURE}/unverified-status"
+copy_fixture "${unverified_status_fixture}"
+awk '
+  /^\| P0-3 / { sub(/complete（基线记录；无生产代码改动）/, "complete(unverified)") }
+  { print }
+' "${unverified_status_fixture}/docs/superpowers/plans/trpc-native/progress.md" \
+  > "${unverified_status_fixture}/progress.md"
+mv "${unverified_status_fixture}/progress.md" \
+  "${unverified_status_fixture}/docs/superpowers/plans/trpc-native/progress.md"
+if ! expect_failure "progress.md with an unverified parenthesized P0-3 implementation status" "${unverified_status_fixture}"; then
+  failures=$((failures + 1))
+fi
+
 if ((failures > 0)); then
   exit 1
 fi

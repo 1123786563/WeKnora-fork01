@@ -53,7 +53,13 @@ validate_ledger_row() {
     }
     function is_complete(value) {
       value = trim(value)
-      return value == "complete" || value ~ /^complete\([^)]*\)$/ || value ~ /^complete（[^）]*）$/
+      if (value == "complete") {
+        return 1
+      }
+      if (value !~ /^complete\([^)]*\)$/ && value !~ /^complete（[^）]*）$/) {
+        return 0
+      }
+      return tolower(value) !~ /pending|partial|unverified|待定|部分|未验证|未完成/
     }
     function has_expected_anchors(value, expected_count, expected, actual_count, actual, remainder) {
       expected_count = split(anchors, expected, " ")
