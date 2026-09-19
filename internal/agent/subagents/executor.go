@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -76,6 +77,10 @@ type ExecuteRequest struct {
 	// Tools is the caller-intersected tool set. Empty is first-class: the
 	// sub-run is a single LLM call (most roles declare no tools).
 	Tools []types.Tool
+	// UserID is the authenticated user of the main run (optional; the
+	// delegate tool wires it). It rides the per-call ToolExecContext so
+	// HITL gates (e.g. MCP approval, issue #1173) can authorize the caller.
+	UserID string
 	// Emit receives the sub-run's tool call/result events on the MAIN
 	// session. Nil skips event emission (test convenience).
 	Emit func(ctx context.Context, e event.Event)
@@ -134,6 +139,7 @@ func Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 			decl:       decl,
 			attributed: subagentRunLabelPrefix + slug + ":" + decl.Name,
 			sessionID:  req.SessionID,
+			userID:     req.UserID,
 			emit:       req.Emit,
 			round:      budget.round,
 		}
@@ -159,14 +165,23 @@ func Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	if err != nil {
 		return ExecuteResult{}, fmt.Errorf("subagent run %q: %w", req.RunLabel, err)
 	}
+	// Drain the whole channel even after a failure (probe behavior): the
+	// runner closes it only once the run has fully unwound.
+	var runErr error
 	for evt := range events {
+		if runErr != nil {
+			continue
+		}
 		if evt == nil || evt.Response == nil {
 			continue
 		}
 		if evt.Error != nil {
-			return ExecuteResult{}, fmt.Errorf("subagent run %q: %s: %s",
+			runErr = fmt.Errorf("subagent run %q: %s: %s",
 				req.RunLabel, evt.Error.Type, evt.Error.Message)
 		}
+	}
+	if runErr != nil {
+		return ExecuteResult{}, runErr
 	}
 	if err := ctx.Err(); err != nil {
 		return ExecuteResult{}, fmt.Errorf("subagent run %q: %w", req.RunLabel, err)
@@ -431,12 +446,18 @@ func subagentToolDeclaration(t types.Tool) (*sdktool.Declaration, error) {
 // subagentTool adapts one repo tool to the SDK CallableTool surface and
 // attributes its execution on the main transcript: every call and result is
 // also emitted on the MAIN session id with the "subagent:<slug>:" tool-name
-// prefix. A tool failure is data for the model, never a graph error.
+// prefix, with the same sanitization the main engine applies (file bodies
+// stripped from sandbox write/edit call args; bulky Data keys stripped from
+// results). The tool executes under a ToolExecContext carrying the MAIN
+// session id, the attributed call id, and the caller's user id, so HITL
+// gates and session-attributed tools behave as in the main run. A tool
+// failure is data for the model, never a graph error.
 type subagentTool struct {
 	inner      types.Tool
 	decl       *sdktool.Declaration
 	attributed string // "subagent:<slug>:<tool>"
 	sessionID  string
+	userID     string
 	emit       func(context.Context, event.Event)
 	round      func() int
 }
@@ -448,6 +469,13 @@ func (t *subagentTool) Call(ctx context.Context, args []byte) (any, error) {
 	if callID == "" {
 		callID = uuid.NewString()
 	}
+	ctx = tools.WithToolExecContext(ctx, &tools.ToolExecContext{
+		SessionID:  t.sessionID,
+		ToolCallID: callID,
+		UserID:     t.userID,
+		// EventBus stays nil here; the delegate tool (M3 T5) wires the main
+		// run's bus so approval gates can resolve synchronously.
+	})
 	var arguments map[string]any
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &arguments) // best effort: the event payload is informational
@@ -459,7 +487,7 @@ func (t *subagentTool) Call(ctx context.Context, args []byte) (any, error) {
 		Data: event.AgentToolCallData{
 			ToolCallID: callID,
 			ToolName:   t.attributed,
-			Arguments:  arguments,
+			Arguments:  tools.SanitizeSandboxFileCallArgs(t.inner.Name(), arguments),
 			Iteration:  t.round(),
 		},
 	})
@@ -480,7 +508,7 @@ func (t *subagentTool) Call(ctx context.Context, args []byte) (any, error) {
 			Success:    success,
 			Duration:   time.Since(start).Milliseconds(),
 			Iteration:  t.round(),
-			Data:       subagentToolEventData(result),
+			Data:       tools.SanitizeToolDataForPersist(t.inner.Name(), subagentToolEventData(result)),
 		},
 	})
 	return output, nil

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
+	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -70,12 +72,13 @@ func toolCallResponse(callID, name, args string) *types.ChatResponse {
 
 // fakeTool is a types.Tool that records its invocations.
 type fakeTool struct {
-	mu     sync.Mutex
-	name   string
-	calls  int
-	args   []json.RawMessage
-	result *types.ToolResult
-	err    error
+	mu        sync.Mutex
+	name      string
+	calls     int
+	args      []json.RawMessage
+	result    *types.ToolResult
+	err       error
+	onExecute func(ctx context.Context)
 }
 
 func newFakeTool(name string, result *types.ToolResult) *fakeTool {
@@ -88,11 +91,14 @@ func (t *fakeTool) Parameters() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`)
 }
 
-func (t *fakeTool) Execute(_ context.Context, args json.RawMessage) (*types.ToolResult, error) {
+func (t *fakeTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.calls++
 	t.args = append(t.args, args)
+	t.mu.Unlock()
+	if t.onExecute != nil {
+		t.onExecute(ctx)
+	}
 	return t.result, t.err
 }
 
@@ -140,6 +146,7 @@ func testRequest(model chat.Chat, tools []types.Tool,
 		InputRefs:    []string{"ref-doc-1", "ref-doc-2"},
 		Model:        model,
 		Tools:        tools,
+		UserID:       "user-42",
 		Emit:         emit,
 	}
 }
@@ -312,4 +319,85 @@ func TestExecuteRequestValidation(t *testing.T) {
 	noGoal.Goal = "   "
 	_, err = Execute(ctx, noGoal)
 	require.Error(t, err)
+}
+
+func TestExecuteAttachesToolExecContext(t *testing.T) {
+	var got *agenttools.ToolExecContext
+	var attached bool
+	probe := newFakeTool("web_search", &types.ToolResult{Success: true, Output: "ok"})
+	probe.onExecute = func(ctx context.Context) {
+		got, attached = agenttools.ToolExecFromContext(ctx)
+	}
+	model := &scriptChat{next: func(call int) (*types.ChatResponse, error) {
+		if call == 1 {
+			return toolCallResponse("call-9", "web_search", `{}`), nil
+		}
+		return textResponse("done"), nil
+	}}
+	res, err := Execute(context.Background(),
+		testRequest(model, []types.Tool{probe}, nil))
+	require.NoError(t, err)
+	require.Equal(t, "done", res.Summary)
+	require.True(t, attached, "tool Execute must see a ToolExecContext")
+	require.NotNil(t, got)
+	require.Equal(t, "sess-1", got.SessionID, "main session id for attribution")
+	require.Equal(t, "call-9", got.ToolCallID)
+	require.Equal(t, "user-42", got.UserID)
+	require.Nil(t, got.EventBus, "T5 wires the main run event bus")
+}
+
+func TestExecuteSanitizesEmittedEvents(t *testing.T) {
+	// A body far beyond the engine's 10-line preview cap, with per-line
+	// markers so the test can see exactly what survives sanitization.
+	var lines []string
+	for i := 1; i <= 50; i++ {
+		lines = append(lines, fmt.Sprintf("SECRET-BODY-LINE-%02d", i))
+	}
+	body := strings.Join(lines, "\n")
+	writer := newFakeTool("write_sandbox_file", &types.ToolResult{
+		Success: true,
+		Output:  "wrote file",
+		Data: map[string]interface{}{
+			"content":        body,
+			"content_base64": "Qk9EWQ==",
+			"path":           "/srv/app.go",
+		},
+	})
+	model := &scriptChat{next: func(call int) (*types.ChatResponse, error) {
+		if call == 1 {
+			return toolCallResponse("call-1", "write_sandbox_file",
+				fmt.Sprintf(`{"path":"/srv/app.go","content":%q}`, body)), nil
+		}
+		return textResponse("done"), nil
+	}}
+	log := &eventLog{}
+	res, err := Execute(context.Background(),
+		testRequest(model, []types.Tool{writer}, log.emit))
+	require.NoError(t, err)
+	require.Equal(t, "done", res.Summary)
+
+	callEvents := log.byType(event.EventAgentToolCall)
+	require.Len(t, callEvents, 1)
+	callData, ok := callEvents[0].Data.(event.AgentToolCallData)
+	require.True(t, ok)
+	require.Equal(t, "subagent:product-manager:write_sandbox_file", callData.ToolName)
+	require.NotContains(t, callData.Arguments, "content",
+		"the raw file-body argument must be replaced by the stats preview")
+	require.NotContains(t, fmt.Sprint(callData.Arguments), body,
+		"file bodies must not reach the main session stream")
+	require.NotContains(t, fmt.Sprint(callData.Arguments), "SECRET-BODY-LINE-42",
+		"lines beyond the preview cap must be dropped")
+	require.Equal(t, "/srv/app.go", callData.Arguments["path"],
+		"sandbox write args keep the decision surface (path/stats)")
+	require.NotNil(t, callData.Arguments["bytes"])
+
+	resultEvents := log.byType(event.EventAgentToolResult)
+	require.Len(t, resultEvents, 1)
+	resultData, ok := resultEvents[0].Data.(event.AgentToolResultData)
+	require.True(t, ok)
+	require.Equal(t, "subagent:product-manager:write_sandbox_file", resultData.ToolName)
+	require.NotContains(t, resultData.Data, "content")
+	require.NotContains(t, resultData.Data, "content_base64")
+	require.NotContains(t, fmt.Sprint(resultData.Data), "SECRET-BODY-LINE-42")
+	require.Equal(t, "/srv/app.go", resultData.Data["path"])
 }
