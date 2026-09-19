@@ -327,6 +327,11 @@ export function WikiPage({
   const [folderPath, setFolderPath] = useState("");
   const [folderTrail, setFolderTrail] = useState<Array<{ id: string; name: string; path: string }>>([]);
   const [folders, setFolders] = useState<WikiFolderNode[]>([]);
+  // Vue expandable directory tree (WikiBrowser.vue toggleDirectory): folders
+  // expand in place; children (sub-folders + pages) load lazily per path.
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [dirChildren, setDirChildren] = useState<Record<string, { folders: WikiFolderNode[]; pages: WikiPageModel[] }>>({});
+  const [dirLoading, setDirLoading] = useState<Record<string, boolean>>({});
   const [indexView, setIndexView] = useState<WikiIndexResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
@@ -461,16 +466,11 @@ export function WikiPage({
         // The backend pages list ignores page_types — Vue buckets client-side.
       });
       if (run !== loadEpoch.current) return; // stale response: drop
-      // Vue groupedPages: the active bucket filters the visible list
-      // client-side (知识 = entity/concept/synthesis/comparison).
-      const bucketTypes = activeBucket === "knowledge"
-        ? ["entity", "concept", "synthesis", "comparison"]
-        : activeBucket === "summary" ? ["summary"] : null;
-      const kept = bucketTypes
-        ? response.pages.filter((page) => bucketTypes.includes(String((page as Record<string, unknown>).page_type ?? "")))
-        : response.pages;
-      setPages(kept);
-      setPageTotal(bucketTypes ? kept.length : (response.total ?? response.pages.length));
+      // The full (unfiltered) list feeds every sidebar bucket count; the
+      // active bucket narrows the visible rows at render time — Vue keeps
+      // per-type buckets independent of the active tab.
+      setPages(response.pages);
+      setPageTotal(response.total ?? response.pages.length);
       const requested = initialSlug?.trim();
       const requestedPage = requested
         ? response.pages.find((page) => page.slug === requested)
@@ -539,6 +539,38 @@ export function WikiPage({
     const result = await client.wiki.folders(knowledgeBaseId, folderId, pageTypes);
     setFolders(result.folders);
   }
+
+  // Vue toggleDirectory (WikiBrowser.vue:1706): expanding a directory lazily
+  // loads its child folders and its pages; collapsing just hides the rows.
+  async function ensureDirChildren(folder: WikiFolderNode) {
+    const key = folder.path;
+    if (dirChildren[key] || dirLoading[key]) return;
+    setDirLoading((current) => ({ ...current, [key]: true }));
+    const pageTypes = activeBucket === "knowledge"
+      ? ["entity", "concept", "synthesis", "comparison"]
+      : activeBucket === "summary" ? ["summary"] : [];
+    try {
+      const [childFolders, childPages] = await Promise.all([
+        client.wiki.folders(knowledgeBaseId, folder.id, pageTypes).catch(() => ({ folders: [] })),
+        client.wiki.list(knowledgeBaseId, { page: 1, page_size: WIKI_PAGE_SIZE, category_path: folder.path }).catch(() => ({ pages: [] as WikiPageModel[] })),
+      ]);
+      setDirChildren((current) => ({ ...current, [key]: { folders: childFolders.folders, pages: childPages.pages } }));
+    } finally {
+      setDirLoading((current) => ({ ...current, [key]: false }));
+    }
+  }
+
+  function toggleDirectory(folder: WikiFolderNode) {
+    const key = folder.path;
+    const willExpand = !expandedDirs.has(key);
+    setExpandedDirs((current) => {
+      const next = new Set(current);
+      if (willExpand) next.add(key); else next.delete(key);
+      return next;
+    });
+    if (willExpand) void ensureDirChildren(folder);
+  }
+
 
   async function openIndex() {
     if (typeof client.wiki.index !== "function") return;
@@ -918,15 +950,54 @@ export function WikiPage({
     [revision, selected],
   );
   const KNOWLEDGE_TYPES = ["entity", "concept", "synthesis", "comparison"];
+  // Vue's sidebar tab count reflects the pages visible at the current tree
+  // level (WikiBrowser visibleTabs total comes from the per-level directory
+  // state), so in tree mode only root-level pages count toward the tab.
+  const isRootPage = (page: WikiPageModel) => {
+    const cp = (page as Record<string, unknown>).category_path as string[] | undefined;
+    return !cp || cp.length === 0;
+  };
+  const pageInBucket = (page: WikiPageModel, bucket: string) => {
+    const types = bucket === "knowledge" ? KNOWLEDGE_TYPES : bucket === "summary" ? ["summary"] : null;
+    return !types || types.includes(String((page as Record<string, unknown>).page_type ?? ""));
+  };
+  const rootPages = listPages.filter(isRootPage);
+  const bucketRootPages = rootPages.filter((page) => pageInBucket(page, activeBucket));
+  const rootCountFor = (types: readonly string[]) => rootPages.filter((page) => types.includes(String((page as Record<string, unknown>).page_type ?? ""))).length;
   const bucketTabs = (["knowledge", "summary"] as const)
-    .map((type) => ({
-      type,
-      label: type === "knowledge" ? t("wikiBrowser.filterKnowledge") : t("wikiBrowser.filterSummary"),
-      total: type === "knowledge"
+    .map((type) => {
+      const types = type === "knowledge" ? KNOWLEDGE_TYPES : [type];
+      const statTotal = type === "knowledge"
         ? KNOWLEDGE_TYPES.reduce((sum, key) => sum + (pagesByType[key] ?? 0), 0)
-        : (pagesByType[type] ?? 0),
-    }))
+        : (pagesByType[type] ?? 0);
+      return {
+        type,
+        label: type === "knowledge" ? t("wikiBrowser.filterKnowledge") : t("wikiBrowser.filterSummary"),
+        total: viewMode === "tree" ? rootCountFor(types) : statTotal,
+      };
+    })
     .filter((tab) => tab.total > 0);
+  // Vue activeTreeRows: an interleaved directory/page row list for the tree
+  // view — expanded folders show their child folders and pages inline.
+  const treeRows: Array<{ kind: "dir"; folder: WikiFolderNode; depth: number } | { kind: "page"; page: WikiPageModel; depth: number }> = [];
+  if (viewMode === "tree") {
+    const walk = (fs: WikiFolderNode[], depth: number) => {
+      for (const folder of fs) {
+        treeRows.push({ kind: "dir", folder, depth });
+        if (expandedDirs.has(folder.path)) {
+          const children = dirChildren[folder.path];
+          if (children) {
+            walk(children.folders, depth + 1);
+            for (const page of children.pages.filter((entry) => String((entry as Record<string, unknown>).page_type ?? "") !== "index")) {
+              treeRows.push({ kind: "page", page, depth: depth + 1 });
+            }
+          }
+        }
+      }
+    };
+    walk(folders, 0);
+    for (const page of bucketRootPages) treeRows.push({ kind: "page", page, depth: 0 });
+  }
   const viewToggle = (
     <div className="wiki-view-toggle inline-flex items-center overflow-hidden rounded-[6px] border border-[#e4e7ec]" role="group" aria-label={t("wikiBrowser.viewModeToggle")}>
       <button type="button" className={`h-[26px] cursor-pointer border-0 bg-transparent px-[7px] [font:inherit] ${viewMode === "tree" ? "bg-[#eef4ef] text-[#07c05f]" : "bg-transparent text-[#66758b]"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><WikiGlyph kind="tree" /></button>
@@ -970,26 +1041,42 @@ export function WikiPage({
         <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[#66758b] hover:text-[#07c05f] [font:inherit]" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</button>
         {folderTrail.map((crumb) => <span key={crumb.path} className="text-[#344054]">/ {crumb.name}</span>)}
       </div> : null}
-      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id}
-        className="group/wiki-folder flex items-center justify-between gap-2 rounded-[6px] border-0 py-[0.3rem] pl-1 pr-1 hover:bg-[#f0f3f8]"
-        onDragOver={(event) => { if (canContribute) event.preventDefault(); }}
-        onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), folder); } }}>
-        {renamingFolderId === folder.id ? (
-          <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus value={renamingName}
-            onChange={(event) => setRenamingName(event.target.value)}
-            onBlur={() => { void renameFolder(folder, renamingName); setRenamingFolderId(""); }}
-            onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
-        ) : (
-          <>
-            <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-left text-[13px] text-[#344054] [font:inherit]" onClick={() => openFolder(folder)}>
-              <span className="wiki-folder-chevron text-[#98a2b8]" aria-hidden><WikiGlyph kind="chevron" size={10} /></span>
-              <span className="truncate">{folder.name}</span>
-              <span className="ml-auto shrink-0 text-[11px] text-[rgba(0,0,0,0.4)]">{folder.page_count}</span>
-            </button>
-            {canContribute ? <span className="hidden shrink-0 items-center gap-[2px] group-hover/wiki-folder:flex"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(folder)}>🗑</Button></span> : null}
-          </>
-        )}
-      </li>)}</ul> : null}
+      {viewMode === "tree" ? treeRows.map((row) => row.kind === "dir" ? (
+        <div key={row.folder.id}
+          className="group/wiki-folder flex items-center justify-between gap-2 rounded-[6px] border-0 py-[0.3rem] pl-1 pr-1 hover:bg-[#f0f3f8]"
+          style={{ paddingLeft: `${0.25 + row.depth * 0.9}rem` }}
+          onDragOver={(event) => { if (canContribute) event.preventDefault(); }}
+          onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), row.folder); } }}>
+          {renamingFolderId === row.folder.id ? (
+            <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus value={renamingName}
+              onChange={(event) => setRenamingName(event.target.value)}
+              onBlur={() => { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); }}
+              onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(row.folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
+          ) : (
+            <>
+              <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-left text-[13px] text-[#344054] [font:inherit]" onClick={() => toggleDirectory(row.folder)}>
+                <span className={`wiki-folder-chevron text-[#98a2b8] transition-transform ${expandedDirs.has(row.folder.path) ? "rotate-90" : ""}`} aria-hidden><WikiGlyph kind="chevron" size={10} /></span>
+                <span className="truncate">{row.folder.name}</span>
+                <span className="ml-auto shrink-0 pl-1 text-[11px] text-[rgba(0,0,0,0.4)]">{row.folder.page_count}</span>
+              </button>
+              {canContribute ? <span className="hidden shrink-0 items-center gap-[2px] group-hover/wiki-folder:flex"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(row.folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(row.folder)}>🗑</Button></span> : null}
+            </>
+          )}
+        </div>
+      ) : (
+        <button
+          className={`wk-wiki-page-item group/wiki-item flex w-full cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-2 py-[0.45rem] text-left text-[13px] text-[#344054] [font:inherit] transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === row.page.id ? "bg-[#eef4ef]" : ""}`}
+          key={row.page.id}
+          type="button"
+          style={{ paddingLeft: `${0.5 + row.depth * 0.9}rem` }}
+          draggable={canContribute}
+          onDragStart={(event) => { event.dataTransfer.setData("text/wiki-slug", row.page.slug); event.dataTransfer.effectAllowed = "move"; }}
+          onClick={() => choose(row.page)}
+        >
+          <span className={`wiki-type-dot shrink-0 rounded-full ${WIKI_TYPE_DOT[(row.page as Record<string, unknown>).page_type as string] ?? "bg-[#8c8c8c]"}`} aria-hidden />
+          <span className="wk-wiki-page-item-title truncate text-sm leading-5 text-[#202020]">{row.page.title}</span>
+        </button>
+      )) : null}
     </>
   );
 
@@ -1044,7 +1131,7 @@ export function WikiPage({
           <div className="wiki-sidebar-divider my-1 border-t border-[#eef0f4]" aria-hidden />
           <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-0.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
             {directory}
-              {listPages.map((page) => (
+              {viewMode === "list" ? listPages.filter((page) => pageInBucket(page, activeBucket)).map((page) => (
                 <button
                   className={`wk-wiki-page-item group/wiki-item flex w-full cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-2 py-[0.45rem] text-left text-[13px] text-[#344054] [font:inherit] transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
@@ -1056,7 +1143,7 @@ export function WikiPage({
                   <span className={`wiki-type-dot shrink-0 rounded-full ${WIKI_TYPE_DOT[(page as Record<string, unknown>).page_type as string] ?? "bg-[#8c8c8c]"}`} aria-hidden />
                   <span className="wk-wiki-page-item-title truncate text-sm leading-5 text-[#202020]">{page.title}</span>
                 </button>
-              ))}
+              )) : null}
               {state.status === "loading" ? (
                 <Status>{t("wikiBrowser.loading")}</Status>
               ) : null}
