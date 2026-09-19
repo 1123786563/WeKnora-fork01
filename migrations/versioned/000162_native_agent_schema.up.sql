@@ -218,14 +218,17 @@ CREATE INDEX IF NOT EXISTS idx_native_session_state_scope_revision ON native_ses
 
 -- User state is deliberately independent of native_agent_sessions: callers
 -- must not create a synthetic session to persist a user's scoped state.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_users_tenant_owner ON users (tenant_id, id);
 CREATE TABLE IF NOT EXISTS native_user_state (
-    tenant_id BIGINT NOT NULL REFERENCES native_agent_tenants(tenant_id) ON DELETE RESTRICT,
-    owner_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    tenant_id BIGINT NOT NULL,
+    owner_id VARCHAR(36) NOT NULL,
     state_key VARCHAR(255) NOT NULL,
     revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0),
     state_value JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tenant_id, owner_id, state_key)
+    PRIMARY KEY (tenant_id, owner_id, state_key),
+    FOREIGN KEY (tenant_id) REFERENCES native_agent_tenants(tenant_id) ON DELETE RESTRICT,
+    FOREIGN KEY (tenant_id, owner_id) REFERENCES users(tenant_id, id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_native_user_state_scope_revision ON native_user_state (tenant_id, owner_id, revision);
 

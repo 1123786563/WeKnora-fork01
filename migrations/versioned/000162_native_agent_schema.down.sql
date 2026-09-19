@@ -32,6 +32,7 @@ DROP TABLE native_agent_session_events;
 DROP TABLE native_agent_tool_plans;
 DROP TABLE native_memory_jobs;
 DROP TABLE native_user_state;
+DROP INDEX IF EXISTS uq_native_agent_users_tenant_owner;
 DROP TABLE native_session_state;
 DROP TABLE native_agent_checkpoints;
 DROP TABLE native_agent_commit_intents;

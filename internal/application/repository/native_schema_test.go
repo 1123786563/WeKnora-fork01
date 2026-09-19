@@ -170,6 +170,10 @@ func TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession(t *testing.T)
 				"a user-state record must belong to an admitted tenant")
 			require.Error(t, db.Exec(`INSERT INTO native_user_state
 				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 1, "u2", "cross-tenant-owner", `{}`, 0).Error,
+				"a user-state owner must belong to the same tenant")
+			require.Error(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
 				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "negative-revision", `{}`, -1).Error,
 				"a user-state revision cannot be negative")
 		})
