@@ -16,19 +16,25 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-type sessionScopeResolver struct{ scope nativecontract.Scope }
+type sessionScopeResolver struct {
+	scope   nativecontract.Scope
+	revoked bool
+}
 
-func (r sessionScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
+func (r *sessionScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
 	return r.scope, nil
 }
-func (r sessionScopeResolver) Recheck(_ context.Context, got nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
+func (r *sessionScopeResolver) Recheck(_ context.Context, got nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
+	if r.revoked {
+		return nativecontract.Scope{}, fmt.Errorf("scope revoked")
+	}
 	if got.TenantID != r.scope.TenantID || got.SessionOwnerID != r.scope.SessionOwnerID {
 		return nativecontract.Scope{}, fmt.Errorf("scope denied")
 	}
 	return r.scope, nil
 }
 
-func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, session.Key) {
+func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, session.Key, *sessionScopeResolver) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+filepath.Join(t.TempDir(), "session.db")+"?_foreign_keys=on"), &gorm.Config{})
 	require.NoError(t, err)
@@ -47,11 +53,12 @@ func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, ses
 	scope := nativecontract.Scope{TenantID: 1, SessionOwnerID: "u1"}
 	key, err := nativecontract.SessionKey(scope, "s1")
 	require.NoError(t, err)
-	return NewSessionService(repository.NewNativeSessionStore(db), sessionScopeResolver{scope: scope}), WithScope(context.Background(), scope), key
+	resolver := &sessionScopeResolver{scope: scope}
+	return NewSessionService(repository.NewNativeSessionStore(db), resolver), WithScope(context.Background(), scope), key, resolver
 }
 
 func TestNativeSessionFacadeCRUDOptionsSummaryUserStateAndDelete(t *testing.T) {
-	svc, ctx, key := newNativeSessionFacade(t)
+	svc, ctx, key, _ := newNativeSessionFacade(t)
 	sess, err := svc.CreateSession(ctx, key, session.StateMap{"draft": []byte("one")})
 	require.NoError(t, err)
 	require.NoError(t, svc.AppendEvent(ctx, sess, &event.Event{ID: "first", Author: "agent", Timestamp: time.Unix(10, 0)}))
@@ -95,4 +102,31 @@ func TestNativeSessionFacadeCRUDOptionsSummaryUserStateAndDelete(t *testing.T) {
 	require.NoError(t, svc.DeleteSession(ctx, key))
 	_, err = svc.GetSession(ctx, key)
 	require.Error(t, err)
+}
+
+func TestNativeSessionFacadeRejectsRevokedScope(t *testing.T) {
+	svc, ctx, key, resolver := newNativeSessionFacade(t)
+	sess, err := svc.CreateSession(ctx, key, nil)
+	require.NoError(t, err)
+	_, err = svc.GetSession(ctx, key)
+	require.NoError(t, err)
+	sess.Summaries = map[string]*session.Summary{"default": {Summary: "brief"}}
+	require.NoError(t, svc.CreateSessionSummary(ctx, sess, "default", false))
+
+	deletedKey, err := nativecontract.SessionKey(resolver.scope, "deleted")
+	require.NoError(t, err)
+	_, err = svc.CreateSession(ctx, deletedKey, nil)
+	require.NoError(t, err)
+	require.NoError(t, svc.DeleteSession(ctx, deletedKey))
+
+	resolver.revoked = true
+	for _, err := range []error{
+		func() error { _, err := svc.GetSession(ctx, key); return err }(),
+		svc.CreateSessionSummary(ctx, sess, "default", true),
+		svc.DeleteSession(ctx, deletedKey),
+	} {
+		var failure *nativecontract.Failure
+		require.ErrorAs(t, err, &failure)
+		require.Equal(t, nativecontract.ErrForbidden, failure.Code)
+	}
 }
