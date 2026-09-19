@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -110,20 +111,32 @@ func TestCheckQueryHistoryAccessModes(t *testing.T) {
 
 func TestAnonymizeSessionOwner(t *testing.T) {
 	rows := []*types.SessionListItem{
-		{Session: types.Session{ID: "s1", UserID: "alice"}},
-		{Session: types.Session{ID: "s2", UserID: types.SessionOwnerAPITenantKeyPrefix + "1:10"}},
+		{Session: types.Session{ID: "s1", UserID: "alice"}, IMUserID: "im-alice"},
+		{Session: types.Session{ID: "s2", UserID: types.SessionOwnerAPITenantKeyPrefix + "1:10"}, IMUserID: "im-bob"},
 		nil,
 	}
 
-	// Anonymized masks every owner id, tolerating nil rows.
+	// Anonymized masks every owner id and clears the IM principal id,
+	// tolerating nil rows.
 	AnonymizeSessionOwner(types.QueryHistoryModeAnonymized, rows)
 	require.Equal(t, "anonymous", rows[0].UserID)
 	require.Equal(t, "anonymous", rows[1].UserID)
+	require.Equal(t, "", rows[0].IMUserID, "anonymized clears the IM principal id")
+	require.Equal(t, "", rows[1].IMUserID)
+
+	// IMUserID is omitempty on the wire: once cleared it disappears from the
+	// serialized listing row instead of lingering as an empty placeholder.
+	wire, err := json.Marshal(rows[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), "im_user_id")
+	require.Contains(t, string(wire), `"user_id":"anonymous"`)
 
 	// Any other mode leaves rows untouched.
-	rows2 := []*types.SessionListItem{{Session: types.Session{ID: "s3", UserID: "bob"}}}
+	rows2 := []*types.SessionListItem{{Session: types.Session{ID: "s3", UserID: "bob"}, IMUserID: "im-bob"}}
 	AnonymizeSessionOwner(types.QueryHistoryModeNormal, rows2)
 	require.Equal(t, "bob", rows2[0].UserID)
+	require.Equal(t, "im-bob", rows2[0].IMUserID)
 	AnonymizeSessionOwner(types.QueryHistoryModeDisabled, rows2)
 	require.Equal(t, "bob", rows2[0].UserID)
+	require.Equal(t, "im-bob", rows2[0].IMUserID)
 }

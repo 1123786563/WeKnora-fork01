@@ -8,12 +8,21 @@ import (
 )
 
 // Query history visibility modes, stored on tenants.query_history_config.
+// All three are enforced at READ time on the query-history audit surfaces
+// (the "source=all" admin listing, the admin snapshot, and the CSV export):
+// what is recorded never changes — switching modes changes what audit reads
+// return, not what was stored.
 const (
-	// QueryHistoryModeNormal keeps full transcripts in workspace query history.
+	// QueryHistoryModeNormal serves audit reads with full owner identities.
 	QueryHistoryModeNormal = "normal"
-	// QueryHistoryModeAnonymized strips identity before a turn enters history.
+	// QueryHistoryModeAnonymized serves audit reads with owner identities
+	// masked at read time (user ids replaced by "anonymous", the list rows'
+	// IM principal id dropped); stored rows keep their identities, so
+	// switching back to normal restores them retroactively.
 	QueryHistoryModeAnonymized = "anonymized"
-	// QueryHistoryModeDisabled stops recording new turns into query history.
+	// QueryHistoryModeDisabled rejects audit reads with 403. Recording
+	// itself still writes, so re-enabling serves everything that was
+	// recorded while the mode was active.
 	QueryHistoryModeDisabled = "disabled"
 )
 

@@ -490,7 +490,10 @@ func (s *sessionService) recentSessionMessagesCapped(
 // policy. Disabled blocks the read before any row is fetched; anonymized
 // masks Session.UserID and every Feedback.UserID as "anonymous" so the
 // snapshot cannot be tied back to individual principals. Messages carry no
-// owner field of their own, so they pass through unchanged.
+// owner field of their own, and the snapshot row is a plain types.Session —
+// unlike the list rows (SessionListItem) it has no IMUserID, so no IM
+// principal id reaches this surface at all; a future IM field on Session
+// must be masked here too. Messages pass through unchanged.
 func (s *sessionService) GetQueryHistorySnapshot(
 	ctx context.Context, tenantID uint64, sessionID string,
 ) (*types.QueryHistorySnapshot, error) {

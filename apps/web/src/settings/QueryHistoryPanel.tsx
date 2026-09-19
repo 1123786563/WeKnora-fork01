@@ -58,7 +58,10 @@ export function shiftEndTimeExclusive(endTime: string): string {
   return shifted.toISOString().slice(0, 10);
 }
 
-/** Applied filter + 0-based page → client.queryHistory.adminList params. */
+/** Applied filter + 1-based page → client.queryHistory.adminList params.
+ * Backend Pagination.GetPage clamps anything below 1 up to 1 and PageResult
+ * echoes the clamped value, so the panel keeps page state 1-based end to end
+ * (initial state, indicator, prev/next bounds, and setPage(result.page)). */
 export function queryHistoryListParams(filter: QueryHistoryFilter, page: number, pageSize: number = QUERY_HISTORY_PAGE_SIZE) {
   const userId = filter.userId.trim();
   return {
@@ -70,6 +73,40 @@ export function queryHistoryListParams(filter: QueryHistoryFilter, page: number,
     endTime: shiftEndTimeExclusive(filter.range.endTime),
     ...(filter.feedback === 'all' ? {} : { feedback: filter.feedback }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// 1-based pagination helpers (exported for query-history-panel.test.tsx).
+// The backend's page contract is 1-based (Pagination.GetPage clamps <1 to 1
+// and PageResult echoes the clamped page), so every helper and the panel's
+// page state below are 1-based too.
+
+/** Total pages for a row count; always at least 1 (an empty listing still
+ * shows "第 1 / 1 页" rather than a zero-page indicator). */
+export function queryHistoryTotalPages(total: number, pageSize: number = QUERY_HISTORY_PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+/** 1-based previous page, floored at the first page. */
+export function prevPage(page: number): number {
+  return Math.max(1, page - 1);
+}
+
+/** 1-based next page, capped at the last page. */
+export function nextPage(page: number, totalPages: number): number {
+  return Math.min(totalPages, page + 1);
+}
+
+/** Whether 上一页 is available (anything before the first page). */
+export function canGoPrevPage(page: number): boolean {
+  return page > 1;
+}
+
+/** Whether 下一页 is available; the LAST page must be reachable through the
+ * next button — the boundary the old 0-based state got wrong once
+ * setPage(result.page) started feeding the 1-based echo back in. */
+export function canGoNextPage(page: number, totalPages: number): boolean {
+  return page < totalPages;
 }
 
 /** Knowledge-citation count badge of a snapshot message. */
@@ -210,7 +247,9 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
 
   const [rows, setRows] = useState<QueryHistorySessionRow[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
+  // 1-based, matching the backend's clamped PageResult.page echo (see the
+  // pagination helpers above); setPage(result.page) stays consistent.
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadGeneration = useRef(0);
@@ -309,7 +348,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       if (config.mode !== 'disabled' && mode === 'disabled') {
         // Leaving the disabled state: the audit listing was never issued.
         setDisabledFallback(false);
-        setPage(0);
+        setPage(1);
       }
     } catch (reason) {
       setPolicyError(errorText(reason, t('common.error')));
@@ -322,7 +361,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
     const next = clampAnalyticsRange(fromInput, toInput);
     setFromInput(next.startTime);
     setToInput(next.endTime);
-    setPage(0);
+    setPage(1);
     setFilter({ userId: userIdInput, range: next, feedback: feedbackInput });
   }
 
@@ -392,7 +431,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
     setExportError('');
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / QUERY_HISTORY_PAGE_SIZE));
+  const totalPages = queryHistoryTotalPages(total);
   const effectiveMode: QueryHistoryMode | null = mode === 'disabled' || disabledFallback ? 'disabled' : mode;
 
   // Privacy radios rendered by both branches (audit view + disabled
@@ -517,9 +556,9 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button type="button" onClick={() => setPage(Math.max(0, page - 1))} disabled={loading || page <= 0}>{t('settings.queryHistory.prevPage')}</Button>
-          <span className="text-[13px] text-[rgba(23,26,29,0.6)]" data-testid="query-history-page-indicator">{t('settings.queryHistory.pageIndicator', { page: page + 1, totalPages })}</span>
-          <Button type="button" onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={loading || page >= totalPages - 1}>{t('settings.queryHistory.nextPage')}</Button>
+          <Button type="button" onClick={() => setPage(prevPage(page))} disabled={loading || !canGoPrevPage(page)}>{t('settings.queryHistory.prevPage')}</Button>
+          <span className="text-[13px] text-[rgba(23,26,29,0.6)]" data-testid="query-history-page-indicator">{t('settings.queryHistory.pageIndicator', { page, totalPages })}</span>
+          <Button type="button" onClick={() => setPage(nextPage(page, totalPages))} disabled={loading || !canGoNextPage(page, totalPages)}>{t('settings.queryHistory.nextPage')}</Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {exportPhase === 'done' ? (

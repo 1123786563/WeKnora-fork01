@@ -54,7 +54,11 @@ func CheckQueryHistoryAccess(
 // AnonymizeSessionOwner masks the owner identity on session-list rows when the
 // tenant's query-history mode is anonymized: every UserID becomes "anonymous"
 // so an admin auditing usage cannot tie rows back to individual principals.
-// Any other mode (or unknown mode) leaves the rows untouched.
+// The IM principal id (SessionListItem.IMUserID) carries the same identity for
+// channel sessions and is cleared outright — the field is omitempty on the
+// wire, so an empty string drops it from the JSON payload entirely rather
+// than leaving a placeholder. Any other mode (or unknown mode) leaves the rows
+// untouched.
 func AnonymizeSessionOwner(mode string, rows []*types.SessionListItem) {
 	if mode != types.QueryHistoryModeAnonymized {
 		return
@@ -64,5 +68,6 @@ func AnonymizeSessionOwner(mode string, rows []*types.SessionListItem) {
 			continue
 		}
 		row.UserID = "anonymous"
+		row.IMUserID = ""
 	}
 }

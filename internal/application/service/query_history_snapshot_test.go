@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -108,6 +109,15 @@ func TestGetQueryHistorySnapshotAnonymizedMasksOwners(t *testing.T) {
 	for _, fb := range snapshot.Feedback {
 		require.Equal(t, "anonymous", fb.UserID, "anonymized mode masks every feedback row's user")
 	}
+
+	// Wire-level pin: the serialized snapshot leaks neither principal — and
+	// carries no IM principal id at all (the snapshot row is a plain
+	// types.Session with no IMUserID; a future IM field must be masked above).
+	wire, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), "alice")
+	require.NotContains(t, string(wire), "bob")
+	require.NotContains(t, string(wire), "im_user_id")
 }
 
 func TestGetQueryHistorySnapshotDisabledIsForbidden(t *testing.T) {

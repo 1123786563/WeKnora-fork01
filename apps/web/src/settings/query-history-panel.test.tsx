@@ -10,11 +10,16 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 import { ApiError } from '@weknora/api-client';
 import type { ChatMessage, MessageFeedbackRow } from '@weknora/contracts';
 const {
+  canGoNextPage,
+  canGoPrevPage,
   feedbackSummary,
   isQueryHistoryDisabledError,
   messageReferenceCount,
+  nextPage,
+  prevPage,
   queryHistoryDateParts,
   queryHistoryListParams,
+  queryHistoryTotalPages,
   sessionSourceText,
   shiftEndTimeExclusive,
 } = await import('./QueryHistoryPanel.tsx');
@@ -74,18 +79,46 @@ test('queryHistoryListParams builds the source=all audit query from the applied 
 test('queryHistoryListParams omits the empty user filter and the "all" feedback filter', () => {
   const params = queryHistoryListParams(
     { userId: '   ', range: { startTime: '2026-09-01', endTime: '2026-09-19' }, feedback: 'all' },
-    0,
+    1,
     50,
   );
   assert.deepEqual(params, {
     source: 'all',
-    page: 0,
+    page: 1,
     pageSize: 50,
     startTime: '2026-09-01',
     endTime: '2026-09-20',
   });
   assert.equal('userId' in params, false);
   assert.equal('feedback' in params, false);
+});
+
+test('queryHistoryTotalPages rounds up and never reports zero pages', () => {
+  assert.equal(queryHistoryTotalPages(0), 1, 'an empty listing still shows one page');
+  assert.equal(queryHistoryTotalPages(50), 1, 'exactly one full page');
+  assert.equal(queryHistoryTotalPages(51), 2, 'one row over the page size spills to a second page');
+  assert.equal(queryHistoryTotalPages(120), 3);
+  assert.equal(queryHistoryTotalPages(101, 50), 3);
+});
+
+test('pagination helpers pin the 1-based page contract the backend echoes', () => {
+  // First page: prev is unavailable and floors at 1 (never 0 — the backend
+  // Pagination.GetPage clamps <1 up to 1, so a 0 would come back as 1 anyway).
+  assert.equal(canGoPrevPage(1), false);
+  assert.equal(prevPage(1), 1);
+  assert.equal(canGoNextPage(1, 2), true);
+  assert.equal(nextPage(1, 2), 2);
+
+  // Last page (the total>50 case the old 0-based state broke): reachable via
+  // 下一页 and then next is disabled — no unreachable trailing page.
+  assert.equal(canGoNextPage(2, 2), false);
+  assert.equal(nextPage(2, 2), 2);
+  assert.equal(canGoPrevPage(2), true);
+  assert.equal(prevPage(2), 1);
+
+  // Single page listing: both directions disabled.
+  assert.equal(canGoPrevPage(1), false);
+  assert.equal(canGoNextPage(1, 1), false);
 });
 
 test('messageReferenceCount reads the knowledge_references array length', () => {

@@ -90,5 +90,6 @@ API：`PUT tenants/kv/query-history-config {"mode":"anonymized"}` → 列表与�
 - share 重开即轮换旧链接失效（无"保留旧链接"选项）；token 无过期时间（撤销即失效）
 - CSV 公式注入防护与 SP12 usage 导出同现状，待统一加固
 - status 端点返回内部 `file_path`（resource:// URI，非敏感路径但属内部细节外泄面）
-- anonymized 档未覆盖 title / im_user_id 等列（仅 user_id 脱敏）
+- anonymized 档未覆盖 title 列（user_id 已脱敏；im_user_id 已于终审修复一并抹除——`AnonymizeSessionOwner` 置空 + omitempty 从 wire 消失，快照行本为 `types.Session` 无 IM 主键字段，测试双断言钉住）
+- 渠道视图与隐私三档的分叉（终审 F2b 显式登记）：三档 gate（disabled 403 / anonymized 脱敏）仅作用于三面——source=all 审计列表、admin 快照、CSV 导出；`GET /api/v1/sessions` 的渠道过滤视图（source=api/embed/IM 平台名）不查 `CheckQueryHistoryAccess`（见 session.go ListSessions：gate 仅在 sourceAll 分支）。渠道视图是先于隐私档落地的既有端点语义（渠道管理/排障用途，Admin+ 才可达），SP13 终审裁定本次不扩 gate、既有语义保留；follow-up：将渠道视图并入三档 gate 或为其定义等效隐私语义（连带 title 脱敏一并收口）。
 - 共享 dev 栈 8084 二进制落后 SP13：待下次栈重启后可在共享栈复跑 §3 API 面（专用栈已等价验证）
