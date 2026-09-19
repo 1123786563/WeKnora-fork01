@@ -144,11 +144,11 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 		return err
 	}
 	if s.extractor == nil {
-		return errors.Join(ErrMemoryExtractorUnavailable, s.repo.Fail(ctx, job))
+		return errors.Join(ErrMemoryExtractorUnavailable, s.repo.Fail(ctx, job, ErrMemoryExtractorUnavailable))
 	}
 	writes, err := s.extractor(ctx, job)
 	if err != nil {
-		return errors.Join(err, s.repo.Fail(ctx, job))
+		return errors.Join(err, s.repo.Fail(ctx, job, err))
 	}
 	// Re-resolve after extraction. A worker can spend meaningful time outside
 	// the transaction; its initial authorization is never a commit permit.
@@ -163,7 +163,7 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 	}
 	_, err = s.repo.CommitWrites(ctx, job, entries)
 	if err != nil {
-		return errors.Join(err, s.repo.Fail(ctx, job))
+		return errors.Join(err, s.repo.Fail(ctx, job, err))
 	}
 	return err
 }

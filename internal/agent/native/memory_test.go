@@ -46,7 +46,7 @@ func newNativeMemoryFacadeWithResolver(t *testing.T, resolver *memoryScopeResolv
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_sessions (tenant_id INTEGER NOT NULL, owner_id TEXT NOT NULL, session_id TEXT NOT NULL, PRIMARY KEY (tenant_id, owner_id, session_id))").Error)
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_memory_scopes (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, generation INTEGER NOT NULL DEFAULT 0, tombstone_generation INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, policy_revision INTEGER NOT NULL DEFAULT 0, updated_at DATETIME, PRIMARY KEY (tenant_id, user_id))").Error)
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_memory_entries (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, memory_id TEXT NOT NULL, generation INTEGER NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', created_at DATETIME, PRIMARY KEY (tenant_id, user_id, memory_id))").Error)
-	require.NoError(t, db.Exec("CREATE TABLE native_memory_jobs (tenant_id INTEGER NOT NULL, subject_id TEXT NOT NULL, job_id TEXT NOT NULL, generation INTEGER NOT NULL, through_event_id TEXT NOT NULL, session_app_name TEXT NOT NULL DEFAULT '', session_user_id TEXT NOT NULL DEFAULT '', session_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', policy_revision INTEGER NOT NULL DEFAULT 0, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id, subject_id, job_id), UNIQUE (tenant_id, subject_id, through_event_id, generation))").Error)
+	require.NoError(t, db.Exec("CREATE TABLE native_memory_jobs (tenant_id INTEGER NOT NULL, subject_id TEXT NOT NULL, job_id TEXT NOT NULL, generation INTEGER NOT NULL, through_event_id TEXT NOT NULL, session_app_name TEXT NOT NULL DEFAULT '', session_user_id TEXT NOT NULL DEFAULT '', session_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', policy_revision INTEGER NOT NULL DEFAULT 0, retry_attempt INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3, retry_status TEXT NOT NULL DEFAULT 'none', next_attempt_at DATETIME, last_error TEXT, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id, subject_id, job_id), UNIQUE (tenant_id, subject_id, through_event_id, generation))").Error)
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_session_events (tenant_id INTEGER NOT NULL, app_name TEXT NOT NULL, user_id TEXT NOT NULL, session_id TEXT NOT NULL, stable_event_id TEXT NOT NULL, PRIMARY KEY (tenant_id, app_name, user_id, session_id, stable_event_id), FOREIGN KEY (tenant_id, user_id, session_id) REFERENCES native_agent_sessions(tenant_id, owner_id, session_id))").Error)
 	require.NoError(t, db.Exec("INSERT INTO native_agent_tenants (tenant_id) VALUES (?)", resolver.scope.TenantID).Error)
 	repo := repository.NewNativeMemoryRepository(db)
@@ -206,7 +206,7 @@ func TestNativeMemoryFacadePreservesMetadataAndAtomicallyUpdates(t *testing.T) {
 	require.Equal(t, []string{"updated"}, entries[0].Memory.Topics)
 }
 
-func TestNativeMemoryNilExtractorPersistsFailedJob(t *testing.T) {
+func TestNativeMemoryNilExtractorSchedulesRetry(t *testing.T) {
 	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
 	svc, repo := newNativeMemoryFacade(t, scope)
 	ctx := context.Background()
@@ -216,7 +216,28 @@ func TestNativeMemoryNilExtractorPersistsFailedJob(t *testing.T) {
 	require.ErrorIs(t, svc.Execute(ctx, job), ErrMemoryExtractorUnavailable)
 	status, err := repo.JobStatus(ctx, job)
 	require.NoError(t, err)
-	require.Equal(t, repository.NativeMemoryJobFailed, status)
+	require.Equal(t, repository.NativeMemoryJobQueued, status)
+}
+
+func TestNativeMemoryWorkerRejectsStaleGenerationWithoutBackendDispatch(t *testing.T) {
+	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
+	svc, repo := newNativeMemoryFacade(t, scope)
+	ctx := context.Background()
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	job := nativeMemoryJob(t, repo, scope, "stale", "event")
+	require.NoError(t, svc.Enqueue(ctx, job))
+	require.NoError(t, svc.Clear(ctx, scope))
+	calls := 0
+	svc.SetExtractor(func(context.Context, nativecontract.MemoryJob) ([]MemoryWrite, error) {
+		calls++
+		return []MemoryWrite{{ID: "m1", Content: "must not extract"}}, nil
+	})
+
+	require.ErrorIs(t, svc.Execute(ctx, job), ErrMemoryWriteDenied)
+	require.Zero(t, calls)
+	status, err := repo.JobStatus(ctx, job)
+	require.NoError(t, err)
+	require.Equal(t, repository.NativeMemoryJobDiscarded, status)
 }
 
 func TestNativeMemoryAutoJobUsesAuthorizedSessionAndLastEvent(t *testing.T) {
