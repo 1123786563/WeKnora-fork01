@@ -103,6 +103,19 @@ func (s *expertService) findExpert(id string) *experts.Expert {
 	return nil
 }
 
+// ResolveExpertLocaleText exposes the expert locale-text resolution rule to
+// the API layer so the list/detail projections and Instantiate resolve
+// identical strings for one request locale. The rule stays defined once, in
+// resolveExpertLocaleText below.
+func ResolveExpertLocaleText(m experts.LocaleText, locale string) string {
+	return resolveExpertLocaleText(m, locale)
+}
+
+// ExpertPersonaFileSeparator is the join the API detail preview uses so the
+// preview shows exactly the persona-files part of what Instantiate writes
+// into Config.SystemPrompt.
+const ExpertPersonaFileSeparator = expertPersonaFileSeparator
+
 // Instantiate creates a tenant custom agent from an expert template:
 // resolve the expert → build the agent (pure mapping) → resolve bundled
 // skills for the tenant → CreateAgent (which fills defaults, validates and

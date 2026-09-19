@@ -34,6 +34,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/agent/experts"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
@@ -641,6 +642,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewStorageBackendHandler))
 	must(container.Provide(handler.NewCustomAgentHandler))
 	must(container.Provide(handler.NewPersonaHandler))
+	// Expert-template API (M2): the real catalog (lazy builtin scan), agent
+	// creation through the shared CustomAgentService, and the production
+	// bundled-skill resolver — installs go through the tenant skill service,
+	// installed-skill lookups through the tenant skill repository (the same
+	// lister the session path uses).
+	must(container.Provide(func(
+		agents interfaces.CustomAgentService,
+		tenantSkills *service.TenantSkillService,
+		skillRepo repository.TenantSkillRepository,
+	) *handler.ExpertHandler {
+		resolver := service.NewBundledSkillResolver(tenantSkills, skillRepo)
+		expertSvc := service.NewExpertService(experts.LoadBuiltinExperts, agents, resolver)
+		return handler.NewExpertHandler(expertSvc)
+	}))
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(s *service.TenantSkillService) *handler.SkillHandler {
 		return handler.NewSkillHandler(s, s)
