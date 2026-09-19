@@ -32,7 +32,11 @@ func RenderPersona(code, locale string, in RenderInput) string {
 	}
 	profile, ok := Profile(strings.ToUpper(code))
 	if !ok {
-		return fill(defaultTemplate, in)
+		out := fill(defaultTemplate, in)
+		if custom := strings.TrimSpace(in.Custom); custom != "" {
+			out += "\n" + custom + "\n"
+		}
+		return out
 	}
 	useZh := strings.HasPrefix(strings.ToLower(locale), "zh")
 	name, summary, descriptors := profile.NameEn, profile.SummaryEn, profile.DescriptorsEn

@@ -41,6 +41,16 @@ func TestRenderCustomAppended(t *testing.T) {
 	}
 }
 
+func TestRenderCustomAppendedOnDefaultFallback(t *testing.T) {
+	out := RenderPersona("XXYY", "en", RenderInput{AgentName: "A", UserDisplay: "U", Custom: "Always answer in bullet points."})
+	if !strings.Contains(out, "# Persona: Default") {
+		t.Error("expected default template fallback")
+	}
+	if !strings.Contains(out, "Always answer in bullet points.") {
+		t.Error("custom paragraph missing on default-template fallback")
+	}
+}
+
 func TestRenderUnknownCodeFallsBackToDefault(t *testing.T) {
 	out := RenderPersona("", "en", RenderInput{AgentName: "A", UserDisplay: "U"})
 	if !strings.Contains(out, "# Persona: Default") {
