@@ -8,6 +8,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // The embedded interface lets the same fake satisfy the dig provider's full
@@ -58,10 +61,17 @@ func TestCraftUpstreamResolverFailsClosedWithoutBaseURL(t *testing.T) {
 func TestCraftModelGatewayAssemblyFailsClosedOnShortSecret(t *testing.T) {
 	t.Setenv(craftGatewaySecretEnv, "short")
 	t.Setenv(craftOpenCodeBaseURLEnv, "http://127.0.0.1:9090")
-	if _, err := newCraftModelGatewayHandler(
-		nil, fakeModelSource{}, nil,
-	); err == nil {
-		t.Fatal("expected fail-closed error for a secret shorter than 16 bytes")
+	// A real sqlite handle lets the inline budget service construct, so the
+	// failure surfaced is the gateway's own 16-byte secret check — not the
+	// db-missing shortcut a nil handle would take (detection power over the
+	// secret threshold, per the round-1 review finding).
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	_, err = newCraftModelGatewayHandler(db, fakeModelSource{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "at least 16 bytes") {
+		t.Fatalf("expected the 16-byte secret fail-closed error, got %v", err)
 	}
 }
 
