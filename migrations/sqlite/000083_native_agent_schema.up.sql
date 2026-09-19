@@ -213,6 +213,19 @@ CREATE TABLE IF NOT EXISTS native_session_state (
 );
 CREATE INDEX IF NOT EXISTS idx_native_session_state_scope_revision ON native_session_state (tenant_id, owner_id, session_id, revision);
 
+-- User state is deliberately independent of native_agent_sessions: callers
+-- must not create a synthetic session to persist a user's scoped state.
+CREATE TABLE IF NOT EXISTS native_user_state (
+    tenant_id INTEGER NOT NULL REFERENCES native_agent_tenants(tenant_id) ON DELETE RESTRICT,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    state_key TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    state_value TEXT NOT NULL DEFAULT '{}',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, owner_id, state_key)
+);
+CREATE INDEX IF NOT EXISTS idx_native_user_state_scope_revision ON native_user_state (tenant_id, owner_id, revision);
+
 CREATE TABLE IF NOT EXISTS native_memory_jobs (
     tenant_id INTEGER NOT NULL,
     subject_id TEXT NOT NULL,

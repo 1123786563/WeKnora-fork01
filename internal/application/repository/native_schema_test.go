@@ -134,6 +134,48 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 	}
 }
 
+// TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession proves that
+// user state has its own durable boundary.  It must be scoped to an admitted
+// tenant and a real owner, but it must not require a synthetic native session
+// solely to persist user-level state.
+func TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			seedNativeSchemaFixture(t, db)
+
+			require.True(t, db.Migrator().HasTable("native_user_state"))
+			for _, column := range []string{"tenant_id", "owner_id", "state_key", "state_value", "revision", "updated_at"} {
+				require.Truef(t, db.Migrator().HasColumn("native_user_state", column), "native_user_state.%s must exist", column)
+			}
+
+			var nativeSessions int64
+			require.NoError(t, db.Raw(`SELECT COUNT(*) FROM native_agent_sessions WHERE tenant_id = ? AND owner_id = ?`, 2, "u2").Scan(&nativeSessions).Error)
+			require.Zero(t, nativeSessions, "fixture owner must not need a native session")
+			require.NoError(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "preferences", `{"theme":"dark"}`, 4).Error)
+
+			require.Error(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "preferences", `{}`, 0).Error,
+				"one owner can have only one value for a state key in a tenant")
+			require.Error(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 2, "missing-owner", "preferences", `{}`, 0).Error,
+				"a user-state owner must be a real user")
+			require.Error(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 999, "u2", "preferences", `{}`, 0).Error,
+				"a user-state record must belong to an admitted tenant")
+			require.Error(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value, revision)
+				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "negative-revision", `{}`, -1).Error,
+				"a user-state revision cannot be negative")
+		})
+	}
+}
+
 func assertNativeSQLiteConstraints(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	var primaryKeyColumns, foreignKeys, indexes int64

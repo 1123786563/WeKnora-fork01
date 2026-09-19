@@ -4,6 +4,7 @@ BEGIN
         SELECT 1 FROM native_agent_tenants
         UNION ALL SELECT 1 FROM native_agent_sessions
         UNION ALL SELECT 1 FROM native_session_state
+        UNION ALL SELECT 1 FROM native_user_state
         UNION ALL SELECT 1 FROM native_agent_runs
         UNION ALL SELECT 1 FROM native_agent_inputs
         UNION ALL SELECT 1 FROM native_agent_config_bindings
@@ -30,6 +31,7 @@ DROP TABLE native_agent_events;
 DROP TABLE native_agent_session_events;
 DROP TABLE native_agent_tool_plans;
 DROP TABLE native_memory_jobs;
+DROP TABLE native_user_state;
 DROP TABLE native_session_state;
 DROP TABLE native_agent_checkpoints;
 DROP TABLE native_agent_commit_intents;

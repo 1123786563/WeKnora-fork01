@@ -9,6 +9,7 @@ agent-run records.
 | --- | --- | --- |
 | Tenant admission scope | `native_agent_tenants` | one row per business tenant |
 | Session scope and state | `native_agent_sessions`, `native_session_state` | tenant/owner/session/state-key revision CAS |
+| User state | `native_user_state` | tenant and owner foreign keys, scoped `(tenant,owner,state-key)` revision CAS; no native session is required |
 | Run and lease fence | `native_agent_runs` | scoped request/input idempotency, owner/session binding, revision and non-negative epoch |
 | Input and config snapshot | `native_agent_inputs`, `native_agent_config_bindings` | immutable scoped hashes |
 | Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence |
