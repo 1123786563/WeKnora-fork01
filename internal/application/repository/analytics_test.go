@@ -44,8 +44,8 @@ func seedAnalyticsData(t *testing.T, db *gorm.DB) {
 	}
 
 	// Two live sessions in tenant 1 across two days, one per source bucket.
-	insertAnalyticsSession("as1", 1, "u1", day1, nil)                          // web
-	insertAnalyticsSession("as2", 1, "api_tenant_key:1:key-1", day2, nil)      // api
+	insertAnalyticsSession("as1", 1, "u1", day1, nil)                     // web
+	insertAnalyticsSession("as2", 1, "api_tenant_key:1:key-1", day2, nil) // api
 	// A soft-deleted session and a foreign-tenant session must never count.
 	insertAnalyticsSession("as3", 1, "u9", day1.Add(2*time.Hour), &day2)
 	insertAnalyticsSession("as9", 2, "u1", day1.Add(3*time.Hour), nil)
