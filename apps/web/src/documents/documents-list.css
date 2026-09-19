@@ -5,6 +5,14 @@
   container: inline-size / doc-card-area;
 }
 
+/* The unlayered .wk-input rule (padding-inline: 8px) beats the layered
+   pl-8 utility, so the leading search icon overlaps the placeholder.
+   Vue's 搜索文档名称 input reserves icon space the same way. */
+.wk-document-results .doc-search-field {
+  padding-left: 2rem;
+}
+
+
 @container doc-card-area (min-width: 1240px) {
   .wk-document-results .doc-filter-bar {
     display: flex;

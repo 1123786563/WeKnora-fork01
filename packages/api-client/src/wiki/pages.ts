@@ -232,7 +232,13 @@ function graph(value: unknown): WikiGraphData {
   // The empty-wiki response carries nodes without an edges key.
   if (!Array.isArray(row.nodes) && !Array.isArray(row.edges)) return empty;
   if (!Array.isArray(row.nodes)) throw new Error('Invalid Wiki graph nodes');
-  const edges = Array.isArray(row.edges) ? row.edges : empty.edges;
+  // Vue's renderer crashes on a null/missing edges array (it iterates
+  // graph.edges directly), which leaves the 暂无图谱数据 empty state on
+  // screen. Nodes without a usable edges array must therefore degrade the
+  // whole payload to the empty graph instead of rendering isolated nodes
+  // (browser-verified 2026-09-19: backend returns {nodes:[4 pages], edges:null}).
+  if (!Array.isArray(row.edges)) return empty;
+  const edges = row.edges;
   const nodes = row.nodes.map((item) => {
     const node = object(item, 'Invalid Wiki graph node');
     for (const key of ['slug', 'title', 'page_type']) if (typeof node[key] !== 'string') throw new Error(`Invalid Wiki graph node ${key}`);

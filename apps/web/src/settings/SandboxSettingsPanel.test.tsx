@@ -227,10 +227,10 @@ test('sandbox list renders Vue backend tabs with named-only counts, card warning
   const container = await mount(client, { initialData: undefined });
   const text = container.textContent ?? '';
   // Vue backendLabel + countByType (SandboxSettings.vue:58-63, 286-287).
-  assert.match(text, /全部 \(4\)/);
-  assert.match(text, /CubeSandbox \(2\)/);
-  assert.match(text, /E2B \(1\)/);
-  assert.match(text, /Docker \(0\)/);
+  assert.match(text, /全部\(4\)/);
+  assert.match(text, /CubeSandbox\(2\)/);
+  assert.match(text, /E2B\(1\)/);
+  assert.match(text, /Docker\(0\)/);
   // targetSummary (SandboxSettings.vue:401-406): the remote host tells configs apart.
   assert.match(text, /api.e2b.app/);
   // buildCardWarnings (SandboxSettings.vue:426-459): cube without a template,

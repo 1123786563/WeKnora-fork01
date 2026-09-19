@@ -1035,13 +1035,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     <span>{vendorLabel(model)}</span>
                     {type === "embedding" && typeof dimension === "number" ? (
                       <>
-                        <span className="text-[#97a3b6]"> · </span>
+                        <span className="mx-[4px] text-[#97a3b6]">·</span>
                         <span>{t("model.editor.dimensionLabel")} {dimension}</span>
                       </>
                     ) : null}
                     {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
                       <>
-                        <span className="text-[#97a3b6]"> · </span>
+                        <span className="mx-[4px] text-[#97a3b6]">·</span>
                         <span
                           className="tabular-nums"
                           title={isDefaultContextWindow(contextWindow)
@@ -1054,7 +1054,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     ) : null}
                     {type === "chat" && supportsVision ? (
                       <>
-                        <span className="text-[#97a3b6]"> · </span>
+                        <span className="mx-[4px] text-[#97a3b6]">·</span>
                         <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
                       </>
                     ) : null}

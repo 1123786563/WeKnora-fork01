@@ -7,6 +7,8 @@ import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@we
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
+import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
@@ -1437,6 +1439,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
+    // Vue Input-field.vue createSession: a send is blocked with a toast when
+    // the selected agent — or the default 快速问答 when none is selected — is
+    // missing required model configuration.
+    const gateAgent = agents.find((item) => item.id === selectedAgentId)
+      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
+    if (gateAgent) {
+      const gateConfig = gateAgent.config as Record<string, unknown> | undefined;
+      const notReadyKeys = getAgentNotReadyReasonKeys(gateConfig, agentModels, { isAgentMode: String(gateConfig?.agent_mode ?? '') === 'smart-reasoning' });
+      if (notReadyKeys.length > 0) {
+        const displayName = selectedAgentId === '' && gateAgent.is_builtin === true ? copy.quickAnswer : gateAgent.name;
+        showAgentToast(copy.agentNotReadyDetail
+          .replace('{agentName}', displayName)
+          .replace('{reasons}', agentNotReadyLabels(copy, notReadyKeys).join('、')));
+        return;
+      }
+    }
+    sendInFlightRef.current = true;
     sendInFlightRef.current = true;
     // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
     // from the URL (replaceState) even if the turn later fails, mirroring the

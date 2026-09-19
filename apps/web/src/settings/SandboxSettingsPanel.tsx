@@ -1805,10 +1805,10 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       ) : null}
 
       <nav className="wk-model-tabs flex flex-wrap gap-[0.35rem] border-b border-b-[#edf0f5]" aria-label={t('settings.sandbox.backendType')}>
-        <button type="button" className={filter === 'all' ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! [font-weight:650] is-active bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]' : 'text-[13px] bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]'} onClick={() => setFilter('all')}>{t('common.all')} ({items.length})</button>
+        <button type="button" className={filter === 'all' ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! [font-weight:650] is-active bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]' : 'text-[13px] bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]'} onClick={() => setFilter('all')}>{t('common.all')}({items.length})</button>
         {SANDBOX_BACKENDS.map((type) => (
           <button type="button" key={type} className={filter === type ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! [font-weight:650] is-active bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]' : 'text-[13px] bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]'} onClick={() => setFilter(type)}>
-            {backendLabel(type)} ({countByType(type)})
+            {backendLabel(type)}({countByType(type)})
           </button>
         ))}
       </nav>
