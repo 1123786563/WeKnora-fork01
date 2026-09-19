@@ -33,9 +33,11 @@ Analysis correction: Memory SQL backends exist as separate modules `memory/sqlit
 
 Track B implementation: commit `3092f9a1`; measured SQLite/PostgreSQL probe suite passes, while opt-in stale-extraction contract fails on both and is classified `incompatible`. Task review pending.
 Track C implementation: commit `7092593f`; isolated identity/cursor specification tests, race tests and vet pass according to the implementation report. Task review pending.
+Track A implementation: commit `deeae6b1`; SQLite/PostgreSQL probes pass while stable-ID changed-payload replay and default PostgreSQL schema index requirements are classified `incompatible`. Task review pending.
 
 | B Memory SQL review | sdd_task_reviewer | gpt-5.6-sol | medium | /root/p1_memory_review | 未验证 |
 | C Identity/cursor review | sdd_task_reviewer | gpt-5.6-sol | medium | /root/p1_identity_review | 未验证 |
+| A Session SQL review | sdd_task_reviewer | gpt-5.6-sol | medium | /root/p1_session_review | 未验证 |
 
 Root baseline command: `GOWORK=off go test ./... -count=1 -timeout=180s`; output `/tmp/trpc-p1-baseline.log`; exit 1. Complete final output has nine failed packages: application/repository, application/service, database, handler, handler/session, payment, router, types, workbench. Examples include migration-head/rollback fixtures, budget notification, registration fixtures, handler/session timeout and missing `tests/mobile-v2/fixtures/mx-003-crosslang.json`. The earlier five-package progress update was partial output, not the final inventory. These failures occurred before Track implementation and do not authorize declaring full tests green. The independent probe modules do not change these packages.
 
