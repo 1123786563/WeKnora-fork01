@@ -320,6 +320,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 
 	must(container.Provide(service.NewMessageService))
+	must(container.Provide(service.NewFeedbackService))
 	must(container.Provide(service.NewMessageSuggestionService))
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPToolApprovalService))
@@ -598,6 +599,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newSandboxIDLookup))
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
+	must(container.Provide(handler.NewFeedbackHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
