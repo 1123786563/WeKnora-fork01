@@ -30,6 +30,27 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 			}
 
 			seedNativeSchemaFixture(t, db)
+			if dialect == "sqlite" {
+				assertNativeSQLiteConstraints(t, db)
+			}
+			// A session ID is scoped by its owner; owner mismatch on a run is a
+			// database FK violation, not a repository convention.
+			require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 1, "u2", "s1").Error)
+			require.Error(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, owner_id, session_id, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "wrong-owner", "missing", "s1", 1).Error)
+			// The request identity accepts an idempotent same-hash replay but
+			// leaves a changed hash untouched for the caller to report conflict.
+			require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, owner_id, session_id, request_id, input_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "request-first", "u1", "s1", "request-key", "input-hash", 1).Error)
+			sameRequest := db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, owner_id, session_id, request_id, input_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (tenant_id, owner_id, session_id, request_id) DO UPDATE SET input_hash = excluded.input_hash
+				WHERE native_agent_runs.input_hash = excluded.input_hash`, 1, "request-replay", "u1", "s1", "request-key", "input-hash", 1)
+			require.NoError(t, sameRequest.Error)
+			require.EqualValues(t, 1, sameRequest.RowsAffected)
+			differentRequest := db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, owner_id, session_id, request_id, input_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (tenant_id, owner_id, session_id, request_id) DO UPDATE SET input_hash = excluded.input_hash
+				WHERE native_agent_runs.input_hash = excluded.input_hash`, 1, "request-conflict", "u1", "s1", "request-key", "other-hash", 1)
+			require.NoError(t, differentRequest.Error)
+			require.EqualValues(t, 0, differentRequest.RowsAffected)
+			require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, owner_id, session_id, request_id, input_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 2, "request-first", "u1", "s1", "request-key", "input-hash", 1).Error)
 
 			// Scope rows must remain tenant-local even when users and session IDs
 			// collide across tenants.  The stable event identity itself is tenant
@@ -87,6 +108,17 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 			require.EqualValues(t, 2, tombstone)
 		})
 	}
+}
+
+func assertNativeSQLiteConstraints(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	var primaryKeyColumns, foreignKeys, indexes int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM pragma_table_info('native_agent_runs') WHERE pk > 0`).Scan(&primaryKeyColumns).Error)
+	require.GreaterOrEqual(t, primaryKeyColumns, int64(2))
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM pragma_foreign_key_list('native_agent_runs')`).Scan(&foreignKeys).Error)
+	require.GreaterOrEqual(t, foreignKeys, int64(3))
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM pragma_index_list('native_agent_runs')`).Scan(&indexes).Error)
+	require.GreaterOrEqual(t, indexes, int64(2))
 }
 
 // TestNativeSchemaMigrationRollbackGuard catches a destructive down migration:
