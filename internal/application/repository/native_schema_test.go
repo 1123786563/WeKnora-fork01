@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -13,6 +14,28 @@ import (
 	"gorm.io/gorm"
 )
 
+// openNativeSchemaTestDB makes the migration dialect explicit.  PostgreSQL
+// uses the shared helper's isolated random schema, while SQLite remains the
+// default fast-path for local constraint coverage.
+func openNativeSchemaTestDB(t *testing.T, dialect string) *gorm.DB {
+	t.Helper()
+	switch dialect {
+	case "sqlite":
+		return openRunTestDB(t)
+	case "postgres":
+		if os.Getenv("TRPC_TEST_POSTGRES_DSN") == "" {
+			t.Skip("TRPC_TEST_POSTGRES_DSN unset: native-schema PostgreSQL evidence blocked-env")
+		}
+		_, filename, _, ok := runtime.Caller(0)
+		require.True(t, ok)
+		root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+		return openPostgresRunTestDB(t, root)
+	default:
+		t.Fatalf("unsupported native schema test dialect %q", dialect)
+		return nil
+	}
+}
+
 // TestNativeSchemaMigrationsCreateScopedNamespace catches a deployment that
 // reaches the current migration head without the isolated native-agent
 // namespace.  It exercises the real migration set for each active dialect;
@@ -20,7 +43,8 @@ import (
 func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			db := openRunTestDB(t)
+			db := openNativeSchemaTestDB(t, dialect)
+			require.Equal(t, dialect, db.Name(), "native schema migrations must run on the requested database dialect")
 			require.NoError(t, ValidateNativeSchemaManifest())
 			for _, table := range NativeSchemaManifest() {
 				require.Truef(t, db.Migrator().HasTable(table.Name), "native schema table %q must exist", table.Name)
@@ -127,7 +151,8 @@ func assertNativeSQLiteConstraints(t *testing.T, db *gorm.DB) {
 func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			db := openRunTestDB(t)
+			db := openNativeSchemaTestDB(t, dialect)
+			require.Equal(t, dialect, db.Name(), "native schema migrations must run on the requested database dialect")
 			seedNativeSchemaFixture(t, db)
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
@@ -140,7 +165,8 @@ func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 func TestNativeSchemaMigrationEmptyRollbackAndRepeatUpgrade(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			db := openRunTestDB(t)
+			db := openNativeSchemaTestDB(t, dialect)
+			require.Equal(t, dialect, db.Name(), "native schema migrations must run on the requested database dialect")
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
 			require.ErrorIs(t, m.Up(), migrate.ErrNoChange, "repeated upgrade must be a no-op")
