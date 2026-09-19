@@ -169,6 +169,11 @@ type CustomAgentConfig struct {
 	// from, when any. Absent on hand-built agents.
 	ExpertSource *ExpertSourceStruct `yaml:"expert_source,omitempty" json:"expert_source,omitempty"`
 
+	// ===== Subagents Settings =====
+	// Subagents names the builtin sub-agent roles (catalog slugs) this agent
+	// may delegate to. Delegation disabled when empty.
+	Subagents []string `yaml:"subagents" json:"subagents,omitempty"`
+
 	// ===== Sandbox Settings =====
 	// SandboxConfigID selects which workspace sandbox config this agent's
 	// skill scripts run on. Empty means sandbox execution is disabled.

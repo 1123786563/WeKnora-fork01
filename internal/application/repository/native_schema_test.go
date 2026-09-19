@@ -121,6 +121,18 @@ func assertNativeSQLiteConstraints(t *testing.T, db *gorm.DB) {
 	require.GreaterOrEqual(t, indexes, int64(2))
 }
 
+// nativeSchemaPriorVersion is the migration version immediately below the
+// native-agent schema migration in each dialect's chain (sqlite 000083,
+// versioned 000162). The guard tests roll back to it instead of one step
+// down from head: later migrations keep landing above the native schema, and
+// what must stay guarded is that namespace's own down path.
+func nativeSchemaPriorVersion(db *gorm.DB) uint {
+	if db.Name() == "sqlite" {
+		return 82
+	}
+	return 161
+}
+
 // TestNativeSchemaMigrationRollbackGuard catches a destructive down migration:
 // a populated native namespace must remain intact, while an empty one can
 // safely step down and re-upgrade to the same head.
@@ -131,7 +143,7 @@ func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 			seedNativeSchemaFixture(t, db)
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
-			require.Error(t, m.Steps(-1), "a populated namespace must reject destructive rollback")
+			require.Error(t, m.Migrate(nativeSchemaPriorVersion(db)), "a populated namespace must reject destructive rollback")
 			require.True(t, db.Migrator().HasTable("native_agent_runs"))
 		})
 	}
@@ -144,7 +156,7 @@ func TestNativeSchemaMigrationEmptyRollbackAndRepeatUpgrade(t *testing.T) {
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
 			require.ErrorIs(t, m.Up(), migrate.ErrNoChange, "repeated upgrade must be a no-op")
-			require.NoError(t, m.Steps(-1), "an empty namespace may roll back")
+			require.NoError(t, m.Migrate(nativeSchemaPriorVersion(db)), "an empty namespace may roll back")
 			require.False(t, db.Migrator().HasTable("native_agent_runs"))
 			require.NoError(t, m.Up(), "the same database must re-upgrade cleanly")
 			require.True(t, db.Migrator().HasTable("native_agent_runs"))
