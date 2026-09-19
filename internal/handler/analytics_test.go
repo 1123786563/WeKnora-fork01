@@ -196,7 +196,60 @@ func TestAnalyticsHandler_AgentMessagesPassthrough(t *testing.T) {
 	assert.Equal(t, "agent-42", repo.agentsID)
 	assert.EqualValues(t, 7, repo.agentsTenant)
 	assert.Equal(t, time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local).UTC(), repo.agentsFrom)
-	assert.Equal(t, time.Date(2026, 9, 2, 0, 0, 0, 0, time.Local).UTC(), repo.agentsTo)
+	// Date-only end_time is an inclusive end day: upper bound = next midnight.
+	assert.Equal(t, time.Date(2026, 9, 2, 0, 0, 0, 0, time.Local).UTC().Add(24*time.Hour), repo.agentsTo)
+}
+
+// 纯日期 end_time（仪表盘默认窗口的格式）→ 上界跨到次日 0 点，覆盖整个结束日：
+// 冒烟发现的缺陷 —— 此前 end=当日 0 点把当天数据全部排除，默认视图三图全空。
+func TestAnalyticsHandler_DateOnlyEndCoversWholeDay(t *testing.T) {
+	repo := &stubAnalyticsRepository{}
+	router := newAnalyticsTestRouter(t, repo)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, withAnalyticsTenant(httptest.NewRequest(http.MethodGet,
+		"/analytics/queries?start_time=2026-09-19&end_time=2026-09-19", nil), uint64(7)))
+
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	assert.Equal(t, repo.trendFrom.Add(24*time.Hour), repo.trendTo, "end day must be fully covered")
+	assert.Equal(t, time.UTC, repo.trendTo.Location())
+}
+
+// 带时间部分的 end_time 不做 +1 天（仍是精确上界，[from, to) 半开语义）。
+func TestAnalyticsHandler_TimestampedEndNotExtended(t *testing.T) {
+	repo := &stubAnalyticsRepository{}
+	router := newAnalyticsTestRouter(t, repo)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, withAnalyticsTenant(httptest.NewRequest(http.MethodGet,
+		"/analytics/queries?start_time=2026-09-01&end_time=2026-09-10T12:00:00Z", nil), uint64(7)))
+
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	assert.Equal(t, time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC), repo.trendTo)
+}
+
+// 空结果必须序列化为 "data":[] 而不是 "data":null —— api-client 契约
+// 拒绝非数组 data（冒烟发现：GORM Scan 零行留下 nil 切片）。
+func TestAnalyticsHandler_EmptyRowsRenderEmptyArray(t *testing.T) {
+	for _, tc := range []struct{ name, path string }{
+		{"queries", "/analytics/queries"},
+		{"users", "/analytics/users"},
+		{"channels", "/analytics/channels"},
+		{"agents", "/analytics/agents/agent-42"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &stubAnalyticsRepository{}
+			router := newAnalyticsTestRouter(t, repo)
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, withAnalyticsTenant(
+				httptest.NewRequest(http.MethodGet, tc.path, nil), uint64(7)))
+
+			require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+			assert.Contains(t, w.Body.String(), `"data":[]`, "empty window must be an array")
+			assert.NotContains(t, w.Body.String(), `"data":null`)
+		})
+	}
 }
 
 // :agent_id 为空串 → 400。

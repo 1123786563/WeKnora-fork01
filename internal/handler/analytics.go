@@ -31,6 +31,12 @@ func NewAnalyticsHandler(repo interfaces.AnalyticsRepository) *AnalyticsHandler 
 // Missing values fall back to a 30-day lookback ending at now (UTC); values
 // that parseFilterTime cannot interpret reject the request with 400, with the
 // offending parameter name in the message.
+//
+// Date-only end_time values ("2006-01-02") are treated as an inclusive end
+// day: the window upper bound moves to the following UTC midnight so the
+// [from, to) SQL predicate covers the whole end day. The dashboard's default
+// window is [today-30, today] with date-only bounds — without this rule every
+// chart would silently exclude the current day's data.
 func parseAnalyticsRange(c *gin.Context) (from, to time.Time, ok bool) {
 	now := time.Now().UTC()
 	from = now.AddDate(0, 0, -analyticsDefaultLookbackDays)
@@ -50,8 +56,42 @@ func parseAnalyticsRange(c *gin.Context) (from, to time.Time, ok bool) {
 			return time.Time{}, time.Time{}, false
 		}
 		to = t.UTC()
+		if analyticsIsDateOnly(raw) {
+			to = to.AddDate(0, 0, 1)
+		}
 	}
 	return from, to, true
+}
+
+// analyticsIsDateOnly reports whether raw is a bare YYYY-MM-DD date (no time
+// component), the layout the analytics dashboard sends for both bounds.
+func analyticsIsDateOnly(raw string) bool {
+	if len(raw) != 10 {
+		return false
+	}
+	for i, r := range raw {
+		switch i {
+		case 4, 7:
+			if r != '-' {
+				return false
+			}
+		default:
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// analyticsRows guarantees the envelope's data field is a JSON array: GORM's
+// Scan leaves a nil slice when a window has no rows, and "data":null breaks
+// the api-client contract (parsers reject non-array data).
+func analyticsRows[T any](rows []T) []T {
+	if rows == nil {
+		return []T{}
+	}
+	return rows
 }
 
 // tenantID resolves the execution tenant from the request context. Analytics
@@ -81,7 +121,7 @@ func (h *AnalyticsHandler) QueryTrend(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
 }
 
 // ActiveUsers returns the per-day distinct active session owners.
@@ -100,7 +140,7 @@ func (h *AnalyticsHandler) ActiveUsers(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
 }
 
 // ChannelSessions returns per-day new sessions broken down by source bucket.
@@ -119,7 +159,7 @@ func (h *AnalyticsHandler) ChannelSessions(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
 }
 
 // AgentMessages returns one custom agent's per-day usage. The :agent_id path
@@ -144,5 +184,5 @@ func (h *AnalyticsHandler) AgentMessages(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
 }
