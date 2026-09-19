@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -160,10 +161,40 @@ func (h *ExpertHandler) GetExpert(c *gin.Context) {
 }
 
 // expertInstantiateBody is the POST /experts/:id/instantiate request. Every
-// field is optional; blank strings are treated as absent.
+// field is optional; blank strings are treated as absent. Decoding is strict
+// (decodeExpertInstantiateBody): the two overrides are the only
+// client-supplied shape — the tenant and every provenance field are derived
+// server-side — so any additional field is rejected with a 400.
 type expertInstantiateBody struct {
 	AgentName       string `json:"agent_name"`
 	SandboxConfigID string `json:"sandbox_config_id"`
+}
+
+// decodeExpertInstantiateBody strictly decodes one instantiate request,
+// following the repo's DisallowUnknownFields pattern (DecodeOCPrepare in
+// app_connector_oc.go): unknown fields are rejected, exactly one JSON value
+// is allowed (trailing input is an error), and an empty body means
+// "no overrides".
+func decodeExpertInstantiateBody(r io.Reader) (interfaces.InstantiateRequest, error) {
+	var body expertInstantiateBody
+	dec := json.NewDecoder(r)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		if errors.Is(err, io.EOF) {
+			// Empty body: every field is optional, so this is a plain
+			// no-override instantiation.
+			return interfaces.InstantiateRequest{}, nil
+		}
+		return interfaces.InstantiateRequest{}, err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return interfaces.InstantiateRequest{}, errors.New("trailing input")
+	}
+	return interfaces.InstantiateRequest{
+		AgentName:       strings.TrimSpace(body.AgentName),
+		SandboxConfigID: strings.TrimSpace(body.SandboxConfigID),
+	}, nil
 }
 
 // Instantiate godoc
@@ -191,14 +222,10 @@ func (h *ExpertHandler) Instantiate(c *gin.Context) {
 		return
 	}
 
-	var body expertInstantiateBody
-	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+	req, err := decodeExpertInstantiateBody(c.Request.Body)
+	if err != nil {
 		_ = c.Error(apperrors.NewBadRequestError("invalid body: " + err.Error()))
 		return
-	}
-	req := interfaces.InstantiateRequest{
-		AgentName:       strings.TrimSpace(body.AgentName),
-		SandboxConfigID: strings.TrimSpace(body.SandboxConfigID),
 	}
 	if utf8.RuneCountInString(req.AgentName) > maxExpertAgentNameLen {
 		_ = c.Error(apperrors.NewBadRequestError("agent_name exceeds 255 characters"))

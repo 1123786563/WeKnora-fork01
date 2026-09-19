@@ -416,6 +416,28 @@ func TestExpertInstantiateValidation(t *testing.T) {
 		t.Fatalf("malformed body status = %d, want 400, body %s", w.Code, w.Body.String())
 	}
 
+	// Unknown body field → 400 (strict decode: the two overrides are the
+	// only client-supplied shape), service untouched.
+	before := len(svc.calls)
+	w = expertDo(t, r, http.MethodPost, "/api/v1/experts/stock-assistant/instantiate",
+		map[string]any{"bogus": true}, "zh-CN", 7)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field status = %d, want 400, body %s", w.Code, w.Body.String())
+	}
+	if len(svc.calls) != before {
+		t.Fatalf("Instantiate reached despite unknown body field (%d calls)", len(svc.calls))
+	}
+
+	// Trailing input after the single JSON value → 400.
+	w = expertDo(t, r, http.MethodPost, "/api/v1/experts/stock-assistant/instantiate",
+		`{"agent_name":"x"} {}`, "zh-CN", 7)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("trailing input status = %d, want 400, body %s", w.Code, w.Body.String())
+	}
+	if len(svc.calls) != before {
+		t.Fatalf("Instantiate reached despite trailing input (%d calls)", len(svc.calls))
+	}
+
 	// Oversized agent_name (> 255 chars, the varchar(255) column cap) → 400.
 	long := strings.Repeat("名", 256)
 	w = expertDo(t, r, http.MethodPost, "/api/v1/experts/stock-assistant/instantiate",
@@ -442,7 +464,7 @@ func TestExpertInstantiateValidation(t *testing.T) {
 	}
 
 	// Missing tenant context → unauthorized, service untouched.
-	before := len(svc.calls)
+	before = len(svc.calls)
 	w = expertDo(t, r, http.MethodPost, "/api/v1/experts/stock-assistant/instantiate", nil, "zh-CN", 0)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("missing tenant status = %d, want 401, body %s", w.Code, w.Body.String())
