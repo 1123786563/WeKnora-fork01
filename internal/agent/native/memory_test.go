@@ -260,9 +260,19 @@ func TestNativeMemoryExecuteRenewsLiveAttemptAcrossLeaseBoundary(t *testing.T) {
 		}
 		return row.NextAttemptAt != nil && row.NextAttemptAt.After(time.Now().UTC())
 	}, time.Second, time.Millisecond)
+	// A recovery worker using a fresh repository must still see the renewed
+	// durable claim. Without this check, a test that only inspects the deadline
+	// can pass even though a healthy extractor is reclaimed and eventually
+	// consumes all retry attempts.
+	_, reclaimed, err := repository.NewNativeMemoryRepository(repo.DB()).Claim(ctx, job)
+	require.NoError(t, err)
+	require.False(t, reclaimed, "a healthy extractor must retain its renewed claim")
 
 	close(release)
 	require.NoError(t, <-done)
+	status, err := repo.JobStatus(ctx, job)
+	require.NoError(t, err)
+	require.Equal(t, repository.NativeMemoryJobSucceeded, status)
 }
 
 func TestNativeMemoryWorkerRejectsStaleGenerationWithoutBackendDispatch(t *testing.T) {
