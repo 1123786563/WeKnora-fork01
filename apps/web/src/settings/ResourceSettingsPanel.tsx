@@ -190,10 +190,27 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
     if (provider === 'local') return copy.localLabel;
     return '';
   };
+  // Vue renders the raw engine_type on vectorstore/websearch cards and the
+  // upper-cased provider on storage cards (LOCAL · 本地存储).
+  const providerLabel = (provider: string) => (section === 'storage' ? provider.toUpperCase() : provider);
+  // Vue VectorStoreSettings marks .env-sourced stores with a DEFAULT pill.
+  const envPill = (row: ResourceRow) => row.source === 'env' ? (
+    <span className="shrink-0 rounded-[4px] border border-[#e4e7ec] bg-[#f6f8fa] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#66758b]">{t('vectorStoreSettings.envTag')}</span>
+  ) : null;
+  // vectorstore/websearch panels keep an inner list title (storesTitle /
+  // providersTitle); storage's card grid sits directly under the section
+  // description in Vue.
+  const innerListTitle = section === 'storage' ? null : (
+    <div className="wk-settings-panel-heading flex items-center justify-between gap-4 pb-2 pt-1">
+      <h3 className="m-0 text-[15px] font-semibold text-[#101828]">{t(keys.list)}</h3>
+      <Button type="button" disabled={busy} aria-label={t('common.refresh')} title={t('common.refresh')} onClick={() => void refresh()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg></Button>
+    </div>
+  );
 
   return <div className="wk-settings-resource">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
+    {innerListTitle}
     <div className="backend-grid grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
       {rows.map((row, index) => {
         const id = rowId(row);
@@ -213,10 +230,11 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
           <div className="min-w-0 flex-1">
             <div className="backend-card__header flex items-center gap-2">
               <h3 className="backend-card__title m-0 min-w-0 truncate text-[15px] font-semibold text-[#101828]" title={nameValue}>{nameValue}</h3>
+              {section !== 'storage' && row.source === 'env' ? envPill(row) : null}
               {isDefault ? <span className="shrink-0 rounded-[4px] bg-[#e8f8f2] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#0a7f43]">{copy.defaultLabel}</span> : null}
             </div>
             <p className="backend-card__subtitle m-0 mt-1 flex items-center truncate text-[13px] text-muted">
-              <span>{provider ? provider.toUpperCase() : copy.typeUnavailable}</span>
+              <span>{provider ? providerLabel(provider) : copy.typeUnavailable}</span>
               {meta ? <><span className="mx-[4px]">·</span><span className="truncate">{meta}</span></> : null}
             </p>
           </div>

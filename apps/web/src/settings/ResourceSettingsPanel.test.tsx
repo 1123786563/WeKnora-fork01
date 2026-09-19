@@ -42,7 +42,7 @@ test('WebSearch provider cards preserve Vue metadata anatomy', () => {
   // dashed add card.
   assert.match(html, /backend-card/);
   assert.match(html, /Docs Search/);
-  assert.match(html, /TAVILY/);
+  assert.match(html, /tavily/);
   assert.match(html, /Search public documentation/);
   assert.match(html, /role="button"/);
   assert.match(html, /backend-card--add/);
