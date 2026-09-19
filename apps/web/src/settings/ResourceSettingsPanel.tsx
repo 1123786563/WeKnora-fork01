@@ -231,14 +231,23 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
     catch (reason) { setError(reason instanceof Error ? reason.message : copy.setDefaultFailed); setBusy(false); }
   }
 
-  // Vue backend-card anatomy (StorageBackendSettings.vue:18-71): provider
-  // badge, name + 默认 tag, subtitle provider·meta; the whole card opens the
-  // edit drawer, and the dashed add-card closes the grid.
-  const resourceMeta = (row: ResourceRow, provider: string): string => {
-    const description = rowText(row, 'description');
-    if (description) return description;
-    if (provider === 'local') return copy.localLabel;
-    return '';
+  // Per-section card meta, mirroring the Vue surfaces: storage cards show
+  // endpoint → bucket_name → path_prefix → 本地存储 (backendMeta), vectorstore
+  // cards show the store endpoint, websearch cards the provider description.
+  const resourceMeta = (row: ResourceRow): string => {
+    const config = row.config && typeof row.config === 'object' && !Array.isArray(row.config) ? row.config as Record<string, unknown> : {};
+    if (section === 'storage') {
+      for (const key of ['endpoint', 'bucket_name', 'path_prefix']) {
+        const value = config[key];
+        if (typeof value === 'string' && value.trim()) return value;
+      }
+      return copy.localLabel;
+    }
+    if (section === 'vectorstore') {
+      const endpoint = config.endpoint;
+      return typeof endpoint === 'string' ? endpoint : '';
+    }
+    return rowText(row, 'description');
   };
   // Vue renders the raw engine_type on vectorstore/websearch cards and the
   // upper-cased provider on storage cards (LOCAL · 本地存储).
@@ -270,7 +279,7 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
         const provider = rowText(row, 'provider') || rowText(row, 'type') || rowText(row, 'engine_type');
         const nameValue = rowText(row, 'name') || id || copy.unnamed;
         const isDefault = row.default === true || (typeof defaultId === 'string' && id === defaultId);
-        const meta = resourceMeta(row, provider);
+        const meta = resourceMeta(row);
         const logo = providerLogo(section, provider);
         const brand = PROVIDER_BRAND[section][provider.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
         const monoMaskStyle = logo?.mode === 'mono' ? {
