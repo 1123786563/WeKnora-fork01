@@ -188,13 +188,127 @@ type UserDecision struct {
 	ExpiresAt                     time.Time
 	ProvidedResult                json.RawMessage
 }
+
+type DecisionAction string
+
+const (
+	DecisionRetry         DecisionAction = "retry"
+	DecisionProvideResult DecisionAction = "provide_result"
+	DecisionTerminate     DecisionAction = "terminate"
+)
+
+type PendingStatus string
+
+const (
+	PendingOpen      PendingStatus = "pending"
+	PendingResolved  PendingStatus = "resolved"
+	PendingExpired   PendingStatus = "expired"
+	PendingRevoked   PendingStatus = "revoked"
+	PendingCancelled PendingStatus = "cancelled"
+)
+
+type PendingKey struct {
+	Run       RunIdentity
+	PendingID string
+}
+type PendingReference struct {
+	PendingID  string `json:"pending_id"`
+	DetailPath string `json:"detail_path"`
+	Revision   string `json:"revision"`
+}
+type PendingServiceIdentity struct {
+	Kind               string `json:"kind"`
+	ServiceID          string `json:"service_id,omitempty"`
+	ServiceName        string `json:"service_name"`
+	InstallationID     string `json:"installation_id,omitempty"`
+	ResourceRef        string `json:"resource_ref,omitempty"`
+	ToolName           string `json:"tool_name"`
+	RegisteredToolName string `json:"registered_tool_name"`
+	SchemaHash         string `json:"schema_hash"`
+}
+type PendingOAuth struct {
+	ServiceID string     `json:"service_id"`
+	State     string     `json:"state"`
+	BeginPath string     `json:"begin_path"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+type PendingDecisionDetail struct {
+	Version              int                    `json:"version"`
+	Ref                  PendingReference       `json:"ref"`
+	SessionID            string                 `json:"session_id"`
+	RunID                string                 `json:"run_id"`
+	CallID               string                 `json:"call_id"`
+	WaitKind             WaitKind               `json:"wait_kind"`
+	Status               PendingStatus          `json:"status"`
+	RunStatus            RunStatus              `json:"run_status"`
+	RunRevision          string                 `json:"run_revision"`
+	PlanVersion          int                    `json:"plan_version"`
+	ArgsHash             string                 `json:"args_hash"`
+	Service              PendingServiceIdentity `json:"service"`
+	OperationDescription string                 `json:"operation_description"`
+	RedactedArgs         json.RawMessage        `json:"redacted_args"`
+	RedactedPaths        []string               `json:"redacted_paths"`
+	RedactionVersion     string                 `json:"redaction_version"`
+	ExpiresAt            time.Time              `json:"expires_at"`
+	AllowedActions       []DecisionAction       `json:"allowed_actions"`
+	ResolvePath          string                 `json:"resolve_path"`
+	OAuth                *PendingOAuth          `json:"oauth,omitempty"`
+	ExternalActionID     string                 `json:"external_action_id,omitempty"`
+	ExternalActionPath   string                 `json:"external_action_path,omitempty"`
+	ExternalActionState  string                 `json:"external_action_state,omitempty"`
+	ResolvedDecisionID   string                 `json:"resolved_decision_id,omitempty"`
+	ResolvedAction       DecisionAction         `json:"resolved_action,omitempty"`
+	ResolvedAt           *time.Time             `json:"resolved_at,omitempty"`
+}
+type PendingDecisionPage struct {
+	Items      []PendingDecisionDetail `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+type ResolvePendingRequest struct {
+	DecisionID       string          `json:"decision_id"`
+	CallID           string          `json:"call_id"`
+	ExpectedRevision string          `json:"expected_revision"`
+	PendingRevision  string          `json:"pending_revision"`
+	PlanVersion      int             `json:"plan_version"`
+	ArgsHash         string          `json:"args_hash"`
+	ResourceRef      string          `json:"resource_ref,omitempty"`
+	Action           DecisionAction  `json:"action"`
+	Reason           string          `json:"reason"`
+	ProvidedResult   json.RawMessage `json:"provided_result,omitempty"`
+}
+type PendingResolution struct {
+	Detail      PendingDecisionDetail `json:"detail"`
+	RunStatus   RunStatus             `json:"run_status"`
+	RunRevision string                `json:"run_revision"`
+	ResumeState string                `json:"resume_state"`
+}
+type OAuthStartRequest struct {
+	RedirectURI string `json:"redirect_uri"`
+}
+type OAuthStartResult struct {
+	AuthorizationURL     string    `json:"authorization_url"`
+	AuthorizationAttempt string    `json:"authorization_attempt"`
+	ExpiresAt            time.Time `json:"expires_at"`
+}
+type PendingDecisionService interface {
+	List(context.Context, Scope, RunIdentity, string, int) (PendingDecisionPage, error)
+	Get(context.Context, Scope, PendingKey) (PendingDecisionDetail, error)
+	BeginOAuth(context.Context, Scope, PendingKey, OAuthStartRequest) (OAuthStartResult, error)
+	Resolve(context.Context, Scope, PendingKey, ResolvePendingRequest) (PendingResolution, error)
+}
+
 type ToolOutcome struct {
-	AttemptID, CallID, ProviderReceipt, QueryAnchor, ResultHash string
-	Effect                                                      EffectState
-	IsError, Truncated                                          bool
-	Content                                                     json.RawMessage
-	Artifacts                                                   []ArtifactRef
-	Failure                                                     *Failure
+	AttemptID       string          `json:"attempt_id"`
+	CallID          string          `json:"call_id"`
+	ProviderReceipt string          `json:"provider_receipt,omitempty"`
+	QueryAnchor     string          `json:"query_anchor,omitempty"`
+	ResultHash      string          `json:"result_hash"`
+	Effect          EffectState     `json:"effect"`
+	IsError         bool            `json:"is_error"`
+	Truncated       bool            `json:"truncated"`
+	Content         json.RawMessage `json:"content"`
+	Artifacts       []ArtifactRef   `json:"artifacts,omitempty"`
+	Failure         *Failure        `json:"failure,omitempty"`
 }
 type ToolBoundary interface {
 	Plan(context.Context, Fence, ToolPlan) (ToolPlan, error)
@@ -237,9 +351,6 @@ type Failure struct {
 
 func (f Failure) Error() string { return string(f.Code) + ": " + f.Message }
 
-// Fault is retained as the cross-track name for a sanitized Failure.
-type Fault = Failure
-
 type ModelBinding struct {
 	Model   model.Model
 	Config  ConfigBinding
@@ -280,33 +391,47 @@ const (
 	EventFailure          EventKind = "error"
 )
 
-type PendingReference struct {
-	PendingID  string `json:"pending_id"`
-	DetailPath string `json:"detail_path"`
-	Revision   string `json:"revision"`
+type PublicUsage struct {
+	ObservationID     string `json:"observation_id"`
+	Revision          string `json:"revision"`
+	PromptTokens      string `json:"prompt_tokens"`
+	CompletionTokens  string `json:"completion_tokens"`
+	TotalTokens       string `json:"total_tokens"`
+	CachedTokens      string `json:"cached_tokens"`
+	CacheReadTokens   string `json:"cache_read_tokens"`
+	CacheCreateTokens string `json:"cache_create_tokens"`
+	AccountingStatus  string `json:"accounting_status"`
 }
-type PublicUsage struct{ ObservationID, Revision, PromptTokens, CompletionTokens, TotalTokens, CachedTokens, CacheReadTokens, CacheCreateTokens, AccountingStatus string }
 type EventPayload struct {
-	Pending                       *PendingReference
-	Status                        RunStatus
-	Wait                          WaitKind
-	Text                          string
-	Offset                        *int64
-	ReplacesAttemptID, CallID     string
-	PlanVersion                   int
-	ToolName, PendingID, ArgsHash string
-	ExpiresAt                     *time.Time
-	Outcome                       *ToolOutcome
-	Usage                         *PublicUsage
-	Artifact                      *ArtifactRef
-	Failure                       *Failure
+	Pending           *PendingReference `json:"pending,omitempty"`
+	Status            RunStatus         `json:"status,omitempty"`
+	Wait              WaitKind          `json:"wait_kind,omitempty"`
+	Text              string            `json:"text,omitempty"`
+	Offset            *int64            `json:"offset,omitempty"`
+	ReplacesAttemptID string            `json:"replaces_attempt_id,omitempty"`
+	CallID            string            `json:"call_id,omitempty"`
+	PlanVersion       int               `json:"plan_version,omitempty"`
+	ToolName          string            `json:"tool_name,omitempty"`
+	PendingID         string            `json:"pending_id,omitempty"`
+	ArgsHash          string            `json:"args_hash,omitempty"`
+	ExpiresAt         *time.Time        `json:"expires_at,omitempty"`
+	Outcome           *ToolOutcome      `json:"outcome,omitempty"`
+	Usage             *PublicUsage      `json:"usage,omitempty"`
+	Artifact          *ArtifactRef      `json:"artifact,omitempty"`
+	Failure           *Failure          `json:"failure,omitempty"`
 }
 type BusinessEvent struct {
-	Protocol                                                              string
-	SchemaVersion                                                         int
-	EventID, TenantID, SessionID, RunID, ParentRunID, AttemptID, Sequence string
-	Kind                                                                  EventKind
-	Payload                                                               EventPayload
+	Protocol      string       `json:"protocol"`
+	SchemaVersion int          `json:"schema_version"`
+	EventID       string       `json:"event_id"`
+	TenantID      string       `json:"tenant_id"`
+	SessionID     string       `json:"session_id"`
+	RunID         string       `json:"run_id"`
+	ParentRunID   string       `json:"parent_run_id,omitempty"`
+	AttemptID     string       `json:"attempt_id,omitempty"`
+	Sequence      string       `json:"seq"`
+	Kind          EventKind    `json:"kind"`
+	Payload       EventPayload `json:"payload"`
 }
 type EventPage struct {
 	Events      []BusinessEvent

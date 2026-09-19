@@ -2,8 +2,10 @@ package nativecontract
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestSessionKeySeparatesTenantsWithSameOwnerAndSession(t *testing.T) {
@@ -85,6 +87,31 @@ func TestScopeKeysKeepSessionOwnerAndMemorySubjectSeparate(t *testing.T) {
 	}
 }
 
+func TestMemoryKeySeparatesTenantsAndPrincipalNamespaces(t *testing.T) {
+	apiKey := Scope{TenantID: 4, MemorySubjectID: "api_tenant_key:4:99"}
+	externalUser := Scope{TenantID: 4, MemorySubjectID: "api_external_user:4:99"}
+	otherTenant := Scope{TenantID: 5, MemorySubjectID: apiKey.MemorySubjectID}
+
+	apiKeyMemory, err := MemoryKey(apiKey)
+	if err != nil {
+		t.Fatalf("MemoryKey(api key) error = %v", err)
+	}
+	externalMemory, err := MemoryKey(externalUser)
+	if err != nil {
+		t.Fatalf("MemoryKey(external user) error = %v", err)
+	}
+	otherTenantMemory, err := MemoryKey(otherTenant)
+	if err != nil {
+		t.Fatalf("MemoryKey(other tenant) error = %v", err)
+	}
+	if apiKeyMemory == externalMemory {
+		t.Fatalf("API key and external user keys collided: %#v", apiKeyMemory)
+	}
+	if apiKeyMemory == otherTenantMemory {
+		t.Fatalf("memory key crossed tenant boundary: %#v", apiKeyMemory)
+	}
+}
+
 func TestScopeKeysAreRepeatable(t *testing.T) {
 	scope := Scope{TenantID: 9, SessionOwnerID: "owner", MemorySubjectID: "subject"}
 	firstSession, err := SessionKey(scope, "session")
@@ -142,4 +169,62 @@ func TestScopeKeysRejectEmptyIdentityAsInvalidRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBusinessEventWireEncodingUsesFrozenJSONNames(t *testing.T) {
+	expires := time.Unix(1700000000, 0).UTC()
+	payload := EventPayload{
+		Usage:     &PublicUsage{ObservationID: "obs", PromptTokens: "1", CompletionTokens: "2", TotalTokens: "3", CachedTokens: "4", CacheReadTokens: "5", CacheCreateTokens: "6", AccountingStatus: "known"},
+		ExpiresAt: &expires,
+	}
+	event := BusinessEvent{Protocol: EventProtocol, SchemaVersion: ContractVersion, EventID: "evt", TenantID: "4", SessionID: "session", RunID: "run", Sequence: "7", Kind: EventUsage, Payload: payload}
+
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	for _, field := range []string{"schema_version", "tenant_id", "seq"} {
+		if _, ok := decoded[field]; !ok {
+			t.Fatalf("encoded BusinessEvent missing %q: %s", field, encoded)
+		}
+	}
+	if _, ok := decoded["parent_run_id"]; ok {
+		t.Fatalf("empty parent_run_id must be omitted: %s", encoded)
+	}
+	var encodedPayload map[string]json.RawMessage
+	if err := json.Unmarshal(decoded["payload"], &encodedPayload); err != nil {
+		t.Fatalf("payload json error = %v", err)
+	}
+	usageJSON, ok := encodedPayload["usage"]
+	if !ok {
+		t.Fatalf("encoded payload missing usage: %s", encoded)
+	}
+	var usage map[string]json.RawMessage
+	if err := json.Unmarshal(usageJSON, &usage); err != nil {
+		t.Fatalf("usage json error = %v", err)
+	}
+	for _, field := range []string{"observation_id", "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "cache_read_tokens", "cache_create_tokens", "accounting_status"} {
+		if _, ok := usage[field]; !ok {
+			t.Fatalf("encoded usage missing %q: %s", field, usageJSON)
+		}
+	}
+	if _, ok := encodedPayload["text"]; ok {
+		t.Fatalf("empty payload text must be omitted: %s", encoded)
+	}
+}
+
+func TestPendingDecisionContractTypesAreAvailable(t *testing.T) {
+	_ = PendingDecisionDetail{Status: PendingOpen, AllowedActions: []DecisionAction{DecisionRetry}}
+	_ = PendingDecisionPage{}
+	_ = ResolvePendingRequest{Action: DecisionTerminate}
+	_ = PendingResolution{}
+	_ = OAuthStartRequest{}
+	_ = OAuthStartResult{}
+	_ = PendingKey{}
+	_ = PendingServiceIdentity{}
+	_ = PendingOAuth{}
 }
