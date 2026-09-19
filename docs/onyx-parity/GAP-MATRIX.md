@@ -25,7 +25,7 @@
 |---|------|--------------|--------------|------|------|
 | C-1 | 会话 CRUD/恢复 | `backend/onyx/server/features/build/session/api.py:87/105/164/320/357`（list/create/get/delete/restore）；BuildSession `db/models.py:6353` | `internal/handler/session/craft.go:118-119/127/145`（create/list/view/restore），restore=快照版本回滚；lifecycle 以 TombstoneSession 跟随通用 session 删除 `internal/application/service/craft_lifecycle.go:313,620` | 🟡部分 | 无 craft 会话级 delete/rename 端点；"restore"语义不同（Onyx 恢复运行中会话 vs WeKnora 快照回滚） |
 | C-2 | 发消息/交互回合/SSE | `session/messages.py:80`、`interactive_turns/api.py:108/128`（turns SSE） | `handler/session/craft.go:132`（POST craft/runs）+ 通用 run SSE `agent_run.go:131`、`router/routes_chat.go:75`（Last-Event-ID 续读）；前端 `apps/web/src/features/craft/routes.tsx:63-81` | ✅对齐 | 复用 agent_runs 持久事件流 |
-| C-3 | 中断/steer | `session/messages.py:289` interrupt + `session/interrupt_signal.py:26`（跨副本 Redis fence） | 通用 cancel `agent_run.go:272` + durable steer `handler/session/steer.go:556,360`；craft 专用验证式 Stop `internal/application/service/craft_control.go:401` **未挂 HTTP 路由**（仅测试调用） | 🟡部分 | CraftControlService.Stop 完整实现但等待组装 |
+| C-3 | 中断/steer | `session/messages.py:289` interrupt + `session/interrupt_signal.py:26`（跨副本 Redis fence） | 通用 cancel `agent_run.go:272` + durable steer `handler/session/steer.go:556,360`；craft 专用验证式 Stop 已挂生产路由 `POST /sessions/:session_id/craft/runs/:run_id/stop`（`handler/session/craft_interaction.go:71`，routes_chat.go 装配）+ workbench 停止入口与 stopping 轮询 | ✅对齐（SP1） | SP1 完成：路由+执行器注入+api-client+前端停止入口 |
 | C-4 | 会话消息持久化 | build_message 表逐 packet 落行 `db/models.py:6665` | 无等价表；user/assistant 消息对 `internal/application/repository/agent_run.go:116` + 事件流 + C05 快照链 `internal/craft/snapshot.go:75` | 🟡部分 | 模型不同：Onyx 逐 packet，WeKnora 消息对+事件回放 |
 
 ## 1.2 沙箱
@@ -72,7 +72,7 @@
 |---|------|------|---------|------|------|
 | C-23 | ScheduledTask 定时任务 | CRUD+run-now+Celery+预授权目标 `scheduled_tasks/api.py:397-558`、`db/models.py:6756/6853/6934` | **无**（craft 内零匹配） | ❌缺失 | |
 | C-24 | 限流/预算 | 429 token/cost turn-budget | 调用次数制 BudgetGrant+原子 AuthorizeCall `internal/craft/budget.go:46-62`、`internal/application/service/craft_budget.go:275`；BUDGET_STOPPED 402/403 `internal/handler/craft_model_gateway.go:562-575`；O01 usage 账本 | 🔷有意不同 | 次数+商业化预留制 vs token/cost 限流 |
-| C-25 | LLM 网关归属判定 | `craft_gateway.py:10`（权限判定） | O02 受控模型网关：专用端点+cmg1 HMAC 短时凭据 `internal/handler/craft_model_gateway.go:26-57,429,434,524` ——**实现+测试完备但未在生产 router/container 挂载**（仅测试挂载 `:209-214`） | 🟡部分 | 等待组装；release.go:19-22 自述 G4 billing 缺口 |
+| C-25 | LLM 网关归属判定 | `craft_gateway.py:10`（权限判定） | O02 受控模型网关已生产挂载：`router/router.go:236-237` 挂 `POST/GET /api/v1/craft/model-gateway/v1/*`，cmg1 HMAC 短时凭据签发面 `routes_chat.go:160-166`，fail-closed secret，上游凭据仅服务器凭据仓（`internal/handler/craft_model_gateway.go`） | ✅对齐（SP1） | SP1 完成；G4 commercial_reservations owner 列已补（PG 000158/sqlite 000079） |
 | C-26 | 三层功能开关 | 部署 ENABLE_CRAFT/PostHog + 工作区默认 + 用户级 `utils.py:156` | 仅部署级 `internal/container/container.go:2184-2202`（WEKNORA_CRAFT_ENABLED+WEKNORA_CRAFT_KINDS）；gate 快照随 API 下发 | 🟡部分 | 无工作区/用户级；kind 级开关是 WeKnora 特有 |
 | C-27 | 管理后台三页 | admin craft access/apps/preferences | **无**（apps/web/src/administration/ 无 craft 内容） | ❌缺失 | |
 | C-28 | onboarding/LLM 设置引导 | craft onboarding + LLM 偏好 | 无 craft 专用引导；模型取租户默认 `internal/application/service/craft_session.go:840` | ❌缺失 | |
@@ -107,7 +107,7 @@
 | K-2 | Document 统一模型 | sections（Text/Image/Tabular）+owner+权限 `connectors/models.py:196` | FetchedItem（Content []byte 文件流模型，复用 KB 解析管线）`internal/types/datasource.go:313` | 🟡部分 | 无 owner/权限字段、无 Section 类型；有 IsDeleted+子树协调字段 |
 | K-3 | 凭据体系 | EncryptedJson+动态续期+Redis 分布式锁 `connectors/credentials_provider.py:17,82` | AES-256-GCM 静态加密 `internal/types/datasource.go:531,590`；凭据子资源 API `internal/handler/datasource_credentials.go` | 🟡部分 | 无 token 轮换回写与分布式锁 |
 | K-4 | cc_pair 多对多绑定 | Connector×Credential 多对多+access_type+auto_sync_options `db/models.py:912,946` | DataSource 单表 1:1 内聚（配置+凭据+目标 KB+调度）`internal/types/datasource.go:65-104` | 🔷有意不同 | 换简单失凭据复用/多凭据同源/access_type |
-| K-5 | 注册表与懒加载 | 57 条懒加载 `connectors/registry.py:14`、`factory.py:40` | 进程内 map，启动全量构造 11 实例 `internal/datasource/connector.go:121`、`internal/container/container.go:2017` | 🟡部分 | Go 饥饿式合理；注释明示 github 等未注册 |
+| K-5 | 注册表与懒加载 | 57 条懒加载 `connectors/registry.py:14`、`factory.py:40` | 进程内 map，启动全量构造 11 实例 `internal/datasource/connector.go:121`、`internal/container/container.go:2017`；元数据注册表钉死同一 11 源集，registry==implementation 由对齐断言测试锁定（`connector_registry_test.go`） | ✅对齐（SP1） | Go 饥饿式合理；SP1 清除 6 条幽灵元数据（github/google_drive/onedrive/web_crawler/slack/imap），常量保留供 SP7-9 复用 |
 | K-6 | 创建前实连校验 | `factory.py:151` validate_ccpair_for_user | Connector.Validate 三路径触发 `internal/application/service/datasource_service.go:1415,1433`、`internal/handler/datasource.go:309,272` | ✅对齐 | WeKnora 无 perm-sync 附加校验（本就无 perm sync） |
 
 ## 2.2 索引管道
@@ -148,7 +148,7 @@
 
 | # | 能力 | Onyx | WeKnora | 定性 | 备注 |
 |---|------|------|---------|------|------|
-| K-26 | 配置向导 | CONNECTOR_CONFIGS schema 驱动 50+ 源 `web/src/lib/connectors/connectors.tsx:177` | React form.ts VUE_* 常量 + Vue 分步向导 `apps/web/src/data-sources/form.ts:142`、`frontend/src/views/knowledge/settings/DataSourceEditorDialog.vue:499` | ✅对齐 | 均声明式 schema；**confluence/dingtalk 已实装但两套前端均未列创建入口**（API 可建） |
+| K-26 | 配置向导 | CONNECTOR_CONFIGS schema 驱动 50+ 源 `web/src/lib/connectors/connectors.tsx:177` | React form.ts VUE_* 常量 + Vue 分步向导 `apps/web/src/data-sources/form.ts:142`、`frontend/src/views/knowledge/settings/DataSourceEditorDialog.vue:499`；confluence/dingtalk 创建入口两套前端均已补（fields/guides/i18n + connectorDefs） | ✅对齐（SP1） | 均声明式 schema；SP1 补齐 confluence/dingtalk 前端入口 |
 | K-27 | cc_pair 详情页 | IndexAttemptsTable+错误弹层+stage metrics+重索引 UI | 同步日志抽屉+partial 失败样本 `apps/web/src/data-sources/`（log-state.ts/card.ts） | 🟡部分 | 无 attempt/stage 级明细、无错误全列表分页、无单点重索引 |
 | K-28 | 状态总览页 | indexing/status 聚合视图+过滤 | DataSourcesPage 列表卡片+appconnector sync-status `internal/handler/app_connector_sync.go:44` | 🟡部分 | 无跨源索引健康度聚合视图 |
 

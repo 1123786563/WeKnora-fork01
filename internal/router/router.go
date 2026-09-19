@@ -231,6 +231,15 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// middleware. A nil handler (preview not assembled) mounts nothing.
 	handler.RegisterArtifactPreviewRoutes(r, handler.RegisteredArtifactPreviewHandler())
 
+	// Craft controlled model gateway forward plane (O02): the sandbox runtime
+	// authenticates with its short-lived cmg1 HMAC credential (no user JWT),
+	// so this must precede the global Auth middleware. A nil gateway (craft
+	// runtime or signing secret not configured) mounts nothing.
+	if gw := handler.RegisteredCraftModelGateway(); gw != nil {
+		r.POST("/api/v1/craft/model-gateway/v1/chat/completions", gw.Forward)
+		r.GET("/api/v1/craft/model-gateway/v1/models", gw.ListModels)
+	}
+
 	// 认证中间件
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 

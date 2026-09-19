@@ -134,7 +134,8 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 224);
+  // 224 Vue-ported keys + 13 confluence/dingtalk connector/desc/field keys.
+  assert.equal(keys.length, 237);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');

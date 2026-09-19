@@ -465,7 +465,9 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
           {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
           {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
           {!isAssistant && onForkMessage && canForkMessage?.(message.id) === true ? (
-            <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>⑂</button>
+            <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>
+            </button>
           ) : null}
           {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />

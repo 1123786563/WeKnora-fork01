@@ -851,7 +851,16 @@ export default {
       feedUrls: '订阅源地址',
       feedUrlsHint: '每行一个 RSS / Atom 订阅源地址，支持同时填写多个',
       authHeaders: '自定义请求头（可选）',
-      authHeadersHint: '用于访问私有订阅源，每行一个，格式为「名称: 值」，例如 Authorization: Bearer xxxx'
+      authHeadersHint: '用于访问私有订阅源，每行一个，格式为「名称: 值」，例如 Authorization: Bearer xxxx',
+      confluenceEdition: '版本（server / cloud）',
+      confluenceUsername: '用户名',
+      confluenceApiToken: 'API Token',
+      confluenceApiTokenHint: 'cloud 版必填',
+      confluencePassword: '密码',
+      confluencePasswordHint: 'server 版必填',
+      dingtalkClientId: 'Client ID（AppKey）',
+      dingtalkClientSecret: 'Client Secret（AppSecret）',
+      dingtalkOperatorId: '操作人 Operator ID'
     },
     connectorDesc: {
       feishu: '同步飞书知识库中的文档、表格、文件',
@@ -862,7 +871,9 @@ export default {
       yuque: '同步语雀知识库中的文档',
       ima: '同步腾讯 IMA 知识库中的文档、笔记与文件（暂不支持 AI 会话与视频解析）',
       rss: '同步 RSS / Atom 订阅源中的文章',
-      gitlab: '同步 GitLab 项目中的文件'
+      gitlab: '同步 GitLab 项目中的文件',
+      confluence: '同步 Confluence 空间中的页面',
+      dingtalk: '同步钉钉知识库中的在线文档'
     },
     connector: {
       feishu: '飞书',
@@ -873,7 +884,9 @@ export default {
       yuque: '语雀',
       ima: '腾讯 IMA',
       rss: 'RSS / Atom 订阅',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      confluence: 'Confluence',
+      dingtalk: '钉钉（知识库）'
     },
     logDetail: {
       startTime: '开始时间',

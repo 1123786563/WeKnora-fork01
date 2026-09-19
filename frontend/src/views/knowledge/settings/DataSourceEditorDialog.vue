@@ -633,6 +633,34 @@ const connectorDefs = computed<ConnectorDef[]>(() => [
       { key: 'access_token', labelKey: 'datasource.gitlab.accessToken', placeholder: '', secret: true },
     ],
   },
+  {
+    type: 'confluence',
+    available: true,
+    docUrl: 'https://developer.atlassian.com/cloud/confluence/rest/intro/',
+    permissionDocUrl: '',
+    permissionPageUrl: '',
+    requiredPermissions: [],
+    fields: [
+      { key: 'edition', labelKey: 'datasource.field.confluenceEdition', placeholder: 'server' },
+      { key: 'base_url', labelKey: 'datasource.field.baseUrl', placeholder: 'https://confluence.example.com' },
+      { key: 'username', labelKey: 'datasource.field.confluenceUsername', placeholder: 'user@example.com' },
+      { key: 'api_token', labelKey: 'datasource.field.confluenceApiToken', placeholder: '', secret: true, optional: true, hintKey: 'datasource.field.confluenceApiTokenHint' },
+      { key: 'password', labelKey: 'datasource.field.confluencePassword', placeholder: '', secret: true, optional: true, hintKey: 'datasource.field.confluencePasswordHint' },
+    ],
+  },
+  {
+    type: 'dingtalk',
+    available: true,
+    docUrl: 'https://open.dingtalk.com/document/orgapp/obtain-orgapp-exclusive-access-token',
+    permissionDocUrl: '',
+    permissionPageUrl: '',
+    requiredPermissions: [],
+    fields: [
+      { key: 'client_id', labelKey: 'datasource.field.dingtalkClientId', placeholder: '', secret: true },
+      { key: 'client_secret', labelKey: 'datasource.field.dingtalkClientSecret', placeholder: '', secret: true },
+      { key: 'operator_id', labelKey: 'datasource.field.dingtalkOperatorId', placeholder: '', secret: true },
+    ],
+  },
 ])
 
 

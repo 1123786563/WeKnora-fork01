@@ -425,6 +425,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newCraftLifecycleService))
 	must(container.Provide(newCraftUsageService))
 	must(container.Provide(newCraftUsageViewService))
+	must(container.Provide(newCraftModelGatewayHandler))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -562,6 +563,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(validateCraftKnowledgeAssembly))
 	// O04: the usage view handler rides the craft session route table.
 	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// O02: the controlled model gateway (credential issuance + HMAC forward),
+	// assembled only when the runtime dial and signing secret are both set.
+	must(container.Invoke(registerCraftModelGatewayHTTPHandlers))
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
@@ -2354,16 +2358,22 @@ func validateCraftKnowledgeAssembly(knowledge *service.CraftKnowledgeService) {
 // parameter, and this invoke lands the same wiring after construction,
 // before any delegation can execute.
 func wireCraftInteractionRegistrar(executor craft.Executor, assembly *CraftInteractionAssembly) {
-	runtime, ok := executor.(*localCraftRuntime)
-	if !ok || assembly == nil {
+	if assembly == nil {
 		return
 	}
-	// BASE wrapped the executor's emission path with the registrar at
-	// construction using the executor's OWN opencode client; the
-	// post-construction install reuses that same client (assembly.Client
-	// may legitimately be nil when its own dial failed).
-	runtime.setInteractionEmitter(craftInteractionRegistrar(
-		runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
+	if runtime, ok := executor.(*localCraftRuntime); ok {
+		// BASE wrapped the executor's emission path with the registrar at
+		// construction using the executor's OWN opencode client; the
+		// post-construction install reuses that same client (assembly.Client
+		// may legitimately be nil when its own dial failed).
+		runtime.setInteractionEmitter(craftInteractionRegistrar(
+			runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
+		// R06: the same post-construction seam now carries the verifiable
+		// stop surface — the control service can abort the real runtime.
+		// The fail-closed executor (no runtime dial) is NOT injected: stop
+		// keeps its honest "no executor available" degrade there.
+		assembly.Control.SetExecutor(executor)
+	}
 }
 
 // registerCraftHTTPHandlers installs the craft handlers for route mounting.

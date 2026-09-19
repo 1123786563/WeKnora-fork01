@@ -121,6 +121,15 @@ export interface CraftWorkbenchProps {
   restorableVersionIds?: string[];
   onRestoreVersion?(versionId: string): Promise<void>;
   /**
+   * R06 verifiable stop entrance (optional until the assembly wires POST
+   * /craft/runs/:run_id/stop): when provided and a run is active, the
+   * header offers the stop. The assembly owns addressing (run id + the
+   * active delegation id) and the stopping→terminal poll.
+   */
+  onStopRun?(): Promise<void>;
+  /** Poll state of an accepted stop ('stopping' shows the busy label). */
+  stopPhase?: 'idle' | 'stopping';
+  /**
    * Interaction decisions stay props callbacks: the backend interaction HTTP
    * routes are not wired yet (W04 report §6), so the assembly decides what a
    * decision currently does — never a silent auto-approval.
@@ -176,6 +185,12 @@ const RESTORE_STRINGS = {
     reasonUnselected: 'Select a version to continue from',
     failed: 'Restore failed',
   },
+} as const;
+
+// R06 stop wording: same feature-string pattern as RESTORE_STRINGS.
+const STOP_STRINGS = {
+  zh: { action: '停止', busy: '停止中…', failed: '停止失败' },
+  en: { action: 'Stop', busy: 'Stopping…', failed: 'Stop failed' },
 } as const;
 
 /** Stable-callback hook so effects never loop on parent re-renders. */
@@ -406,6 +421,8 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
 
   // --- C05 restore (continue editing from a version) ------------------------------
   const restoreStrings = props.locale === 'zh' ? RESTORE_STRINGS.zh : RESTORE_STRINGS.en;
+  // R06 stop wording follows the workbench locale (same pattern as restore).
+  const stopStrings = props.locale === 'zh' ? STOP_STRINGS.zh : STOP_STRINGS.en;
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const restoreVersion = useEventCallback(props.onRestoreVersion ?? (async () => undefined));
@@ -749,6 +766,18 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
           >
             {statusLabel}
           </span>
+          {props.canWrite && runActive && props.onStopRun !== undefined ? (
+            <Button
+              type="button"
+              data-testid="craft-stop"
+              disabled={props.stopPhase === 'stopping'}
+              onClick={() => {
+                void props.onStopRun?.().catch(() => { /* surfaced via syncError by the assembly */ });
+              }}
+            >
+              {props.stopPhase === 'stopping' ? stopStrings.busy : stopStrings.action}
+            </Button>
+          ) : null}
           <select
             className="wk-craft-version-select"
             data-testid="craft-version"

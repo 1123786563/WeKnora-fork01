@@ -81,7 +81,11 @@ function createCraftSseTransport(authedFetch: typeof fetch): CraftEventTransport
 }
 
 /** Every backend frame feeds BOTH the W04 controller and the message log. */
-function createTeeTransport(log: ReturnType<typeof createCraftMessageLog>, inner: CraftEventTransport): CraftEventTransport {
+function createTeeTransport(
+  log: ReturnType<typeof createCraftMessageLog>,
+  inner: CraftEventTransport,
+  activeDelegation: { current: { runId: string; taskId: string } | null },
+): CraftEventTransport {
   return {
     subscribe: (input) =>
       inner.subscribe({
@@ -89,6 +93,14 @@ function createTeeTransport(log: ReturnType<typeof createCraftMessageLog>, inner
         onEvent: (frame: CraftEventFrame) => {
           log.resetForRun(input.runId);
           log.ingest(frame);
+          // R06: remember the active delegation so the stop button can address it
+          // (the craft frame payload carries delegation_id — the stop task id).
+          try {
+            const parsed = JSON.parse(frame.data) as { delegation_id?: string };
+            if (typeof parsed.delegation_id === 'string' && parsed.delegation_id !== '') {
+              activeDelegation.current = { runId: input.runId, taskId: parsed.delegation_id };
+            }
+          } catch { /* non-JSON frames pass through untouched */ }
           input.onEvent(frame);
         },
       }),
@@ -136,12 +148,21 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // The controller + teed message log live for the whole craft session.
   const messageLog = useMemo(() => createCraftMessageLog(), []);
-  const transport = useMemo(() => createTeeTransport(messageLog, createCraftSseTransport(authedFetch)), [messageLog, authedFetch]);
+  // R06: the run + delegation the stop button addresses. Every craft frame's
+  // payload refreshes it (the tee parses each frame for delegation_id).
+  const activeDelegationRef = useRef<{ runId: string; taskId: string } | null>(null);
+  const transport = useMemo(
+    () => createTeeTransport(messageLog, createCraftSseTransport(authedFetch), activeDelegationRef),
+    [messageLog, authedFetch],
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
   // C03: transient reconnect states (stream ended, gap, cursor expiry,
   // offline) show the syncing banner and CLEAR it once sync recovers;
   // syncError stays reserved for permanent failures.
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  // R06 stop entrance: 'stopping' is the honest phase while an accepted stop
+  // polls delegationStatus toward terminal; the workbench shows the busy label.
+  const [stopPhase, setStopPhase] = useState<'idle' | 'stopping'>('idle');
   const controller = useMemo(
     () =>
       createCraftWorkbenchController({
@@ -610,6 +631,31 @@ export function CraftRoutes(props: CraftRoutesProps) {
           onInteractionAction={handleInteractionAction}
           onOpenSource={openKnowledgeSource}
           onMintTerminalUrl={mintTerminalUrl}
+          stopPhase={stopPhase}
+          onStopRun={async () => {
+            const active = activeDelegationRef.current;
+            if (active === null || sessionId === null) return;
+            setStopPhase('stopping');
+            try {
+              const result = await craftApi.stop(sessionId, active.runId, active.taskId, scopeController.current().signal);
+              // Poll the read-only status until the phase leaves "stopping".
+              for (let i = 0; i < 60 && result.phase === 'stopping'; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                const status = await craftApi.delegationStatus(sessionId, active.runId, active.taskId, scopeController.current().signal);
+                if (status.phase !== 'stopping') break;
+              }
+            } catch (error) {
+              // The stop request itself failed: surface it through the same
+              // banner the controller's permanent failures use.
+              setSyncError(error instanceof Error ? error.message : String(error));
+            } finally {
+              setStopPhase('idle');
+              activeDelegationRef.current = null;
+              // The controller's own snapshot reload reflects the terminal
+              // state — the same entry the existing error/cancel paths use.
+              await controller.load(sessionId);
+            }
+          }}
           onBack={() => navigate('/craft')}
           syncError={syncNotice ?? syncError}
         />
