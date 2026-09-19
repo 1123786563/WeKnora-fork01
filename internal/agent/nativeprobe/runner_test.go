@@ -61,6 +61,12 @@ func TestNativeRunnerToolRoundTrip(t *testing.T) {
 	r := runner.NewRunner("native-probe", ag, runner.WithSessionService(svc))
 	defer r.Close()
 	defer svc.Close()
+	key := session.Key{AppName: "native-probe", UserID: "user-1", SessionID: "session-1"}
+	_, err := svc.CreateSession(ctx, key, session.StateMap{})
+	require.NoError(t, err)
+	before, err := svc.GetSession(ctx, key)
+	require.NoError(t, err)
+	require.NotNil(t, before, "the probe must start with an existing Session to prove it was mutated")
 	events, err := r.Run(ctx, "user-1", "session-1", model.NewUserMessage("count"))
 	require.NoError(t, err)
 	finished := false
@@ -79,13 +85,12 @@ func TestNativeRunnerToolRoundTrip(t *testing.T) {
 	require.True(t, finished)
 	require.EqualValues(t, 1, calls.Load())
 
-	sess, err := svc.GetSession(ctx, session.Key{
-		AppName: "native-probe", UserID: "user-1", SessionID: "session-1",
-	})
+	after, err := svc.GetSession(ctx, key)
 	require.NoError(t, err)
-	require.NotNil(t, sess)
-	require.NotEmpty(t, sess.Events, "Runner must synchronize its emitted events into the Session")
-	require.False(t, sess.UpdatedAt.IsZero(), "Runner session mutation must update UpdatedAt")
+	require.NotNil(t, after)
+	require.NotEmpty(t, after.Events, "Runner must synchronize its emitted events into the Session")
+	require.True(t, after.UpdatedAt.After(before.UpdatedAt),
+		"Runner session mutation must advance UpdatedAt for an existing Session")
 }
 
 func TestSessionScopeKeysSeparateTenants(t *testing.T) {

@@ -4,7 +4,7 @@
 
 ## Task 1 candidate probe — v1.11.0
 
-`internal/agent/nativeprobe/runner_test.go` 现在在真实 `runner.Run` 工具往返结束后读取同一个 `inmemory.SessionService`：除“工具恰好调用一次”和最终 `finished` 外，还断言 Runner 已把事件同步到 `Session.Events` 且 `Session.UpdatedAt` 已被写入。这使 repeated-race gate 覆盖实际 Runner Session mutation 路径，而不是直接单元调用 SDK Session。
+`internal/agent/nativeprobe/runner_test.go` 现在先创建并读取同一个 `inmemory.SessionService` 中的 Session，再经真实 `runner.Run` 工具往返读取它。除“工具恰好调用一次”和最终 `finished` 外，它断言 Runner 已把事件同步到 `Session.Events`，并且 `after.UpdatedAt` 严格晚于预建 Session 的 `before.UpdatedAt`。这覆盖真实 Runner 的已有 Session mutation，而不是只证明 Runner 创建了一个 `UpdatedAt` 非零的新 Session。
 
 在升级前，该断言的普通运行通过，而以下 v1.10.0 RED 命令以退出码 1 失败并报告 SDK 内部 race：
 
@@ -28,17 +28,17 @@ GOWORK=off go test ./internal/agent/trpc -count=1 -v
 GOWORK=off go list -deps -f '{{with .Module}}{{if eq .Path "github.com/Tencent/WeKnora"}}{{$.ImportPath}} {{join $.Imports " "}}{{end}}{{end}}' ./... | rg 'trpc\\.group/trpc-go/trpc-agent-go'
 ```
 
-它还列出 `internal/application/service` 与 `internal/agent/recoverytest/provider`。Task 1 分别运行了 `GOWORK=off go test ./internal/application/service -count=1` 和 `GOWORK=off go test ./internal/agent/recoverytest ./internal/agent/recoverytest/provider -count=1 -timeout=2m`，但当前命令宿主在结果回传前结束，未取得可验证的退出码或日志；它们是 **unverified**, 不能从“已启动”推断通过。该缺口连同 PostgreSQL、真实 Provider、持久 Session/Memory、append-failure barrier、恢复和客户端门禁，使产品执行仍为 **NO-GO**。
+它还列出 `internal/application/service` 与 `internal/agent/recoverytest/provider`。当前候选的 `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` 以退出码 1 失败：持久事件只有 `run_started` 和 `run_failed`，没有预算耗尽通知所需记录。在临时 detached worktree 的精确 `75523c9c9` 基线运行同一命令，同样以退出码 1 和相同事件缺口失败。因此这是阻断完整直接消费者验收的**既有失败**，不是 v1.11.0 回归；在它被单独修复并回归验证前，不得将完整 consumer 验收记为通过。PostgreSQL、真实 Provider、持久 Session/Memory、append-failure barrier、恢复和客户端门禁同样保持 **NO-GO**。
 
-## 已观察到的确定性 SDK 往返
+## 历史 v1.10.0 基线：确定性 SDK 往返
 
 `internal/agent/nativeprobe/runner_test.go` 使用只在测试包内存在的 `scriptedModel`。`llmagent.New` 接收该 `model.Model` 和 `function.NewFunctionTool`，`runner.NewRunner` 使用 `inmemory.NewSessionService`，再经 `Runner.Run` 执行一次工具调用并在工具结果返回后得到明确的 `finished` assistant 内容。非 race 运行 `GOWORK=off go test ./internal/agent/nativeprobe -count=1 -v -timeout 45s` 通过：工具调用计数恰为一次、事件没有被静默吞错，并在读取完成后确认请求 context 没有超时。
 
 同一探针还创建两个仅 `session.Key.AppName` 不同的键（`weknora/tenant/1` 与 `weknora/tenant/2`），并验证它们在 in-memory session service 中保有不同状态。这证明 SDK session key 空间能够表达租户范围。
 
-## Race gate（未通过）
+## v1.10.0 RED → v1.11.0 GREEN：重复 race gate
 
-任务指定的 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v` 在 v1.10.0 失败。race detector 报告 `session.(*Session).Clone`（`session/session.go:95`）与 `session.(*Session).UpdateUserSession`（`session/session.go:476`）并发访问同一 session。调用路径分别来自 function-call processor 的 state-delta snapshot 和 runner 的 in-memory `AppendEvent` 持久化。该结果是固定 SDK 内部代码的竞态，产品代码没有改动来掩盖它；因此 P0-2 的 race-quality gate 不能标记为通过，需由后续 SDK 升级/上游修复决策处理。
+历史 v1.10.0 的 repeated command 以退出码 1 失败。race detector 报告 `session.(*Session).Clone`（`session/session.go:95`）与 `session.(*Session).UpdateUserSession`（`session/session.go:476`）并发访问同一 session。调用路径分别来自 function-call processor 的 state-delta snapshot 和 runner 的 in-memory `AppendEvent` 持久化。该 RED 结果来自固定 SDK 内部代码，产品代码没有改动来掩盖它。
 
 **产品执行门：** 在明确批准一个 SDK 版本和完整 Session/Memory service 配置后，必须由受审任务执行且全部通过以下固定多次 gate，才能启用任何原生 Runner 产品执行任务：
 
@@ -46,29 +46,29 @@ GOWORK=off go list -deps -f '{{with .Module}}{{if eq .Path "github.com/Tencent/W
 GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
 ```
 
-`-count=20` 要求同一已固定组合连续二十次独立测试运行均以零退出且没有 race report；一次通过不能解除门禁。当前 v1.10.0 连单次历史探针也失败，仍为 **NO-GO**，本文件没有声称修复或重新验收它。
+`-count=20` 要求同一已固定组合连续二十次独立测试运行均以零退出且没有 race report；一次通过不能解除门禁。当前根 `v1.11.0` 候选已以此命令退出 0。它仅将 v1.10.0 的 SDK race 从当前候选中排除，不能解除持久化、恢复、Provider、PostgreSQL、客户端或完整消费者验收门禁；产品执行仍为 **NO-GO**。
 
 ## 未验证的主张
 
 此结果不验证真实模型 Provider、Provider 的工具调用格式或流式/失败语义。它也不证明服务端授权、生产数据库隔离、租户身份来源、历史访问控制或跨进程持久化；session 名称隔离仅是 SDK key-space 行为。
 
-## 固定版本接口核对
+## 当前 v1.11.0 接口核对
 
-v1.10.0 的 `agent/llmagent.New` 接受名称和选项；`runner.NewRunner` 返回 `Runner`，其 `Run` 接受 `context.Context`、user ID、session ID 与 `model.Message`，并产生 event channel；`runner.WithSessionService` 接受 `session.Service`。本探针引用的 `model.Model`、`session.Key`、`session.StateMap`、`inmemory.NewSessionService` 与 function tool API 均在该固定模块中编译使用。未发现相对任务基线的接口漂移。
+当前 `v1.11.0` 的 `agent/llmagent.New` 接受名称和选项；`runner.NewRunner` 返回 `Runner`，其 `Run` 接受 `context.Context`、user ID、session ID 与 `model.Message`，并产生 event channel；`runner.WithSessionService` 接受 `session.Service`。本探针引用的 `model.Model`、`session.Key`、`session.StateMap`、`inmemory.NewSessionService` 与 function tool API 均在该当前根模块中编译使用；不需要产品源代码调整。
 
 ## P0-3：普通 Runner 与 checkpoint 图的恢复边界
 
-普通 `LLMAgent` 的工具循环是 SDK 内部的 `LLMAgent.Run` → `llmflow.Flow.Run` → `FunctionCallResponseProcessor.ProcessResponse` → `executeToolWithCallbacks`。固定 v1.10.0 在工具实际调用前后提供 `BeforeTool`/`AfterTool` plugin 与 local callbacks；这些是应用写入计划、审批和结果的可插入点，但没有把它们同 WeKnora 的 journal、数据库事务、checkpoint 和客户端事件组成原子恢复协议。源码不能由此证明外部效果恰好一次。
+普通 `LLMAgent` 的工具循环是 SDK 内部的 `LLMAgent.Run` → `llmflow.Flow.Run` → `FunctionCallResponseProcessor.ProcessResponse` → `executeToolWithCallbacks`。历史 v1.10.0 源码和当前 v1.11.0 编译均显示工具前后 callbacks 是应用写入计划、审批和结果的可插入点；它们没有同 WeKnora 的 journal、数据库事务、checkpoint 和客户端事件组成原子恢复协议。源码和当前候选 race green 都不能由此证明外部效果恰好一次。
 
 GraphAgent 走 `GraphAgent.Run` → `graph.Executor.Execute`，在节点前后运行 graph callbacks，并由 checkpoint saver 存储 checkpoint 和 pending writes。`internal/agent/trpc/compatibility_probe.go` 的显式 plan → approval → tool → answer 图在 approval 使用 `graph.Interrupt`，基线已证明 SQLite 的 interrupted state、pending write 与工具 ID 能重开恢复。完整缺口、责任与环境限制见 [recovery-gaps.md](recovery-gaps.md)。
 
 ## P0-4：能力矩阵与版本选择结论
 
-[八列能力矩阵](sdk-capabilities.tsv) 覆盖 Task 1 的全部功能 ID，并展开 9 个能力类别、26 个远程 chat Provider、本地 Ollama，以及只做 embedding/rerank 的 Jina 非 Agent 消费者。共 90 行：4 行 `verified`（仅继承 Task 2/3 各行指定的确定性/SQLite/策略证据）、79 行 `source-only`、2 行 `blocked-env`、5 行 `incompatible`。本任务只执行文档结构与 Go 契约编译检查；没有新增真实 Provider、数据库或客户端运行验收。
+[八列能力矩阵](sdk-capabilities.tsv) 覆盖 Task 1 的全部功能 ID，并展开 9 个能力类别、26 个远程 chat Provider、本地 Ollama，以及只做 embedding/rerank 的 Jina 非 Agent 消费者。共 90 行：4 行 `verified`（仅继承 Task 2/3 各行指定的确定性/SQLite/策略证据）、79 行 `source-only`、2 行 `blocked-env`、5 行 `incompatible`。Task 1 只新增当前 v1.11.0 的 bounded Runner/Session/race evidence；没有新增真实 Provider、数据库或客户端运行验收。
 
-版本证据为根 `go.mod:99` 和 `go.sum`：v1.10.0 模块校验和 `h1:0pY2ee7tc6+3e+I7CgnkdGY2z4lrmQwQ4sq7C1dulQc=`，go.mod 校验和 `h1:lksOlht6E+LR7AKOA0XoKrkI3AJNsfukTVes9BFmTow=`。源码根固定为 `$(go env GOMODCACHE)/trpc.group/trpc-go/trpc-agent-go@v1.10.0`。本任务没有修改模块缓存、go.mod、go.sum 或产品代码，没有选用其他本机版本，也没有声称新版本已修复问题。
+当前版本证据为根 `go.mod` 和 `go.sum`：`v1.11.0` 模块校验和 `h1:LwMxQwT2l6hqWUVARfVA/ef2tq8gJCzbImSHurpaPIo=`，go.mod 校验和 `h1:bIZcN4N9sGpA42sWfE98XCPl9ZgMi6fMDLGYOaXNe9A=`。当前源码根为 `$(go env GOMODCACHE)/trpc.group/trpc-go/trpc-agent-go@v1.11.0`；历史 v1.10.0 checksum/source 只服务于上述 RED 记录。
 
-**选择结论：v1.10.0 仅作为本轮分析和探针基线，尚无已批准的产品目标版本。** `RUN-02` race 失败直接阻断原生 Runner 产品执行；`SESSION-04` 的 PostgreSQL/SQLite Session 实现与 Memory 持久化实现也尚未固定版本/配置。没有经同样探针验证的新 tag/commit，所以不凭新版功能文档给出升级通过结论。P0-5 应记录 no-go，并明确修复/配置复验责任；后续选候选时先固定官方 tag/commit 与所有子模块依赖，再执行 race、存储、失败和恢复探针。
+**选择结论：当前根 v1.11.0 是已验证 repeated-race green 的候选，不是已批准的产品目标。** 历史 `RUN-02` v1.10.0 race 已有明确 RED，当前候选已通过相同 20 次 gate；但 `SESSION-04` 的 PostgreSQL/SQLite Session 实现与 Memory 持久化实现尚未固定版本/配置，且预算耗尽通知的直接 consumer 在 v1.10.0 基线和当前候选均失败。P0-5 继续记录 no-go；后续必须修复既有 consumer 失败，并完成存储、失败、恢复、Provider、PostgreSQL 与客户端验收。
 
 ### 固定源码新增发现（尚未行为验收）
 

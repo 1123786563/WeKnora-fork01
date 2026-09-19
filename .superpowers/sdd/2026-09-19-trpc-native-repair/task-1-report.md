@@ -6,7 +6,7 @@ Changed only the root SDK pin/checksums, the native Runner probe, and P0 evidenc
 
 ## RED — v1.10.0
 
-The probe now retains the `inmemory.SessionService` passed into the real `runner.Run` path and asserts that the completed tool turn mutates the persisted Session (`Events` non-empty and `UpdatedAt` non-zero). The normal test was green; the required repeated race command was the RED evidence:
+The probe first creates and reads a Session from the `inmemory.SessionService` passed into the real `runner.Run` path. After the completed tool turn, it asserts that `Events` is non-empty and that `after.UpdatedAt.After(before.UpdatedAt)` is true. A RED assertion requiring the pre-existing Session failed before that setup was added, proving the old “non-zero `UpdatedAt`” assertion could only observe a Session created by Runner and could not prove mutation of an existing one.
 
 ```sh
 GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
@@ -34,17 +34,17 @@ GOWORK=off go list -deps -f '{{with .Module}}{{if eq .Path "github.com/Tencent/W
 
 It identified `internal/agent/trpc`, `internal/application/service`, and `internal/agent/recoverytest/provider` (plus the native probe test consumer). `internal/agent/trpc` passed above.
 
-## Unverified consumer evidence and decision
+## Existing direct-consumer failure and decision
 
 The following commands were launched after the upgrade:
 
 ```sh
-GOWORK=off go test ./internal/application/service -count=1
-GOWORK=off go test ./internal/agent/recoverytest ./internal/agent/recoverytest/provider -count=1 -timeout=2m
+GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v
+cd /tmp/weknora-trpc-task1-baseline && GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v
 ```
 
-The command host returned before either supplied a capturable terminal exit status/log. They are unverified, not passing evidence. The repeated native race gate is green, but this missing direct-consumer result, together with the pre-existing unselected persistent Session/Memory backend, append-failure barrier, PostgreSQL, real Provider, recovery, and client gates, keeps P0 **NO-GO** for native Runner product execution.
+Both commands exited 1. In each worktree the test reports `graph execution: task_budget_exhausted` and observes only `run_started` and `run_failed`; the expected budget-exhaustion notification is absent. The exact `75523c9c9` baseline has the same failure, so it is not introduced by the v1.11.0 upgrade. It blocks complete direct-consumer acceptance. The repeated native race gate is green, but this existing failure, together with the unselected persistent Session/Memory backend, append-failure barrier, PostgreSQL, real Provider, recovery, and client gates, keeps P0 **NO-GO** for native Runner product execution.
 
 ## Remaining work
 
-Rerun the two unverified consumer commands in an execution environment that preserves terminal exit output, then complete the separate P0 persistence/recovery/provider/PostgreSQL/client acceptance gates. This Task 1 does not authorize product cutover.
+Repair and verify `TestExecuteDurableRunPersistsBudgetExhaustionForNotification` in its owning scope, then complete the separate P0 persistence/recovery/provider/PostgreSQL/client acceptance gates. This Task 1 does not authorize product cutover.
