@@ -110,6 +110,16 @@ export type {
   MbtiQuestion,
   MbtiScore,
 } from './mbti.ts';
+export { createExpertsApi } from './experts.ts';
+export type {
+  ExpertsApi,
+  ExpertSummary,
+  ExpertDetail,
+  ExpertQuickPrompt,
+  ExpertCreatedAgent,
+  InstantiateResult,
+  InstantiateExpertInput,
+} from './experts.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';

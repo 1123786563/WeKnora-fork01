@@ -15,6 +15,7 @@ import { createSandboxSkillInstallApi } from './sandbox/skill-install.ts';
 import { createSandboxConfigurationsApi } from './sandbox-configurations.ts';
 import { createConfigurationApi } from './configuration.ts';
 import { createMbtiApi } from './mbti.ts';
+import { createExpertsApi } from './experts.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
@@ -290,6 +291,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const sandboxConfigurations = createSandboxConfigurationsApi(request);
   const configuration = createConfigurationApi(request);
   const mbti = createMbtiApi(request);
+  const experts = createExpertsApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
   const chatAttachments = createChatAttachmentsApi(request);
@@ -410,6 +412,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     sandboxConfigurations,
     configuration,
     mbti,
+    experts,
     chat: {
       approvals: chatApprovals,
       feedback,
