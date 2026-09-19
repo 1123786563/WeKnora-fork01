@@ -104,7 +104,7 @@ func (s *agentService) prepareAgentCapabilities(
 	if config.MaxToolOutputChars > 0 {
 		toolRegistry.SetMaxToolOutputSize(config.MaxToolOutputChars)
 	}
-	if err := s.registerTools(ctx, toolRegistry, config, rerankModel, chatModel, sessionID); err != nil {
+	if err := s.registerTools(ctx, toolRegistry, config, rerankModel, chatModel, eventBus, sessionID); err != nil {
 		return nil, fmt.Errorf("failed to register tools: %w", err)
 	}
 	s.registerMCPTools(ctx, toolRegistry, config)

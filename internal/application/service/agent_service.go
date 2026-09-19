@@ -835,6 +835,7 @@ func (s *agentService) registerTools(
 	config *types.AgentConfig,
 	rerankModel rerank.Reranker,
 	chatModel chat.Chat,
+	eventBus *event.EventBus,
 	sessionID string,
 ) error {
 	// Source of truth policy:
@@ -1134,6 +1135,13 @@ func (s *agentService) registerTools(
 	// Craft delegation (R05): opened only for Craft+tRPC sessions with a
 	// bound workspace; every other session keeps the unchanged tool set.
 	if err := s.registerCraftDelegateTool(ctx, registry, config, sessionID); err != nil {
+		return err
+	}
+
+	// Sub-agent delegation (subagents M3): opened only when the agent
+	// configures specialists that are also installed for the tenant; the
+	// tool itself narrows every delegation to the main run's capabilities.
+	if err := s.registerSubagentDelegateTool(ctx, registry, config, chatModel, eventBus, sessionID); err != nil {
 		return err
 	}
 

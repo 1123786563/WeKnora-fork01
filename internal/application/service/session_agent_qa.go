@@ -337,6 +337,7 @@ func (s *sessionService) buildAgentConfig(
 		MaxCompletionTokens:         customAgent.Config.MaxCompletionTokens,
 		RetainRetrievalHistory:      customAgent.Config.RetainRetrievalHistory,
 		SharedAgentReadOnly:         req.SharedAgentReadOnly,
+		Subagents:                   customAgent.Config.Subagents,
 	}
 
 	// Falls back to global configuration if no specific timeout is set for the agent.

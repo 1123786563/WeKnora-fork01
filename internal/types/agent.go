@@ -192,6 +192,13 @@ type AgentConfig struct {
 	// When enabled and the LLM returns multiple tool calls, they run concurrently via errgroup.
 	ParallelToolCalls bool `json:"parallel_tool_calls,omitempty"`
 
+	// Subagents names the builtin sub-agent roles (catalog slugs) this run may
+	// delegate to via the subagent_delegate tool; it mirrors the agent editor's
+	// picker (CustomAgentConfig.Subagents) onto the runtime config each turn.
+	// Delegation is off when empty. It also round-trips the durable run
+	// snapshot's embedded AgentConfig JSON like every persisted field.
+	Subagents []string `json:"subagents,omitempty"`
+
 	// skillInstallMode routes this run's shell_exec to the privileged
 	// install-mode executor (root, skills image root writable). It is
 	// unexported on purpose: JSON cannot reach it, so no stored agent record
