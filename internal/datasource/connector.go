@@ -237,30 +237,10 @@ var ConnectorMetadataRegistry = map[string]ConnectorMetadata{
 		AuthType:     "api_key",
 		Capabilities: []string{"incremental", "deletion_sync"},
 	},
-	types.ConnectorTypeGitHub: {
-		Type:         types.ConnectorTypeGitHub,
-		Name:         "GitHub",
-		Description:  "Sync repositories, wikis, and issues from GitHub",
-		Priority:     4,
-		AuthType:     "oauth2",
-		Capabilities: []string{"incremental"},
-	},
-	types.ConnectorTypeGoogleDrive: {
-		Type:         types.ConnectorTypeGoogleDrive,
-		Name:         "Google Drive",
-		Description:  "Sync documents and files from Google Drive",
-		Priority:     5,
-		AuthType:     "oauth2",
-		Capabilities: []string{"incremental"},
-	},
-	types.ConnectorTypeOneDrive: {
-		Type:         types.ConnectorTypeOneDrive,
-		Name:         "OneDrive / SharePoint",
-		Description:  "Sync documents and files from Microsoft OneDrive",
-		Priority:     6,
-		AuthType:     "oauth2",
-		Capabilities: []string{"incremental"},
-	},
+	// SP1 ghost cleanup: github/google_drive/onedrive/web_crawler/slack/imap
+	// metadata entries were removed until their connectors are implemented
+	// (they surfaced fake options in the edit-mode type dropdown). The
+	// types.ConnectorType* constants stay for future registrations.
 	types.ConnectorTypeDingTalk: {
 		Type:         types.ConnectorTypeDingTalk,
 		Name:         "DingTalk (钉钉)",
@@ -268,30 +248,6 @@ var ConnectorMetadataRegistry = map[string]ConnectorMetadata{
 		Priority:     7,
 		AuthType:     "oauth2",
 		Capabilities: []string{"incremental", "deletion_sync"},
-	},
-	types.ConnectorTypeWebCrawler: {
-		Type:         types.ConnectorTypeWebCrawler,
-		Name:         "Web Crawler (Sitemap)",
-		Description:  "Crawl websites via Sitemap.xml",
-		Priority:     9,
-		AuthType:     "none",
-		Capabilities: []string{},
-	},
-	types.ConnectorTypeSlack: {
-		Type:         types.ConnectorTypeSlack,
-		Name:         "Slack",
-		Description:  "Sync channel messages and files from Slack",
-		Priority:     10,
-		AuthType:     "oauth2",
-		Capabilities: []string{"incremental"},
-	},
-	types.ConnectorTypeIMAP: {
-		Type:         types.ConnectorTypeIMAP,
-		Name:         "Email (IMAP)",
-		Description:  "Sync email content from IMAP servers",
-		Priority:     11,
-		AuthType:     "password",
-		Capabilities: []string{},
 	},
 	types.ConnectorTypeRSS: {
 		Type:         types.ConnectorTypeRSS,
