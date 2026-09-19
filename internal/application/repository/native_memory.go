@@ -248,6 +248,38 @@ func (r *NativeMemoryRepository) verifyJobSource(tx *gorm.DB, job nativecontract
 	return nil
 }
 
+// Claim loads the durable job identity before a worker may invoke an extractor.
+// A caller supplied struct is never authority to run background extraction.
+func (r *NativeMemoryRepository) Claim(ctx context.Context, job nativecontract.MemoryJob) (bool, error) {
+	returnValue := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, subject, err := r.state(tx, job.Scope)
+		if err != nil {
+			return err
+		}
+		var row nativeMemoryJobRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND session_app_name=? AND session_user_id=? AND session_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, job.SessionKey.AppName, job.SessionKey.UserID, job.SessionKey.SessionID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		if err := r.verifyJobSource(tx, job); err != nil {
+			return err
+		}
+		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=?", job.Scope.TenantID, subject, job.ID, NativeMemoryJobQueued).Update("status", NativeMemoryJobRunning)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 && row.Status != NativeMemoryJobRunning {
+			return nil
+		}
+		returnValue = true
+		return nil
+	})
+	return returnValue, err
+}
+
 func AcceptNativeMemoryWrite(enabled bool, currentGeneration, currentPolicy int64, job nativecontract.MemoryJob) bool {
 	return enabled && currentGeneration == job.Generation && currentPolicy == job.PolicyRevision
 }

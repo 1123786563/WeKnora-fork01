@@ -119,6 +119,13 @@ func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJo
 	return s.repo.Enqueue(ctx, job)
 }
 func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
+	claimed, err := s.repo.Claim(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return ErrMemoryWriteDenied
+	}
 	scope, err := s.authorize(ctx, job.Scope)
 	if err != nil {
 		return errors.Join(err, s.repo.Discard(ctx, job))
