@@ -20,6 +20,7 @@ type NativeAdmissionKey struct {
 // return the stored record with replay=true; changed fingerprints return
 // ErrConflict without a second reservation.
 type NativeAdmissionStore interface {
+	Lookup(context.Context, NativeAdmissionKey) (nativecontract.RunRecord, bool, error)
 	Admit(context.Context, NativeAdmissionKey, nativecontract.Admission, int64, func(context.Context) error) (nativecontract.RunRecord, bool, error)
 	Get(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.RunRecord, error)
 }
@@ -33,6 +34,7 @@ type NativeAdmissionBudget interface {
 // choose in an Admission request.
 type NativeAdmissionAuthority interface {
 	CurrentConfig(context.Context, nativecontract.Scope) (nativecontract.ConfigBinding, error)
+	CurrentFunding(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.FundingBinding, error)
 	RequiredGrants(context.Context, nativecontract.Scope, nativecontract.RunIdentity) ([]nativecontract.ResourceGrant, error)
 	ValidateSession(context.Context, nativecontract.Scope, session.Key) error
 }
@@ -101,12 +103,34 @@ func (s *NativeAdmissionService) Admit(ctx context.Context, requested nativecont
 	if err := validateNativeAdmissionBindingForScope(requested, scope); err != nil {
 		return nativecontract.RunRecord{}, err
 	}
+	if err := s.authority.ValidateSession(ctx, scope, requested.Session); err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "session slot is not authorized")
+	}
+
+	// Replays are authorized reads, not new admissions. They must be available
+	// during worker drain or an execution-gate rollback and never reserve again.
+	key := nativeAdmissionKey(scope, requested)
+	existing, found, err := s.store.Lookup(ctx, key)
+	if err != nil {
+		return nativecontract.RunRecord{}, err
+	}
+	if found {
+		if sameNativeAdmissionFingerprint(existing.Admission, requested) {
+			return existing, nil
+		}
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrConflict, "request ID was already admitted with different input or configuration")
+	}
+
 	config, err := s.authority.CurrentConfig(ctx, scope)
 	if err != nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "current configuration is unavailable")
 	}
 	if !sameNativeAdmissionConfig(requested.Config, config) {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "requested configuration is no longer current")
+	}
+	funding, err := s.authority.CurrentFunding(ctx, scope, requested.Run)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "current budget binding is unavailable")
 	}
 	grants, err := s.authority.RequiredGrants(ctx, scope, requested.Run)
 	if err != nil {
@@ -116,11 +140,18 @@ func (s *NativeAdmissionService) Admit(ctx context.Context, requested nativecont
 	if err != nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "required grants were revoked")
 	}
+	if err := validateNativeAdmissionBindingForScope(requested, scope); err != nil {
+		return nativecontract.RunRecord{}, err
+	}
 	if err := s.authority.ValidateSession(ctx, scope, requested.Session); err != nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "session slot is not authorized")
 	}
 
-	key := nativeAdmissionKey(scope, requested)
+	frozen := requested
+	frozen.Scope = scope
+	frozen.Config = config
+	frozen.Funding = funding
+	key = nativeAdmissionKey(scope, frozen)
 	first, err := s.controls.Current(ctx)
 	if err != nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "cannot read admission controls")
@@ -136,8 +167,8 @@ func (s *NativeAdmissionService) Admit(ctx context.Context, requested nativecont
 		return nativecontract.RunRecord{}, err
 	}
 
-	record, _, err := s.store.Admit(ctx, key, requested, second.Revision, func(ctx context.Context) error {
-		return s.budget.Reserve(ctx, requested)
+	record, _, err := s.store.Admit(ctx, key, frozen, second.Revision, func(ctx context.Context) error {
+		return s.budget.Reserve(ctx, frozen)
 	})
 	if err != nil {
 		return nativecontract.RunRecord{}, err
@@ -146,10 +177,15 @@ func (s *NativeAdmissionService) Admit(ctx context.Context, requested nativecont
 }
 
 func (s *NativeAdmissionService) Get(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity) (nativecontract.RunRecord, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.store == nil || s.scopes == nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "native admission store is unavailable")
 	}
-	return s.store.Get(ctx, scope, run)
+	authoritative, err := s.scopes.Recheck(ctx, scope, nil)
+	if err != nil || authoritative.TenantID != scope.TenantID || authoritative.SessionOwnerID != scope.SessionOwnerID ||
+		run.TenantID != scope.TenantID {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "run is not authorized for scope")
+	}
+	return s.store.Get(ctx, authoritative, run)
 }
 
 func nativeAdmissionKey(scope nativecontract.Scope, admission nativecontract.Admission) NativeAdmissionKey {

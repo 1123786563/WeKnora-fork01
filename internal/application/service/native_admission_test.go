@@ -47,6 +47,13 @@ type nativeAdmissionStoreFake struct {
 	records map[nativeAdmissionStoreKey]nativecontract.RunRecord
 }
 
+func (s *nativeAdmissionStoreFake) Lookup(_ context.Context, key NativeAdmissionKey) (nativecontract.RunRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[nativeAdmissionStoreKey{key.TenantID, key.OwnerID, key.AppName, key.UserID, key.SessionID, key.RequestID}]
+	return record, ok, nil
+}
+
 func (s *nativeAdmissionStoreFake) Admit(ctx context.Context, key NativeAdmissionKey, admission nativecontract.Admission, _ int64, reserve func(context.Context) error) (nativecontract.RunRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,6 +87,7 @@ type nativeAdmissionAuthorityFake struct {
 	mu         sync.Mutex
 	scope      nativecontract.Scope
 	config     nativecontract.ConfigBinding
+	funding    nativecontract.FundingBinding
 	grants     []nativecontract.ResourceGrant
 	err        error
 	rechecks   int
@@ -102,6 +110,9 @@ func (f *nativeAdmissionAuthorityFake) Recheck(_ context.Context, _ nativecontra
 func (f *nativeAdmissionAuthorityFake) CurrentConfig(context.Context, nativecontract.Scope) (nativecontract.ConfigBinding, error) {
 	return f.config, f.err
 }
+func (f *nativeAdmissionAuthorityFake) CurrentFunding(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.FundingBinding, error) {
+	return f.funding, f.err
+}
 func (f *nativeAdmissionAuthorityFake) RequiredGrants(context.Context, nativecontract.Scope, nativecontract.RunIdentity) ([]nativecontract.ResourceGrant, error) {
 	return f.grants, f.err
 }
@@ -116,12 +127,14 @@ type nativeAdmissionBudgetFake struct {
 	mu           sync.Mutex
 	err          error
 	reservations int
+	last         nativecontract.Admission
 }
 
-func (b *nativeAdmissionBudgetFake) Reserve(context.Context, nativecontract.Admission) error {
+func (b *nativeAdmissionBudgetFake) Reserve(_ context.Context, admission nativecontract.Admission) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.reservations++
+	b.last = admission
 	return b.err
 }
 func (b *nativeAdmissionBudgetFake) Release(context.Context, nativecontract.Admission) error {
@@ -150,14 +163,15 @@ func nativeAdmissionFixture(inputHash, configHash string) nativecontract.Admissi
 		Run:     nativecontract.RunIdentity{TenantID: 7, SessionID: "session-1", RunID: "run-1", RequestID: "request-1"},
 		Session: session.Key{AppName: "native", UserID: "owner-1", SessionID: "session-1"},
 		Input:   model.NewUserMessage("hello"), InputHash: inputHash,
-		Config: nativecontract.ConfigBinding{ConfigHash: configHash, ModelConfigVersion: "model-v1"},
+		Config:  nativecontract.ConfigBinding{ConfigHash: configHash, ModelConfigVersion: "model-v1"},
+		Funding: nativecontract.FundingBinding{BudgetRef: "requested-budget"},
 	}
 }
 
 func nativeAdmissionService(controls *nativeAdmissionControlsFake, store *nativeAdmissionStoreFake, budget *nativeAdmissionBudgetFake, dispatch *nativeAdmissionDispatchSpy) *NativeAdmissionService {
 	admission := nativeAdmissionFixture("input-1", "config-1")
 	authority := &nativeAdmissionAuthorityFake{
-		scope: admission.Scope, config: admission.Config,
+		scope: admission.Scope, config: admission.Config, funding: nativecontract.FundingBinding{BudgetRef: "authoritative-budget"},
 		grants: []nativecontract.ResourceGrant{{ResourceType: "agent", ResourceID: "a-1", Action: "run"}},
 	}
 	return NewNativeAdmissionService(controls, authority, authority, store, budget, dispatch)
@@ -172,7 +186,7 @@ func nativeAdmissionCode(t *testing.T, err error) nativecontract.ErrorCode {
 	return failure.Code
 }
 
-func TestValidateAdmissionControlsSeparatesExecutionApprovalAndDependencies(t *testing.T) {
+func TestNativeAdmissionValidateControlsSeparatesExecutionApprovalAndDependencies(t *testing.T) {
 	approvalClosed := nativeAdmissionOpenControls()
 	approvalClosed.NativeExecutionApproved = false
 	if got := nativeAdmissionCode(t, ValidateAdmissionControls(approvalClosed)); got != nativecontract.ErrExecutionGate {
@@ -182,6 +196,82 @@ func TestValidateAdmissionControlsSeparatesExecutionApprovalAndDependencies(t *t
 	dependenciesMissing.DependenciesReady = false
 	if got := nativeAdmissionCode(t, ValidateAdmissionControls(dependenciesMissing)); got != nativecontract.ErrStore {
 		t.Fatalf("dependencies code = %q", got)
+	}
+}
+
+func TestNativeAdmissionReplaysAuthorizedRecordDuringDrainAndProtectsGetScope(t *testing.T) {
+	controls := &nativeAdmissionControlsFake{values: []nativecontract.AdmissionControls{nativeAdmissionOpenControls()}}
+	store := &nativeAdmissionStoreFake{records: map[nativeAdmissionStoreKey]nativecontract.RunRecord{}}
+	budget := &nativeAdmissionBudgetFake{}
+	svc := nativeAdmissionService(controls, store, budget, &nativeAdmissionDispatchSpy{})
+	admission := nativeAdmissionFixture("input-1", "config-1")
+	first, err := svc.Admit(context.Background(), admission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := nativeAdmissionOpenControls()
+	closed.WorkerDrain = true
+	controls.values = []nativecontract.AdmissionControls{closed}
+	controls.readCall = 0
+
+	replay, err := svc.Admit(context.Background(), admission)
+	if err != nil || replay.Admission.Run.RunID != first.Admission.Run.RunID || budget.reservations != 1 {
+		t.Fatalf("replay=%+v err=%v reservations=%d", replay, err, budget.reservations)
+	}
+	closed.WorkerDrain = false
+	closed.AdmissionEnabled = false
+	controls.values = []nativecontract.AdmissionControls{closed}
+	if replay, err = svc.Admit(context.Background(), admission); err != nil || replay.Admission.Run.RunID != first.Admission.Run.RunID || budget.reservations != 1 {
+		t.Fatalf("closed-gate replay=%+v err=%v reservations=%d", replay, err, budget.reservations)
+	}
+	conflict := admission
+	conflict.InputHash = "input-2"
+	if got := nativeAdmissionCode(t, mustAdmissionError(t, svc, conflict)); got != nativecontract.ErrConflict {
+		t.Fatalf("conflict code=%q", got)
+	}
+	wrong := admission.Scope
+	wrong.SessionOwnerID = "other-owner"
+	if got := nativeAdmissionCode(t, mustGetError(t, svc, wrong, admission.Run)); got != nativecontract.ErrForbidden {
+		t.Fatalf("wrong scope code=%q", got)
+	}
+}
+
+func TestNativeAdmissionPersistsOnlyAuthoritativeFrozenAdmission(t *testing.T) {
+	controls := &nativeAdmissionControlsFake{values: []nativecontract.AdmissionControls{nativeAdmissionOpenControls()}}
+	store := &nativeAdmissionStoreFake{records: map[nativeAdmissionStoreKey]nativecontract.RunRecord{}}
+	budget := &nativeAdmissionBudgetFake{}
+	dispatch := &nativeAdmissionDispatchSpy{}
+	requested := nativeAdmissionFixture("input-1", "config-1")
+	requested.Scope.ActorUserID = "untrusted-actor"
+	requested.Config.ModelID = "untrusted-model"
+	requested.Config.CredentialRef = "untrusted-credential"
+	requested.Config.ToolSetHash = "untrusted-tools"
+	requested.Funding = nativecontract.FundingBinding{BudgetRef: "untrusted-budget"}
+	authoritativeScope := requested.Scope
+	authoritativeScope.ActorUserID = "authoritative-actor"
+	authoritativeScope.PolicyRevision = 9
+	authoritativeConfig := requested.Config
+	authoritativeConfig.ModelID = "authoritative-model"
+	authoritativeConfig.CredentialRef = "authoritative-credential"
+	authoritativeConfig.ToolSetHash = "authoritative-tools"
+	authority := &nativeAdmissionAuthorityFake{
+		scope: authoritativeScope, config: authoritativeConfig,
+		funding: nativecontract.FundingBinding{BudgetRef: "authoritative-budget", BudgetRootRunID: "root-1"},
+		grants:  []nativecontract.ResourceGrant{{ResourceType: "agent", ResourceID: "a-1", Action: "run"}},
+	}
+	svc := NewNativeAdmissionService(controls, authority, authority, store, budget, dispatch)
+	if _, err := svc.Admit(context.Background(), requested); err != nil {
+		t.Fatal(err)
+	}
+	if budget.last.Scope.ActorUserID != "authoritative-actor" || budget.last.Config.ModelID != "authoritative-model" ||
+		budget.last.Config.CredentialRef != "authoritative-credential" || budget.last.Config.ToolSetHash != "authoritative-tools" ||
+		budget.last.Funding.BudgetRef != "authoritative-budget" {
+		t.Fatalf("budget saw unfrozen admission: %+v", budget.last)
+	}
+	for _, record := range store.records {
+		if record.Admission.Scope.ActorUserID != "authoritative-actor" || record.Admission.Config.ModelID != "authoritative-model" || record.Admission.Funding.BudgetRootRunID != "root-1" {
+			t.Fatalf("store persisted unfrozen admission: %+v", record.Admission)
+		}
 	}
 }
 
@@ -302,6 +392,15 @@ func mustAdmissionError(t *testing.T, svc *NativeAdmissionService, admission nat
 	_, err := svc.Admit(context.Background(), admission)
 	if err == nil {
 		t.Fatal("expected admission error")
+	}
+	return err
+}
+
+func mustGetError(t *testing.T, svc *NativeAdmissionService, scope nativecontract.Scope, run nativecontract.RunIdentity) error {
+	t.Helper()
+	_, err := svc.Get(context.Background(), scope, run)
+	if err == nil {
+		t.Fatal("expected get error")
 	}
 	return err
 }
