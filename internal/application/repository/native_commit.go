@@ -203,6 +203,9 @@ func (c *NativeCommitCoordinator) apply(tx *gorm.DB, intent nativecontract.Commi
 	if err := persistCheckpoint(tx, intent); err != nil {
 		return nativecontract.CommitReceipt{}, err
 	}
+	if err := persistUsage(tx, intent); err != nil {
+		return nativecontract.CommitReceipt{}, err
+	}
 	last, err := persistEvents(tx, intent)
 	if err != nil {
 		return nativecontract.CommitReceipt{}, err
@@ -342,6 +345,64 @@ func persistCheckpoint(tx *gorm.DB, intent nativecontract.CommitIntent) error {
 	}
 	if created.RowsAffected == 0 {
 		return typedFailure(nativecontract.ErrConflict, "checkpoint identity conflict")
+	}
+	return nil
+}
+
+func persistUsage(tx *gorm.DB, intent nativecontract.CommitIntent) error {
+	for _, observation := range intent.Usage {
+		if err := validUsageObservation(intent.Fence.Run, observation); err != nil {
+			return err
+		}
+		var attempts int64
+		if err := tx.Table("native_agent_attempts").Where("tenant_id=? AND run_id=? AND attempt_id=?", intent.Fence.Run.TenantID, intent.Fence.Run.RunID, observation.AttemptID).Count(&attempts).Error; err != nil {
+			return err
+		}
+		if attempts != 1 {
+			return typedFailure(nativecontract.ErrNotFound, "usage observation attempt was not found")
+		}
+		payload, err := json.Marshal(observation)
+		if err != nil {
+			return typedFailure(nativecontract.ErrInvalid, "usage observation is not durable JSON")
+		}
+		sum := sha256.Sum256(payload)
+		hash := hex.EncodeToString(sum[:])
+		dimensions, err := json.Marshal(observation.Dimensions)
+		if err != nil {
+			return typedFailure(nativecontract.ErrInvalid, "usage observation dimensions are not durable JSON")
+		}
+		inserted := tx.Exec(`INSERT INTO native_agent_usage_observations
+			(tenant_id, run_id, attempt_id, observation_id, revision, provider, model, provider_request_id, funding_ref, budget_root_run_id,
+			 input_tokens, output_tokens, cached_tokens, cache_read_tokens, cache_create_tokens, accounting_status, dimensions, occurred_at, payload_hash)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+			intent.Fence.Run.TenantID, intent.Fence.Run.RunID, observation.AttemptID, observation.ObservationID, observation.Revision,
+			observation.Funding.Service, observation.Funding.PriceVersion, observation.ProviderRequestID, observation.Funding.BudgetRef, observation.Funding.BudgetRootRunID,
+			observation.PromptTokens, observation.CompletionTokens, observation.CachedTokens, observation.CacheReadTokens, observation.CacheCreateTokens,
+			observation.AccountingStatus, string(dimensions), observation.OccurredAt, hash)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 1 {
+			continue
+		}
+		var stored string
+		if err := tx.Table("native_agent_usage_observations").Select("payload_hash").
+			Where("tenant_id=? AND run_id=? AND attempt_id=? AND observation_id=?", intent.Fence.Run.TenantID, intent.Fence.Run.RunID, observation.AttemptID, observation.ObservationID).
+			Row().Scan(&stored); err != nil {
+			return err
+		}
+		if stored != hash {
+			return typedFailure(nativecontract.ErrConflict, "usage observation payload changed")
+		}
+	}
+	return nil
+}
+
+func validUsageObservation(run nativecontract.RunIdentity, observation nativecontract.UsageObservation) error {
+	if observation.Version <= 0 || observation.AttemptID == "" || observation.ObservationID == "" || observation.Revision < 0 || observation.OccurredAt.IsZero() ||
+		observation.Run.TenantID != run.TenantID || observation.Run.RunID != run.RunID || observation.Run.SessionID != run.SessionID ||
+		observation.PromptTokens < 0 || observation.CompletionTokens < 0 || observation.TotalTokens < 0 || observation.CachedTokens < 0 || observation.CacheReadTokens < 0 || observation.CacheCreateTokens < 0 {
+		return typedFailure(nativecontract.ErrInvalid, "usage observation is incomplete")
 	}
 	return nil
 }
