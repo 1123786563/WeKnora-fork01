@@ -393,6 +393,11 @@ func (s *sessionService) buildAgentConfig(
 		agentConfig.SystemPrompt = customAgent.Config.SystemPrompt
 	}
 
+	// Persona settings pass through as-is; prompt assembly (rendering the
+	// persona block before SystemPrompt) happens downstream.
+	agentConfig.PersonaMBTI = customAgent.Config.PersonaMBTI
+	agentConfig.PersonaStyle = customAgent.Config.PersonaStyle
+
 	logger.Infof(ctx, "Custom agent config applied: MaxIterations=%d, Temperature=%.2f, AllowedTools=%v, WebSearchEnabled=%v",
 		agentConfig.MaxIterations, agentConfig.Temperature, agentConfig.AllowedTools, agentConfig.WebSearchEnabled)
 

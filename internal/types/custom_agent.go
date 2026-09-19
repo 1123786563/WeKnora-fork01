@@ -156,6 +156,14 @@ type CustomAgentConfig struct {
 	// Selected skill names (only used when SkillsSelectionMode is "selected")
 	SelectedSkills []string `yaml:"selected_skills" json:"selected_skills"`
 
+	// ===== Persona Settings =====
+	// PersonaMBTI is an uppercase MBTI code ("INTJ") selecting a built-in
+	// personality profile rendered before SystemPrompt. Empty = no persona.
+	PersonaMBTI string `yaml:"persona_mbti" json:"persona_mbti,omitempty"`
+	// PersonaStyle is free-text persona guidance appended after the MBTI
+	// block. Only rendered when PersonaMBTI is set.
+	PersonaStyle string `yaml:"persona_style" json:"persona_style,omitempty"`
+
 	// ===== Sandbox Settings =====
 	// SandboxConfigID selects which workspace sandbox config this agent's
 	// skill scripts run on. Empty means sandbox execution is disabled.

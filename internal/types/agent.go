@@ -112,17 +112,23 @@ type AgentConfig struct {
 	KnowledgeIDs   []string `json:"knowledge_ids"`           // Accessible knowledge IDs (individual documents)
 	SystemPrompt   string   `json:"system_prompt,omitempty"` // Unified system prompt (uses web_search_status placeholder for dynamic behavior)
 	// Deprecated: Use SystemPrompt instead. Kept for backward compatibility during migration.
-	SystemPromptWebEnabled  string        `json:"system_prompt_web_enabled,omitempty"`  // Deprecated: Custom prompt when web search is enabled
-	SystemPromptWebDisabled string        `json:"system_prompt_web_disabled,omitempty"` // Deprecated: Custom prompt when web search is disabled
-	UseCustomSystemPrompt   bool          `json:"use_custom_system_prompt"`             // Whether to use custom system prompt instead of default
-	LocalBrowserEnabled     bool          `json:"-"`                                    // Per-turn local_browser gate
-	WebSearchEnabled        bool          `json:"web_search_enabled"`                   // Whether web search tool is enabled
-	WebSearchMaxResults     int           `json:"web_search_max_results"`               // Maximum number of web search results (default: 5)
-	WebSearchProviderID     string        `json:"web_search_provider_id,omitempty"`     // WebSearchProviderEntity ID (resolved from agent config)
-	MultiTurnEnabled        bool          `json:"multi_turn_enabled"`                   // Whether multi-turn conversation is enabled
-	HistoryTurns            int           `json:"history_turns"`                        // Number of history turns to keep in context
-	MemoryEnabled           *bool         `json:"memory_enabled,omitempty"`             // nil inherits workspace
-	SearchTargets           SearchTargets `json:"-"`                                    // Pre-computed unified search targets (runtime only)
+	SystemPromptWebEnabled  string `json:"system_prompt_web_enabled,omitempty"`  // Deprecated: Custom prompt when web search is enabled
+	SystemPromptWebDisabled string `json:"system_prompt_web_disabled,omitempty"` // Deprecated: Custom prompt when web search is disabled
+	UseCustomSystemPrompt   bool   `json:"use_custom_system_prompt"`             // Whether to use custom system prompt instead of default
+	// PersonaMBTI is an uppercase MBTI code ("INTJ") selecting a built-in
+	// personality profile rendered before SystemPrompt. Empty = no persona.
+	PersonaMBTI string `json:"persona_mbti,omitempty"`
+	// PersonaStyle is free-text persona guidance appended after the MBTI
+	// block. Only rendered when PersonaMBTI is set.
+	PersonaStyle        string        `json:"persona_style,omitempty"`
+	LocalBrowserEnabled bool          `json:"-"`                                // Per-turn local_browser gate
+	WebSearchEnabled    bool          `json:"web_search_enabled"`               // Whether web search tool is enabled
+	WebSearchMaxResults int           `json:"web_search_max_results"`           // Maximum number of web search results (default: 5)
+	WebSearchProviderID string        `json:"web_search_provider_id,omitempty"` // WebSearchProviderEntity ID (resolved from agent config)
+	MultiTurnEnabled    bool          `json:"multi_turn_enabled"`               // Whether multi-turn conversation is enabled
+	HistoryTurns        int           `json:"history_turns"`                    // Number of history turns to keep in context
+	MemoryEnabled       *bool         `json:"memory_enabled,omitempty"`         // nil inherits workspace
+	SearchTargets       SearchTargets `json:"-"`                                // Pre-computed unified search targets (runtime only)
 	// MCP service selection
 	MCPSelectionMode string   `json:"mcp_selection_mode"` // MCP selection mode: "all", "selected", "none"
 	MCPServices      []string `json:"mcp_services"`       // Selected MCP service IDs (when mode is "selected")
