@@ -16,6 +16,7 @@ import (
 )
 
 var ErrNativeSessionConflict = errors.New("native session stable event conflict")
+var ErrNativeSessionRetention = errors.New("native session has retained recovery runs")
 
 // NativeSessionStore is the business-database persistence boundary for the
 // native facade. It writes only the P1 native namespace, never legacy history.
@@ -101,6 +102,13 @@ func (s *NativeSessionStore) Delete(ctx context.Context, key session.Key) error 
 		return err
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var runs int64
+		if err := tx.Table("native_agent_runs").Where("tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, key.UserID, key.SessionID).Count(&runs).Error; err != nil {
+			return err
+		}
+		if runs > 0 {
+			return ErrNativeSessionRetention
+		}
 		if err := tx.Exec("DELETE FROM native_session_state WHERE tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, key.UserID, key.SessionID).Error; err != nil {
 			return err
 		}
