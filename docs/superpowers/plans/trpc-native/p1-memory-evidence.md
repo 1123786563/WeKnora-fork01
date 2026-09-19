@@ -73,7 +73,7 @@ github.com/golang-jwt/jwt/v5 v5.2.3
 github.com/golang/glog v1.2.4
 github.com/golang/protobuf v1.5.3
 github.com/gomutex/godocx v0.1.5
-github.com/gonfva/docxlib v0.0.0-20210517191039-c48cc78d4826
+github.com/gonfva/docxlib v0.0.0-20210517191039-d8f39cecf1ad
 github.com/google/go-cmp v0.6.0
 github.com/google/go-querystring v1.0.0
 github.com/google/uuid v1.6.0
@@ -90,7 +90,7 @@ github.com/kr/pretty v0.3.0
 github.com/kr/text v0.2.0
 github.com/lestrrat-go/blackmagic v1.0.2
 github.com/lestrrat-go/httpcc v1.0.1
-github.com/lestrrat-go/httprc v1.0.1
+github.com/lestrrat-go/httprc v1.0.6
 github.com/lestrrat-go/iter v1.0.2
 github.com/lestrrat-go/jwx/v2 v2.1.4
 github.com/lestrrat-go/option v1.0.1
@@ -98,7 +98,7 @@ github.com/mailru/easyjson v0.9.0
 github.com/mattn/go-sqlite3 v1.14.32
 github.com/mitchellh/mapstructure v1.5.0
 github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
-github.com/mozillazg/go-httpheader v0.2.2
+github.com/mozillazg/go-httpheader v0.2.1
 github.com/openai/openai-go v1.12.0
 github.com/panjf2000/ants/v2 v2.10.0
 github.com/perimeterx/marshmallow v1.1.5
