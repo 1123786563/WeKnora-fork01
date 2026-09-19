@@ -443,10 +443,11 @@ class ProfilePage extends ConsumerWidget {
       }
       return;
     }
+    if (!context.mounted) return;
     // Drop the mirrored account so the section flips to the signed-out
     // entry wherever the user lands next.
     ref.invalidate(weknoraAccountProvider);
-    if (context.mounted) context.go(Routes.weknoraLogin);
+    context.go(Routes.weknoraLogin);
   }
 
   Widget _buildSignOutOption(BuildContext context, WidgetRef ref) {

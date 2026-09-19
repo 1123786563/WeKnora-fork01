@@ -27,11 +27,15 @@ Future<WeKnoraAccount?> _readPersistedWeKnoraAccount(
 /// The account document lives in secure storage under its own versioned key;
 /// the live access token is mirrored into the WeKnora Direct connection
 /// profile so ordinary requests ride the Direct connection pool.
-final weknoraAccountServiceProvider = Provider<WeKnoraAccountService>((ref) {
+// Explicit type: the auth-expired listener below references
+// [weknoraAccountProvider], whose own type is inferred from this provider —
+// an inferred type here would be a circularity error.
+final Provider<WeKnoraAccountService> weknoraAccountServiceProvider =
+    Provider<WeKnoraAccountService>((ref) {
   final storage = SecureCredentialStorage(
     instance: ref.watch(secureStorageProvider),
   );
-  return WeKnoraAccountService(
+  final service = WeKnoraAccountService(
     // The login screen constructs its own Dio with user-facing options; the
     // service depends only on the authClient abstraction, so this factory is
     // a placeholder for direct construction paths.
@@ -46,6 +50,14 @@ final weknoraAccountServiceProvider = Provider<WeKnoraAccountService>((ref) {
     upsertProfile: (profile) =>
         ref.read(directConnectionProfilesProvider.notifier).upsert(profile),
   );
+  // A failed token refresh clears the persisted account before the service
+  // fires this listener; re-read it so reactive UI (the settings account
+  // section) flips to the signed-out state instead of showing a stale
+  // account whose tokens no longer work.
+  service.addAuthExpiredListener(() {
+    ref.invalidate(weknoraAccountProvider);
+  });
+  return service;
 });
 
 /// Signed-in WeKnora account for reactive UI (the settings account section).

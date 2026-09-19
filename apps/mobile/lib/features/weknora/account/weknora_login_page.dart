@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/providers/backend_mode_providers.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../../l10n/app_localizations.dart';
@@ -63,6 +64,7 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
     // chat home after a successful login disposes this widget's ref.
     final accountService = ref.read(weknoraAccountServiceProvider);
     final hydrateSessions = ref.read(weknoraSessionRefreshAndHydrateProvider);
+    final setPreferredBackend = ref.read(preferredBackendProvider.notifier).set;
     setState(() {
       _busy = true;
       _error = null;
@@ -73,6 +75,14 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
         email: _email.text.trim(),
         password: _password.text,
       );
+      if (!mounted) return;
+      // WeKnora rides the Direct connection pool, so the router only lets
+      // /chat through once Direct is the preferred backend — a fresh install
+      // would otherwise be bounced back to the chooser and a signed-out
+      // OpenWebUI user to the authentication page. Same completion idiom as
+      // the chooser's Apple rows (see _selectAppleModel).
+      await setPreferredBackend(PreferredBackend.direct);
+      if (!mounted) return;
       // Drop the cached account so the settings account section reflects the
       // new session without waiting for its next read.
       ref.invalidate(weknoraAccountProvider);

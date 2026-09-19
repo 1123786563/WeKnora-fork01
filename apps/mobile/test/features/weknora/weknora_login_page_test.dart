@@ -1,3 +1,4 @@
+import 'package:conduit/core/providers/backend_mode_providers.dart';
 import 'package:conduit/core/services/navigation_service.dart';
 import 'package:conduit/features/weknora/account/weknora_account.dart';
 import 'package:conduit/features/weknora/account/weknora_account_service.dart';
@@ -57,6 +58,23 @@ class _FakeAccountService implements WeKnoraAccountService {
   Future<String> accessToken() => throw UnimplementedError();
 }
 
+/// Records [set] calls without touching PreferencesStore, so tests can
+/// assert what the login flow requested.
+class _RecordingBackendController extends PreferredBackendController {
+  _RecordingBackendController(this.setCalls);
+
+  final List<PreferredBackend> setCalls;
+
+  @override
+  PreferredBackend build() => PreferredBackend.unset;
+
+  @override
+  Future<void> set(PreferredBackend backend) async {
+    setCalls.add(backend);
+    state = backend;
+  }
+}
+
 void main() {
   setUpAll(loadTestFonts);
 
@@ -93,6 +111,22 @@ void main() {
     // Successful sign-in lands on the chat home route.
     expect(find.byKey(const Key('weknora-chat-home')), findsOneWidget);
     expect(find.byKey(const Key('weknora-login-button')), findsNothing);
+  });
+
+  testWidgets('makes Direct the preferred backend after signing in', (
+    tester,
+  ) async {
+    // Without this the router bounces /chat back to the chooser (fresh
+    // install, no active server) or to the authentication page (signed-out
+    // OpenWebUI user) — see app_router.dart's redirect.
+    final service = _FakeAccountService();
+    final backend = _RecordingBackendController([]);
+    await _pumpLoginPage(tester, service: service, preferredBackend: backend);
+
+    await _fillAndSubmit(tester);
+
+    expect(backend.setCalls, [PreferredBackend.direct]);
+    expect(find.byKey(const Key('weknora-chat-home')), findsOneWidget);
   });
 
   testWidgets('shows inline error on WeKnoraAuthException', (tester) async {
@@ -152,7 +186,9 @@ Future<void> _fillAndSubmit(WidgetTester tester) async {
 Future<void> _pumpLoginPage(
   WidgetTester tester, {
   required _FakeAccountService service,
+  _RecordingBackendController? preferredBackend,
 }) async {
+  final backend = preferredBackend ?? _RecordingBackendController([]);
   final router = GoRouter(
     initialLocation: Routes.weknoraLogin,
     routes: [
@@ -175,6 +211,7 @@ Future<void> _pumpLoginPage(
         // The real bundle touches secure storage and the conversations
         // notifier; the login page only needs it to not throw.
         weknoraSessionRefreshAndHydrateProvider.overrideWithValue(() async {}),
+        preferredBackendProvider.overrideWith(() => backend),
       ],
       child: MaterialApp.router(
         theme: AppTheme.light(TweakcnThemes.t3Chat),
