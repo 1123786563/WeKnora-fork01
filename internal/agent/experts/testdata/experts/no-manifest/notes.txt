@@ -1,0 +1,1 @@
+This directory has no manifest.yaml and must be skipped by ScanExperts.

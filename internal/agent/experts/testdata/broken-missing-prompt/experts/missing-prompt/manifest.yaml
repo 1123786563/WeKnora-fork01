@@ -1,0 +1,6 @@
+id: missing-prompt
+label:
+  zh: 缺提示词文件
+  en: Missing Prompt File
+prompt_files:
+  - ABSENT.md

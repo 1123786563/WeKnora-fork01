@@ -1,0 +1,6 @@
+id: missing-skill
+label:
+  zh: 缺技能目录
+  en: Missing Skill Dir
+skills:
+  - ghost-skill

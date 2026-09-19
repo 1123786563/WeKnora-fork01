@@ -1,0 +1,45 @@
+id: sample-expert
+label:
+  zh: 示例专家
+  en: Sample Expert
+description:
+  zh: 用于扫描器测试的示例专家
+  en: A sample expert used by scanner tests
+icon_name: sparkles
+color: "#6366f1"
+persona_mbti: INTJ
+prompt_files:
+  - SOUL.md
+quick_prompts:
+  - title:
+      zh: 第一条
+      en: First one
+    description:
+      zh: 第一条描述
+      en: First description
+    prompt:
+      zh: 帮我做一件事
+      en: Do a thing for me
+    color: "#22c55e"
+    icon_name: zap
+  - title:
+      zh: 第二条
+      en: Second one
+    description:
+      zh: 第二条描述
+      en: Second description
+    prompt:
+      zh: 再做一件事
+      en: Do another thing
+    color: "#f59e0b"
+    icon_name: star
+skills:
+  - sample-skill
+agent_config:
+  agent_mode: smart-reasoning
+  kb_selection_mode: all
+  temperature: 0.7
+  max_iterations: 5
+  system_prompt: "You are a sample expert. Be precise."
+  web_search_enabled: true
+  multi_turn_enabled: true
