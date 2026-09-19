@@ -43,7 +43,7 @@
         "internal/application/repository/native_schema_test.go",
         "docs/superpowers/plans/trpc-native/schema-manifest.md"
       ],
-      "status": "blocked-env"
+      "status": "passed"
     },
     {
       "id": "P1.3",
@@ -57,7 +57,7 @@
         "internal/application/repository/native_session.go",
         "internal/application/repository/native_session_test.go"
       ],
-      "status": "blocked-design"
+      "status": "in-progress"
     },
     {
       "id": "P1.4",
@@ -71,7 +71,7 @@
         "internal/application/repository/native_memory.go",
         "internal/application/repository/native_memory_test.go"
       ],
-      "status": "blocked-design"
+      "status": "in-progress"
     },
     {
       "id": "P1.5",
