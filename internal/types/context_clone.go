@@ -71,6 +71,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// It is intentionally distinct from RequestID, which is only an
 	// idempotency key.
 	RunIDContextKey:         true,
+	// CredentialVersionContextKey is the trusted target authorization
+	// snapshot; detached work must retain the same fence used at admission.
+	CredentialVersionContextKey: true,
 	LanguageContextKey:      true,
 	LangfuseTraceContextKey: true,
 
