@@ -716,3 +716,5 @@ export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchRes
   if (typeof envelope.has_more !== 'boolean') throw new ContractError('has_more', 'expected a boolean');
   return { success: true, data, has_more: envelope.has_more, total: validatePageNumber(envelope.total, 'total') };
 }
+
+export * from './analytics.ts';

@@ -1,0 +1,231 @@
+import 'package:conduit/core/models/chat_message.dart';
+import 'package:conduit/features/chat/widgets/assistant_detail_header.dart';
+import 'package:conduit/features/chat/widgets/streaming_status_widget.dart';
+import 'package:conduit/l10n/app_localizations.dart';
+import 'package:conduit/l10n/conduit_localizations.dart';
+import 'package:conduit/shared/theme/app_theme.dart';
+import 'package:conduit/shared/theme/theme_extensions.dart';
+import 'package:conduit/shared/theme/tweakcn_themes.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  Widget buildHarness(
+    List<ChatStatusUpdate> updates, {
+    bool isStreaming = true,
+    bool disableAnimations = false,
+  }) {
+    return MaterialApp(
+      theme: AppTheme.light(TweakcnThemes.t3Chat),
+      localizationsDelegates: conduitLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(disableAnimations: disableAnimations),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: Center(
+          child: StreamingStatusWidget(
+            updates: updates,
+            isStreaming: isStreaming,
+          ),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('bottom sheet reuses header styling and renders a shared rail', (
+    tester,
+  ) async {
+    const completedDescription =
+        'Generating a long search query that should wrap in the bottom sheet '
+        'instead of being trimmed away';
+    const currentDescription =
+        'Searching the web for multiple sources and keeping the full status '
+        'visible in the bottom sheet';
+    final updates = [
+      const ChatStatusUpdate(description: completedDescription, done: true),
+      const ChatStatusUpdate(description: currentDescription, done: false),
+    ];
+
+    await tester.pumpWidget(buildHarness(updates));
+    await tester.tap(find.text(currentDescription));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IntrinsicHeight), findsNothing);
+    expect(find.byType(AssistantDetailHeader), findsNWidgets(3));
+    expect(
+      find.byKey(const ValueKey<String>('status-timeline-rail-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('status-timeline-rail-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('status-timeline-mask-top-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('status-timeline-mask-bottom-1')),
+      findsOneWidget,
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('status-timeline-rail-0')))
+          .height,
+      greaterThan(0),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('status-timeline-rail-1')))
+          .height,
+      greaterThan(0),
+    );
+
+    final expectedRailColor = AppTheme.light(TweakcnThemes.t3Chat)
+        .extension<ConduitThemeExtension>()!
+        .textSecondary
+        .withValues(alpha: 0.6);
+    final rail = tester.widget<ColoredBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('status-timeline-rail-0')),
+        matching: find.byType(ColoredBox),
+      ),
+    );
+    expect(rail.color, expectedRailColor);
+
+    final historyText = tester.widget<Text>(find.text(completedDescription));
+    expect(historyText.overflow, isNull);
+    expect(historyText.maxLines, isNull);
+
+    final bottomSheetTitle = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data == currentDescription &&
+            widget.style?.fontWeight == FontWeight.w600,
+      ),
+    );
+    expect(bottomSheetTitle.overflow, isNull);
+    expect(bottomSheetTitle.maxLines, isNull);
+  });
+
+  testWidgets(
+    'keeps the last incomplete status row when settling would empty the list',
+    (tester) async {
+      // Dropping the whole row at settle shifted the bottom-anchored layout
+      // by the row height and lost the only description of what the turn
+      // did; the last update stays visible instead.
+      await tester.pumpWidget(
+        buildHarness(const [
+          ChatStatusUpdate(description: 'Searching...', done: false),
+        ], isStreaming: false),
+      );
+
+      expect(find.text('Searching...'), findsOneWidget);
+      expect(find.byType(StreamingStatusWidget), findsOneWidget);
+    },
+  );
+
+  testWidgets('keeps completed status rows visible after streaming finishes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildHarness(const [
+        ChatStatusUpdate(description: 'Search complete', done: true),
+        ChatStatusUpdate(description: 'Searching...', done: false),
+      ], isStreaming: false),
+    );
+
+    expect(find.text('Search complete'), findsOneWidget);
+    expect(find.text('Searching...'), findsNothing);
+  });
+
+  testWidgets(
+    'keeps status rows with unspecified done visible after streaming finishes',
+    (tester) async {
+      await tester.pumpWidget(
+        buildHarness(const [
+          ChatStatusUpdate(description: 'Generating image...'),
+        ], isStreaming: false),
+      );
+
+      expect(find.text('Generating image...'), findsOneWidget);
+    },
+  );
+
+  testWidgets('groups Hermes tools with OpenWebUI-style counts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildHarness(const [
+        ChatStatusUpdate(
+          action: 'hermes_tool_web_search',
+          description: 'web_search',
+          done: true,
+        ),
+        ChatStatusUpdate(
+          action: 'hermes_tool_web_search',
+          description: 'web_search',
+          done: true,
+        ),
+        ChatStatusUpdate(
+          action: 'hermes_tool_terminal',
+          description: 'terminal',
+          done: true,
+        ),
+      ], isStreaming: false),
+    );
+
+    expect(find.text('Explored web_search (2), terminal'), findsOneWidget);
+    expect(find.text('terminal'), findsNothing);
+  });
+
+  testWidgets('keeps a grouped Hermes title pending while any tool runs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildHarness(const [
+        ChatStatusUpdate(
+          action: 'hermes_tool_web_search',
+          description: 'web_search',
+          done: true,
+        ),
+        ChatStatusUpdate(
+          action: 'hermes_tool_terminal',
+          description: 'terminal',
+          done: false,
+        ),
+      ]),
+    );
+
+    expect(find.text('Exploring web_search, terminal'), findsOneWidget);
+  });
+
+  testWidgets('reduced motion skips status-chip entrance effects', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildHarness(const [
+        ChatStatusUpdate(
+          action: 'web_search_queries_generated',
+          queries: ['motion polish'],
+          done: true,
+        ),
+      ], disableAnimations: true),
+    );
+
+    await tester.tap(find.text('Searching'));
+    await tester.pumpAndSettle();
+    final query = find.text('motion polish');
+    expect(query, findsOneWidget);
+    expect(
+      find.ancestor(of: query, matching: find.byType(Animate)),
+      findsNothing,
+    );
+  });
+}

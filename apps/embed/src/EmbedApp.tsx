@@ -389,6 +389,10 @@ export function EmbedApp() {
     }
   };
 
+  // Vue embed-main renders an empty shell when the share/channel id is
+  // missing (embed-app stays blank) — no visible error card.
+  if (!channelId) return null;
+
   return (
     <main className="embed-shell" style={{ '--embed-primary': primaryColor } as CSSProperties} data-locale={locale}>
       {showChatSurface ? <header className="embed-header">

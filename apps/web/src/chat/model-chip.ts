@@ -119,12 +119,13 @@ export function resolveChatModelChip(options: {
     // missing id stays 未配置 (Vue find() miss).
     selected = findById(selectedModelId);
   } else {
-    // Deterministic Vue fresh-load parity: with no agent binding and no
-    // explicit pick the chip shows 未配置, never an invented first model.
-    // (Vue's ensureModelSelection first-model fallback loses to the platform
-    // prefetch race on every full page load; the dropdown still lists all
-    // models for an explicit pick.)
-    return { label: notConfiguredLabel, context: '', isDefaultContext: false };
+    // Vue ensureModelSelection (Input-field.vue:982-994): with no agent
+    // binding and no stored pick the chip falls back to the first available
+    // chat model. Verified 2026-09-19 on a fresh origin (both sides had an
+    // empty weknora_last_chat_model_id): Vue deterministically shows the
+    // first model, so the earlier "prefetch race leaves 未配置" reading no
+    // longer holds.
+    selected = options.models[0];
   }
   if (!selected) {
     return { label: notConfiguredLabel, context: '', isDefaultContext: false };

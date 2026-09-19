@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { assistantTimelineItems, isBookmarkActionAvailable, writeClipboardText } from './message-list.tsx';
+import { assistantTimelineItems, isBookmarkActionAvailable, isFeedbackAvailable, writeClipboardText } from './message-list.tsx';
 import type { ChatMessage } from '@weknora/contracts';
 
 // Rendering assertions for MessageList (separators, timestamps, copy button,
@@ -17,6 +17,11 @@ test('writeClipboardText prefers the async clipboard API', async () => {
 test('assistant bookmark action follows the host-owned Vue manual-editor capability', () => {
   assert.equal(isBookmarkActionAvailable(), false);
   assert.equal(isBookmarkActionAvailable(() => undefined), true);
+});
+
+test('feedback buttons only render when host provides onRateMessage', () => {
+  assert.equal(isFeedbackAvailable(), false);
+  assert.equal(isFeedbackAvailable(() => undefined), true);
 });
 
 /*

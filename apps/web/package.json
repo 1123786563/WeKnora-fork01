@@ -23,6 +23,7 @@
     "marked-katex-extension": "^5.1.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "recharts": "^3.10.1",
     "xlsx": "file:./vendor/xlsx-0.20.2.tgz"
   },
   "devDependencies": {

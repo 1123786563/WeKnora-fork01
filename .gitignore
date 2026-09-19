@@ -83,3 +83,11 @@ DSH_*.txt
 tests/mobile-v2/fixtures/*.bin
 android/
 ios/
+
+# apps/mobile（vendored Conduit 快照）整体重新包含：
+# 上方若干历史裸目录模式（ios/、android/、services/、models/、providers/ 等）
+# 会误伤快照内的同名目录；嵌套的 apps/mobile/.gitignore 仍继续排除
+# .dart_tool/、build/ 等构建产物（更深层规则优先）。
+!apps/mobile/
+!apps/mobile/**
+.mimosa/

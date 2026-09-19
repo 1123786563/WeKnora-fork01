@@ -1,0 +1,114 @@
+{
+  "notes": [
+    {
+      "version": "4.1.0",
+      "title": "Co nowego",
+      "intro": "Cześć! Hermes może korzystać z Desktop Gateway, a boty są na pasku bocznym. Przebudowałem listy i panele, i ogarnąłem kilka błędów, które zbyt długo tam siedziały.",
+      "bullets": [
+        {
+          "text": "Hermes Bot Mode: połącz Desktop Gateway, wybierz bota na pasku bocznym, a kolejne odpowiedzi dzielą jeden nagłówek.",
+          "icon": "hermes"
+        },
+        {
+          "text": "Natywne zgrupowane listy, szkło na iOS 26, czcionki systemowe i pasek boczny na tablecie, którego szerokość możesz przeciągać.",
+          "icon": "polish"
+        },
+        {
+          "text": "Mniej przycięć podczas streamowania. LaTeX naprawdę się rysuje. Głos nie odpowiada już sam sobie. Polski jest na liście języków.",
+          "icon": "direct"
+        }
+      ]
+    },
+    {
+      "version": "4.1.2",
+      "title": "Co nowego",
+      "intro": "Cześć! Apple On-Device działa na telefonie. Użyj go w Direct chats albo w czatach Open WebUI, gdy jesteś offline. Rozmowy głosowe idą przez głośnik i mówią odpowiedź, nie myślenie. Hermes wraca po bezczynności, i ogarnąłem kilka błędów czatu.",
+      "bullets": [
+        {
+          "text": "Apple On-Device: Direct chats lokalnie, i czaty Open WebUI gdy jesteś offline.",
+          "icon": "direct"
+        },
+        {
+          "text": "Rozmowy głosowe: idą przez głośnik, gdy nic nie jest podłączone. Pomijają myślenie i mówią całą odpowiedź.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: odzyskuje skończone przebiegi po bezczynności i przyjmuje PDF-y. Skills uzupełniają się same. Linki cytowań, listy w notatkach i Open WebUI 0.11.1 działają.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.3",
+      "title": "Co nowego",
+      "intro": "Cześć! Direct chats mogą wołać serwery MCP z telefonu. Zatwierdzasz każde narzędzie. Na Macu są skróty klawiszowe i paski przewijania w czacie. Ogarnąłem też zatwierdzenia Hermes i cytaty Markdown.",
+      "bullets": [
+        {
+          "text": "Serwery MCP: dodaj je dla Direct chats, w tym Apple On-Device. Zatwierdź narzędzia raz, na sesję albo zawsze. Wstawiaj prompty i zasoby do czatu.",
+          "icon": "direct"
+        },
+        {
+          "text": "Mac: skróty klawiszowe, najechanie na pasek boczny i menu prawym przyciskiem. Czaty mają paski przewijania. Cytaty Markdown wyświetlają się jako cytaty.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: wywołania narzędzi ze streamu renderują się jako bloki. Zatwierdzenia trzymają się właściwego przebiegu. Otwórz ponownie działającą sesję Desktop, a spinner nadal tam jest.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.4",
+      "title": "Co nowego",
+      "intro": "Cześć! Open WebUI 0.11.3 działa. Przeniosłem ostrzeżenie o serwerach, których jeszcze nie obsługujemy, na ekran nowego czatu, żeby nie przerywało rozmów, które już zacząłeś.",
+      "bullets": [
+        {
+          "text": "Open WebUI 0.11.2 i 0.11.3: bez ostrzeżenia o zgodności.",
+          "icon": "direct"
+        },
+        {
+          "text": "Ostrzeżenie o nieobsługiwanym serwerze: tylko przy nowym czacie. Istniejące rozmowy go już nie pokazują.",
+          "icon": "polish"
+        }
+      ]
+    },
+    {
+      "version": "4.1.5",
+      "title": "Co nowego",
+      "intro": "Cześć! Udostępnione foldery z Open WebUI pojawiają się w pasku bocznym. Rozumowanie się streamuje, gdy model myśli, a ekran nie gaśnie, dopóki odpowiedź się nie skończy. Długie czaty Hermes znów się ładują. Naprawiłem też głośnik Android i pasek iOS.",
+      "bullets": [
+        {
+          "text": "Udostępnione foldery: pojawiają się w pasku bocznym. Czaty kogoś innego są tylko do odczytu. Z prawem zapisu możesz tam zacząć nowy czat.",
+          "icon": "direct"
+        },
+        {
+          "text": "Rozumowanie: streamuje się, gdy model myśli. Nagłówek pokazuje, ile sekund model myślał. Nakład rozumowania, który wybierzesz dla modelu, jest wysyłany z żądaniem. Direct czaty Ollama wysyłają poprzednie myślenie w następnej turze.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: długie sesje Telegram ładują się nawet gdy ponowne połączenie nie wyjdzie. Zbyt duże i brakujące sesje mają własny błąd. Ostrzeżenie o wersji serwera możesz zamknąć.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.6",
+      "title": "Co nowego",
+      "intro": "Cześć! Rozumowanie zostaje we własnym bloku, gdy się streamuje. Tagi think nie pojawiają się już w odpowiedzi. PDF-y znowu docierają do modelu. Głos zamienia się w tekst, gdy przestajesz mówić, a przycisk głośnika działa. Pasek przewijania czatu już nie skacze.",
+      "bullets": [
+        {
+          "text": "Rozumowanie: zostaje we własnym bloku, gdy model pisze. Tagi think nie pojawiają się już w odpowiedzi. Bloki narzędzi zostają na swoim miejscu.",
+          "icon": "polish"
+        },
+        {
+          "text": "Głos i pliki: gdy przestajesz mówić, pojawia się Transkrypcja. Rozpoznawanie mowy na Androidzie używa dowolnego zainstalowanego silnika. Przycisk głośnika zatrzymuje odpowiedź, która już gra. Załączniki PDF są znowu wysyłane do modelu. Cytowania mogą pokazywać tytuł strony. Jeśli sesja proxy wygaśnie, możesz zalogować się ponownie bez wylogowania.",
+          "icon": "direct"
+        },
+        {
+          "text": "Hermes: podczas konfiguracji możesz sprawdzić Desktop Gateway nawet gdy przełącznik jest jeszcze wyłączony.",
+          "icon": "hermes"
+        }
+      ]
+    }
+  ]
+}

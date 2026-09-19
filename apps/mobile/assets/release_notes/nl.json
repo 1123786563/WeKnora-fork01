@@ -1,0 +1,114 @@
+{
+  "notes": [
+    {
+      "version": "4.1.0",
+      "title": "Nieuw",
+      "intro": "Hoi! Hermes kan nu een Desktop Gateway gebruiken, en bots staan in de zijbalk. Ik heb lijsten en schermen opnieuw gebouwd, en een paar bugs weggewerkt die te lang hadden liggen wachten.",
+      "bullets": [
+        {
+          "text": "Hermes Bot Mode: koppel een Desktop Gateway, kies een bot in de zijbalk, en opeenvolgende antwoorden delen één kop.",
+          "icon": "hermes"
+        },
+        {
+          "text": "Native gegroepeerde lijsten, glas op iOS 26, systeemfonts, en een tablet-zijbalk waarvan je de breedte kunt slepen.",
+          "icon": "polish"
+        },
+        {
+          "text": "Minder haperen tijdens streamen. LaTeX tekent nu echt. Stem antwoordt zichzelf niet meer. Pools staat in de talenlijst.",
+          "icon": "direct"
+        }
+      ]
+    },
+    {
+      "version": "4.1.2",
+      "title": "Nieuw",
+      "intro": "Hoi! Apple On-Device draait op de telefoon. Gebruik het in Direct chats, of in Open WebUI-chats als je offline bent. Spraakgesprekken komen uit de speaker en zeggen het antwoord, niet het nadenken. Hermes komt terug na stilzitten, en ik heb een paar chatbugs weggewerkt.",
+      "bullets": [
+        {
+          "text": "Apple On-Device: Direct chats lokaal, en Open WebUI-chats als je offline bent.",
+          "icon": "direct"
+        },
+        {
+          "text": "Spraakgesprekken: starten op de speaker als er niets is aangesloten. Ze slaan het nadenken over en zeggen het hele antwoord.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: haalt afgeronde runs na stilzitten terug en accepteert pdf's. Skills vullen zich aan. Citatielinks, checklists in notities en Open WebUI 0.11.1 werken.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.3",
+      "title": "Nieuw",
+      "intro": "Hoi! Direct chats kunnen MCP-servers vanaf de telefoon aanroepen. Jij keurt elk tool goed. Op de Mac krijg je toetsenbordsnelkoppelingen en chat-scrollbalken. Ik heb ook Hermes-goedkeuringen en Markdown-citaten gerepareerd.",
+      "bullets": [
+        {
+          "text": "MCP-servers: voeg ze toe voor Direct chats, inclusief Apple On-Device. Keur tools eenmalig goed, voor de sessie, of altijd. Voeg prompts en resources in de chat in.",
+          "icon": "direct"
+        },
+        {
+          "text": "Mac: toetsenbordsnelkoppelingen, aanwijzen in de zijbalk en rechtermuisklikmenu's. Chats krijgen scrollbalken. Blockquotes worden als citaten weergegeven.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: gestreamde tool-aanroepen worden blokken. Goedkeuringen blijven bij de juiste run. Open een draaiende Desktop-sessie opnieuw en de spinner staat er nog.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.4",
+      "title": "Nieuw",
+      "intro": "Hoi! Open WebUI 0.11.3 werkt. Ik heb de waarschuwing voor servers die we nog niet ondersteunen naar het nieuwe-chatscherm verplaatst, zodat hij gesprekken niet meer onderbreekt die je al was begonnen.",
+      "bullets": [
+        {
+          "text": "Open WebUI 0.11.2 en 0.11.3: geen compatibiliteitswaarschuwing.",
+          "icon": "direct"
+        },
+        {
+          "text": "Waarschuwing voor een niet-ondersteunde server: alleen bij een nieuwe chat. Bestaande gesprekken tonen hem niet meer.",
+          "icon": "polish"
+        }
+      ]
+    },
+    {
+      "version": "4.1.5",
+      "title": "Nieuw",
+      "intro": "Hoi! Gedeelde mappen van Open WebUI verschijnen in de zijbalk. Het redeneren streamt terwijl het model denkt, en het scherm blijft aan tot het antwoord klaar is. Lange Hermes-chats laden weer. Ik heb ook de Android-luidspreker en de iOS-werkbalk gerepareerd.",
+      "bullets": [
+        {
+          "text": "Gedeelde mappen: ze verschijnen in de zijbalk. Chats van iemand anders zijn alleen-lezen. Met schrijfrechten kun je daar een nieuwe chat starten.",
+          "icon": "direct"
+        },
+        {
+          "text": "Redeneren: het streamt terwijl het model denkt. De kop toont hoeveel seconden het model dacht. Het redeneerniveau dat je voor een model kiest, wordt meegestuurd met het verzoek. Direct Ollama-chats sturen het vorige denken mee naar de volgende beurt.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: lange Telegram-sessies laden ook als opnieuw verbinden mislukt. Te grote en ontbrekende sessies krijgen hun eigen fout. Je kunt de waarschuwing over de serverversie sluiten.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.6",
+      "title": "Nieuw",
+      "intro": "Hoi! Het redeneren blijft in zijn eigen blok terwijl het streamt. Think-tags verschijnen niet meer in het antwoord. PDF's komen weer bij het model aan. Spraak wordt omgezet in tekst als je stopt met praten, en de luidsprekerknop werkt. De chat-scrollbar springt niet meer.",
+      "bullets": [
+        {
+          "text": "Redeneren: het blijft in zijn eigen blok terwijl het model schrijft. Think-tags verschijnen niet meer in het antwoord. Toolblokken blijven op de juiste plek.",
+          "icon": "polish"
+        },
+        {
+          "text": "Spraak en bestanden: als je stopt met praten, verschijnt Transcriberen. Android-apparaatherkenning gebruikt elke geïnstalleerde herkenner. De luidsprekerknop stopt het antwoord dat al speelt. PDF-bijlagen gaan weer naar het model. Citaten kunnen paginatitels tonen. Als een proxy-sessie verloopt, kun je opnieuw inloggen zonder uit te loggen.",
+          "icon": "direct"
+        },
+        {
+          "text": "Hermes: tijdens het instellen kun je de Desktop Gateway controleren, ook als de schakelaar nog uit staat.",
+          "icon": "hermes"
+        }
+      ]
+    }
+  ]
+}

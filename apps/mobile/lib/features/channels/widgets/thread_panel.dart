@@ -1,0 +1,388 @@
+import 'dart:developer' as developer;
+
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:conduit/l10n/app_localizations.dart';
+
+import '../../../core/models/channel_message.dart';
+import '../../../core/providers/app_providers.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/utils/model_icon_utils.dart';
+import '../../../core/utils/user_avatar_utils.dart'
+    show resolveUserProfileImageUrl;
+import '../../../shared/theme/theme_extensions.dart';
+import '../../../shared/widgets/chrome_gradient_fade.dart';
+import '../../../shared/widgets/conduit_components.dart';
+import '../../../shared/widgets/measure_size.dart';
+import '../../../shared/widgets/model_avatar.dart';
+import '../../../shared/widgets/user_avatar.dart';
+import '../../chat/widgets/modern_chat_input.dart';
+import '../providers/channel_providers.dart';
+import '../utils/channel_request_owner.dart';
+import '../utils/mention_utils.dart';
+import 'channel_message_content.dart';
+
+/// Side panel (tablet) or bottom sheet (mobile) for
+/// viewing and replying to a message thread.
+class ThreadPanel extends ConsumerStatefulWidget {
+  /// Creates a thread panel for the given channel and
+  /// parent message.
+  const ThreadPanel({
+    super.key,
+    required this.channelId,
+    required this.parentMessage,
+    required this.onClose,
+    this.overflowButtonBuilder,
+  });
+
+  /// The channel containing the thread.
+  final String channelId;
+
+  /// The root message that started this thread.
+  final ChannelMessage parentMessage;
+
+  /// Called when the user closes the panel.
+  final VoidCallback onClose;
+
+  /// Builder for the overflow (+) attachment button.
+  final Widget Function(double size)? overflowButtonBuilder;
+
+  @override
+  ConsumerState<ThreadPanel> createState() => _ThreadPanelState();
+}
+
+class _ThreadPanelState extends ConsumerState<ThreadPanel> {
+  double _composerHeight = 0;
+  bool _isSending = false;
+
+  Future<void> _sendReply(String text) async {
+    final content = text.trim();
+    if (content.isEmpty || _isSending) return;
+
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final parentMessageId = widget.parentMessage.id;
+
+    setState(() => _isSending = true);
+    try {
+      final json = await api.postChannelMessage(
+        channelId,
+        content: content,
+        parentId: parentMessageId,
+      );
+      if (!mounted ||
+          !isChannelRequestOwnerCurrent(
+            ref: ref,
+            api: api,
+            authSessionEpoch: authSessionEpoch,
+          ) ||
+          widget.channelId != channelId ||
+          widget.parentMessage.id != parentMessageId) {
+        return;
+      }
+      final message = ChannelMessage.fromJson(json);
+      ref
+          .read(threadMessagesProvider(channelId, parentMessageId).notifier)
+          .prependMessage(message);
+    } catch (e, st) {
+      developer.log(
+        'Failed to send thread reply',
+        name: 'ThreadPanel',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.conduitTheme;
+    final l10n = AppLocalizations.of(context)!;
+    final api = ref.read(apiServiceProvider);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final threadAsync = ref.watch(
+      threadMessagesProvider(widget.channelId, widget.parentMessage.id),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.surfaceBackground,
+        border: Border(left: BorderSide(color: theme.dividerColor)),
+      ),
+      child: Column(
+        children: [
+          _ThreadHeader(theme: theme, onClose: widget.onClose),
+          const Divider(height: 1),
+          _ParentMessageTile(
+            message: widget.parentMessage,
+            api: api,
+            theme: theme,
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: threadAsync.when(
+                    data: (messages) => _ThreadReplies(
+                      messages: messages
+                          .where((m) => m.id != widget.parentMessage.id)
+                          .toList(),
+                      api: api,
+                      theme: theme,
+                      bottomPadding: _composerHeight + bottomInset,
+                    ),
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Center(
+                      child: Text(
+                        e.toString(),
+                        style: AppTypography.bodyMediumStyle.copyWith(
+                          color: theme.error,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: bottomInset,
+                  child: ConduitChromeGradientFade.bottom(
+                    contentHeight: (_composerHeight - Spacing.xl).clamp(
+                      0.0,
+                      double.infinity,
+                    ),
+                    fadeHeight: Spacing.md,
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: bottomInset,
+                  child: RepaintBoundary(
+                    child: MeasureSize(
+                      onChange: (size) {
+                        if (!mounted) return;
+                        setState(() => _composerHeight = size.height);
+                      },
+                      child: SafeArea(
+                        top: false,
+                        left: false,
+                        right: false,
+                        minimum: const EdgeInsets.only(bottom: Spacing.sm),
+                        child: ModernChatInput(
+                          onSendMessage: _sendReply,
+                          placeholder: l10n.replyInputPlaceholder,
+                          overflowButtonBuilder: widget.overflowButtonBuilder,
+                          bottomPadding: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Header row with "Thread" title and a close button.
+class _ThreadHeader extends StatelessWidget {
+  const _ThreadHeader({required this.theme, required this.onClose});
+
+  final ConduitThemeExtension theme;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.md),
+      child: Row(
+        children: [
+          Text(
+            AppLocalizations.of(context)!.thread,
+            style: AppTypography.titleMediumStyle.copyWith(
+              color: theme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          ConduitIconButton(
+            icon: Icons.close,
+            iconColor: theme.textSecondary,
+            tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+            onPressed: onClose,
+            isCompact: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Displays the parent (root) message at the top of the
+/// thread panel.
+class _ParentMessageTile extends StatelessWidget {
+  const _ParentMessageTile({
+    required this.message,
+    this.api,
+    required this.theme,
+  });
+
+  final ChannelMessage message;
+  final ApiService? api;
+  final ConduitThemeExtension theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildAvatar(),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  messageDisplayName(message),
+                  style: AppTypography.bodySmallStyle.copyWith(
+                    color: theme.textSecondary,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+                const SizedBox(height: Spacing.xxs),
+                ChannelMessageContent(
+                  content: message.content,
+                  stateScopeId: 'channel-thread-parent:${message.id}',
+                ),
+                ChannelMessageAttachments(files: message.data?['files']),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar() {
+    if (isModelMessage(message)) {
+      final modelId = message.meta!['model_id'] as String?;
+      return ModelAvatar(
+        size: 28,
+        imageUrl: buildModelAvatarUrl(api, modelId),
+        label: messageDisplayName(message),
+      );
+    }
+    return UserAvatar(
+      size: 28,
+      imageUrl: resolveUserProfileImageUrl(api, message.user?.profileImageUrl),
+      fallbackText: message.userName,
+    );
+  }
+}
+
+/// Scrollable list of thread replies.
+class _ThreadReplies extends StatelessWidget {
+  const _ThreadReplies({
+    required this.messages,
+    this.api,
+    required this.theme,
+    this.bottomPadding = 0,
+  });
+
+  final List<ChannelMessage> messages;
+  final ApiService? api;
+  final ConduitThemeExtension theme;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    if (messages.isEmpty) {
+      return Center(
+        child: Text(
+          'No replies yet',
+          style: AppTypography.bodyMediumStyle.copyWith(
+            color: theme.textSecondary,
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      reverse: false,
+      padding: EdgeInsets.fromLTRB(
+        0,
+        Spacing.sm,
+        0,
+        Spacing.sm + bottomPadding,
+      ),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final message = messages[index];
+        return Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md,
+            vertical: Spacing.xs,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isModelMessage(message))
+                ModelAvatar(
+                  size: 24,
+                  imageUrl: buildModelAvatarUrl(
+                    api,
+                    message.meta?['model_id'] as String?,
+                  ),
+                  label: messageDisplayName(message),
+                )
+              else
+                UserAvatar(
+                  size: 24,
+                  imageUrl: resolveUserProfileImageUrl(
+                    api,
+                    message.user?.profileImageUrl,
+                  ),
+                  fallbackText: message.userName,
+                ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      messageDisplayName(message),
+                      style: AppTypography.bodySmallStyle.copyWith(
+                        color: theme.textSecondary,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    ChannelMessageContent(
+                      content: message.content,
+                      stateScopeId: 'channel-thread:${message.id}',
+                    ),
+                    ChannelMessageAttachments(files: message.data?['files']),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

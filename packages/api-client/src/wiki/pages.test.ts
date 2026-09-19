@@ -106,6 +106,21 @@ test('rejects malformed Wiki graph rows instead of rendering fabricated nodes', 
   await assert.rejects(api.graph('kb-1'), /Invalid Wiki graph node link_count/);
 });
 
+test('a null edges array degrades the whole graph to the empty state like Vue', async () => {
+  // Vue's renderer crashes on edges:null and shows 暂无图谱数据; the client
+  // must not render the nodes as an isolated-node graph either.
+  const api = createWikiPagesApi(async () => ({
+    nodes: [
+      { slug: 'concept-rag', title: '概念：检索增强生成', page_type: 'concept', link_count: 0 },
+      { slug: 'index', title: 'Index', page_type: 'index', link_count: 0 },
+    ],
+    edges: null,
+    meta: { mode: 'overview', total: 2, returned: 2, truncated: false },
+  }));
+  const graph = await api.graph('kb-1');
+  assert.deepEqual(graph, { nodes: [], edges: [], meta: { mode: 'overview', total: 0, returned: 0, truncated: false } });
+});
+
 test('rejects unsafe Wiki revision pagination and versions', async () => {
   const invalidPagination = createWikiPagesApi(async () => ({ revisions: [], total: 1.5, current_version: 1 }));
   await assert.rejects(invalidPagination.revisions('kb-1', 'docs/start'), /Invalid Wiki revision pagination/);

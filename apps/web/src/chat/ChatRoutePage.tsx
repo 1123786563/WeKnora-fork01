@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { ApiError } from '@weknora/api-client';
-import type { ChatStreamEvent } from '@weknora/contracts';
+import type { ChatStreamEvent, FeedbackRating } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
+import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
+import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
@@ -221,6 +224,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  // SP11 message feedback (like/dislike): the pressed state per message,
+  // hydrated from client.chat.feedback.mine on session load.
+  const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
   const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
   const [agentToast, setAgentToast] = useState<string | null>(null);
   const agentToastTimer = useRef<number | null>(null);
@@ -236,6 +242,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // from a previous tenant/client must not repopulate the next tenant's
   // picker, and a scope teardown must release the in-flight guard so the next
   // scope can issue a fresh request.
+  // Vue renders transcript images through t-image whose error state shows the
+  // 图片无法显示 placeholder + 预览 trigger; the capture-phase watcher swaps
+  // failed content images to that fallback (install is idempotent).
+  useEffect(() => { installChatImageErrorWatcher(); }, []);
+
   useEffect(() => {
     const generation = ++mentionGenerationRef.current;
     mentionLoadedRef.current = false;
@@ -395,6 +406,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       suggestionForMessage.current = null;
       impressionForSuggestion.current = null;
       applySteerQueue(clearSteerQueue);
+      setRatings({});
       return;
     }
     // Vue chat/index.vue session switch: the queue belongs to the previous
@@ -406,12 +418,27 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     impressionForSuggestion.current = null;
     setLoadingMessages(true);
     setError(undefined);
+    setRatings({});
     setStreamState(initialChatStreamState());
     void client.sessions.messages(selectedSessionId, { limit: 50, signal: scope.signal }).then(
       (result) => {
         if (active && scopeController.isCurrent(scope.scope)) {
           setMessages(appendMessages([], result));
           setHasMoreMessages(hasOlderMessages(result, 50));
+          // SP11 feedback echo: hydrate my persisted like/dislike after the
+          // history lands. Isolated on purpose (async IIFE + catch-all) so an
+          // echo failure — or a host client without the feedback API — can
+          // neither skip the suggestion loader nor reject unhandled.
+          void (async () => {
+            try {
+              const mine = await client.chat.feedback.mine(selectedSessionId, scope.signal);
+              if (active && scopeController.isCurrent(scope.scope)) {
+                setRatings(Object.fromEntries(mine.items
+                  .filter((entry) => entry.rating === 'like' || entry.rating === 'dislike')
+                  .map((entry) => [entry.message_id, entry.rating] as const)));
+              }
+            } catch { /* echo failure must never block the chat */ }
+          })();
           const assistant = result.filter((message) => message.role === 'assistant' && message.is_completed).at(-1);
           if (assistant) {
             suggestionForMessage.current = assistant.id;
@@ -482,6 +509,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
         if (signal?.aborted || !scopeController.isCurrent(scope.scope) || selectedSessionIdRef.current !== sessionId) return;
         current = await client.chat.suggestions.get(sessionId, messageId, signal);
+        // Vue answer-toolbar parity: while suggestions generate, the loading
+        // label shows on the just-finished turn's toolbar.
+        if (current.status === 'generating' && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setSuggestions(current);
       }
       if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId && suggestionForMessage.current === messageId) {
         setSuggestions(current.status === 'ready' ? current : undefined);
@@ -749,6 +779,33 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current);
     agentToastTimer.current = window.setTimeout(() => setAgentToast(null), 2400);
   }
+
+  // SP11 message feedback (Task 8): optimistic pressed-state with symmetric
+  // rollback when the persisted rating call fails (transient toast, no banner).
+  const ratingOf = useCallback((messageId: string): FeedbackRating | undefined => ratings[messageId], [ratings]);
+  const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {
+    setRatings((prev) => ({ ...prev, [messageId]: rating }));
+    const sessionId = selectedSessionId;
+    if (!sessionId) return;
+    try {
+      await client.chat.feedback.submit(sessionId, messageId, rating);
+    } catch {
+      setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
+      showAgentToast(copy.operationFailed);
+    }
+  }, [client, selectedSessionId]);
+  const onRemoveRating = useCallback(async (messageId: string): Promise<void> => {
+    const previous = ratings[messageId];
+    setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
+    const sessionId = selectedSessionId;
+    if (!sessionId) return;
+    try {
+      await client.chat.feedback.remove(sessionId, messageId);
+    } catch {
+      if (previous) setRatings((prev) => ({ ...prev, [messageId]: previous }));
+      showAgentToast(copy.operationFailed);
+    }
+  }, [client, ratings, selectedSessionId]);
 
   /** SPA navigation to the agents page (manage entry / configure jump). */
   function navigateToAgentsPage(query?: string) {
@@ -1437,6 +1494,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
+    // Vue Input-field.vue createSession: a send is blocked with a toast when
+    // the selected agent — or the default 快速问答 when none is selected — is
+    // missing required model configuration.
+    const gateAgent = agents.find((item) => item.id === selectedAgentId)
+      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
+    if (gateAgent) {
+      const gateConfig = gateAgent.config as Record<string, unknown> | undefined;
+      const notReadyKeys = getAgentNotReadyReasonKeys(gateConfig, agentModels, { isAgentMode: String(gateConfig?.agent_mode ?? '') === 'smart-reasoning' });
+      if (notReadyKeys.length > 0) {
+        const displayName = selectedAgentId === '' && gateAgent.is_builtin === true ? copy.quickAnswer : gateAgent.name;
+        showAgentToast(copy.agentNotReadyDetail
+          .replace('{agentName}', displayName)
+          .replace('{reasons}', agentNotReadyLabels(copy, notReadyKeys).join('、')));
+        return;
+      }
+    }
+    sendInFlightRef.current = true;
     sendInFlightRef.current = true;
     // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
     // from the URL (replaceState) even if the turn later fails, mirroring the
@@ -1491,13 +1565,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
         } catch (retryCause) {
           if (runController.signal.aborted) return;
-          if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
-            setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
-            streamStateRef.current = { ...streamStateRef.current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false };
+          // Vue parity (chat/index.vue onerror → MessagePlugin.error): a failed
+          // stream surfaces as a transient toast and ends the turn — the
+          // transcript keeps the user message without a persistent inline
+          // error row, so the failure is not re-thrown into the failed-send
+          // pending row.
+          const toastMessage = isChatStreamApplicationError(retryCause)
+            ? retryCause.message
+            : streamFailureMessage(retryCause, copy.streamFailed);
+          if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
+            showAgentToast(toastMessage);
+            setStreamState((current) => ({ ...current, phase: 'error', artifactsPending: false }));
+            streamStateRef.current = { ...streamStateRef.current, phase: 'error', artifactsPending: false };
           }
-          // Application errors keep the server-provided message (Vue renders
-          // the SSE error event content); transport errors carry the copy.
-          throw isChatStreamApplicationError(retryCause) ? retryCause : new Error(streamFailureMessage(retryCause, copy.streamFailed));
+          return;
         }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
@@ -1589,6 +1670,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
+    onRateMessage={onRateMessage}
+    onRemoveRating={onRemoveRating}
+    ratingOf={ratingOf}
     starterQuestionsLoading={starterQuestionsLoading}
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}

@@ -1,0 +1,1139 @@
+/// Conversations provider tests on the Drift read substrate
+/// (CDT-RFC-001 Phase 1 read-path inversion).
+///
+/// The provider renders `ChatsDao.watchChatList()`; mutators stay
+/// synchronous in memory and persist the same envelope change so the next
+/// stream emission agrees. Behavioral pillars carried over from the legacy
+/// Hive-backed suite: auth gating, unread/lastReadAt preservation,
+/// archived/filtered split, and folder summaries.
+library;
+
+import 'dart:async';
+
+import 'package:checks/checks.dart';
+import 'package:conduit/core/database/app_database.dart';
+import 'package:conduit/core/database/chat_database_repository.dart';
+import 'package:conduit/core/database/daos/chats_dao.dart';
+import 'package:conduit/core/database/database_provider.dart';
+import 'package:conduit/core/database/mappers/chat_blob_mapper.dart';
+import 'package:conduit/core/database/mappers/conversation_assembler.dart';
+import 'package:conduit/core/models/conversation.dart';
+import 'package:conduit/core/models/server_config.dart';
+import 'package:conduit/core/providers/app_providers.dart';
+import 'package:conduit/core/services/socket_service.dart';
+import 'package:conduit/core/sync/pull_sync.dart';
+import 'package:conduit/core/sync/sync_api_client.dart';
+import 'package:conduit/core/sync/sync_engine.dart';
+import 'package:conduit/features/auth/providers/unified_auth_providers.dart';
+import 'package:conduit/features/hermes/services/hermes_session_provenance.dart';
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/fake_open_webui_server.dart';
+import '../../support/fake_sync_api_client.dart';
+import '../../support/openwebui_storage_test_overrides.dart';
+
+class _RecordingSyncEngine extends SyncEngine {
+  _RecordingSyncEngine(this.pulls);
+
+  final List<String> pulls;
+
+  @override
+  Future<PullResult?> requestPull({required String reason}) {
+    pulls.add(reason);
+    return Future.value(null);
+  }
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late AppDatabase db;
+  late AppDatabase directDb;
+  late bool previousDontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    previousDontWarnAboutMultipleDatabases =
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        previousDontWarnAboutMultipleDatabases;
+  });
+
+  setUp(() {
+    db = AppDatabase(NativeDatabase.memory());
+    directDb = AppDatabase(NativeDatabase.memory());
+  });
+
+  tearDown(() async {
+    await db.close();
+    await directDb.close();
+  });
+
+  ProviderContainer makeContainer({
+    bool authenticated = true,
+    List<Override> extraOverrides = const <Override>[],
+  }) {
+    final container = ProviderContainer(
+      overrides: [
+        if (authenticated) ...openWebUiStorageOpenOverrides(database: db),
+        if (!authenticated) appDatabaseProvider.overrideWith((ref) => db),
+        directLocalDatabaseProvider.overrideWith((ref) => directDb),
+        isAuthenticatedProvider2.overrideWithValue(authenticated),
+        reviewerModeProvider.overrideWithValue(false),
+        legacyConversationCachePurgerProvider.overrideWith(
+          (ref) => () async {},
+        ),
+        ...extraOverrides,
+      ],
+    );
+    addTearDown(container.dispose);
+    return container;
+  }
+
+  Future<void> waitFor(
+    bool Function() condition, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (!condition()) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('waitFor timed out');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  Future<T> waitForAsync<T>(
+    Future<T> Function() read, {
+    required bool Function(T value) condition,
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final value = await read();
+      if (condition(value)) return value;
+      if (DateTime.now().isAfter(deadline)) {
+        fail('waitForAsync timed out');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  Future<void> seedServerChat(
+    String id, {
+    required int updatedAt,
+    bool pinned = false,
+    bool archived = false,
+    String? folderId,
+    int? lastReadAt,
+  }) {
+    return db.chatsDao.upsertServerChat(
+      rows: ChatBlobMapper.blobToRows(
+        chatId: id,
+        blob: {
+          'title': 'Title $id',
+          'history': {
+            'messages': {
+              '$id-m1': {
+                'id': '$id-m1',
+                'parentId': null,
+                'childrenIds': <String>[],
+                'role': 'user',
+                'content': 'hello from $id',
+                'timestamp': updatedAt,
+              },
+            },
+            'currentId': '$id-m1',
+          },
+        },
+        title: 'Title $id',
+        folderId: folderId,
+        pinned: pinned,
+        archived: archived,
+        createdAt: updatedAt,
+        updatedAt: updatedAt,
+      ),
+      listLastReadAt: lastReadAt,
+    );
+  }
+
+  Future<void> seedDirectChat(
+    String id, {
+    required int updatedAt,
+    String? title,
+  }) {
+    return directDb.chatsDao.upsertLocalOnlyChat(
+      rows: ChatBlobMapper.blobToRows(
+        chatId: id,
+        blob: {
+          'title': title ?? 'Direct $id',
+          'history': {
+            'messages': {
+              '$id-direct-m1': {
+                'id': '$id-direct-m1',
+                'parentId': null,
+                'childrenIds': <String>[],
+                'role': 'user',
+                'content': 'hello from direct $id',
+                'timestamp': updatedAt,
+              },
+            },
+            'currentId': '$id-direct-m1',
+          },
+        },
+        title: title ?? 'Direct $id',
+        createdAt: updatedAt,
+        updatedAt: updatedAt,
+      ),
+    );
+  }
+
+  List<String> idsOf(List<Conversation> conversations) =>
+      conversations.map((conversation) => conversation.id).toList();
+
+  group('Conversations', () {
+    test(
+      'unauthenticated build returns empty without touching the database',
+      () async {
+        final container = makeContainer(authenticated: false);
+
+        final conversations = await container.read(
+          conversationsProvider.future,
+        );
+
+        check(conversations).isEmpty();
+      },
+    );
+
+    test('renders chat rows newest-first with no message bodies', () async {
+      await seedServerChat('chat-old', updatedAt: 100);
+      await seedServerChat('chat-new', updatedAt: 200);
+      final container = makeContainer();
+
+      final conversations = await container.read(conversationsProvider.future);
+
+      check(idsOf(conversations)).deepEquals(['chat-new', 'chat-old']);
+      // Narrow list projection: summaries never carry message bodies.
+      for (final conversation in conversations) {
+        check(conversation.messages).isEmpty();
+      }
+      check(conversations.first.updatedAt)
+          .equals(DateTime.fromMillisecondsSinceEpoch(200 * 1000));
+    });
+
+    test('later database writes stream into provider state', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      await seedServerChat('chat-2', updatedAt: 200);
+
+      await waitFor(() {
+        final state = container.read(conversationsProvider);
+        return idsOf(state.asData?.value ?? const []).contains('chat-2');
+      });
+      check(idsOf(container.read(conversationsProvider).requireValue))
+          .deepEquals(['chat-2', 'chat-1']);
+    });
+
+    test('surfaces a cold replacement-watch failure', () async {
+      final repository = _ControlledChatListRepository(directDb);
+      addTearDown(repository.dispose);
+      final container = makeContainer(
+        extraOverrides: [
+          chatDatabaseRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+
+      final loading = container.read(conversationsProvider.future);
+      await waitFor(() => repository.listControllers.isNotEmpty);
+      repository.listControllers.single.addError(StateError('watch failed'));
+
+      await check(loading).throws<StateError>();
+    });
+
+    test(
+      'replacement-watch failure retains the last same-context page',
+      () async {
+        final repository = _ControlledChatListRepository(directDb);
+        addTearDown(repository.dispose);
+        final container = makeContainer(
+          extraOverrides: [
+            chatDatabaseRepositoryProvider.overrideWithValue(repository),
+          ],
+        );
+        final listener = container.listen(
+          conversationsProvider,
+          (previous, next) {},
+        );
+        addTearDown(listener.close);
+
+        final firstLoad = container.read(conversationsProvider.future);
+        await waitFor(() => repository.listControllers.isNotEmpty);
+        repository.listControllers.first.add([
+          for (var index = 0; index < 201; index++)
+            LocatedChatListEntry(
+              storage: ChatStorageKind.directLocal,
+              entry: ChatListEntry(
+                id: 'chat-$index',
+                title: 'Chat $index',
+                createdAt: index,
+                updatedAt: index,
+                pinned: false,
+                archived: false,
+              ),
+            ),
+        ]);
+        final firstPage = await firstLoad;
+        check(firstPage).length.equals(200);
+
+        final notifier = container.read(conversationsProvider.notifier);
+        check(notifier.hasMoreRegularChats()).isTrue();
+        final replacement = notifier.loadMore();
+        await waitFor(() => repository.listControllers.length == 2);
+        repository.listControllers.last.addError(
+          StateError('replacement watch failed'),
+        );
+        await replacement;
+        final retained = await container.read(conversationsProvider.future);
+
+        check(retained.map((chat) => chat.id))
+            .deepEquals(firstPage.map((chat) => chat.id));
+      },
+    );
+
+    test(
+      'colliding server and on-device ids retain distinct identity',
+      () async {
+        await seedServerChat('collision', updatedAt: 100);
+        await seedDirectChat('collision', updatedAt: 200, title: 'Device copy');
+        final container = makeContainer();
+
+        final conversations = await container.read(
+          conversationsProvider.future,
+        );
+        check(conversations.length).equals(2);
+        check(conversations.map((conversation) => conversation.id).toSet())
+            .deepEquals({'collision'});
+        final server = conversations.singleWhere(
+          (conversation) =>
+              chatStorageKindOf(conversation) == ChatStorageKind.openWebUi,
+        );
+        final direct = conversations.singleWhere(isDirectLocalConversation);
+        check(conversationScopedId(server) == conversationScopedId(direct))
+            .isFalse();
+
+        final loadedServer = await container.read(
+          loadConversationProvider(conversationScopedId(server)).future,
+        );
+        final loadedDirect = await container.read(
+          loadConversationProvider(conversationScopedId(direct)).future,
+        );
+        check(chatStorageKindOf(loadedServer))
+            .equals(ChatStorageKind.openWebUi);
+        check(chatStorageKindOf(loadedDirect))
+            .equals(ChatStorageKind.directLocal);
+        check(loadedServer.messages.single.content)
+            .equals('hello from collision');
+        check(loadedDirect.messages.single.content)
+            .equals('hello from direct collision');
+
+        container
+            .read(conversationsProvider.notifier)
+            .updateConversation(
+              conversationScopedId(server),
+              (conversation) => conversation.copyWith(title: 'Server renamed'),
+            );
+        final afterRename = container.read(conversationsProvider).requireValue;
+        check(
+          afterRename
+              .singleWhere(
+                (conversation) =>
+                    chatStorageKindOf(conversation) ==
+                    ChatStorageKind.openWebUi,
+              )
+              .title,
+        ).equals('Server renamed');
+        check(afterRename.singleWhere(isDirectLocalConversation).title)
+            .equals('Device copy');
+
+        container
+            .read(conversationsProvider.notifier)
+            .removeConversation(conversationScopedId(direct));
+        check(container.read(conversationsProvider).requireValue.length)
+            .equals(1);
+        check(
+          chatStorageKindOf(
+            container.read(conversationsProvider).requireValue.single,
+          ),
+        ).equals(ChatStorageKind.openWebUi);
+        await waitForAsync<ChatRow?>(
+          () => directDb.chatsDao.getChat('collision'),
+          condition: (row) => row == null,
+        );
+        final serverRow = await waitForAsync<ChatRow?>(
+          () => db.chatsDao.getChat('collision'),
+          condition: (row) => row?.title == 'Server renamed',
+        );
+        check(serverRow).isNotNull();
+      },
+    );
+
+    test('archived/filtered split with pinned-first ordering', () async {
+      await seedServerChat('chat-archived', updatedAt: 400, archived: true);
+      await seedServerChat('chat-pinned', updatedAt: 100, pinned: true);
+      await seedServerChat('chat-regular', updatedAt: 300);
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+      final notifier = container.read(conversationsProvider.notifier);
+      await waitFor(() => notifier.archivedChatCount() == 1);
+      await notifier.setArchivedChatsVisible(true);
+      await waitFor(
+        () => container.read(archivedConversationsProvider).length == 1,
+      );
+
+      final filtered = container.read(filteredConversationsProvider);
+      final archived = container.read(archivedConversationsProvider);
+
+      // Pinned first despite the older updatedAt; archived excluded.
+      check(idsOf(filtered)).deepEquals(['chat-pinned', 'chat-regular']);
+      check(idsOf(archived)).deepEquals(['chat-archived']);
+    });
+
+    test('markConversationRead persists a read mark that a stale server value '
+        'never lowers', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      final readAt = DateTime.fromMillisecondsSinceEpoch(500 * 1000);
+      container
+          .read(conversationsProvider.notifier)
+          .markConversationRead('chat-1', readAt);
+
+      // In-memory state updates synchronously.
+      check(
+        container.read(conversationsProvider).requireValue.single.lastReadAt,
+      ).equals(readAt);
+
+      // The row write lands (max() rule in the DAO).
+      await waitFor(() {
+        return container
+                .read(conversationsProvider)
+                .requireValue
+                .single
+                .lastReadAt ==
+            readAt;
+      });
+
+      // A pull merge carrying an older server read mark cannot lower it.
+      await seedServerChat('chat-1', updatedAt: 600, lastReadAt: 50);
+      await waitFor(() {
+        final current = container
+            .read(conversationsProvider)
+            .requireValue
+            .single;
+        return current.updatedAt ==
+            DateTime.fromMillisecondsSinceEpoch(600 * 1000);
+      });
+      check(
+        container.read(conversationsProvider).requireValue.single.lastReadAt,
+      ).equals(readAt);
+    });
+
+    test('markConversationRead never regresses an existing newer mark', () {
+      final container = makeContainer();
+      final newer = DateTime.fromMillisecondsSinceEpoch(900 * 1000);
+      final older = DateTime.fromMillisecondsSinceEpoch(400 * 1000);
+      container
+          .read(conversationsProvider.notifier)
+          .upsertConversation(_conversation('chat-1', lastReadAt: newer));
+
+      container
+          .read(conversationsProvider.notifier)
+          .markConversationRead('chat-1', older);
+
+      check(
+        container.read(conversationsProvider).requireValue.single.lastReadAt,
+      ).equals(newer);
+    });
+
+    test('free markConversationRead ignores temporary chats', () {
+      final socket = _RecordingSocketService();
+      final container = makeContainer(
+        extraOverrides: [socketServiceProvider.overrideWithValue(socket)],
+      );
+
+      markConversationRead(container, 'local:socket-id');
+
+      check(socket.emits).isEmpty();
+    });
+
+    test(
+      'free markConversationRead emits the events:chat socket frame',
+      () async {
+        await seedServerChat('chat-1', updatedAt: 100);
+        final socket = _RecordingSocketService();
+        final container = makeContainer(
+          extraOverrides: [socketServiceProvider.overrideWithValue(socket)],
+        );
+        await container.read(conversationsProvider.future);
+
+        markConversationRead(container, 'chat-1');
+
+        check(socket.emits.length).equals(1);
+        check(socket.emits.single.$1).equals('events:chat');
+        check((socket.emits.single.$2 as Map<String, dynamic>)['chat_id'])
+            .equals('chat-1');
+      },
+    );
+
+    test('scoped read mark retains outgoing ownership after active collision switch', () async {
+      await seedServerChat('collision', updatedAt: 100);
+      await seedDirectChat('collision', updatedAt: 200);
+      final socket = _RecordingSocketService();
+      final container = makeContainer(
+        extraOverrides: [socketServiceProvider.overrideWithValue(socket)],
+      );
+      final conversations = await container.read(conversationsProvider.future);
+      final direct = conversations.singleWhere(isDirectLocalConversation);
+      final openWebUi = conversations.singleWhere(
+        (conversation) => !isDirectLocalConversation(conversation),
+      );
+      final outgoingSelection = conversationScopedId(direct);
+      final outgoingIdentity = ChatStorageIdentity.parse(outgoingSelection);
+      check(outgoingIdentity.rawId).equals(direct.id);
+      check(outgoingIdentity.storage).equals(ChatStorageKind.directLocal);
+      check(conversationScopedId(direct)).equals(outgoingSelection);
+      check(conversationMatchesScopedId(direct, outgoingSelection)).isTrue();
+      check(conversationMatchesScopedId(openWebUi, outgoingSelection))
+          .isFalse();
+      container.read(activeConversationProvider.notifier).set(openWebUi);
+      final readAt = DateTime.fromMillisecondsSinceEpoch(500 * 1000);
+
+      // ChatPage captures the outgoing scoped selection before the active
+      // row changes. The newly active colliding row must not steal the mark.
+      markConversationRead(container, outgoingSelection, readAt: readAt);
+
+      final updated = container.read(conversationsProvider).requireValue;
+      check(updated.singleWhere(isDirectLocalConversation).lastReadAt)
+          .equals(readAt);
+      check(
+        updated
+            .singleWhere(
+              (conversation) => !isDirectLocalConversation(conversation),
+            )
+            .lastReadAt,
+      ).isNull();
+      await waitForAsync(
+        () => directDb.chatsDao.getChat('collision'),
+        condition: (chat) => chat?.lastReadAt == 500,
+      );
+      check((await db.chatsDao.getChat('collision'))?.lastReadAt).isNull();
+      check(socket.emits).isEmpty();
+    });
+
+    test('storage-scoped collisions never match a native Hermes shell', () {
+      const rawId = 'local:hermes_collision';
+      final native = markNativeHermesConversation(_conversation(rawId));
+      final openWebUi = withChatStorageProvenance(
+        _conversation(rawId),
+        ChatStorageKind.openWebUi,
+      );
+      final direct = withChatStorageProvenance(
+        _conversation(rawId),
+        ChatStorageKind.directLocal,
+      );
+
+      check(conversationMatchesScopedId(native, rawId)).isTrue();
+      check(
+        conversationMatchesScopedId(native, conversationScopedId(openWebUi)),
+      ).isFalse();
+      check(conversationMatchesScopedId(native, conversationScopedId(direct)))
+          .isFalse();
+      check(
+        conversationMatchesScopedId(openWebUi, conversationScopedId(openWebUi)),
+      ).isTrue();
+    });
+
+    test('storage-scoped collisions never match a temporary direct shell', () {
+      const rawId = 'local:direct_collision';
+      final directShell = _conversation(rawId).copyWith(
+        metadata: const <String, dynamic>{'backend': kDirectChatBackend},
+      );
+      final legacyOpenWebUi = _conversation(rawId);
+      final explicitOpenWebUiDirectTurn = withChatStorageProvenance(
+        directShell,
+        ChatStorageKind.openWebUi,
+      );
+      final openWebUiSelection = ChatStorageIdentity(
+        rawId: rawId,
+        storage: ChatStorageKind.openWebUi,
+      ).scopedId;
+
+      check(conversationMatchesScopedId(directShell, rawId)).isTrue();
+      check(conversationMatchesScopedId(directShell, openWebUiSelection))
+          .isFalse();
+      check(isSameStoredConversation(directShell, legacyOpenWebUi)).isFalse();
+      check(
+        conversationMatchesScopedId(
+          explicitOpenWebUiDirectTurn,
+          openWebUiSelection,
+        ),
+      ).isTrue();
+      check(
+        isSameStoredConversation(explicitOpenWebUiDirectTurn, legacyOpenWebUi),
+      ).isTrue();
+    });
+
+    test('upsertConversation writes an envelope stub the next emission agrees '
+        'with', () async {
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      container
+          .read(conversationsProvider.notifier)
+          .upsertConversation(_conversation('chat-new', updatedAtSeconds: 300));
+
+      // Synchronous in-memory upsert.
+      check(idsOf(container.read(conversationsProvider).requireValue))
+          .deepEquals(['chat-new']);
+
+      // The stub row materializes and the stream emission keeps the chat
+      // (no flicker revert — risk guard 6).
+      final row = await waitForAsync<ChatRow?>(
+        () => db.chatsDao.getChat('chat-new'),
+        condition: (row) => row != null,
+      );
+      check(row!.bodySynced).isFalse();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      check(idsOf(container.read(conversationsProvider).requireValue))
+          .deepEquals(['chat-new']);
+    });
+
+    test('updateConversation persists the rename across emissions', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      container
+          .read(conversationsProvider.notifier)
+          .updateConversation(
+            'chat-1',
+            (conversation) => conversation.copyWith(
+              title: 'Renamed',
+              updatedAt: DateTime.fromMillisecondsSinceEpoch(200 * 1000),
+            ),
+          );
+
+      check(container.read(conversationsProvider).requireValue.single.title)
+          .equals('Renamed');
+
+      await waitForAsync<ChatRow?>(
+        () => db.chatsDao.getChat('chat-1'),
+        condition: (row) => row?.title == 'Renamed',
+      );
+      // The next emission agrees with the optimistic state.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      check(container.read(conversationsProvider).requireValue.single.title)
+          .equals('Renamed');
+    });
+
+    test(
+      'updateConversationFromRemote keeps the frozen signature working',
+      () async {
+        await seedServerChat('chat-1', updatedAt: 100);
+        final container = makeContainer();
+        await container.read(conversationsProvider.future);
+
+        container
+            .read(conversationsProvider.notifier)
+            .updateConversationFromRemote(
+              'chat-1',
+              (conversation) => conversation.copyWith(title: 'Remote rename'),
+            );
+
+        check(container.read(conversationsProvider).requireValue.single.title)
+            .equals('Remote rename');
+      },
+    );
+
+    test(
+      'server-generated title persists without advancing updatedAt',
+      () async {
+        await seedServerChat('chat-1', updatedAt: 100);
+        final container = makeContainer();
+        await container.read(conversationsProvider.future);
+
+        container
+            .read(conversationsProvider.notifier)
+            .applyServerGeneratedTitle('chat-1', '  Generated title  ');
+
+        final row = await waitForAsync<ChatRow?>(
+          () => db.chatsDao.getChat('chat-1'),
+          condition: (row) => row?.title == 'Generated title',
+        );
+        await waitFor(() {
+          return container
+                  .read(conversationsProvider)
+                  .requireValue
+                  .single
+                  .title ==
+              'Generated title';
+        });
+        check(row!.updatedAt).equals(100);
+        final messages = await db.messagesDao.getForChat('chat-1');
+        final blob = ChatBlobMapper.rowsToBlob(chatRowsFromDb(row, messages));
+        check(blob['title']).equals('Generated title');
+      },
+    );
+
+    test('server-generated title preserves a pending local rename', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      await db.chatsDao.updateEnvelopeWithOutbox(
+        'chat-1',
+        title: const Value('My local title'),
+        updatedAt: const Value(101),
+        enqueue: false,
+      );
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      container
+          .read(conversationsProvider.notifier)
+          .applyServerGeneratedTitle('chat-1', 'Generated title');
+
+      check(container.read(conversationsProvider).requireValue.single.title)
+          .equals('My local title');
+
+      final row = await waitForAsync<ChatRow?>(
+        () => db.chatsDao.getChat('chat-1'),
+        condition: (row) =>
+            row?.title == 'My local title' &&
+            row!.blobMeta.contains('My local title'),
+      );
+      check(row!.dirty).isTrue();
+      final messages = await db.messagesDao.getForChat('chat-1');
+      final blob = ChatBlobMapper.rowsToBlob(chatRowsFromDb(row, messages));
+      check(blob['title']).equals('My local title');
+      await waitFor(() {
+        return container
+                .read(conversationsProvider)
+                .requireValue
+                .single
+                .title ==
+            'My local title';
+      });
+    });
+
+    test(
+      'missing remote conversation update submits reconcile pull immediately',
+      () async {
+        final pulls = <String>[];
+        final container = makeContainer(
+          extraOverrides: [
+            syncEngineProvider.overrideWith(() => _RecordingSyncEngine(pulls)),
+          ],
+        );
+        await container.read(conversationsProvider.future);
+
+        container
+            .read(conversationsProvider.notifier)
+            .updateConversationFromRemote(
+              'missing-chat',
+              (_) => throw StateError('unexpected transform'),
+            );
+
+        check(pulls).deepEquals(['conversations-reconcile']);
+      },
+    );
+
+    test('removeConversation hard-deletes the local row', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      await seedServerChat('chat-2', updatedAt: 200);
+      final container = makeContainer();
+      await container.read(conversationsProvider.future);
+
+      container
+          .read(conversationsProvider.notifier)
+          .removeConversation('chat-1');
+
+      check(idsOf(container.read(conversationsProvider).requireValue))
+          .deepEquals(['chat-2']);
+
+      await waitForAsync<ChatRow?>(
+        () => db.chatsDao.getChat('chat-1'),
+        condition: (row) => row == null,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      check(idsOf(container.read(conversationsProvider).requireValue))
+          .deepEquals(['chat-2']);
+    });
+
+    test('trustConversation and exhausted loadMore are no-ops', () async {
+      await seedServerChat('chat-1', updatedAt: 100);
+      final container = makeContainer();
+      final before = await container.read(conversationsProvider.future);
+
+      final notifier = container.read(conversationsProvider.notifier);
+      notifier.trustConversation('chat-1');
+      await notifier.loadMore();
+
+      check(container.read(conversationsProvider).requireValue)
+          .deepEquals(before);
+      check(notifier.hasMoreRegularChats()).isFalse();
+      check(notifier.isLoadingMoreRegularChats()).isFalse();
+    });
+
+    test('active and archived windows expand independently', () async {
+      await db.transaction(() async {
+        for (var i = 0; i < 205; i++) {
+          await db.chatsDao.upsertEnvelopeStub(
+            id: 'chat-$i',
+            title: 'Chat $i',
+            createdAt: i,
+            updatedAt: i,
+          );
+        }
+        await db.chatsDao.upsertEnvelopeStub(
+          id: 'old-pinned',
+          title: 'Old pinned chat',
+          createdAt: -1,
+          updatedAt: -1,
+          pinned: true,
+        );
+        for (var i = 0; i < 2; i++) {
+          await db.chatsDao.upsertEnvelopeStub(
+            id: 'archived-$i',
+            title: 'Archived $i',
+            createdAt: 1000 + i,
+            updatedAt: 1000 + i,
+            archived: true,
+          );
+        }
+      });
+      final container = makeContainer();
+
+      final firstWindow = await container.read(conversationsProvider.future);
+      final notifier = container.read(conversationsProvider.notifier);
+
+      await waitFor(() => notifier.archivedChatCount() == 2);
+      check(firstWindow.length).equals(201);
+      check(firstWindow.any((chat) => chat.id == 'old-pinned')).isTrue();
+      check(firstWindow.where((chat) => chat.archived)).isEmpty();
+      check(notifier.hasMoreRegularChats()).isTrue();
+      check(notifier.hasMoreArchivedChats()).isTrue();
+
+      await notifier.loadMore();
+      await waitFor(
+        () => container.read(conversationsProvider).asData?.value.length == 206,
+      );
+
+      final activeExpanded = container.read(conversationsProvider).requireValue;
+      check(activeExpanded.length).equals(206);
+      check(activeExpanded.where((chat) => chat.archived)).isEmpty();
+      check(notifier.hasMoreRegularChats()).isFalse();
+      check(notifier.isLoadingMoreRegularChats()).isFalse();
+
+      await notifier.setArchivedChatsVisible(true);
+      await waitFor(
+        () =>
+            container
+                .read(conversationsProvider)
+                .asData
+                ?.value
+                .where((chat) => chat.archived)
+                .length ==
+            2,
+      );
+      check(notifier.hasMoreArchivedChats()).isFalse();
+      check(notifier.isLoadingMoreArchivedChats()).isFalse();
+    });
+
+    test(
+      'large archives stay unmapped until expanded and page in bounds',
+      () async {
+        await db.transaction(() async {
+          await db.chatsDao.upsertEnvelopeStub(
+            id: 'active',
+            title: 'Active',
+            createdAt: 1000,
+            updatedAt: 1000,
+          );
+          for (var i = 0; i < 450; i++) {
+            await db.chatsDao.upsertEnvelopeStub(
+              id: 'archived-$i',
+              title: 'Archived $i',
+              createdAt: i,
+              updatedAt: i,
+              archived: true,
+            );
+          }
+        });
+        final container = makeContainer();
+
+        final collapsed = await container.read(conversationsProvider.future);
+        final notifier = container.read(conversationsProvider.notifier);
+        await waitFor(() => notifier.archivedChatCount() == 450);
+
+        check(collapsed.map((chat) => chat.id)).deepEquals(['active']);
+        check(container.read(archivedConversationsProvider)).isEmpty();
+        check(notifier.archivedChatsVisible()).isFalse();
+        check(notifier.hasMoreArchivedChats()).isTrue();
+
+        await notifier.setArchivedChatsVisible(true);
+        await waitFor(
+          () => container.read(archivedConversationsProvider).length == 200,
+        );
+        check(notifier.archivedChatsVisible()).isTrue();
+        check(notifier.hasMoreArchivedChats()).isTrue();
+
+        await notifier.loadMoreArchived();
+        await waitFor(
+          () => container.read(archivedConversationsProvider).length == 400,
+        );
+        check(notifier.hasMoreArchivedChats()).isTrue();
+
+        await notifier.loadMoreArchived();
+        await waitFor(
+          () => container.read(archivedConversationsProvider).length == 450,
+        );
+        check(notifier.hasMoreArchivedChats()).isFalse();
+        check(notifier.hasMoreRegularChats()).isFalse();
+
+        await notifier.setArchivedChatsVisible(false);
+        await waitFor(
+          () => container.read(archivedConversationsProvider).isEmpty,
+        );
+        check(notifier.archivedChatCount()).equals(450);
+        check(notifier.archivedChatsVisible()).isFalse();
+      },
+    );
+
+    test('refresh delegates to the sync engine pull', () async {
+      final server = FakeOpenWebUiServer();
+      final client = FakeSyncApiClient(server);
+      server.seedChat(
+        id: 'remote-chat',
+        blob: {
+          'title': 'Remote chat',
+          'history': {
+            'messages': {
+              'm1': {
+                'id': 'm1',
+                'parentId': null,
+                'childrenIds': <String>[],
+                'role': 'user',
+                'content': 'hi',
+                'timestamp': 100,
+              },
+            },
+            'currentId': 'm1',
+          },
+        },
+        createdAt: 100,
+        updatedAt: 100,
+      );
+      final container = makeContainer(
+        extraOverrides: [syncApiClientProvider.overrideWith((ref) => client)],
+      );
+      await container.read(conversationsProvider.future);
+
+      await container
+          .read(conversationsProvider.notifier)
+          .refresh(forceFresh: true);
+
+      check(client.chatListPageRequests).isGreaterOrEqual(1);
+      await waitFor(() {
+        final state = container.read(conversationsProvider);
+        return idsOf(state.asData?.value ?? const []).contains('remote-chat');
+      });
+    });
+
+    test(
+      'manual refresh purges a chat that was deleted on the server',
+      () async {
+        await seedServerChat('deleted-remotely', updatedAt: 100);
+        final server = FakeOpenWebUiServer();
+        final client = FakeSyncApiClient(server);
+        final container = makeContainer(
+          extraOverrides: [syncApiClientProvider.overrideWith((ref) => client)],
+        );
+        await container.read(conversationsProvider.future);
+
+        check(idsOf(container.read(conversationsProvider).requireValue))
+            .contains('deleted-remotely');
+
+        await container.read(conversationsProvider.notifier).refresh();
+
+        await waitForAsync<ChatRow?>(
+          () => db.chatsDao.getChat('deleted-remotely'),
+          condition: (row) => row == null,
+        );
+        await waitFor(
+          () => !idsOf(
+            container.read(conversationsProvider).asData?.value ?? const [],
+          ).contains('deleted-remotely'),
+        );
+      },
+    );
+
+    test(
+      'manual refresh restores a server title changed without a timestamp bump',
+      () async {
+        await seedServerChat('retitled', updatedAt: 100);
+        await db.syncMetaDao.setPullWatermark(200);
+        final server = FakeOpenWebUiServer();
+        server.seedChat(
+          id: 'retitled',
+          blob: <String, dynamic>{
+            'title': 'Generated on server',
+            'history': <String, dynamic>{
+              'messages': <String, dynamic>{},
+              'currentId': null,
+            },
+          },
+          createdAt: 100,
+          updatedAt: 100,
+        );
+        final client = FakeSyncApiClient(server);
+        final container = makeContainer(
+          extraOverrides: [syncApiClientProvider.overrideWith((ref) => client)],
+        );
+        await container.read(conversationsProvider.future);
+
+        await container.read(conversationsProvider.notifier).refresh();
+
+        await waitFor(
+          () =>
+              container.read(conversationsProvider).requireValue.single.title ==
+              'Generated on server',
+        );
+        check((await db.chatsDao.getChat('retitled'))!.updatedAt).equals(100);
+      },
+    );
+  });
+
+  group('folderConversationSummariesProvider', () {
+    test('reads folder membership from the database', () async {
+      await seedServerChat('chat-in-folder', updatedAt: 200, folderId: 'f1');
+      await seedServerChat('chat-root', updatedAt: 300);
+      final container = makeContainer();
+
+      final summaries = await container.read(
+        folderConversationSummariesProvider('f1').future,
+      );
+
+      check(idsOf(summaries)).deepEquals(['chat-in-folder']);
+      check(summaries.single.folderId).equals('f1');
+    });
+
+    test('returns empty when unauthenticated', () async {
+      await seedServerChat('chat-in-folder', updatedAt: 200, folderId: 'f1');
+      final container = makeContainer(authenticated: false);
+
+      final summaries = await container.read(
+        folderConversationSummariesProvider('f1').future,
+      );
+
+      check(summaries).isEmpty();
+    });
+
+    test('refreshConversationsCache bumps the refresh tick', () async {
+      await seedServerChat('chat-a', updatedAt: 200, folderId: 'f1');
+      final container = makeContainer();
+      final before = await container.read(
+        folderConversationSummariesProvider('f1').future,
+      );
+      check(idsOf(before)).deepEquals(['chat-a']);
+
+      await seedServerChat('chat-b', updatedAt: 300, folderId: 'f1');
+      refreshConversationsCache(container);
+
+      await waitFor(() {
+        final state = container.read(folderConversationSummariesProvider('f1'));
+        return idsOf(state.asData?.value ?? const []).contains('chat-b');
+      });
+      final after = await container.read(
+        folderConversationSummariesProvider('f1').future,
+      );
+      check(idsOf(after)).deepEquals(['chat-b', 'chat-a']);
+    });
+  });
+}
+
+Conversation _conversation(
+  String id, {
+  int updatedAtSeconds = 100,
+  DateTime? lastReadAt,
+}) {
+  return Conversation(
+    id: id,
+    title: 'Title $id',
+    createdAt: DateTime.fromMillisecondsSinceEpoch(updatedAtSeconds * 1000),
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtSeconds * 1000),
+    lastReadAt: lastReadAt,
+  );
+}
+
+final class _ControlledChatListRepository extends ChatDatabaseRepository {
+  _ControlledChatListRepository(AppDatabase directDatabase)
+    : super(openWebUiDatabase: null, directLocalDatabase: directDatabase);
+
+  final listControllers = <StreamController<List<LocatedChatListEntry>>>[];
+
+  Stream<List<LocatedChatListEntry>> _newListStream() {
+    final controller = StreamController<List<LocatedChatListEntry>>();
+    listControllers.add(controller);
+    return controller.stream;
+  }
+
+  @override
+  Stream<List<LocatedChatListEntry>> watchMergedChatList({
+    int? regularLimit,
+    int? archivedLimit,
+  }) => _newListStream();
+
+  @override
+  Stream<List<LocatedChatListEntry>> watchDirectLocalChatList({
+    int? regularLimit,
+    int? archivedLimit,
+  }) => _newListStream();
+
+  @override
+  Stream<int> watchMergedArchivedChatCount() => Stream<int>.value(0);
+
+  @override
+  Stream<int> watchDirectLocalArchivedChatCount() => Stream<int>.value(0);
+
+  Future<void> dispose() async {
+    for (final controller in listControllers) {
+      await controller.close();
+    }
+  }
+}
+
+class _RecordingSocketService extends SocketService {
+  _RecordingSocketService()
+    : super(
+        serverConfig: const ServerConfig(
+          id: 'test-server',
+          name: 'Test Server',
+          url: 'https://example.com',
+        ),
+      );
+
+  final List<(String, dynamic)> emits = <(String, dynamic)>[];
+
+  @override
+  void emit(String event, dynamic data) {
+    emits.add((event, data));
+  }
+}

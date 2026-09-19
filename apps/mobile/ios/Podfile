@@ -1,0 +1,112 @@
+# Uncomment this line to define a global platform for your project
+IOS_DEPLOYMENT_TARGET = '16.0'
+platform :ios, IOS_DEPLOYMENT_TARGET
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+# Work around Xcode cycle false-positives by letting CocoaPods not declare IO paths
+install! 'cocoapods', :disable_input_output_paths => true
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  # Use dynamic frameworks for native extension compatibility
+  use_frameworks! :linkage => :dynamic
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      defs = [defs] if defs.is_a?(String)
+      %w[
+        PERMISSION_MICROPHONE=1
+        PERMISSION_SPEECH_RECOGNIZER=1
+        PERMISSION_NOTIFICATIONS=1
+      ].each do |flag|
+        defs << flag unless defs.include?(flag)
+      end
+      if target.name == 'geolocator_apple'
+        defs << 'BYPASS_PERMISSION_LOCATION_ALWAYS=1' unless defs.include?('BYPASS_PERMISSION_LOCATION_ALWAYS=1')
+      end
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+
+      # Flutter engine in this setup is arm64-only for simulator.
+      # Exclude x86_64 simulator architecture to avoid unresolved Flutter
+      # symbols when Xcode attempts a universal simulator link.
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'x86_64'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = IOS_DEPLOYMENT_TARGET
+    end
+  end
+
+  # Add -ObjC linker flag for objective_c native assets (required for Release builds)
+  # This fixes: "dlsym(RTLD_DEFAULT, DOBJC_initializeApi): symbol not found"
+  installer.aggregate_targets.each do |aggregate_target|
+    user_project = aggregate_target.user_project
+    user_project.native_targets.each do |native_target|
+      if native_target.name == 'Runner'
+        native_target.build_configurations.each do |config|
+          config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+          config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'x86_64'
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = IOS_DEPLOYMENT_TARGET
+           
+          # Add -ObjC and -lc++ flags for native extensions support
+          other_ldflags = config.build_settings['OTHER_LDFLAGS'] || ['$(inherited)']
+          other_ldflags = [other_ldflags] if other_ldflags.is_a?(String)
+          unless other_ldflags.include?('-ObjC')
+            other_ldflags << '-ObjC'
+          end
+          unless other_ldflags.include?('-lc++')
+            other_ldflags << '-lc++'
+          end
+          if ['Release', 'Profile'].include?(config.name)
+            # VAD reaches ONNX Runtime through dlsym. Force the one required
+            # global into the final image while still allowing local symbols
+            # to be stripped from Release/Profile products.
+            unless other_ldflags.include?('-Wl,-u,_OrtGetApiBase')
+              other_ldflags << '-Wl,-u,_OrtGetApiBase'
+            end
+            config.build_settings['DEPLOYMENT_POSTPROCESSING'] = 'YES'
+            config.build_settings['COPY_PHASE_STRIP'] = 'YES'
+            config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'YES'
+            config.build_settings['STRIP_STYLE'] = 'non-global'
+          else
+            other_ldflags.delete('-Wl,-u,_OrtGetApiBase')
+          end
+          config.build_settings['OTHER_LDFLAGS'] = other_ldflags
+        end
+      end
+    end
+    user_project.save
+  end
+end

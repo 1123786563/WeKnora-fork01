@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => (specifier.endsWith('.css') || specifier.endsWith('.svg')) ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { WikiPage, wikiRevertConfirmation } = await import('./WikiPage.tsx');
 const { wikiRevertCopy, wikiReaderEmptyState } = await import('./editor.ts');

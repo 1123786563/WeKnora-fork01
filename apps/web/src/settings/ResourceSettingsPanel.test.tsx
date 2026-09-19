@@ -6,10 +6,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => (specifier.endsWith('.css') || specifier.endsWith('.svg')) ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
   export async function resolve(specifier, context, nextResolve) {
-    if (specifier.endsWith('.css')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
+    if (specifier.endsWith('.css') || specifier.endsWith('.svg')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
     return nextResolve(specifier, context);
   }
 `)}`, import.meta.url);
@@ -37,21 +37,28 @@ test('WebSearch provider cards preserve Vue metadata anatomy', () => {
     }],
   }));
 
-  assert.match(html, /provider-card/);
+  // Vue StorageBackendSettings backend-card anatomy shared by all three
+  // resource surfaces: badge initial, name, provider·meta subtitle, and the
+  // dashed add card.
+  assert.match(html, /backend-card/);
   assert.match(html, /Docs Search/);
   assert.match(html, /tavily/);
   assert.match(html, /Search public documentation/);
-  assert.match(html, /https:\/\/proxy\.example\.test/);
+  assert.match(html, /role="button"/);
+  assert.match(html, /backend-card--add/);
+  assert.match(html, /添加搜索引擎/);
 });
 
-test('WebSearch provider cards expose Vue admin actions and add affordance', () => {
+test('WebSearch provider cards open the edit drawer instead of inline actions', () => {
   const html = renderToStaticMarkup(React.createElement(ResourceSettingsPanel, {
     client,
     section: 'websearch',
     initialValue: [{ id: 'provider-1', name: 'Docs Search', provider: 'tavily' }],
   }));
 
-  assert.match(html, /aria-label="编辑 Docs Search"/);
-  assert.match(html, /aria-label="删除 Docs Search"/);
-  assert.match(html, /provider-card--add/);
+  // Vue keeps card actions inside the drawer (create/edit titles) — the
+  // card itself is a button; no always-visible 编辑/删除 labels.
+  assert.doesNotMatch(html, /aria-label="编辑 Docs Search"/);
+  assert.doesNotMatch(html, /aria-label="删除 Docs Search"/);
+  assert.match(html, /添加搜索引擎/);
 });

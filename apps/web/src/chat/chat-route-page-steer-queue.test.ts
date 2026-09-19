@@ -69,6 +69,13 @@ async function renderChatRoutePage(input: {
             export function resolveForkAffordance() {
               return { canFork: false };
             }
+            export function getAgentNotReadyReasonKeys() {
+              return [];
+            }
+            export function installChatImageErrorWatcher() {}
+            export function agentNotReadyLabels() {
+              return [];
+            }
             export function stashForkLanding() {}
             export function takeForkLanding() {
               return null;

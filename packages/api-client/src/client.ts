@@ -9,6 +9,7 @@ import { createAppConnectorApi } from './appconnector.ts';
 import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
+import { createFeedbackApi } from './chat/feedback.ts';
 import { createSandboxTerminalApi } from './sandbox/terminal.ts';
 import { createSandboxSkillInstallApi } from './sandbox/skill-install.ts';
 import { createSandboxConfigurationsApi } from './sandbox-configurations.ts';
@@ -25,6 +26,7 @@ import { createAdministrationApi } from './administration/index.ts';
 import { createSettingsApi } from './settings/index.ts';
 import { createEmbedApi } from './embed/index.ts';
 import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
+import { createAnalyticsApi } from './analytics/index.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -266,6 +268,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const apps = createAppConnectorApi(request);
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
+  const feedback = createFeedbackApi(request);
   const sandbox = createSandboxTerminalApi(request);
   // Skill install streams ride the same transport chain (sendStream when the
   // platform provides one, buffered request otherwise) so auth/tenant headers
@@ -295,6 +298,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const identity = createIdentityApi(request);
   const administration = createAdministrationApi(request);
   const settings = createSettingsApi(request);
+  const analytics = createAnalyticsApi(request);
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {
@@ -399,6 +403,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     identity,
     administration,
     settings,
+    analytics,
     embed,
     sessions,
     sandbox: { issueTicket: sandbox.issueTicket, skills: sandboxSkills },
@@ -407,6 +412,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     mbti,
     chat: {
       approvals: chatApprovals,
+      feedback,
       steer: chatSteer,
       attachments: chatAttachments,
       suggestions: chatSuggestions,

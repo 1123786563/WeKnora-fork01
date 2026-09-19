@@ -626,7 +626,7 @@ test('model cards use the Vue card markup with a per-card action menu', async ()
     assert.ok(card, 'cards render the Vue model-card structure');
     assert.ok(card.querySelector('div[aria-label]'), 'type badge renders');
     assert.equal(card.querySelector('h3')?.textContent, 'gpt-4o');
-    assert.ok((card.querySelector('p')?.textContent ?? '').includes('OpenAI · 128K'));
+    assert.ok((card.querySelector('p')?.textContent ?? '').includes('OpenAI·128K'));
     // Tenant model: the menu holds 编辑/复制; delete stays an affix action.
     await click(card.querySelector('[aria-haspopup="menu"]')!);
     const menu = card.querySelector('[role="menu"]');

@@ -1,0 +1,734 @@
+import 'package:material_ui/material_ui.dart';
+
+import 'package:conduit/l10n/app_localizations.dart';
+
+import '../../../../core/utils/reasoning_parser.dart';
+import '../../assistant_detail_header.dart';
+import '../../themed_sheets.dart';
+import '../../web_content_embed.dart';
+import '../../../theme/theme_extensions.dart';
+import '../compiled_markdown_document.dart';
+import '../markdown_config.dart';
+import 'details_group_widget.dart';
+import 'markdown_style.dart';
+
+/// Builds markdown body content from the current [CompiledMarkdownDetailsData].
+typedef DetailsMarkdownBodyBuilder = Widget Function(
+  BuildContext context,
+  CompiledMarkdownDetailsData detailsData,
+);
+
+/// Upstream-style collapsible renderer for markdown `<details>` blocks.
+class MarkdownDetailsBlock extends StatefulWidget {
+  const MarkdownDetailsBlock({
+    super.key,
+    required this.detailsData,
+    this.bodyBuilder,
+    this.inlineExpansionStateId,
+    this.deferHeavyContent = false,
+  });
+
+  final CompiledMarkdownDetailsData detailsData;
+  final DetailsMarkdownBodyBuilder? bodyBuilder;
+  final String? inlineExpansionStateId;
+  final bool deferHeavyContent;
+
+  @override
+  State<MarkdownDetailsBlock> createState() => _MarkdownDetailsBlockState();
+}
+
+class _MarkdownDetailsBlockState extends State<MarkdownDetailsBlock> {
+  static const _resultPreviewLimit = 10000;
+  final ValueNotifier<int> _sheetRevision = ValueNotifier<int>(0);
+  var _isSheetOpen = false;
+  var _hasPendingSheetRefresh = false;
+  var _isInlineExpanded = false;
+  String? _restoredInlineExpansionStateId;
+
+  CompiledMarkdownDetailsData get _detailsData => widget.detailsData;
+
+  bool get _isToolCall =>
+      _detailsData.kind == CompiledMarkdownDetailsKind.toolCall;
+
+  bool get _isReasoning =>
+      _detailsData.kind == CompiledMarkdownDetailsKind.reasoning ||
+      _detailsData.kind == CompiledMarkdownDetailsKind.codeInterpreter;
+
+  bool get _isCodeInterpreter =>
+      _detailsData.kind == CompiledMarkdownDetailsKind.codeInterpreter;
+
+  bool get _isPending => _detailsData.isPending;
+
+  bool get _supportsInlineExpansion => _detailsData.supportsInlineExpansion;
+
+  bool get _usesInlineExpansion => _supportsInlineExpansion && _isPending;
+
+  bool get _canExpand {
+    if (!_isToolCall) {
+      return _detailsData.canExpand;
+    }
+
+    final data = _toolCallData;
+    return data.hasExpandableContent || data.hasImages || _detailsData.hasBody;
+  }
+
+  bool get _deferHeavyContent => widget.deferHeavyContent;
+
+  bool get _canRenderToolCallEmbeds => !_deferHeavyContent && !_isPending;
+
+  CompiledMarkdownToolCallData get _toolCallData {
+    final data = _detailsData.toolCallData;
+    if (data != null) {
+      return data;
+    }
+    return CompiledMarkdownToolCallData(
+      argumentsText: '',
+      resultText: '',
+      argumentEntries: const <CompiledMarkdownToolCallArgumentEntry>[],
+      embedSources: const <String>[],
+      imageUrls: const <String>[],
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _restoreInlineExpansionStateIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant MarkdownDetailsBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.inlineExpansionStateId != widget.inlineExpansionStateId) {
+      _restoredInlineExpansionStateId = null;
+      _restoreInlineExpansionStateIfNeeded();
+    }
+    if (_isInlineExpanded && !_usesInlineExpansion) {
+      _isInlineExpanded = false;
+      _persistInlineExpansionState();
+    }
+    if (_isSheetOpen && _sheetContentNeedsRefresh(oldWidget.detailsData)) {
+      _scheduleSheetRefresh();
+    }
+  }
+
+  bool _sheetContentNeedsRefresh(CompiledMarkdownDetailsData previous) {
+    return previous != _detailsData;
+  }
+
+  @override
+  void dispose() {
+    _sheetRevision.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groupRenderMode = MarkdownDetailsGroupRenderScope.maybeOf(context);
+    if (groupRenderMode == MarkdownDetailsGroupRenderMode.previewsOnly) {
+      if (!_canRenderToolCallEmbeds) {
+        return const SizedBox.shrink();
+      }
+      final embeds = _buildToolCallEmbeds(context);
+      return embeds.isEmpty
+          ? const SizedBox.shrink()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: embeds,
+            );
+    }
+
+    final title = _headerTitle(context);
+    final showInlineChevron = _usesInlineExpansion && _canExpand;
+    final inlineBody = showInlineChevron && _isInlineExpanded
+        ? _buildBody(context)
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _canExpand ? () => _handleHeaderTap(context) : null,
+            child: AssistantDetailHeader(
+              title: title,
+              showShimmer: _isPending,
+              showChevron: _canExpand,
+              useInlineChevron: showInlineChevron,
+              isExpanded: showInlineChevron && _isInlineExpanded,
+            ),
+          ),
+          if (inlineBody != null) _buildInlineBody(context, inlineBody),
+          if (groupRenderMode == null && _canRenderToolCallEmbeds)
+            ..._buildToolCallEmbeds(context),
+        ],
+      ),
+    );
+  }
+
+  void _handleHeaderTap(BuildContext context) {
+    if (!_canExpand) {
+      return;
+    }
+
+    if (_usesInlineExpansion) {
+      setState(() {
+        _isInlineExpanded = !_isInlineExpanded;
+      });
+      _persistInlineExpansionState();
+      return;
+    }
+
+    _showDetailsBottomSheet(context);
+  }
+
+  void _restoreInlineExpansionStateIfNeeded() {
+    final stateId = widget.inlineExpansionStateId;
+    if (stateId == null || _restoredInlineExpansionStateId == stateId) {
+      return;
+    }
+
+    final restored = PageStorage.maybeOf(context)
+        ?.readState(context, identifier: stateId);
+    if (_usesInlineExpansion && restored is bool) {
+      _isInlineExpanded = restored;
+    } else if (!_usesInlineExpansion) {
+      _isInlineExpanded = false;
+    }
+    _restoredInlineExpansionStateId = stateId;
+  }
+
+  void _persistInlineExpansionState() {
+    final stateId = widget.inlineExpansionStateId;
+    if (stateId == null) {
+      return;
+    }
+
+    PageStorage.maybeOf(context)
+        ?.writeState(context, _isInlineExpanded, identifier: stateId);
+  }
+
+  Widget _buildInlineBody(BuildContext context, Widget body) {
+    final theme = context.conduitTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: Spacing.xs, left: Spacing.sm),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: theme.dividerColor.withValues(alpha: 0.28)),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: Spacing.sm),
+          child: body,
+        ),
+      ),
+    );
+  }
+
+  void _scheduleSheetRefresh() {
+    if (!_isSheetOpen || _hasPendingSheetRefresh) {
+      return;
+    }
+
+    _hasPendingSheetRefresh = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hasPendingSheetRefresh = false;
+      if (!mounted || !_isSheetOpen) {
+        return;
+      }
+      _sheetRevision.value++;
+    });
+  }
+
+  void _showDetailsBottomSheet(BuildContext context) {
+    if (!_canExpand) {
+      return;
+    }
+
+    _isSheetOpen = true;
+
+    ThemedSheets.showCustom<void>(
+      context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+      builder: _buildDetailsBottomSheet,
+    ).whenComplete(() {
+      _isSheetOpen = false;
+    });
+  }
+
+  Widget _buildDetailsBottomSheet(BuildContext sheetContext) {
+    final liveTheme = sheetContext.conduitTheme;
+    final sheetSurface = liveTheme.surfaceBackground;
+    final bottomSafePadding = MediaQuery.paddingOf(sheetContext).bottom;
+
+    return SizedBox(
+      width: MediaQuery.sizeOf(sheetContext).width,
+      child: DraggableScrollableSheet(
+        initialChildSize: DraggableModalSheetSizes.initialChildSize,
+        minChildSize: DraggableModalSheetSizes.minChildSize,
+        maxChildSize: DraggableModalSheetSizes.maxChildSize,
+        expand: false,
+        builder: (_, controller) {
+          return SizedBox.expand(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: sheetSurface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(AppBorderRadius.bottomSheet),
+                ),
+              ),
+              child: ValueListenableBuilder<int>(
+                valueListenable: _sheetRevision,
+                builder: (context, value, child) {
+                  final markdownStyle = ConduitMarkdownStyle.fromTheme(
+                    sheetContext,
+                  );
+                  final liveBody = _buildBody(sheetContext);
+                  if (liveBody == null) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Column(
+                    children: [
+                      KeyedSubtree(
+                        key: _isReasoning
+                            ? const ValueKey<String>(
+                                'reasoning-details-sheet-header',
+                              )
+                            : null,
+                        child: ConduitModalSheetHeader(
+                          leading: _buildLeadingIcon(
+                            liveTheme,
+                            iconSize: IconSize.md,
+                            spinnerSize: IconSize.md,
+                          ),
+                          title: _modalTitle(sheetContext),
+                          titleStyle: markdownStyle.sheetTitle,
+                          onClose: () => Navigator.of(sheetContext).pop(),
+                        ),
+                      ),
+                      Expanded(
+                        child: CustomScrollView(
+                          key: _isReasoning
+                              ? const ValueKey<String>(
+                                  'reasoning-details-sheet-body',
+                                )
+                              : null,
+                          controller: controller,
+                          slivers: [
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(
+                                Spacing.lg,
+                                Spacing.sm,
+                                Spacing.lg,
+                                Spacing.lg + bottomSafePadding,
+                              ),
+                              sliver: SliverToBoxAdapter(
+                                child: KeyedSubtree(
+                                  key: ValueKey<int>(value),
+                                  child: liveBody,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget? _buildBody(BuildContext context) {
+    if (_isToolCall) {
+      return _buildToolCallBody(context, _toolCallData);
+    }
+    final builder = widget.bodyBuilder;
+    if (builder == null || !_detailsData.hasBody) {
+      return null;
+    }
+    return builder(context, _detailsData);
+  }
+
+  Widget _buildLeadingIcon(
+    ConduitThemeExtension theme, {
+    double iconSize = 16,
+    double spinnerSize = 16,
+  }) {
+    if (_isPending) {
+      return SizedBox(
+        width: spinnerSize,
+        height: spinnerSize,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.8,
+          color: theme.textSecondary,
+        ),
+      );
+    }
+
+    if (_isToolCall) {
+      return Icon(
+        Icons.check_circle_outline_rounded,
+        size: iconSize,
+        color: theme.statusPalette.success.base,
+      );
+    }
+
+    if (_isReasoning) {
+      return Icon(
+        _isCodeInterpreter ? Icons.terminal_rounded : Icons.psychology_outlined,
+        size: iconSize,
+        color: theme.textSecondary,
+      );
+    }
+
+    return Icon(
+      Icons.unfold_more_rounded,
+      size: iconSize,
+      color: theme.textSecondary,
+    );
+  }
+
+  String _headerTitle(BuildContext context) {
+    if (_isToolCall) {
+      final name = _detailsData.name.trim();
+      final safeName = name.isEmpty ? 'tool' : name;
+      if (_toolCallData.hasEmbeds) {
+        return safeName;
+      }
+      return _isPending ? 'Executing $safeName…' : 'View Result from $safeName';
+    }
+
+    if (_isReasoning) {
+      return _reasoningHeaderText(context);
+    }
+
+    final summary = _detailsData.summaryText.trim();
+    return summary.isEmpty ? 'Details' : summary;
+  }
+
+  String _modalTitle(BuildContext context) {
+    if (_isToolCall) {
+      final name = _detailsData.name.trim();
+      final safeName = name.isEmpty ? 'tool' : name;
+      return _isPending ? 'Running $safeName…' : 'Used $safeName';
+    }
+
+    return _headerTitle(context);
+  }
+
+  String _reasoningHeaderText(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    if (_isCodeInterpreter) {
+      return _detailsData.isDone ? l10n.analyzed : l10n.analyzing;
+    }
+    return switch (resolveReasoningHeader(_detailsData)) {
+      ReasoningHeaderThinking() => l10n.thinking,
+      ReasoningHeaderThoughtFor(:final seconds) => l10n.thoughtForDuration(
+        ReasoningParser.formatDuration(seconds),
+      ),
+      ReasoningHeaderSummary(:final summary) => summary,
+      ReasoningHeaderThoughts() => l10n.thoughts,
+    };
+  }
+
+  Widget? _buildToolCallBody(
+    BuildContext context,
+    CompiledMarkdownToolCallData data,
+  ) {
+    final builder = widget.bodyBuilder;
+    final hasExtraBody = builder != null && _detailsData.hasBody;
+    final isHeavyPreviewDeferred = _deferHeavyContent && data.hasImages;
+    final hasDeferredPreviewContent = !_deferHeavyContent && data.hasImages;
+    if (!data.hasExpandableContent &&
+        !hasExtraBody &&
+        !hasDeferredPreviewContent &&
+        !isHeavyPreviewDeferred) {
+      return null;
+    }
+
+    final theme = context.conduitTheme;
+    final markdownStyle = ConduitMarkdownStyle.fromTheme(context);
+    var expandedResult = false;
+
+    return StatefulBuilder(
+      builder: (context, setModalState) {
+        final children = <Widget>[];
+
+        if (data.argumentEntries.isNotEmpty) {
+          children.add(_buildSectionTitle('Input', markdownStyle));
+          children.add(const SizedBox(height: 6));
+          children.add(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: data.argumentEntries
+                  .map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${entry.label}: ',
+                            style: markdownStyle.detailLabel,
+                          ),
+                          Expanded(
+                            child: SelectableText(
+                              entry.value,
+                              style: markdownStyle.detailValue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  })
+                  .toList(growable: false),
+            ),
+          );
+        } else if (data.argumentsCode.isNotEmpty) {
+          children.add(_buildSectionTitle('Input', markdownStyle));
+          children.add(const SizedBox(height: 6));
+          children.add(
+            ConduitMarkdown.buildCodeBlock(
+              context: context,
+              code: data.argumentsCode,
+              language: 'json',
+              theme: theme,
+            ),
+          );
+        }
+
+        if (data.resultText.isNotEmpty) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: Spacing.sm));
+          }
+          children.add(_buildSectionTitle('Output', markdownStyle));
+          children.add(const SizedBox(height: 6));
+
+          if (data.resultCode.isNotEmpty) {
+            children.add(
+              ConduitMarkdown.buildCodeBlock(
+                context: context,
+                code: data.resultCode,
+                language: 'json',
+                theme: theme,
+              ),
+            );
+          } else {
+            final resultText = data.resultDisplayText;
+            final isTruncated =
+                resultText.length > _resultPreviewLimit && !expandedResult;
+            children.add(
+              SelectableText(
+                isTruncated
+                    ? resultText.substring(0, _resultPreviewLimit)
+                    : resultText,
+                style: markdownStyle.detailCode,
+              ),
+            );
+            if (isTruncated) {
+              children.add(const SizedBox(height: 6));
+              children.add(
+                TextButton(
+                  onPressed: () => setModalState(() {
+                    expandedResult = true;
+                  }),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    alignment: Alignment.centerLeft,
+                  ),
+                  child: Text(
+                    'Show all (${resultText.length} characters)',
+                    style: markdownStyle.detailAction,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+
+        if (hasExtraBody) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: Spacing.sm));
+          }
+          children.add(builder(context, _detailsData));
+        }
+
+        if (isHeavyPreviewDeferred) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: Spacing.sm));
+          }
+          children.add(
+            Text(
+              'Preview will be available after streaming completes.',
+              style: markdownStyle.detailValue,
+            ),
+          );
+        }
+
+        if (!_deferHeavyContent) {
+          final imageWidgets = _buildToolCallImages(context);
+          if (imageWidgets.isNotEmpty) {
+            if (children.isNotEmpty) {
+              children.add(const SizedBox(height: Spacing.sm));
+            }
+            children.addAll(imageWidgets);
+          }
+        }
+
+        if (children.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionTitle(String title, ConduitMarkdownStyle markdownStyle) {
+    return Text(title, style: markdownStyle.detailLabel);
+  }
+
+  List<Widget> _buildToolCallImages(BuildContext context) {
+    final data = _toolCallData;
+    if (data.imageUrls.isEmpty) {
+      return const [];
+    }
+
+    final imageUris = data.imageUrls
+        .map(Uri.tryParse)
+        .whereType<Uri>()
+        .toList(growable: false);
+    if (imageUris.isEmpty) {
+      return const [];
+    }
+
+    final theme = context.conduitTheme;
+    return [
+      const SizedBox(height: Spacing.xs),
+      Wrap(
+        spacing: Spacing.sm,
+        runSpacing: Spacing.sm,
+        children: imageUris
+            .map((uri) {
+              return ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 220,
+                  maxHeight: 220,
+                ),
+                child: ConduitMarkdown.buildImage(context, uri, theme),
+              );
+            })
+            .toList(growable: false),
+      ),
+    ];
+  }
+
+  List<Widget> _buildToolCallEmbeds(BuildContext context) {
+    final data = _toolCallData;
+    if (!data.hasEmbeds) {
+      return const [];
+    }
+
+    return [
+      const SizedBox(height: Spacing.xs),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var index = 0; index < data.embedSources.length; index++) ...[
+            if (index > 0) const SizedBox(height: Spacing.sm),
+            KeyedSubtree(
+              key: ValueKey('tool-call-embed-$index'),
+              child: WebContentEmbed(
+                source: data.embedSources[index],
+                argsText: data.argumentsText,
+                previewTitle: 'Embedded Output',
+                previewDescription:
+                    'Load the embedded output preview on demand.',
+              ),
+            ),
+          ],
+        ],
+      ),
+    ];
+  }
+}
+
+/// Header state for a reasoning details block.
+sealed class ReasoningHeader {
+  const ReasoningHeader();
+}
+
+final class ReasoningHeaderThinking extends ReasoningHeader {
+  const ReasoningHeaderThinking();
+}
+
+final class ReasoningHeaderThoughtFor extends ReasoningHeader {
+  const ReasoningHeaderThoughtFor(this.seconds);
+  final int seconds;
+}
+
+final class ReasoningHeaderSummary extends ReasoningHeader {
+  const ReasoningHeaderSummary(this.summary);
+  final String summary;
+}
+
+final class ReasoningHeaderThoughts extends ReasoningHeader {
+  const ReasoningHeaderThoughts();
+}
+
+/// Mirrors upstream `Collapsible.svelte`: a reasoning block reads
+/// "Thought for…" only once it is done AND carries a duration. A pending
+/// block always reads "Thinking…"; a finished block with no timing at all
+/// reads "Thoughts" rather than inventing a duration.
+ReasoningHeader resolveReasoningHeader(CompiledMarkdownDetailsData data) {
+  final summary = data.summaryText.trim();
+  final summaryLower = summary.toLowerCase();
+  final isThinkingSummary =
+      summaryLower == 'thinking…' ||
+      summaryLower == 'thinking...' ||
+      summaryLower.startsWith('thinking');
+  final summaryDuration = RegExp(
+    r'\((\d+)s\)|\bfor (\d+) seconds?\b',
+    caseSensitive: false,
+  ).firstMatch(summary);
+
+  if (!data.isDone) {
+    return summary.isNotEmpty && !isThinkingSummary
+        ? ReasoningHeaderSummary(summary)
+        : const ReasoningHeaderThinking();
+  }
+
+  if (data.hasDuration) {
+    return ReasoningHeaderThoughtFor(data.durationSeconds);
+  }
+  if (summaryDuration != null) {
+    // Legacy content carried the timing only in its summary text.
+    final seconds = int.tryParse(
+      summaryDuration.group(1) ?? summaryDuration.group(2) ?? '',
+    );
+    return ReasoningHeaderThoughtFor(seconds ?? data.durationSeconds);
+  }
+
+  // Done without any timing: upstream would keep reading "Thinking…", which
+  // misreads a finished block. Fall back to the neutral "Thoughts" label.
+  if (summary.isNotEmpty && !isThinkingSummary) {
+    return ReasoningHeaderSummary(summary);
+  }
+
+  return const ReasoningHeaderThoughts();
+}

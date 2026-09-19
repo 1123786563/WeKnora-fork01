@@ -36,6 +36,28 @@ func RegisterMessageRoutes(r *gin.RouterGroup, handler *handler.MessageHandler, 
 	}
 }
 
+// RegisterFeedbackRoutes 注册消息反馈路由（SP11）。
+//
+// Feedback is a per-session surface like the message routes above: the
+// feedback service enforces owner-or-Admin+ access, so Viewer+ gating here
+// only keeps non-members out once RBAC is on. NOTE on wildcard names: gin
+// keeps one radix tree per HTTP verb and requires identical wildcard names
+// at the same position; the existing DELETE /messages/:session_id/:id owns
+// that tree position, so the DELETE feedback route must reuse :id — the
+// handler resolves the message id with a :message_id/:id fallback (same
+// pattern as the sessions pin/artifact routes).
+func RegisterFeedbackRoutes(r *gin.RouterGroup, handler *handler.FeedbackHandler, g *rbacGuards) {
+	// Feedback rides the chat surface: a scoped key needs the chat capability
+	// (or full tenant access), exactly like loading/deleting messages.
+	messages := g.apiKeyGroup(r.Group("/messages"), apiKeyFullAccess())
+	chatMessages := messages.With(apiKeyChat(apiKeyFullAccess()))
+	{
+		chatMessages.POST("/:session_id/:message_id/feedback", g.Viewer(), handler.SubmitFeedback)
+		chatMessages.DELETE("/:session_id/:id/feedback", g.Viewer(), handler.RemoveFeedback)
+		chatMessages.GET("/:session_id/feedback/mine", g.Viewer(), handler.ListMyFeedback)
+	}
+}
+
 // RegisterSessionRoutes 注册路由。
 //
 // Sessions are per-user resources; the handler enforces user ownership.
