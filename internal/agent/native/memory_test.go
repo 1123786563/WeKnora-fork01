@@ -33,7 +33,8 @@ func newNativeMemoryFacade(t *testing.T, scope nativecontract.Scope) (*MemorySer
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_tenants (tenant_id INTEGER PRIMARY KEY)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_memory_scopes (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, generation INTEGER NOT NULL DEFAULT 0, tombstone_generation INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, policy_revision INTEGER NOT NULL DEFAULT 0, updated_at DATETIME, PRIMARY KEY (tenant_id, user_id))").Error)
 	require.NoError(t, db.Exec("CREATE TABLE native_agent_memory_entries (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, memory_id TEXT NOT NULL, generation INTEGER NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, metadata TEXT NOT NULL DEFAULT '{}', created_at DATETIME, PRIMARY KEY (tenant_id, user_id, memory_id))").Error)
-	require.NoError(t, db.Exec("CREATE TABLE native_memory_jobs (tenant_id INTEGER NOT NULL, subject_id TEXT NOT NULL, job_id TEXT NOT NULL, generation INTEGER NOT NULL, through_event_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', policy_revision INTEGER NOT NULL DEFAULT 0, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id, subject_id, job_id), UNIQUE (tenant_id, subject_id, through_event_id, generation))").Error)
+	require.NoError(t, db.Exec("CREATE TABLE native_memory_jobs (tenant_id INTEGER NOT NULL, subject_id TEXT NOT NULL, job_id TEXT NOT NULL, generation INTEGER NOT NULL, through_event_id TEXT NOT NULL, session_app_name TEXT NOT NULL DEFAULT '', session_user_id TEXT NOT NULL DEFAULT '', session_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', policy_revision INTEGER NOT NULL DEFAULT 0, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id, subject_id, job_id), UNIQUE (tenant_id, subject_id, through_event_id, generation))").Error)
+	require.NoError(t, db.Exec("CREATE TABLE native_agent_session_events (tenant_id INTEGER NOT NULL, app_name TEXT NOT NULL, user_id TEXT NOT NULL, session_id TEXT NOT NULL, stable_event_id TEXT NOT NULL, PRIMARY KEY (tenant_id, app_name, user_id, session_id, stable_event_id))").Error)
 	require.NoError(t, db.Exec("INSERT INTO native_agent_tenants (tenant_id) VALUES (?)", scope.TenantID).Error)
 	repo := repository.NewNativeMemoryRepository(db)
 	return NewMemoryService(memoryScopeResolver{scope: scope}, repo, nil), repo
@@ -146,6 +147,7 @@ func TestNativeMemoryAutoJobUsesAuthorizedSessionAndLastEvent(t *testing.T) {
 	key, err := nativecontract.SessionKey(scope, "session-1")
 	require.NoError(t, err)
 	sess := &session.Session{ID: "session-1", AppName: key.AppName, UserID: key.UserID, Events: []event.Event{{ID: "e1"}, {ID: "e2"}}}
+	require.NoError(t, repo.DB().Exec("INSERT INTO native_agent_session_events (tenant_id, app_name, user_id, session_id, stable_event_id) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)", scope.TenantID, key.AppName, key.UserID, key.SessionID, "e1", scope.TenantID, key.AppName, key.UserID, key.SessionID, "e2").Error)
 	require.NoError(t, svc.EnqueueAutoMemoryJob(ctx, sess))
 	state, err := repo.State(ctx, scope)
 	require.NoError(t, err)

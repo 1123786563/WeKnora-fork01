@@ -77,6 +77,10 @@ func NewNativeMemoryRepository(db *gorm.DB) *NativeMemoryRepository {
 	return &NativeMemoryRepository{db: db}
 }
 
+// DB exposes the native repository's transaction source for isolated adapter
+// fixtures; production callers use the governed methods above.
+func (r *NativeMemoryRepository) DB() *gorm.DB { return r.db }
+
 func nativeMemorySubject(scope nativecontract.Scope) (string, error) {
 	key, err := nativecontract.MemoryKey(scope)
 	if err != nil {
