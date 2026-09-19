@@ -260,12 +260,29 @@ func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontra
 		if err != nil {
 			return err
 		}
-		if !row.Enabled || row.Generation != generation {
+		if !row.Enabled || row.Generation != generation || row.PolicyRevision != scope.PolicyRevision {
 			return ErrNativeMemoryWriteRejected
 		}
 		metadata, err := json.Marshal(entry.Metadata)
 		if err != nil {
 			return err
+		}
+		if oldID != entry.ID {
+			var target nativeMemoryEntryRow
+			targetErr := tx.Where("tenant_id=? AND user_id=? AND memory_id=? AND tombstoned=?", scope.TenantID, subject, entry.ID, false).Take(&target).Error
+			if targetErr == nil {
+				return ErrNativeMemoryWriteRejected
+			}
+			if !errors.Is(targetErr, gorm.ErrRecordNotFound) {
+				return targetErr
+			}
+			var source nativeMemoryEntryRow
+			if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, oldID, generation, false).Take(&source).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrNativeMemoryWriteRejected
+				}
+				return err
+			}
 		}
 		candidate := nativeMemoryEntryRow{TenantID: scope.TenantID, UserID: subject, MemoryID: entry.ID, Generation: uint64(generation), Content: entry.Content, Metadata: string(metadata)}
 		if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=?", scope.TenantID, subject, entry.ID).Assign(map[string]any{"generation": generation, "tombstoned": false, "content": entry.Content, "metadata": string(metadata)}).FirstOrCreate(&candidate).Error; err != nil {
@@ -308,8 +325,12 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 		}
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
 			if jobWrite {
-				if err := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).Update("status", NativeMemoryJobDiscarded).Error; err != nil {
-					return err
+				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Update("status", NativeMemoryJobDiscarded)
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected != 1 {
+					return ErrNativeMemoryWriteRejected
 				}
 			}
 			return nil

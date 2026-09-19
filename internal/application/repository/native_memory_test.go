@@ -126,3 +126,21 @@ func TestNativeMemoryToggleAndPolicyDriftRetainUntombstonedEntries(t *testing.T)
 	require.Len(t, entries, 1)
 	require.Equal(t, "two", entries[0].ID)
 }
+
+func TestNativeMemoryReplaceRejectsPolicyDriftAndActiveTargetCollision(t *testing.T) {
+	repo := newNativeMemoryTestRepository(t)
+	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	state, err := repo.State(ctx, scope)
+	require.NoError(t, err)
+	require.NoError(t, repo.Write(ctx, scope, state.Generation, "source", "source", nil))
+	require.NoError(t, repo.Write(ctx, scope, state.Generation, "target", "target", nil))
+	require.ErrorIs(t, repo.Replace(ctx, scope, state.Generation, "source", NativeMemoryEntry{ID: "target", Content: "replacement"}), ErrNativeMemoryWriteRejected)
+	source, err := repo.Entry(ctx, scope, "source")
+	require.NoError(t, err)
+	require.False(t, source.Tombstoned)
+	drifted := scope
+	drifted.PolicyRevision++
+	require.NoError(t, repo.EnsureScope(ctx, drifted))
+	require.ErrorIs(t, repo.Replace(ctx, scope, state.Generation, "source", NativeMemoryEntry{ID: "new", Content: "replacement"}), ErrNativeMemoryWriteRejected)
+}

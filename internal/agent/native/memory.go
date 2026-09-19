@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	ErrMemoryScopeDenied       = errors.New("native memory scope denied")
-	ErrMemoryWriteDenied       = errors.New("native memory write denied")
-	ErrMemorySearchUnsupported = errors.New("native memory search option unsupported")
+	ErrMemoryScopeDenied          = errors.New("native memory scope denied")
+	ErrMemoryWriteDenied          = errors.New("native memory write denied")
+	ErrMemorySearchUnsupported    = errors.New("native memory search option unsupported")
+	ErrMemoryExtractorUnavailable = errors.New("native memory extractor unavailable")
 )
 
 // MemoryWrite is a bounded extractor output. The job stores only its source
@@ -130,7 +131,7 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 		return err
 	}
 	if s.extractor == nil {
-		return nil
+		return errors.Join(ErrMemoryExtractorUnavailable, s.repo.Fail(ctx, job))
 	}
 	writes, err := s.extractor(ctx, job)
 	if err != nil {

@@ -110,3 +110,18 @@ func TestNativeMemoryFacadePreservesMetadataAndAtomicallyUpdates(t *testing.T) {
 	require.Len(t, entries, 1)
 	require.Equal(t, []string{"updated"}, entries[0].Memory.Topics)
 }
+
+func TestNativeMemoryNilExtractorPersistsFailedJob(t *testing.T) {
+	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
+	svc, repo := newNativeMemoryFacade(t, scope)
+	ctx := context.Background()
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	state, err := repo.State(ctx, scope)
+	require.NoError(t, err)
+	job := nativecontract.MemoryJob{ID: "nil-extractor", Scope: scope, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event"}
+	require.NoError(t, svc.Enqueue(ctx, job))
+	require.ErrorIs(t, svc.Execute(ctx, job), ErrMemoryExtractorUnavailable)
+	status, err := repo.JobStatus(ctx, job)
+	require.NoError(t, err)
+	require.Equal(t, repository.NativeMemoryJobFailed, status)
+}
