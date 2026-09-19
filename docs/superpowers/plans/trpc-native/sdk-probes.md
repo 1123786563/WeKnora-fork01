@@ -21,3 +21,9 @@
 ## 固定版本接口核对
 
 v1.10.0 的 `agent/llmagent.New` 接受名称和选项；`runner.NewRunner` 返回 `Runner`，其 `Run` 接受 `context.Context`、user ID、session ID 与 `model.Message`，并产生 event channel；`runner.WithSessionService` 接受 `session.Service`。本探针引用的 `model.Model`、`session.Key`、`session.StateMap`、`inmemory.NewSessionService` 与 function tool API 均在该固定模块中编译使用。未发现相对任务基线的接口漂移。
+
+## P0-3：普通 Runner 与 checkpoint 图的恢复边界
+
+普通 `LLMAgent` 的工具循环是 SDK 内部的 `LLMAgent.Run` → `llmflow.Flow.Run` → `FunctionCallResponseProcessor.ProcessResponse` → `executeToolWithCallbacks`。固定 v1.10.0 在工具实际调用前后提供 `BeforeTool`/`AfterTool` plugin 与 local callbacks；这些是应用写入计划、审批和结果的可插入点，但没有把它们同 WeKnora 的 journal、数据库事务、checkpoint 和客户端事件组成原子恢复协议。源码不能由此证明外部效果恰好一次。
+
+GraphAgent 走 `GraphAgent.Run` → `graph.Executor.Execute`，在节点前后运行 graph callbacks，并由 checkpoint saver 存储 checkpoint 和 pending writes。`internal/agent/trpc/compatibility_probe.go` 的显式 plan → approval → tool → answer 图在 approval 使用 `graph.Interrupt`，基线已证明 SQLite 的 interrupted state、pending write 与工具 ID 能重开恢复。完整缺口、责任与环境限制见 [recovery-gaps.md](recovery-gaps.md)。
