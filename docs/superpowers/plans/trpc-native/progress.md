@@ -17,7 +17,7 @@
 
 ## P0-4 gate clarification
 
-P0-2 表格原 pending 行是当时未回填的计划状态，不覆盖已提交的 Task 2 证据：`sdk-probes.md` 和 Task 2 report 记录确定性探针通过、race 失败、产品执行门关闭。本任务未改其审查状态。P0-3 的 SQLite/策略行为证据及 PostgreSQL/真实 Provider skips 按已提交 evidence 文件引用，未重新执行或提升等级。P0-4 文档完成也不等于 P0 gate 通过；最终版本、Session/Memory 持久化配置、append failure barrier、普通/嵌套 Agent 恢复组合仍需后续决策与验收。
+P0-2 主表原 pending 行是当时未回填的计划状态，不覆盖已提交的 Task 2 证据：`sdk-probes.md` 和 Task 2 report 记录确定性探针通过、race 失败、产品执行门关闭。Task 5 fix round 1 已将主表同步为 Task 2 已完成的 spec/quality reviews（`complete（review clean）`）；这只是台账同步，不改变 race blocker。P0-3 的 SQLite/策略行为证据及 PostgreSQL/真实 Provider skips 按已提交 evidence 文件引用，未重新执行或提升等级。P0-4 文档完成也不等于 P0 gate 通过；最终版本、Session/Memory 持久化配置、append failure barrier、普通/嵌套 Agent 恢复组合仍需后续决策与验收。
 
 P0-4 review round 1：P1 补齐授权 pending 决策详情/读取/OAuth/resolve 与事件引用；P2 独立覆盖 ENG-006 的 enabled、admission_enabled、drain、读取消清理和排空契约。新增 2 个 source-only 矩阵行，静态与 Go 契约编译重新通过；未改变任何产品执行阻塞，等待独立复审。
 
