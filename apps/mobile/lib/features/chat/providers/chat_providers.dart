@@ -78,6 +78,8 @@ import '../../direct_connections/direct_connections.dart';
 import '../../direct_connections/providers/direct_mcp_providers.dart';
 import '../../direct_connections/models/direct_mcp_server.dart';
 import '../../direct_connections/services/direct_mcp_client.dart';
+import '../../direct_connections/services/weknora_adapter.dart';
+import '../../weknora/account/weknora_providers.dart';
 import '../models/chat_context_attachment.dart';
 import '../providers/context_attachments_provider.dart';
 import '../providers/reasoning_effort_provider.dart';
@@ -86,6 +88,7 @@ import '../services/chat_transport_dispatch.dart';
 import '../services/chat_history_reader.dart';
 import '../services/file_attachment_service.dart';
 import '../services/reviewer_mode_service.dart';
+import '../services/weknora_chat_parameters.dart';
 
 part 'chat_capability_providers.dart';
 part 'chat_composer_providers.dart';
@@ -16414,6 +16417,12 @@ Future<void> _dispatchDirectRunFromChatWithTrackedOwner(
     // user's intent, while send and regeneration share the same behavior.
     ref.read(imageGenerationEnabledProvider.notifier).set(false);
   }
+  // WeKnora conversations carry their server session in conversation
+  // metadata; only WeKnora needs it, so other adapters skip the lookup.
+  final directConversationMetadata =
+      route.profile.adapterKey == kWeKnoraAdapterKey
+      ? _directConversationMetadataForOwner(ref, owner)
+      : const <String, dynamic>{};
   try {
     run = adapter.startCompletion(
       route.profile,
@@ -16427,11 +16436,11 @@ Future<void> _dispatchDirectRunFromChatWithTrackedOwner(
             ? ref.read(appSettingsProvider).openRouterImageGenerationModel
             : null,
         tools: toolRuntime,
-        parameters:
-            route.profile.adapterKey == kOllamaAdapterKey ||
-                reasoningEffort == null
-            ? const <String, dynamic>{}
-            : <String, dynamic>{'reasoning_effort': reasoningEffort},
+        parameters: weknoraChatParameters(
+          adapterKey: route.profile.adapterKey,
+          conversationMetadata: directConversationMetadata,
+          reasoningEffort: reasoningEffort,
+        ),
       ),
     );
   } catch (error) {
@@ -17054,9 +17063,89 @@ Future<void> _dispatchDirectRunFromChatWithTrackedOwner(
     if (terminalFailure != null && !accumulator.hasGeneratedImages) {
       Error.throwWithStackTrace(terminalFailure, terminalFailureStack!);
     }
+    await _stampWeKnoraSessionBindingAfterRun(
+      ref,
+      owner: owner,
+      profile: route.profile,
+      remoteModelId: route.binding.remoteModelId,
+      directMessages: directMessages,
+      adapter: adapter,
+    );
   } finally {
     registry.complete(reservation, run);
     await closeMcpSessionBestEffort();
+  }
+}
+
+/// Reads the durable conversation record's metadata for a direct run owner.
+///
+/// The send pipeline's conversation lives in [conversationsProvider]; the
+/// owner's id is the durable identifier (it follows Open WebUI remaps), so a
+/// raw-id lookup there reflects exactly the record later mutations touch.
+Map<String, dynamic> _directConversationMetadataForOwner(
+  dynamic ref,
+  _DirectConversationOwner owner,
+) {
+  final conversations = ref.read(conversationsProvider).asData?.value;
+  if (conversations == null) return const <String, dynamic>{};
+  for (final conversation in conversations) {
+    if (conversation.id == owner.conversationId) return conversation.metadata;
+  }
+  return const <String, dynamic>{};
+}
+
+/// After a completed WeKnora turn, persist the server session the adapter
+/// bound this conversation to, but only when this was the conversation's
+/// first WeKnora turn (no `weknoraSessionId` metadata yet).
+///
+/// The adapter records the binding when its turn completes, so the full
+/// user-query sequence of the request (including the just-finished query)
+/// identifies it. Best-effort: a failed stamp must never fail a chat turn
+/// that already completed and persisted.
+Future<void> _stampWeKnoraSessionBindingAfterRun(
+  dynamic ref, {
+  required _DirectConversationOwner owner,
+  required DirectConnectionProfile profile,
+  required String remoteModelId,
+  required List<DirectChatMessage> directMessages,
+  required DirectProviderAdapter adapter,
+}) async {
+  if (profile.adapterKey != kWeKnoraAdapterKey) return;
+  try {
+    final conversationId = owner.conversationId;
+    if (_directConversationMetadataForOwner(
+          ref,
+          owner,
+        )['weknoraSessionId'] !=
+        null) {
+      return;
+    }
+    final priorUserQueries = directMessages
+        .where((message) => message.role == 'user')
+        .map(
+          (message) => message.parts
+              .whereType<DirectTextPart>()
+              .map((part) => part.text)
+              .join('\n'),
+        )
+        .toList();
+    await ref
+        .read(weknoraSessionSyncProvider)
+        .stampBoundSessionId(
+          conversationId: conversationId,
+          profileId: profile.id,
+          remoteModelId: remoteModelId,
+          priorUserQueries: priorUserQueries,
+          // The registry handed out this very instance for the send; its
+          // in-memory binding table is the source of truth being read back.
+          adapter: adapter as WeKnoraAdapter,
+        );
+  } catch (error) {
+    DebugLogger.warning(
+      'weknora-session-stamp-failed',
+      scope: 'direct-connections/weknora',
+      data: {'errorType': error.runtimeType.toString()},
+    );
   }
 }
 
