@@ -5460,3 +5460,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Gates: pnpm gates exit 0 — shared 811/811, web 1873/1873, typecheck ×2, integrity, build all PASS.
   Evidence: `evidence/vue-react-parity/2026-09-19-r479-code-parity-round.md`. No Vue, mobile, or Go code was
   modified by this round. R480 queue head: the 9-row browser anchoring (same method) + N015 evidence.
+
+## R480 (2026-09-19): settings 9 行错误态锚定 — 3 对齐 / 6 缺口（零代码轮）
+
+- 执行路径：浏览器代理连续两轮 600s 中断后，编排者直跑 Playwright MCP 打捞完成（部分执行协议；
+  两个 agent 的分区映射表已并入最终报告）。锁全程由编排者持有。
+- 方法：request 监听发现双端端点 → 对称 route-fulfill 500（带 hits 计数证命中）→ DOM 探针
+  （错误文本/重试数/alert 节点/alertText）+ 21 张截图（screenshots/r480-20260919/）。
+- 新基线事实（修复轮必须遵守）：① Vue settings boot 预取全部资源列表 + retrieval-config，
+  重进分区不重拉（资源分区须拦截+reload 才触发）；② Vue 资源分区（storage/vectorstore/
+  websearch/cloud）与 retrieval-config 失败=完全静默降级（空列表/默认表单，无横幅/toast/重试）；
+  ③ Vue 仅 parser/system/userprofile 显示原始错误体横幅+重试；ollama=友好文案+重试（吞 body）；
+  ④ Vue 检索设置唯一入口=命令面板抽屉（GlobalCommandPalette L153-157，t-drawer 420px），
+  ?section=retrieval 渲染空白；React 双入口（抽屉+深链页）为超集。
+- 判定：R029/R036/R039 ✅ 对齐（裸体横幅+重试双端一致）。缺口 6 行：
+  R028 ollama（React 裸 body 无重试 vs Vue 友好文案+重试）；R030 retrieval 抽屉与深链页
+  （React 裸横幅+表单被吞 vs Vue 静默+默认表单）；R034 storage（横幅×2+重试×2 vs 静默）；
+  R040 vectorstore（横幅+重试 vs 静默）；R041 cloud（横幅+重试 vs 静默）；R042 websearch
+  （裸横幅 vs 静默）。
+- 延后：R039 密码策略失败变体、N015 裁决取证（role-denied 分区）→ 随 R481。
+- 端点对照（双端一致）：ollama/parser-engines/storage-backends(+types)/system/info/auth/me/
+  vector-stores(+types)/web-search-providers(+types)/models/weknoracloud/status/tenants/kv/retrieval-config。
+- 本轮零代码修改（纯锚定）；门禁不重跑（无源码变更，基线=R479 的六绿）。
+  Evidence: `evidence/vue-react-parity/2026-09-19-r480-settings-error-anchoring.md`。
+  R481 队列头：6 行缺口修复（TDD 先红后绿，scoped 套件）+ R039 变体 + N015 取证。
