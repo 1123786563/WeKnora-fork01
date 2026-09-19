@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
 type memoryScopeResolver struct{ scope nativecontract.Scope }
@@ -79,4 +80,26 @@ func TestNativeMemoryFacadeRejectsCrossScopeReadAndDisabledWrite(t *testing.T) {
 	key.UserID = "subject/other"
 	_, err = svc.ReadMemories(ctx, key, 10)
 	require.ErrorIs(t, err, ErrMemoryScopeDenied)
+}
+
+func TestNativeMemoryFacadePreservesMetadataAndAtomicallyUpdates(t *testing.T) {
+	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
+	svc, repo := newNativeMemoryFacade(t, scope)
+	ctx := context.Background()
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	key, err := nativecontract.MemoryKey(scope)
+	require.NoError(t, err)
+	require.NoError(t, svc.AddMemory(ctx, key, "old preference", []string{"profile"}, memory.WithMetadata(&memory.Metadata{Kind: memory.KindFact, Location: "Shanghai", Participants: []string{"Ada"}})))
+	entries, err := svc.ReadMemories(ctx, key, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, []string{"profile"}, entries[0].Memory.Topics)
+	require.Equal(t, memory.KindFact, entries[0].Memory.Kind)
+	result := &memory.UpdateResult{}
+	require.NoError(t, svc.UpdateMemory(ctx, memory.Key{AppName: key.AppName, UserID: key.UserID, MemoryID: entries[0].ID}, "new preference", []string{"profile"}, memory.WithUpdateResult(result)))
+	require.NotEmpty(t, result.MemoryID)
+	entries, err = svc.ReadMemories(ctx, key, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "new preference", entries[0].Memory.Memory)
 }

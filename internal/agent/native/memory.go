@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -116,7 +117,8 @@ func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJo
 func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
 	scope, err := s.authorize(ctx, job.Scope)
 	if err != nil {
-		return err
+		_ = s.repo.Discard(ctx, job)
+		return nil
 	}
 	job.Scope = scope
 	state, err := s.repo.State(ctx, scope)
@@ -132,6 +134,7 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 	}
 	writes, err := s.extractor(ctx, job)
 	if err != nil {
+		_ = s.repo.Fail(ctx, job)
 		return err
 	}
 	// Re-resolve after extraction. A worker can spend meaningful time outside
@@ -147,6 +150,9 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 		entries = append(entries, repository.NativeMemoryEntry{ID: write.ID, Content: write.Content, Metadata: write.Metadata})
 	}
 	_, err = s.repo.CommitWrites(ctx, job, entries)
+	if err != nil {
+		_ = s.repo.Fail(ctx, job)
+	}
 	return err
 }
 
@@ -161,18 +167,49 @@ func (s *MemoryService) ReadMemories(ctx context.Context, key memory.UserKey, li
 	}
 	out := make([]*memory.Entry, 0, len(entries))
 	for _, entry := range entries {
-		out = append(out, &memory.Entry{ID: entry.ID, AppName: key.AppName, UserID: key.UserID, Memory: &memory.Memory{Memory: entry.Content}})
+		m := &memory.Memory{Memory: entry.Content}
+		if topics, ok := entry.Metadata["topics"].([]any); ok {
+			for _, topic := range topics {
+				if text, ok := topic.(string); ok {
+					m.Topics = append(m.Topics, text)
+				}
+			}
+		}
+		if kind, ok := entry.Metadata["kind"].(string); ok {
+			m.Kind = memory.Kind(kind)
+		}
+		if location, ok := entry.Metadata["location"].(string); ok {
+			m.Location = location
+		}
+		if participants, ok := entry.Metadata["participants"].([]any); ok {
+			for _, person := range participants {
+				if text, ok := person.(string); ok {
+					m.Participants = append(m.Participants, text)
+				}
+			}
+		}
+		if eventTime, ok := entry.Metadata["event_time"].(string); ok {
+			if parsed, parseErr := time.Parse(time.RFC3339Nano, eventTime); parseErr == nil {
+				m.EventTime = &parsed
+			}
+		}
+		out = append(out, &memory.Entry{ID: entry.ID, AppName: key.AppName, UserID: key.UserID, Memory: m})
 	}
 	return out, nil
 }
 func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, query string, opts ...memory.SearchOption) ([]*memory.Entry, error) {
-	entries, err := s.ReadMemories(ctx, key, 100)
+	options := memory.ResolveSearchOptions(query, opts)
+	limit := options.MaxResults
+	if limit <= 0 {
+		limit = 100
+	}
+	entries, err := s.ReadMemories(ctx, key, limit)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]*memory.Entry, 0, len(entries))
 	for _, entry := range entries {
-		if strings.Contains(strings.ToLower(entry.Memory.Memory), strings.ToLower(query)) {
+		if (options.Kind == "" || entry.Memory.Kind == options.Kind) && strings.Contains(strings.ToLower(entry.Memory.Memory), strings.ToLower(query)) {
 			out = append(out, entry)
 		}
 	}
@@ -181,6 +218,19 @@ func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, 
 func memoryID(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
+}
+func memoryMetadata(topics []string, metadata *memory.Metadata) map[string]any {
+	out := map[string]any{"topics": topics}
+	if metadata == nil {
+		return out
+	}
+	out["kind"] = string(metadata.Kind)
+	out["location"] = metadata.Location
+	out["participants"] = metadata.Participants
+	if metadata.EventTime != nil {
+		out["event_time"] = metadata.EventTime.UTC().Format(time.RFC3339Nano)
+	}
+	return out
 }
 func (s *MemoryService) AddMemory(ctx context.Context, key memory.UserKey, value string, topics []string, opts ...memory.AddOption) error {
 	scope, err := s.keyScope(ctx, key)
@@ -197,8 +247,11 @@ func (s *MemoryService) AddMemory(ctx context.Context, key memory.UserKey, value
 	if !AcceptMemoryWrite(state.Enabled, state.Generation, state.Generation) {
 		return ErrMemoryWriteDenied
 	}
-	if err := s.repo.Write(ctx, scope, state.Generation, memoryID(value), value, map[string]any{"topics": topics}); err != nil {
-		return ErrMemoryWriteDenied
+	if err := s.repo.Write(ctx, scope, state.Generation, memoryID(value), value, memoryMetadata(topics, memory.ResolveAddOptions(opts))); err != nil {
+		if errors.Is(err, repository.ErrNativeMemoryWriteRejected) {
+			return ErrMemoryWriteDenied
+		}
+		return err
 	}
 	return nil
 }
@@ -207,15 +260,19 @@ func (s *MemoryService) UpdateMemory(ctx context.Context, key memory.Key, value 
 	if err != nil {
 		return err
 	}
-	if err := s.repo.Delete(ctx, scope, key.MemoryID); err != nil {
-		return err
-	}
 	state, err := s.repo.State(ctx, scope)
 	if err != nil {
 		return err
 	}
-	if err := s.repo.Write(ctx, scope, state.Generation, memoryID(value), value, map[string]any{"topics": topics}); err != nil {
-		return ErrMemoryWriteDenied
+	newID := memoryID(value)
+	if err := s.repo.Replace(ctx, scope, state.Generation, key.MemoryID, repository.NativeMemoryEntry{ID: newID, Content: value, Metadata: memoryMetadata(topics, memory.ResolveUpdateOptions(opts))}); err != nil {
+		if errors.Is(err, repository.ErrNativeMemoryWriteRejected) {
+			return ErrMemoryWriteDenied
+		}
+		return err
+	}
+	if result := memory.ResolveUpdateResult(opts); result != nil {
+		result.MemoryID = newID
 	}
 	return nil
 }
@@ -233,7 +290,12 @@ func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) e
 	}
 	return s.repo.Clear(ctx, scope)
 }
-func (s *MemoryService) Tools() []tool.Tool { return nil }
+func (s *MemoryService) Tools() []tool.Tool {
+	if s.backend == nil {
+		return nil
+	}
+	return s.backend.Tools()
+}
 func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
 	if sess == nil {
 		return errors.New("session is required")

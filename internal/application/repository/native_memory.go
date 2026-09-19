@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -21,6 +22,7 @@ const (
 	NativeMemoryJobRunning   = "running"
 	NativeMemoryJobSucceeded = "succeeded"
 	NativeMemoryJobDiscarded = "discarded"
+	NativeMemoryJobFailed    = "failed"
 )
 
 // NativeMemoryState is the durable generation fence for one tenant subject.
@@ -96,7 +98,18 @@ func (r *NativeMemoryRepository) EnsureScope(ctx context.Context, scope nativeco
 			return ErrNativeMemoryScope
 		}
 		row := nativeMemoryScopeRow{TenantID: scope.TenantID, UserID: subject, Enabled: true, PolicyRevision: scope.PolicyRevision}
-		return tx.Where("tenant_id=? AND user_id=?", scope.TenantID, subject).FirstOrCreate(&row).Error
+		result := tx.Where("tenant_id=? AND user_id=?", scope.TenantID, subject).FirstOrCreate(&row)
+		if result.Error != nil || result.RowsAffected != 0 || row.PolicyRevision == scope.PolicyRevision {
+			return result.Error
+		}
+		result = tx.Model(&nativeMemoryScopeRow{}).Where("tenant_id=? AND user_id=? AND generation=? AND policy_revision=?", scope.TenantID, subject, row.Generation, row.PolicyRevision).Updates(map[string]any{"generation": row.Generation + 1, "policy_revision": scope.PolicyRevision, "updated_at": time.Now().UTC()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNativeMemoryWriteRejected
+		}
+		return tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND generation<? AND status IN ?", scope.TenantID, subject, row.Generation+1, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Update("status", NativeMemoryJobDiscarded).Error
 	})
 }
 
@@ -106,7 +119,7 @@ func (r *NativeMemoryRepository) state(tx *gorm.DB, scope nativecontract.Scope) 
 		return nativeMemoryScopeRow{}, "", err
 	}
 	var row nativeMemoryScopeRow
-	err = tx.Where("tenant_id=? AND user_id=?", scope.TenantID, subject).Take(&row).Error
+	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", scope.TenantID, subject).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nativeMemoryScopeRow{}, subject, ErrNativeMemoryScope
 	}
@@ -127,11 +140,7 @@ func (r *NativeMemoryRepository) SetEnabled(ctx context.Context, scope nativecon
 	return r.mutateScope(ctx, scope, enabled, false)
 }
 func (r *NativeMemoryRepository) Clear(ctx context.Context, scope nativecontract.Scope) error {
-	state, err := r.State(ctx, scope)
-	if err != nil {
-		return err
-	}
-	return r.mutateScope(ctx, scope, state.Enabled, true)
+	return r.mutateScope(ctx, scope, false, true)
 }
 func (r *NativeMemoryRepository) mutateScope(ctx context.Context, scope nativecontract.Scope, enabled, clear bool) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -139,13 +148,20 @@ func (r *NativeMemoryRepository) mutateScope(ctx context.Context, scope nativeco
 		if err != nil {
 			return err
 		}
+		if clear {
+			enabled = row.Enabled
+		}
 		next := row.Generation + 1
 		updates := map[string]any{"enabled": enabled, "generation": next, "policy_revision": scope.PolicyRevision, "updated_at": time.Now().UTC()}
 		if clear {
 			updates["tombstone_generation"] = next
 		}
-		if err := tx.Model(&nativeMemoryScopeRow{}).Where("tenant_id=? AND user_id=? AND generation=?", scope.TenantID, subject, row.Generation).Updates(updates).Error; err != nil {
-			return err
+		result := tx.Model(&nativeMemoryScopeRow{}).Where("tenant_id=? AND user_id=? AND generation=?", scope.TenantID, subject, row.Generation).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNativeMemoryWriteRejected
 		}
 		if clear {
 			if err := tx.Model(&nativeMemoryEntryRow{}).Where("tenant_id=? AND user_id=?", scope.TenantID, subject).Update("tombstoned", true).Error; err != nil {
@@ -166,8 +182,12 @@ func (r *NativeMemoryRepository) Delete(ctx context.Context, scope nativecontrac
 			return err
 		}
 		next := row.Generation + 1
-		if err := tx.Model(&nativeMemoryScopeRow{}).Where("tenant_id=? AND user_id=? AND generation=?", scope.TenantID, subject, row.Generation).Updates(map[string]any{"generation": next, "tombstone_generation": next, "policy_revision": scope.PolicyRevision, "updated_at": time.Now().UTC()}).Error; err != nil {
-			return err
+		result := tx.Model(&nativeMemoryScopeRow{}).Where("tenant_id=? AND user_id=? AND generation=?", scope.TenantID, subject, row.Generation).Updates(map[string]any{"generation": next, "tombstone_generation": next, "policy_revision": scope.PolicyRevision, "updated_at": time.Now().UTC()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNativeMemoryWriteRejected
 		}
 		entry := nativeMemoryEntryRow{TenantID: scope.TenantID, UserID: subject, MemoryID: id, Generation: uint64(next), Tombstoned: true, Content: "", Metadata: "{}"}
 		if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=?", scope.TenantID, subject, id).Assign(map[string]any{"generation": next, "tombstoned": true}).FirstOrCreate(&entry).Error; err != nil {
@@ -198,7 +218,7 @@ func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract
 		if err != nil {
 			return err
 		}
-		if existing.Generation != candidate.Generation || existing.PolicyRevision != candidate.PolicyRevision || existing.ThroughEventID != candidate.ThroughEventID {
+		if existing.Generation != candidate.Generation || existing.PolicyRevision != candidate.PolicyRevision || existing.ThroughEventID != candidate.ThroughEventID || existing.Status == NativeMemoryJobDiscarded || existing.Status == NativeMemoryJobFailed {
 			return ErrNativeMemoryWriteRejected
 		}
 		return nil
@@ -229,6 +249,39 @@ func (r *NativeMemoryRepository) CommitWrites(ctx context.Context, job nativecon
 	return r.commit(ctx, job, entries, true)
 }
 
+// Replace tombstones the old SDK key and writes the rotated key in one
+// transaction. A failed replacement therefore never forgets the old value.
+func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontract.Scope, generation int64, oldID string, entry NativeMemoryEntry) error {
+	if oldID == "" || entry.ID == "" || entry.Content == "" {
+		return ErrNativeMemoryWriteRejected
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, subject, err := r.state(tx, scope)
+		if err != nil {
+			return err
+		}
+		if !row.Enabled || row.Generation != generation {
+			return ErrNativeMemoryWriteRejected
+		}
+		metadata, err := json.Marshal(entry.Metadata)
+		if err != nil {
+			return err
+		}
+		candidate := nativeMemoryEntryRow{TenantID: scope.TenantID, UserID: subject, MemoryID: entry.ID, Generation: uint64(generation), Content: entry.Content, Metadata: string(metadata)}
+		if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=?", scope.TenantID, subject, entry.ID).Assign(map[string]any{"generation": generation, "tombstoned": false, "content": entry.Content, "metadata": string(metadata)}).FirstOrCreate(&candidate).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&nativeMemoryEntryRow{}).Where("tenant_id=? AND user_id=? AND memory_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, oldID, generation, false).Update("tombstoned", true)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrNativeMemoryWriteRejected
+		}
+		return nil
+	})
+}
+
 type NativeMemoryEntryWrite = NativeMemoryEntry
 
 func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.MemoryJob, entries []NativeMemoryEntry, jobWrite bool) (bool, error) {
@@ -243,10 +296,10 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 		}
 		if jobWrite {
 			var persisted nativeMemoryJobRow
-			if err := tx.Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).Take(&persisted).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID).Take(&persisted).Error; err != nil {
 				return err
 			}
-			if persisted.Status == NativeMemoryJobDiscarded {
+			if persisted.Status != NativeMemoryJobQueued && persisted.Status != NativeMemoryJobRunning {
 				return nil
 			}
 		}
@@ -272,8 +325,12 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 			}
 		}
 		if jobWrite {
-			if err := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).Update("status", NativeMemoryJobSucceeded).Error; err != nil {
-				return err
+			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Update("status", NativeMemoryJobSucceeded)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return ErrNativeMemoryWriteRejected
 			}
 		}
 		returnValue = true
@@ -340,4 +397,24 @@ func (r *NativeMemoryRepository) Discard(ctx context.Context, job nativecontract
 	return r.db.WithContext(ctx).Model(&nativeMemoryJobRow{}).
 		Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).
 		Update("status", NativeMemoryJobDiscarded).Error
+}
+
+// Fail records a terminal extraction/storage failure. Generation and
+// authorization invalidation use Discard instead, because those jobs are
+// forbidden from retrying after a later re-enable.
+func (r *NativeMemoryRepository) Fail(ctx context.Context, job nativecontract.MemoryJob) error {
+	_, subject, err := r.state(r.db.WithContext(ctx), job.Scope)
+	if err != nil {
+		return err
+	}
+	result := r.db.WithContext(ctx).Model(&nativeMemoryJobRow{}).
+		Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).
+		Update("status", NativeMemoryJobFailed)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil
+	}
+	return nil
 }
