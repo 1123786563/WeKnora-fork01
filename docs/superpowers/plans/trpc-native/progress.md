@@ -1,12 +1,12 @@
 # tRPC 原生 Agent 迁移证据台账
 
-| Task | 状态 | 交付 | 证据结论 | 阻塞 / 下一责任 |
-| --- | --- | --- | --- | --- |
-| P0-1 固定功能基线与证据台账 | passed（覆盖审查） | `baseline.md`、`features.tsv`、本台账 | 已将当前注册/调用入口、开关、失败状态、数据库与消费者逐项对应到稳定 ID。没有运行验收被标为 passed。 | P2 SDK probe、P3/P7 恢复、P1 数据权威、P4 能力接入、P5 客户端验收 |
-| P0-2 原生 Runner / Session 探针 | pending | `sdk-probes.md`、`internal/agent/nativeprobe/runner_test.go` | 必须固定 v1.10.0 API 并证明工具往返及 SDK session key space；不能证明授权或生产数据库隔离。 | SDK module cache / Go race test |
-| P0-3 恢复证据与运行语义 | pending | `recovery-gaps.md` | 必须分别检查 checkpoint、pending writes、未知工具、真实 Provider/数据库状态。 | provider / PostgreSQL 环境可标 `blocked-env` |
-| P0-4 SDK 能力与扩展决策 | pending | `sdk-capabilities.tsv`、`interfaces.md` | source-only 不能升级为 verified；每个缺口指定原生、最小扩展、固定升级或规格修订。 | P0-2/3 结果 |
-| P0-5 P0 门槛与 P1/P2 计划 | pending | `p0-decision.md` 与后续计划 | 关键 blocked、incompatible 或无恢复组合时 no-go。 | P0-1 至 P0-4 完成 |
+| Phase / task | Dependencies | Owner | Commit | Implementation | Spec review | Quality review | Verification layer | Command | Log path | Environment | Gaps / next owner |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| P0-1 固定功能基线与证据台账 | 已确认规格、当前源码、活跃客户端 manifests | P0 Task 1 implementer | `da16fcf5`（round 1 fix 待提交） | passed（文档覆盖审查） | round 1 findings addressed; re-review pending | round 1 findings addressed; re-review pending | static inventory / TSV schema | `awk -F '\t' ... features.tsv`; `git diff --check` | `.superpowers/sdd/2026-09-19-trpc-native-agent-p0/task-1-report.md` | local isolated worktree; no service/provider/device started | P2 SDK probe、P3/P7 恢复、P1 数据权威、P4 能力接入、P5 客户端、P6/P7 archive/cutover |
+| P0-2 原生 Runner / Session 探针 | P0-1 feature IDs、固定 SDK v1.10.0 | pending assignment | — | pending | not started | not started | deterministic SDK unit/race; source contract | `GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v` | `docs/superpowers/plans/trpc-native/sdk-probes.md` | SDK module cache; no real provider required | P3 must add provider proof; Session key test does not prove authorization/database isolation |
+| P0-3 恢复证据与运行语义 | P0-1、P0-2 runner evidence | pending assignment | — | pending | not started | not started | SQLite/PostgreSQL recovery and fault harness | planned commands in P0 plan | `/tmp/weknora-native-recovery-p0.json` then sanitized evidence directory | isolated DB; real provider/PostgreSQL may be `blocked-env` | checkpoint/pending writes/unknown tools; P7 process recovery |
+| P0-4 SDK 能力与扩展决策 | P0-1 plus P0-2/P0-3 results | pending assignment | — | pending | not started | not started | fixed-version source plus referenced behavior evidence | planned matrix review | `sdk-capabilities.tsv`, `interfaces.md` | fixed v1.10.0 source; no floating main | source-only cannot unlock implementation; decide native/extension/upgrade/spec revision |
+| P0-5 P0 gate and P1/P2 plans | P0-1 through P0-4 | pending assignment | — | pending | not started | not started | decision and planning review | planned P0 matrix check | `p0-decision.md` | evidence supplied by prior tasks | critical blocked/incompatible items produce no-go |
 
 ## 证据规则
 

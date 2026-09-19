@@ -19,7 +19,7 @@
 * `types.Session.EngineType`（`internal/types/session.go:88`）默认 `builtin`。`sessionService.AgentQA`（`internal/application/service/session_agent_qa.go:27`）拒绝在 builtin session 上执行 custom agent；`EngineType == "trpc"` 时转入 durable admission（:161）。`TestAgentQARejectsCustomAgentOnBuiltinSession` 固定该失败语义。
 * builtin 路径通过 `agentService.CreateAgentEngine`（`agent_service.go:191`）构造现有 `agent.NewAgentEngine`。该工厂装配 model、知识、工具、MCP、Skills、sandbox、memory 和 Craft；它仍是旧 ReAct/AgentEngine 入口，不能被标记为原生 Runner 已验证。
 * trpc 路径由 `submitDurableAgentRun`（`agent_run_graph.go:170`）在 `RecoveryEnabled`、`AdmissionEnabled` 和未 drain 时提交。它在 HTTP 断开后使用 `context.WithoutCancel` 提交；`TestSubmitDurableAgentRunSurvivesDisconnect` 是已有 SQLite 行为测试。
-* `ExecuteDurableRun`（`agent_run_graph.go:279`）按 fence 重读 run，恢复快照配置、重新解析当前模型/工具/权限，使用 `trpcagent.NewGraphRunner`。容器的 `newAgentRuntime`（`internal/container/agent_runtime.go:24`）经 `RegisteredGraphExecutor` 延迟接线，缺少 executor 时在启用恢复的配置下 fail closed。
+* `ExecuteDurableRun`（`agent_run_graph.go:314`）按 fence 重读 run，恢复快照配置、重新解析当前模型/工具/权限，使用 `trpcagent.NewGraphRunner`；模型重新解析发生在 `agent_run_graph.go:349`。容器的 `newAgentRuntime`（`internal/container/agent_runtime.go:24`）经 `RegisteredGraphExecutor` 延迟接线，缺少 executor 时在启用恢复的配置下 fail closed。
 * 环境开关保留：`Agent.Recovery.Enabled` 控制 worker，`AdmissionEnabled` 控制新 run；workbench worker drain 拒绝新准入。缺少 run service、模型、checkpoint、journal、event store 或 graph executor 均返回明确错误。事件 append 失败目前只告警（`agent_run_graph.go` 的 `emit`）；它不能作为可靠投影的验收证据。
 
 ## 已注册能力与失败状态
@@ -56,6 +56,10 @@
 | `apps/mobile-next` | 独立 Expo/npm 工程，`ChatService.ts` 调 `/agent-chat/:session_id` | `start`、`android`、`ios`、`typecheck`、`test`、`check:isolation`、`export:web`；未执行 |
 
 `apps/mobile-next` 不在 `pnpm-workspace.yaml`，但有独立 `package.json`、锁文件、原生目录和实际 API 消费者，因此不能因 pnpm 清单排除。旧 `apps/mobile` 没有 package.json，而有 `pubspec.yaml` 和 agent-chat 适配器，也不能排除。没有发现 `apps/mobile-next` 依赖旧 mobile 的生产路径；其 isolation 脚本明确禁止这种依赖。这只是源码消费者依据，非端到端证明。
+
+## 历史归档与保留边界
+
+已确认规格（`docs/superpowers/specs/2026-09-19-trpc-native-agent-migration-design.md:12,16,92,128`）要求旧历史只能在当前授权下只读查询；新会话、执行状态、长期记忆和 checkpoint 从零开始，旧会话不得恢复执行，也不得隐式注入新 Runner 上下文。归档不构成删除授权：历史会话、消息、工具/审批记录、附件、产物引用、审计记录和旧长期记忆均须保留，并继续由当前空间成员资格与资源权限控制读取。当前仓库尚未实现新旧归档读模型的最终路由；P6 负责归档/切换实现，P7 负责权限、附件访问、备份恢复与发布演练证据。
 
 ## 覆盖判定
 
