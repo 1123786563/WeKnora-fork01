@@ -35,7 +35,7 @@ func (r *sessionScopeResolver) Recheck(_ context.Context, got nativecontract.Sco
 	return r.scope, nil
 }
 
-func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, session.Key, *sessionScopeResolver) {
+func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, session.Key, *sessionScopeResolver, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+filepath.Join(t.TempDir(), "session.db")+"?_foreign_keys=on"), &gorm.Config{})
 	require.NoError(t, err)
@@ -55,11 +55,11 @@ func newNativeSessionFacade(t *testing.T) (*SessionService, context.Context, ses
 	key, err := nativecontract.SessionKey(scope, "s1")
 	require.NoError(t, err)
 	resolver := &sessionScopeResolver{scope: scope}
-	return NewSessionService(repository.NewNativeSessionStore(db), resolver), WithScope(context.Background(), scope), key, resolver
+	return NewSessionService(repository.NewNativeSessionStore(db), resolver), WithScope(context.Background(), scope), key, resolver, db
 }
 
 func TestNativeSessionFacadeCRUDOptionsSummaryUserStateAndDelete(t *testing.T) {
-	svc, ctx, key, _ := newNativeSessionFacade(t)
+	svc, ctx, key, _, _ := newNativeSessionFacade(t)
 	sess, err := svc.CreateSession(ctx, key, session.StateMap{"draft": []byte("one")})
 	require.NoError(t, err)
 	require.NoError(t, svc.AppendEvent(ctx, sess, &event.Event{ID: "first", Author: "agent", Timestamp: time.Unix(10, 0)}))
@@ -106,7 +106,7 @@ func TestNativeSessionFacadeCRUDOptionsSummaryUserStateAndDelete(t *testing.T) {
 }
 
 func TestNativeSessionFacadeRejectsRevokedScope(t *testing.T) {
-	svc, ctx, key, resolver := newNativeSessionFacade(t)
+	svc, ctx, key, resolver, _ := newNativeSessionFacade(t)
 	sess, err := svc.CreateSession(ctx, key, nil)
 	require.NoError(t, err)
 	_, err = svc.GetSession(ctx, key)
@@ -133,7 +133,7 @@ func TestNativeSessionFacadeRejectsRevokedScope(t *testing.T) {
 }
 
 func TestNativeSessionFacadeRejectsChangedEventWhenCallerReusesHash(t *testing.T) {
-	svc, ctx, key, _ := newNativeSessionFacade(t)
+	svc, ctx, key, _, _ := newNativeSessionFacade(t)
 	_, err := svc.CreateSession(ctx, key, nil)
 	require.NoError(t, err)
 	first := &event.Event{ID: "stable", Author: "first", Timestamp: time.Unix(10, 0)}
@@ -156,8 +156,27 @@ func TestNativeSessionFacadeRejectsChangedEventWhenCallerReusesHash(t *testing.T
 	require.Equal(t, "first", got.Events[0].Author)
 }
 
+func TestNativeSessionFacadeRejectsStableAppendWithoutMatchingEventIDBeforeWriting(t *testing.T) {
+	svc, ctx, key, _, db := newNativeSessionFacade(t)
+	_, err := svc.CreateSession(ctx, key, nil)
+	require.NoError(t, err)
+
+	for _, append := range []nativecontract.SessionAppend{
+		{Key: key, StableEventID: "stable", PayloadHash: "hash", Event: &event.Event{Author: "agent"}},
+		{Key: key, StableEventID: "stable", PayloadHash: "hash", Event: &event.Event{ID: "different", Author: "agent"}},
+	} {
+		var failure *nativecontract.Failure
+		require.ErrorAs(t, svc.AppendStable(ctx, append), &failure)
+		require.Equal(t, nativecontract.ErrInvalid, failure.Code)
+	}
+
+	var rows int64
+	require.NoError(t, db.Table("native_agent_session_events").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ?", 1, key.AppName, key.UserID, key.SessionID).Count(&rows).Error)
+	require.Zero(t, rows)
+}
+
 func TestNativeSessionFacadeConcurrentSummaryReadAndWrite(t *testing.T) {
-	svc, ctx, key, _ := newNativeSessionFacade(t)
+	svc, ctx, key, _, _ := newNativeSessionFacade(t)
 	sess, err := svc.CreateSession(ctx, key, nil)
 	require.NoError(t, err)
 	require.NoError(t, svc.AppendEvent(ctx, sess, &event.Event{ID: "event", Author: "agent"}))

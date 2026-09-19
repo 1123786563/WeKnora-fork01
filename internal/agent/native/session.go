@@ -72,6 +72,9 @@ func (s *SessionService) authorizeUser(ctx context.Context, key session.UserKey)
 	return nil
 }
 func (s *SessionService) AppendStable(ctx context.Context, a nativecontract.SessionAppend) error {
+	if a.Event == nil || a.Event.ID == "" || a.StableEventID != a.Event.ID {
+		return &nativecontract.Failure{Code: nativecontract.ErrInvalid, Message: "stable event ID is required"}
+	}
 	if err := s.authorize(ctx, a.Key); err != nil {
 		return err
 	}

@@ -275,7 +275,7 @@ func (s *NativeSessionStore) deleteStateKey(ctx context.Context, key session.Key
 }
 
 func (s *NativeSessionStore) AppendStable(ctx context.Context, append nativecontract.SessionAppend) error {
-	if append.Event == nil || append.StableEventID == "" || append.PayloadHash == "" {
+	if append.Event == nil || append.Event.ID == "" || append.StableEventID == "" || append.StableEventID != append.Event.ID || append.PayloadHash == "" {
 		return fmt.Errorf("native stable append is incomplete")
 	}
 	tenant, err := nativeSessionTenant(append.Key)

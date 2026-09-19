@@ -38,6 +38,25 @@ func TestNativeSessionStableEventReopensAndRejectsChangedPayload(t *testing.T) {
 	})
 }
 
+func TestNativeSessionStableAppendRejectsMissingOrMismatchedEventIDBeforeWriting(t *testing.T) {
+	eachNativeSessionBackend(t, func(t *testing.T, db *gorm.DB) {
+		store := NewNativeSessionStore(db)
+		key := session.Key{AppName: "weknora/native-v1/tenant/1", UserID: "owner/u1", SessionID: "session/invalid-event-id"}
+		require.NoError(t, store.Create(context.Background(), key, nil))
+
+		for _, append := range []nativecontract.SessionAppend{
+			{Key: key, StableEventID: "stable", PayloadHash: "hash", Event: &event.Event{Author: "agent"}},
+			{Key: key, StableEventID: "stable", PayloadHash: "hash", Event: &event.Event{ID: "different", Author: "agent"}},
+		} {
+			require.Error(t, store.AppendStable(context.Background(), append))
+		}
+
+		var rows int64
+		require.NoError(t, db.Table("native_agent_session_events").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ?", 1, key.AppName, key.UserID, key.SessionID).Count(&rows).Error)
+		require.Zero(t, rows)
+	})
+}
+
 func TestNativeSessionScopeIsolation(t *testing.T) {
 	eachNativeSessionBackend(t, func(t *testing.T, db *gorm.DB) {
 		store := NewNativeSessionStore(db)
