@@ -785,10 +785,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // (systemAdmin || owner || admin; canSeeAdminSessionSources mirrors it
     // in applyAuthMe) and stays fail-closed until auth/me resolves.
     // Round-22 parity (2026-09-19): Vue's rail (stores/menu.ts) has no
-    // analytics entry on any surface, so the sidebar link is dropped to keep
-    // the two rails byte-identical; the SP11 /platform/analytics route stays
-    // reachable by URL — restore by removing the analytics clause below.
-    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics'),
+    // analytics or experts entry on any surface, so both sidebar links drop
+    // to keep the two rails byte-identical; the SP11 /platform/analytics and
+    // M2 /platform/experts routes stay reachable by URL — restore by removing
+    // the clause below.
+    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics' && item.key !== 'experts'),
     [navItems, canSeeOrganizations, isLiteEdition],
   );
 

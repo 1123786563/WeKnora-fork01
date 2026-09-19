@@ -266,7 +266,7 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   for (const pager of pagers) {
     assert.match(pager.textContent ?? '', /共 \d+ 条数据/);
     assert.match(pager.textContent ?? '', /跳至/);
-    assert.match(pager.textContent ?? '', /\/1 页/);
+    assert.match(pager.textContent ?? '', /\/ 1 页/);
     const sizeSelect = pager.querySelector('select');
     assert.ok(sizeSelect, 'page-size select is rendered');
     assert.match(sizeSelect?.selectedOptions[0]?.textContent ?? '', /条\/页/);

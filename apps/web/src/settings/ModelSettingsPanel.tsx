@@ -1007,7 +1007,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           aria-expanded={menuOpen}
                           onClick={() => setMenuFor(menuOpen ? null : model.id)}
                         >
-                          ⋯
+                          {/* Vue card menu is an icon glyph (no text node). */}
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
                         </button>
                         {menuOpen ? (
                           <div className="absolute right-0 top-[26px] z-[5] flex min-w-[96px] flex-col rounded-lg border border-[rgba(120,135,155,0.3)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.16)]" role="menu">
