@@ -172,6 +172,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewFeedbackRepository))
+	must(container.Provide(repository.NewAnalyticsRepository))
 	must(container.Provide(repository.NewAgentRunStore))
 	// W26: immutable artifact version rows live in the same business database
 	// scope as the run store so imports and downloads share one fence.
@@ -600,6 +601,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewFeedbackHandler))
+	must(container.Provide(handler.NewAnalyticsHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))

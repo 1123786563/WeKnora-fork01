@@ -65,6 +65,7 @@ type RouterParams struct {
 	MobileDeviceHandler          *handler.MobileDeviceHandler          `optional:"true"`
 	MessageHandler               *handler.MessageHandler
 	FeedbackHandler              *handler.FeedbackHandler
+	AnalyticsHandler             *handler.AnalyticsHandler
 	MessageSuggestionHandler     *handler.MessageSuggestionHandler
 	ModelHandler                 *handler.ModelHandler
 	ModelCredentialsHandler      *handler.ModelCredentialsHandler
@@ -333,6 +334,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterFeedbackRoutes(v1, params.FeedbackHandler, rbacGuards)
+		RegisterAnalyticsRoutes(v1, params.AnalyticsHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)
 		RegisterSandboxConfigRoutes(v1, params.SandboxConfigHandler, params.SandboxSkillHandler, rbacGuards)
 		RegisterMyEnvVarRoutes(v1, params.MeEnvVarHandler)
