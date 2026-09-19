@@ -3381,5 +3381,28 @@
     }
   },
   "directBearerDescription": "Отправляет учётные данные в заголовке Authorization: Bearer. Большинство OpenAI-совместимых серверов (llama.cpp, vLLM, LM Studio, Ollama) ожидают именно это.",
-  "directApiKeyHeaderAzureOnlyDescription": "Отправляет учётные данные в заголовке api-key. Используйте только для Azure OpenAI; другие OpenAI-совместимые серверы ожидают токен Bearer."
+  "directApiKeyHeaderAzureOnlyDescription": "Отправляет учётные данные в заголовке api-key. Используйте только для Azure OpenAI; другие OpenAI-совместимые серверы ожидают токен Bearer.",
+  "weknoraLoginTitle": "Вход в WeKnora",
+  "weknoraLoginServerField": "Адрес сервера",
+  "weknoraLoginEmailField": "Электронная почта",
+  "weknoraLoginPasswordField": "Пароль",
+  "weknoraLoginButton": "Войти",
+  "weknoraLoginInvalidCredentials": "Неверная электронная почта или пароль.",
+  "weknoraLoginUnreachable": "Не удалось подключиться к серверу WeKnora. Проверьте адрес и подключение.",
+  "weknoraBackendChooserTitle": "WeKnora",
+  "weknoraBackendChooserSubtitle": "Войдите в свою базу знаний WeKnora, размещённую на собственном сервере.",
+  "weknoraAccountSectionTitle": "WeKnora",
+  "weknoraAccountSignIn": "Вход в WeKnora",
+  "weknoraAccountSignedInAs": "Вы вошли как {email}",
+  "@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "weknoraAccountServer": "Сервер",
+  "weknoraAccountSignOut": "Выйти",
+  "weknoraSessionDeletedNotice": "Этот чат был удалён на сервере.",
+  "weknoraAccountManagedHint": "Прямое подключение к WeKnora управляется этим входом."
 }

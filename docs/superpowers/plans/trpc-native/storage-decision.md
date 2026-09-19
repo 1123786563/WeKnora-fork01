@@ -22,7 +22,7 @@ review, and integration evidence; P7 remains the integrated acceptance gate.
 | `session/postgres v1.11.0` | rejected as a raw product backend | Historical isolated-DSN characterization has the same stable-ID conflict failure and default schema initialization fails its unique-index check.  This run had no DSN, so PostgreSQL re-verification is `blocked-env`. |
 | `memory/sqlite v1.11.0` | rejected as a raw product backend | A clear followed by old-generation extraction output returns nil in the forced contract test; no generation/tombstone/CAS input exists on raw `AddMemory`. |
 | `memory/postgres v1.11.0` | rejected as a raw product backend | Historical isolated-DSN characterization has the same stale-write behavior.  This run had no DSN, so PostgreSQL re-verification is `blocked-env`. |
-| WeKnora controlled Session/Memory facade and repository | selected target boundary, **not yet implemented** | It is the minimum boundary that can enforce authoritative scope, receipt/hash uniqueness, generation/tombstone CAS, business metadata, transaction coordination, and authorization recheck without using the SDK as an authorization service. |
+| WeKnora controlled Session/Memory facade and repository | selected target boundary, **implemented with acceptance gaps under review** | The integrated facade enforces authoritative scope, receipt/hash uniqueness, generation/tombstone CAS, event-bound memory jobs, transaction coordination, and authorization rechecks; remaining SDK tool/metadata coverage and live PostgreSQL evidence are tracked in the P1.3/P1.4 review ledger. |
 
 Source reading, a mock/deterministic model, a skipped test, or a passing SQLite
 unit test is not a pass for this decision.

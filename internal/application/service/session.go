@@ -120,6 +120,7 @@ type sessionService struct {
 	knowledgeBaseService  interfaces.KnowledgeBaseService        // Service for knowledge base operations
 	modelService          interfaces.ModelService                // Service for model operations
 	tenantService         interfaces.TenantService               // Service for tenant operations
+	tenantRepo            interfaces.TenantRepository            // Repository for tenant rows (query-history policy lookups)
 	eventManager          *chatpipeline.EventManager             // Event manager for chat pipeline
 	agentService          interfaces.AgentService                // Service for agent operations
 	knowledgeService      interfaces.KnowledgeService            // Service for knowledge operations
@@ -138,6 +139,9 @@ type sessionService struct {
 	// TenantSkillService because that service depends on this one.
 	sandboxConfigRepo repository.TenantSandboxConfigRepository
 	tenantSkillRepo   repository.TenantSkillRepository
+	// feedbackRepo reads the cross-user feedback rows of one session for the
+	// admin query-history audit snapshot (SP13).
+	feedbackRepo interfaces.FeedbackRepository
 }
 
 // NewSessionService creates a new session service instance with all required dependencies
@@ -149,6 +153,7 @@ func NewSessionService(cfg *config.Config,
 	chunkService interfaces.ChunkService,
 	modelService interfaces.ModelService,
 	tenantService interfaces.TenantService,
+	tenantRepo interfaces.TenantRepository,
 	eventManager *chatpipeline.EventManager,
 	agentService interfaces.AgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
@@ -162,6 +167,7 @@ func NewSessionService(cfg *config.Config,
 	memoryService interfaces.MemoryService,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
+	feedbackRepo interfaces.FeedbackRepository,
 ) interfaces.SessionService {
 	svc := &sessionService{
 		cfg:                   cfg,
@@ -172,6 +178,7 @@ func NewSessionService(cfg *config.Config,
 		chunkService:          chunkService,
 		modelService:          modelService,
 		tenantService:         tenantService,
+		tenantRepo:            tenantRepo,
 		eventManager:          eventManager,
 		agentService:          agentService,
 		webSearchStateRepo:    webSearchStateRepo,
@@ -185,6 +192,7 @@ func NewSessionService(cfg *config.Config,
 		memoryService:         memoryService,
 		sandboxConfigRepo:     sandboxConfigRepo,
 		tenantSkillRepo:       tenantSkillRepo,
+		feedbackRepo:          feedbackRepo,
 	}
 	// The durable tRPC worker resolves its graph executor lazily because the
 	// runtime is constructed before this service in the dependency graph.
@@ -388,19 +396,42 @@ func (s *sessionService) ListSessions(
 		query = &types.SessionListQuery{}
 	}
 	query.TenantID = types.MustTenantIDFromContext(ctx)
-	// API / IM / embed source filters are tenant-wide admin views over channel
-	// traffic. Gate them behind Admin+ and drop the per-user owner scope so an
-	// Owner/admin can observe sessions that are otherwise isolated per key,
-	// visitor, or IM identity; everyone else stays scoped to their own principal.
+	sourceAll := strings.EqualFold(strings.TrimSpace(query.Source), types.SessionListSourceAll)
+	// Channel source filters ("api" / IM / embed) and the cross-source audit
+	// listing ("all") are tenant-wide admin views. Gate them behind Admin+ and
+	// drop the per-user owner scope so an Owner/admin can observe sessions that
+	// are otherwise isolated per key, visitor, or IM identity; everyone else
+	// stays scoped to their own principal.
 	if types.SessionListSourceRequiresAdmin(query.Source) {
 		if !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
 			return nil, apperrors.NewForbiddenError(
 				"listing channel sessions requires tenant admin or owner role",
 			)
 		}
-		query.UserID = ""
+		if !sourceAll {
+			query.UserID = ""
+		}
+		// The "all" audit view keeps a caller-supplied UserID: an admin
+		// drilling into one principal narrows the audit listing via the
+		// repo's user filter, an empty filter means the whole tenant.
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid
+	}
+
+	// The audit listing additionally honors the tenant's query-history
+	// privacy policy: disabled blocks the view before any row is read,
+	// anonymized masks owner ids on the returned rows.
+	auditMode := ""
+	if sourceAll {
+		var err error
+		auditMode, err = CheckQueryHistoryAccess(ctx, s.tenantRepo, query.TenantID)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"tenant_id": query.TenantID,
+				"source":    query.Source,
+			})
+			return nil, err
+		}
 	}
 
 	items, total, err := s.sessionRepo.QueryPaged(ctx, query)
@@ -414,9 +445,97 @@ func (s *sessionService) ListSessions(
 		})
 		return nil, err
 	}
+	AnonymizeSessionOwner(auditMode, items)
 
 	pagination := &types.Pagination{Page: query.Page, PageSize: query.PageSize}
 	return types.NewPageResult(total, pagination, items), nil
+}
+
+// queryHistorySnapshotMessageLimit caps the messages carried by one admin
+// audit snapshot. Sessions longer than the cap return the most recent
+// messages with Truncated=true; the async export (SP13 Task 4) is the
+// full-fidelity surface.
+const queryHistorySnapshotMessageLimit = 200
+
+// GetQueryHistorySnapshot assembles the Admin+ audit snapshot of one session:
+// the tenant-scoped session row, its most recent messages, and every feedback
+// row recorded on the session — honoring the tenant's query-history privacy
+// policy. Disabled blocks the read before any row is fetched; anonymized
+// masks Session.UserID and every Feedback.UserID as "anonymous" so the
+// snapshot cannot be tied back to individual principals. Messages carry no
+// owner field of their own, so they pass through unchanged.
+func (s *sessionService) GetQueryHistorySnapshot(
+	ctx context.Context, tenantID uint64, sessionID string,
+) (*types.QueryHistorySnapshot, error) {
+	if tenantID == 0 {
+		return nil, stderrors.New("workspace id is required")
+	}
+	if sessionID == "" {
+		return nil, stderrors.New("session id is required")
+	}
+
+	mode, err := CheckQueryHistoryAccess(ctx, s.tenantRepo, tenantID)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"tenant_id":  tenantID,
+			"session_id": sessionID,
+		})
+		return nil, err
+	}
+
+	session, err := s.sessionRepo.GetByID(ctx, tenantID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch one row past the cap so a session exactly at the cap is not
+	// reported truncated. The repository returns the newest rows first and
+	// re-sorts them oldest-first, so an over-cap slice keeps its tail (the
+	// newest messages) when trimmed.
+	messages, err := s.messageRepo.GetRecentMessagesBySession(
+		ctx, sessionID, queryHistorySnapshotMessageLimit+1)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"session_id": sessionID,
+			"tenant_id":  tenantID,
+		})
+		return nil, err
+	}
+	truncated := len(messages) > queryHistorySnapshotMessageLimit
+	if truncated {
+		messages = messages[len(messages)-queryHistorySnapshotMessageLimit:]
+	}
+
+	feedback := []types.MessageFeedback{}
+	if s.feedbackRepo != nil {
+		rows, err := s.feedbackRepo.ListBySession(ctx, tenantID, sessionID)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"session_id": sessionID,
+				"tenant_id":  tenantID,
+			})
+			return nil, err
+		}
+		// Keep the non-nil guarantee so the snapshot serializes feedback as
+		// [] rather than null when a session has no ratings.
+		if rows != nil {
+			feedback = rows
+		}
+	}
+
+	snapshot := &types.QueryHistorySnapshot{
+		Session:   *session,
+		Messages:  messages,
+		Feedback:  feedback,
+		Truncated: truncated,
+	}
+	if mode == types.QueryHistoryModeAnonymized {
+		snapshot.Session.UserID = "anonymous"
+		for i := range snapshot.Feedback {
+			snapshot.Feedback[i].UserID = "anonymous"
+		}
+	}
+	return snapshot, nil
 }
 
 // CountSessionsBySource returns the total session count for a source filter

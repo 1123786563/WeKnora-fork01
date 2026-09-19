@@ -37,8 +37,13 @@ test('parseUsageByUserResponse rejects a row without user_id', () => {
   );
 });
 
-test('parseUsageByUserResponse rejects an empty user_id', () => {
-  assert.throws(() => parseUsageByUserResponse({ success: true, data: [{ ...byUserRow, user_id: '' }] }), ContractError);
+// Backend craft folding attributes orphan facts to the empty user (craft_usage
+// COALESCE fallback), so /admin/usage/by-user can legitimately carry user_id:''
+// rows; the contract keeps the key required but tolerates the empty value and
+// leaves display concerns (a "System" placeholder) to the page.
+test('parseUsageByUserResponse accepts an empty user_id row', () => {
+  const result = parseUsageByUserResponse({ success: true, data: [{ ...byUserRow, user_id: '' }] });
+  assert.equal(result.items[0]!.user_id, '');
 });
 
 test('parse rejects non-envelope payload', () => {

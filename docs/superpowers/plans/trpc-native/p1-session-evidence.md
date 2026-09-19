@@ -59,3 +59,18 @@ barriers, projection repair, cross-process commits, or production recovery.
 P1 must add a durable event receipt keyed by `event.Event.ID` plus a
 content hash and return a conflict on a changed replay. It must also resolve
 the PostgreSQL schema-initialization defect or select a reviewed alternative.
+
+## P1.3 review fix round 1
+
+`SessionService.AppendStable` and `NativeSessionStore.AppendStable` recompute
+the versioned canonical event hash from the event payload; a caller-provided
+hash is never trusted. Focused race tests cover a changed payload that reuses
+the original supplied hash, concurrent summary reads/writes, and distinct
+SQLite event appends. `TRPC_TEST_POSTGRES_DSN` is unset on this host, so the
+real PostgreSQL subtests remain blocked-env rather than passed.
+
+The required zero-next-tool-dispatch assertion belongs to P1.5's
+`CommitIntent` barrier: P1.3's `session.Service` facade has no tool-dispatch
+dependency or dispatch callback to observe. P1.3 propagates append errors;
+P1.5 must latch that error before its owned tool-dispatch step and assert zero
+dispatch calls. No P1.5 file was changed here.

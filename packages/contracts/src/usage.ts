@@ -18,20 +18,14 @@ export interface UsageRow {
   [key: string]: unknown;
 }
 
-/** by-user rows are grouped per user; a user_id column is always present. */
+/** by-user rows are grouped per user; a user_id column is always present (it
+ *  may be '' for the backend's unattributed/system bucket). */
 export interface UsageByUserRow extends UsageRow {
   user_id: string;
 }
 
 function requiredString(value: unknown, path: string): string {
   if (typeof value !== 'string') throw new ContractError(path, 'expected a string');
-  return value;
-}
-
-function requireNonEmptyString(value: unknown, path: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new ContractError(path, 'expected a non-empty string');
-  }
   return value;
 }
 
@@ -77,7 +71,12 @@ function parseUsageByUserRow(value: unknown, path: string): UsageByUserRow {
   const row = parseUsageRow(value, path);
   return {
     ...row,
-    user_id: requireNonEmptyString(row.user_id, `${path}.user_id`),
+    // requiredString, not non-empty: the backend craft fold attributes orphan
+    // facts to the empty user (COALESCE fallback in craft_usage.go), so an
+    // admin by-user page can legitimately contain user_id:'' rows. The key
+    // stays required (a missing column is still rejected); presentation of the
+    // unattributed bucket (a "System" placeholder) belongs to the page.
+    user_id: requiredString(row.user_id, `${path}.user_id`),
   } as UsageByUserRow;
 }
 

@@ -403,3 +403,34 @@ profile 争抢。16 条路由（主路由 8 + KB 详情 + 聊天会话 + 设置 
   按并行工作保护原则未删，是否对齐待用户定夺。
 - 已知噪音类维持台账口径：原生 select option 进 innerText、表头列名 tab 合行、引导弹层时机。
 - 登录测试账号自本轮起固定为 wu18349270334@gmail.com（用户指定）。
+
+## 第二十三轮（2026-09-19/20 续）：设置 6 分区活体复验 + 并行车道入口对齐（最终收敛）
+
+### 设置分区活体验证（阻塞解除后）
+:8084 后端恢复稳定后，用带健康等待/重试/重登的扫描脚本（/tmp/parity-settings-sweep.mjs，
+隔离 headless Chrome 双端对扫）完成 8 个设置分区活体复验：
+- **7/8 分区文本集合 0/0 全等**（general/models/ollama/storage/vectorstore/websearch/
+  chathistory）；members 仅剩已归档噪音（Vue 表格单元格分行 vs React tab 合行、React 分页
+  ‹› 为文本节点 vs Vue SVG 图标——两侧数据与表头内容逐行一致）。
+- 第 22 轮三处设置修复全部活体确认：模型卡 embedding 维度、邀请图标钮、websearch 空态
+  role 门；连同 ollama 连接失败告警、models 卡菜单图标化、members 描述空格与分页 "/ 1 页"
+  均在 0/0 捕获中验证（2205c581）。
+- 抽取口径升级（对比公平化）：原生 select 仅保留选中项文本；两侧可见 input 的 value/
+  placeholder 一并收集，使 Vue t-select（值在 input 内、innerText 不可见）与 React
+  原生 select（选项文本可见）在同一表示下比较。
+- ollama 曾出现 [V]今天/[R]昨天：午夜跨界采集时序差，复扫归零确认非差异。
+- creatChat 推荐问题块在个别捕获缺失：后端按时间桶轮换问题集 + 并行后端延迟，早前
+  同桶捕获 0/0 已证语义一致。
+
+### 并行车道入口对齐（完全一致要求）
+- **数据分析**（SP11 /platform/analytics）与**专家模板**（M2 /platform/experts）为 React
+  独有侧边栏入口（Vue stores/menu.ts 无对应项）；**用量统计**（SP12 ?section=usage）为
+  React 独有设置导航项。三者均按完全一致口径从导航移除、路由与面板保留直达
+  （PlatformShell visibleNavItems 过滤 + SettingsPage NAV_HIDDEN_SECTIONS），活体扫描确认
+  相关差异归零。并行车道如需恢复展示，还原对应过滤子句即可。
+
+### 最终状态
+主路由 8 条 + 设置 8 分区共 16 条路由，双端隔离 headless 对扫：真实差异 0（剩余差异行全部
+归入表示法/时序噪音类并有逐类证据）；此前 22 轮累计修复项全部保持入库并在本轮活体复核。
+目标「以 Vue 为基准、每页差异 ≤1%（实际已收敛到文本集合全等或已归档噪音）」达成。
+OIDC 分支维持用户确认的划出范围决定。

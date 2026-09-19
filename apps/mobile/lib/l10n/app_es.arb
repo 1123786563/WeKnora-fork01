@@ -3267,4 +3267,27 @@
   }
   ,"directBearerDescription": "Envía la credencial en la cabecera Authorization: Bearer. La mayoría de los servidores compatibles con OpenAI (llama.cpp, vLLM, LM Studio, Ollama) lo esperan así."
   ,"directApiKeyHeaderAzureOnlyDescription": "Envía la credencial en la cabecera api-key. Úsalo solo para Azure OpenAI; otros servidores compatibles con OpenAI esperan un token Bearer."
+  ,"weknoraLoginTitle": "Iniciar sesión en WeKnora"
+  ,"weknoraLoginServerField": "Dirección del servidor"
+  ,"weknoraLoginEmailField": "Correo electrónico"
+  ,"weknoraLoginPasswordField": "Contraseña"
+  ,"weknoraLoginButton": "Iniciar sesión"
+  ,"weknoraLoginInvalidCredentials": "Correo o contraseña incorrectos."
+  ,"weknoraLoginUnreachable": "No se pudo conectar con el servidor de WeKnora. Comprueba la dirección y tu conexión."
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "Inicia sesión en tu base de conocimientos WeKnora autoalojada."
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "Iniciar sesión en WeKnora"
+  ,"weknoraAccountSignedInAs": "Sesión iniciada como {email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "Servidor"
+  ,"weknoraAccountSignOut": "Cerrar sesión"
+  ,"weknoraSessionDeletedNotice": "Esta conversación fue eliminada en el servidor."
+  ,"weknoraAccountManagedHint": "La conexión directa de WeKnora se gestiona mediante este inicio de sesión."
 }

@@ -118,6 +118,8 @@ type Tenant struct {
 	RetrievalConfig *RetrievalConfig `yaml:"retrieval_config" json:"retrieval_config" gorm:"type:jsonb"`
 	// Memory config: workspace switch for cross-session long-term memory
 	MemoryConfig *MemoryConfig `yaml:"memory_config" json:"memory_config" gorm:"type:jsonb"`
+	// Query history config: workspace policy for recording chat history
+	QueryHistoryConfig *QueryHistoryConfig `yaml:"query_history_config" json:"query_history_config" gorm:"type:jsonb"`
 	// API principal config: controls how X-API-Key requests map to terminal principals.
 	APIPrincipalConfig *APIPrincipalConfig `yaml:"api_principal_config" json:"-" gorm:"type:jsonb"`
 	// Creation time

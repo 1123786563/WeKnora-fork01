@@ -4922,4 +4922,27 @@
   }
   ,"directBearerDescription": "Odošle prihlasovacie údaje v hlavičke Authorization: Bearer. Väčšina serverov kompatibilných s OpenAI (llama.cpp, vLLM, LM Studio, Ollama) to očakáva."
   ,"directApiKeyHeaderAzureOnlyDescription": "Odošle prihlasovacie údaje v hlavičke api-key. Používajte iba pre Azure OpenAI; ostatné servery kompatibilné s OpenAI očakávajú token Bearer."
+  ,"weknoraLoginTitle": "Prihlásiť sa do WeKnora"
+  ,"weknoraLoginServerField": "Adresa servera"
+  ,"weknoraLoginEmailField": "E-mail"
+  ,"weknoraLoginPasswordField": "Heslo"
+  ,"weknoraLoginButton": "Prihlásiť sa"
+  ,"weknoraLoginInvalidCredentials": "Nesprávny e-mail alebo heslo."
+  ,"weknoraLoginUnreachable": "S serverom WeKnora sa nepodarilo spojiť. Skontrolujte adresu a pripojenie."
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "Prihláste sa do svojej samostatne hostovanej znalostnej základne WeKnora."
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "Prihlásiť sa do WeKnora"
+  ,"weknoraAccountSignedInAs": "Prihlásený ako {email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "Server"
+  ,"weknoraAccountSignOut": "Odhlásiť sa"
+  ,"weknoraSessionDeletedNotice": "Táto konverzácia bola na serveri odstránená."
+  ,"weknoraAccountManagedHint": "Priame pripojenie WeKnora spravuje toto prihlásenie."
 }

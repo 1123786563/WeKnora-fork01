@@ -106,6 +106,9 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
         {/* Vue renders the detected address in a disabled input box. */}
         <dd className="m-0 self-center"><Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full max-w-[360px] justify-self-end bg-[#f3f3f3] text-right font-mono text-[.85rem] text-[#98a2b8]" aria-label={t('ollamaSettings.address.label')} /></dd>
       </div>
+      {/* Vue OllamaSettings.vue L79-84: a completed-but-failed check adds the
+          warning alert under the address row (t-alert theme=warning). */}
+      {status && !status.available ? <p role="alert" className="m-0 mt-[8px] rounded-[6px] border border-[#fde3ba] bg-[#fdf3e7] px-[12px] py-[8px] text-[13px] leading-[1.5] text-[#b54708]">{t('ollamaSettings.address.failed')}</p> : null}
     </Card>
     {status?.available && !testing ? <>
       <Card>

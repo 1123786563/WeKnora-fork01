@@ -175,6 +175,24 @@ func (r *sessionRepository) QueryPaged(
 		if kw := strings.TrimSpace(q.Keyword); kw != "" {
 			db = db.Where(titleLikeExpr, "%"+escapeLikeKeyword(kw)+"%")
 		}
+		// Audit-listing window over created_at, half-open [StartTime, EndTime).
+		// Zero values leave the corresponding side of the range open.
+		if !q.StartTime.IsZero() {
+			db = db.Where("s.created_at >= ?", q.StartTime)
+		}
+		if !q.EndTime.IsZero() {
+			db = db.Where("s.created_at < ?", q.EndTime)
+		}
+		// Feedback drill-down: a session qualifies when any of its messages
+		// carries a rating row. The tenant predicate inside EXISTS keeps a
+		// same-id feedback row from another tenant from ever matching.
+		switch strings.ToLower(strings.TrimSpace(q.FeedbackRating)) {
+		case types.FeedbackRatingLike, types.FeedbackRatingDislike:
+			db = db.Where(
+				"EXISTS (SELECT 1 FROM message_feedback f WHERE f.session_id = s.id AND f.tenant_id = s.tenant_id AND f.rating = ?)",
+				strings.ToLower(strings.TrimSpace(q.FeedbackRating)),
+			)
+		}
 		return db
 	}
 
@@ -196,6 +214,14 @@ func (r *sessionRepository) QueryPaged(
 		embedPrefix := types.EmbedSessionMarkerPrefix
 		switch lower {
 		case "":
+			return db
+		case types.SessionListSourceAll:
+			// Admin audit listing: every session in the tenant regardless of
+			// origin. The service layer already enforced Admin+ and the
+			// query-history privacy policy, so no further source restriction
+			// applies here; the caller-supplied user_id filter (applyBase)
+			// still narrows the audit view when the admin drills into one
+			// principal.
 			return db
 		case types.SessionSourceAPI:
 			// Tenant-wide view of API-key sessions. Requests without an

@@ -19,6 +19,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/backend_mode_providers.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../auth/providers/unified_auth_providers.dart';
+import '../../weknora/account/weknora_providers.dart';
 import '../../workspace/providers/workspace_capabilities_provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/models/user.dart' as models;
@@ -367,10 +368,90 @@ class ProfilePage extends ConsumerWidget {
     return [
       InsetGroupedList(children: appItems),
       const SizedBox(height: Spacing.lg),
+      _buildWeKnoraSection(context, ref),
+      const SizedBox(height: Spacing.lg),
       InsetGroupedList(children: connectionItems),
       const SizedBox(height: Spacing.lg),
       InsetGroupedList(children: [_buildAboutTile(context)]),
     ];
+  }
+
+  /// WeKnora account section: the signed-in account with a sign-out action,
+  /// or a sign-in entry when nobody is signed in. Sits before the Direct
+  /// Connections group.
+  Widget _buildWeKnoraSection(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    // While the persisted account document loads the provider has no data,
+    // so watchers render the signed-out entry for that first frame.
+    final account = ref.watch(weknoraAccountProvider).asData?.value;
+    final icon = UiUtils.platformIcon(
+      ios: CupertinoIcons.book_fill,
+      android: Icons.auto_stories_rounded,
+    );
+
+    return InsetGroupedList(
+      title: l10n.weknoraAccountSectionTitle,
+      // While signed in, the login owns the mirrored WeKnora direct
+      // connection profile (token + enablement); say so instead of letting
+      // the profile look freely editable in Direct Connections.
+      footer: account != null ? l10n.weknoraAccountManagedHint : null,
+      children: [
+        if (account != null)
+          UtilityRow(
+            key: const Key('weknora-account-info'),
+            leading: _buildIconBadge(
+              context,
+              icon,
+              color: context.conduitTheme.buttonPrimary,
+            ),
+            title: l10n.weknoraAccountSignedInAs(account.email),
+            subtitle: '${l10n.weknoraAccountServer}: ${account.baseUrl}',
+            showChevron: false,
+          )
+        else
+          _buildAccountOption(
+            context,
+            key: const Key('weknora-account-sign-in'),
+            icon: icon,
+            title: l10n.weknoraAccountSignIn,
+            subtitle: l10n.weknoraBackendChooserSubtitle,
+            onTap: () => context.go(Routes.weknoraLogin),
+          ),
+        if (account != null)
+          _buildAccountOption(
+            context,
+            key: const Key('weknora-account-sign-out'),
+            icon: UiUtils.platformIcon(
+              ios: CupertinoIcons.square_arrow_left,
+              android: Icons.logout,
+            ),
+            title: l10n.weknoraAccountSignOut,
+            subtitle: account.email,
+            onTap: () => _signOutOfWeKnora(context, ref),
+            showChevron: false,
+            destructive: true,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _signOutOfWeKnora(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(weknoraAccountServiceProvider).logout();
+    } catch (_) {
+      if (context.mounted) {
+        UiUtils.showMessage(
+          context,
+          AppLocalizations.of(context)!.errorMessage,
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    // Drop the mirrored account so the section flips to the signed-out
+    // entry wherever the user lands next.
+    ref.invalidate(weknoraAccountProvider);
+    context.go(Routes.weknoraLogin);
   }
 
   Widget _buildSignOutOption(BuildContext context, WidgetRef ref) {

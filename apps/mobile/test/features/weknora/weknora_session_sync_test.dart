@@ -136,6 +136,52 @@ void main() {
     });
   });
 
+  group('WeKnoraSessionSync.deleteRemoteSession', () {
+    test('deletes the bound server session', () async {
+      final bound = _conversation(
+        'weknora-s1',
+        metadata: const {'weknoraSessionId': 's1'},
+      );
+      final store = _ConversationStore()..seed(bound);
+      final api = _FakeSessionApi();
+      final sync = store.buildSync(api);
+
+      await sync.deleteRemoteSession(conversation: bound);
+
+      expect(api.deleteCalls, ['s1']);
+      // Deletion never mutates the local list; the caller owns that.
+      expect(store['weknora-s1'], isNotNull);
+      expect(store.updatedIds, isEmpty);
+      expect(store.removedIds, isEmpty);
+    });
+
+    test('is a no-op without session metadata', () async {
+      final local = _conversation('local-1');
+      final store = _ConversationStore()..seed(local);
+      final api = _FakeSessionApi();
+      final sync = store.buildSync(api);
+
+      await sync.deleteRemoteSession(conversation: local);
+
+      expect(api.deleteCalls, isEmpty);
+    });
+
+    test('propagates failures so callers can log them', () async {
+      final bound = _conversation(
+        'weknora-sX',
+        metadata: const {'weknoraSessionId': 'sX'},
+      );
+      final store = _ConversationStore()..seed(bound);
+      final api = _FakeSessionApi(deleteFailures: {'sX'});
+      final sync = store.buildSync(api);
+
+      await expectLater(
+        sync.deleteRemoteSession(conversation: bound),
+        throwsA(isA<WeKnoraSessionApiException>()),
+      );
+    });
+  });
+
   group('WeKnoraSessionSync.stampBoundSessionId', () {
     test('writes merged metadata when the adapter knows the binding', () async {
       // WeKnoraAdapter is final, so the binding table is primed through the
@@ -286,14 +332,17 @@ class _FakeSessionApi implements WeKnoraSessionApi {
     this.sessions = const [],
     this.history = const {},
     this.notFoundSessions = const {},
+    this.deleteFailures = const {},
   });
 
   final List<WeKnoraSessionSummary> sessions;
   final Map<String, List<WeKnoraHistoryMessage>> history;
   final Set<String> notFoundSessions;
+  final Set<String> deleteFailures;
 
   int listCalls = 0;
   final List<String> loadCalls = [];
+  final List<String> deleteCalls = [];
 
   @override
   Future<List<WeKnoraSessionSummary>> listSessions({int limit = 50}) async {
@@ -311,6 +360,17 @@ class _FakeSessionApi implements WeKnoraSessionApi {
       throw WeKnoraSessionNotFoundException(sessionId);
     }
     return history[sessionId] ?? const [];
+  }
+
+  @override
+  Future<void> deleteSession({required String sessionId}) async {
+    deleteCalls.add(sessionId);
+    if (deleteFailures.contains(sessionId)) {
+      throw const WeKnoraSessionApiException(
+        statusCode: 500,
+        message: 'boom',
+      );
+    }
   }
 }
 

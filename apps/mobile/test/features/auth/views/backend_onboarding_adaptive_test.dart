@@ -266,6 +266,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
+      // The WeKnora row added to the self-hosted group can push this row
+      // below the fold in the phone viewport, so scroll it into view first.
+      await tester.ensureVisible(find.text('Connect directly'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Connect directly'));
       await tester.pumpAndSettle();
 
@@ -337,6 +341,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // The WeKnora row added to the self-hosted group can push this row
+      // below the fold in the phone viewport, so scroll it into view first.
+      await tester.ensureVisible(find.text('Connect directly'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Connect directly'));
       await tester.pumpAndSettle();
 

@@ -293,7 +293,7 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
         onChange={(event) => setJump(event.target.value)}
         onBlur={commitJump}
         onKeyDown={(event) => { if (event.key === 'Enter') commitJump(); }} />
-      /{maxPage} {tr('tenantMembersPanel.pager.pageUnit')}
+      / {maxPage} {tr('tenantMembersPanel.pager.pageUnit')}
     </span>
   </div>;
 }
@@ -695,8 +695,8 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </Button> : null}
       </div>
       <p className="m-0 text-[14px] leading-[1.5] text-[var(--wk-muted,#66758b)] opacity-75">
-        {tr('tenantMember.sectionDescription')}
-        <a className="ml-[0.375rem] inline-flex items-center gap-[0.2rem] text-primary no-underline hover:underline" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
+        {tr('tenantMember.sectionDescription')}{' '}
+        <a className="inline-flex items-center gap-[0.2rem] text-primary no-underline hover:underline" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
           {tr('tenantMember.learnRbacGuide')} <Icon name="link" size={12} />
         </a>
       </p>

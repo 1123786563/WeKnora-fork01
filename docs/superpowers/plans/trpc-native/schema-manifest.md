@@ -5,13 +5,20 @@ Migration `000162_native_agent_schema` (PostgreSQL) and
 namespace.  They create no copy of legacy `sessions`, old Memory, messages, or
 agent-run records.
 
+Migration `000166_native_user_state` (PostgreSQL) and
+`000087_native_user_state` (SQLite) add the independent user-state boundary
+after that namespace is deployed. `owner_id` is the frozen SessionOwnerID, so
+it supports account users, tenant API keys, API external users, and embed
+sessions without requiring a synthetic native session or a `users` row.
+
 | Logical record | Physical table | Authority and minimum constraint |
 | --- | --- | --- |
 | Tenant admission scope | `native_agent_tenants` | one row per business tenant |
 | Session scope and state | `native_agent_sessions`, `native_session_state` | tenant/owner/session/state-key revision CAS |
+| User state | `native_user_state` | admitted-tenant foreign key and scoped `(tenant,owner,state-key)` revision CAS for a frozen owner identity; no native session is required |
 | Run and lease fence | `native_agent_runs` | scoped request/input idempotency, owner/session binding, revision and non-negative epoch |
 | Input and config snapshot | `native_agent_inputs`, `native_agent_config_bindings` | immutable scoped hashes |
-| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence |
+| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence; new jobs retain their SessionKey `(app,user,session)` for recovery (nullable for pre-P1.4 jobs). Migration `000093`/`000172` persists `retry_attempt`, finite `max_attempts`, `retry_status`, `next_attempt_at`, and `last_error`; a due-job index supports bounded retry recovery without scanning all jobs. |
 | Attempts and tools | `native_agent_attempts`, `native_agent_tool_calls`, `native_agent_tool_plans`, `native_agent_tool_results` | attempt/call/plan scope, provider identity and immutable result receipt/hash |
 | Pending decisions | `native_agent_pending_decisions` | scoped revision and status index |
 | Commit/barrier state | `native_agent_commit_intents`, `native_agent_checkpoints` | intent payload hash, epoch, non-runnable checkpoint default |

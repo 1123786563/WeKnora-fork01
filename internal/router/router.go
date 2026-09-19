@@ -347,6 +347,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterFeedbackRoutes(v1, params.FeedbackHandler, rbacGuards)
+		RegisterQueryHistoryAdminRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterAnalyticsRoutes(v1, params.AnalyticsHandler, rbacGuards)
 		RegisterUsageRoutes(v1, params.UsageHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)

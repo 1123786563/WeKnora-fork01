@@ -46,6 +46,12 @@ type SessionService interface {
 	// CountSessionsBySource returns the total for a source filter without the
 	// Admin+ gate applied by ListSessions (for aggregate stats endpoints).
 	CountSessionsBySource(ctx context.Context, query *types.SessionListQuery) (int64, error)
+	// GetQueryHistorySnapshot assembles the Admin+ audit snapshot of one
+	// session (session row + most recent messages + all feedback rows),
+	// enforcing the tenant's query-history privacy policy: disabled blocks
+	// the read, anonymized masks owner ids on the returned rows. Callers must
+	// already be Admin+ (route guard).
+	GetQueryHistorySnapshot(ctx context.Context, tenantID uint64, sessionID string) (*types.QueryHistorySnapshot, error)
 	// SetSessionPinned pins or unpins the session for the current user scope.
 	// Returns the number of rows affected; 0 signals "not found" to the handler.
 	SetSessionPinned(ctx context.Context, sessionID string, pinned bool) (int64, error)

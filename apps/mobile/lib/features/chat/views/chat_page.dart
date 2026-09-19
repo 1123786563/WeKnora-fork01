@@ -38,6 +38,7 @@ import '../../direct_connections/providers/direct_connection_providers.dart';
 import '../../direct_connections/services/direct_chat_bridge.dart';
 import '../../direct_connections/services/direct_model_registry.dart';
 import '../../direct_connections/widgets/direct_mcp_message_interactions.dart';
+import '../../weknora/account/weknora_providers.dart';
 import '../providers/chat_providers.dart';
 import '../providers/openwebui_chat_prompt_provider.dart';
 import '../../hermes/models/hermes_model.dart';
@@ -83,6 +84,7 @@ import '../../../core/models/model.dart';
 import '../../../core/models/openwebui_chat_prompt.dart';
 import '../providers/context_attachments_provider.dart';
 import '../../../shared/utils/adaptive_glass.dart';
+import '../../../shared/utils/ui_utils.dart';
 import '../../../shared/widgets/themed_dialogs.dart';
 import '../../../shared/widgets/themed_sheets.dart';
 import '../../../shared/widgets/measure_size.dart';
@@ -2339,6 +2341,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void _handleConversationChanged(String? conversationId) {
     if (conversationId == _lastConversationId) return;
 
+    // A freshly opened WeKnora conversation may carry no local transcript
+    // (the session-list sync upserts server sessions without messages);
+    // pull the server history so the chat renders its past turns.
+    final opened = ref.read(activeConversationProvider);
+    if (opened != null) {
+      _hydrateWeKnoraHistoryForOpenedConversation(opened);
+    }
+
     final outgoingId = _lastConversationId;
     if (debugShouldPreservePinnedFirstTurnForConversationBindingForTesting(
       pinActive: _wantsPinToTop,
@@ -2404,6 +2414,63 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         _bottomAnchorController.resetForDetachedScroll();
       }
     }
+  }
+
+  /// Hydrates the server-side history of a just-opened WeKnora conversation
+  /// whose local transcript is empty, then re-publishes the hydrated record
+  /// as the active conversation so the transcript view adopts the messages.
+  ///
+  /// A 404 means the server no longer knows the session: the sync layer
+  /// already evicted the conversation from the list, so this surfaces the
+  /// localized deletion notice and clears the now-dangling selection (same
+  /// teardown as the local delete flow). Best-effort: any other failure is
+  /// logged and leaves the conversation usable for new turns.
+  void _hydrateWeKnoraHistoryForOpenedConversation(Conversation conversation) {
+    final sessionId = conversation.metadata['weknoraSessionId'];
+    if (sessionId is! String || sessionId.isEmpty) return;
+    if (conversation.messages.isNotEmpty) return;
+    unawaited(() async {
+      try {
+        // Only signed-in users hit the WeKnora API; without an account the
+        // conversation stays as-is (offline history is still readable).
+        final account = await ref.read(weknoraAccountProvider.future);
+        if (account == null || !mounted) return;
+        await ref
+            .read(weknoraSessionSyncProvider)
+            .hydrateMessages(conversation: conversation);
+        if (!mounted) return;
+        final hydrated = ref
+            .read(conversationsProvider)
+            .asData
+            ?.value
+            .where((current) => current.id == conversation.id)
+            .firstOrNull;
+        if (hydrated == null) {
+          // Evicted: the session was deleted on the server.
+          UiUtils.showMessage(
+            context,
+            AppLocalizations.of(context)!.weknoraSessionDeletedNotice,
+          );
+          clearSelectedFiltersForConversationBoundary(ref);
+          ref.read(activeConversationProvider.notifier).clear();
+          ref.read(chatMessagesProvider.notifier).clearMessages();
+          unawaited(restoreDefaultModel(ref));
+          return;
+        }
+        final active = ref.read(activeConversationProvider);
+        if (active != null && active.id == conversation.id) {
+          ref.read(activeConversationProvider.notifier).set(hydrated);
+        }
+      } catch (error, stackTrace) {
+        DebugLogger.error(
+          'weknora-open-hydrate-failed',
+          scope: 'chat/page',
+          error: error,
+          stackTrace: stackTrace,
+          data: {'conversationId': conversation.id},
+        );
+      }
+    }());
   }
 
   void _handleViewportOwnerChanged() {

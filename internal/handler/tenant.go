@@ -1291,7 +1291,7 @@ func (h *TenantHandler) SearchTenants(c *gin.Context) {
 
 // GetTenantKV godoc
 // @Summary      获取空间KV配置
-// @Description  获取空间级别的KV配置（支持web-search-config、prompt-templates、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config）
+// @Description  获取空间级别的KV配置（支持web-search-config、prompt-templates、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config、memory-config、query-history-config）
 // @Tags         空间管理
 // @Accept       json
 // @Produce      json
@@ -1335,6 +1335,9 @@ func (h *TenantHandler) GetTenantKV(c *gin.Context) {
 	case "memory-config":
 		h.GetTenantMemoryConfig(c)
 		return
+	case "query-history-config":
+		h.GetTenantQueryHistoryConfig(c)
+		return
 	default:
 		logger.Info(ctx, "KV key not supported", "key", key)
 		c.Error(errors.NewBadRequestError("unsupported key"))
@@ -1344,7 +1347,7 @@ func (h *TenantHandler) GetTenantKV(c *gin.Context) {
 
 // UpdateTenantKV godoc
 // @Summary      更新空间KV配置
-// @Description  更新空间级别的KV配置（支持web-search-config、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config）
+// @Description  更新空间级别的KV配置（支持web-search-config、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config、memory-config、query-history-config）
 // @Tags         空间管理
 // @Accept       json
 // @Produce      json
@@ -1385,6 +1388,9 @@ func (h *TenantHandler) UpdateTenantKV(c *gin.Context) {
 		return
 	case "memory-config":
 		h.updateTenantMemoryConfigInternal(c)
+		return
+	case "query-history-config":
+		h.updateTenantQueryHistoryConfigInternal(c)
 		return
 	default:
 		logger.Info(ctx, "KV key not supported", "key", key)
@@ -1898,6 +1904,75 @@ func (h *TenantHandler) updateTenantMemoryConfigInternal(c *gin.Context) {
 		"success": true,
 		"data":    updatedTenant.MemoryConfig,
 		"message": "Memory configuration updated successfully",
+	})
+}
+
+// GetTenantQueryHistoryConfig returns the workspace query-history privacy
+// configuration. A tenant that never configured the policy reads as
+// {mode:"normal"} — the effective default everywhere the policy is enforced.
+func (h *TenantHandler) GetTenantQueryHistoryConfig(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenant, _ := types.TenantInfoFromContext(ctx)
+	if tenant == nil {
+		logger.Error(ctx, "Workspace is empty")
+		c.Error(errors.NewBadRequestError("Workspace is empty"))
+		return
+	}
+	data := tenant.QueryHistoryConfig
+	if data == nil {
+		data = &types.QueryHistoryConfig{Mode: types.QueryHistoryModeNormal}
+	}
+	data.Normalize()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data,
+	})
+}
+
+// updateTenantQueryHistoryConfigInternal updates the workspace query-history
+// privacy configuration. Unlike the GET path (which normalizes anything it
+// reads), the write path is strict: the mode must be one of the three
+// supported values so a typo can never silently weaken or lock the policy.
+func (h *TenantHandler) updateTenantQueryHistoryConfigInternal(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var cfg types.QueryHistoryConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		logger.Error(ctx, "Failed to parse request parameters", err)
+		c.Error(errors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+	mode := strings.TrimSpace(cfg.Mode)
+	switch mode {
+	case types.QueryHistoryModeNormal, types.QueryHistoryModeAnonymized, types.QueryHistoryModeDisabled:
+		cfg.Mode = mode
+	default:
+		c.Error(errors.NewBadRequestError("mode must be normal, anonymized or disabled"))
+		return
+	}
+
+	tenant, _ := types.TenantInfoFromContext(ctx)
+	if tenant == nil {
+		logger.Error(ctx, "Workspace is empty")
+		c.Error(errors.NewBadRequestError("Workspace is empty"))
+		return
+	}
+
+	tenant.QueryHistoryConfig = &cfg
+	updatedTenant, err := h.service.UpdateTenant(ctx, tenant)
+	if err != nil {
+		if appErr, ok := errors.IsAppError(err); ok {
+			c.Error(appErr)
+		} else {
+			logger.ErrorWithFields(ctx, err, nil)
+			c.Error(errors.NewInternalServerError("Failed to update query history config").WithDetails(err.Error()))
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    updatedTenant.QueryHistoryConfig,
+		"message": "Query history configuration updated successfully",
 	})
 }
 

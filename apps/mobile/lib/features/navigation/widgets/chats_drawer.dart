@@ -9,9 +9,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../auth/providers/unified_auth_providers.dart';
+import '../../weknora/account/weknora_providers.dart';
 import '../../../core/services/native_sheet_bridge.dart';
 import '../../../shared/theme/theme_extensions.dart';
 import '../../../shared/utils/platform_scroll_physics.dart';
+import '../../../shared/utils/ui_utils.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/user_friendly_error_handler.dart';
@@ -83,6 +85,36 @@ class _ChatsDrawerState extends ConsumerState<ChatsDrawer>
     _listController.addListener(_onListScrolled);
     _sidebarSearchController = ref.read(sidebarSearchFieldControllerProvider);
     _sidebarSearchController.addListener(_onSearchChanged);
+    // Opening the drawer refreshes the WeKnora session list so conversations
+    // created on the web appear here. Fire-and-forget: the guarded provider
+    // logs its own failures and shows no spinner for this trigger.
+    unawaited(_refreshWeKnoraSessions(showEvictionNotice: false));
+  }
+
+  /// Refreshes WeKnora server-backed conversations when a WeKnora account
+  /// exists; a no-op otherwise. Pull-to-refresh awaits it (the spinner
+  /// reflects completion) and surfaces the deleted-on-server notice when the
+  /// refresh evicted conversations; the drawer-open trigger stays silent.
+  Future<void> _refreshWeKnoraSessions({
+    required bool showEvictionNotice,
+  }) async {
+    List<String> evicted;
+    try {
+      evicted = await ref.read(weknoraSessionRefreshIfSignedInProvider)();
+    } catch (error, stackTrace) {
+      DebugLogger.error(
+        'weknora-drawer-refresh-failed',
+        scope: 'drawer',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    if (!showEvictionNotice || evicted.isEmpty || !mounted) return;
+    UiUtils.showMessage(
+      context,
+      AppLocalizations.of(context)!.weknoraSessionDeletedNotice,
+    );
   }
 
   Future<void> _refreshChats() async {
@@ -94,6 +126,9 @@ class _ChatsDrawerState extends ConsumerState<ChatsDrawer>
               .read(conversationsProvider.notifier)
               .refresh(includeFolders: true);
         } catch (_) {}
+        // WeKnora server sessions ride their own list endpoint; awaiting it
+        // keeps the pull-to-refresh spinner up until the remote list lands.
+        await _refreshWeKnoraSessions(showEvictionNotice: true);
       } else {
         // Refresh server-side search results and keep the local cache warm.
         refreshConversationsCache(ref, includeFolders: true);

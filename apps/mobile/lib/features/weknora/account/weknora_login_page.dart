@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/providers/backend_mode_providers.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../shared/theme/theme_extensions.dart';
 import '../../../shared/widgets/connection_components.dart';
 import '../../../shared/widgets/conduit_components.dart';
 import '../../../shared/widgets/utility_components.dart';
@@ -48,8 +50,11 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
   }
 
   void _onFieldChanged(String _) {
-    // Editing after a failure is the signal that the error is stale.
-    if (_error != null || !_canSubmit) setState(() => _error = null);
+    // Typing can both clear a stale error and complete the form, so the
+    // submit button's enabled state must be recomputed on every change.
+    // (Skipping the rebuild when the form was already complete would keep
+    // the button disabled after the last field is filled.)
+    setState(() => _error = null);
   }
 
   Future<void> _submit() async {
@@ -59,6 +64,7 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
     // chat home after a successful login disposes this widget's ref.
     final accountService = ref.read(weknoraAccountServiceProvider);
     final hydrateSessions = ref.read(weknoraSessionRefreshAndHydrateProvider);
+    final setPreferredBackend = ref.read(preferredBackendProvider.notifier).set;
     setState(() {
       _busy = true;
       _error = null;
@@ -69,6 +75,14 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
         email: _email.text.trim(),
         password: _password.text,
       );
+      if (!mounted) return;
+      // WeKnora rides the Direct connection pool, so the router only lets
+      // /chat through once Direct is the preferred backend — a fresh install
+      // would otherwise be bounced back to the chooser and a signed-out
+      // OpenWebUI user to the authentication page. Same completion idiom as
+      // the chooser's Apple rows (see _selectAppleModel).
+      await setPreferredBackend(PreferredBackend.direct);
+      if (!mounted) return;
       // Drop the cached account so the settings account section reflects the
       // new session without waiting for its next read.
       ref.invalidate(weknoraAccountProvider);

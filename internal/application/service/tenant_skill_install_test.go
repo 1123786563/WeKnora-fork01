@@ -3299,6 +3299,10 @@ func (s *installSessionService) CountSessionsBySource(context.Context, *types.Se
 	return 0, nil
 }
 
+func (s *installSessionService) GetQueryHistorySnapshot(context.Context, uint64, string) (*types.QueryHistorySnapshot, error) {
+	return nil, nil
+}
+
 func (s *installSessionService) SetSessionPinned(context.Context, string, bool) (int64, error) {
 	return 0, nil
 }

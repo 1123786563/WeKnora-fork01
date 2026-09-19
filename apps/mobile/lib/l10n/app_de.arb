@@ -3267,4 +3267,27 @@
   }
   ,"directBearerDescription": "Sendet die Anmeldedaten im Header Authorization: Bearer. Die meisten OpenAI-kompatiblen Server (llama.cpp, vLLM, LM Studio, Ollama) erwarten das."
   ,"directApiKeyHeaderAzureOnlyDescription": "Sendet die Anmeldedaten im Header api-key. Nur für Azure OpenAI verwenden; andere OpenAI-kompatible Server erwarten ein Bearer-Token."
+  ,"weknoraLoginTitle": "Bei WeKnora anmelden"
+  ,"weknoraLoginServerField": "Serveradresse"
+  ,"weknoraLoginEmailField": "E-Mail"
+  ,"weknoraLoginPasswordField": "Passwort"
+  ,"weknoraLoginButton": "Anmelden"
+  ,"weknoraLoginInvalidCredentials": "E-Mail oder Passwort ist falsch."
+  ,"weknoraLoginUnreachable": "Der WeKnora-Server ist nicht erreichbar. Prüfen Sie die Adresse und Ihre Verbindung."
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "Melden Sie sich bei Ihrer selbst gehosteten WeKnora-Wissensdatenbank an."
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "Bei WeKnora anmelden"
+  ,"weknoraAccountSignedInAs": "Angemeldet als {email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "Server"
+  ,"weknoraAccountSignOut": "Abmelden"
+  ,"weknoraSessionDeletedNotice": "Diese Unterhaltung wurde auf dem Server gelöscht."
+  ,"weknoraAccountManagedHint": "Die WeKnora-Direktverbindung wird über diese Anmeldung verwaltet."
 }

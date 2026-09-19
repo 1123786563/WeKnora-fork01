@@ -22,7 +22,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { sortUsageRows } = await import('./AnalyticsPage.tsx');
+const { isUnattributedUsageRow, sortUsageRows } = await import('./AnalyticsPage.tsx');
 import type { UsageByUserRow } from '@weknora/contracts';
 
 // byUser rows are flat (one per user × model × window); only the fields the
@@ -61,4 +61,18 @@ test('sortUsageRows handles empty and single-row pages', () => {
   assert.deepEqual(sortUsageRows([]), []);
   const only = row('solo', 'm1', 42);
   assert.deepEqual(sortUsageRows([only]), [only]);
+});
+
+// SP12 终审 — the craft fold attributes orphan facts to the empty user
+// (craft_usage.go COALESCE fallback), so by-user pages can carry user_id:''
+// rows; the table must show them under the System placeholder (not crash —
+// the contract no longer rejects them either).
+test('isUnattributedUsageRow flags only the empty user_id bucket', () => {
+  assert.equal(isUnattributedUsageRow(row('', 'glm-4.7', 10)), true);
+  assert.equal(isUnattributedUsageRow(row('u1', 'glm-4.7', 10)), false);
+});
+
+test('sortUsageRows keeps empty-user_id rows alongside attributed ones', () => {
+  const sorted = sortUsageRows([row('u1', 'm1', 5), row('', 'm1', 100)]);
+  assert.deepEqual(sorted.map((item) => item.user_id), ['', 'u1']);
 });

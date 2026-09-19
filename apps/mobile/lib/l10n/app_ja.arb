@@ -4607,4 +4607,27 @@
   }
   ,"directBearerDescription": "認証情報を Authorization: Bearer ヘッダーで送信します。ほとんどの OpenAI 互換サーバー（llama.cpp、vLLM、LM Studio、Ollama）はこの方式を想定しています。"
   ,"directApiKeyHeaderAzureOnlyDescription": "認証情報を api-key ヘッダーで送信します。Azure OpenAI 専用です。他の OpenAI 互換サーバーは Bearer トークンを想定しています。"
+  ,"weknoraLoginTitle": "WeKnora にサインイン"
+  ,"weknoraLoginServerField": "サーバーアドレス"
+  ,"weknoraLoginEmailField": "メールアドレス"
+  ,"weknoraLoginPasswordField": "パスワード"
+  ,"weknoraLoginButton": "サインイン"
+  ,"weknoraLoginInvalidCredentials": "メールアドレスまたはパスワードが正しくありません。"
+  ,"weknoraLoginUnreachable": "WeKnora サーバーに接続できません。アドレスと接続を確認してください。"
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "セルフホストの WeKnora ナレッジベースにサインインします。"
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "WeKnora にサインイン"
+  ,"weknoraAccountSignedInAs": "{email} としてサインイン中"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "サーバー"
+  ,"weknoraAccountSignOut": "サインアウト"
+  ,"weknoraSessionDeletedNotice": "この会話はサーバー上で削除されました。"
+  ,"weknoraAccountManagedHint": "WeKnora の直接接続はこのログインで管理されます。"
 }

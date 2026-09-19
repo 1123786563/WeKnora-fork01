@@ -10,6 +10,10 @@ type FeedbackRepository interface {
 	UpsertFeedback(ctx context.Context, fb *types.MessageFeedback) error
 	RemoveFeedback(ctx context.Context, tenantID uint64, messageID, userID string) error
 	ListBySessionAndUser(ctx context.Context, tenantID uint64, sessionID, userID string) ([]types.MessageFeedback, error)
+	// ListBySession returns every feedback row of one session inside the
+	// tenant, across users (the admin query-history audit snapshot). Unlike
+	// ListBySessionAndUser it carries no user predicate.
+	ListBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.MessageFeedback, error)
 }
 
 // FeedbackService defines the message feedback service interface. Access is

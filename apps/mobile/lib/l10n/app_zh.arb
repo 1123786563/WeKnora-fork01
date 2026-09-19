@@ -3288,4 +3288,6 @@
   }
   ,"weknoraAccountServer": "服务器"
   ,"weknoraAccountSignOut": "退出登录"
+  ,"weknoraSessionDeletedNotice": "该会话已在服务器上删除。"
+  ,"weknoraAccountManagedHint": "WeKnora 直连配置由此登录管理。"
 }
