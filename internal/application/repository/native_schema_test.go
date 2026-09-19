@@ -61,7 +61,7 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 				"a matching ID in another tenant is independent")
 
 			require.Error(t, db.Exec(`INSERT INTO native_agent_runs
-				(tenant_id, run_id, session_id, user_id, lease_epoch)
+				(tenant_id, run_id, session_id, owner_id, lease_epoch)
 				VALUES (?, ?, ?, ?, ?)`, 999, "foreign-run", "s1", "u1", 1).Error,
 				"a run cannot be admitted for an unknown tenant")
 			require.Error(t, db.Exec(`INSERT INTO native_agent_attempts
@@ -69,7 +69,7 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 				VALUES (?, ?, ?, ?)`, 1, "missing-run", "attempt-1", 1).Error,
 				"an attempt requires its scoped run")
 			require.NoError(t, db.Exec(`INSERT INTO native_agent_runs
-				(tenant_id, run_id, session_id, user_id, lease_epoch)
+				(tenant_id, run_id, session_id, owner_id, lease_epoch)
 				VALUES (?, ?, ?, ?, ?)`, 2, "run-1", "s1", "u1", 1).Error,
 				"the same run ID is independent in a second tenant")
 			require.NoError(t, db.Exec(`INSERT INTO native_agent_inputs
@@ -171,9 +171,9 @@ func seedNativeSchemaFixture(t *testing.T, db *gorm.DB) {
 	for _, tenantID := range []int{1, 2} {
 		require.NoError(t, db.Exec(`INSERT INTO native_agent_tenants (tenant_id) VALUES (?)`, tenantID).Error)
 	}
-	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, user_id, session_id) VALUES (?, ?, ?)`, 1, "u1", "s1").Error)
-	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, user_id, session_id) VALUES (?, ?, ?)`, 2, "u1", "s1").Error)
-	require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, session_id, user_id, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", "s1", "u1", 1).Error)
+	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 1, "u1", "s1").Error)
+	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 2, "u1", "s1").Error)
+	require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, session_id, owner_id, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", "s1", "u1", 1).Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_memory_scopes (tenant_id, user_id, generation, tombstone_generation) VALUES (?, ?, ?, ?)`, 1, "u1", 3, 2).Error)
 }
 

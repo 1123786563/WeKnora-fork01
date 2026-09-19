@@ -22,7 +22,7 @@ type NativeSchemaTable struct {
 func NativeSchemaManifest() []NativeSchemaTable {
 	return []NativeSchemaTable{
 		nativeTable("native_agent_tenants", []string{"tenant_id"}, []string{"tenant_id"}),
-		nativeTable("native_agent_sessions", []string{"tenant_id", "user_id", "session_id"}, []string{"tenant_id", "user_id", "session_id"}),
+		nativeTable("native_agent_sessions", []string{"tenant_id", "owner_id", "session_id"}, []string{"tenant_id", "owner_id", "session_id"}),
 		nativeTable("native_session_state", []string{"tenant_id", "owner_id", "session_id", "state_key", "revision", "state_value"}, []string{"tenant_id", "owner_id", "session_id", "state_key"}),
 		nativeTable("native_agent_runs", []string{"tenant_id", "run_id", "owner_id", "session_id", "request_id", "input_hash", "revision", "lease_epoch"}, []string{"tenant_id", "run_id"}),
 		nativeTable("native_agent_inputs", []string{"tenant_id", "run_id", "input_id", "input_hash", "payload", "role"}, []string{"tenant_id", "run_id", "input_id"}),

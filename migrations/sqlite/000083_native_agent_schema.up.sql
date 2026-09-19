@@ -7,18 +7,17 @@ CREATE TABLE IF NOT EXISTS native_agent_tenants (
 
 CREATE TABLE IF NOT EXISTS native_agent_sessions (
     tenant_id INTEGER NOT NULL REFERENCES native_agent_tenants(tenant_id) ON DELETE RESTRICT,
-    user_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tenant_id, user_id, session_id),
-    UNIQUE (tenant_id, session_id)
+    PRIMARY KEY (tenant_id, owner_id, session_id)
 );
 
 CREATE TABLE IF NOT EXISTS native_agent_runs (
     tenant_id INTEGER NOT NULL REFERENCES native_agent_tenants(tenant_id) ON DELETE RESTRICT,
     run_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     lease_owner TEXT NOT NULL DEFAULT '',
     lease_epoch INTEGER NOT NULL DEFAULT 0 CHECK (lease_epoch >= 0),
@@ -26,7 +25,7 @@ CREATE TABLE IF NOT EXISTS native_agent_runs (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, run_id),
-    FOREIGN KEY (tenant_id, user_id, session_id) REFERENCES native_agent_sessions(tenant_id, user_id, session_id) ON DELETE RESTRICT
+    FOREIGN KEY (tenant_id, owner_id, session_id) REFERENCES native_agent_sessions(tenant_id, owner_id, session_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_native_agent_runs_scope_status ON native_agent_runs (tenant_id, session_id, status, lease_expires_at);
 
@@ -196,7 +195,6 @@ CREATE TABLE IF NOT EXISTS native_agent_usage_observations (
     FOREIGN KEY (tenant_id, run_id, attempt_id) REFERENCES native_agent_attempts(tenant_id, run_id, attempt_id) ON DELETE RESTRICT
 );
 
-ALTER TABLE native_agent_runs ADD COLUMN owner_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_runs ADD COLUMN request_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_runs ADD COLUMN input_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_runs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0);
@@ -211,7 +209,7 @@ CREATE TABLE IF NOT EXISTS native_session_state (
     state_value TEXT NOT NULL DEFAULT '{}',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, owner_id, session_id, state_key),
-    FOREIGN KEY (tenant_id, owner_id, session_id) REFERENCES native_agent_sessions(tenant_id, user_id, session_id) ON DELETE RESTRICT
+    FOREIGN KEY (tenant_id, owner_id, session_id) REFERENCES native_agent_sessions(tenant_id, owner_id, session_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_native_session_state_scope_revision ON native_session_state (tenant_id, owner_id, session_id, revision);
 
@@ -233,6 +231,9 @@ CREATE INDEX IF NOT EXISTS idx_native_memory_jobs_scope_status ON native_memory_
 
 ALTER TABLE native_agent_inputs ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
 ALTER TABLE native_agent_inputs ADD COLUMN request_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_inputs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_inputs ADD COLUMN ordinal INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_inputs ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0 CHECK (consumed IN (0, 1));
 CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_inputs_request_scope ON native_agent_inputs (tenant_id, run_id, request_id);
 
 ALTER TABLE native_agent_config_bindings ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
@@ -244,6 +245,8 @@ ALTER TABLE native_agent_config_bindings ADD COLUMN tool_set_hash TEXT NOT NULL 
 ALTER TABLE native_agent_config_bindings ADD COLUMN skill_set_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN execution_target_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN workspace_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN source TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN target TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE native_agent_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'model';
 ALTER TABLE native_agent_attempts ADD COLUMN logical_call_id TEXT NOT NULL DEFAULT '';
@@ -262,6 +265,11 @@ CREATE TABLE IF NOT EXISTS native_agent_tool_plans (
     call_id TEXT NOT NULL,
     plan_version INTEGER NOT NULL CHECK (plan_version > 0),
     provider_tool_call_id TEXT NOT NULL DEFAULT '',
+    service_id TEXT NOT NULL DEFAULT '',
+    installation_id TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    schema_hash TEXT NOT NULL DEFAULT '',
+    config_version TEXT NOT NULL DEFAULT '',
     args TEXT NOT NULL DEFAULT '{}',
     args_hash TEXT NOT NULL CHECK (length(args_hash) > 0),
     policy TEXT NOT NULL,
@@ -313,3 +321,16 @@ ALTER TABLE native_agent_usage_observations ADD COLUMN input_tokens INTEGER NOT 
 ALTER TABLE native_agent_usage_observations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE native_agent_usage_observations ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE native_agent_usage_observations ADD COLUMN cost_micros INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN provider_request_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN funding_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN budget_root_run_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN cache_create_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN accounting_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN dimensions TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE native_agent_usage_observations ADD COLUMN occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE native_agent_events ADD COLUMN protocol TEXT NOT NULL DEFAULT 'weknora.agent.v1';
+ALTER TABLE native_agent_events ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE native_agent_events ADD COLUMN attempt_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_events ADD COLUMN kind TEXT NOT NULL DEFAULT '';
