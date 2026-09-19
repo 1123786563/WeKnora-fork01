@@ -221,6 +221,9 @@ func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 			db := openNativeSchemaTestDB(t, dialect)
 			require.Equal(t, dialect, db.Name(), "native schema migrations must run on the requested database dialect")
 			seedNativeSchemaFixture(t, db)
+			require.NoError(t, db.Exec(`INSERT INTO native_user_state
+				(tenant_id, owner_id, state_key, state_value) VALUES (?, ?, ?, ?)`,
+				1, "rollback-guard-owner", "preferences", `{}`).Error)
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
 			require.Error(t, m.Steps(-1), "a populated namespace must reject destructive rollback")
@@ -272,7 +275,6 @@ func seedNativeSchemaFixture(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 1, "u1", "s1").Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 2, "u1", "s1").Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, session_id, owner_id, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", "s1", "u1", 1).Error)
-	require.NoError(t, db.Exec(`INSERT INTO native_user_state (tenant_id, owner_id, state_key, state_value) VALUES (?, ?, ?, ?)`, 1, "rollback-guard-owner", "preferences", `{}`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_memory_scopes (tenant_id, user_id, generation, tombstone_generation) VALUES (?, ?, ?, ?)`, 1, "u1", 3, 2).Error)
 }
 
