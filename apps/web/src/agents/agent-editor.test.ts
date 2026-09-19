@@ -128,6 +128,22 @@ test('hydrateAgentForm keeps the expert_source provenance stamp and defaults it 
   assert.equal(nullStamp.config.expert_source, null);
 });
 
+// Octop M3: delegation slugs must survive the editor round-trip — same trap as
+// expert_source: a key missing from defaultAgentConfig is dropped by hydrate.
+test('hydrateAgentForm keeps the subagents delegation list and defaults it to empty', () => {
+  assert.deepEqual(defaultAgentForm().config.subagents, []);
+  const stored = hydrateAgentForm({ id: 'a-9', name: 'x', config: { subagents: ['code-reviewer'] } });
+  assert.deepEqual(stored.config.subagents, ['code-reviewer']);
+  const savedConfig = buildAgentPayload(stored).config as AgentEditorForm['config'];
+  assert.deepEqual(savedConfig.subagents, ['code-reviewer'], 'save must carry the delegation list back');
+  // legacy agents without the key hydrate to delegation-off, and garbage values
+  // (a string, an object) never leak through as a non-string-array
+  const legacy = hydrateAgentForm({ id: 'a-10', name: 'x', config: {} });
+  assert.deepEqual(legacy.config.subagents, []);
+  const dirty = hydrateAgentForm({ id: 'a-11', name: 'x', config: { subagents: ['ok', 7, null] } });
+  assert.deepEqual(dirty.config.subagents, ['ok']);
+});
+
 // --- selection modes (AgentEditorModal.vue:3564-3602, 3640-3711) ---------------------
 
 test('initKbSelectionMode prefers the stored mode, then knowledge_bases, then none', () => {
@@ -258,10 +274,11 @@ test('nav groups add retrieval with KB capability and tools/skills in agent mode
   const groups = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability']);
   // personalization (Octop M1, no Vue baseline) rides the basic group after
-  // conversation, offered only in smart-reasoning mode
+  // conversation, offered only in smart-reasoning mode; subagents (Octop M3
+  // delegation) rides the capability group under the same agent-mode gate
   assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'personalization']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
-  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['tools', 'skills']);
+  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['tools', 'skills', 'subagents']);
 });
 
 // --- tool requirement evaluation (frontend/src/utils/tool-capabilities.ts) -----------

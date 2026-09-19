@@ -110,6 +110,10 @@ export interface AgentConfigForm {
   // Octop M2 expert provenance (no Vue baseline); null = not expert-created.
   // Must exist in defaults or hydrateAgentForm drops it (trap at the merge loop)
   expert_source?: ExpertSourceForm | null;
+  // Octop M3 delegation (no Vue baseline): catalog slugs installed on this
+  // agent — empty means the subagent_delegate tool is not registered at all
+  // (delegation off). Must exist in defaults or hydrate drops it (M1 trap).
+  subagents: string[];
   [key: string]: unknown;
 }
 
@@ -200,6 +204,8 @@ export function defaultAgentConfig(): AgentConfigForm {
     // expert provenance stamp: null unless the agent came from an expert
     // template; hydrate only copies a present object over this default
     expert_source: null,
+    // delegation off by default — subagents must be installed explicitly
+    subagents: [],
   };
 }
 
@@ -230,6 +236,8 @@ export function hydrateAgentForm(agent: Record<string, unknown>): AgentEditorFor
   config.mcp_services = asStringArray(stored.mcp_services);
   config.selected_skills = asStringArray(stored.selected_skills);
   config.supported_file_types = asStringArray(stored.supported_file_types);
+  // M3 delegation slugs — string-array like the tool/skill lists above
+  config.subagents = asStringArray(stored.subagents);
   const waitTimeout = asNumber(stored.mcp_auth_wait_timeout, 0);
   config.mcp_auth_wait_timeout = waitTimeout <= 0 ? 600 : waitTimeout;
   config.max_completion_tokens = asNumber(stored.max_completion_tokens, 0);
@@ -313,7 +321,7 @@ export const agentModeOf = (config: Record<string, unknown> | undefined): AgentM
 
 export type AgentSectionKey =
   | 'basic' | 'prompts' | 'model' | 'conversation' | 'knowledge' | 'retrieval'
-  | 'websearch' | 'tools' | 'skills' | 'personalization';
+  | 'websearch' | 'tools' | 'skills' | 'personalization' | 'subagents';
 
 export type AgentFieldError =
   | 'name' | 'system_prompt' | 'context_template' | 'model_id'
@@ -406,6 +414,10 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     items.push({ key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' });
     items.push({ key: 'tools', icon: 'tools', labelKey: 'agent.editor.toolsConfig' });
     items.push({ key: 'skills', icon: 'skills', labelKey: 'agent.editor.skillsConfig' });
+    // Octop M3 delegation (no Vue baseline): sub-agent roles only register the
+    // delegate tool in the smart-reasoning pipeline, so the same agent-mode
+    // gate as tools/skills applies.
+    items.push({ key: 'subagents', icon: 'app-link', labelKey: 'agentEditor.subagents.title' });
   }
   const byKey = new Map(items.map((item) => [item.key, item]));
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
@@ -413,7 +425,7 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   return [
     { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'personalization']) },
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
-    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['tools', 'skills']) },
+    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['tools', 'skills', 'subagents']) },
   ].filter((group) => group.items.length > 0);
 }
 

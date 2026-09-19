@@ -37,6 +37,7 @@ import {
   type Translate,
 } from './agent-editor.ts';
 import { PersonaSection } from './PersonaSection.tsx';
+import { SubagentsSection } from './SubagentsSection.tsx';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -199,7 +200,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setInitializing(true);
     setSaveError(null);
     setIssues([]);
-    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'personalization', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
+    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'personalization', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills', 'subagents'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
     const highlight = initialHighlightField && VALID_INITIAL_HIGHLIGHTS.has(initialHighlightField) ? initialHighlightField : null;
     setHighlightedField(highlight);
     setPostCreate(false);
@@ -1028,6 +1029,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     return <PersonaSection config={form.config} patchConfig={patchConfig} client={client} t={t} />;
   }
 
+  function renderSubagents() {
+    // agentId is empty in a create session before the first save — install/
+    // remove need the persisted agent, so the section gates its mutations
+    return <SubagentsSection config={form.config} patchConfig={patchConfig} client={client} t={t} agentId={form.id ?? ''} />;
+  }
+
   function renderSkillRow(row: ReturnType<typeof catalogSkillRows>[number]) {
     const checked = form.config.selected_skills.includes(row.name);
     const selectable = row.selectable;
@@ -1077,6 +1084,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       case 'tools': return renderTools();
       case 'skills': return renderSkills();
       case 'personalization': return renderPersonalization();
+      case 'subagents': return renderSubagents();
       default: return renderBasic();
     }
   };

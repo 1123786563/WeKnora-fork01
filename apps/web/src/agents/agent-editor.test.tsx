@@ -101,9 +101,30 @@ const MBTI_SCORE = {
   profile: mbtiProfile('ENTP'),
 };
 
-function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>> } {
+// Sub-agent catalog fixture (Task 8): two divisions, three entries — the
+// code-reviewer entry doubles as the pre-installed role of the EDIT agents.
+const SUBAGENT_CATALOG = {
+  divisions: [
+    { slug: 'pm', label: '产品', icon: 'box', color: '#1050d8', count: 2 },
+    { slug: 'dev', label: '研发', icon: 'code', color: '#2ba471', count: 1 },
+  ],
+  total: 3,
+  entries: [
+    { slug: 'product-manager', division: 'pm', name_zh: '产品经理', name_en: 'Product Manager', emoji: '📦', color: '#1050d8', installed: true },
+    { slug: 'ux-researcher', division: 'pm', name_zh: '用户研究员', name_en: 'UX Researcher', emoji: '🔍', color: '#1050d8', installed: false },
+    { slug: 'code-reviewer', division: 'dev', name_zh: '代码评审员', name_en: 'Code Reviewer', emoji: '🧑‍💻', color: '#2ba471', installed: true },
+  ],
+};
+
+interface SubagentCall { kind: 'install' | 'remove'; agentId: string; slug: string; locale?: string }
+
+function makeClient(options: { createReject?: Error; initialSubagents?: string[] } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
   const requests: RoutedRequest[] = [];
   const mbtiSubmits: Array<Record<string, 'A' | 'B'>> = [];
+  const subagentCalls: SubagentCall[] = [];
+  // server-side installed list the install/remove endpoints mutate + return;
+  // seeded to match the agent fixture so responses mirror the stored config
+  let installedSubagents = options.initialSubagents ?? ['code-reviewer'];
   const client = {
     mbti: {
       types: async () => MBTI_TYPES,
@@ -111,6 +132,24 @@ function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraCl
       submit: async (answers: Record<string, 'A' | 'B'>) => {
         mbtiSubmits.push(answers);
         return MBTI_SCORE;
+      },
+    },
+    subagents: {
+      catalog: async () => SUBAGENT_CATALOG,
+      get: async (slug: string) => {
+        const entry = SUBAGENT_CATALOG.entries.find((row) => row.slug === slug)!;
+        return { ...entry, vibe: '认真', tools_raw: 'knowledge_search', body_zh: '**职责**：负责' + entry.name_zh, body_en: 'Owns ' + entry.name_en };
+      },
+      listAgent: async () => [...installedSubagents],
+      install: async (agentId: string, slug: string, locale?: string) => {
+        subagentCalls.push({ kind: 'install', agentId, slug, ...(locale === undefined ? {} : { locale }) });
+        if (!installedSubagents.includes(slug)) installedSubagents = [...installedSubagents, slug];
+        return [...installedSubagents];
+      },
+      remove: async (agentId: string, slug: string) => {
+        subagentCalls.push({ kind: 'remove', agentId, slug });
+        installedSubagents = installedSubagents.filter((row) => row !== slug);
+        return [...installedSubagents];
       },
     },
     configuration: {
@@ -137,7 +176,7 @@ function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraCl
     sandboxConfigurations: { list: async () => ({ items: SANDBOXES, workspaceScriptsDisabled: false }) },
     settings: { webSearch: { providers: { list: async () => [] } } },
   };
-  return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits };
+  return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls };
 }
 
 let mountedRoot: Root | undefined;
@@ -228,6 +267,136 @@ test('personalization section renders the 16-type grid and dominant-side percent
   const takeTest = $('[data-mbti-take-test]', document.body) as HTMLButtonElement | null;
   assert.ok(takeTest, 'take-the-test button missing');
   assert.equal(takeTest.disabled, false);
+});
+
+// --- subagents section (Task 8) ----------------------------------------------------------
+
+/** Smart-reasoning agent fixture with the given delegation slugs installed. */
+const subagentAgent = (subagents: string[]) => ({
+  ...EDIT_AGENT,
+  config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, subagents },
+});
+
+/** Navigate to the subagents section and flush the catalog load. */
+async function mountSubagents(agent: Record<string, unknown>, client: WeKnoraClient) {
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'subagents');
+  // flush the client.subagents.catalog() resolution
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  return root;
+}
+
+test('subagents section renders the installed list, catalog cards, division chips and zh names', async () => {
+  const { client } = makeClient();
+  const root = await mountSubagents(subagentAgent(['code-reviewer']), client);
+
+  // installed row from config.subagents (slug fallback name → catalog entry)
+  const row = $('[data-subagent-installed-row="code-reviewer"]', root);
+  assert.ok(row, 'installed row missing for config.subagents slug');
+  assert.match(row!.textContent!, /代码评审员/, 'installed row shows the zh catalog name');
+
+  // catalog cards from the mock: 3 entries, zh name at the zh locale
+  const slugs = $$(root, '[data-subagent-slug]').map((el) => el.getAttribute('data-subagent-slug'));
+  assert.deepEqual(slugs, ['product-manager', 'ux-researcher', 'code-reviewer']);
+  assert.match($('[data-subagent-slug="product-manager"]', root)!.textContent!, /产品经理/);
+
+  // division chips: all + the two catalog divisions with counts
+  const chips = $$('[data-subagent-division]', root).map((el) => el.getAttribute('data-subagent-division'));
+  assert.deepEqual(chips, ['', 'pm', 'dev']);
+  assert.match($('[data-subagent-division="pm"]', root)!.textContent!, /产品 · 2/);
+
+  // installed checkmark only on the configured slug
+  assert.ok($('[data-subagent-installed-tag="code-reviewer"]', root));
+  assert.equal($('[data-subagent-installed-tag="product-manager"]', root), null);
+  // install button only for entries the agent does not have
+  assert.ok($('[data-subagent-install="product-manager"]', root));
+  assert.equal($('[data-subagent-install="code-reviewer"]', root), null);
+
+  // detail peek: clicking the name expands the role body rendered as markdown
+  await click(root, '[data-subagent-name="product-manager"]');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  const detail = $('[data-subagent-detail="product-manager"]', root);
+  assert.ok(detail, 'expanded entry renders the detail block');
+  assert.match(detail!.textContent!, /负责产品经理/, 'zh body at the zh locale through renderChatMarkdown');
+  await click(root, '[data-subagent-name="product-manager"]');
+  assert.equal($('[data-subagent-detail="product-manager"]', root), null, 'second click collapses');
+});
+
+test('subagents nav item is gated by agent mode like tools/skills', async () => {
+  const { client } = makeClient();
+  // EDIT_AGENT is quick-answer — delegation never registers the tool
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  assert.equal($('[data-section-key="subagents"]', root), null);
+  const agentRoot = await mountSubagents(subagentAgent([]), client);
+  assert.ok($('[data-section-key="subagents"]', agentRoot), 'smart-reasoning exposes the subagents section');
+});
+
+test('subagents empty installed list shows the delegation-off hint', async () => {
+  const { client } = makeClient();
+  const root = await mountSubagents(subagentAgent([]), client);
+  const hint = $('[data-subagent-empty-hint]', root);
+  assert.ok(hint, 'delegation-off hint missing for an empty installed list');
+  assert.match(hint!.textContent!, /委派能力处于关闭状态/);
+});
+
+test('installing a catalog role patches config.subagents from the response and reaches the save payload', async () => {
+  const { client, requests, subagentCalls } = makeClient({ initialSubagents: [] });
+  const root = await mountSubagents(subagentAgent([]), client);
+
+  await click(root, '[data-subagent-install="product-manager"]');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+
+  // agent-scoped install at the app locale ('zh-CN' normalizes onto zh)
+  assert.deepEqual(subagentCalls, [{ kind: 'install', agentId: 'a-1', slug: 'product-manager', locale: 'zh-CN' }]);
+  // config.subagents follows the response list, not a client-side append
+  assert.ok($('[data-subagent-installed-row="product-manager"]', root), 'installed row appears from the response');
+  assert.ok($('[data-subagent-installed-tag="product-manager"]', root), 'catalog card gains the installed tag');
+
+  await click(root, '[data-editor-save]');
+  const config = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.deepEqual(config.subagents, ['product-manager']);
+});
+
+test('removing an installed role calls the endpoint, patches config and shows the hint when emptied', async () => {
+  const { client, requests, subagentCalls } = makeClient();
+  const root = await mountSubagents(subagentAgent(['code-reviewer']), client);
+
+  await click(root, '[data-subagent-remove="code-reviewer"]');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+
+  assert.deepEqual(subagentCalls, [{ kind: 'remove', agentId: 'a-1', slug: 'code-reviewer' }]);
+  assert.equal($('[data-subagent-installed-row="code-reviewer"]', root), null, 'row removed from the response list');
+  assert.ok($('[data-subagent-empty-hint]', root), 'empty list flips to the delegation-off hint');
+  // the catalog card regains its install button
+  assert.ok($('[data-subagent-install="code-reviewer"]', root));
+
+  await click(root, '[data-editor-save]');
+  const config = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.deepEqual(config.subagents, []);
+});
+
+test('division chips and the search box filter the catalog client-side', async () => {
+  const { client } = makeClient();
+  const root = await mountSubagents(subagentAgent([]), client);
+  const visible = () => $$(root, '[data-subagent-slug]').map((el) => el.getAttribute('data-subagent-slug'));
+
+  await click(root, '[data-subagent-division="pm"]');
+  assert.deepEqual(visible(), ['product-manager', 'ux-researcher'], 'pm chip filters to the pm division');
+
+  // search narrows within the active division; no match shows the hint
+  await setValue(root, '[data-subagent-search]', 'code');
+  assert.deepEqual(visible(), [], 'search + division leave no entries');
+  assert.ok($('[data-subagent-no-match]', root));
+
+  // back to all divisions: the same query matches slug + en name
+  await click(root, '[data-subagent-division=""]');
+  assert.deepEqual(visible(), ['code-reviewer']);
+  await setValue(root, '[data-subagent-search]', 'research'); // en name of ux-researcher
+  assert.deepEqual(visible(), ['ux-researcher']);
 });
 
 // --- MBTI test modal (Task 9) ------------------------------------------------------------
