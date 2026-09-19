@@ -37,15 +37,15 @@ func TestNativeLeaseClaimIsTenantScopedAndFencesConcurrentWorkers(t *testing.T) 
 	run := nativeLeaseFixture(t, db, 1, "run-1", string(nativecontract.RunQueued), nil)
 	store := NewNativeLeaseStore(db)
 
-	fence, err := store.Claim(context.Background(), run, "worker-a", time.Minute)
+	fence, err := store.Claim(context.Background(), run, "worker-a", time.Now(), time.Minute)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), fence.Epoch)
 	require.Equal(t, "worker-a", fence.Owner)
 	require.False(t, fence.LeaseUntil.IsZero())
 
-	_, err = store.Claim(context.Background(), run, "worker-b", time.Minute)
+	_, err = store.Claim(context.Background(), run, "worker-b", time.Now(), time.Minute)
 	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, err))
-	_, err = store.Claim(context.Background(), nativecontract.RunIdentity{TenantID: 2, RunID: run.RunID}, "worker-c", time.Minute)
+	_, err = store.Claim(context.Background(), nativecontract.RunIdentity{TenantID: 2, RunID: run.RunID}, "worker-c", time.Now(), time.Minute)
 	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, err))
 }
 
@@ -57,10 +57,11 @@ func TestNativeLeaseExpiryAdvancesEpochAndRejectsStaleWrites(t *testing.T) {
 	store := NewNativeLeaseStore(db)
 
 	old := nativecontract.Fence{Run: run, Owner: "old-worker", Epoch: 1, LeaseUntil: expired}
-	fresh, err := store.Claim(context.Background(), run, "new-worker", time.Minute)
+	fresh, err := store.Claim(context.Background(), run, "new-worker", time.Now(), time.Minute)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), fresh.Epoch)
-	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, store.Renew(context.Background(), old, time.Minute)))
+	_, err = store.Renew(context.Background(), old, time.Now(), time.Minute)
+	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, err))
 	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, store.Transition(context.Background(), old, nativecontract.RunSucceeded)))
 
 	var status string
@@ -72,13 +73,19 @@ func TestNativeLeaseRenewAndTransitionsRequireLiveFence(t *testing.T) {
 	db := openRunTestDB(t)
 	run := nativeLeaseFixture(t, db, 1, "run-transition", string(nativecontract.RunQueued), nil)
 	store := NewNativeLeaseStore(db)
-	fence, err := store.Claim(context.Background(), run, "worker", time.Minute)
+	fence, err := store.Claim(context.Background(), run, "worker", time.Now(), time.Minute)
 	require.NoError(t, err)
 
-	require.NoError(t, store.Renew(context.Background(), fence, time.Minute))
+	renewed, err := store.Renew(context.Background(), fence, time.Now(), 2*time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, fence.Run, renewed.Run)
+	require.Equal(t, fence.Owner, renewed.Owner)
+	require.Equal(t, fence.Epoch, renewed.Epoch)
+	require.True(t, renewed.LeaseUntil.After(fence.LeaseUntil))
 	require.Equal(t, nativecontract.ErrConflict, nativeLeaseCode(t, store.Transition(context.Background(), fence, nativecontract.RunQueued)))
 	require.NoError(t, store.Transition(context.Background(), fence, nativecontract.RunWaiting))
-	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, store.Renew(context.Background(), fence, time.Minute)))
+	_, err = store.Renew(context.Background(), fence, time.Now(), time.Minute)
+	require.Equal(t, nativecontract.ErrLeaseLost, nativeLeaseCode(t, err))
 }
 
 func TestNativeLeaseRecoveryScanOnlyReturnsExpiredInFlightRuns(t *testing.T) {
@@ -108,7 +115,7 @@ func TestNativeLeaseConcurrentClaimHasOneWinner(t *testing.T) {
 		go func(owner string, store *NativeLeaseStore) {
 			defer wg.Done()
 			<-start
-			_, err := store.Claim(context.Background(), run, owner, time.Minute)
+			_, err := store.Claim(context.Background(), run, owner, time.Now(), time.Minute)
 			errs <- err
 		}(string(rune('a'+i)), store)
 	}

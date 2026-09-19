@@ -12,16 +12,24 @@ import (
 // acquires a fence only; P3 remains responsible for any execution or dispatch.
 type NativeRecoveryLeaseStore interface {
 	ScanRecoverable(context.Context, int) ([]nativecontract.RunIdentity, error)
-	Claim(context.Context, nativecontract.RunIdentity, string, time.Duration) (nativecontract.Fence, error)
+	Claim(context.Context, nativecontract.RunIdentity, string, time.Time, time.Duration) (nativecontract.Fence, error)
+}
+
+// NativeRecoveryQualifier reloads the admitted ConfigBinding and current
+// authorization for a candidate run. It must reject a revoked or incompatible
+// binding before recovery takes a lease; P3 remains the only execution owner.
+type NativeRecoveryQualifier interface {
+	Qualify(context.Context, nativecontract.RunIdentity) error
 }
 
 type NativeRecoveryService struct {
-	controls nativecontract.AdmissionControlSource
-	leases   NativeRecoveryLeaseStore
+	controls  nativecontract.AdmissionControlSource
+	leases    NativeRecoveryLeaseStore
+	qualifier NativeRecoveryQualifier
 }
 
-func NewNativeRecoveryService(controls nativecontract.AdmissionControlSource, leases NativeRecoveryLeaseStore) *NativeRecoveryService {
-	return &NativeRecoveryService{controls: controls, leases: leases}
+func NewNativeRecoveryService(controls nativecontract.AdmissionControlSource, leases NativeRecoveryLeaseStore, qualifier NativeRecoveryQualifier) *NativeRecoveryService {
+	return &NativeRecoveryService{controls: controls, leases: leases, qualifier: qualifier}
 }
 
 func nativeRecoveryFailure(code nativecontract.ErrorCode, message string) error {
@@ -51,7 +59,7 @@ func ValidateNativeRecoveryControls(controls nativecontract.AdmissionControls) e
 // A competing worker may win between scan and claim; that is normal and not a
 // recovery error. This method never invokes a Runner or dispatches side effects.
 func (s *NativeRecoveryService) Recover(ctx context.Context, owner string, ttl time.Duration, limit int) ([]nativecontract.Fence, error) {
-	if s == nil || s.controls == nil || s.leases == nil {
+	if s == nil || s.controls == nil || s.leases == nil || s.qualifier == nil {
 		return nil, nativeRecoveryFailure(nativecontract.ErrStore, "native recovery dependencies are unavailable")
 	}
 	if owner == "" || ttl < time.Millisecond || limit <= 0 {
@@ -70,7 +78,10 @@ func (s *NativeRecoveryService) Recover(ctx context.Context, owner string, ttl t
 	}
 	fences := make([]nativecontract.Fence, 0, len(runs))
 	for _, run := range runs {
-		fence, err := s.leases.Claim(ctx, run, owner, ttl)
+		if err := s.qualifier.Qualify(ctx, run); err != nil {
+			return nil, err
+		}
+		fence, err := s.leases.Claim(ctx, run, owner, time.Now(), ttl)
 		if err != nil {
 			var failure *nativecontract.Failure
 			if errors.As(err, &failure) && failure.Code == nativecontract.ErrLeaseLost {

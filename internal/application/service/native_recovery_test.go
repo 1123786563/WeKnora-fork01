@@ -20,12 +20,22 @@ func (f *nativeRecoveryLeaseFake) ScanRecoverable(context.Context, int) ([]nativ
 	return append([]nativecontract.RunIdentity(nil), f.runs...), nil
 }
 
-func (f *nativeRecoveryLeaseFake) Claim(_ context.Context, run nativecontract.RunIdentity, owner string, _ time.Duration) (nativecontract.Fence, error) {
+func (f *nativeRecoveryLeaseFake) Claim(_ context.Context, run nativecontract.RunIdentity, owner string, _ time.Time, _ time.Duration) (nativecontract.Fence, error) {
 	f.claimed = append(f.claimed, run.RunID)
 	if err := f.claim[run.RunID]; err != nil {
 		return nativecontract.Fence{}, err
 	}
 	return nativecontract.Fence{Run: run, Owner: owner, Epoch: 2, LeaseUntil: time.Now().Add(time.Minute)}, nil
+}
+
+type nativeRecoveryQualifierFake struct {
+	errs  map[string]error
+	calls map[string]int
+}
+
+func (f *nativeRecoveryQualifierFake) Qualify(_ context.Context, run nativecontract.RunIdentity) error {
+	f.calls[run.RunID]++
+	return f.errs[run.RunID]
 }
 
 type nativeRecoveryControlsFake struct {
@@ -41,7 +51,7 @@ func TestNativeRecoveryClaimsOnlyExpiredQualifiedRunsAndIgnoresRacingOwner(t *te
 		runs:  []nativecontract.RunIdentity{{TenantID: 1, RunID: "expired-a"}, {TenantID: 1, RunID: "expired-b"}},
 		claim: map[string]error{"expired-b": &nativecontract.Failure{Code: nativecontract.ErrLeaseLost}},
 	}
-	service := NewNativeRecoveryService(nativeRecoveryControlsFake{value: nativeRecoveryOpenControls()}, store)
+	service := NewNativeRecoveryService(nativeRecoveryControlsFake{value: nativeRecoveryOpenControls()}, store, &nativeRecoveryQualifierFake{errs: map[string]error{}, calls: map[string]int{}})
 	fences, err := service.Recover(context.Background(), "recovery-worker", time.Minute, 10)
 	require.NoError(t, err)
 	require.Len(t, fences, 1)
@@ -53,7 +63,7 @@ func TestNativeRecoveryHoldsWorkWhenExecutionGateIsClosedButDrainDoesNotBlockExi
 	store := &nativeRecoveryLeaseFake{runs: []nativecontract.RunIdentity{{TenantID: 1, RunID: "expired"}}, claim: map[string]error{}}
 	closed := nativeRecoveryOpenControls()
 	closed.NativeExecutionApproved = false
-	service := NewNativeRecoveryService(nativeRecoveryControlsFake{value: closed}, store)
+	service := NewNativeRecoveryService(nativeRecoveryControlsFake{value: closed}, store, &nativeRecoveryQualifierFake{errs: map[string]error{}, calls: map[string]int{}})
 	_, err := service.Recover(context.Background(), "worker", time.Minute, 1)
 	var failure *nativecontract.Failure
 	require.True(t, errors.As(err, &failure))
@@ -62,8 +72,43 @@ func TestNativeRecoveryHoldsWorkWhenExecutionGateIsClosedButDrainDoesNotBlockExi
 
 	draining := nativeRecoveryOpenControls()
 	draining.WorkerDrain = true
-	service = NewNativeRecoveryService(nativeRecoveryControlsFake{value: draining}, store)
+	service = NewNativeRecoveryService(nativeRecoveryControlsFake{value: draining}, store, &nativeRecoveryQualifierFake{errs: map[string]error{}, calls: map[string]int{}})
 	fences, err := service.Recover(context.Background(), "worker", time.Minute, 1)
 	require.NoError(t, err)
 	require.Len(t, fences, 1)
+}
+
+func TestNativeRecoveryHoldsIncompatibleConfigBeforeLeaseClaim(t *testing.T) {
+	run := nativecontract.RunIdentity{TenantID: 1, RunID: "incompatible-config"}
+	store := &nativeRecoveryLeaseFake{runs: []nativecontract.RunIdentity{run}, claim: map[string]error{}}
+	qualifier := &nativeRecoveryQualifierFake{
+		errs:  map[string]error{run.RunID: &nativecontract.Failure{Code: nativecontract.ErrForbidden, Message: "admitted config is incompatible"}},
+		calls: map[string]int{},
+	}
+
+	_, err := NewNativeRecoveryService(nativeRecoveryControlsFake{value: nativeRecoveryOpenControls()}, store, qualifier).Recover(context.Background(), "worker", time.Minute, 1)
+	require.Equal(t, nativecontract.ErrForbidden, nativeRecoveryCode(t, err))
+	require.Equal(t, 1, qualifier.calls[run.RunID])
+	require.Empty(t, store.claimed, "an incompatible run must remain held without dispatching a lease")
+}
+
+func TestNativeRecoveryHoldsRevokedAuthorizationBeforeLeaseClaim(t *testing.T) {
+	run := nativecontract.RunIdentity{TenantID: 1, RunID: "revoked-authorization"}
+	store := &nativeRecoveryLeaseFake{runs: []nativecontract.RunIdentity{run}, claim: map[string]error{}}
+	qualifier := &nativeRecoveryQualifierFake{
+		errs:  map[string]error{run.RunID: &nativecontract.Failure{Code: nativecontract.ErrForbidden, Message: "authorization was revoked"}},
+		calls: map[string]int{},
+	}
+
+	_, err := NewNativeRecoveryService(nativeRecoveryControlsFake{value: nativeRecoveryOpenControls()}, store, qualifier).Recover(context.Background(), "worker", time.Minute, 1)
+	require.Equal(t, nativecontract.ErrForbidden, nativeRecoveryCode(t, err))
+	require.Equal(t, 1, qualifier.calls[run.RunID])
+	require.Empty(t, store.claimed, "a revoked run must remain held without dispatching a lease")
+}
+
+func nativeRecoveryCode(t *testing.T, err error) nativecontract.ErrorCode {
+	t.Helper()
+	var failure *nativecontract.Failure
+	require.True(t, errors.As(err, &failure), "expected native failure, got %v", err)
+	return failure.Code
 }

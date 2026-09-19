@@ -53,12 +53,12 @@ func validNativeLeaseRun(run nativecontract.RunIdentity) bool {
 // Claim takes either a newly queued run or a running run whose lease expired.
 // The UPDATE predicate is the compare-and-swap: readers never make a claim
 // decision before the write that establishes its epoch.
-func (s *NativeLeaseStore) Claim(ctx context.Context, run nativecontract.RunIdentity, owner string, ttl time.Duration) (nativecontract.Fence, error) {
+func (s *NativeLeaseStore) Claim(ctx context.Context, run nativecontract.RunIdentity, owner string, now time.Time, ttl time.Duration) (nativecontract.Fence, error) {
 	if s == nil || s.db == nil {
 		return nativecontract.Fence{}, nativeLeaseFailure(nativecontract.ErrStore, "native lease store is unavailable")
 	}
-	if !validNativeLeaseRun(run) || owner == "" || ttl < time.Millisecond {
-		return nativecontract.Fence{}, nativeLeaseFailure(nativecontract.ErrInvalid, "run, owner, and positive lease duration are required")
+	if !validNativeLeaseRun(run) || owner == "" || now.IsZero() || ttl < time.Millisecond {
+		return nativecontract.Fence{}, nativeLeaseFailure(nativecontract.ErrInvalid, "run, owner, current time, and positive lease duration are required")
 	}
 	var fence nativecontract.Fence
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -94,24 +94,36 @@ func (s *NativeLeaseStore) fenced(db *gorm.DB, fence nativecontract.Fence) *gorm
 }
 
 // Renew extends only a live lease held by exactly the presented fence. It
-// cannot revive an expiry or make a stale epoch current.
-func (s *NativeLeaseStore) Renew(ctx context.Context, fence nativecontract.Fence, ttl time.Duration) error {
+// cannot revive an expiry or make a stale epoch current. now is part of the
+// frozen worker API; the database clock remains the comparison authority so
+// every contender evaluates expiry against one shared clock.
+func (s *NativeLeaseStore) Renew(ctx context.Context, fence nativecontract.Fence, now time.Time, ttl time.Duration) (nativecontract.Fence, error) {
 	if s == nil || s.db == nil {
-		return nativeLeaseFailure(nativecontract.ErrStore, "native lease store is unavailable")
+		return nativecontract.Fence{}, nativeLeaseFailure(nativecontract.ErrStore, "native lease store is unavailable")
 	}
-	if !validNativeLeaseRun(fence.Run) || fence.Owner == "" || fence.Epoch <= 0 || ttl < time.Millisecond {
-		return nativeLeaseFailure(nativecontract.ErrInvalid, "live fence and positive lease duration are required")
+	if !validNativeLeaseRun(fence.Run) || fence.Owner == "" || fence.Epoch <= 0 || now.IsZero() || ttl < time.Millisecond {
+		return nativecontract.Fence{}, nativeLeaseFailure(nativecontract.ErrInvalid, "live fence, current time, and positive lease duration are required")
 	}
-	result := s.fenced(s.db.WithContext(ctx), fence).Updates(map[string]any{
-		"lease_expires_at": s.expiry(ttl), "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+	var renewed nativecontract.Fence
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := s.fenced(tx, fence).Updates(map[string]any{
+			"lease_expires_at": s.expiry(ttl), "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nativeLeaseFailure(nativecontract.ErrLeaseLost, "run fence is stale")
+		}
+		var row struct{ LeaseExpiresAt time.Time }
+		if err := nativeLeaseScope(tx, fence.Run).Where("lease_owner = ? AND lease_epoch = ?", fence.Owner, fence.Epoch).Select("lease_expires_at").Take(&row).Error; err != nil {
+			return err
+		}
+		renewed = fence
+		renewed.LeaseUntil = row.LeaseExpiresAt
+		return nil
 	})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return nativeLeaseFailure(nativecontract.ErrLeaseLost, "run fence is stale")
-	}
-	return nil
+	return renewed, err
 }
 
 // Transition applies one worker-owned completion or wait transition. Clearing
