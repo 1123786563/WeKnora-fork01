@@ -70,6 +70,7 @@ function pageClient(kb: Record<string, unknown> = {}, uploadCalls: UploadCall[] 
     },
     knowledge: { documents },
     auth: { me: async () => ({ user: { id: 'u1', role: 'admin' }, memberships: [{ tenant_id: 1, role: 'admin' }] }) },
+    identity: { organizations: { knowledgeBaseShares: { listShared: async () => null } } },
     configuration: { models: { list: async () => [] } },
     settings: { system: { info: async () => ({}) } },
   } as unknown as WeKnoraClient;

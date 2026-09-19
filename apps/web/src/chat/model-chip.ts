@@ -62,6 +62,34 @@ export interface ChatModelLike {
   parameters?: unknown;
 }
 
+/** One composer dropdown option (id + resolved display label). */
+export interface ChatModelOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * R483 D13 — composer dropdown options with the Vue name fallback.
+ *
+ * The label resolves display_name || name || id (the Vue chip chain,
+ * Input-field.vue display_name || name). The empty-string trap is the D13
+ * regression: the tenant's builtin-llm-mock row carries `display_name: ""`
+ * (live 2026-09-19 23:44), and the old `display_name ?? name` mapping kept
+ * the empty string, so the empty-name guard dropped the only chat model and
+ * the chip degraded to the disabled variant with no dropdown. Options whose
+ * id or resolved name is blank stay dropped.
+ */
+export function resolveChatModelOptions<T extends ChatModelLike>(models: readonly T[]): ChatModelOption[] {
+  return models
+    .map((model) => {
+      const id = String(model.id ?? '').trim();
+      const displayName = typeof model.display_name === 'string' ? model.display_name.trim() : '';
+      const name = typeof model.name === 'string' ? model.name.trim() : '';
+      return { id, name: displayName || name || id };
+    })
+    .filter((model) => model.id.length > 0 && model.name.length > 0);
+}
+
 /** Vue chatResources.ts:59 — the chat dropdown lists KnowledgeQA models only. */
 export function listChatModels<T extends ChatModelLike>(models: readonly T[]): T[] {
   return models.filter((model) => model.type === 'KnowledgeQA');

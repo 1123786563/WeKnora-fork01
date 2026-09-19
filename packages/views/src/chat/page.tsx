@@ -215,6 +215,14 @@ export interface ChatPageProps {
   modelOptions?: readonly { id: string; name: string }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
+  /**
+   * R483 D16 — Vue ChatHeader utility block rendered between 修改标题 and
+   * 清空消息 (ChatHeader.vue:61-77): copy session id / copy link / copy as
+   * Markdown / open in new window, framed by the two Vue menu dividers.
+   * Hosts own the actions (clipboard, window.open, message paging); labels
+   * arrive pre-localized so the shared copy table stays untouched.
+   */
+  headerUtilityItems?: readonly { id: string; label: string; onActivate(): void }[];
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -438,7 +446,7 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
   </section>;
 }
 
-function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
+function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions' | 'headerUtilityItems'>) {
   const copy = props.copy;
   const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
   const [renameOpen, setRenameOpen] = useState(false);
@@ -532,6 +540,15 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       </div> : <>
         {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
         {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
+        {/* R483 D16 — Vue ChatHeader utility block (ChatHeader.vue:61-78):
+            copyId / copyLink / copyMarkdown / openNewWindow framed by the two
+            Vue dividers between 修改标题 and 清空消息. Each activation closes
+            the popup like the Vue onMenuAction menuVisible = false. */}
+        {props.headerUtilityItems && props.headerUtilityItems.length > 0 ? <>
+          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
+          {props.headerUtilityItems.map((item) => <button key={item.id} type="button" role="menuitem" data-menu-action={item.id} className={menuItem} onClick={() => { item.onActivate(); renameDetailsRef.current?.removeAttribute('open'); }}>{item.label}</button>)}
+          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
+        </> : null}
         {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{copy.clearMessages}</button> : null}
         {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{copy.deleteSession}</button> : null}
       </>}
@@ -652,6 +669,7 @@ export function ChatPage(props: ChatPageProps) {
             onToggleSessionPin={props.onToggleSessionPin}
             onDeleteSession={props.onDeleteSession}
             onClearSession={props.onClearSession}
+            headerUtilityItems={props.headerUtilityItems}
           />
         </div>
         <div className="wk-chat-header-actions pointer-events-auto inline-flex items-center gap-[8px] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] backdrop-blur-[8px]">

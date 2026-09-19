@@ -259,7 +259,10 @@ export const DOCUMENT_FILE_TYPE_OPTIONS: DocumentFilterOption[] = [
   { value: 'txt', label: 'TXT' },
   { value: 'md', label: 'MD' },
   { value: 'url', label: 'URL' },
-  { value: 'manual', labelKey: 'upload.onlineEdit' },
+  // R483 F2 (R482 B1 差异1): the manual filter option reads
+  // knowledgeBase.typeManual like Vue fileTypeOptions (KnowledgeBase.vue),
+  // not upload.onlineEdit (that key belongs to the add-document dropdown).
+  { value: 'manual', labelKey: 'knowledgeBase.typeManual' },
   { value: 'mp3', label: 'MP3' },
   { value: 'wav', label: 'WAV' },
   { value: 'm4a', label: 'M4A' },

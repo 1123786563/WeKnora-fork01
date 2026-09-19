@@ -25,9 +25,13 @@ const PARSER_COPY: Record<Locale, string> = {
 function initialValues(section: ConfigSection, value: unknown): ConfigValues {
   const row = object(value);
   if (section === 'retrieval') return {
+    // R483 F2 (R482 B2-D18): mirror RetrievalSettings.vue:148-155 — a stored
+    // 0 counts as "unset" for embedding_top_k / vector_threshold /
+    // keyword_threshold / rerank_top_k (cfg.x || default), while
+    // rerank_threshold keeps 0 (cfg.x ?? default; the slider spans -10..10).
     embedding_top_k: number(row.embedding_top_k, 50) || 50,
-    vector_threshold: number(row.vector_threshold, 0.15),
-    keyword_threshold: number(row.keyword_threshold, 0.3),
+    vector_threshold: number(row.vector_threshold, 0.15) || 0.15,
+    keyword_threshold: number(row.keyword_threshold, 0.3) || 0.3,
     rerank_top_k: number(row.rerank_top_k, 10) || 10,
     rerank_threshold: number(row.rerank_threshold, 0.2),
     rerank_model_id: text(row.rerank_model_id),

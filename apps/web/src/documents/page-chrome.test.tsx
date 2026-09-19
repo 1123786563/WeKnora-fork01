@@ -23,13 +23,34 @@ const {
   DocumentsBreadcrumb,
   ParserHint,
   DocumentEmptyState,
+  DOCUMENT_FILE_TYPE_OPTIONS,
 } = await import('./DocumentsPageChrome.tsx');
 const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing, canUploadKnowledgeDocuments, canDownloadKnowledgeDocuments, canMutateKnowledgeDocuments } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
+const { formatMessage, supportedLocales } = await import('@weknora/i18n');
 
 const t = createTranslator('zh-CN');
 const kbId = '9727d104-cde4-4d03-879f-d7e3897b69a3';
 const noop = () => {};
+
+// R483 F2 (R482 B1 差异1): the KB documents file-type filter's manual option
+// must read knowledgeBase.typeManual (Vue KnowledgeBase.vue:635
+// fileTypeOptions ->「手动创建」), not upload.onlineEdit — that key is the
+// add-document dropdown's manual entry (KbUploadSourceDropdown.vue:124
+// 「在线编辑」) and the two must not be conflated.
+test('file type filter manual option uses the Vue typeManual label', () => {
+  const manual = DOCUMENT_FILE_TYPE_OPTIONS.find((option) => option.value === 'manual');
+  assert.equal(manual?.labelKey, 'knowledgeBase.typeManual');
+  assert.equal(t('knowledgeBase.typeManual'), '手动创建');
+  assert.notEqual(t('knowledgeBase.typeManual'), t('upload.onlineEdit'));
+});
+
+test('knowledgeBase.typeManual stays present and non-empty in every locale', () => {
+  for (const locale of supportedLocales) {
+    const label = formatMessage(locale, 'knowledgeBase.typeManual');
+    assert.ok(label && label !== 'knowledgeBase.typeManual', `${locale} lacks knowledgeBase.typeManual`);
+  }
+});
 
 test('folder path breadcrumbs preserve Vue root and ancestor paths', () => {
   assert.deepEqual(folderPathCrumbs(undefined), []);
@@ -72,6 +93,34 @@ test('document permissions keep Vue download and mutation gates separate from up
   assert.equal(canMutateKnowledgeDocuments({ id: 'kb-1', my_permission: 'editor' }, sharedEditor), true);
   assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, contributor), false);
   assert.equal(canMutateKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, contributor), false);
+});
+
+test('download gate follows the Vue effectiveKBPermission chain (share grant > my_permission; the row permission field is never consulted)', () => {
+  const contributor = { user: { id: 'contributor' }, memberships: [{ role: 'contributor' }] };
+  // Vue KnowledgeBase.vue:326 — effectiveKBPermission = orgStore.getKBPermission(kbId)
+  // || kbInfo.my_permission || ''. The KB row's `permission` field is not in
+  // the chain, so a stray 'viewer' there must NOT block downloads (the
+  // R483 live FAIL on Parity KB Demo).
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', permission: 'viewer' }, contributor, null), true);
+  // The org shared-knowledge-bases grant is the authoritative first hop.
+  assert.equal(
+    canDownloadKnowledgeDocuments(
+      { id: 'kb-1', my_permission: 'viewer' },
+      contributor,
+      [{ knowledge_base: { id: 'kb-1' }, permission: 'editor' }],
+    ),
+    true,
+  );
+  // Without a grant the empty chain falls through to "no permission" → allowed.
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', my_permission: '' }, contributor, null), true);
+});
+
+test('hasRole("contributor") follows the Vue ROLE_LEVEL hierarchy — owner outranks contributor (R483 live FAIL fix)', () => {
+  // Vue stores/auth.ts hasRole: viewer < contributor < admin < owner, so a
+  // workspace owner passes the contributor gate. The parity-test account is
+  // memberships[0].role = 'owner' with no user.role — React must not deny.
+  const owner = { user: { id: 'owner-1' }, memberships: [{ role: 'owner' }] };
+  assert.equal(canDownloadKnowledgeDocuments({ id: 'kb-1', permission: 'viewer' }, owner, null), true);
 });
 
 test('documents page wires the Vue download and mutation gates into both views', () => {
@@ -330,8 +379,8 @@ test('in-flight document cards expose Vue-style spinner and trace action', () =>
 test('editable document cards expose the Vue action-menu mutation entries', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
     items: [
-      { id: 'doc-1', file_name: 'guide.md', file_type: 'md', source: 'manual', parse_status: 'processing', trace: { name: 'root' } },
-      { id: 'doc-2', file_name: 'source.pdf', file_type: 'pdf', source: 'file', parse_status: 'completed' },
+      { id: 'doc-1', file_name: 'guide.md', file_type: 'md', type: 'manual', source: 'manual', parse_status: 'processing', trace: { name: 'root' } },
+      { id: 'doc-2', file_name: 'source.pdf', file_type: 'pdf', type: 'file', source: 'file', parse_status: 'completed' },
     ],
     folders: [],
     selected: new Set<string>(),
@@ -354,18 +403,24 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
   }));
   assert.ok(html.includes('aria-haspopup="menu"'), 'card has an accessible action-menu trigger');
   assert.ok(html.includes('编辑文档'), 'edit action is present for manual documents');
-  assert.ok(html.includes('解析进度'), 'trace action is present while parsing');
-  // Vue useKnowledgeBase strips the extension from the displayed name.
-  assert.ok(html.includes('下载 source'), 'download action is present for file documents');
+  // R483 F4: Vue DocumentActionMenu labels the item with knowledgeStages.viewTrace.
+  assert.ok(html.includes('查看 Trace'), 'trace action is present while parsing');
+  // R483 F4: Vue common.download is the plain 下载 label (no file name).
+  assert.ok(html.includes('下载'), 'download action is present for file documents');
+  assert.ok(!html.includes('下载 source'), 'download label stays the Vue plain copy');
   assert.ok(html.includes('移动到目录'), 'folder move action is present');
+  assert.ok(html.includes('移动到...'), 'cross-KB move action is present');
   assert.ok(html.includes('批量管理'), 'batch management action is present');
   assert.ok(html.includes('选择 guide'), 'selection checkboxes appear only after entering batch mode');
   assert.ok(html.includes('删除文档'), 'delete action is present');
 });
 
+// R483 F4: Vue DocumentActionMenu gates batch-manage on canMutateKnowledge ||
+// canDownload and leaves 删除文档 ungated (the menu itself renders only for
+// contributors; the backend enforces the actual delete permission).
 test('editor document cards keep edit actions but hide Vue contributor-only mutations', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
-    items: [{ id: 'manual-1', file_name: 'notes.md', source: 'manual', file_type: 'md', parse_status: 'completed' }],
+    items: [{ id: 'manual-1', file_name: 'notes.md', type: 'manual', source: 'manual', file_type: 'md', parse_status: 'completed' }],
     folders: [],
     selected: new Set<string>(),
     batchMode: false,
@@ -388,8 +443,9 @@ test('editor document cards keep edit actions but hide Vue contributor-only muta
   }));
   assert.ok(html.includes('编辑文档'), 'editor still sees manual document editing');
   assert.ok(!html.includes('移动到目录'), 'editor does not see folder move');
+  assert.ok(!html.includes('移动到...'), 'editor does not see the cross-KB move');
   assert.ok(!html.includes('批量管理'), 'editor does not see batch management');
-  assert.ok(!html.includes('删除文档'), 'editor does not see delete');
+  assert.ok(html.includes('删除文档'), 'delete stays ungated like the Vue menu');
 });
 
 test('document card hover placement prefers the right side and falls back within the viewport', () => {

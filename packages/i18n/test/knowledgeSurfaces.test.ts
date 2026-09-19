@@ -103,3 +103,21 @@ test('knowledgeBase.timeline.skipped is carried byte-exact from Vue knowledgeSta
     assert.equal(formatMessage(locale, 'knowledgeBase.timeline.skipped'), vueBaseline[locale], locale + ' timeline.skipped diverges from the Vue baseline');
   }
 });
+
+// R483 F4: the React document row menu needs the plain Vue common.download
+// copy ("下载") for its 下载 item. The key lives in the knowledge domain
+// (knowledgeBase.downloadDocument) because packages/i18n has no common block
+// port for it; the values stay byte-exact against the Vue common.download in
+// every locale, and the count guard below pins the supplemental inventory.
+test('knowledgeBase.downloadDocument ports the Vue common.download copy into every locale', () => {
+  const vueBaseline: Record<Locale, string> = {
+    'zh-CN': '下载',
+    'en-US': 'Download',
+    'ja-JP': 'ダウンロード',
+    'ko-KR': '다운로드',
+    'ru-RU': 'Скачать',
+  };
+  for (const locale of supportedLocales) {
+    assert.equal(formatMessage(locale, 'knowledgeBase.downloadDocument'), vueBaseline[locale], locale + ' downloadDocument diverges from the Vue common.download baseline');
+  }
+});

@@ -17,7 +17,8 @@ import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/compos
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
-import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
+import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip, resolveChatModelOptions } from './model-chip.ts';
+import { buildHeaderUtilityItems } from './header-menu-actions.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { resolveChatAttachmentValidationMessage } from './attachment-messages.ts';
 import { resolveChatSessionSourceOptions } from './session-source-options.ts';
@@ -196,9 +197,30 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
-  const modelOptions = useMemo(() => chatModels
-    .map((model) => ({ id: String(model.id ?? '').trim(), name: String(model.display_name ?? model.name ?? model.id ?? '').trim() }))
-    .filter((model) => model.id.length > 0 && model.name.length > 0), [chatModels]);
+  // R483 D13 — resolveChatModelOptions applies the Vue display_name || name
+  // fallback: a model whose display_name is an empty string (the live
+  // builtin-llm-mock row) must still yield a dropdown option instead of
+  // degrading the chip to the disabled variant.
+  const modelOptions = useMemo(() => resolveChatModelOptions(chatModels), [chatModels]);
+  // R483 D16 — Vue ChatHeader utility actions (ChatHeader.vue:61-78): copy
+  // session id / copy link / copy as Markdown / open in new window. The
+  // header menu only mounts with an open session, so the items resolve the
+  // selected row (title fallback mirrors Vue menu.newSession) and reuse the
+  // composer toast surface for the Vue MessagePlugin feedback.
+  const headerUtilityItems = useMemo(() => {
+    if (!selectedSessionId) return undefined;
+    const session = sessions.find((item) => item.id === selectedSessionId);
+    return buildHeaderUtilityItems({
+      locale: readStoredLocale(),
+      sessionId: selectedSessionId,
+      sessionTitle: session?.title || copy.newSession,
+      currentUrl: new URL(String(window.location)),
+      loadMessagesPage: (beforeTime, limit) => client.sessions.messages(selectedSessionId, { beforeTime, limit, signal: scope.signal }),
+      toast: showAgentToast,
+      openWindow: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, scope.signal, scope.scope, selectedSessionId, sessions]);
   // Vue parity (Input-field.vue handleModelChange): localStorage only ever
   // records the user's *explicit* pick. The loader-seeded first-model fallback
   // (models-load effect) stays in memory only — writing it here would turn a
@@ -1667,6 +1689,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setUserModelPick(modelId);
       setSelectedModelId(modelId);
     }}
+    headerUtilityItems={headerUtilityItems}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}

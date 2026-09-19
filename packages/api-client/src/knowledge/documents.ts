@@ -137,6 +137,46 @@ export interface KnowledgeTagListParams {
   keyword?: string;
 }
 
+// --- cross-KB move (Vue api/knowledge-base listMoveTargets / moveKnowledge /
+// getKnowledgeMoveProgress; routes_knowledge.go:124,2319,2517) ---------------
+
+/** Vue handleMoveSelectTarget rows: target KB name plus its document count. */
+export interface KnowledgeMoveTarget {
+  id: string;
+  name: string;
+  knowledge_count?: number;
+  [key: string]: unknown;
+}
+
+export type KnowledgeMoveMode = 'reuse_vectors' | 'reparse';
+
+export interface KnowledgeMoveInput {
+  knowledge_ids: string[];
+  source_kb_id: string;
+  target_kb_id: string;
+  mode: KnowledgeMoveMode;
+}
+
+/** POST /knowledge/move reply data (handler.MoveKnowledgeResponse). */
+export interface KnowledgeMoveStart {
+  taskId: string;
+  knowledgeCount?: number;
+  [key: string]: unknown;
+}
+
+/** GET /knowledge/move/progress/:task_id reply data (types.KnowledgeMoveProgress). */
+export interface KnowledgeMoveProgress {
+  taskId?: string;
+  status: string;
+  progress?: number;
+  total?: number;
+  processed?: number;
+  failed?: number;
+  message?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
 function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFileSource {
   return typeof Blob === 'undefined' || !(value instanceof Blob);
 }
@@ -431,6 +471,56 @@ export function createKnowledgeDocumentsApi(
     },
     async reparse(id: string, process_config?: unknown): Promise<void> {
       await request({ method: 'POST', path: knowledgePath(id, '/reparse'), body: process_config === undefined ? undefined : { process_config } });
+    },
+    /** Vue listMoveTargets: GET /knowledge-bases/:id/move-targets — same-type,
+     *  same-embedding KBs eligible as cross-KB move destinations. */
+    async moveTargets(knowledgeBaseId: string): Promise<KnowledgeMoveTarget[]> {
+      const response = await request({
+        method: 'GET',
+        path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/move-targets`,
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      if (!Array.isArray(parsed.data)) throw new Error('Invalid knowledge move targets response');
+      return parsed.data.map((item, index) => {
+        if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error(`Invalid knowledge move target at data[${index}]`);
+        const row = item as Record<string, unknown>;
+        if (typeof row.id !== 'string' || typeof row.name !== 'string') throw new Error(`Invalid knowledge move target at data[${index}]`);
+        return item as KnowledgeMoveTarget;
+      });
+    },
+    /** Vue moveKnowledge: POST /knowledge/move — async task, replies {task_id, …}. */
+    async move(input: KnowledgeMoveInput): Promise<KnowledgeMoveStart> {
+      const response = await request({ method: 'POST', path: '/api/v1/knowledge/move', body: input });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { task_id?: unknown }).task_id !== 'string') {
+        throw new Error('Invalid knowledge move response');
+      }
+      const row = data as Record<string, unknown>;
+      const taskId = row.task_id as string;
+      return {
+        taskId,
+        ...(typeof row.knowledge_count === 'number' ? { knowledgeCount: row.knowledge_count } : {}),
+        ...row,
+      };
+    },
+    /** Vue getKnowledgeMoveProgress: GET /knowledge/move/progress/:task_id. */
+    async moveProgress(taskId: string): Promise<KnowledgeMoveProgress> {
+      const response = await request({
+        method: 'GET',
+        path: `/api/v1/knowledge/move/progress/${encodeURIComponent(taskId)}`,
+      });
+      const parsed = typeof response === 'object' && response !== null ? response as Record<string, unknown> : {};
+      const data = parsed.data;
+      if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { status?: unknown }).status !== 'string') {
+        throw new Error('Invalid knowledge move progress');
+      }
+      const row = data as Record<string, unknown>;
+      return {
+        ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+        status: row.status as string,
+        ...row,
+      };
     },
     async cancelParse(id: string): Promise<void> {
       await request({ method: 'POST', path: knowledgePath(id, '/cancel-parse') });

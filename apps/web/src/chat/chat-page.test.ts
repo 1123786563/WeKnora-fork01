@@ -757,3 +757,41 @@ test('an unclosed think block in history restores the live thinking presentation
   assert.match(html, /中断的推理过程/);
   assert.doesNotMatch(html, /&lt;think&gt;/);
 });
+
+/*
+ * R483 D16 (R482 report-B2): the Vue ChatHeader ⋯ menu carries a utility block
+ * between 修改标题 and 清空消息 — 复制会话 ID / 复制对话链接 / 复制为
+ * Markdown / 在新窗口中打开, separated by dividers (ChatHeader.vue:61-78).
+ */
+test('chat header menu renders the Vue utility block between rename and clear with dividers', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    locale: 'zh-CN',
+    onRenameSession: async () => undefined,
+    onToggleSessionPin: async () => undefined,
+    onDeleteSession: async () => undefined,
+    onClearSession: async () => undefined,
+    headerUtilityItems: [
+      { id: 'copySessionId', label: '复制会话 ID', onActivate: () => undefined },
+      { id: 'copyLink', label: '复制对话链接', onActivate: () => undefined },
+      { id: 'copyMarkdown', label: '复制为 Markdown', onActivate: () => undefined },
+      { id: 'openNewWindow', label: '在新窗口中打开', onActivate: () => undefined },
+    ],
+  }));
+  for (const label of ['复制会话 ID', '复制对话链接', '复制为 Markdown', '在新窗口中打开']) {
+    assert.match(html, new RegExp(label));
+  }
+  // Scope the order check to the header menu list: the sidebar row menus
+  // carry the same 置顶/修改标题/清空消息 labels earlier in the DOM.
+  const menuStart = html.indexOf('wk-chat-header-menu-list');
+  const menuHtml = html.slice(menuStart, menuStart + 3000);
+  // Vue menu order: pin | rename | copyId | copyLink | copyMarkdown | openNewWindow | clear | delete.
+  const vueOrder = ['置顶', '修改标题', '复制会话 ID', '复制对话链接', '复制为 Markdown', '在新窗口中打开', '清空消息', '删除对话'];
+  const order = vueOrder.map((text) => menuHtml.indexOf(text));
+  for (let index = 1; index < order.length; index += 1) {
+    assert.ok(order[index] > order[index - 1], `menu items must render in the Vue order (${vueOrder[index - 1]} before ${vueOrder[index]})`);
+  }
+  // The utility block sits between two dividers like the Vue menu structure.
+  const dividers = menuHtml.match(/wk-chat-header-menu-divider/g) ?? [];
+  assert.equal(dividers.length, 2, 'the header menu must carry the two Vue dividers around the utility block');
+});

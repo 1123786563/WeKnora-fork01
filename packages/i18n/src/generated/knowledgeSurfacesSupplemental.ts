@@ -55,6 +55,10 @@ const enUS: Record<string, string> = {
   'knowledgeBase.documents.tabGraph': 'Graph',
   'knowledgeBase.documents.detail': 'Open document',
   'knowledgeBase.timeline.title': 'Processing timeline',
+  // R483 F4: the document row menu's 下载 item uses the Vue common.download
+  // copy; the key is knowledge-scoped because packages/i18n has no common
+  // block port. Values are byte-exact from frontend/src/i18n/locales common.download.
+  'knowledgeBase.downloadDocument': 'Download',
   'knowledgeBase.timeline.pending': 'Pending',
   'knowledgeBase.timeline.running': 'Running',
   'knowledgeBase.timeline.done': 'Done',
@@ -174,6 +178,7 @@ const zhCN: Record<string, string> = {
   'knowledgeBase.documents.tabGraph': '图谱',
   'knowledgeBase.documents.detail': '打开文档',
   'knowledgeBase.timeline.title': '解析进度',
+  'knowledgeBase.downloadDocument': '下载',
   'knowledgeBase.timeline.pending': '等待中',
   'knowledgeBase.timeline.running': '进行中',
   'knowledgeBase.timeline.done': '已完成',
@@ -289,6 +294,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     ...jaJPGraph,
     // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ja-JP).
     'knowledgeBase.timeline.skipped': 'スキップ済み',
+    // R483 F4: byte-exact from Vue common.download (ja-JP).
+    'knowledgeBase.downloadDocument': 'ダウンロード',
     'knowledgeBase.detail.backShort': '戻る',
     'knowledgeBase.detail.title': 'ファイルの詳細',
     'knowledgeBase.detail.loading': 'ファイルの詳細を読み込み中',
@@ -313,6 +320,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     ...koKRGraph,
     // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ko-KR).
     'knowledgeBase.timeline.skipped': '건너뜀',
+    // R483 F4: byte-exact from Vue common.download (ko-KR).
+    'knowledgeBase.downloadDocument': '다운로드',
     'knowledgeBase.detail.backShort': '뒤로',
     'knowledgeBase.detail.title': '파일 세부 정보',
     'knowledgeBase.detail.loading': '파일 세부 정보 로드 중',
@@ -337,6 +346,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     ...ruRUGraph,
     // R472-A1: byte-exact from Vue knowledgeStages.status.skipped (ru-RU).
     'knowledgeBase.timeline.skipped': 'Пропущено',
+    // R483 F4: byte-exact from Vue common.download (ru-RU).
+    'knowledgeBase.downloadDocument': 'Скачать',
     'knowledgeBase.detail.backShort': 'Назад',
     'knowledgeBase.detail.title': 'Сведения о файле',
     'knowledgeBase.detail.loading': 'Загрузка сведений о файле',

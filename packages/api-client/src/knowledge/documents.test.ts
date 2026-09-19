@@ -322,3 +322,79 @@ test('updates document summary and custom metadata through the guarded detail en
     body: { description: 'Updated', custom_metadata: { owner: 'docs' } },
   });
 });
+
+// R483 F4 — Vue cross-KB document move parity (frontend/src/api/knowledge-base
+// listMoveTargets / moveKnowledge / getKnowledgeMoveProgress against
+// internal/handler/knowledge.go MoveKnowledge + ListMoveTargets and
+// internal/handler/knowledgebase.go ListMoveTargets).
+
+test('lists the cross-KB move targets behind the source KB route', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createKnowledgeDocumentsApi(async (input) => {
+    requests.push({ method: input.method, path: input.path });
+    return {
+      success: true,
+      data: [
+        { id: 'kb-2', name: 'Parity Target', knowledge_count: 4 },
+        { id: 'kb-3', name: 'Other Target' },
+      ],
+    };
+  });
+  const targets = await api.moveTargets('kb/a');
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/knowledge-bases/kb%2Fa/move-targets' }]);
+  assert.deepEqual(targets, [
+    { id: 'kb-2', name: 'Parity Target', knowledge_count: 4 },
+    { id: 'kb-3', name: 'Other Target' },
+  ]);
+});
+
+test('move posts the Vue move payload and unwraps the task id', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (input) => {
+    requests.push({ method: input.method, path: input.path, body: input.body });
+    return { success: true, data: { task_id: 'task-7', knowledge_count: 1 } };
+  });
+  const start = await api.move({
+    knowledge_ids: ['doc-1'],
+    source_kb_id: 'kb-1',
+    target_kb_id: 'kb-2',
+    mode: 'reuse_vectors',
+  });
+  assert.equal(start.taskId, 'task-7');
+  assert.deepEqual(requests, [
+    {
+      method: 'POST',
+      path: '/api/v1/knowledge/move',
+      body: { knowledge_ids: ['doc-1'], source_kb_id: 'kb-1', target_kb_id: 'kb-2', mode: 'reuse_vectors' },
+    },
+  ]);
+});
+
+test('move rejects target payloads without a task envelope', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true, data: {} }));
+  await assert.rejects(
+    () => api.move({ knowledge_ids: ['doc-1'], source_kb_id: 'kb-1', target_kb_id: 'kb-2', mode: 'reparse' }),
+    /Invalid knowledge move response/,
+  );
+});
+
+test('moveProgress reads the async task progress endpoint', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createKnowledgeDocumentsApi(async (input) => {
+    requests.push({ method: input.method, path: input.path });
+    return {
+      success: true,
+      data: { task_id: 'task-7', status: 'completed', processed: 2, failed: 0, total: 2, progress: 100 },
+    };
+  });
+  const progress = await api.moveProgress('task/7');
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/knowledge/move/progress/task%2F7' }]);
+  assert.equal(progress.status, 'completed');
+  assert.equal(progress.processed, 2);
+  assert.equal(progress.failed, 0);
+});
+
+test('moveProgress rejects envelopes without a usable progress payload', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({ success: true }));
+  await assert.rejects(() => api.moveProgress('task-7'), /Invalid knowledge move progress/);
+});

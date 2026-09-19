@@ -103,7 +103,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
     void (async () => {
       if (tab === 'embed') await Promise.all([loadEmbed(), loadAgents()]);
       if (tab === 'im') await Promise.all([loadIm(), loadAgents(), loadKnowledgeBases()]);
-      if (tab === 'api') await Promise.all([loadApiKeys(), loadAgents()]);
+      if (tab === 'api') await Promise.all([loadApiKeys(), loadAgents(), loadKnowledgeBases()]);
       if (current) setLoading(false);
     })();
     return () => { current = false; };
@@ -150,9 +150,18 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
     onDeleteIm: async (id: string) => { await client.embed.im.remove(id); },
     onSavePrincipal: async (input: { mode: APIPrincipalConfig['mode']; requireDirectHeader: boolean; hmacSecret?: string }) => { if (activeTenantId === null) throw new Error('No active workspace selected.'); setPrincipal(await client.administration.tenantApiKeys.updatePrincipalConfig(activeTenantId, input)); },
     onCreatePrincipalTestToken: async (externalUserId: string) => { if (activeTenantId === null) throw new Error('No active workspace selected.'); return client.administration.tenantApiKeys.createPrincipalTestToken(activeTenantId, externalUserId); },
-    onCreateApiKey: async (name: string): Promise<ApiKeyRow> => {
+    // Vue createScopedAPIKey posts { name, full_access, knowledge_base_ids,
+    // capabilities } to POST /tenants/{id}/api-keys; the dialog assembles the
+    // payload (packages/views apiKeys.ts buildApiKeyCreatePayload) and this
+    // port forwards it unchanged.
+    onCreateApiKey: async (payload: { name: string; full_access: boolean; knowledge_base_ids: string[]; capabilities: string[] }): Promise<ApiKeyRow> => {
       if (activeTenantId === null) throw new Error('No active workspace selected.');
-      const created = await client.administration.tenantApiKeys.create(activeTenantId, { name, full_access: true });
+      const created = await client.administration.tenantApiKeys.create(activeTenantId, {
+        name: payload.name,
+        full_access: payload.full_access,
+        knowledge_base_ids: payload.knowledge_base_ids,
+        capabilities: payload.capabilities,
+      });
       if (created.token) setPlaygroundApiKey(created.token);
       return created;
     },

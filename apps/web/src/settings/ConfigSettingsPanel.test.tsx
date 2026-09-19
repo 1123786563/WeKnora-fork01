@@ -58,6 +58,47 @@ test('retrieval keeps the Vue rerank-model-first slider order', async () => {
   assert.ok(Boolean(model.compareDocumentPosition(slider) & 4), 'the rerank selector precedes the threshold sliders');
 });
 
+// R483 F2 (R482 B2-D18): Vue RetrievalSettings.vue:148-155 treats a stored 0
+// as "unset" for embedding_top_k / vector_threshold / keyword_threshold /
+// rerank_top_k (`cfg.x || default`) but keeps 0 for rerank_threshold
+// (`cfg.x ?? default`, the slider spans -10..10). React read the raw values,
+// so an all-zero tenant config rendered 0.00/0.00 instead of 0.15/0.30.
+test('retrieval falls back to the Vue defaults when the tenant config stores zeros', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ConfigSettingsPanel
+      client={client}
+      section="retrieval"
+      initialValue={{ embedding_top_k: 0, vector_threshold: 0, keyword_threshold: 0, rerank_top_k: 0, rerank_threshold: 0 }}
+      models={[]}
+    />,
+  ));
+
+  const outputs = [...container.querySelectorAll('output')].map((node) => node.textContent);
+  assert.deepEqual(outputs, ['50', '0.15', '0.30', '10', '0.00'], 'zeros fall back per-field: embedding 50, vector 0.15, keyword 0.30, rerank top_k 10, rerank threshold stays 0.00 like Vue ??');
+});
+
+test('retrieval preserves non-zero and negative stored values like Vue', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ConfigSettingsPanel
+      client={client}
+      section="retrieval"
+      initialValue={{ embedding_top_k: 30, vector_threshold: 0.4, keyword_threshold: 0.65, rerank_top_k: 5, rerank_threshold: -1.5 }}
+      models={[]}
+    />,
+  ));
+
+  const outputs = [...container.querySelectorAll('output')].map((node) => node.textContent);
+  assert.deepEqual(outputs, ['30', '0.40', '0.65', '5', '-1.50']);
+});
+
 test('chat history hides the embedding model row while indexing is disabled like Vue', async () => {
   const client = { settings: { chatHistory: { config: { update: async (body: Record<string, unknown>) => body } } } } as unknown as WeKnoraClient;
   const container = document.createElement('div');

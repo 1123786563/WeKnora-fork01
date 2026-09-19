@@ -971,7 +971,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       <form className="flex flex-col gap-3" onSubmit={submitInvite}>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.emailLabel')}</span>
-          <Input required type="email" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[var(--wk-text,#172033)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder').replace("{'@'}", '@')}
+          <Input required type="email" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[var(--wk-text,#172033)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
             onChange={(event) => setInviteEmail(event.target.value)} />
         </label>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">

@@ -3,7 +3,19 @@ import { useEffect, useRef, useState } from 'react';
 import type { Locale } from '../../../i18n/src/index.ts';
 import { INTEGRATION_SECTIONS, integrationSection, type IntegrationKey } from './registry.ts';
 import { buildEmbedUpdatePayload } from './form.ts';
-import { apiKeyAccessMode, apiKeyValueDisplay, isFreshKeyVisible, type ApiKeyRow } from './apiKeys.ts';
+import {
+  apiKeyAccessMode,
+  apiKeyValueDisplay,
+  buildApiKeyCreatePayload,
+  createDefaultApiKeySelections,
+  isFreshKeyVisible,
+  apiKeyKnowledgeScopeApplies,
+  selectedApiKeyCapabilities,
+  TENANT_API_KEY_CAPABILITY_GROUPS,
+  type ApiKeyCapabilitySelections,
+  type ApiKeyCreatePayload,
+  type ApiKeyRow,
+} from './apiKeys.ts';
 import { buildCLIConnectCommand } from './cli.ts';
 import { integrationsLocale, integrationsT } from './messages.ts';
 import { imPlatformLabel, imPlatformOrder, integrationSectionCopy } from './view.ts';
@@ -97,7 +109,9 @@ export interface IntegrationActions {
   onDeleteIm?: (id: string) => Promise<void>;
   principal?: APIPrincipalConfig | null;
   onSavePrincipal?: (input: { mode: APIPrincipalConfig['mode']; requireDirectHeader: boolean; hmacSecret?: string }) => Promise<void>;
-  onCreatePrincipalTestToken?: (externalUserId: string) => Promise<IntegrationPrincipalToken>;  onCreateApiKey?: (name: string) => Promise<ApiKeyRow>;  onRevokeApiKey?: (keyId: ApiKeyRow['id']) => Promise<void>;
+  onCreatePrincipalTestToken?: (externalUserId: string) => Promise<IntegrationPrincipalToken>;  /** Vue createTenantAPIKey payload (ApiIntegrationSettings.vue createScopedAPIKey):
+   *  { name, full_access, knowledge_base_ids, capabilities }. */
+  onCreateApiKey?: (payload: ApiKeyCreatePayload) => Promise<ApiKeyRow>;  onRevokeApiKey?: (keyId: ApiKeyRow['id']) => Promise<void>;
   wechatQr?: IntegrationWeChatQrPorts;
 }
 
@@ -188,7 +202,6 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const [playgroundBody, setPlaygroundBody] = useState('{\n  "query": "Hello from the API playground"\n}');
   const [playgroundOutput, setPlaygroundOutput] = useState('');
   const [freshApiKeyId, setFreshApiKeyId] = useState<ApiKeyRow['id'] | null>(null);
-  const [newApiKeyName, setNewApiKeyName] = useState("");
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const section = INTEGRATION_SECTIONS.find((item) => item.key === tab)!;
@@ -443,7 +456,10 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
     closeImWizard();
     onReload?.();
   });
-  const createApiKey = () => run(async () => { if (!actions.onCreateApiKey) return; const created = await actions.onCreateApiKey(newApiKeyName.trim()); setFreshApiKeyId(created.id); setNewApiKeyName(""); setShowApiKeyForm(false); });
+  // Vue createScopedAPIKey: the dialog builds the { name, full_access,
+  // knowledge_base_ids, capabilities } payload and the route page posts it to
+  // POST /tenants/{id}/api-keys unchanged.
+  const createApiKey = (payload: ApiKeyCreatePayload) => run(async () => { if (!actions.onCreateApiKey) return; const created = await actions.onCreateApiKey(payload); setFreshApiKeyId(created.id); setShowApiKeyForm(false); });
   const revokeApiKey = (key: ApiKeyRow) => { if (!actions.onRevokeApiKey) return; if (!window.confirm(t('integrations.api.deleteApiKeyConfirm'))) return; void run(async () => { await actions.onRevokeApiKey?.(key.id); onReload?.(); }); };
   const savePrincipal = () => run(async () => { await actions.onSavePrincipal?.({ mode: principalMode, requireDirectHeader, ...(hmacSecret.trim() ? { hmacSecret: hmacSecret.trim() } : {}) }); setHmacSecret(''); });
   const createPrincipalToken = () => run(async () => { if (!actions.onCreatePrincipalTestToken) return; setPrincipalToken(await actions.onCreatePrincipalTestToken(externalUserId.trim())); });
@@ -570,8 +586,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             onCancel={closeEmbedWizard}
           /> : null}
         /> : null}
-        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} newApiKeyName={newApiKeyName} setNewApiKeyName={setNewApiKeyName} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
-        {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} t={t} /> : null}
+        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} knowledgeBases={knowledgeBases} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
+        {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} onOpenApiSettings={() => setTab('api')} t={t} /> : null}
       </section>
     </main>
     {embedPreview ? <EmbedChannelPreviewPanel preview={embedPreview} locale={locale} t={t} onClose={() => setEmbedPreview(null)} /> : null}
@@ -1328,7 +1344,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
 }
 
 
-function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, newApiKeyName, setNewApiKeyName, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
+function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, knowledgeBases, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
   apiBaseUrl: string;
   actions: IntegrationActions;
   principalMode: APIPrincipalConfig['mode'];
@@ -1356,11 +1372,11 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
   apiKeys?: readonly ApiKeyRow[];
   apiKeysLoading?: boolean;
   freshApiKeyId?: ApiKeyRow['id'] | null;
-  newApiKeyName?: string;
-  setNewApiKeyName?: (value: string) => void;
+  /** Vue loadKnowledgeBaseOptions feeds the create-dialog KB scope select. */
+  knowledgeBases?: readonly IntegrationKnowledgeBaseOption[];
   showApiKeyForm?: boolean;
   setShowApiKeyForm?: (value: boolean) => void;
-  onCreateApiKey?: () => void;
+  onCreateApiKey?: (payload: ApiKeyCreatePayload) => void;
   onRevokeApiKey?: (key: ApiKeyRow) => void;
   onCopyApiKey?: (key: ApiKeyRow) => void;
   onOpenApiPlayground?: () => void;
@@ -1396,13 +1412,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
         <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
       </div>
       {freshApiKeyId !== null ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
-      {showApiKeyForm ? <form className={INTEGRATION_FORM_CLASS} onSubmit={(event) => { event.preventDefault(); onCreateApiKey?.(); }}>
-        <label>{t('integrations.api.apiKeyName')}<input required value={newApiKeyName ?? ''} onChange={(event) => setNewApiKeyName?.(event.target.value)} placeholder={t('integrations.api.apiKeyNamePlaceholder')} /></label>
-        <div className="wk-form-actions">
-          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !newApiKeyName?.trim()}>{t('integrations.api.createApiKey')}</button>
-          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(false)}>{t('common.cancel')}</button>
-        </div>
-      </form> : null}
+      {showApiKeyForm ? <ApiKeyCreateForm t={t} busy={busy} knowledgeBases={knowledgeBases ?? []} canSubmit={Boolean(actions.onCreateApiKey)} onCreate={onCreateApiKey} onCancel={() => setShowApiKeyForm?.(false)} /> : null}
       {apiKeysLoading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.noApiKeys')}</p> : <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead><tr>
@@ -1477,7 +1487,85 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
   </div>;
 }
 
-function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab: IntegrationKey; locale: Locale; externalUrl?: string; apiBaseUrl: string; t: Translator }) {
+// The create-key drawer (Vue ApiIntegrationSettings.vue L462-564): 名称,
+// 访问类型 radio (能力授权 / 空间完全访问) with its switching hint, the
+// four-group capability matrix (知识库数据 / 智能体与集成 / 成员与空间 / 空间配置)
+// with a 全选/清空 toggle per group and a checkbox + hint per capability, and
+// the 知识库范围 multi-select that only applies below full access while a
+// KB-scoped capability is selected. The submit payload is assembled by
+// buildApiKeyCreatePayload to stay byte-equivalent to Vue createScopedAPIKey.
+function ApiKeyCreateForm({ t, busy, knowledgeBases, canSubmit, onCreate, onCancel }: {
+  t: Translator;
+  busy: boolean;
+  knowledgeBases: readonly IntegrationKnowledgeBaseOption[];
+  canSubmit: boolean;
+  onCreate?: (payload: ApiKeyCreatePayload) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [fullAccess, setFullAccess] = useState(false);
+  const [selections, setSelections] = useState<ApiKeyCapabilitySelections>(createDefaultApiKeySelections);
+  const [knowledgeBaseIds, setKnowledgeBaseIds] = useState<string[]>([]);
+  const [warning, setWarning] = useState('');
+  const selected = selectedApiKeyCapabilities(selections);
+  const knowledgeScopeApplies = apiKeyKnowledgeScopeApplies(fullAccess, selected);
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) { setWarning(t('integrations.api.apiKeyNameRequired')); return; }
+    if (!fullAccess && selected.length === 0) { setWarning(t('integrations.api.apiKeyCapabilitiesRequired')); return; }
+    setWarning('');
+    onCreate?.(buildApiKeyCreatePayload({ name: trimmed, fullAccess, capabilities: selected, knowledgeBaseIds }));
+  };
+  const groupAllSelected = (group: (typeof TENANT_API_KEY_CAPABILITY_GROUPS)[number]) => group.capabilities.every((capability) => selections[capability.value]);
+  const toggleGroup = (group: (typeof TENANT_API_KEY_CAPABILITY_GROUPS)[number], selected: boolean) => setSelections((current) => {
+    const next = { ...current };
+    group.capabilities.forEach((capability) => { next[capability.value] = selected; });
+    return next;
+  });
+  return <form className={INTEGRATION_FORM_CLASS} onSubmit={submit}>
+    {/* Vue SettingDrawer description (createApiKeyDialogDesc). */}
+    <p className="wk-muted text-muted">{t('integrations.api.createApiKeyDialogDesc')}</p>
+    <label>{t('integrations.api.apiKeyName')}<input type="text" required value={name} onChange={(event) => setName(event.target.value)} placeholder={t('integrations.api.apiKeyNamePlaceholder')} /></label>
+    <div className="grid gap-[0.3rem]">
+      <span className="font-semibold">{t('integrations.api.apiKeyAccessType')}</span>
+      <span className="flex flex-wrap gap-[8px]" role="radiogroup" aria-label={t('integrations.api.apiKeyAccessType')}>
+        <button type="button" role="radio" aria-checked={!fullAccess} className={chip(!fullAccess)} onClick={() => setFullAccess(false)}>{t('integrations.api.apiKeyScopedAccess')}</button>
+        <button type="button" role="radio" aria-checked={fullAccess} className={chip(fullAccess)} onClick={() => setFullAccess(true)}>{t('integrations.api.capabilityTenantFull')}</button>
+      </span>
+      <p className="wk-muted text-muted">{t(fullAccess ? 'integrations.api.capabilityTenantFullHint' : 'integrations.api.apiKeyAccessTypeHint')}</p>
+    </div>
+    {!fullAccess ? <div className="grid gap-[0.6rem]">
+      <span className="font-semibold">{t('integrations.api.apiKeyCapabilities')}</span>
+      {TENANT_API_KEY_CAPABILITY_GROUPS.map((group) => <div className="api-key-capability-group grid gap-[0.5rem]" key={group.key}>
+        <div className="api-key-capability-group__header flex items-center justify-between gap-[12px]">
+          <span className="text-[13px] font-semibold text-ink">{t(group.labelKey)}</span>
+          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={() => toggleGroup(group, !groupAllSelected(group))}>{t(groupAllSelected(group) ? 'integrations.api.apiKeyCapabilityClearGroup' : 'integrations.api.apiKeyCapabilitySelectGroup')}</button>
+        </div>
+        {group.capabilities.map((capability) => <div className="api-key-capability-item" key={capability.value}>
+          <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
+            <input className="size-4 shrink-0 accent-primary" type="checkbox" checked={selections[capability.value]} onChange={(event) => setSelections((current) => ({ ...current, [capability.value]: event.target.checked }))} />
+            <span>{t(capability.labelKey)}</span>
+          </label>
+          <p className="wk-muted text-muted m-0 mt-[2px]">{t(capability.hintKey)}</p>
+        </div>)}
+      </div>)}
+    </div> : null}
+    {knowledgeScopeApplies ? <label>{t('integrations.api.apiKeyKnowledgeScope')}
+      <select multiple value={knowledgeBaseIds} size={Math.min(6, Math.max(3, knowledgeBases.length || 3))} onChange={(event) => setKnowledgeBaseIds(Array.from(event.target.selectedOptions).map((option) => option.value))}>
+        {knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
+      </select>
+      <span className="wk-muted text-muted">{t('integrations.api.apiKeyKnowledgeScopePlaceholder')}</span>
+    </label> : null}
+    {warning ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{warning}</p> : null}
+    <div className="wk-form-actions">
+      <button className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !canSubmit}>{t('integrations.api.createApiKey')}</button>
+      <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={onCancel}>{t('common.cancel')}</button>
+    </div>
+  </form>;
+}
+
+function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiSettings, t }: { tab: IntegrationKey; locale: Locale; externalUrl?: string; apiBaseUrl: string; onOpenApiSettings?: () => void; t: Translator }) {
   const cta = tab === 'cli'
     ? { label: t('integrations.cli.docs'), hint: t('integrations.cli.docsHint') }
     : tab === 'chrome'
@@ -1582,7 +1670,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         {tab === 'cli' ? <>
           <section className="border-b border-line px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.commandsDesc')}</p><div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre>{copyButtonForExternal(t, 'integrations.cli.copy', copy, 'weknora doc upload')}</div></section>
           <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.mcpDesc')}</p><div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre>{copyButtonForExternal(t, 'integrations.cli.copy', copy, 'mcp')}</div></section>
-        </> : tab === 'chrome' ? <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[11px] font-semibold text-primary">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p></div></li>)}</ol></section> : <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'install' ? <pre className="mt-2 overflow-x-auto rounded-[8px] bg-ink px-3 py-2 text-[11px] text-[#edf2ff]">openclaw skills install @lyingbug/weknora</pre> : null}</div></li>)}</ol></section>}
+        </> : tab === 'chrome' ? <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[11px] font-semibold text-primary">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface mt-[6px]! px-[0.6rem]! py-[0.3rem]! text-[12px]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}</div></li>)}</ol></section> : <section className="px-0 py-3"><h4 className="m-0 mb-3 text-[13px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4><ol className="m-0 grid list-none gap-[.9rem] p-0">{clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div><div className="text-[12px] font-semibold text-ink">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface mt-[6px]! px-[0.6rem]! py-[0.3rem]! text-[12px]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'install' ? <pre className="mt-2 overflow-x-auto rounded-[8px] bg-ink px-3 py-2 text-[11px] text-[#edf2ff]">openclaw skills install @lyingbug/weknora</pre> : null}</div></li>)}</ol></section>}
       </div></aside>
     </div>
     {tab === 'chrome' ? <footer className="text-[11px] text-muted">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border border-line bg-surface-wash px-3 py-[10px] text-[12px] text-muted"><p className="m-0 mb-1">{t('integrations.claw.ecosystemNote')}</p><span className="text-[11px]">{t('integrations.claw.hubMeta')}</span></footer> : null}

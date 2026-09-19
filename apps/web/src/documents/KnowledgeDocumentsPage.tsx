@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
@@ -10,6 +11,19 @@ import {
   type KnowledgeTimelineNode,
 } from "@weknora/domain/knowledge/processing";
 import { knowledgeSpansLastError, resolveKnowledgeSpansView } from "./processing-timeline.ts";
+import { findSharedKBGrant } from "../wiki/edit-permission.ts";
+import {
+  DEFAULT_MOVE_MODE,
+  buildTraceSummary,
+  documentMenuItems,
+  knowledgeSpansViewHasTrace,
+  moveMenuViewAfterBack,
+  type DocumentMenuAction,
+  type DocumentMoveKbController,
+  type KnowledgeMoveMode,
+  type MoveTargetKb,
+  type TraceSummary,
+} from "./doc-row-menu.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
@@ -189,7 +203,9 @@ function hasContributorRole(me: KBSurfaceMe | null | undefined): boolean {
   const roles = [me?.user?.role, ...(me?.memberships ?? []).map((membership) => membership.role)];
   return roles.some((role) => {
     const normalized = typeof role === "string" ? role.trim().toLowerCase() : "";
-    return normalized === "contributor" || normalized === "admin" || normalized === "system_admin";
+    // Vue hasRole('contributor') ranks viewer < contributor < admin < owner
+    // (frontend/src/stores/auth.ts ROLE_LEVEL) — owner passes the gate.
+    return normalized === "contributor" || normalized === "admin" || normalized === "owner" || normalized === "system_admin";
   }) || me?.user?.is_superuser === true;
 }
 
@@ -198,11 +214,17 @@ function kbPermission(kb: KBSurfaceKB): string | undefined {
   return typeof permission === "string" && permission.trim() ? permission.trim().toLowerCase() : undefined;
 }
 
-/** Vue canDownloadKnowledge: downloads are narrower than upload/edit access. */
-export function canDownloadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+/** Vue canDownloadKnowledge: downloads are narrower than upload/edit access.
+ * The effective permission mirrors Vue effectiveKBPermission (KnowledgeBase.vue:326):
+ * org share grant → kb.my_permission → '' — the KB row's `permission` field
+ * is never consulted. */
+export function canDownloadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined, sharedRows?: unknown): boolean {
   if (!hasContributorRole(me)) return false;
-  const permission = kbPermission(kb);
-  return permission === undefined || ["owner", "admin", "editor"].includes(permission);
+  const kbId = typeof kb.id === 'string' ? kb.id : '';
+  const grant = kbId ? findSharedKBGrant(sharedRows, kbId) : null;
+  const rowPermission = typeof kb.my_permission === 'string' ? kb.my_permission.trim().toLowerCase() : '';
+  const permission = (grant && grant.permission) || rowPermission || '';
+  return !permission || ['owner', 'admin', 'editor'].includes(permission);
 }
 
 /** Vue canMutateKnowledge: move/delete/batch actions require contributor-level access. */
@@ -313,13 +335,28 @@ function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
 function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"}><path d="m5 8 7 7 7-7" /></Icon>; }
+// R483 F4 menu icons (Vue t-icon chart-bar / close-circle / swap / queue /
+// chevron-left / root-list / arrow-right).
+function ChartIcon() { return <Icon size={16}><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></Icon>; }
+function CancelParseIcon() { return <Icon size={16}><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></Icon>; }
+function SwapIcon() { return <Icon size={16}><path d="M4 7h13l-3-3M20 17H7l3 3" /></Icon>; }
+function QueueIcon() { return <Icon size={16}><path d="M4 6h16M4 12h16M4 18h10" /></Icon>; }
+function ChevronLeftIcon() { return <Icon size={16}><path d="m15 5-7 7 7 7" /></Icon>; }
+function KBListIcon() { return <Icon size={16}><path d="M4 6h16M4 6v12a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-8" /></Icon>; }
+function ArrowRightIcon() { return <Icon size={14}><path d="M5 12h14M13 6l6 6-6 6" /></Icon>; }
 
-function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, actions, traceAvailable, onMenuOpen, move, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
   canDownload: boolean;
   canMutateKnowledge: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   actions: ReturnType<typeof documentRowActions>;
+  /** Vue traceAvailableById probe result gating the 查看 Trace item. */
+  traceAvailable?: boolean;
+  /** Vue onMoreVisible(visible) → probeTraceAvailable. */
+  onMenuOpen?: () => void;
+  /** Cross-KB move sub-flow (Vue moveMenuMode targets/confirm views). */
+  move?: DocumentMoveKbController;
   onDownload: () => void;
   onEdit: () => void;
   onViewTrace: () => void;
@@ -330,23 +367,74 @@ function DocumentCardActionMenu({ document, canDownload, canMutateKnowledge, t, 
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const close = () => setOpen(false);
+  const close = () => { setOpen(false); move?.onBack(); };
   // stopPropagation: the card's onClick opens the document drawer — menu
   // choices (batch manage/move/delete/…) must not bubble into it (upstream
   // renders the card menu outside the card's click target).
   const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={(event) => { event.stopPropagation(); close(); handler(); }}>{icon}<span>{label}</span></button>;
-  const downloadable = document.source === "file" || document.source === "manual" || !document.source;
+  // Vue handleAction keeps the popup open for the move sub-flow (and its
+  // folder-picker sibling); everything else closes the menu.
+  const menuItemKeepOpen = (label: string, icon: ReactNode, handler: () => void) => <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); handler(); }}>{icon}<span>{label}</span></button>;
+  const icons: Record<DocumentMenuAction, ReactNode> = {
+    download: <DownloadIcon />,
+    edit: <EditIcon size={16} />,
+    "view-trace": <ChartIcon />,
+    reparse: <RefreshIcon />,
+    "cancel-parse": <CancelParseIcon />,
+    "move-folder": <MoveIcon />,
+    "move-kb": <SwapIcon />,
+    "batch-manage": <QueueIcon />,
+    delete: <DeleteIcon />,
+  };
+  const handlers: Record<DocumentMenuAction, () => void> = {
+    download: onDownload,
+    edit: onEdit,
+    "view-trace": onViewTrace,
+    reparse: onReparse,
+    "cancel-parse": onCancelParse,
+    "move-folder": onMove,
+    "move-kb": () => move?.onStart(),
+    "batch-manage": onBatchManage,
+    delete: onDelete,
+  };
+  const items = documentMenuItems({
+    // Vue DocumentActionMenu gates download/edit on item.type, not source.
+    source: document.type ?? undefined,
+    parseStatus: document.parse_status,
+    canDownload,
+    canMutateKnowledge,
+    traceAvailable,
+  });
+  const moveView = move && open && move.view !== "normal" ? move.view : undefined;
   return <span className="relative inline-flex shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
-    <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><MoreIcon /></button>
+    <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => { const next = !value; if (next) onMenuOpen?.(); return next; }); }}><MoreIcon /></button>
     <span className="absolute right-0 top-[calc(100%+6px)] z-[220] flex min-w-[180px] flex-col rounded-[8px] border border-line-soft bg-surface p-1 shadow-[0_6px_24px_rgb(15_23_42/12%)] [&[hidden]]:hidden" role="menu" hidden={!open}>
-      {canDownload && downloadable ? menuItem(t("knowledgeBase.detail.download", { name: displayName(document) }), <DownloadIcon />, onDownload) : null}
-      {document.source === "manual" ? menuItem(t("knowledgeBase.editDocument"), <EditIcon size={16} />, onEdit) : null}
-      {actions.canCancelParse || document.trace ? menuItem(t("knowledgeBase.timeline.title"), <MoreIcon />, onViewTrace) : null}
-      {actions.canReparse && !actions.canCancelParse ? menuItem(t("knowledgeBase.rebuildDocument"), <RefreshIcon />, onReparse) : null}
-      {actions.canCancelParse ? menuItem(t("knowledgeBase.documents.cancelParse"), <RefreshIcon />, onCancelParse) : null}
-      {canMutateKnowledge ? menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove) : null}
-      {canMutateKnowledge ? menuItem(t("menu.batchManage"), <MoreIcon />, onBatchManage) : null}
-      {canMutateKnowledge ? menuItem(t("knowledgeBase.deleteDocument"), <DeleteIcon />, onDelete, true) : null}
+      {moveView === "targets" && move ? (
+        <span className="flex flex-col" data-move-view="targets">
+          <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[13px] font-semibold leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onBack(); }}><ChevronLeftIcon /><span>{t("knowledgeBase.moveToKnowledgeBase")}</span></button>
+          {move.loading ? <span className="px-3 py-2 text-[13px] text-muted">{t("common.loading")}</span> : move.targets.length === 0 ? <span className="px-3 py-2 text-[13px] text-muted">{t("knowledgeBase.moveNoTargets")}</span> : move.targets.map((kb) => <button key={kb.id} type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onSelectTarget(kb); }}><KBListIcon /><span className="min-w-0 flex-1 truncate">{kb.name}</span>{kb.knowledge_count !== undefined ? <span className="shrink-0 text-[12px] text-muted">{kb.knowledge_count}</span> : null}</button>)}
+        </span>
+      ) : moveView === "confirm" && move ? (
+        <span className="flex w-[280px] flex-col" data-move-view="confirm">
+          <button type="button" role="menuitem" className="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[13px] font-semibold leading-5 text-ink [font:inherit] hover:bg-surface-wash" onClick={(event) => { event.stopPropagation(); move.onBack(); }}><ChevronLeftIcon /><span>{t("knowledgeBase.moveConfirmTitle")}</span></button>
+          <span className="flex items-center gap-1 px-3 py-1 text-[13px] text-ink"><ArrowRightIcon /><span className="min-w-0 truncate">{move.selectedTargetName}</span></span>
+          {(["reuse_vectors", "reparse"] as const).map((mode) => <button key={mode} type="button" role="menuitem" className={`flex w-full cursor-pointer items-start gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left [font:inherit] hover:bg-surface-wash ${move.mode === mode ? "bg-surface-wash" : ""}`} onClick={(event) => { event.stopPropagation(); move.onModeChange(mode); }} aria-checked={move.mode === mode}>
+            <span aria-hidden className="mt-[3px] inline-flex h-[14px] w-[14px] flex-none items-center justify-center rounded-full border border-line-soft">{move.mode === mode ? <span className="h-[6px] w-[6px] rounded-full bg-[var(--wk-accent,#07c05f)]" /> : null}</span>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[14px] leading-5 text-ink">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectors" : "knowledgeBase.moveModeReparse")}</span>
+              <span className="text-[12px] leading-4 text-muted">{t(mode === "reuse_vectors" ? "knowledgeBase.moveModeReuseVectorsDesc" : "knowledgeBase.moveModeReparseDesc")}</span>
+            </span>
+          </button>)}
+          <span className="mt-1 flex justify-end gap-2 border-t border-line-soft px-3 pt-2">
+            <Button type="button" size="small" onClick={(event) => { event.stopPropagation(); move.onBack(); }}>{t("common.cancel")}</Button>
+            <Button type="button" size="small" disabled={move.submitting} onClick={(event) => { event.stopPropagation(); move.onConfirm(); }}>{t("knowledgeBase.moveConfirm")}</Button>
+          </span>
+        </span>
+      ) : items.map((item) => item.action === "move-kb" && move
+        ? <Fragment key={item.action}>{menuItemKeepOpen(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
+        : item.action === "move-kb"
+          ? <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action])}</Fragment>
+          : <Fragment key={item.action}>{menuItem(t(item.labelKey), icons[item.action], handlers[item.action], item.action === "delete")}</Fragment>)}
     </span>
   </span>;
 }
@@ -382,16 +470,46 @@ export function hasDocumentGridContent(items: readonly KnowledgeDocument[], fold
   return items.length > 0 || folders.length > 0;
 }
 
-function DocumentCardHoverPopover({ document, position, t }: {
+/** Vue KnowledgeProcessingTimeline compact mode: stage dots plus the
+ *  总耗时 caption the failed / in-flight document hover popover shows. */
+function DocumentTraceCompact({ summary, t }: {
+  summary: TraceSummary;
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  const caption = summary.totalMs > 0
+    ? t("knowledgeStages.totalDuration", { d: summary.duration })
+    : `${t("knowledgeBase.timeline.title")}：${summary.stageIndex}/${summary.stageTotal}${summary.activeStage ? ` · ${t(`knowledgeBase.timeline.stage.${summary.activeStage}`)}` : ""}`;
+  return <div className="document-trace-compact" data-trace-total={summary.duration}>
+    <div className="flex items-center gap-[6px]">
+      {summary.steps.map((step) => <span key={step.stage} aria-hidden className={`inline-block h-[8px] w-[8px] flex-none rounded-full document-trace-dot document-trace-dot-${step.state}`} title={`${t(`knowledgeBase.timeline.stage.${step.stage}`)} · ${t(`knowledgeBase.timeline.${step.state}`)}`} />)}
+    </div>
+    <div className="mt-1 text-[12px] text-muted">{caption}</div>
+  </div>;
+}
+
+function DocumentCardHoverPopover({ document, position, t, loadTrace }: {
   document: KnowledgeDocument;
   position: { x: number; y: number };
   t: (key: string, values?: Record<string, string | number>) => string;
+  /** Vue hover popover mounts KnowledgeProcessingTimeline with autoPoll=false:
+   *  one spans fetch for the compact trace summary. */
+  loadTrace?: (id: string) => Promise<TraceSummary | null>;
 }) {
-  const parseStatus = document.parse_status;
-  const statusKey = parseStatus === "failed" ? "knowledgeBase.parsingFailed" : undefined;
+  const parseStatus = String(document.parse_status ?? "");
+  const inFlight = parseStatus === "pending" || parseStatus === "processing" || parseStatus === "finalizing";
+  const failed = parseStatus === "failed";
+  const showTrace = inFlight || failed;
+  const [trace, setTrace] = useState<TraceSummary | null>(null);
+  useEffect(() => {
+    if (!showTrace || !loadTrace) return;
+    let active = true;
+    void loadTrace(document.id).then((summary) => { if (active) setTrace(summary); }).catch(() => { /* keep the status fallback */ });
+    return () => { active = false; };
+  }, [document.id, showTrace, loadTrace]);
+  const statusLabel = failed ? t("knowledgeBase.parsingFailed") : inFlight ? documentStatus(document, t).label : undefined;
   return <div className="knowledge-card-hover-popover fixed z-[250] w-[360px] max-w-[calc(100vw-20px)] rounded-[8px] border border-line-soft bg-surface px-4 py-3 text-[12px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" style={{ left: position.x, top: position.y }} role="tooltip">
     <div className="mb-2 truncate text-[14px] font-semibold text-primary-deep" title={displayName(document)}>{displayName(document)}</div>
-    {statusKey ? <div className={`mb-2 ${parseStatus === "failed" ? "text-danger" : "text-warning"}`}>{t(statusKey)}</div> : typeof document.description === "string" && document.description ? <div className="mb-2 line-clamp-3 whitespace-pre-wrap break-words text-muted">{document.description}</div> : null}
+    {showTrace ? <div className={`mb-2 ${failed ? "text-danger" : "text-warning"}`}>{trace ? <DocumentTraceCompact summary={trace} t={t} /> : statusLabel}</div> : typeof document.description === "string" && document.description ? <div className="mb-2 line-clamp-3 whitespace-pre-wrap break-words text-muted">{document.description}</div> : null}
     {typeof document.source === "string" && document.source ? <div className="mb-2 flex min-w-0 items-center gap-1 truncate text-muted" title={document.source}><LinkIcon size={12} /> <span className="truncate">{document.source}</span></div> : null}
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
       {document.created_at ? <span>{t("knowledgeBase.createdAt")}：{formatDocumentTime(document.created_at)}</span> : null}
@@ -437,6 +555,10 @@ export function DocumentCardGrid({
   canMutateKnowledge: canMutateKnowledgeProp,
   canDownload,
   t,
+  traceAvailableById,
+  onProbeTrace,
+  moveFor,
+  loadTrace,
   onOpen,
   onOpenFolder,
   onToggle,
@@ -458,6 +580,11 @@ export function DocumentCardGrid({
   canMutateKnowledge?: boolean;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
+  /** Vue traceAvailableById: probed /spans availability per document. */
+  traceAvailableById?: Record<string, boolean>;
+  onProbeTrace?: (document: KnowledgeDocument) => void;
+  moveFor?: (document: KnowledgeDocument) => DocumentMoveKbController;
+  loadTrace?: (id: string) => Promise<TraceSummary | null>;
   onOpen: (document: KnowledgeDocument) => void;
   onOpenFolder: (path: string) => void;
   onToggle: (id: string, checked: boolean) => void;
@@ -507,7 +634,7 @@ export function DocumentCardGrid({
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
-            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} traceAvailable={traceAvailableById?.[document.id]} onMenuOpen={() => onProbeTrace?.(document)} move={moveFor?.(document)} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           {parseInFlight ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-success-text [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-danger [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-current text-[9px] leading-none" aria-hidden="true">×</span><span>{t("knowledgeBase.parsingFailed")}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
         </div>
@@ -517,7 +644,7 @@ export function DocumentCardGrid({
         </div>
       </article>;
     })}
-    {hovered ? <DocumentCardHoverPopover document={hovered.document} position={hovered.position} t={t} /> : null}
+    {hovered ? <DocumentCardHoverPopover document={hovered.document} position={hovered.position} t={t} loadTrace={loadTrace} /> : null}
   </div>;
 }
 
@@ -2173,6 +2300,146 @@ export function KnowledgeDocumentsPage({
   const [manualEditLoading, setManualEditLoading] = useState(false);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const [traceDocument, setTraceDocument] = useState<KnowledgeDocument | null>(null);
+  // Vue traceAvailableById (KnowledgeBase.vue L356-397): opening a row menu
+  // probes GET /spans once per document; in-flight parses count as traceable
+  // without a request. Cache clears on every list reload.
+  const traceAvailableRef = useRef<Record<string, boolean>>({});
+  const traceProbeInflight = useRef<Set<string>>(new Set());
+  const [traceAvailableById, setTraceAvailableById] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    traceAvailableRef.current = {};
+    traceProbeInflight.current.clear();
+    setTraceAvailableById({});
+  }, [reloadToken, knowledgeBaseId]);
+  function probeTraceAvailability(document: KnowledgeDocument) {
+    const id = document.id;
+    if (!id || traceProbeInflight.current.has(id)) return;
+    if (isKnowledgeProcessingActive(document.parse_status)) {
+      if (traceAvailableRef.current[id] !== true) {
+        traceAvailableRef.current = { ...traceAvailableRef.current, [id]: true };
+        setTraceAvailableById(traceAvailableRef.current);
+      }
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(traceAvailableRef.current, id)) return;
+    traceProbeInflight.current.add(id);
+    void client.knowledgeBases.documents.spans(id)
+      .then((response) => {
+        traceAvailableRef.current = { ...traceAvailableRef.current, [id]: knowledgeSpansViewHasTrace(resolveKnowledgeSpansView(response)) };
+        setTraceAvailableById(traceAvailableRef.current);
+      })
+      .catch(() => {
+        traceAvailableRef.current = { ...traceAvailableRef.current, [id]: false };
+        setTraceAvailableById(traceAvailableRef.current);
+      })
+      .finally(() => { traceProbeInflight.current.delete(id); });
+  }
+  /** Vue hover popover KnowledgeProcessingTimeline compact fetch (autoPoll=false). */
+  const loadHoverTrace = useCallback(async (id: string): Promise<TraceSummary | null> => {
+    try {
+      return buildTraceSummary(resolveKnowledgeSpansView(await client.knowledgeBases.documents.spans(id)));
+    } catch {
+      return null;
+    }
+  }, [client]);
+  // Cross-KB move sub-flow (Vue handleMoveKnowledge / handleMoveSelectTarget /
+  // handleMoveConfirm / startMovePoll, KnowledgeBase.vue L1517-1600). Only the
+  // row that opened the flow renders the picker; real moves are confirmed
+  // here, the async task polls its progress endpoint until it settles.
+  const [moveKb, setMoveKb] = useState<{
+    documentId: string;
+    view: 'targets' | 'confirm';
+    targets: MoveTargetKb[];
+    loading: boolean;
+    selectedTargetId: string;
+    selectedTargetName: string;
+    mode: KnowledgeMoveMode;
+    submitting: boolean;
+  } | null>(null);
+  const movePollTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (movePollTimer.current !== null) window.clearInterval(movePollTimer.current); }, []);
+  function stopMovePoll() {
+    if (movePollTimer.current !== null) {
+      window.clearInterval(movePollTimer.current);
+      movePollTimer.current = null;
+    }
+  }
+  function startMoveToKb(document: KnowledgeDocument) {
+    const documentId = document.id;
+    setMoveKb({ documentId, view: 'targets', targets: [], loading: true, selectedTargetId: '', selectedTargetName: '', mode: DEFAULT_MOVE_MODE, submitting: false });
+    void client.knowledgeBases.documents.moveTargets(knowledgeBaseId)
+      .then((targets) => setMoveKb((current) => current && current.documentId === documentId ? { ...current, targets, loading: false } : current))
+      .catch(() => setMoveKb((current) => current && current.documentId === documentId ? { ...current, targets: [], loading: false } : current));
+  }
+  function selectMoveTarget(kb: MoveTargetKb) {
+    setMoveKb((current) => current ? { ...current, selectedTargetId: kb.id, selectedTargetName: kb.name, mode: DEFAULT_MOVE_MODE, view: 'confirm' } : current);
+  }
+  function backMoveMenu() {
+    setMoveKb((current) => {
+      if (!current) return current;
+      const next = moveMenuViewAfterBack(current.view);
+      return next === 'normal' ? null : { ...current, view: next };
+    });
+  }
+  function changeMoveMode(mode: KnowledgeMoveMode) {
+    setMoveKb((current) => current ? { ...current, mode } : current);
+  }
+  function startMoveProgressPoll(taskId: string) {
+    stopMovePoll();
+    movePollTimer.current = window.setInterval(() => {
+      void client.knowledgeBases.documents.moveProgress(taskId)
+        .then((progress) => {
+          if (progress.status === 'completed') {
+            stopMovePoll();
+            const failed = progress.failed ?? 0;
+            if (failed > 0) showStageNotice(t('knowledgeBase.moveCompletedWithErrors', { success: (progress.processed ?? 0) - failed, failed }), 'warning');
+            else showStageNotice(t('knowledgeBase.moveCompleted'), 'success');
+            setReloadToken((value) => value + 1);
+          } else if (progress.status === 'failed') {
+            stopMovePoll();
+            showStageNotice(t('knowledgeBase.moveFailed'), 'error');
+          }
+        })
+        .catch(() => { /* ignore poll errors like Vue */ });
+    }, 2000);
+  }
+  async function confirmMoveToKb() {
+    if (!moveKb || !moveKb.selectedTargetId || moveKb.submitting) return;
+    setMoveKb((current) => current ? { ...current, submitting: true } : current);
+    try {
+      const start = await client.knowledgeBases.documents.move({
+        knowledge_ids: [moveKb.documentId],
+        source_kb_id: knowledgeBaseId,
+        target_kb_id: moveKb.selectedTargetId,
+        mode: moveKb.mode,
+      });
+      showStageNotice(t('knowledgeBase.moveStarted'), 'neutral');
+      setMoveKb(null);
+      if (start.taskId) startMoveProgressPoll(start.taskId);
+      else setReloadToken((value) => value + 1);
+    } catch (error) {
+      showStageNotice(error instanceof Error && error.message ? error.message : t('knowledgeBase.moveFailed'), 'error');
+      setMoveKb((current) => current ? { ...current, submitting: false } : current);
+    }
+  }
+  // Vue pipes the move sub-flow state into every row menu; view stays 'normal'
+  // on the rows that did not open it, but onStart stays callable everywhere.
+  const moveControllerFor = useCallback((document: KnowledgeDocument): DocumentMoveKbController => {
+    const active = moveKb && moveKb.documentId === document.id ? moveKb : null;
+    return {
+      view: active ? active.view : 'normal',
+      targets: active?.targets ?? [],
+      loading: active?.loading ?? false,
+      selectedTargetName: active?.selectedTargetName ?? '',
+      mode: active?.mode ?? DEFAULT_MOVE_MODE,
+      submitting: active?.submitting ?? false,
+      onStart: () => startMoveToKb(document),
+      onSelectTarget: selectMoveTarget,
+      onBack: backMoveMenu,
+      onModeChange: changeMoveMode,
+      onConfirm: () => void confirmMoveToKb(),
+    };
+  }, [moveKb, knowledgeBaseId, t, client]);
   const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; message?: string; lastError?: { error_code?: string; error_message?: string } | null }>({ status: "idle", steps: [], nodes: [] });
   const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
   const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
@@ -2311,15 +2578,18 @@ export function KnowledgeDocumentsPage({
       client.auth.me().catch(() => null),
       // Vue KBSwitcherDropdown input: the tenant KB list behind the crumb menu.
       client.knowledgeBases.list().catch(() => []),
+      // Vue effectiveKBPermission consults the org shared-knowledge-bases
+      // grant before kb.my_permission (KnowledgeBase.vue:326).
+      client.identity.organizations.knowledgeBaseShares.listShared().catch(() => null),
     ] as const)
-      .then(([kb, me, list]) => {
+      .then(([kb, me, list, sharedRows]) => {
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
         setKbMetaError(null);
         setMe(me as KBSurfaceMe | null);
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
-        setCanDownload(canDownloadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+        setCanDownload(canDownloadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null, sharedRows));
         setCanMutate(canMutateKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
         setKbList(
           (list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({
@@ -3828,6 +4098,10 @@ export function KnowledgeDocumentsPage({
                 canMutateKnowledge={canMutate}
                 canDownload={canDownload}
                 t={t}
+                traceAvailableById={traceAvailableById}
+                onProbeTrace={probeTraceAvailability}
+                moveFor={moveControllerFor}
+                loadTrace={loadHoverTrace}
                 onOpen={(document) => onOpenDocument?.(document)}
                 onOpenFolder={(path) => setFolderPath(path || undefined)}
                 onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
@@ -3907,7 +4181,7 @@ export function KnowledgeDocumentsPage({
                       {canContribute ? (
                         <span className="wk-row-actions font-mono text-[0.8rem] text-muted">
                           {/* Vue row tag cell: click opens TagEditDialog (L333). */}
-                          <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutate} t={t} actions={actions} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
+                          <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutate} t={t} actions={actions} traceAvailable={traceAvailableById[document.id]} onMenuOpen={() => probeTraceAvailability(document)} move={moveControllerFor(document)} onDownload={() => void downloadDocument(document)} onEdit={() => void openManualEdit(document)} onViewTrace={() => openTrace(document)} onMove={() => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); }} onBatchManage={() => setBatchMode(true)} onReparse={() => reparseOne(document)} onCancelParse={() => void cancelOneParse(document.id)} onDelete={() => setConfirmingDeleteDocument(document)} />
                         </span>
                       ) : null}
                     </li>
