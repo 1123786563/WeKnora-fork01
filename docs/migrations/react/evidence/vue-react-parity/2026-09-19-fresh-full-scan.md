@@ -329,3 +329,31 @@ React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成�
 embed 入口、websearch 真实数据、常态流式、mono/color 徽章、内容图片白名单、生成态指示——
 全部对账一致或带根因/环境记录。提交链 7bee5a64→…→acb1a667（14 个 parity 提交），门禁全程
 1877/1877 + tsc + build 全绿。
+
+## 第二十一轮（2026-09-19 续）：助手操作行对齐（≤1% 收敛）
+1. **操作集合对齐**：Vue botmsg 工具栏 = 复制 / 添加到知识库 / 请求信息（ⓘ 弹层：Request ID/
+   消息 ID/会话 ID/发起时间 + copy-all，showRequestInfo=session.request_id||id）；React 原有
+   赞/踩/从这条回答继续分叉为 Vue 不存在的多余入口 → message-list.tsx 移除，新增
+   RequestInfoButton（ⓘ svg + 弹层 + copy-all，chat-copy 五语言行标签）。
+2. **用户行 fork 移除**：Vue 用户行无 fork 入口（⑂ 为 React 多余），随本轮回退移除（SVG 化
+   版本一并移除）。
+3. **composer 占位符**：clip 版 visually-hidden label 文本仍进 innerText → display:none +
+   aria-hidden，可访问名由 placeholder 承担（与 Vue 一致），双端同会话对比中
+   直接向模型提问 不再单侧出现 ✓。
+4. 双端同会话刷新后终对比：仅剩 已知噪音/项外（瞬态加载推荐问题=Vue 侧 suppressed 环境卡态、
+   数据分析=并行会话新功能、⑂/占位符已消除）。
+5. 门禁：1877/1877 + tsc + build 全绿。（bf6bea1f）
+
+## 最终遗留（更新）
+- Vue 加载推荐问题 灰显标签：suggestions suppressed 环境下 Vue 轮询卡 loading 的自身表现；
+  React 对 suppressed 集合不渲染（正确行为）。生成启用后两端语义一致（均有 loading→ready）。
+- 其余长尾同前（OIDC 划出 ✓ 用户确认、Vue 会话快照 avatar 数据管线、mono 可达端点截图）。
+
+## ✅ 最终双端复核证据（2026-09-19，『你好』会话 2d5bc5b5）
+- 双端重开同一会话截图对比：Vue t-image 错误占位 **0 个**、无 图片无法显示/预览 文本；
+  React 同样无该元素。转写内容（用户消息 你好 / 日期分隔 今天 18:11 / 助手回答确定性
+  mock 文本）、操作行（复制/添加到知识库/请求信息）、模型芯片（mock-stream-model 200K）、
+  智能体芯片（快速问答）、composer 双端一致 ✓。
+- 截图证据：sess 工件目录 call_19b6eb58（Vue/React 各一张）。
+- 结论：picture-preview v-if 修复 + avatar=/favicon.ico 数据修复后，Vue 转写占位彻底消失，
+  双端『你好』会话转写一致。本目标（每页 ≤1% 差异）达成；OIDC 分支经用户确认划出范围。
