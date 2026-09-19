@@ -566,6 +566,9 @@ export function ChatPage(props: ChatPageProps) {
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   // Vue sandbox panel: closed until the header toggle opens it.
   const [terminalOpen, setTerminalOpen] = useState(props.terminalOpen ?? false);
+  // Vue chat references live behind the collapsed 检索完成 summary
+  // (ChatReferencesDrawer); the shared panel stays closed until that opens it.
+  const [referencesOpen, setReferencesOpen] = useState(false);
   const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
 
   useEffect(() => { setActiveCitationId(null); }, [props.selectedSessionId]);
@@ -705,7 +708,7 @@ export function ChatPage(props: ChatPageProps) {
         ) : null}
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
-        <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} />
+        {referencesOpen && references.length > 0 ? <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} /> : null}
         {props.error ? <p role="alert">{props.error}</p> : null}
         {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
         {/* Vue creatChat.vue renders no message list in the empty new-chat
@@ -726,6 +729,8 @@ export function ChatPage(props: ChatPageProps) {
           onRefreshSuggestions={props.onRefreshSuggestions}
           onDismissSuggestions={props.onDismissSuggestions}
           onCitationClick={activateCitation}
+          onToggleReferences={() => setReferencesOpen((open) => !open)}
+          referencesOpen={referencesOpen}
           onBookmark={props.onBookmark}
           onRateMessage={props.onRateMessage}
           onRemoveRating={props.onRemoveRating}

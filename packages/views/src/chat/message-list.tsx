@@ -19,7 +19,8 @@ import {
   formatArtifactSize,
   type ArtifactPreviewPayload,
 } from './artifact-preview.tsx';
-import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { conversationTimeLabels, formatChatCopy, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { groupChatReferences } from '@weknora/domain/chat/references';
 import { splitHistoryThinking, type LiveThinkingState } from './live-thinking.ts';
 
 /*
@@ -78,6 +79,11 @@ export interface MessageListProps {
   sessionId?: string | null;
   /** True while the turn streams and no assistant content has arrived (Vue index.vue typing dots). */
   typingIndicator?: boolean;
+  /** Vue ChatReferencesDrawer entry: the collapsed 检索完成 summary toggles the
+   *  shared reference panel; absent renders the summary without a toggle. */
+  onToggleReferences?(): void;
+  /** Whether the shared reference panel is currently expanded (drives aria-expanded). */
+  referencesOpen?: boolean;
   /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
   copy?: ChatCopyTable;
 }
@@ -295,9 +301,29 @@ function HistoryDeepThink({ copy: copyTable, state }: { copy: ChatCopyTable; sta
   </details>;
 }
 
-function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
+function completedReferenceDocCount(message: ChatMessage): number {
+  // Vue AgentStreamDisplay counts distinct documents (web hits excluded) for
+  // 引用了{count}篇文档; the same grouping powers the shared reference panel.
+  const row = message as Record<string, unknown>;
+  const raw = [...(Array.isArray(row.knowledge_references) ? row.knowledge_references : []), ...(Array.isArray(row.references) ? row.references : [])];
+  return groupChatReferences(raw).flatMap((group) => (group.kind === 'document' ? group.items : [])).length;
+}
+
+function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage; onToggleReferences?: () => void; referencesOpen?: boolean }) {
   const items = assistantTimelineItems(props.message);
   if (items.length === 0) return null;
+  if (props.message.is_completed === true) {
+    // Vue AgentStreamDisplay completed face: the live tool timeline folds into
+    // the single 检索完成 summary line, with the cited-document count beside it
+    // and the reference panel one click away (ChatReferencesDrawer).
+    const docCount = completedReferenceDocCount(props.message);
+    return <section className='wk-chat-message-extras mt-[8px]' aria-label={props.copy.thinkingAndTools}>
+      <button type='button' className='wk-chat-retrieval-summary inline-flex cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-0 py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] transition-[color,background] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]' aria-expanded={props.referencesOpen === true} onClick={() => props.onToggleReferences?.()}>
+        <span>{props.copy.searchDone}</span>
+        {docCount > 0 ? <span>{formatChatCopy(props.copy, 'referencesDocCount', { count: docCount })}</span> : null}
+      </button>
+    </section>;
+  }
   return <section className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]' aria-label={props.copy.thinkingAndTools}>
     <ol className='wk-chat-agent-timeline m-0 list-none p-[6px]'>
       {items.map((item) => item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
@@ -324,7 +350,7 @@ function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenL
   </section>;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const timestampLabels = conversationTimeLabels(t);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -512,7 +538,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
               </span>
             ) : null}
           </div> : null}
-          {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
+          {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
           {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}
         </div>
       </li>

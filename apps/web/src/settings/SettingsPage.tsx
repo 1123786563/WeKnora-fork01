@@ -335,7 +335,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
       : null;
     const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
     const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
-      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} />
+      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} role={role} />
       : null;
     const configPanel = key === 'retrieval'
       ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />

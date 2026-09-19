@@ -116,7 +116,10 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   // the main face (it only feeds the agent timeline); the live thinking
   // indicator is deepThink, driven by `<think>` tags in the streamed answer.
   assert.doesNotMatch(html, /checking sources/);
-  assert.match(html, /Guide &lt;safe&gt;/);
+  // 2026-09-19 live-round contract: streamed references stay behind the
+  // collapsed 检索完成 summary (Vue ChatReferencesDrawer) — no completed
+  // assistant message exists here, so the panel never renders in this view.
+  assert.doesNotMatch(html, /Guide &lt;safe&gt;/);
   assert.match(html, /search_docs/);
   assert.match(html, /&lt;not markup&gt;/);
   assert.match(html, /redacted/);
