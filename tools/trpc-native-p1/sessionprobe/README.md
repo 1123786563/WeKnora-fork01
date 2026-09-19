@@ -40,10 +40,11 @@ the SDK's session read filtering removes assistant-only histories.
 
 List characterization verifies updated-at descending IDs, bounded and
 out-of-range pages, invalid page bounds, merged app/user/session state, and
-that `WithListSessionOnlyMeta` removes history even when it was persisted. A
+that `WithListSessionOnlyMeta` removes history for `one`, the session with
+persisted bootstrap and assistant events. A
 cancelled synchronous assistant append returns an error after updating the
 caller Session object; after reopen, only the bootstrap event remains in the
-database.
+database, with its exact `Event.ID` retained.
 
 The PostgreSQL default schema initializer is independently characterized as
 incompatible: it rejects an otherwise empty unique schema during required
