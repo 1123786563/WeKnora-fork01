@@ -46,19 +46,32 @@ validate_ledger_row() {
   shift
 
   awk -F '|' -v task="${task}" -v anchors="$*" '
+    function trim(value) {
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      return value
+    }
     function is_complete(value) {
-      return value ~ /^[[:space:]]*complete([[:space:]]|（|\(|$)/
+      value = trim(value)
+      return value == "complete" || value ~ /^complete\([^)]*\)$/ || value ~ /^complete（[^）]*）$/
+    }
+    function has_expected_anchors(value, expected_count, expected, actual_count, actual, remainder) {
+      expected_count = split(anchors, expected, " ")
+      remainder = value
+      while (match(remainder, /`[^`]+`/)) {
+        actual = tolower(substr(remainder, RSTART + 1, RLENGTH - 2))
+        actual_count++
+        if (actual_count > expected_count || actual != tolower(expected[actual_count])) {
+          return 0
+        }
+        remainder = substr(remainder, RSTART + RLENGTH)
+      }
+      return actual_count == expected_count
     }
     $2 ~ "^[[:space:]]*" task "[[:space:]]" {
       rows++
-      if (!is_complete($6) || !is_complete($7) || !is_complete($8)) {
+      if (!has_expected_anchors($5) || !is_complete($6) || !is_complete($7) || !is_complete($8)) {
         invalid = 1
-      }
-      anchor_count = split(anchors, expected, " ")
-      for (anchor_index = 1; anchor_index <= anchor_count; anchor_index++) {
-        if (index($5, "`" expected[anchor_index] "`") == 0) {
-          invalid = 1
-        }
       }
     }
     END {

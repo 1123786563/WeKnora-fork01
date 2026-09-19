@@ -66,6 +66,32 @@ if ! expect_failure "progress.md missing P0-3 ledger row" "${missing_ledger_fixt
   failures=$((failures + 1))
 fi
 
+extra_anchor_fixture="${FIXTURE}/extra-anchor"
+copy_fixture "${extra_anchor_fixture}"
+awk '
+  /^\| P0-3 / { sub(/`ba6dfcc6`/, "`ba6dfcc6`, `deadbeef`") }
+  { print }
+' "${extra_anchor_fixture}/docs/superpowers/plans/trpc-native/progress.md" \
+  > "${extra_anchor_fixture}/progress.md"
+mv "${extra_anchor_fixture}/progress.md" \
+  "${extra_anchor_fixture}/docs/superpowers/plans/trpc-native/progress.md"
+if ! expect_failure "progress.md with an extra P0-3 commit anchor" "${extra_anchor_fixture}"; then
+  failures=$((failures + 1))
+fi
+
+incomplete_status_fixture="${FIXTURE}/incomplete-status"
+copy_fixture "${incomplete_status_fixture}"
+awk '
+  /^\| P0-3 / { sub(/complete（基线记录；无生产代码改动）/, "complete pending") }
+  { print }
+' "${incomplete_status_fixture}/docs/superpowers/plans/trpc-native/progress.md" \
+  > "${incomplete_status_fixture}/progress.md"
+mv "${incomplete_status_fixture}/progress.md" \
+  "${incomplete_status_fixture}/docs/superpowers/plans/trpc-native/progress.md"
+if ! expect_failure "progress.md with a non-terminal P0-3 implementation status" "${incomplete_status_fixture}"; then
+  failures=$((failures + 1))
+fi
+
 if ((failures > 0)); then
   exit 1
 fi
