@@ -3,14 +3,15 @@
  * baseline). Renders the 16-type MBTI catalog from client.mbti.types(),
  * writes the persona_mbti / persona_style config keys that buildAgentPayload
  * carries to the backend, and shows dimension bars + summary for the chosen
- * type. The "take the test" button stays disabled until the MbtiTestModal
- * lands (follow-up task).
+ * type. The "take the test" button opens the MbtiTestModal whose apply
+ * action writes the scored code straight into persona_mbti.
  */
 import { useEffect, useMemo, useState } from 'react';
 import type { MbtiAxis, MbtiProfile, WeKnoraClient } from '@weknora/api-client';
 import { Textarea } from '@weknora/ui';
 import { usePreferredLocale } from '../locale.ts';
 import type { AgentConfigForm, Translate } from './agent-editor.ts';
+import { MbtiTestModal } from './MbtiTestModal.tsx';
 
 // Mirrors the modal's private constants (AgentEditorModal.tsx FIELD_BASE /
 // FIELD_TEXTAREA / AE_BTN) so the section matches sibling styling without
@@ -36,15 +37,18 @@ function Row({ label, desc, htmlFor, children }: {
   );
 }
 
-// ei/sn/tf/jp axes with their two pole letters, in display order.
-const AXES: ReadonlyArray<{ key: keyof MbtiProfile['dimensions']; letters: readonly [string, string] }> = [
+// ei/sn/tf/jp axes with their two pole letters, in display order. Exported for
+// MbtiTestModal, which scores the same axes from MbtiScore.dimensions.
+export const MBTI_AXES: ReadonlyArray<{ key: 'ei' | 'sn' | 'tf' | 'jp'; letters: readonly [string, string] }> = [
   { key: 'ei', letters: ['E', 'I'] },
   { key: 'sn', letters: ['S', 'N'] },
   { key: 'tf', letters: ['T', 'F'] },
   { key: 'jp', letters: ['J', 'P'] },
 ];
 
-function DimensionBar({ axis, letters, color }: { axis: MbtiAxis; letters: readonly [string, string]; color: string }) {
+// Exported for MbtiTestModal's result stage so both surfaces render the
+// dominant-pole percent semantics identically (Task 8 regression contract).
+export function DimensionBar({ axis, letters, color }: { axis: MbtiAxis; letters: readonly [string, string]; color: string }) {
   const dominant = axis.pole.toUpperCase();
   const leftDominant = dominant === letters[0];
   const percent = Math.min(100, Math.max(0, axis.percent));
@@ -86,6 +90,7 @@ export function PersonaSection({ config, patchConfig, client, t }: PersonaSectio
   const [types, setTypes] = useState<MbtiProfile[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [testOpen, setTestOpen] = useState(false);
 
   // Catalog load, once per mount; stale responses are dropped via `active`.
   useEffect(() => {
@@ -156,20 +161,29 @@ export function PersonaSection({ config, patchConfig, client, t }: PersonaSectio
           {selectedCode !== '' && types !== null && !selected ? (
             <p className="m-0 text-[12px] text-[var(--td-warning-color,#e37318)]">{t('agentEditor.personalization.unknownType', { code: selectedCode })}</p>
           ) : null}
-          {/* Task 9 wires the MbtiTestModal; until then the button stays disabled */}
+          {/* Test modal: apply writes the scored code into persona_mbti and closes */}
           <button
             type="button"
             className={`${AE_BTN} border border-[var(--td-brand-color,#0052d9)] bg-[var(--td-bg-color-container,#fff)] text-[var(--td-brand-color,#0052d9)] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[var(--td-bg-color-container,#fff)]`}
-            disabled
-            title={t('agentEditor.personalization.takeTestHint')}
             data-mbti-take-test
+            onClick={() => setTestOpen(true)}
           >{t('agentEditor.personalization.takeTest')}</button>
+          <MbtiTestModal
+            open={testOpen}
+            onClose={() => setTestOpen(false)}
+            onApply={(code) => {
+              patchConfig('persona_mbti', code);
+              setTestOpen(false);
+            }}
+            client={client}
+            t={t}
+          />
         </Row>
         {selected ? (
           <>
             <Row label={t('agentEditor.personalization.dimensionsLabel')}>
               <div className="flex w-full flex-col gap-2" data-mbti-dimensions={selected.code}>
-                {AXES.map(({ key, letters }) => (
+                {MBTI_AXES.map(({ key, letters }) => (
                   <DimensionBar key={key} axis={selected.dimensions[key]} letters={letters} color={selected.color} />
                 ))}
               </div>

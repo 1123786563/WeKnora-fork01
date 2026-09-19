@@ -247,7 +247,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      // A portaled project Dialog (e.g. the MBTI test modal) is stacked above
+      // the editor and owns the Escape key while open; it closes itself.
+      if (event.key === 'Escape' && document.querySelectorAll('.wk-dialog-backdrop').length === 0) onClose();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);

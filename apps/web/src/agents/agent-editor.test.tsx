@@ -88,10 +88,31 @@ const mbtiProfile = (code: string) => ({
 });
 const MBTI_TYPES = ['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'].map(mbtiProfile);
 
-function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraClient; requests: RoutedRequest[] } {
+// Test fixture: a 4-question subset of the 28-question API shape is enough to
+// drive the all-answered submit gate (the gate is count-relative, not 28-hardcoded).
+const MBTI_QUESTIONS = [1, 2, 3, 4].map((id) => ({
+  id, dimension: 'EI' as const, a_pole: 'E', b_pole: 'I',
+  question_zh: '问题' + id, option_a_zh: '选项A' + id, option_b_zh: '选项B' + id,
+  question_en: 'Question ' + id, option_a_en: 'Option A' + id, option_b_en: 'Option B' + id,
+}));
+const MBTI_SCORE = {
+  code: 'ENTP',
+  dimensions: { ei: { dominant: 'E', percent: 72 }, sn: { dominant: 'N', percent: 58 }, tf: { dominant: 'T', percent: 64 }, jp: { dominant: 'P', percent: 66 } },
+  profile: mbtiProfile('ENTP'),
+};
+
+function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>> } {
   const requests: RoutedRequest[] = [];
+  const mbtiSubmits: Array<Record<string, 'A' | 'B'>> = [];
   const client = {
-    mbti: { types: async () => MBTI_TYPES },
+    mbti: {
+      types: async () => MBTI_TYPES,
+      questions: async () => MBTI_QUESTIONS,
+      submit: async (answers: Record<string, 'A' | 'B'>) => {
+        mbtiSubmits.push(answers);
+        return MBTI_SCORE;
+      },
+    },
     configuration: {
       models: { list: async () => MODELS },
       agents: {
@@ -116,7 +137,7 @@ function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraCl
     sandboxConfigurations: { list: async () => ({ items: SANDBOXES, workspaceScriptsDisabled: false }) },
     settings: { webSearch: { providers: { list: async () => [] } } },
   };
-  return { client: client as unknown as WeKnoraClient, requests };
+  return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits };
 }
 
 let mountedRoot: Root | undefined;
@@ -194,13 +215,83 @@ test('personalization section renders the 16-type grid and dominant-side percent
   assert.equal(leftOf(3), 'J 55%');
   assert.equal(rightOf(3), 'P');
 
-  // style textarea mirrors the stored persona_style; take-test stays disabled until Task 9
+  // style textarea mirrors the stored persona_style; take-test opens the test modal (Task 9)
   const styleEl = $('#wk-ae-persona-style', document.body) as HTMLTextAreaElement | null;
   assert.ok(styleEl, 'persona_style textarea missing');
   assert.equal(styleEl.value, '语气轻松');
   const takeTest = $('[data-mbti-take-test]', document.body) as HTMLButtonElement | null;
   assert.ok(takeTest, 'take-the-test button missing');
-  assert.equal(takeTest.disabled, true);
+  assert.equal(takeTest.disabled, false);
+});
+
+// --- MBTI test modal (Task 9) ------------------------------------------------------------
+
+test('test modal: intro disclaimer, all-answered submit gate, submit payload, apply writes persona_mbti', async () => {
+  const { client, requests, mbtiSubmits } = makeClient();
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  await goto(root, 'personalization');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+
+  await click(root, '[data-mbti-take-test]');
+  // the dialog portals to document.body; intro carries the for-entertainment disclaimer
+  assert.ok($('[data-mbti-stage="intro"]', document.body), 'intro stage rendered');
+  assert.match($('[data-mbti-disclaimer]', document.body)!.textContent!, /仅供娱乐/);
+
+  await click(document.body, '[data-mbti-start]');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  assert.equal($$('[data-mbti-q]', document.body).length, 4, 'all questions rendered');
+  assert.match($('[data-mbti-progress]', document.body)!.textContent!, /已答 0 \/ 4/);
+  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, true, 'submit disabled with 0/4');
+
+  await click(document.body, '[data-mbti-q="1"] [data-mbti-option="A"]');
+  await click(document.body, '[data-mbti-q="2"] [data-mbti-option="B"]');
+  await click(document.body, '[data-mbti-q="3"] [data-mbti-option="A"]');
+  assert.match($('[data-mbti-progress]', document.body)!.textContent!, /已答 3 \/ 4/);
+  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, true, 'submit still disabled with 3/4');
+
+  await click(document.body, '[data-mbti-q="4"] [data-mbti-option="B"]');
+  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, false, 'submit enabled once every question is answered');
+  await click(document.body, '[data-mbti-submit]');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+
+  // the full answers map rides the submit call (question-id string keys)
+  assert.deepEqual(mbtiSubmits, [{ 1: 'A', 2: 'B', 3: 'A', 4: 'B' }]);
+
+  // result stage: code, four dominant-pole bars (Task 8 label semantics), apply
+  assert.ok($('[data-mbti-stage="result"]', document.body), 'result stage rendered');
+  assert.equal($('[data-mbti-result-code]', document.body)?.textContent, 'ENTP');
+  const bars = $('[data-mbti-result-bars]', document.body)!;
+  assert.equal(bars.children.length, 4);
+  assert.equal(bars.children[0]!.children[1]!.getAttribute('aria-label'), 'E / I: E 72%');
+  assert.equal(bars.children[3]!.children[1]!.getAttribute('aria-label'), 'J / P: P 66%');
+
+  await click(document.body, '[data-mbti-apply]');
+  assert.equal($('[data-mbti-stage="result"]', document.body), null, 'apply closes the modal');
+  assert.equal($('[data-mbti-code="ENTP"]', document.body)?.getAttribute('aria-pressed'), 'true', 'grid selection follows the applied code');
+  // the applied code reaches the save payload through persona_mbti
+  await click(root, '[data-editor-save]');
+  const savedConfig = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.equal(savedConfig.persona_mbti, 'ENTP');
+});
+
+test('test modal: Escape closes only the dialog and the editor stays open', async () => {
+  const { client, requests } = makeClient();
+  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  await goto(root, 'personalization');
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  await click(root, '[data-mbti-take-test]');
+  assert.ok($('[data-mbti-stage="intro"]', document.body), 'dialog open');
+
+  await act(async () => {
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  assert.equal($('[data-mbti-stage="intro"]', document.body), null, 'test dialog closed on Escape');
+  assert.ok($('[data-testid="agent-editor-modal"]', root), 'editor stays open behind it');
+  assert.equal(requests.length, 0, 'closing never saves');
 });
 
 const asNode = (a: ParentNode | string, b: ParentNode | string): ParentNode => (typeof a === 'string' ? (b as ParentNode) : (a as ParentNode));
