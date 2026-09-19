@@ -6111,5 +6111,7 @@
   "weknoraAccountServer": "Server",
   "@weknoraAccountServer": {"description":"Label prefix for the WeKnora server URL in the settings account section."},
   "weknoraAccountSignOut": "Sign out",
-  "@weknoraAccountSignOut": {"description":"Button that signs out of WeKnora in the settings account section."}
+  "@weknoraAccountSignOut": {"description":"Button that signs out of WeKnora in the settings account section."},
+  "weknoraSessionDeletedNotice": "This conversation was deleted on the server.",
+  "@weknoraSessionDeletedNotice": {"description":"Notice shown when a WeKnora conversation was deleted on the server."}
 }

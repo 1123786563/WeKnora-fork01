@@ -3267,4 +3267,26 @@
   }
   ,"directBearerDescription": "透過 Authorization: Bearer 標頭傳送憑證。大多數 OpenAI 相容伺服器（llama.cpp、vLLM、LM Studio、Ollama）都採用此方式。"
   ,"directApiKeyHeaderAzureOnlyDescription": "透過 api-key 標頭傳送憑證。僅用於 Azure OpenAI；其他 OpenAI 相容伺服器需要 Bearer 權杖。"
+  ,"weknoraLoginTitle": "登錄 WeKnora"
+  ,"weknoraLoginServerField": "服務器地址"
+  ,"weknoraLoginEmailField": "郵箱"
+  ,"weknoraLoginPasswordField": "密碼"
+  ,"weknoraLoginButton": "登錄"
+  ,"weknoraLoginInvalidCredentials": "郵箱或密碼不正確。"
+  ,"weknoraLoginUnreachable": "無法連接 WeKnora 服務器，請檢查地址和網絡連接。"
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "登錄自部署的 WeKnora 知識庫。"
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "登錄 WeKnora"
+  ,"weknoraAccountSignedInAs": "已登錄：{email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "服務器"
+  ,"weknoraAccountSignOut": "退出登錄"
+  ,"weknoraSessionDeletedNotice": "該會話已在服務器上刪除。"
 }

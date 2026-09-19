@@ -3045,4 +3045,26 @@
   }
   ,"directBearerDescription": "자격 증명을 Authorization: Bearer 헤더로 보냅니다. 대부분의 OpenAI 호환 서버(llama.cpp, vLLM, LM Studio, Ollama)가 이 방식을 사용합니다."
   ,"directApiKeyHeaderAzureOnlyDescription": "자격 증명을 api-key 헤더로 보냅니다. Azure OpenAI에만 사용하세요. 다른 OpenAI 호환 서버는 Bearer 토큰을 기대합니다."
+  ,"weknoraLoginTitle": "WeKnora 로그인"
+  ,"weknoraLoginServerField": "서버 주소"
+  ,"weknoraLoginEmailField": "이메일"
+  ,"weknoraLoginPasswordField": "비밀번호"
+  ,"weknoraLoginButton": "로그인"
+  ,"weknoraLoginInvalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다."
+  ,"weknoraLoginUnreachable": "WeKnora 서버에 연결할 수 없습니다. 주소와 네트워크 연결을 확인하세요."
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "자체 호스팅 WeKnora 지식 베이스에 로그인합니다."
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "WeKnora 로그인"
+  ,"weknoraAccountSignedInAs": "{email} 계정으로 로그인됨"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "서버"
+  ,"weknoraAccountSignOut": "로그아웃"
+  ,"weknoraSessionDeletedNotice": "이 대화는 서버에서 삭제되었습니다."
 }

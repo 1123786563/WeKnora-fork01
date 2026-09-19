@@ -3267,4 +3267,26 @@
   }
   ,"directBearerDescription": "Verstuurt de inloggegevens in de header Authorization: Bearer. De meeste OpenAI-compatibele servers (llama.cpp, vLLM, LM Studio, Ollama) verwachten dit."
   ,"directApiKeyHeaderAzureOnlyDescription": "Verstuurt de inloggegevens in de header api-key. Gebruik dit alleen voor Azure OpenAI; andere OpenAI-compatibele servers verwachten een Bearer-token."
+  ,"weknoraLoginTitle": "Inloggen bij WeKnora"
+  ,"weknoraLoginServerField": "Serveradres"
+  ,"weknoraLoginEmailField": "E-mailadres"
+  ,"weknoraLoginPasswordField": "Wachtwoord"
+  ,"weknoraLoginButton": "Inloggen"
+  ,"weknoraLoginInvalidCredentials": "Onjuist e-mailadres of wachtwoord."
+  ,"weknoraLoginUnreachable": "Kan de WeKnora-server niet bereiken. Controleer het adres en je verbinding."
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "Log in op je zelfgehoste WeKnora-kennisbank."
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "Inloggen bij WeKnora"
+  ,"weknoraAccountSignedInAs": "Ingelogd als {email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "Server"
+  ,"weknoraAccountSignOut": "Uitloggen"
+  ,"weknoraSessionDeletedNotice": "Dit gesprek is op de server verwijderd."
 }
