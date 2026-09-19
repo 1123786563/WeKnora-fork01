@@ -63,6 +63,9 @@ type Handler struct {
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
 	// unchanged deletion flow.
 	craftTombstoner CraftSessionTombstoner
+	// usageRecorder accumulates each finished chat turn's token usage into
+	// the user's daily bucket (SP12). Nil (tests) skips accounting.
+	usageRecorder interfaces.UsageRecorderService
 }
 
 // CraftSessionTombstoner starts the resource teardown of a deleted craft
@@ -126,6 +129,9 @@ func NewHandler(
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
+	// usageRecorder writes each finished chat turn's terminal token usage
+	// into the user's user_usage daily bucket (SP12).
+	usageRecorder interfaces.UsageRecorderService,
 ) *Handler {
 	return &Handler{
 		sessionService:       sessionService,
@@ -151,6 +157,7 @@ func NewHandler(
 		userService:          userService,
 		memberService:        memberService,
 		terminalService:      terminalService,
+		usageRecorder:        usageRecorder,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,

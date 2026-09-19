@@ -105,6 +105,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/Tencent/WeKnora/internal/usage"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/tencent/vectordatabase-sdk-go/tcvectordb"
@@ -174,6 +175,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewFeedbackRepository))
 	must(container.Provide(repository.NewAnalyticsRepository))
 	must(container.Provide(repository.NewUsageRepository))
+	// SP12 chat usage ingestion: the recorder turns finished chat turns into
+	// user_usage daily buckets. A malformed WEKNORA_USAGE_RATES value disables
+	// pricing (empty rates) rather than failing startup — chat must not go
+	// down with the meter.
+	must(container.Provide(newUsageRecorderService))
 	must(container.Provide(repository.NewAgentRunStore))
 	// W26: immutable artifact version rows live in the same business database
 	// scope as the run store so imports and downloads share one fence.
@@ -425,7 +431,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newCraftLifecycleService))
 	must(container.Provide(newCraftUsageService))
 	must(container.Provide(newCraftUsageViewService))
-	must(container.Provide(newCraftModelGatewayHandler))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -563,9 +568,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(validateCraftKnowledgeAssembly))
 	// O04: the usage view handler rides the craft session route table.
 	must(container.Invoke(registerCraftUsageHTTPHandlers))
-	// O02: the controlled model gateway (credential issuance + HMAC forward),
-	// assembled only when the runtime dial and signing secret are both set.
-	must(container.Invoke(registerCraftModelGatewayHTTPHandlers))
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
@@ -2292,6 +2294,19 @@ func newMobileVoiceHandler(
 	)
 }
 
+// newUsageRecorderService wires SP12's chat usage ingestion. Model rates come
+// from the WEKNORA_USAGE_RATES environment variable; a malformed value logs a
+// warning and yields empty rates (tokens recorded, cost zero) instead of
+// failing startup — the chat path must not go down with the meter.
+func newUsageRecorderService(repo interfaces.UsageRepository) interfaces.UsageRecorderService {
+	rates, err := usage.RatesFromEnv(os.Getenv("WEKNORA_USAGE_RATES"))
+	if err != nil {
+		logger.Warnf(context.Background(), "[Container] usage: %v; recording chat usage without pricing", err)
+		rates = usage.ModelRates{}
+	}
+	return service.NewUsageRecorderService(repo, rates)
+}
+
 // newCraftKnowledgeService assembles C01's knowledge material build onto
 // the EXISTING ACL entrances — BindCraftKnowledgeAccess over the real
 // knowledgeService.GetKnowledgeBatchWithSharedAccess and
@@ -2357,22 +2372,16 @@ func validateCraftKnowledgeAssembly(knowledge *service.CraftKnowledgeService) {
 // parameter, and this invoke lands the same wiring after construction,
 // before any delegation can execute.
 func wireCraftInteractionRegistrar(executor craft.Executor, assembly *CraftInteractionAssembly) {
-	if assembly == nil {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok || assembly == nil {
 		return
 	}
-	if runtime, ok := executor.(*localCraftRuntime); ok {
-		// BASE wrapped the executor's emission path with the registrar at
-		// construction using the executor's OWN opencode client; the
-		// post-construction install reuses that same client (assembly.Client
-		// may legitimately be nil when its own dial failed).
-		runtime.setInteractionEmitter(craftInteractionRegistrar(
-			runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
-		// R06: the same post-construction seam now carries the verifiable
-		// stop surface — the control service can abort the real runtime.
-		// The fail-closed executor (no runtime dial) is NOT injected: stop
-		// keeps its honest "no executor available" degrade there.
-		assembly.Control.SetExecutor(executor)
-	}
+	// BASE wrapped the executor's emission path with the registrar at
+	// construction using the executor's OWN opencode client; the
+	// post-construction install reuses that same client (assembly.Client
+	// may legitimately be nil when its own dial failed).
+	runtime.setInteractionEmitter(craftInteractionRegistrar(
+		runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
 }
 
 // registerCraftHTTPHandlers installs the craft handlers for route mounting.
