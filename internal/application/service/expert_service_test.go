@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -273,6 +274,111 @@ func TestBuildAgentFromExpert(t *testing.T) {
 	}
 }
 
+// fixtureExpertWithNPrompts returns the stock-assistant fixture retooled to
+// carry n distinct quick prompts, for exercising the starters cap.
+func fixtureExpertWithNPrompts(n int) *experts.Expert {
+	e := fixtureExpert()
+	quickPrompts := make([]experts.QuickPrompt, 0, n)
+	for i := 0; i < n; i++ {
+		quickPrompts = append(quickPrompts, experts.QuickPrompt{
+			Title:       experts.LocaleText{"zh": "标题", "en": "Title"},
+			Description: experts.LocaleText{"zh": "描述", "en": "Description"},
+			Prompt: experts.LocaleText{
+				"zh": "中文快捷指令 " + string(rune('A'+i)),
+				"en": "english quick prompt " + string(rune('A'+i)),
+			},
+			Color:    "#e8f4ff",
+			IconName: "line-chart",
+		})
+	}
+	e.Manifest.QuickPrompts = quickPrompts
+	return e
+}
+
+// TestBuildAgentFromExpertCapsStartersAtValidationLimit is the regression
+// test for the general-assistant instantiate failure: its manifest ships 12
+// quick prompts while CreateAgent's Validate caps curated starters at 8.
+// The builder must keep only the first 8 prompts, in manifest order, so the
+// built suggestions pass the same EnsureDefaults+Validate gate CreateAgent
+// runs.
+func TestBuildAgentFromExpertCapsStartersAtValidationLimit(t *testing.T) {
+	e := fixtureExpertWithNPrompts(12)
+
+	agent := buildAgentFromExpert(e, "zh-CN", "")
+
+	qs := agent.Config.QuestionSuggestions
+	if qs == nil {
+		t.Fatal("QuestionSuggestions not set")
+	}
+	if len(qs.Starters.Items) != 8 {
+		t.Errorf("Starters.Items has %d entries, want capped at 8", len(qs.Starters.Items))
+	}
+	if qs.Starters.Count != 8 {
+		t.Errorf("Starters.Count = %d, want 8", qs.Starters.Count)
+	}
+	wantItems := []string{zhPrompt(0), zhPrompt(1), zhPrompt(2), zhPrompt(3), zhPrompt(4), zhPrompt(5), zhPrompt(6), zhPrompt(7)}
+	if !reflect.DeepEqual(qs.Starters.Items, wantItems) {
+		t.Errorf("Starters.Items = %v, want first 8 prompts in manifest order %v", qs.Starters.Items, wantItems)
+	}
+	// The built agent must clear the real CreateAgent gate, which the 12-item
+	// version failed with "starter suggestion count must be between 1 and 8".
+	agent.EnsureDefaults()
+	if err := agent.Config.QuestionSuggestions.Validate(); err != nil {
+		t.Errorf("built suggestions must pass the CreateAgent validation gate: %v", err)
+	}
+}
+
+// builtinExpertsRoot is the shipped expert library at the repo root, reached
+// from this package directory (internal/application/service).
+func builtinExpertsRoot(t *testing.T) []*experts.Expert {
+	t.Helper()
+	scanned, err := experts.ScanExperts(filepath.Join("..", "..", "..", "config", "experts"))
+	if err != nil {
+		t.Fatalf("ScanExperts(config/experts): %v", err)
+	}
+	return scanned
+}
+
+// TestInstantiateGeneralAssistantSucceeds pins the shipped general-assistant
+// manifest (12 quick prompts) end-to-end: Instantiate must produce an agent
+// that clears CreateAgent's EnsureDefaults+Validate gate, with the first 8
+// prompts in manifest order.
+func TestInstantiateGeneralAssistantSucceeds(t *testing.T) {
+	var general *experts.Expert
+	for _, e := range builtinExpertsRoot(t) {
+		if e.Manifest.ID == "general-assistant" {
+			general = e
+			break
+		}
+	}
+	if general == nil {
+		t.Fatal("general-assistant expert not found under config/experts")
+	}
+	if len(general.Manifest.QuickPrompts) <= 8 {
+		t.Fatalf("fixture drifted: general-assistant now ships %d quick prompts, want >8 for this regression", len(general.Manifest.QuickPrompts))
+	}
+
+	agents := &expertAgentsFake{validate: true}
+	svc := NewExpertService(func() []*experts.Expert { return []*experts.Expert{general} }, agents, nil)
+
+	res, err := svc.Instantiate(expertCtx("zh-CN"), 7, "general-assistant", interfaces.InstantiateRequest{})
+	if err != nil {
+		t.Fatalf("Instantiate(general-assistant) failed (was the 500): %v", err)
+	}
+
+	qs := res.Agent.Config.QuestionSuggestions
+	if qs == nil {
+		t.Fatal("created agent has no QuestionSuggestions")
+	}
+	if len(qs.Starters.Items) != 8 || qs.Starters.Count != 8 {
+		t.Errorf("Starters items=%d count=%d, want 8/8", len(qs.Starters.Items), qs.Starters.Count)
+	}
+	wantFirst := resolveExpertLocaleText(general.Manifest.QuickPrompts[0].Prompt, "zh-CN")
+	if qs.Starters.Items[0] != wantFirst {
+		t.Errorf("Starters.Items[0] = %q, want manifest's first prompt %q", qs.Starters.Items[0], wantFirst)
+	}
+}
+
 // TestBuildAgentFromExpertDoesNotMutateSharedExpert guards the shared-cache
 // contract: LoadBuiltinExperts returns process-wide objects, so the builder
 // must never alias or write into the manifest's slices.
@@ -302,10 +408,12 @@ func TestBuildAgentFromExpertDoesNotMutateSharedExpert(t *testing.T) {
 // expertAgentsFake records the CreateAgent call and mimics the parts of
 // customAgentService.CreateAgent the instantiate flow depends on (ID
 // generation); it deliberately skips EnsureDefaults so tests observe exactly
-// what the builder produced.
+// what the builder produced. Set validate=true to also replay the real
+// CreateAgent's EnsureDefaults+Validate gate (the suggestion-limit check).
 type expertAgentsFake struct {
-	created []*types.CustomAgent
-	err     error
+	created  []*types.CustomAgent
+	err      error
+	validate bool
 }
 
 var _ interfaces.CustomAgentService = (*expertAgentsFake)(nil)
@@ -313,6 +421,12 @@ var _ interfaces.CustomAgentService = (*expertAgentsFake)(nil)
 func (f *expertAgentsFake) CreateAgent(_ context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.validate {
+		agent.EnsureDefaults()
+		if err := agent.Config.QuestionSuggestions.Validate(); err != nil {
+			return nil, err
+		}
 	}
 	if agent.ID == "" {
 		agent.ID = "agent-1"

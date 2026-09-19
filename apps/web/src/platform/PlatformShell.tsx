@@ -158,6 +158,12 @@ const ICONS = {
     'M19 20V14',
     'M3.5 20H20.5',
   ],
+  // M2 experts entry — sparkles glyph in the same 24×24 stroke geometry
+  // (experts = preset templates that "spark" a new agent).
+  sparkles: [
+    'M12 3L13.7 7.8L18.5 9.5L13.7 11.2L12 16L10.3 11.2L5.5 9.5L10.3 7.8L12 3Z',
+    'M18.5 14.5L19.4 16.6L21.5 17.5L19.4 18.4L18.5 20.5L17.6 18.4L15.5 17.5L17.6 16.6L18.5 14.5Z',
+  ],
 };
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
@@ -165,6 +171,9 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
     { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: <Icon path={ICONS.chat} />, match: (p: string) => p === '/platform/creatChat', guide: 'nav-creatChat' },
     { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: <Icon path={ICONS.book} />, match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: <Icon path={ICONS.bot} />, match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
+    // M2 expert templates — a creation surface next to agents; unconditional
+    // (the GET /experts list is tenant-scoped, no admin gate).
+    { key: 'experts', href: '/platform/experts', label: labels.experts, icon: <Icon path={ICONS.sparkles} />, match: (p: string) => p.startsWith('/platform/experts') },
     { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: <Icon path={ICONS.users} />, match: (p: string) => p.startsWith('/platform/organizations') },
     { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: <Icon path={ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
   ];
@@ -195,6 +204,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const labels = {
     newChat: formatMessage(locale, 'menu.newChat'),
     agents: formatMessage(locale, 'menu.agents'),
+    // M2 expert templates rail entry (menu.* key registered React-side in
+    // scripts/parity/backfill-i18n-keys.mjs EXPERTS_VALUES — the Vue menu
+    // table has no experts key).
+    experts: formatMessage(locale, 'menu.experts'),
     organizations: formatMessage(locale, 'menu.organizations'),
     // SP11 analytics dashboard (admin-only entry, gated below).
     analytics: formatMessage(locale, 'menu.analytics'),

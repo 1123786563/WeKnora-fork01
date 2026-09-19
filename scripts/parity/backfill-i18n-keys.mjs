@@ -207,6 +207,12 @@ const PERSONALIZATION_VALUES = {
 
 const EXPERTS_VALUES = {
   'zh-CN': {
+    // M2 final-fix: nav/palette labels for the experts surface. menu.experts
+    // names the shell rail entry (PlatformShell buildNavItems); the Vue menu.*
+    // table has no experts key (React-only surface), so the label registers
+    // here instead of packages/i18n/src/menu.ts.
+    'menu.experts': '专家模板',
+    'commandPalette.quick.experts': '打开专家模板',
     'experts.title': '专家模板',
     'experts.subtitle': '从预置专家模板一键创建智能体',
     'experts.skillCount': '{count} 技能',
@@ -226,6 +232,8 @@ const EXPERTS_VALUES = {
     'experts.badge': '专家·{expertId}',
   },
   'en-US': {
+    'menu.experts': 'Expert Templates',
+    'commandPalette.quick.experts': 'Open expert templates',
     'experts.title': 'Expert Templates',
     'experts.subtitle': 'Create agents instantly from preset expert templates',
     'experts.skillCount': '{count} skills',
@@ -245,6 +253,8 @@ const EXPERTS_VALUES = {
     'experts.badge': 'Expert · {expertId}',
   },
   'ja-JP': {
+    'menu.experts': 'エキスパートテンプレート',
+    'commandPalette.quick.experts': 'エキスパートテンプレートを開く',
     'experts.title': 'エキスパートテンプレート',
     'experts.subtitle': 'プリセットのエキスパートテンプレートからエージェントをすぐ作成',
     'experts.skillCount': '{count} 個のスキル',
@@ -264,6 +274,8 @@ const EXPERTS_VALUES = {
     'experts.badge': 'エキスパート·{expertId}',
   },
   'ko-KR': {
+    'menu.experts': '전문가 템플릿',
+    'commandPalette.quick.experts': '전문가 템플릿 열기',
     'experts.title': '전문가 템플릿',
     'experts.subtitle': '사전 설정된 전문가 템플릿으로 에이전트를 바로 생성',
     'experts.skillCount': '스킬 {count}개',
@@ -283,6 +295,8 @@ const EXPERTS_VALUES = {
     'experts.badge': '전문가·{expertId}',
   },
   'ru-RU': {
+    'menu.experts': 'Шаблоны экспертов',
+    'commandPalette.quick.experts': 'Открыть шаблоны экспертов',
     'experts.title': 'Шаблоны экспертов',
     'experts.subtitle': 'Создавайте агентов в один клик из готовых шаблонов экспертов',
     'experts.skillCount': 'Навыков: {count}',

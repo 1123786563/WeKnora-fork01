@@ -22,25 +22,26 @@ const t = (key: string): string => {
     'commandPalette.quick.newChat': 'New conversation',
     'commandPalette.quick.knowledgeBases': 'Open knowledge bases',
     'commandPalette.quick.agents': 'Open agents',
+    'commandPalette.quick.experts': 'Open expert templates',
     'commandPalette.quick.organizations': 'Open shared spaces',
     'commandPalette.quick.settings': 'Open settings',
   };
   return labels[key] ?? key;
 };
 
-test('the command catalogue mirrors Vue quick actions (minus the unported product tour)', () => {
-  assert.equal(COMMANDS.length, 5);
+test('the command catalogue mirrors Vue quick actions (plus the React-only experts entry)', () => {
+  assert.equal(COMMANDS.length, 6);
   assert.deepEqual(COMMANDS.map((c) => c.id), [
-    'new-chat', 'open-kb-list', 'open-agents', 'open-organizations', 'open-settings',
+    'new-chat', 'open-kb-list', 'open-agents', 'open-experts', 'open-organizations', 'open-settings',
   ]);
   assert.deepEqual(COMMANDS.map((c) => c.path), [
-    '/platform/creatChat', '/platform/knowledge-bases', '/platform/agents', '/platform/organizations', '/platform/settings',
+    '/platform/creatChat', '/platform/knowledge-bases', '/platform/agents', '/platform/experts', '/platform/organizations', '/platform/settings',
   ]);
 });
 
 test('filterCommands returns everything for a blank query', () => {
-  assert.equal(filterCommands(COMMANDS, '', t).length, 5);
-  assert.equal(filterCommands(COMMANDS, '   ', t).length, 5);
+  assert.equal(filterCommands(COMMANDS, '', t).length, 6);
+  assert.equal(filterCommands(COMMANDS, '   ', t).length, 6);
 });
 
 test('filterCommands matches localized label text case-insensitively', () => {
@@ -183,14 +184,14 @@ test('consumeCmdkParam is a no-op when there is no cmdk param', () => {
 
 test('visibleCommands hides "Open agents" without the agents capability', () => {
   const visible = visibleCommands(COMMANDS, { canOpenAgents: false, canOpenOrganizations: true });
-  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-organizations', 'open-settings']);
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-experts', 'open-organizations', 'open-settings']);
 });
 
 test('visibleCommands hides "Open shared spaces" without admin+organizations access', () => {
   const visible = visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: false });
-  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-agents', 'open-settings']);
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-agents', 'open-experts', 'open-settings']);
 });
 
 test('visibleCommands keeps every command when both capabilities are granted', () => {
-  assert.equal(visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: true }).length, 5);
+  assert.equal(visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: true }).length, 6);
 });

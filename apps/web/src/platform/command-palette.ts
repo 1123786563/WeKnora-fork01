@@ -17,7 +17,7 @@
 export interface CommandDescriptor {
   id: string;
   labelKey: string;
-  icon: 'new-chat' | 'knowledge-bases' | 'agents' | 'organizations' | 'settings';
+  icon: 'new-chat' | 'knowledge-bases' | 'agents' | 'experts' | 'organizations' | 'settings';
   keywords: string[];
   path: string;
 }
@@ -27,6 +27,9 @@ export const COMMANDS: readonly CommandDescriptor[] = [
   { id: 'new-chat', labelKey: 'commandPalette.quick.newChat', icon: 'new-chat', keywords: ['new', 'chat', 'conversation', '新建', '对话', 'создать'], path: '/platform/creatChat' },
   { id: 'open-kb-list', labelKey: 'commandPalette.quick.knowledgeBases', icon: 'knowledge-bases', keywords: ['kb', 'knowledge', 'base', '知识库', '文档'], path: '/platform/knowledge-bases' },
   { id: 'open-agents', labelKey: 'commandPalette.quick.agents', icon: 'agents', keywords: ['agent', 'bot', '智能体', '助手'], path: '/platform/agents' },
+  // M2 expert templates (React-only surface; label key registered React-side
+  // in scripts/parity/backfill-i18n-keys.mjs EXPERTS_VALUES).
+  { id: 'open-experts', labelKey: 'commandPalette.quick.experts', icon: 'experts', keywords: ['expert', 'template', '专家', '模板', 'テンプレート'], path: '/platform/experts' },
   { id: 'open-organizations', labelKey: 'commandPalette.quick.organizations', icon: 'organizations', keywords: ['org', 'organization', 'team', 'space', '组织', '共享'], path: '/platform/organizations' },
   { id: 'open-settings', labelKey: 'commandPalette.quick.settings', icon: 'settings', keywords: ['settings', 'preferences', 'config', '设置', '配置'], path: '/platform/settings' },
 ];

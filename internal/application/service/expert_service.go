@@ -27,6 +27,12 @@ const (
 	// skillsSelectionModeSelected mirrors the "selected" value of
 	// CustomAgentConfig.SkillsSelectionMode (no shared constant exists).
 	skillsSelectionModeSelected = "selected"
+	// expertStartersValidationLimit mirrors the upper bound
+	// QuestionSuggestionConfig.Validate enforces on curated starters (no
+	// shared constant exists there). Manifests may ship more quick prompts
+	// than this (general-assistant ships 12); Instantiate keeps the first
+	// ones in manifest order rather than failing CreateAgent validation.
+	expertStartersValidationLimit = 8
 )
 
 // ExpertSkillResolution is what an ExpertSkillResolver produced for one
@@ -186,7 +192,9 @@ func (s *expertService) Instantiate(
 //     agent_config system prompt appended after the same separator →
 //     Config.SystemPrompt
 //   - quick prompts (locale-resolved prompt text) → fully-formed curated
-//     QuestionSuggestions.Starters
+//     QuestionSuggestions.Starters, capped at the first 8 prompts in
+//     manifest order (CreateAgent's Validate limit; overflow is dropped
+//     with a warn log, the manifest itself is never truncated)
 //   - agent_config overrides: non-zero strings/numbers and true booleans
 //     only — zero values leave the CreateAgent defaults untouched
 //   - PersonaMBTI passthrough
@@ -257,6 +265,18 @@ func buildAgentFromExpert(e *experts.Expert, locale, nameOverride string) *types
 		if prompt := resolveExpertLocaleText(qp.Prompt, locale); prompt != "" {
 			starterItems = append(starterItems, prompt)
 		}
+	}
+	// Cap at the validation limit: CreateAgent's Validate rejects curated
+	// starters beyond 8, and some shipped manifests carry more quick
+	// prompts than that (general-assistant ships 12). Keep the first 8 in
+	// manifest order and warn about the drop — the manifest itself stays
+	// verbatim (asset fidelity). builder is context-free by contract, so the
+	// warning rides a background context like the experts loader's does.
+	if len(starterItems) > expertStartersValidationLimit {
+		logger.Warnf(context.Background(),
+			"experts: instantiate %q: manifest carries %d quick prompts, keeping the first %d and dropping the remaining %d (starter validation limit)",
+			m.ID, len(starterItems), expertStartersValidationLimit, len(starterItems)-expertStartersValidationLimit)
+		starterItems = starterItems[:expertStartersValidationLimit]
 	}
 	if len(starterItems) > 0 {
 		agent.Config.QuestionSuggestions = &types.QuestionSuggestionConfig{
