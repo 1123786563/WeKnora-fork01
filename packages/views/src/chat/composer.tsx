@@ -289,7 +289,10 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   }
 
   return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
-    <label className="wk-chat-visually-hidden absolute h-[1px] w-[1px] overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)] [clip-path:inset(50%)]" htmlFor="wk-chat-draft">{t.composerPlaceholder}</label>
+    {/* The textarea's own placeholder attribute carries the visible hint (Vue
+        parity); the label is aria-only so the hidden text stays out of
+        innerText — a clip-hidden text node still leaks into it. */}
+    <label className="wk-chat-visually-hidden" htmlFor="wk-chat-draft" aria-hidden="true" style={{ display: 'none' }}>{t.composerPlaceholder}</label>
     <div data-guide="chat-input" className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
       {/* R473-A2 — Vue Input-field.vue .steer-queue (~2599): one chip per queued
           after-message at the very top of the input shell. Waiting clock icon +
