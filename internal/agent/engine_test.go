@@ -341,7 +341,11 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	require.Equal(t, "request-42", observed.RequestID)
 
 	var runID, ownerID, kind, externalPendingID string
-	require.NoError(t, db.Raw("SELECT run_id, owner_id, kind, external_pending_id FROM workbench_interactions WHERE tenant_id = 7").Row().Scan(&runID, &ownerID, &kind, &externalPendingID))
+	row := db.Raw(
+		"SELECT run_id, owner_id, kind, external_pending_id " +
+			"FROM workbench_interactions WHERE tenant_id = 7",
+	).Row()
+	require.NoError(t, row.Scan(&runID, &ownerID, &kind, &externalPendingID))
 	require.Equal(t, "durable-run-42", runID)
 	require.NotEqual(t, observed.RequestID, runID)
 	require.Equal(t, principal.StorageID(), ownerID)
