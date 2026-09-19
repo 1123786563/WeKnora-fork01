@@ -279,9 +279,9 @@ func seedNativeSchemaFixture(t *testing.T, db *gorm.DB) {
 func nativeUserStateMigrationVersion(dialect string) uint {
 	switch dialect {
 	case "sqlite":
-		return 86
+		return 87
 	case "postgres":
-		return 165
+		return 166
 	default:
 		panic("unsupported native schema test dialect: " + dialect)
 	}
