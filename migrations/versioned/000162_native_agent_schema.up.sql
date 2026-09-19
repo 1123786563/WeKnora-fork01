@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS native_agent_session_events (
     payload_hash VARCHAR(128) NOT NULL CHECK (length(payload_hash) > 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, app_name, user_id, session_id, stable_event_id),
-    FOREIGN KEY (tenant_id, user_id, session_id) REFERENCES native_agent_sessions(tenant_id, user_id, session_id) ON DELETE RESTRICT
+    FOREIGN KEY (tenant_id, user_id, session_id) REFERENCES native_agent_sessions(tenant_id, owner_id, session_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS native_agent_events (
