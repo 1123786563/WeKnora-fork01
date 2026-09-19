@@ -95,8 +95,8 @@ require (
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
-	trpc.group/trpc-go/trpc-a2a-go v0.2.5 // indirect
-	trpc.group/trpc-go/trpc-agent-go v1.10.0
+	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb // indirect
+	trpc.group/trpc-go/trpc-agent-go v1.11.0
 )
 
 require (
