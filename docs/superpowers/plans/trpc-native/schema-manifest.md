@@ -5,11 +5,17 @@ Migration `000162_native_agent_schema` (PostgreSQL) and
 namespace.  They create no copy of legacy `sessions`, old Memory, messages, or
 agent-run records.
 
+Migration `000163_native_user_state` (PostgreSQL) and
+`000084_native_user_state` (SQLite) add the independent user-state boundary
+after that namespace is deployed. `owner_id` is the frozen SessionOwnerID, so
+it supports account users, tenant API keys, API external users, and embed
+sessions without requiring a synthetic native session or a `users` row.
+
 | Logical record | Physical table | Authority and minimum constraint |
 | --- | --- | --- |
 | Tenant admission scope | `native_agent_tenants` | one row per business tenant |
 | Session scope and state | `native_agent_sessions`, `native_session_state` | tenant/owner/session/state-key revision CAS |
-| User state | `native_user_state` | tenant and owner foreign keys, scoped `(tenant,owner,state-key)` revision CAS; no native session is required |
+| User state | `native_user_state` | admitted-tenant foreign key and scoped `(tenant,owner,state-key)` revision CAS for a frozen owner identity; no native session is required |
 | Run and lease fence | `native_agent_runs` | scoped request/input idempotency, owner/session binding, revision and non-negative epoch |
 | Input and config snapshot | `native_agent_inputs`, `native_agent_config_bindings` | immutable scoped hashes |
 | Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence |

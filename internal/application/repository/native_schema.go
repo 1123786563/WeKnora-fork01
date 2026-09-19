@@ -24,7 +24,7 @@ func NativeSchemaManifest() []NativeSchemaTable {
 		nativeTable("native_agent_tenants", []string{"tenant_id"}, []string{"tenant_id"}),
 		nativeTable("native_agent_sessions", []string{"tenant_id", "owner_id", "session_id"}, []string{"tenant_id", "owner_id", "session_id"}),
 		nativeTable("native_session_state", []string{"tenant_id", "owner_id", "session_id", "state_key", "revision", "state_value"}, []string{"tenant_id", "owner_id", "session_id", "state_key"}),
-		nativeTable("native_user_state", []string{"tenant_id", "owner_id", "state_key", "revision", "state_value"}, []string{"tenant_id", "owner_id", "state_key"}),
+		nativeTable("native_user_state", []string{"tenant_id", "owner_id", "state_key", "revision", "state_value", "updated_at"}, []string{"tenant_id", "owner_id", "state_key"}),
 		nativeTable("native_agent_runs", []string{"tenant_id", "run_id", "owner_id", "session_id", "request_id", "input_hash", "revision", "lease_epoch"}, []string{"tenant_id", "run_id"}),
 		nativeTable("native_agent_inputs", []string{"tenant_id", "run_id", "input_id", "request_id", "input_hash", "payload", "role", "revision", "ordinal", "consumed"}, []string{"tenant_id", "run_id", "input_id"}),
 		nativeTable("native_agent_config_bindings", []string{"tenant_id", "run_id", "binding_kind", "schema_version", "sdk_version", "graph_version", "config_hash", "credential_ref", "tool_set_hash", "source_kind", "source_id", "source_version", "target_id"}, []string{"tenant_id", "run_id", "binding_kind"}),

@@ -135,9 +135,9 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 }
 
 // TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession proves that
-// user state has its own durable boundary.  It must be scoped to an admitted
-// tenant and a real owner, but it must not require a synthetic native session
-// solely to persist user-level state.
+// user state has its own durable boundary. It is scoped to an admitted tenant
+// and a frozen SessionOwnerID, so it does not require either a synthetic
+// native session or a users row for non-account principals.
 func TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -160,22 +160,43 @@ func TestNativeSchemaMigrationsCreateUserStateWithoutNativeSession(t *testing.T)
 				(tenant_id, owner_id, state_key, state_value, revision)
 				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "preferences", `{}`, 0).Error,
 				"one owner can have only one value for a state key in a tenant")
-			require.Error(t, db.Exec(`INSERT INTO native_user_state
+			for _, ownerID := range []string{
+				"api_tenant_key:1:99",
+				"api_external_user:1:alice",
+				"embed_session:1:channel-1:session-1",
+			} {
+				require.NoError(t, db.Exec(`INSERT INTO native_user_state
 				(tenant_id, owner_id, state_key, state_value, revision)
-				VALUES (?, ?, ?, ?, ?)`, 2, "missing-owner", "preferences", `{}`, 0).Error,
-				"a user-state owner must be a real user")
+				VALUES (?, ?, ?, ?, ?)`, 1, ownerID, "preferences", `{}`, 0).Error,
+					"a frozen non-account owner identity must be storable")
+			}
 			require.Error(t, db.Exec(`INSERT INTO native_user_state
 				(tenant_id, owner_id, state_key, state_value, revision)
 				VALUES (?, ?, ?, ?, ?)`, 999, "u2", "preferences", `{}`, 0).Error,
 				"a user-state record must belong to an admitted tenant")
 			require.Error(t, db.Exec(`INSERT INTO native_user_state
 				(tenant_id, owner_id, state_key, state_value, revision)
-				VALUES (?, ?, ?, ?, ?)`, 1, "u2", "cross-tenant-owner", `{}`, 0).Error,
-				"a user-state owner must belong to the same tenant")
+				VALUES (?, ?, ?, ?, ?)`, 1, "", "empty-owner", `{}`, 0).Error,
+				"a user-state owner cannot be empty")
 			require.Error(t, db.Exec(`INSERT INTO native_user_state
 				(tenant_id, owner_id, state_key, state_value, revision)
 				VALUES (?, ?, ?, ?, ?)`, 2, "u2", "negative-revision", `{}`, -1).Error,
 				"a user-state revision cannot be negative")
+		})
+	}
+}
+
+func TestNativeUserStateMigrationIsAdditive(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			m := nativeSchemaMigrator(t, db)
+			defer func() { _, _ = m.Close() }()
+			version, dirty, err := m.Version()
+			require.NoError(t, err)
+			require.False(t, dirty)
+			require.Equal(t, nativeUserStateMigrationVersion(dialect), version,
+				"user state must be introduced by its own additive migration")
 		})
 	}
 }
@@ -217,9 +238,14 @@ func TestNativeSchemaMigrationEmptyRollbackAndRepeatUpgrade(t *testing.T) {
 			defer func() { _, _ = m.Close() }()
 			require.ErrorIs(t, m.Up(), migrate.ErrNoChange, "repeated upgrade must be a no-op")
 			require.NoError(t, m.Steps(-1), "an empty namespace may roll back")
-			require.False(t, db.Migrator().HasTable("native_agent_runs"))
-			require.NoError(t, m.Up(), "the same database must re-upgrade cleanly")
-			require.True(t, db.Migrator().HasTable("native_agent_runs"))
+			require.False(t, db.Migrator().HasTable("native_user_state"))
+			require.True(t, db.Migrator().HasTable("native_agent_runs"), "rolling back the additive user-state migration must preserve 83/162")
+			version, dirty, err := m.Version()
+			require.NoError(t, err)
+			require.False(t, dirty)
+			require.Equal(t, nativeUserStateMigrationVersion(dialect)-1, version)
+			require.NoError(t, m.Steps(1), "83/162 schema must upgrade to the additive user-state migration")
+			require.True(t, db.Migrator().HasTable("native_user_state"))
 		})
 	}
 }
@@ -237,7 +263,19 @@ func seedNativeSchemaFixture(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 1, "u1", "s1").Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)`, 2, "u1", "s1").Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_runs (tenant_id, run_id, session_id, owner_id, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", "s1", "u1", 1).Error)
+	require.NoError(t, db.Exec(`INSERT INTO native_user_state (tenant_id, owner_id, state_key, state_value) VALUES (?, ?, ?, ?)`, 1, "rollback-guard-owner", "preferences", `{}`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO native_agent_memory_scopes (tenant_id, user_id, generation, tombstone_generation) VALUES (?, ?, ?, ?)`, 1, "u1", 3, 2).Error)
+}
+
+func nativeUserStateMigrationVersion(dialect string) uint {
+	switch dialect {
+	case "sqlite":
+		return 84
+	case "postgres":
+		return 163
+	default:
+		panic("unsupported native schema test dialect: " + dialect)
+	}
 }
 
 func nativeSchemaMigrator(t *testing.T, db *gorm.DB) *migrate.Migrate {
