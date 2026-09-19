@@ -34,6 +34,12 @@ func TestRegisterQueryHistoryAdminRoutes(t *testing.T) {
 		seen[route.Method+" "+route.Path] = true
 	}
 	require.True(t, seen[http.MethodGet+" /api/v1/admin/sessions/:session_id/snapshot"])
+	// The async export surface (SP13 Task 4) mounts alongside the snapshot:
+	// the literal "export" segment must not conflict with the :session_id
+	// wildcard — registering both on one engine is the proof.
+	require.True(t, seen[http.MethodPost+" /api/v1/admin/sessions/export"])
+	require.True(t, seen[http.MethodGet+" /api/v1/admin/sessions/export/:job_id/status"])
+	require.True(t, seen[http.MethodGet+" /api/v1/admin/sessions/export/:job_id/download"])
 	// The pre-existing routes stay intact.
 	require.True(t, seen[http.MethodGet+" /api/v1/sessions/:id"])
 	require.True(t, seen[http.MethodGet+" /api/v1/admin/usage/by-user"])

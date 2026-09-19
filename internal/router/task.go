@@ -46,8 +46,11 @@ type AsynqTaskParams struct {
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 	TemporaryDocument    interfaces.TemporaryDocumentService
 	MemoryService        interfaces.MemoryService
-	DeadLetterRepo       interfaces.TaskDeadLetterRepository
-	SpanTracker          service.SpanTracker
+	// QueryHistoryExport runs the Admin+ async query-history CSV export
+	// (SP13 Task 4) on the maintenance pool.
+	QueryHistoryExport *service.QueryHistoryExportService
+	DeadLetterRepo     interfaces.TaskDeadLetterRepository
+	SpanTracker        service.SpanTracker
 }
 
 // defaultRedisOpTimeout is the previous hard-coded read timeout. The 100ms
@@ -315,6 +318,9 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 
 	// Register long-term memory distillation handler
 	mux.HandleFunc(types.TypeMemoryExtract, params.MemoryService.Handle)
+
+	// Register the async query-history CSV export handler (maintenance pool).
+	mux.HandleFunc(types.TypeQueryHistoryExport, params.QueryHistoryExport.ProcessExport)
 
 	// Run the same mux on every pool. Shared and dedicated servers intentionally
 	// overlap, but Redis dequeue is atomic, so each task still executes once.

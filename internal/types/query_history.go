@@ -118,3 +118,20 @@ type QueryHistoryExportJob struct {
 
 // TableName pins the GORM table name.
 func (QueryHistoryExportJob) TableName() string { return "query_history_export_jobs" }
+
+// QueryHistoryExportRow is one aggregated per-session row of an async export
+// CSV: the session header fields plus its message and like/dislike tallies.
+// Source reuses the audit listing's origin classification (IM platform /
+// embed / api / web).
+type QueryHistoryExportRow struct {
+	SessionID    string    `json:"session_id"    gorm:"column:session_id"`
+	Title        string    `json:"title"         gorm:"column:title"`
+	UserID       string    `json:"user_id"       gorm:"column:user_id"`
+	Source       string    `json:"source"        gorm:"column:source"`
+	EngineType   string    `json:"engine_type"   gorm:"column:engine_type"`
+	CreatedAt    time.Time `json:"created_at"    gorm:"column:created_at"`
+	UpdatedAt    time.Time `json:"updated_at"    gorm:"column:updated_at"`
+	MessageCount int64     `json:"message_count" gorm:"column:message_count"`
+	LikeCount    int64     `json:"like_count"    gorm:"column:like_count"`
+	DislikeCount int64     `json:"dislike_count" gorm:"column:dislike_count"`
+}

@@ -83,6 +83,7 @@ var queueDefinitions = []QueueDefinition{
 	{Name: QueueMaintenance, Pool: WorkerPoolMaintenance, Weight: 1, TaskTypes: []string{
 		TypeFAQImport, TypeKBClone, TypeIndexDelete, TypeKBDelete,
 		TypeKnowledgeListDelete, TypeKnowledgeListReparse, TypeKnowledgeMove,
+		TypeQueryHistoryExport,
 	}},
 	{Name: QueueWiki, Pool: WorkerPoolWiki, Weight: 1, TaskTypes: []string{TypeWikiIngest, TypeWikiFinalize}},
 }
@@ -252,6 +253,8 @@ const (
 	TypeWikiIngest               = "wiki:ingest"                // Wiki 页面同步任务
 	TypeWikiFinalize             = "wiki:finalize"              // Wiki KB 级收尾任务（防抖：索引重建/死链清理/交叉链接）
 	TypeTemporaryDocumentProcess = "temporary_document:process" // 会话临时文档解析任务
+	// TypeQueryHistoryExport 异步查询历史 CSV 导出任务（Admin+ 审计导出，SP13）
+	TypeQueryHistoryExport = "query_history:export"
 	// TypeMemoryExtract 长期记忆抽取任务（会话轮次防抖后异步执行）
 	TypeMemoryExtract = "memory:extract"
 )
@@ -275,6 +278,31 @@ type MemoryExtractPayload struct {
 	// is what the settings UI promises.
 	ChatModelID string `json:"chat_model_id,omitempty"`
 	Language    string `json:"language,omitempty"`
+}
+
+// QueryHistoryExportPayload carries one async query-history CSV export
+// (SP13). The filter mirrors the Admin+ source=all audit listing the admin
+// saw when requesting the export; the worker rebuilds the same rows from
+// these fields. Timestamps travel as unix milliseconds because time.Time
+// cannot round-trip its zero value through JSON (a zero "0001-01-01" would
+// masquerade as a real lower bound).
+type QueryHistoryExportPayload struct {
+	TracingContext
+	JobID    uint64 `json:"job_id"`
+	TenantID uint64 `json:"tenant_id"`
+	// RequestedBy is the principal that asked for the export (audit trail on
+	// the job row; the payload copy keeps worker logs self-describing).
+	RequestedBy string `json:"requested_by,omitempty"`
+	// UserID narrows the export to one principal; empty means the whole
+	// tenant.
+	UserID string `json:"user_id,omitempty"`
+	// StartTimeMs / EndTimeMs bound created_at as [start, end); 0 leaves the
+	// corresponding side open.
+	StartTimeMs int64 `json:"start_time_ms,omitempty"`
+	EndTimeMs   int64 `json:"end_time_ms,omitempty"`
+	// FeedbackRating, when "like" or "dislike", keeps only sessions carrying
+	// a matching feedback row; empty means no feedback filter.
+	FeedbackRating string `json:"feedback_rating,omitempty"`
 }
 
 // ExtractChunkPayload represents the extract chunk task payload

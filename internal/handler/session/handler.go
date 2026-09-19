@@ -69,6 +69,10 @@ type Handler struct {
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
 	usageRecorder interfaces.UsageRecorderService
+	// queryHistoryExport backs the Admin+ async query-history CSV export
+	// (SP13): the privacy gate, job admission, and the status/download reads.
+	// The asynq worker body (ProcessExport) lives on the same service.
+	queryHistoryExport queryHistoryExporter
 	// usageRecordOnce is the one-shot gate for that accounting: the message
 	// completion paths (stop watcher, QA defer, final-answer event) can race
 	// on one assistant message with no lock between them, and LoadOrStore on
@@ -81,6 +85,19 @@ type Handler struct {
 	// completion paths. Every path must still run the update — the mutex
 	// orders the writes, it never skips them.
 	completeMsgMu sync.Mutex
+}
+
+// queryHistoryExporter is the narrow port the export endpoints need from the
+// query-history export service. Kept local so stub-based handler tests do
+// not have to build the real service (which needs a database).
+type queryHistoryExporter interface {
+	// CheckAccess enforces the tenant query-history privacy policy: disabled
+	// answers a ForbiddenError; anonymized returns the mode.
+	CheckAccess(ctx context.Context, tenantID uint64) (string, error)
+	// StartExport admits a pending job and enqueues the worker task.
+	StartExport(ctx context.Context, tenantID uint64, requestedBy string, filter types.SessionListQuery) (uint64, error)
+	// GetExportJob loads one job scoped to the caller's tenant.
+	GetExportJob(ctx context.Context, tenantID uint64, jobID uint64) (*types.QueryHistoryExportJob, error)
 }
 
 // CraftSessionTombstoner starts the resource teardown of a deleted craft
@@ -147,32 +164,37 @@ func NewHandler(
 	// usageRecorder writes each finished chat turn's terminal token usage
 	// into the user's user_usage daily bucket (SP12).
 	usageRecorder interfaces.UsageRecorderService,
+	// queryHistoryExport backs the Admin+ async query-history CSV export
+	// (SP13 Task 4). Concrete-typed parameter so dig can inject it; the
+	// field keeps the narrow interface for stub-based tests.
+	queryHistoryExport *service.QueryHistoryExportService,
 ) *Handler {
 	return &Handler{
-		sessionService:       sessionService,
-		messageService:       messageService,
-		suggestionService:    suggestionService,
-		streamManager:        streamManager,
-		config:               config,
-		knowledgebaseService: knowledgebaseService,
-		customAgentService:   customAgentService,
-		tenantService:        tenantService,
-		agentShareService:    agentShareService,
-		kbShareService:       kbShareService,
-		fileService:          fileService,
-		resourceCatalog:      resourceCatalog,
-		storageResolver:      storageResolver,
-		modelService:         modelService,
-		temporaryDocuments:   temporaryDocuments,
-		artifactCollector:    artifactCollector,
-		memoryService:        memoryService,
-		forkService:          forkService,
+		sessionService:        sessionService,
+		messageService:        messageService,
+		suggestionService:     suggestionService,
+		streamManager:         streamManager,
+		config:                config,
+		knowledgebaseService:  knowledgebaseService,
+		customAgentService:    customAgentService,
+		tenantService:         tenantService,
+		agentShareService:     agentShareService,
+		kbShareService:        kbShareService,
+		fileService:           fileService,
+		resourceCatalog:       resourceCatalog,
+		storageResolver:       storageResolver,
+		modelService:          modelService,
+		temporaryDocuments:    temporaryDocuments,
+		artifactCollector:     artifactCollector,
+		memoryService:         memoryService,
+		forkService:           forkService,
 		workspaceCheckpointer: workspaceCheckpointer,
-		sandboxIDLookup:      sandboxIDLookup,
-		userService:          userService,
-		memberService:        memberService,
-		terminalService:      terminalService,
-		usageRecorder:        usageRecorder,
+		sandboxIDLookup:       sandboxIDLookup,
+		userService:           userService,
+		memberService:         memberService,
+		terminalService:       terminalService,
+		usageRecorder:         usageRecorder,
+		queryHistoryExport:    queryHistoryExport,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,

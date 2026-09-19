@@ -169,6 +169,12 @@ func NewSessionService(cfg *config.Config,
 	tenantSkillRepo repository.TenantSkillRepository,
 	feedbackRepo interfaces.FeedbackRepository,
 ) interfaces.SessionService {
+	// The query-history audit snapshot reads the cross-user feedback rows on
+	// every call. A missing repo is a wiring bug, not a runtime condition:
+	// fail fast at construction instead of silently serving empty feedback.
+	if feedbackRepo == nil {
+		panic("NewSessionService: feedbackRepo is required (query-history audit reads session feedback)")
+	}
 	svc := &sessionService{
 		cfg:                   cfg,
 		sessionRepo:           sessionRepo,
@@ -507,20 +513,18 @@ func (s *sessionService) GetQueryHistorySnapshot(
 	}
 
 	feedback := []types.MessageFeedback{}
-	if s.feedbackRepo != nil {
-		rows, err := s.feedbackRepo.ListBySession(ctx, tenantID, sessionID)
-		if err != nil {
-			logger.ErrorWithFields(ctx, err, map[string]interface{}{
-				"session_id": sessionID,
-				"tenant_id":  tenantID,
-			})
-			return nil, err
-		}
-		// Keep the non-nil guarantee so the snapshot serializes feedback as
-		// [] rather than null when a session has no ratings.
-		if rows != nil {
-			feedback = rows
-		}
+	rows, err := s.feedbackRepo.ListBySession(ctx, tenantID, sessionID)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"session_id": sessionID,
+			"tenant_id":  tenantID,
+		})
+		return nil, err
+	}
+	// Keep the non-nil guarantee so the snapshot serializes feedback as
+	// [] rather than null when a session has no ratings.
+	if rows != nil {
+		feedback = rows
 	}
 
 	snapshot := &types.QueryHistorySnapshot{

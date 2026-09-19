@@ -85,11 +85,29 @@ func TestEveryAsynqTaskTypeHasADeclaredQueue(t *testing.T) {
 		TypeKnowledgeListReparse, TypeKnowledgeMove, TypeDataTableSummary,
 		TypeImageMultimodal, TypeKnowledgePostProcess, TypeKnowledgeAutoTag, TypeManualProcess,
 		TypeDataSourceSync, TypeWikiIngest, TypeWikiFinalize, TypeTemporaryDocumentProcess,
+		TypeMemoryExtract, TypeQueryHistoryExport,
 	}
 	for _, taskType := range taskTypes {
 		if _, ok := QueueForTaskType(taskType); !ok {
 			t.Fatalf("task type %q has no declared queue", taskType)
 		}
+	}
+}
+
+// The query-history CSV export is a nobody-waiting maintenance workload: it
+// must never occupy parse/post-process/enrichment capacity, and it must not
+// be eligible for shared burst capacity either (long maintenance tasks are
+// excluded from the shared pool by design).
+func TestQueryHistoryExportUsesMaintenancePool(t *testing.T) {
+	queue, ok := QueueForTaskType(TypeQueryHistoryExport)
+	if !ok || queue != QueueMaintenance {
+		t.Fatalf("query history export must use %q, got %q", QueueMaintenance, queue)
+	}
+	if QueueWeightsForPool(WorkerPoolMaintenance)[QueueMaintenance] <= 0 {
+		t.Fatalf("maintenance pool must serve the export queue")
+	}
+	if QueueWeightsForSharedPool()[QueueMaintenance] != 0 {
+		t.Fatalf("query history export must not consume shared burst capacity")
 	}
 }
 

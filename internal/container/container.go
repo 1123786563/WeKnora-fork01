@@ -175,6 +175,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
 	must(container.Provide(repository.NewFeedbackRepository))
+	// SP13: async query-history CSV export job store + aggregated rows.
+	must(container.Provide(repository.NewQueryHistoryExportJobRepository))
 	must(container.Provide(repository.NewAnalyticsRepository))
 	must(container.Provide(repository.NewUsageRepository))
 	// SP12 chat usage ingestion: the recorder turns finished chat turns into
@@ -515,6 +517,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}
 	must(container.Provide(service.NewTemporaryDocumentService))
 	must(container.Invoke(startTemporaryDocumentCleanup))
+
+	// SP13 Task 4: the Admin+ async query-history CSV export service. It
+	// needs the task enqueuer registered above (asynq client or Lite sync
+	// executor), so it is provided after that block; the worker body is
+	// registered on both executors (router/task.go, router/sync_task.go).
+	must(container.Provide(service.NewQueryHistoryExportService))
 
 	// Chat pipeline components for processing chat requests
 	logger.Debugf(ctx, "[Container] Registering chat pipeline plugins...")
