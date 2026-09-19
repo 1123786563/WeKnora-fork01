@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,10 +51,10 @@ var versionedSQLiteColumns = map[string][]string{
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
-	"tenant_skill_snapshots":      {"planned_name"},                                   // 000086, 000088
+	"tenant_skill_snapshots":      {"planned_name"},                                                         // 000086, 000088
 	"execution_targets":           {"revoked_at", "runtime_id", "external_target_id", "usage_binding_json"}, // 000057, 000071
-	"execution_target_identities": {"credential_version", "external_target_id"},       // 000057
-	"execution_workspaces":        {"target_id", "root_ref"},                          // 000057
+	"execution_target_identities": {"credential_version", "external_target_id"},                             // 000057
+	"execution_workspaces":        {"target_id", "root_ref"},                                                // 000057
 }
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
@@ -198,6 +201,59 @@ func sqliteMigrationState(t *testing.T, db *sql.DB) (version int, dirty bool) {
 	t.Helper()
 	require.NoError(t, db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty))
 	return version, dirty
+}
+
+// sqliteMigrationHead reads the migration fixture itself so schema assertions
+// continue to validate the current SQLite stream when independent migrations
+// are added.
+func sqliteMigrationHead(t *testing.T, repoRoot string) int {
+	t.Helper()
+	versions := sqliteMigrationVersions(t, repoRoot)
+	return versions[len(versions)-1]
+}
+
+// sqliteMigrationStepsAfter counts the applied SQLite migration files after a
+// known version. Migration versions are sparse, so a numeric range cannot be
+// used as the number of migrate.Steps calls required to reach the current head.
+func sqliteMigrationStepsAfter(t *testing.T, repoRoot string, version int) int {
+	t.Helper()
+	steps := 0
+	for _, candidate := range sqliteMigrationVersions(t, repoRoot) {
+		if candidate > version {
+			steps++
+		}
+	}
+	require.Positivef(t, steps, "SQLite fixture must contain migrations after version %d", version)
+	return steps
+}
+
+func sqliteMigrationVersions(t *testing.T, repoRoot string) []int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(repoRoot, "migrations", "sqlite"))
+	require.NoError(t, err)
+
+	versions := make([]int, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		versions = append(versions, sqliteMigrationFileVersion(t, entry.Name()))
+	}
+	require.NotEmpty(t, versions, "SQLite fixture must contain up migrations")
+	sort.Ints(versions)
+	for index := 1; index < len(versions); index++ {
+		require.NotEqualf(t, versions[index-1], versions[index], "SQLite fixture has duplicate version %d", versions[index])
+	}
+	return versions
+}
+
+func sqliteMigrationFileVersion(t *testing.T, name string) int {
+	t.Helper()
+	versionText, _, found := strings.Cut(name, "_")
+	require.Truef(t, found, "SQLite migration must use a versioned filename: %s", name)
+	version, err := strconv.Atoi(versionText)
+	require.NoErrorf(t, err, "SQLite migration must start with a numeric version: %s", name)
+	return version
 }
 
 func sqliteTableExists(t *testing.T, db *sql.DB, table string) bool {

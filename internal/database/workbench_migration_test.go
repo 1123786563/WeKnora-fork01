@@ -60,7 +60,7 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 func TestWorkbenchSQLiteURLAndLaterMigrationTransaction(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	legacyRoot := copySQLiteMigrationsBeforeWorkbench(t, repoRoot)
-	migrationRoot := copySQLiteMigrationsWithV58(t, repoRoot, `
+	migrationRoot, syntheticVersion := copySQLiteMigrationsWithV58(t, repoRoot, `
 CREATE TABLE workbench_v59_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
 INSERT INTO workbench_v59_marker (id, value) VALUES (1, 'must-roll-back');
 THIS IS NOT VALID SQL;
@@ -78,12 +78,12 @@ THIS IS NOT VALID SQL;
 	assertWorkbenchChildSummary(t, db)
 	var markerCount int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_v59_marker'").Scan(&markerCount))
-	require.Zero(t, markerCount, "v58 must regain the default transaction wrapper after v55")
+	require.Zero(t, markerCount, "the synthetic migration must regain the default transaction wrapper after v55")
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 59, version)
+	require.Equal(t, syntheticVersion, version)
 	require.True(t, dirty)
 
-	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", "000059_workbench_v59.up.sql"), []byte(`
+	require.NoError(t, os.WriteFile(filepath.Join(migrationRoot, "migrations", "sqlite", fmt.Sprintf("%06d_workbench_fixture.up.sql", syntheticVersion)), []byte(`
 CREATE TABLE workbench_v59_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
 INSERT INTO workbench_v59_marker (id, value) VALUES (1, 'recovered');
 `), 0o600))
@@ -92,7 +92,7 @@ INSERT INTO workbench_v59_marker (id, value) VALUES (1, 'recovered');
 		SQLiteDBPath:     dbPath,
 	}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 59, version)
+	require.Equal(t, syntheticVersion, version)
 	require.False(t, dirty)
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM workbench_v59_marker WHERE value = 'recovered'").Scan(&markerCount))
 	require.Equal(t, 1, markerCount)
@@ -287,7 +287,14 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	entries, err := os.ReadDir(srcDir)
 	require.NoError(t, err)
 	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), "000019_") || strings.HasPrefix(entry.Name(), "000020_") || strings.HasPrefix(entry.Name(), "000021_") || strings.HasPrefix(entry.Name(), "000055_") || strings.HasPrefix(entry.Name(), "000056_") || strings.HasPrefix(entry.Name(), "000057_") || strings.HasPrefix(entry.Name(), "000058_") {
+		if entry.IsDir() {
+			continue
+		}
+		version := sqliteMigrationFileVersion(t, entry.Name())
+		// This fixture models the schema immediately before 000055. Later
+		// migrations may depend on the omitted workbench tables, so they must
+		// be applied only when the test switches back to the repository root.
+		if version > 54 {
 			continue
 		}
 		contents, readErr := os.ReadFile(filepath.Join(srcDir, entry.Name()))
@@ -297,7 +304,7 @@ func copySQLiteMigrationsBeforeWorkbench(t *testing.T, repoRoot string) string {
 	return dest
 }
 
-func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) string {
+func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) (string, int) {
 	t.Helper()
 	dest := t.TempDir()
 	srcDir := filepath.Join(repoRoot, "migrations", "sqlite")
@@ -313,9 +320,13 @@ func copySQLiteMigrationsWithV58(t *testing.T, repoRoot, v58up string) string {
 		require.NoError(t, readErr)
 		require.NoError(t, os.WriteFile(filepath.Join(destDir, entry.Name()), contents, 0o600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000059_workbench_v59.up.sql"), []byte(v58up), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(destDir, "000059_workbench_v59.down.sql"), []byte("DROP TABLE workbench_v59_marker;\n"), 0o600))
-	return dest
+	// Put the synthetic transaction test after the real fixture head so it
+	// cannot replace a migration that later files depend on.
+	syntheticVersion := sqliteMigrationHead(t, repoRoot) + 1
+	migrationName := fmt.Sprintf("%06d_workbench_fixture", syntheticVersion)
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, migrationName+".up.sql"), []byte(v58up), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, migrationName+".down.sql"), []byte("DROP TABLE workbench_v59_marker;\n"), 0o600))
+	return dest, syntheticVersion
 }
 
 func runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath string, steps int) error {
