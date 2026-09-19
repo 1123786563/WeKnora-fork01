@@ -12,7 +12,7 @@
 
 | SP | 主题 | 覆盖矩阵条目 | 状态 |
 |----|------|--------------|------|
-| SP1 | 清债接线：模型网关生产挂载、Stop 路由、前端 confluence/dingtalk 入口、幽灵声明清理 | C-25、C-3、K-26、K-5 | 🔄 |
+| SP1 | 清债接线：模型网关生产挂载、Stop 路由、前端 confluence/dingtalk 入口、幽灵声明清理 | C-25、C-3、K-26、K-5 | ✅（验证证据：各任务测试命令绿——go test 目标包 / pnpm test:craft:shared 113 pass / test:web 新用例绿 / frontend type-check+check-i18n 11/11；端到端冒烟为源码栈动作，留待合并后由用户环境执行） |
 | SP2 | Connectors 治理补洞：attempt 级进度/心跳/取消、targeted reindex、删源级联清理、凭据动态续期 | K-11、K-12、K-29、K-3 | ⬜ |
 | SP3 | Craft 定时任务：ScheduledTask CRUD+执行器+预授权目标 | C-23 | ⬜ |
 | SP4 | User Library + 沙箱文件树 API/预览 | C-18、C-12 | ⬜ |
@@ -48,3 +48,4 @@
 
 - 2026-09-19：路线图创建（方案 A 确认）；SP1 进入设计。
 - 2026-09-19：增补平台运营面线（SP11–SP14），设计定稿（用量/套餐/分析/查询历史/OpenAPI/对话偏好六域对齐，语义对齐+基建复用原则）。
+- 2026-09-19：SP1 四项接线完成（commit 见 git log）。

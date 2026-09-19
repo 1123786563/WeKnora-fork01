@@ -6431,7 +6431,9 @@ export default {
       yuque: 'Yuque',
       rss: 'RSS / Atomフィード',
       ima: 'Tencent IMA',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      confluence: 'Confluence',
+      dingtalk: 'DingTalk (Knowledge Base)'
     },
     connectorDesc: {
       feishu: 'Feishu Wikiからドキュメント、スプレッドシート、ファイルを同期します',
@@ -6442,7 +6444,9 @@ export default {
       yuque: 'Yuqueのナレッジベースからドキュメントを同期します',
       rss: 'RSS / Atomフィードから記事を同期します',
       ima: 'Tencent IMAのナレッジベースからドキュメント、ノート、ファイルを同期します（AIセッションと動画の解析は非対応）',
-      gitlab: 'GitLabプロジェクトからファイルを同期します'
+      gitlab: 'GitLabプロジェクトからファイルを同期します',
+      confluence: 'Sync pages from Confluence spaces',
+      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     drive: {
       folderTokenLabel: 'Driveフォルダトークン',
@@ -6469,7 +6473,16 @@ export default {
       feedUrls: 'フィードURL',
       feedUrlsHint: '1行に1つのRSS / AtomフィードURLを入力します。複数のフィードを指定できます。',
       authHeaders: 'カスタムヘッダー（任意）',
-      authHeadersHint: '非公開フィード用です。1行に1つ「名前: 値」の形式で入力します（例: Authorization: Bearer xxxx）'
+      authHeadersHint: '非公開フィード用です。1行に1つ「名前: 値」の形式で入力します（例: Authorization: Bearer xxxx）',
+      confluenceEdition: 'Edition (server / cloud)',
+      confluenceUsername: 'Username',
+      confluenceApiToken: 'API Token',
+      confluenceApiTokenHint: 'Required for the cloud edition',
+      confluencePassword: 'Password',
+      confluencePasswordHint: 'Required for the server edition',
+      dingtalkClientId: 'Client ID (AppKey)',
+      dingtalkClientSecret: 'Client Secret (AppSecret)',
+      dingtalkOperatorId: 'Operator ID'
     },
     comingSoon: '近日対応予定',
     docHint: '認証情報の取得先:',

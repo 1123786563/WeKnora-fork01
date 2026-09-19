@@ -70,3 +70,26 @@ test('craft envelope errors surface as ApiError', async () => {
   const api = createCraftApi(request);
   await assert.rejects(() => api.get('s1'), (error: unknown) => error instanceof ApiError && error.code === 'run_active');
 });
+
+test('stop posts task_id and returns the honest phase', async () => {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createCraftApi(async (input) => {
+    calls.push({ method: input.method, path: input.path, body: input.body });
+    return { success: true, data: { phase: 'stopping', note: 'abort accepted, still running' } };
+  });
+  const out = await api.stop('s1', 'run_1', 'dlg_1');
+  if (out.phase !== 'stopping' || out.note !== 'abort accepted, still running') throw new Error('bad view: ' + JSON.stringify(out));
+  if (calls[0]?.method !== 'POST' || calls[0]?.path !== '/api/v1/sessions/s1/craft/runs/run_1/stop') throw new Error('bad request');
+  if (JSON.stringify(calls[0]?.body) !== JSON.stringify({ task_id: 'dlg_1' })) throw new Error('bad body');
+});
+
+test('delegationStatus polls the read-only endpoint', async () => {
+  const api = createCraftApi(async (input) => {
+    if (input.method !== 'GET' || input.path !== '/api/v1/sessions/s1/craft/runs/run_1/delegations/dlg_1/status') {
+      throw new Error('unexpected request');
+    }
+    return { success: true, data: { phase: 'canceled', note: '' } };
+  });
+  const out = await api.delegationStatus('s1', 'run_1', 'dlg_1');
+  if (out.phase !== 'canceled') throw new Error('bad phase');
+});

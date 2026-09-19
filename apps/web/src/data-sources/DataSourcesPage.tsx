@@ -12,7 +12,7 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 const newForm: DataSourceFormValues = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '', resourceIds: [], authHeaders: [], gitlabProjects: [] };
 const emptyGitLabProject: GitLabProjectInput = { project_id: '', ref: '', pathsText: '' };
 const LOG_PAGE_SIZE = 50;
-const VUE_CREATE_CONNECTOR_ORDER = ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab'];
+const VUE_CREATE_CONNECTOR_ORDER = ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab', 'confluence', 'dingtalk'];
 
 const syncStatusKeys: Record<string, string> = {
   running: 'dataSource.status.running', success: 'dataSource.status.success', partial: 'dataSource.status.partial',

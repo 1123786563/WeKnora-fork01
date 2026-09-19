@@ -79,6 +79,19 @@ export function craftDownloadPath(sessionId: string, versionId: string, filePath
   return '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/files/' + encoded;
 }
 
+export interface CraftStopStatusView {
+  phase: string;
+  note: string;
+}
+
+function parseStopStatus(value: unknown, label: string): CraftStopStatusView {
+  const data = unwrap(value, label) as Record<string, unknown>;
+  return {
+    phase: typeof data.phase === 'string' ? data.phase : '',
+    note: typeof data.note === 'string' ? data.note : '',
+  };
+}
+
 function withQuery(path: string, params: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
@@ -165,6 +178,23 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
      */
     async download(sessionId: string, versionId: string, filePath: string, signal?: AbortSignal): Promise<unknown> {
       return request({ method: 'GET', path: craftDownloadPath(sessionId, versionId, filePath), signal });
+    },
+    /** POST /craft/runs/:run_id/stop — R06 verifiable stop; "stopping" is an honest phase, poll delegationStatus until terminal. */
+    async stop(sessionId: string, runId: string, taskId: string, signal?: AbortSignal): Promise<CraftStopStatusView> {
+      return parseStopStatus(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/stop',
+        body: { task_id: taskId },
+        signal,
+      }), 'stop');
+    },
+    /** GET /craft/runs/:run_id/delegations/:task_id/status — read-only poll after a stop answered stopping. */
+    async delegationStatus(sessionId: string, runId: string, taskId: string, signal?: AbortSignal): Promise<CraftStopStatusView> {
+      return parseStopStatus(await request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/delegations/' + encodeURIComponent(taskId) + '/status',
+        signal,
+      }), 'delegation status');
     },
   };
 }

@@ -845,7 +845,16 @@ export default {
       feedUrls: 'Адреса лент',
       feedUrlsHint: 'По одному адресу ленты RSS / Atom в строке; можно указать несколько.',
       authHeaders: 'Пользовательские заголовки (необязательно)',
-      authHeadersHint: 'Для приватных лент. По одному в строке в формате «Имя: Значение», например Authorization: Bearer xxxx'
+      authHeadersHint: 'Для приватных лент. По одному в строке в формате «Имя: Значение», например Authorization: Bearer xxxx',
+      confluenceEdition: 'Edition (server / cloud)',
+      confluenceUsername: 'Username',
+      confluenceApiToken: 'API Token',
+      confluenceApiTokenHint: 'Required for the cloud edition',
+      confluencePassword: 'Password',
+      confluencePasswordHint: 'Required for the server edition',
+      dingtalkClientId: 'Client ID (AppKey)',
+      dingtalkClientSecret: 'Client Secret (AppSecret)',
+      dingtalkOperatorId: 'Operator ID'
     },
     connectorDesc: {
       feishu: 'Синхронизация документов, таблиц и файлов из Feishu Wiki',
@@ -856,7 +865,9 @@ export default {
       yuque: 'Синхронизация документов из баз знаний Yuque',
       ima: 'Синхронизация документов, заметок и файлов из баз знаний Tencent IMA (ИИ-сессии и разбор видео не поддерживаются)',
       rss: 'Синхронизация статей из лент RSS / Atom',
-      gitlab: 'Синхронизация файлов из проектов GitLab'
+      gitlab: 'Синхронизация файлов из проектов GitLab',
+      confluence: 'Sync pages from Confluence spaces',
+      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     connector: {
       feishu: 'Feishu (Фэйшу)',
@@ -867,7 +878,9 @@ export default {
       yuque: 'Yuque (Юйцюэ)',
       ima: 'Tencent IMA',
       rss: 'RSS / Atom лента',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      confluence: 'Confluence',
+      dingtalk: 'DingTalk (Knowledge Base)'
     },
     logDetail: {
       startTime: 'Время начала',

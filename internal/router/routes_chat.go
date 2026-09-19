@@ -178,6 +178,17 @@ func RegisterSessionRoutes(
 	if interactionAPI := session.RegisteredCraftInteractionHandler(); interactionAPI != nil {
 		session.RegisterCraftInteractionRoutes(sessions, session.NewCraftInteractionHandler(interactionAPI))
 	}
+
+	// O02 credential issuance plane (spec §3.4: /api/v1/craft/model-gateway/
+	// credentials): its own group carries the same auth-chain shape as the
+	// craft sessions table (post-Auth, Viewer+ and the chat API-key
+	// capability — issuance needs the tenant context); mounted only when the
+	// gateway is assembled (fail-closed, no 503 shims).
+	if gw := handlerapi.RegisteredCraftModelGateway(); gw != nil {
+		gwGroup := g.apiKeyGroup(r.Group("/craft/model-gateway", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+		gwGroup.POST("/credentials", gw.IssueCredential)
+		gwGroup.POST("/credentials/revoke", gw.RevokeCredential)
+	}
 }
 
 // RegisterChatRoutes 注册路由。Chat endpoints are tenant-member usage

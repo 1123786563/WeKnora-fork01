@@ -6435,7 +6435,9 @@ export default {
       yuque: 'Yuque',
       rss: 'RSS / Atom Feed',
       ima: 'Tencent IMA',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      confluence: 'Confluence',
+      dingtalk: 'DingTalk (Knowledge Base)'
     },
     connectorDesc: {
       feishu: 'Sync documents, spreadsheets and files from Feishu Wiki',
@@ -6446,7 +6448,9 @@ export default {
       yuque: 'Sync documents from Yuque knowledge bases',
       rss: 'Sync articles from RSS / Atom feeds',
       ima: 'Sync documents, notes and files from Tencent IMA knowledge bases (AI sessions and video parses are not supported)',
-      gitlab: 'Sync files from GitLab projects'
+      gitlab: 'Sync files from GitLab projects',
+      confluence: 'Sync pages from Confluence spaces',
+      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     drive: {
       folderTokenLabel: 'Drive folder token',
@@ -6473,7 +6477,16 @@ export default {
       feedUrls: 'Feed URLs',
       feedUrlsHint: 'One RSS / Atom feed URL per line; multiple feeds are supported.',
       authHeaders: 'Custom headers (optional)',
-      authHeadersHint: 'For private feeds. One per line in "Name: Value" form, e.g. Authorization: Bearer xxxx'
+      authHeadersHint: 'For private feeds. One per line in "Name: Value" form, e.g. Authorization: Bearer xxxx',
+      confluenceEdition: 'Edition (server / cloud)',
+      confluenceUsername: 'Username',
+      confluenceApiToken: 'API Token',
+      confluenceApiTokenHint: 'Required for the cloud edition',
+      confluencePassword: 'Password',
+      confluencePasswordHint: 'Required for the server edition',
+      dingtalkClientId: 'Client ID (AppKey)',
+      dingtalkClientSecret: 'Client Secret (AppSecret)',
+      dingtalkOperatorId: 'Operator ID'
     },
     comingSoon: 'Coming soon',
     docHint: 'Get credentials at:',
