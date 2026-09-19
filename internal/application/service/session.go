@@ -463,6 +463,27 @@ func (s *sessionService) ListSessions(
 // full-fidelity surface.
 const queryHistorySnapshotMessageLimit = 200
 
+// recentSessionMessagesCapped loads the most recent messages of a session,
+// capped at limit, reporting whether older rows were dropped. It fetches one
+// row past the cap so a session exactly at the cap is not reported
+// truncated. The repository returns the newest rows first and re-sorts them
+// oldest-first, so an over-cap slice keeps its tail (the newest messages)
+// when trimmed. Shared by the Admin+ audit snapshot and the share-token
+// read-only snapshot, which cap identically.
+func (s *sessionService) recentSessionMessagesCapped(
+	ctx context.Context, sessionID string, limit int,
+) ([]*types.Message, bool, error) {
+	messages, err := s.messageRepo.GetRecentMessagesBySession(ctx, sessionID, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	truncated := len(messages) > limit
+	if truncated {
+		messages = messages[len(messages)-limit:]
+	}
+	return messages, truncated, nil
+}
+
 // GetQueryHistorySnapshot assembles the Admin+ audit snapshot of one session:
 // the tenant-scoped session row, its most recent messages, and every feedback
 // row recorded on the session — honoring the tenant's query-history privacy
@@ -494,22 +515,14 @@ func (s *sessionService) GetQueryHistorySnapshot(
 		return nil, err
 	}
 
-	// Fetch one row past the cap so a session exactly at the cap is not
-	// reported truncated. The repository returns the newest rows first and
-	// re-sorts them oldest-first, so an over-cap slice keeps its tail (the
-	// newest messages) when trimmed.
-	messages, err := s.messageRepo.GetRecentMessagesBySession(
-		ctx, sessionID, queryHistorySnapshotMessageLimit+1)
+	messages, truncated, err := s.recentSessionMessagesCapped(
+		ctx, sessionID, queryHistorySnapshotMessageLimit)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"session_id": sessionID,
 			"tenant_id":  tenantID,
 		})
 		return nil, err
-	}
-	truncated := len(messages) > queryHistorySnapshotMessageLimit
-	if truncated {
-		messages = messages[len(messages)-queryHistorySnapshotMessageLimit:]
 	}
 
 	feedback := []types.MessageFeedback{}

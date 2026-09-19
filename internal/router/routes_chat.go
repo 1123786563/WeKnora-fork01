@@ -58,6 +58,33 @@ func RegisterFeedbackRoutes(r *gin.RouterGroup, handler *handler.FeedbackHandler
 	}
 }
 
+// RegisterSessionShareRoutes 注册会话分享路由（SP13 Task 5）。
+//
+// Mint/revoke ride the sessions group like the pin routes (Viewer+ at the
+// route, owner-or-Admin+ inside the service — the SP11 canFeedback gate).
+// The read side is its own /shared tree so a share link reads as a link,
+// with the same Viewer+ / chat-capability chain: the token only resolves
+// inside the minting tenant, so a leaked link is worthless logged-out or
+// cross-tenant. NOTE on wildcard names: gin keeps one radix tree per verb —
+// the POST sessions tree binds :session_id at this position, the DELETE
+// tree binds :id, so each route reuses its tree's name and the handler
+// resolves the param with a :session_id/:id fallback.
+func RegisterSessionShareRoutes(r *gin.RouterGroup, handler *session.Handler, g *rbacGuards) {
+	// Sharing is a per-session chat action: a scoped key needs the chat
+	// capability (or full tenant access), exactly like pinning.
+	sessions := g.apiKeyGroup(r.Group("/sessions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	{
+		sessions.POST("/:session_id/share", handler.ShareSession)
+		sessions.DELETE("/:id/share", handler.UnshareSession)
+	}
+	// /shared is a new static top-level segment (no verb tree conflict with
+	// the existing routes); :token is a fresh wildcard position.
+	shared := g.apiKeyGroup(r.Group("/shared", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	{
+		shared.GET("/sessions/:token", handler.GetSharedSession)
+	}
+}
+
 // RegisterSessionRoutes 注册路由。
 //
 // Sessions are per-user resources; the handler enforces user ownership.

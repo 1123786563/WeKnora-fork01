@@ -52,6 +52,19 @@ type SessionService interface {
 	// the read, anonymized masks owner ids on the returned rows. Callers must
 	// already be Admin+ (route guard).
 	GetQueryHistorySnapshot(ctx context.Context, tenantID uint64, sessionID string) (*types.QueryHistorySnapshot, error)
+	// ShareSession mints (or, when the session is already shared, rotates)
+	// the opaque share token of a session the caller owns or is Admin+ for.
+	// Rotation invalidates the previous link. Returns the new token; it is
+	// the only surface that ever reveals it (Session.ShareToken is json:"-").
+	ShareSession(ctx context.Context, caller types.Caller, sessionID string) (string, error)
+	// UnshareSession revokes the session's share token (NULLs it), killing
+	// the shared link. Same owner-or-Admin+ gate as ShareSession.
+	UnshareSession(ctx context.Context, caller types.Caller, sessionID string) error
+	// GetSharedSession resolves a share token inside the caller's tenant and
+	// assembles the read-only snapshot it opens (session + capped messages,
+	// no feedback). Any miss — unknown, revoked, cross-tenant, soft-deleted —
+	// is one uniform 404 so the read leaks nothing about which it was.
+	GetSharedSession(ctx context.Context, caller types.Caller, token string) (*types.SharedSessionSnapshot, error)
 	// SetSessionPinned pins or unpins the session for the current user scope.
 	// Returns the number of rows affected; 0 signals "not found" to the handler.
 	SetSessionPinned(ctx context.Context, sessionID string, pinned bool) (int64, error)
@@ -84,6 +97,14 @@ type SessionRepository interface {
 	// GetByID loads a session by tenant and id without user scoping. Callers
 	// must enforce access (e.g. embed channel + session signature).
 	GetByID(ctx context.Context, tenantID uint64, id string) (*types.Session, error)
+	// GetByShareToken loads the live (non-soft-deleted) session a share
+	// token resolves to, inside one tenant. The caller's tenant is part of
+	// the lookup so a token from another tenant is a plain miss.
+	GetByShareToken(ctx context.Context, tenantID uint64, token string) (*types.Session, error)
+	// SetShareToken writes (or, with a non-nil token, rotates) the session's
+	// share token; nil revokes it (NULL). Scoped to tenant+session id;
+	// returns the rows affected, 0 meaning the row does not exist.
+	SetShareToken(ctx context.Context, tenantID uint64, sessionID string, token *string) (int64, error)
 	// GetIMPlatform returns the IM platform bound to a session via
 	// im_channel_sessions, or "" when the session has no IM mapping. Used to
 	// classify a session's origin folder on read without a full list query.

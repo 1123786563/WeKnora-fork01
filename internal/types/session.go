@@ -132,11 +132,12 @@ type Session struct {
 
 	// ShareToken is the opaque public capability token that opens this
 	// session's read-only history snapshot. Empty while the session is not
-	// shared. Globally unique across all sessions (NULLs excluded) via the
-	// uq_sessions_share_token partial unique index created by migration
-	// 000170; the GORM tag deliberately carries no uniqueIndex so it cannot
-	// fight the migration-built partial index. Never serialized to JSON: the
-	// share endpoints assemble their own explicit snapshot payloads.
+	// shared. Globally unique across all sessions (NULLs and empty strings
+	// excluded) via the uq_sessions_share_token partial unique index created
+	// by migration 000170; the GORM tag deliberately carries no uniqueIndex
+	// so it cannot fight the migration-built partial index. Never serialized
+	// to JSON: the share endpoints assemble their own explicit snapshot
+	// payloads.
 	ShareToken string `json:"-" gorm:"type:varchar(64)"`
 
 	// // Strategy configuration

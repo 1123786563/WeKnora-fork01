@@ -34,7 +34,11 @@ func NewSessionRepository(db *gorm.DB) interfaces.SessionRepository {
 func (r *sessionRepository) Create(ctx context.Context, session *types.Session) (*types.Session, error) {
 	session.CreatedAt = time.Now()
 	session.UpdatedAt = time.Now()
-	if err := r.db.WithContext(ctx).Create(session).Error; err != nil {
+	// share_token must be omitted so a fresh row lands on the column's NULL
+	// default instead of GORM's zero-value '' — the partial unique index
+	// uq_sessions_share_token treats '' as a real (repeatable) token, so two
+	// '' rows would make every second session INSERT fail.
+	if err := r.db.WithContext(ctx).Omit("share_token").Create(session).Error; err != nil {
 		return nil, err
 	}
 	// Return the session with generated ID
@@ -70,6 +74,46 @@ func (r *sessionRepository) GetByID(ctx context.Context, tenantID uint64, id str
 		return nil, err
 	}
 	return &session, nil
+}
+
+// GetByShareToken retrieves the live session a share token resolves to,
+// inside one tenant. GORM's soft-delete scope adds the deleted_at IS NULL
+// arm, so a soft-deleted shared session is a plain miss like GetByID.
+func (r *sessionRepository) GetByShareToken(
+	ctx context.Context, tenantID uint64, token string,
+) (*types.Session, error) {
+	if token == "" {
+		return nil, apperrors.ErrSessionNotFound
+	}
+	var session types.Session
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND share_token = ?", tenantID, token).
+		First(&session).Error
+	if err != nil {
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrSessionNotFound
+		}
+		return nil, err
+	}
+	return &session, nil
+}
+
+// SetShareToken writes or revokes (token == nil -> NULL) a session's share
+// token, scoped to the tenant and session id. A rotation is a plain
+// overwrite: the partial unique index uq_sessions_share_token only rejects
+// two sessions holding the SAME token, which for 256-bit random tokens is a
+// once-in-forever event the service retries.
+func (r *sessionRepository) SetShareToken(
+	ctx context.Context, tenantID uint64, sessionID string, token *string,
+) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Model(&types.Session{}).
+		Where("tenant_id = ? AND id = ?", tenantID, sessionID).
+		Updates(map[string]interface{}{
+			"share_token": token,
+			"updated_at":  time.Now(),
+		})
+	return res.RowsAffected, res.Error
 }
 
 // GetIMPlatform returns the IM platform bound to a session, or "" when none.
@@ -435,8 +479,11 @@ func (r *sessionRepository) CreateForked(
 		session.UpdatedAt = now
 		// Session.BeforeCreate would overwrite the ID the fork service already
 		// assigned (the copied messages point at it), so write the row with
-		// the hook skipped.
-		if err := tx.Session(&gorm.Session{SkipHooks: true}).Create(session).Error; err != nil {
+		// the hook skipped. share_token is omitted so the fork does not
+		// inherit (nor zero-value '') the source session's share state — see
+		// Create for the '' / partial-unique-index rationale.
+		if err := tx.Session(&gorm.Session{SkipHooks: true}).
+			Omit("share_token").Create(session).Error; err != nil {
 			return err
 		}
 		if len(messages) == 0 {

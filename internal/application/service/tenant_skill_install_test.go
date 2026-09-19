@@ -3303,6 +3303,18 @@ func (s *installSessionService) GetQueryHistorySnapshot(context.Context, uint64,
 	return nil, nil
 }
 
+func (s *installSessionService) ShareSession(context.Context, types.Caller, string) (string, error) {
+	return "", nil
+}
+
+func (s *installSessionService) UnshareSession(context.Context, types.Caller, string) error {
+	return nil
+}
+
+func (s *installSessionService) GetSharedSession(context.Context, types.Caller, string) (*types.SharedSessionSnapshot, error) {
+	return nil, nil
+}
+
 func (s *installSessionService) SetSessionPinned(context.Context, string, bool) (int64, error) {
 	return 0, nil
 }

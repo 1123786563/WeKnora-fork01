@@ -96,6 +96,24 @@ type QueryHistorySnapshot struct {
 	Truncated bool `json:"truncated"`
 }
 
+// SharedSessionSnapshot is the read-only view a session share token opens
+// (SP13): the shared session row plus its most recent messages, capped at the
+// same 200-message limit as the audit snapshot. Unlike QueryHistorySnapshot
+// it deliberately carries no feedback rows — per-user reaction detail is
+// sensitive and the first version of sharing simply omits it. Session.UserID
+// is NOT masked: share readers are logged-in members of the same tenant, and
+// the owner/admin who minted the link chose to expose the conversation.
+type SharedSessionSnapshot struct {
+	// Session is the tenant-scoped session row the token resolves to.
+	Session Session `json:"session"`
+	// Messages are the most recent messages, oldest first. Truncated reports
+	// whether older messages were dropped by the cap.
+	Messages []*Message `json:"messages"`
+	// Truncated is true when the session holds more messages than the
+	// snapshot cap; the snapshot keeps the most recent ones.
+	Truncated bool `json:"truncated"`
+}
+
 // QueryHistoryExportJob tracks one asynchronous query-history export. The
 // worker claims pending jobs, streams the archive to FilePath, and leaves
 // either done or failed with ErrorMessage set.
