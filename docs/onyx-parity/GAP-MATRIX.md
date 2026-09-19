@@ -216,8 +216,8 @@
 | P-1 | 用量日桶聚合 | `user_usage` 表（user×日×model×flow）upsert 累加 token/成本 `backend/onyx/db/models.py:6206`、tracing 采集 `tracing/processors/user_usage_processor.py` | craft/commercial 双账本（`craft_usage_facts`/`commercial_usage_facts`+微积分定价+预算预留）完备；普通聊天仅 `messages.usage` JSONB（`internal/types/message.go:383`） | ❌→SP12 | 缺按用户/模型/日的跨会话聚合层；成本复用 commercial 费率 |
 | P-2 | 用户/admin 用量视图 | `/app/settings/usage`、`/admin/performance/usage` | 无任何用量页面（仅 craft 会话内用量面板 `packages/views/src/craft/usage.tsx`） | ❌→SP12 | 前端无图表库（随 SP11 引 recharts） |
 | P-3 | 套餐/计费页 | `/admin/billing` 两档卡片+Stripe Checkout | commercial 后端全套（计划版本/订阅/订单/退款/支付宝微信 `internal/commercial/`）；前端组件已写好**未挂路由**（`apps/web/src/commercial/BillingPage.tsx` 等 4 个） | 🟡→SP14 | 纯接线；Stripe/seats 不引入（有意不同） |
-| P-4 | 消息反馈 like/dislike | `chat_feedback` 表 `db/models.py:3607` | 无（Message 无反馈字段，全仓无 feedback 端点） | ❌→SP11 | 新表 `message_feedback` |
-| P-5 | 分析聚合+图表页 | `/api/analytics/admin/*` 实时 SQL 聚合+recharts（EE） | 无 query/活跃用户聚合 API；前端无图表库无分析页 | ❌→SP11 | Onyx 属 EE 目录，**语义重写不复制代码**；无独立分析表（同构） |
+| P-4 | 消息反馈 like/dislike | `chat_feedback` 表 `db/models.py:3607` | ✅ `message_feedback` 表（migration 000079/000158）+ 提交/撤销/回显 API + 消息气泡 like/dislike（乐观更新+回显），见 SP11 验收证据 | ✅ | 交付物：`c9310a09`/`722ec67c`/`3c248161`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md) |
+| P-5 | 分析聚合+图表页 | `/api/analytics/admin/*` 实时 SQL 聚合+recharts（EE） | ✅ 四组读时聚合端点（queries/users/channels/agents）+ `/platform/analytics` recharts 四图（日期过滤+RBAC 门），见 SP11 验收证据 | ✅ | 交付物：`ce42a1ae`(Task3 文件)/`66964201`/`3726f8c2`/`b0783bf2`/`524fe997`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md) |
 | P-6 | admin 查询历史审计 | `chat-session-history` 分页+完整快照（EE） | admin 仅渠道会话可见（source=api/embed/IM，`internal/application/service/session.go:394`）；web 会话按 user 隔离不可见 | 🟡→SP13 | 扩展现有 admin 视图到全 source+按用户过滤 |
 | P-7 | 查询历史 CSV 导出 | Celery 三段式（触发/状态/下载） | 无 | ❌→SP13 | 用已有 asynq 替代 Celery |
 | P-8 | 隐私三档开关 | NORMAL/ANONYMIZED/DISABLED | 无 | ❌→SP13 | 租户级设置 |

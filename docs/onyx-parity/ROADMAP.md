@@ -22,7 +22,7 @@
 | SP8 | Connectors 广度滚动 II：IMAP/邮件、Google Drive | K-18、K-15 | ⬜ |
 | SP9 | Connectors 广度滚动 III：Slack、SharePoint/OneDrive 等按需 | K-18、K-15 | ⬜ |
 | SP10 | 长尾：能力体检、ingestion 直推 API、索引后层级浏览、cc_pair 详情页增强、状态总览聚合 | K-30、K-22、K-14、K-27、K-28 | ⬜ |
-| SP11 | 平台运营面 · 反馈+分析：message_feedback 表+反馈 API、四组聚合端点、/platform/analytics 图表页（recharts）、消息气泡反馈按钮 | P-4、P-5 | 🔄 设计定稿 |
+| SP11 | 平台运营面 · 反馈+分析：message_feedback 表+反馈 API、四组聚合端点、/platform/analytics 图表页（recharts）、消息气泡反馈按钮 | P-4、P-5 | ✅（[验收证据](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md)） |
 | SP12 | 平台运营面 · 用量聚合：user_usage 日桶表+chat/craft 双写入点+commercial 计价、三个用量 API、用户 settings 分区+admin 用量 tab | P-1、P-2 | 🔄 设计定稿 |
 | SP13 | 平台运营面 · 查询历史：admin 审计列表+快照+asynq CSV 导出+隐私三档、会话分享（租户内登录分享 token） | P-6~P-9 | 🔄 设计定稿 |
 | SP14 | 平台运营面 · 轻项收割：commercial 四页挂路由+套餐入口、API key 面板 API 文档入口、per-user 默认模型偏好+解析链 | P-3、P-10、P-11 | 🔄 设计定稿 |
