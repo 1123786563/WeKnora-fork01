@@ -69,12 +69,14 @@ var versionedSQLiteColumns = map[string][]string{
 // delivery columns at 000060, the cleanup ledger and artifact receipts at
 // 000061-000066, artifact versions at 000067, the mobile voice plane at
 // 000068-000069, the notification provider pause state at 000070 and the
-// execution target usage binding at 000071.
-const expectedSQLiteMigrationVersion = 71
+// execution target usage binding at 000071. The migration stream continues
+// independently, so these schema checks derive its current head from the
+// fixture root rather than coupling unrelated future migrations to this test.
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	chdirAndRestore(t, repoRoot)
+	expectedSQLiteMigrationVersion := sqliteMigrationHead(t, repoRoot)
 
 	dbPath := filepath.Join(t.TempDir(), "fresh.db")
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
@@ -111,6 +113,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
+	expectedSQLiteMigrationVersion := sqliteMigrationHead(t, repoRoot)
 
 	// Build a legacy v4 migration root (000000_init .. 000004_memory) so we
 	// can prove the new migrations upgrade an existing Lite database without

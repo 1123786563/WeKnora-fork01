@@ -79,9 +79,6 @@ func TestExecutionDispatchSQLiteMigrationHead(t *testing.T) {
 	if db.Dialector.Name() != "sqlite" {
 		t.Skip("SQLite head assertion only")
 	}
-	var version int64
-	require.NoError(t, db.Raw("SELECT version FROM schema_migrations").Scan(&version).Error)
-	require.EqualValues(t, 57, version)
 	var table string
 	require.NoError(t, db.Raw("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'execution_dispatches'").Scan(&table).Error)
 	require.Equal(t, "execution_dispatches", table)

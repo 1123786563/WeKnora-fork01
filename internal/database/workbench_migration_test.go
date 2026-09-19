@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestWorkbenchSQLiteMigrationPreservesRunChildren(t *testing.T) {
 	chdirAndRestore(t, repoRoot)
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 57, version)
+	require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 	require.False(t, dirty)
 
 	assertWorkbenchChildSummary(t, db)
@@ -142,7 +143,7 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		require.NoError(t, RunMigrations("sqlite3://"+dbPath))
 		db := openSQLiteDB(t, dbPath)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 57, version)
+		require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 		require.False(t, dirty)
 	})
 
@@ -161,19 +162,20 @@ func TestWorkbenchSQLiteURLUpgradeAndDownUpPreserveChildren(t *testing.T) {
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
 		version, dirty := sqliteMigrationState(t, db)
-		require.Equal(t, 57, version)
+		require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 		require.False(t, dirty)
 
-		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -2))
+		stepsToWorkbenchRuns := sqliteMigrationStepsAfter(t, repoRoot, 55)
+		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -stepsToWorkbenchRuns))
 		version, dirty = sqliteMigrationState(t, db)
 		require.Equal(t, 55, version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
 		require.True(t, sqliteColumnExists(t, db, "agent_runs", "driver"), "W04 down must leave the accepted W02/W03 run schema intact")
 
-		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 2))
+		require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, stepsToWorkbenchRuns))
 		version, dirty = sqliteMigrationState(t, db)
-		require.Equal(t, 57, version)
+		require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 		require.False(t, dirty)
 		assertWorkbenchChildSummary(t, db)
 		assertWorkbenchSnapshotsEqual(t, db, snapshotBefore)
@@ -189,7 +191,7 @@ func TestWorkbenchSQLiteURLPreservesMigrationTableQuery(t *testing.T) {
 	db := openSQLiteDB(t, dbPath)
 	var version, dirty int
 	require.NoError(t, db.QueryRow("SELECT version, dirty FROM custom_schema_migrations").Scan(&version, &dirty))
-	require.Equal(t, 57, version)
+	require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 	require.Zero(t, dirty)
 	var defaultTableCount int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").Scan(&defaultTableCount))
@@ -230,26 +232,27 @@ func TestExecutionTargetSQLiteFullMigrationDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
 	db := openSQLiteDB(t, dbPath)
 	version, dirty := sqliteMigrationState(t, db)
-	require.Equal(t, 57, version)
+	require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 	require.False(t, dirty)
 	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
 	require.True(t, sqliteTableExists(t, db, "execution_workspaces"))
 
-	// Step down past every execution/workbench-family migration (targets at
-	// 57, requests at 56, the run rebuild at 55, then observations/dispatch/
-	// interactions at 21/20/19) so the paseo-owned tables are all absent.
-	// The applied set has gaps (17-18 and 22-29 were never used), so reaching
-	// version 16 from 57 crosses 31 applied migrations, not a contiguous 41.
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -31))
+	// Step down past every migration after the execution/workbench family
+	// (targets at 57, requests at 56, the run rebuild at 55, then
+	// observations/dispatch/interactions at 21/20/19) so its tables are all
+	// absent. The stream has gaps and can gain unrelated migrations, so count
+	// the applied files rather than coupling this rollback to its current head.
+	stepsToPreWorkbench := sqliteMigrationStepsAfter(t, repoRoot, 16)
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -stepsToPreWorkbench))
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 16, version)
 	require.False(t, dirty)
 	require.False(t, sqliteTableExists(t, db, "execution_target_identities"))
 	require.False(t, sqliteTableExists(t, db, "execution_observations"))
 	require.False(t, sqliteTableExists(t, db, "execution_source_cursors"))
-	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, 31))
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, stepsToPreWorkbench))
 	version, dirty = sqliteMigrationState(t, db)
-	require.Equal(t, 57, version)
+	require.Equal(t, sqliteMigrationHead(t, repoRoot), version)
 	require.False(t, dirty)
 	require.True(t, sqliteTableExists(t, db, "execution_target_identities"))
 	require.True(t, sqliteTableExists(t, db, "execution_observations"))
