@@ -179,6 +179,25 @@ func TestNativeCommitPersistsPendingIntentAcrossDownstreamBarrierFailures(t *tes
 	}
 }
 
+func TestNativeCommitExistingPendingIntentUsesPersistedPayload(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	stored := nativeCommitIntent(fence, "intent-authority", "hash-authority")
+	stored.Events = []nativecontract.BusinessEvent{nativeBusinessEvent("stored-event", "stored")}
+	require.NoError(t, coordinator.db.Exec("CREATE TRIGGER abort_authority BEFORE INSERT ON native_agent_events BEGIN SELECT RAISE(ABORT, 'inject pending intent'); END").Error)
+	_, err := coordinator.Commit(context.Background(), stored)
+	require.Error(t, err)
+	require.NoError(t, coordinator.db.Exec("DROP TRIGGER abort_authority").Error)
+
+	caller := stored
+	caller.Events = []nativecontract.BusinessEvent{nativeBusinessEvent("caller-event", "mutable caller payload")}
+	receipt, err := coordinator.Commit(context.Background(), caller)
+	require.NoError(t, err)
+	require.True(t, receipt.Applied)
+	var eventIDs []string
+	require.NoError(t, coordinator.db.Table("native_agent_events").Order("sequence").Pluck("event_id", &eventIDs).Error)
+	require.Equal(t, []string{"stored-event"}, eventIDs)
+}
+
 func TestNativeCommitSessionAppendCanonicalizesHashAndRequiresEventID(t *testing.T) {
 	coordinator, fence := nativeCommitFixture(t)
 	e := &event.Event{ID: "event-1", Author: "agent"}

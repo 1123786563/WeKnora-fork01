@@ -25,6 +25,7 @@ const (
 	NativeMemoryJobDiscarded = "discarded"
 	NativeMemoryJobFailed    = "failed"
 	nativeMemoryRetryDelay   = time.Second
+	nativeMemoryClaimLease   = time.Minute
 )
 
 // NativeMemoryState is the durable generation fence for one tenant subject.
@@ -264,13 +265,17 @@ func (r *NativeMemoryRepository) Claim(ctx context.Context, candidate nativecont
 		}
 		var row nativeMemoryJobRow
 		now := time.Now().UTC()
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND session_app_name=? AND session_user_id=? AND session_id=? AND status=? AND (retry_status=? OR (retry_status=? AND next_attempt_at <= ?))", candidate.Scope.TenantID, subject, candidate.ID, candidate.Generation, candidate.PolicyRevision, candidate.ThroughEventID, candidate.SessionKey.AppName, candidate.SessionKey.UserID, candidate.SessionKey.SessionID, NativeMemoryJobQueued, "none", "scheduled", now).Take(&row).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND session_app_name=? AND session_user_id=? AND session_id=? AND ((status=? AND (retry_status=? OR (retry_status=? AND next_attempt_at <= ?))) OR (status=? AND next_attempt_at <= ?))", candidate.Scope.TenantID, subject, candidate.ID, candidate.Generation, candidate.PolicyRevision, candidate.ThroughEventID, candidate.SessionKey.AppName, candidate.SessionKey.UserID, candidate.SessionKey.SessionID, NativeMemoryJobQueued, "none", "scheduled", now, NativeMemoryJobRunning, now).Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
 			return err
 		}
-		claimed = nativecontract.MemoryJob{ID: row.JobID, Scope: candidate.Scope, SessionKey: session.Key{AppName: row.SessionAppName, UserID: row.SessionUserID, SessionID: row.SessionID}, Generation: row.Generation, PolicyRevision: row.PolicyRevision, ThroughEventID: row.ThroughEventID}
+		if row.Status == NativeMemoryJobRunning && row.RetryAttempt >= row.MaxAttempts {
+			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=? AND retry_attempt=?", candidate.Scope.TenantID, subject, row.JobID, NativeMemoryJobRunning, row.RetryAttempt).Updates(map[string]any{"status": NativeMemoryJobFailed, "retry_status": "exhausted", "next_attempt_at": nil, "updated_at": now})
+			return result.Error
+		}
+		claimed = nativecontract.MemoryJob{ID: row.JobID, Scope: candidate.Scope, SessionKey: session.Key{AppName: row.SessionAppName, UserID: row.SessionUserID, SessionID: row.SessionID}, Generation: row.Generation, PolicyRevision: row.PolicyRevision, ThroughEventID: row.ThroughEventID, Attempt: row.RetryAttempt + 1}
 		if claimed.SessionKey.AppName == "" || claimed.SessionKey.UserID == "" || claimed.SessionKey.SessionID == "" || r.verifyJobSource(tx, claimed) != nil {
 			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status IN ?", candidate.Scope.TenantID, subject, row.JobID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Updates(nativeMemoryDiscardUpdates())
 			if result.Error != nil {
@@ -278,7 +283,7 @@ func (r *NativeMemoryRepository) Claim(ctx context.Context, candidate nativecont
 			}
 			return nil
 		}
-		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=? AND retry_attempt=?", candidate.Scope.TenantID, subject, row.JobID, NativeMemoryJobQueued, row.RetryAttempt).Updates(map[string]any{"status": NativeMemoryJobRunning, "retry_attempt": row.RetryAttempt + 1, "retry_status": "none", "next_attempt_at": nil, "updated_at": now})
+		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=? AND retry_attempt=?", candidate.Scope.TenantID, subject, row.JobID, row.Status, row.RetryAttempt).Updates(map[string]any{"status": NativeMemoryJobRunning, "retry_attempt": row.RetryAttempt + 1, "retry_status": "none", "next_attempt_at": now.Add(nativeMemoryClaimLease), "updated_at": now})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -389,7 +394,7 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 				return nil
 			}
 			if persisted.SessionAppName == "" || persisted.SessionUserID == "" || persisted.SessionID == "" || persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID || r.verifyJobSource(tx, job) != nil {
-				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Updates(nativeMemoryDiscardUpdates())
+				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).Updates(nativeMemoryDiscardUpdates())
 				if result.Error != nil {
 					return result.Error
 				}
@@ -398,7 +403,7 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 		}
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
 			if jobWrite {
-				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Updates(nativeMemoryDiscardUpdates())
+				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).Updates(nativeMemoryDiscardUpdates())
 				if result.Error != nil {
 					return result.Error
 				}
@@ -422,7 +427,7 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 			}
 		}
 		if jobWrite {
-			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning).Updates(map[string]any{"status": NativeMemoryJobSucceeded, "retry_status": "none", "next_attempt_at": nil, "last_error": "", "updated_at": time.Now().UTC()})
+			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).Updates(map[string]any{"status": NativeMemoryJobSucceeded, "retry_status": "none", "next_attempt_at": nil, "last_error": "", "updated_at": time.Now().UTC()})
 			if result.Error != nil {
 				return result.Error
 			}
@@ -494,7 +499,7 @@ func (r *NativeMemoryRepository) Discard(ctx context.Context, job nativecontract
 		return err
 	}
 	result := r.db.WithContext(ctx).Model(&nativeMemoryJobRow{}).
-		Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).
+		Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).
 		Updates(nativeMemoryDiscardUpdates())
 	if result.Error != nil {
 		return result.Error
@@ -515,7 +520,7 @@ func (r *NativeMemoryRepository) Fail(ctx context.Context, job nativecontract.Me
 			return err
 		}
 		var row nativeMemoryJobRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning).Take(&row).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}

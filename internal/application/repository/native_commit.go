@@ -42,6 +42,7 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 	}
 	var receipt nativecontract.CommitReceipt
 	applied := false
+	persisted := intent
 	err := c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := c.assertFence(tx, intent.Fence); err != nil {
 			return err
@@ -59,6 +60,15 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 				applied = err == nil
 				return err
 			}
+			if err := json.Unmarshal([]byte(row.Payload), &persisted); err != nil {
+				return typedFailure(nativecontract.ErrStore, "stored commit intent is corrupt")
+			}
+			if persisted.ID != intent.ID || persisted.PayloadHash != row.PayloadHash {
+				return typedFailure(nativecontract.ErrStore, "stored commit intent identity is corrupt")
+			}
+			// The durable payload is the recovery instruction, while the live
+			// caller fence is the authority to replay it.
+			persisted.Fence = intent.Fence
 		} else {
 			payload, err := json.Marshal(intent)
 			if err != nil {
@@ -88,7 +98,7 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 		if err := c.assertFence(tx, intent.Fence); err != nil {
 			return err
 		}
-		receipt, err = c.apply(tx, intent)
+		receipt, err = c.apply(tx, persisted)
 		return err
 	})
 	return receipt, err

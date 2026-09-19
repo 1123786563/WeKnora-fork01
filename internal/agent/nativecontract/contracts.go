@@ -487,6 +487,9 @@ type MemoryJob struct {
 	SessionKey                 session.Key
 	ThroughEventID             string
 	Generation, PolicyRevision int64
+	// Attempt is assigned by the durable claim. It fences a crashed worker
+	// after another worker has reclaimed the expired running job.
+	Attempt int64
 }
 type MemoryGovernance interface {
 	SetEnabled(context.Context, Scope, bool) error

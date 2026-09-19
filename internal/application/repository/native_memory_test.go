@@ -188,10 +188,10 @@ func TestNativeMemoryFailureSchedulesBoundedDurableRetry(t *testing.T) {
 	job := nativeMemoryJob(t, repo, scope, "retryable", "event-1")
 	require.NoError(t, repo.Enqueue(ctx, job))
 
-	_, claimed, err := repo.Claim(ctx, job)
+	claimedJob, claimed, err := repo.Claim(ctx, job)
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, repo.Fail(ctx, job, errors.New("temporary extractor failure")))
+	require.NoError(t, repo.Fail(ctx, claimedJob, errors.New("temporary extractor failure")))
 
 	var row nativeMemoryJobRow
 	require.NoError(t, repo.DB().Where("tenant_id=? AND job_id=?", scope.TenantID, job.ID).Take(&row).Error)
@@ -214,10 +214,10 @@ func TestNativeMemoryFailureExhaustsAtPersistedMaximum(t *testing.T) {
 	require.NoError(t, repo.Enqueue(ctx, job))
 
 	for attempt := int64(1); attempt <= 3; attempt++ {
-		_, claimed, err := repo.Claim(ctx, job)
+		claimedJob, claimed, err := repo.Claim(ctx, job)
 		require.NoError(t, err)
 		require.True(t, claimed)
-		require.NoError(t, repo.Fail(ctx, job, errors.New("temporary failure")))
+		require.NoError(t, repo.Fail(ctx, claimedJob, errors.New("temporary failure")))
 		if attempt < 3 {
 			require.NoError(t, repo.DB().Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND job_id=?", scope.TenantID, job.ID).Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
 		}
@@ -239,10 +239,10 @@ func TestNativeMemoryRetryScheduleSurvivesRepositoryReopen(t *testing.T) {
 	require.NoError(t, repo.EnsureScope(ctx, scope))
 	job := nativeMemoryJob(t, repo, scope, "reopen", "event-1")
 	require.NoError(t, repo.Enqueue(ctx, job))
-	_, claimed, err := repo.Claim(ctx, job)
+	claimedJob, claimed, err := repo.Claim(ctx, job)
 	require.NoError(t, err)
 	require.True(t, claimed)
-	require.NoError(t, repo.Fail(ctx, job, errors.New("transient failure")))
+	require.NoError(t, repo.Fail(ctx, claimedJob, errors.New("transient failure")))
 
 	repo = NewNativeMemoryRepository(reopenRunDB(t, db))
 	var row nativeMemoryJobRow
@@ -254,6 +254,33 @@ func TestNativeMemoryRetryScheduleSurvivesRepositoryReopen(t *testing.T) {
 	_, claimed, err = repo.Claim(ctx, job)
 	require.NoError(t, err)
 	require.True(t, claimed, "a due retry must be claimable after repository reopen")
+}
+
+func TestNativeMemoryExpiredRunningClaimIsRecoveredAndFencesCrashedWorker(t *testing.T) {
+	repo := newNativeMemoryTestRepository(t)
+	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	job := nativeMemoryJob(t, repo, scope, "crashed-worker", "event-1")
+	require.NoError(t, repo.Enqueue(ctx, job))
+
+	first, claimed, err := repo.Claim(ctx, job)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, repo.DB().Model(&nativeMemoryJobRow{}).
+		Where("tenant_id=? AND job_id=?", scope.TenantID, job.ID).
+		Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
+
+	second, claimed, err := NewNativeMemoryRepository(reopenRunDB(t, repo.DB())).Claim(ctx, job)
+	require.NoError(t, err)
+	require.True(t, claimed, "an expired running claim must be reclaimable after restart")
+	require.Greater(t, second.Attempt, first.Attempt)
+
+	written, err := repo.Commit(ctx, first, "stale", "must not commit", nil)
+	require.ErrorIs(t, err, ErrNativeMemoryWriteRejected)
+	require.False(t, written)
+	written, err = repo.Commit(ctx, second, "fresh", "recovered", nil)
+	require.NoError(t, err)
+	require.True(t, written)
 }
 
 func TestNativeMemoryStaleGenerationIsDiscardedAndNeverScheduledForRetry(t *testing.T) {
