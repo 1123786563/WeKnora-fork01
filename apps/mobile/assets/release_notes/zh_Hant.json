@@ -1,0 +1,114 @@
+{
+  "notes": [
+    {
+      "version": "4.1.0",
+      "title": "新變化",
+      "intro": "你好！Hermes 現在可以接 Desktop Gateway，機器人會出現在側邊欄。列表和面板重做了一遍，擱太久的幾個問題也修了。",
+      "bullets": [
+        {
+          "text": "Hermes Bot Mode: 連接 Desktop Gateway，在側邊欄選一個機器人，連續回覆會共用一個標題。",
+          "icon": "hermes"
+        },
+        {
+          "text": "原生分組列表、iOS 26 玻璃效果、系統字型，以及可以拖動寬度的平板側邊欄。",
+          "icon": "polish"
+        },
+        {
+          "text": "串流時比較不會卡。LaTeX 真的會畫出來。語音不會再自己回自己。語言列表裡有波蘭文了。",
+          "icon": "direct"
+        }
+      ]
+    },
+    {
+      "version": "4.1.2",
+      "title": "新變化",
+      "intro": "你好！Apple On-Device 在手機上跑。Direct chats 能用，Open WebUI 聊天離線時也能用。語音通話從揚聲器開始，讀的是答案而不是思考。Hermes 閒置後會恢復，幾個聊天問題也修了。",
+      "bullets": [
+        {
+          "text": "Apple On-Device: Direct chats 在本機跑，Open WebUI 聊天離線時也能用。",
+          "icon": "direct"
+        },
+        {
+          "text": "語音通話: 沒插耳機時從揚聲器開始，跳過思考，把整段答案讀出來。",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: 閒置後會把已完成的任務找回來，並且能收 PDF。技能會邊打邊補全。引用連結、筆記清單和 Open WebUI 0.11.1 都能用。",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.3",
+      "title": "新變化",
+      "intro": "你好！Direct chats 能從手機呼叫 MCP 伺服器。每個工具都要你批准。Mac 上有鍵盤快捷鍵和聊天捲軸。Hermes 的批准和 Markdown 引用也修了。",
+      "bullets": [
+        {
+          "text": "MCP 伺服器: 給 Direct chats 新增，Apple On-Device 也能用。工具可以批准一次、本次工作階段、或始終允許。把提示詞和資源插入聊天。",
+          "icon": "direct"
+        },
+        {
+          "text": "Mac: 鍵盤快捷鍵、側邊欄懸停、右鍵選單。聊天有捲軸。引用塊會按引用顯示。",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: 串流工具呼叫會畫成塊。批准會留在對應的那次執行上。重新打開正在跑的 Desktop 工作階段，轉圈還在。",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.4",
+      "title": "新變化",
+      "intro": "你好！Open WebUI 0.11.3 能用了。還不支援的伺服器警告挪到了新聊天畫面，不會再打斷你已經開始的對話。",
+      "bullets": [
+        {
+          "text": "Open WebUI 0.11.2 和 0.11.3: 不再跳出相容性警告。",
+          "icon": "direct"
+        },
+        {
+          "text": "不支援的伺服器警告: 只在新聊天出現。已經開始的對話裡不會再顯示。",
+          "icon": "polish"
+        }
+      ]
+    },
+    {
+      "version": "4.1.5",
+      "title": "新變化",
+      "intro": "你好！Open WebUI 的共享資料夾會出現在側邊欄。模型思考時推理會即時流出，回覆結束前螢幕不會熄滅。Hermes 的長對話又能打開了。Android 免提和 iOS 工具列我也修了。",
+      "bullets": [
+        {
+          "text": "共享資料夾: 會出現在側邊欄。別人的聊天只能看。有寫入權限就可以在裡面開新聊天。",
+          "icon": "direct"
+        },
+        {
+          "text": "推理: 模型思考時就會流出。標題顯示想了幾秒。你為模型選的 Effort 會隨請求送出。Direct 的 Ollama 聊天會把上次的思考帶到下一輪。",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: 重連失敗時，長 Telegram 工作階段仍能載入。過大或找不到的工作階段會顯示各自的錯誤。伺服器版本警告可以關掉。",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.6",
+      "title": "新變化",
+      "intro": "你好！推理在流出時會待在自己的區塊裡。think 標籤不會再出現在回答裡。PDF 又能送到模型了。你停下說話後會變成文字，揚聲器按鈕也能用。聊天捲軸也不會再跳動。",
+      "bullets": [
+        {
+          "text": "推理: 模型還在寫的時候，它會待在自己的區塊裡。think 標籤不會出現在回答裡。工具區塊留在該在的位置。",
+          "icon": "polish"
+        },
+        {
+          "text": "語音和檔案: 你停下說話後會出現轉寫中。Android 裝置語音會用已安裝的辨識器。揚聲器按鈕會停掉正在播放的回答。PDF 附件會再次傳給模型。引用可以顯示頁面標題。Proxy 工作階段過期後，可以重新登入，不用先登出。",
+          "icon": "direct"
+        },
+        {
+          "text": "Hermes: 設定時即使開關還關著，也可以檢查 Desktop Gateway。",
+          "icon": "hermes"
+        }
+      ]
+    }
+  ]
+}

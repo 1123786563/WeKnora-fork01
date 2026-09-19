@@ -18,7 +18,7 @@ test('localizes the Vue section h2 + description pair for the wrapper heading', 
   // Vue TenantMembers.vue renders h2 only — no description line. The old
   // fallback leaked the registry apiDomain ("identity.tenants.members").
   assert.deepEqual(settingsSectionHeading('zh-CN', 'members'), { title: '成员管理', description: '' });
-  assert.deepEqual(settingsSectionHeading('zh-CN', 'storage'), { title: '存储引擎', description: '配置文档与图片的存储方式。此处设置各引擎参数，知识库中仅选择使用哪个引擎。' });
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'storage'), { title: '存储引擎', description: '管理文件与图片使用的存储实例；同一种类型可以配置多个实例。' });
   assert.equal(settingsSectionHeading('zh-CN', 'vectorstore').title, '向量数据库引擎');
   assert.equal(settingsSectionHeading('zh-CN', 'websearch').title, '网络搜索配置');
   // English locale resolves through the same shared keys.

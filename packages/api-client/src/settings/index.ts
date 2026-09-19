@@ -216,6 +216,16 @@ export function createSettingsApi(request: SettingsRequest) {
   const storage = {
     backends: {
       ...resourceApi(request, storageBase),
+      // Vue StorageBackendSettings reads the default backend from the list
+      // envelope's default_storage_backend_id, so expose it alongside rows.
+      async listWithEnvelope(signal?: AbortSignal): Promise<{ rows: SettingsResource[]; defaultId: string | undefined }> {
+        const payload = await request(withSignal({ method: 'GET', path: storageBase }, signal)) as unknown;
+        const row = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+        const data = row.data;
+        const rows = Array.isArray(data) ? data as SettingsResource[] : [];
+        const defaultId = typeof row.default_storage_backend_id === 'string' ? row.default_storage_backend_id : undefined;
+        return { rows, defaultId };
+      },
       async types(signal?: AbortSignal): Promise<string[]> {
         return dataArray(await request(withSignal({ method: 'GET', path: `${storageBase}/types` }, signal)), `${storageBase}/types`) as unknown as string[];
       },

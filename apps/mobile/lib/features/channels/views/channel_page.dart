@@ -1,0 +1,2073 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+
+import 'package:conduit/shared/widgets/platform_ui/platform_ui.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:conduit/l10n/app_localizations.dart';
+
+import '../../../core/models/channel.dart';
+import '../../../core/models/channel_message.dart';
+import '../../../core/providers/app_providers.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/haptic_service.dart';
+import '../../../core/services/native_sheet_bridge.dart';
+import '../../../core/services/navigation_service.dart';
+import '../../../core/utils/model_icon_utils.dart';
+import '../../../core/utils/user_avatar_utils.dart';
+import '../../../shared/theme/theme_extensions.dart';
+import '../../../shared/utils/adaptive_glass.dart';
+import '../../../shared/widgets/adaptive_route_shell.dart';
+import '../../../shared/widgets/adaptive_toolbar_components.dart';
+import '../../../shared/utils/conversation_context_menu.dart';
+import '../../../shared/widgets/chrome_gradient_fade.dart';
+import '../../../shared/widgets/conduit_components.dart';
+import '../../../shared/widgets/measure_size.dart';
+import '../../../shared/widgets/model_avatar.dart';
+import '../../../shared/widgets/sidebar_layout_contract.dart';
+import '../../../shared/widgets/themed_dialogs.dart';
+import '../../../shared/widgets/themed_sheets.dart';
+import '../../../shared/widgets/user_avatar.dart';
+import '../../chat/services/file_attachment_service.dart';
+import '../../chat/widgets/modern_chat_input.dart';
+import '../providers/channel_providers.dart';
+import '../providers/channel_socket_handler.dart';
+import '../utils/channel_request_owner.dart';
+import '../utils/mention_utils.dart';
+import '../widgets/channel_form_dialog.dart';
+import '../widgets/channel_message_content.dart';
+import '../widgets/thread_panel.dart';
+
+/// Full-screen view for a single channel with messaging,
+/// reactions, and channel management actions.
+class ChannelPage extends ConsumerStatefulWidget {
+  /// Creates a channel page for the given [channelId].
+  const ChannelPage({super.key, required this.channelId});
+
+  /// The identifier of the channel to display.
+  final String channelId;
+
+  @override
+  ConsumerState<ChannelPage> createState() => _ChannelPageState();
+}
+
+class _ChannelPageState extends ConsumerState<ChannelPage> {
+  static const _reactionEmojis = ['👍', '❤️', '😂', '🎉', '🤔', '👀'];
+
+  final ScrollController _scrollController = ScrollController();
+  double _composerHeight = 0;
+  bool _isSending = false;
+  bool _isLoadingMore = false;
+  String? _editingMessageId;
+  final TextEditingController _editController = TextEditingController();
+  Timer? _typingTimer;
+  ChannelMessage? _replyToMessage;
+  ChannelMessage? _threadParent;
+  late final ChannelSocketHandler _socketHandler;
+  int _channelLoadGeneration = 0;
+  ApiService? _channelOwnerApi;
+  Object? _channelOwnerAuthSessionEpoch;
+  bool _channelReloadScheduled = false;
+  int _operationGeneration = 0;
+
+  bool _ownsChannelRequest(
+    ApiService api,
+    Object authSessionEpoch,
+    String channelId,
+  ) =>
+      mounted &&
+      widget.channelId == channelId &&
+      isChannelRequestOwnerCurrent(
+        ref: ref,
+        api: api,
+        authSessionEpoch: authSessionEpoch,
+      );
+
+  bool _ownsChannelOperation(
+    ApiService api,
+    Object authSessionEpoch,
+    String channelId,
+    int operationGeneration,
+  ) =>
+      operationGeneration == _operationGeneration &&
+      _ownsChannelRequest(api, authSessionEpoch, channelId);
+
+  void _setReplyTo(ChannelMessage message) {
+    setState(() => _replyToMessage = message);
+  }
+
+  void _clearReplyTo() {
+    setState(() => _replyToMessage = null);
+  }
+
+  void _openThread(ChannelMessage message) {
+    ref.invalidate(threadMessagesProvider(widget.channelId, message.id));
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    if (isTablet) {
+      setState(() => _threadParent = message);
+    } else {
+      ThemedSheets.showCustom<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.85,
+          child: ThreadPanel(
+            channelId: widget.channelId,
+            parentMessage: message,
+            onClose: () => Navigator.pop(ctx),
+            overflowButtonBuilder: (size) =>
+                _buildAttachmentButton(size, parentMessageId: message.id),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _clearTransientChannelState(
+    String channelId, {
+    bool notify = false,
+    bool invalidateThread = true,
+  }) {
+    _operationGeneration += 1;
+    final threadParent = _threadParent;
+    if (invalidateThread && threadParent != null) {
+      ref.invalidate(threadMessagesProvider(channelId, threadParent.id));
+    }
+
+    void reset() {
+      _threadParent = null;
+      _replyToMessage = null;
+      _editingMessageId = null;
+      _editController.clear();
+      _isSending = false;
+      _isLoadingMore = false;
+    }
+
+    if (notify) {
+      setState(reset);
+    } else {
+      reset();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ChannelPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.channelId != oldWidget.channelId) {
+      final previousChannelId = oldWidget.channelId;
+      final previousThreadParentId = _threadParent?.id;
+      final nextChannelId = widget.channelId;
+      _clearTransientChannelState(previousChannelId, invalidateThread: false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (previousThreadParentId != null) {
+          ref.invalidate(
+            threadMessagesProvider(previousChannelId, previousThreadParentId),
+          );
+        }
+        if (widget.channelId != nextChannelId) return;
+        ref.read(activeChannelProvider.notifier).clear();
+        unawaited(_loadChannel());
+      });
+      // Defer subscribe — unsubscribe clears ChannelTypingUsers
+      // state which is not allowed during the build phase.
+      Future(() {
+        if (!mounted) return;
+        ref
+            .read(channelSocketHandlerProvider.notifier)
+            .subscribe(widget.channelId);
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _socketHandler = ref.read(channelSocketHandlerProvider.notifier);
+    _channelOwnerApi = ref.read(apiServiceProvider);
+    _channelOwnerAuthSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    _scrollController.addListener(_onScroll);
+    _loadChannel();
+    // Defer subscribe to after the build phase — unsubscribe
+    // clears ChannelTypingUsers state which is not allowed
+    // during initState.
+    Future(() {
+      if (!mounted) return;
+      _socketHandler.subscribe(widget.channelId);
+    });
+  }
+
+  void _scheduleChannelReloadForOwnerChange() {
+    if (_channelReloadScheduled) return;
+    _channelReloadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _channelReloadScheduled = false;
+      if (!mounted) return;
+      _clearTransientChannelState(widget.channelId, notify: true);
+      ref.read(activeChannelProvider.notifier).clear();
+      unawaited(_loadChannel());
+    });
+  }
+
+  @override
+  void dispose() {
+    _channelLoadGeneration += 1;
+    _typingTimer?.cancel();
+    _editController.dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    try {
+      _socketHandler.unsubscribe();
+    } catch (_) {
+      // Provider may already be disposed during hot reload or
+      // container teardown — the keepAlive notifier's own
+      // ref.onDispose will clean up in that case.
+    }
+    super.dispose();
+  }
+
+  /// Fetches the channel details and sets it as active.
+  Future<void> _loadChannel() async {
+    final channelId = widget.channelId;
+    final generation = ++_channelLoadGeneration;
+    ref.invalidate(channelMessagesProvider(channelId));
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    try {
+      final json = await api.getChannel(channelId);
+      if (generation != _channelLoadGeneration ||
+          !_ownsChannelRequest(api, authSessionEpoch, channelId)) {
+        return;
+      }
+      final channel = Channel.fromJson(json);
+      ref.read(activeChannelProvider.notifier).set(channel);
+      ref.read(channelSocketHandlerProvider.notifier).emitLastReadAt(channelId);
+      // Reset-on-visit: clear the local unread badge to match the server-side
+      // read we just emitted.
+      ref.read(channelsListProvider.notifier).markRead(channelId);
+    } catch (e, s) {
+      developer.log(
+        'Failed to load channel details',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  /// Triggers pagination when the user scrolls near the top
+  /// of the reversed list (which corresponds to older messages).
+  void _onScroll() {
+    if (_isLoadingMore) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 200) {
+      _loadMoreMessages();
+    }
+  }
+
+  Future<void> _loadMoreMessages() async {
+    final operationGeneration = _operationGeneration;
+    final notifier = ref.read(
+      channelMessagesProvider(widget.channelId).notifier,
+    );
+    if (!notifier.hasMore()) return;
+    if (!mounted || operationGeneration != _operationGeneration) return;
+    setState(() => _isLoadingMore = true);
+    try {
+      await notifier.loadMore();
+    } finally {
+      if (mounted && operationGeneration == _operationGeneration) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sending messages
+  // ---------------------------------------------------------------------------
+
+  Future<void> _sendMessage(String text) async {
+    final content = text.trim();
+    if (content.isEmpty || _isSending) return;
+
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final replyToId = _replyToMessage?.id;
+    final operationGeneration = _operationGeneration;
+
+    if (!mounted || operationGeneration != _operationGeneration) return;
+    setState(() => _isSending = true);
+    try {
+      final tempId = DateTime.now().microsecondsSinceEpoch.toString();
+      final json = await api.postChannelMessage(
+        channelId,
+        content: content,
+        tempId: tempId,
+        replyToId: replyToId,
+      );
+      if (!mounted ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+      final message = ChannelMessage.fromJson(json);
+      ref
+          .read(channelMessagesProvider(channelId).notifier)
+          .prependMessage(message);
+      _clearReplyTo();
+    } catch (e, s) {
+      developer.log(
+        'Failed to send channel message',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+      if (!mounted ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+      final l10n = AppLocalizations.of(context);
+      if (l10n != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.channelSendError)));
+      }
+    } finally {
+      if (mounted && operationGeneration == _operationGeneration) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attachment popup (plus button)
+  // ---------------------------------------------------------------------------
+
+  /// Builds the overflow (+) button as an [AdaptivePopupMenuButton]
+  /// with file, photo, and camera actions.
+  Widget _buildAttachmentButton(double size, {String? parentMessageId}) {
+    final l10n = AppLocalizations.of(context);
+
+    return AdaptivePopupMenuButton.widget<String>(
+      items: [
+        AdaptivePopupMenuItem<String>(
+          value: 'file',
+          label: l10n?.file ?? 'File',
+          icon: Platform.isIOS ? CupertinoIcons.doc : Icons.attach_file,
+        ),
+        AdaptivePopupMenuItem<String>(
+          value: 'photo',
+          label: l10n?.photo ?? 'Photo',
+          icon: Platform.isIOS ? CupertinoIcons.photo : Icons.image,
+        ),
+        AdaptivePopupMenuItem<String>(
+          value: 'camera',
+          label: l10n?.camera ?? 'Camera',
+          icon: Platform.isIOS ? CupertinoIcons.camera : Icons.camera_alt,
+        ),
+      ],
+      onSelected: (index, entry) => _handleAttachmentAction(
+        entry.value as String,
+        parentMessageId: parentMessageId,
+      ),
+      child: SizedBox.square(
+        dimension: size,
+        child: Icon(
+          Platform.isIOS ? CupertinoIcons.add : Icons.add,
+          size: IconSize.large,
+          color: context.conduitTheme.textPrimary.withValues(
+            alpha: Alpha.strong,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleAttachmentAction(
+    String action, {
+    String? parentMessageId,
+  }) async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+    final fileService = ref.read(fileAttachmentServiceProvider);
+    if (fileService == null) {
+      return;
+    }
+
+    switch (action) {
+      case 'file':
+        final attachments = List<LocalAttachment>.from(
+          await fileService.pickFiles(),
+        );
+        if (!_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+          return;
+        }
+        await _sendAttachmentMessage(
+          attachments,
+          api: api,
+          authSessionEpoch: authSessionEpoch,
+          channelId: channelId,
+          operationGeneration: operationGeneration,
+          parentMessageId: parentMessageId,
+        );
+      case 'photo':
+        final attachments = List<LocalAttachment>.from(
+          await fileService.pickImages(),
+        );
+        if (!_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+          return;
+        }
+        await _sendAttachmentMessage(
+          attachments,
+          api: api,
+          authSessionEpoch: authSessionEpoch,
+          channelId: channelId,
+          operationGeneration: operationGeneration,
+          parentMessageId: parentMessageId,
+        );
+      case 'camera':
+        final attachment = await fileService.takePhoto() as LocalAttachment?;
+        if (attachment != null &&
+            _ownsChannelOperation(
+              api,
+              authSessionEpoch,
+              channelId,
+              operationGeneration,
+            )) {
+          await _sendAttachmentMessage(
+            [attachment],
+            api: api,
+            authSessionEpoch: authSessionEpoch,
+            channelId: channelId,
+            operationGeneration: operationGeneration,
+            parentMessageId: parentMessageId,
+          );
+        }
+    }
+  }
+
+  Future<void> _sendAttachmentMessage(
+    List<LocalAttachment> attachments, {
+    required ApiService api,
+    required Object authSessionEpoch,
+    required String channelId,
+    required int operationGeneration,
+    String? parentMessageId,
+  }) async {
+    if (attachments.isEmpty || _isSending) return;
+    final replyToId = parentMessageId == null ? _replyToMessage?.id : null;
+
+    if (!_ownsChannelOperation(
+      api,
+      authSessionEpoch,
+      channelId,
+      operationGeneration,
+    )) {
+      return;
+    }
+    setState(() => _isSending = true);
+    try {
+      final attachmentSizes = <LocalAttachment, int>{};
+      for (final attachment in attachments) {
+        final fileSize = await attachment.file.length();
+        if (!_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+          return;
+        }
+        attachmentSizes[attachment] = fileSize;
+        if (!_validateChannelAttachmentSize(fileSize, 20)) {
+          if (!mounted ||
+              !_ownsChannelOperation(
+                api,
+                authSessionEpoch,
+                channelId,
+                operationGeneration,
+              )) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.channelSendError),
+            ),
+          );
+          return;
+        }
+      }
+
+      final files = <Map<String, dynamic>>[];
+      for (final attachment in attachments) {
+        if (!_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+          return;
+        }
+        final fileSize = attachmentSizes[attachment]!;
+        final contentType = _contentTypeForChannelAttachment(attachment);
+        final fileId = await api.uploadFile(
+          attachment.file.path,
+          attachment.displayName,
+          contentType: contentType,
+          metadata: {'channel_id': channelId},
+        );
+        if (!_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+          return;
+        }
+        files.add({
+          'type': attachment.isImage ? 'image' : 'file',
+          'id': fileId,
+          'url': fileId,
+          'name': attachment.displayName,
+          'size': fileSize,
+          'status': 'uploaded',
+          'content_type': ?contentType,
+        });
+      }
+
+      if (files.isEmpty) return;
+
+      final tempId = DateTime.now().microsecondsSinceEpoch.toString();
+      final json = await api.postChannelMessage(
+        channelId,
+        content: '',
+        tempId: tempId,
+        replyToId: replyToId,
+        parentId: parentMessageId,
+        data: {'files': files},
+      );
+      if (!mounted ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+
+      final message = ChannelMessage.fromJson(json);
+      if (parentMessageId != null) {
+        ref
+            .read(threadMessagesProvider(channelId, parentMessageId).notifier)
+            .prependMessage(message);
+      } else {
+        ref
+            .read(channelMessagesProvider(channelId).notifier)
+            .prependMessage(message);
+        _clearReplyTo();
+      }
+    } catch (e, s) {
+      developer.log(
+        'Failed to send channel attachment',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+      if (!mounted ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context)!.channelSendError)),
+      );
+    } finally {
+      if (mounted && operationGeneration == _operationGeneration) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  bool _validateChannelAttachmentSize(int fileSize, int maxSizeMB) {
+    final maxSizeBytes = maxSizeMB * 1024 * 1024;
+    return fileSize <= maxSizeBytes;
+  }
+
+  String? _contentTypeForChannelAttachment(LocalAttachment attachment) {
+    return switch (attachment.extension) {
+      '.jpg' || '.jpeg' => 'image/jpeg',
+      '.png' => 'image/png',
+      '.gif' => 'image/gif',
+      '.webp' => 'image/webp',
+      '.heic' => 'image/heic',
+      '.heif' => 'image/heif',
+      '.bmp' => 'image/bmp',
+      '.pdf' => 'application/pdf',
+      '.txt' => 'text/plain',
+      '.md' => 'text/markdown',
+      '.csv' => 'text/csv',
+      '.json' => 'application/json',
+      '.mp4' => 'video/mp4',
+      '.mov' => 'video/quicktime',
+      '.mp3' => 'audio/mpeg',
+      '.wav' => 'audio/wav',
+      _ => null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reactions
+  // ---------------------------------------------------------------------------
+
+  Future<void> _toggleReaction(ChannelMessage message, String emoji) async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final channelId = widget.channelId;
+    final currentUserId = ref.read(currentUserProvider).value?.id;
+    if (currentUserId == null) return;
+
+    final existing = message.reactions.any(
+      (r) =>
+          r.name == emoji &&
+          r.users.any(
+            (u) => u['user_id'] == currentUserId || u['id'] == currentUserId,
+          ),
+    );
+
+    try {
+      // The API returns bool; the socket handler will
+      // re-fetch the message with updated reactions.
+      if (existing) {
+        await api.removeMessageReaction(channelId, message.id, emoji);
+      } else {
+        await api.addMessageReaction(channelId, message.id, emoji);
+      }
+    } catch (e, s) {
+      developer.log(
+        'Failed to toggle reaction',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<void> _deleteMessage(ChannelMessage message) async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+    try {
+      await api.deleteChannelMessage(channelId, message.id);
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      ref
+          .read(channelMessagesProvider(channelId).notifier)
+          .removeMessage(message.id);
+    } catch (e, s) {
+      developer.log(
+        'Failed to delete message',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message editing
+  // ---------------------------------------------------------------------------
+
+  void _startEditingMessage(ChannelMessage message) {
+    setState(() {
+      _editingMessageId = message.id;
+      _editController.text = message.content;
+    });
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _editingMessageId = null;
+      _editController.clear();
+    });
+  }
+
+  Future<void> _submitEdit(ChannelMessage message) async {
+    final newContent = _editController.text.trim();
+    if (newContent.isEmpty || newContent == message.content) {
+      _cancelEditing();
+      return;
+    }
+
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+
+    try {
+      final json = await api.updateChannelMessage(
+        channelId,
+        message.id,
+        content: newContent,
+      );
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      final updated = ChannelMessage.fromJson(json);
+      ref
+          .read(channelMessagesProvider(channelId).notifier)
+          .updateMessage(updated);
+    } catch (e, st) {
+      developer.log(
+        'Failed to edit message',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: st,
+      );
+    }
+    if (_ownsChannelOperation(
+      api,
+      authSessionEpoch,
+      channelId,
+      operationGeneration,
+    )) {
+      _cancelEditing();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pin / unpin
+  // ---------------------------------------------------------------------------
+
+  Future<void> _togglePin(ChannelMessage message) async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+
+    try {
+      final json = await api.pinMessage(
+        channelId,
+        message.id,
+        isPinned: !message.isPinned,
+      );
+      if (json == null ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+      final updated = ChannelMessage.fromJson(json);
+      ref
+          .read(channelMessagesProvider(channelId).notifier)
+          .updateMessage(updated);
+    } catch (e, st) {
+      developer.log(
+        'Failed to toggle pin',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message actions
+  // ---------------------------------------------------------------------------
+
+  List<ConduitContextMenuAction> _buildMessageActions(ChannelMessage message) {
+    final l10n = AppLocalizations.of(context)!;
+    final currentUserId = ref.read(currentUserProvider).value?.id;
+    final isOwn = message.userId == currentUserId;
+
+    return [
+      ConduitContextMenuAction(
+        cupertinoIcon: CupertinoIcons.smiley,
+        materialIcon: Icons.emoji_emotions_outlined,
+        label: l10n.channelMessageReact,
+        onSelected: () async => _showEmojiPicker(message),
+      ),
+      ConduitContextMenuAction(
+        cupertinoIcon: CupertinoIcons.reply,
+        materialIcon: Icons.reply_outlined,
+        label: l10n.channelMessageReply,
+        onSelected: () async => _setReplyTo(message),
+      ),
+      if (message.parentId == null)
+        ConduitContextMenuAction(
+          cupertinoIcon: CupertinoIcons.bubble_left_bubble_right,
+          materialIcon: Icons.forum_outlined,
+          label: message.replyCount > 0
+              ? l10n.threadWithCount(message.replyCount)
+              : l10n.thread,
+          onSelected: () async => _openThread(message),
+        ),
+      ConduitContextMenuAction(
+        cupertinoIcon: message.isPinned
+            ? CupertinoIcons.pin_slash
+            : CupertinoIcons.pin,
+        materialIcon: Icons.push_pin_outlined,
+        label: message.isPinned ? l10n.unpin : l10n.pin,
+        onSelected: () async => _togglePin(message),
+      ),
+      if (isOwn)
+        ConduitContextMenuAction(
+          cupertinoIcon: CupertinoIcons.pencil,
+          materialIcon: Icons.edit_outlined,
+          label: l10n.channelMessageEdit,
+          onSelected: () async => _startEditingMessage(message),
+        ),
+      ConduitContextMenuAction(
+        cupertinoIcon: CupertinoIcons.delete,
+        materialIcon: Icons.delete_outline,
+        label: l10n.channelMessageDelete,
+        destructive: true,
+        onSelected: () async => _deleteMessage(message),
+      ),
+    ];
+  }
+
+  void _showEmojiPicker(ChannelMessage message) async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+
+    bool ownsPicker() =>
+        operationGeneration == _operationGeneration &&
+        _ownsChannelRequest(api, authSessionEpoch, channelId);
+
+    if (Platform.isIOS) {
+      try {
+        final emoji = await NativeSheetBridge.instance.presentOptionsSelector(
+          title: AppLocalizations.of(context)!.channelMessageReact,
+          options: [
+            for (final emoji in _reactionEmojis)
+              NativeSheetOptionConfig(
+                id: emoji,
+                label: emoji,
+                sfSymbol: 'face.smiling',
+              ),
+          ],
+          rethrowErrors: true,
+        );
+        if (emoji != null && ownsPicker()) {
+          unawaited(_toggleReaction(message, emoji));
+        }
+        return;
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+      }
+    }
+
+    if (!mounted || !ownsPicker()) {
+      return;
+    }
+
+    ThemedSheets.showSurface<void>(
+      context: context,
+      showHandle: false,
+      padding: const EdgeInsets.symmetric(
+        vertical: Spacing.md,
+        horizontal: Spacing.lg,
+      ),
+      builder: (ctx) => Wrap(
+        spacing: Spacing.md,
+        runSpacing: Spacing.md,
+        alignment: WrapAlignment.center,
+        children: _reactionEmojis.map((emoji) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              Navigator.pop(ctx);
+              if (ownsPicker()) {
+                unawaited(_toggleReaction(message, emoji));
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(Spacing.sm),
+              child: Text(emoji, style: const TextStyle(fontSize: 28)),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Channel menu actions
+  // ---------------------------------------------------------------------------
+
+  Future<void> _editChannel(Channel channel) async {
+    final channelId = widget.channelId;
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final operationGeneration = _operationGeneration;
+    final result = await showEditChannelFormDialog(
+      context,
+      channel: channel,
+      includePrivacyToggle: false,
+    );
+    if (result == null ||
+        !_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+      return;
+    }
+    if (result.name == channel.name &&
+        result.description == channel.description) {
+      return;
+    }
+
+    try {
+      final json = await api.updateChannel(
+        channel.id,
+        name: result.name,
+        description: result.description,
+      );
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      final updated = Channel.fromJson(json);
+      ref.read(activeChannelProvider.notifier).set(updated);
+      ref.read(channelsListProvider.notifier).updateChannel(updated);
+    } catch (e, s) {
+      developer.log(
+        'Failed to update channel',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<void> _leaveChannel() async {
+    final channelId = widget.channelId;
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final operationGeneration = _operationGeneration;
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await ThemedDialogs.confirm(
+      context,
+      title: l10n?.channelLeave ?? 'Leave Channel',
+      message: l10n?.channelLeaveConfirm ?? 'Leave this channel?',
+    );
+    if (!confirmed ||
+        !_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+      return;
+    }
+
+    try {
+      await api.updateMemberActiveStatus(channelId, isActive: false);
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      ref.read(channelsListProvider.notifier).removeChannel(channelId);
+      ref.read(activeChannelProvider.notifier).clear();
+      NavigationService.router.go(Routes.chat);
+    } catch (e, s) {
+      developer.log(
+        'Failed to leave channel',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<void> _deleteChannel() async {
+    final channelId = widget.channelId;
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final operationGeneration = _operationGeneration;
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await ThemedDialogs.confirm(
+      context,
+      title: l10n?.channelDelete ?? 'Delete Channel',
+      message:
+          l10n?.channelDeleteConfirm ??
+          'Delete this channel? This cannot be undone.',
+      isDestructive: true,
+    );
+    if (!confirmed ||
+        !_ownsChannelOperation(
+          api,
+          authSessionEpoch,
+          channelId,
+          operationGeneration,
+        )) {
+      return;
+    }
+
+    try {
+      await api.deleteChannel(channelId);
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      ref.read(channelsListProvider.notifier).removeChannel(channelId);
+      ref.read(activeChannelProvider.notifier).clear();
+      NavigationService.router.go(Routes.chat);
+    } catch (e, s) {
+      developer.log(
+        'Failed to delete channel',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep the socket handler's owner watches active while this channel is on
+    // screen so a replaced socket/auth session rebinds without navigation.
+    ref.watch(channelSocketHandlerProvider);
+    final api = ref.watch(apiServiceProvider);
+    final authSessionEpoch = ref.watch(openWebUiAuthSessionEpochProvider);
+    if (!identical(_channelOwnerApi, api) ||
+        !identical(_channelOwnerAuthSessionEpoch, authSessionEpoch)) {
+      _channelOwnerApi = api;
+      _channelOwnerAuthSessionEpoch = authSessionEpoch;
+      _scheduleChannelReloadForOwnerChange();
+    }
+    final theme = context.conduitTheme;
+    return _buildScaffold(context, theme);
+  }
+
+  Widget _buildChannelTitlePill(
+    BuildContext context,
+    Channel? channel, {
+    required double maxWidth,
+  }) {
+    final label = channel?.name ?? '';
+    final textStyle = conduitAdaptiveToolbarLeadingTitleTextStyle(context);
+    final controlExtent = conduitScaledControlExtent(context);
+    final iconExtent = conduitScaledIconExtent(context, IconSize.appBar);
+    final leadingIcon = channel?.isPrivate == true
+        ? Icons.lock_outlined
+        : Icons.tag;
+    final targetWidth = resolveConduitAdaptiveTextPillWidth(
+      context: context,
+      label: label,
+      textStyle: textStyle,
+      maxWidth: maxWidth,
+      minWidth: 96,
+      horizontalPadding: 10 + Spacing.xs,
+      leadingWidth: iconExtent + Spacing.xs,
+    );
+
+    return buildConduitAdaptiveToolbarPillSurface(
+      width: targetWidth,
+      height: controlExtent,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: controlExtent),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 10, right: Spacing.xs),
+          child: Center(
+            widthFactor: 1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConduitSystemAdaptiveIcon(
+                  leadingIcon,
+                  size: iconExtent,
+                  color: textStyle.color!,
+                ),
+                const SizedBox(width: Spacing.xs),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: textStyle,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<AdaptivePopupMenuEntry> _buildChannelToolbarMenuItems(
+    AppLocalizations? l10n,
+  ) => [
+    AdaptivePopupMenuItem<String>(
+      value: 'edit',
+      label: l10n?.channelEdit ?? 'Edit Channel',
+      icon: conduitAdaptivePopupMenuIcon(
+        iosSymbol: 'pencil',
+        materialIcon: Icons.edit_outlined,
+      ),
+    ),
+    AdaptivePopupMenuItem<String>(
+      value: 'leave',
+      label: l10n?.channelLeave ?? 'Leave Channel',
+      isDestructive: true,
+      icon: conduitAdaptivePopupMenuIcon(
+        iosSymbol: 'rectangle.portrait.and.arrow.right',
+        materialIcon: Icons.logout_outlined,
+      ),
+    ),
+    AdaptivePopupMenuItem<String>(
+      value: 'delete',
+      label: l10n?.channelDelete ?? 'Delete Channel',
+      isDestructive: true,
+      icon: conduitAdaptivePopupMenuIcon(
+        iosSymbol: 'trash',
+        materialIcon: Icons.delete_outline,
+      ),
+    ),
+  ];
+
+  List<Widget> _buildChannelToolbarActionWidgets(
+    ConduitThemeExtension theme,
+    Channel? channel,
+    List<AdaptivePopupMenuEntry> menuItems,
+    ValueChanged<String> onMenuSelected,
+  ) {
+    return buildConduitAdaptiveToolbarActionWidgets([
+      if (channel?.userCount != null)
+        ConduitAdaptiveAppBarIconButton(
+          icon: Icons.people_outline,
+          iconColor: theme.textPrimary,
+          onPressed: _showMemberList,
+        ),
+      _ChannelToolbarPopupButton(
+        tintColor: theme.textPrimary,
+        items: menuItems,
+        onSelected: onMenuSelected,
+      ),
+    ]);
+  }
+
+  void _toggleDrawer() {
+    SidebarDrawerControllerScope.maybeOf(context)?.toggle();
+  }
+
+  AdaptiveAppBar _buildAdaptiveChannelAppBar(
+    BuildContext context,
+    ConduitThemeExtension theme,
+    Channel? channel,
+    AppLocalizations? l10n,
+  ) {
+    final memberCount = channel?.userCount;
+    final maxTitleWidth = resolveConduitAdaptiveLeadingPillWidth(
+      context,
+      trailingActionCount: memberCount != null ? 2 : 1,
+      maxWidth: kConduitAdaptiveToolbarMaxPillWidth,
+    );
+    final tintColor = theme.textPrimary;
+    final menuItems = _buildChannelToolbarMenuItems(l10n);
+    void onMenuSelected(String action) =>
+        _handleChannelToolbarSelection(action, channel);
+    final actions = _buildChannelToolbarActionWidgets(
+      theme,
+      channel,
+      menuItems,
+      onMenuSelected,
+    );
+    final nativeMenuAction = buildConduitNativeToolbarMenuAction<String>(
+      iosSymbol: 'ellipsis',
+      accessibilityLabel:
+          l10n?.more ?? MaterialLocalizations.of(context).moreButtonTooltip,
+      tintColor: tintColor,
+      items: menuItems,
+      onSelected: onMenuSelected,
+    );
+    final useNativeActionGroup =
+        Platform.isIOS &&
+        conduitSupportsNativeGlass() &&
+        nativeMenuAction != null;
+    final nativeActions = <ConduitNativeToolbarAction>[
+      if (memberCount != null)
+        ConduitNativeToolbarAction(
+          iosSymbol: 'person.2',
+          accessibilityLabel:
+              l10n?.channelMembersTitle(memberCount) ??
+              'Members ($memberCount)',
+          tintColor: tintColor,
+          onPressed: _showMemberList,
+        ),
+      ?nativeMenuAction,
+    ];
+    return buildConduitCenteredAdaptiveAppBar(
+      context: context,
+      tintColor: tintColor,
+      leading: ConduitAdaptiveAppBarIconButton(
+        icon: Platform.isIOS ? CupertinoIcons.line_horizontal_3 : Icons.menu,
+        iosSymbol: 'line.3.horizontal',
+        onPressed: _toggleDrawer,
+        iconColor: tintColor,
+      ),
+      title: _buildChannelTitlePill(context, channel, maxWidth: maxTitleWidth),
+      actions: actions,
+      cupertinoTrailing: useNativeActionGroup
+          ? ConduitNativeToolbarActionGroup(actions: nativeActions)
+          : Row(mainAxisSize: MainAxisSize.min, children: actions),
+      centerTitle: false,
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context, ConduitThemeExtension theme) {
+    final l10n = AppLocalizations.of(context)!;
+    final channel = ref.watch(activeChannelProvider);
+    final messagesAsync = ref.watch(channelMessagesProvider(widget.channelId));
+
+    return AdaptiveRouteShell(
+      backgroundColor: theme.surfaceBackground,
+      extendBodyBehindAppBar: true,
+      appBar: _buildAdaptiveChannelAppBar(context, theme, channel, l10n),
+      body: Stack(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: messagesAsync.when(
+                        data: (messages) =>
+                            _buildMessageList(messages, theme, l10n),
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (error, _) => Center(
+                          child: Text(
+                            error.toString(),
+                            style: AppTypography.bodyMediumStyle.copyWith(
+                              color: theme.error,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: ConduitChromeGradientFade.bottom(
+                        contentHeight: math.max(
+                          0,
+                          math.max(
+                            _composerHeight - Spacing.xl,
+                            MediaQuery.viewPaddingOf(context).bottom +
+                                Spacing.xxl,
+                          ),
+                        ),
+                        fadeHeight: Spacing.md,
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildComposerOverlay(theme, l10n),
+                    ),
+                  ],
+                ),
+              ),
+              if (_threadParent != null)
+                SizedBox(
+                  width: 320,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top:
+                          MediaQuery.of(context).padding.top +
+                          conduitAdaptiveToolbarHeightOf(context),
+                    ),
+                    child: ThreadPanel(
+                      channelId: widget.channelId,
+                      parentMessage: _threadParent!,
+                      onClose: () => setState(() => _threadParent = null),
+                      overflowButtonBuilder: (size) => _buildAttachmentButton(
+                        size,
+                        parentMessageId: _threadParent!.id,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: ConduitChromeGradientFade.top(
+              contentHeight:
+                  MediaQuery.viewPaddingOf(context).top +
+                  conduitAdaptiveToolbarHeightOf(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageList(
+    List<ChannelMessage> messages,
+    ConduitThemeExtension theme,
+    AppLocalizations? l10n,
+  ) {
+    if (messages.isEmpty) {
+      return Center(
+        child: Text(
+          l10n?.channelNoMessages ?? 'No messages yet. Start the conversation!',
+          style: AppTypography.bodyMediumStyle.copyWith(
+            color: theme.textSecondary,
+          ),
+        ),
+      );
+    }
+
+    final currentUserId = ref.watch(currentUserProvider).value?.id;
+    final api = ref.read(apiServiceProvider);
+
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      padding: EdgeInsets.only(
+        top: Spacing.md,
+        bottom: Spacing.sm + _composerHeight,
+      ),
+      itemCount: messages.length + (_isLoadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (_isLoadingMore && index == messages.length) {
+          return const Padding(
+            padding: EdgeInsets.all(Spacing.md),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        final message = messages[index];
+        final avatarUrl = _resolveAvatarUrl(api, message);
+
+        // Determine the effective sender ID for
+        // grouping consecutive messages. Model
+        // messages use meta.model_id as the key.
+        String? senderOf(ChannelMessage m) {
+          if (isModelMessage(m)) {
+            return m.meta?['model_id'] as String?;
+          }
+          return m.userId;
+        }
+
+        // In a reversed list, index+1 is the
+        // message visually above. Show profile
+        // only on the first message of a group.
+        final prevIndex = index + 1;
+        final showProfile =
+            prevIndex >= messages.length ||
+            senderOf(messages[prevIndex]) != senderOf(message);
+
+        return _MessageBubble(
+          message: message,
+          avatarUrl: avatarUrl,
+          showProfile: showProfile,
+          currentUserId: currentUserId,
+          isEditing: _editingMessageId == message.id,
+          editController: _editController,
+          onSubmitEdit: () => _submitEdit(message),
+          onCancelEdit: _cancelEditing,
+          contextMenuActions: _buildMessageActions(message),
+          onReactionTap: (emoji) => _toggleReaction(message, emoji),
+          onThreadTap: message.parentId == null
+              ? () => _openThread(message)
+              : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildComposerOverlay(
+    ConduitThemeExtension theme,
+    AppLocalizations l10n,
+  ) {
+    return RepaintBoundary(
+      child: MeasureSize(
+        onChange: (size) {
+          if (!mounted) return;
+          setState(() => _composerHeight = size.height);
+        },
+        child: SafeArea(
+          top: false,
+          left: false,
+          right: false,
+          minimum: const EdgeInsets.only(bottom: Spacing.sm),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: Spacing.xl),
+              Consumer(
+                builder: (context, ref, _) {
+                  final typingUsers = ref.watch(channelTypingUsersProvider);
+                  if (typingUsers.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final names = typingUsers.values.toList();
+                  final text = names.length == 1
+                      ? '${names.first} is typing...'
+                      : '${names.join(", ")} are typing...';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.md,
+                      vertical: Spacing.xxs,
+                    ),
+                    child: Text(
+                      text,
+                      style: AppTypography.bodySmallStyle.copyWith(
+                        color: theme.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              if (_replyToMessage != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.md,
+                    vertical: Spacing.sm,
+                  ),
+                  color: theme.surfaceContainer,
+                  child: Row(
+                    children: [
+                      Icon(Icons.reply, size: 16, color: theme.textSecondary),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(
+                          l10n.replyingToUser(_replyToMessage!.userName),
+                          style: AppTypography.bodySmallStyle.copyWith(
+                            color: theme.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      ConduitIconButton(
+                        icon: Icons.close,
+                        iconColor: theme.textSecondary,
+                        tooltip: MaterialLocalizations.of(context)
+                            .closeButtonTooltip,
+                        onPressed: _clearReplyTo,
+                        isCompact: true,
+                      ),
+                    ],
+                  ),
+                ),
+              RepaintBoundary(
+                child: ModernChatInput(
+                  onSendMessage: _sendMessage,
+                  placeholder: l10n.channelInputPlaceholder,
+                  overflowButtonBuilder: _buildAttachmentButton,
+                  bottomPadding: 0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Resolves the avatar URL for a channel message.
+  ///
+  /// For model responses, builds the model profile image
+  /// URL. For user messages, resolves the user's profile
+  /// image URL.
+  String? _resolveAvatarUrl(ApiService? api, ChannelMessage message) {
+    if (isModelMessage(message)) {
+      final modelId = message.meta!['model_id'] as String?;
+      return buildModelAvatarUrl(api, modelId);
+    }
+    return resolveUserProfileImageUrl(api, message.user?.profileImageUrl);
+  }
+
+  Future<void> _showMemberList() async {
+    final api = ref.read(apiServiceProvider);
+    if (api == null) return;
+    final authSessionEpoch = ref.read(openWebUiAuthSessionEpochProvider);
+    final channelId = widget.channelId;
+    final operationGeneration = _operationGeneration;
+    final theme = context.conduitTheme;
+    final l10n = AppLocalizations.of(context)!;
+
+    try {
+      final result = await api.getChannelMembers(channelId);
+      if (!_ownsChannelOperation(
+        api,
+        authSessionEpoch,
+        channelId,
+        operationGeneration,
+      )) {
+        return;
+      }
+      final users = (result['users'] as List<dynamic>?) ?? [];
+      final total = (result['total'] as int?) ?? users.length;
+
+      if (Platform.isIOS) {
+        try {
+          await NativeSheetBridge.instance.presentSheet(
+            root: NativeSheetDetailConfig(
+              id: 'channel-members',
+              title: l10n.channelMembersTitle(total),
+              items: [
+                for (final user in users.cast<Map<String, dynamic>>())
+                  NativeSheetItemConfig(
+                    id: 'member-${user['id'] ?? user['name'] ?? users.indexOf(user)}',
+                    title: user['name'] as String? ?? l10n.channelUnknownMember,
+                    subtitle: user['role'] as String?,
+                    sfSymbol: 'person.circle',
+                    kind: NativeSheetItemKind.info,
+                  ),
+              ],
+            ),
+            rethrowErrors: true,
+          );
+          return;
+        } catch (_) {
+          if (!_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+            return;
+          }
+        }
+      }
+
+      if (!mounted ||
+          !_ownsChannelOperation(
+            api,
+            authSessionEpoch,
+            channelId,
+            operationGeneration,
+          )) {
+        return;
+      }
+
+      ThemedSheets.showSurface<void>(
+        context: context,
+        showHandle: false,
+        padding: EdgeInsets.zero,
+        builder: (ctx) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Text(
+                  l10n.channelMembersTitle(total),
+                  style: AppTypography.titleMediumStyle.copyWith(
+                    color: theme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: users.length,
+                  itemBuilder: (ctx, index) {
+                    final u = users[index] as Map<String, dynamic>;
+                    final name =
+                        u['name'] as String? ?? l10n.channelUnknownMember;
+                    final role = u['role'] as String? ?? '';
+                    return ListTile(
+                      leading: CircleAvatar(
+                        radius: 16,
+                        child: Text(
+                          name[0].toUpperCase(),
+                          style: AppTypography.labelMediumStyle,
+                        ),
+                      ),
+                      title: Text(
+                        name,
+                        style: AppTypography.bodyMediumStyle.copyWith(
+                          color: theme.textPrimary,
+                        ),
+                      ),
+                      subtitle: role.isNotEmpty
+                          ? Text(
+                              role,
+                              style: AppTypography.bodySmallStyle.copyWith(
+                                color: theme.textSecondary,
+                              ),
+                            )
+                          : null,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e, st) {
+      developer.log(
+        'Failed to load members',
+        name: 'ChannelPage',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  void _handleChannelToolbarSelection(String action, Channel? channel) {
+    switch (action) {
+      case 'edit':
+        if (channel != null) {
+          _editChannel(channel);
+        }
+        return;
+      case 'leave':
+        _leaveChannel();
+        return;
+      case 'delete':
+        _deleteChannel();
+        return;
+    }
+  }
+}
+
+class _ChannelToolbarPopupButton extends StatelessWidget {
+  const _ChannelToolbarPopupButton({
+    required this.tintColor,
+    required this.items,
+    required this.onSelected,
+  });
+
+  final Color tintColor;
+  final List<AdaptivePopupMenuEntry> items;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConduitAdaptiveToolbarOverflowButton<String>(
+      tintColor: tintColor,
+      materialIcon: Icons.more_vert,
+      items: items,
+      onSelected: onSelected,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Message bubble
+// ---------------------------------------------------------------------------
+
+/// Renders a single channel message with avatar, metadata,
+/// content, and reaction chips.
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({
+    required this.message,
+    this.avatarUrl,
+    this.showProfile = true,
+    required this.currentUserId,
+    required this.isEditing,
+    this.editController,
+    this.onSubmitEdit,
+    this.onCancelEdit,
+    required this.contextMenuActions,
+    required this.onReactionTap,
+    this.onThreadTap,
+  });
+
+  final ChannelMessage message;
+  final String? avatarUrl;
+
+  /// Whether to show the avatar and sender name.
+  /// False for consecutive messages from the same
+  /// sender.
+  final bool showProfile;
+  final String? currentUserId;
+  final bool isEditing;
+  final TextEditingController? editController;
+  final VoidCallback? onSubmitEdit;
+  final VoidCallback? onCancelEdit;
+  final List<ConduitContextMenuAction> contextMenuActions;
+  final ValueChanged<String> onReactionTap;
+  final VoidCallback? onThreadTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.conduitTheme;
+    final timestamp = _formatTimestamp(message.createdDateTime);
+
+    return ConduitContextMenu(
+      actions: contextMenuActions,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: Spacing.md,
+          right: Spacing.md,
+          top: showProfile ? Spacing.sm : 1,
+          bottom: 1,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showProfile)
+              _buildAvatar(theme)
+            else
+              SizedBox(width: _avatarSize),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showProfile) ...[
+                    _buildHeader(theme, timestamp),
+                    const SizedBox(height: Spacing.xxs),
+                  ],
+                  if (message.replyToMessage != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: Spacing.xxs),
+                      padding: const EdgeInsets.only(left: Spacing.sm),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.replyToMessage!.userName,
+                            style: AppTypography.labelMediumStyle.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            stripMentions(message.replyToMessage!.content),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.bodySmallStyle.copyWith(
+                              color: theme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (message.replyToId != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: Spacing.xxs),
+                      padding: const EdgeInsets.only(left: Spacing.sm),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        AppLocalizations.of(context)!.channelMessageReply,
+                        style: AppTypography.bodySmallStyle.copyWith(
+                          color: theme.textSecondary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  if (message.isPinned)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Spacing.xxs),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.push_pin_outlined,
+                            size: 14,
+                            color: theme.textPrimary.withValues(alpha: 0.6),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            AppLocalizations.of(context)!.pinned,
+                            style: AppTypography.bodySmallStyle.copyWith(
+                              color: theme.textPrimary.withValues(alpha: 0.6),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (isEditing)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: editController,
+                            autofocus: true,
+                            style: AppTypography.chatMessageStyle.copyWith(
+                              color: theme.textPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: Spacing.sm,
+                                vertical: Spacing.xs,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onSubmitted: (_) => onSubmitEdit?.call(),
+                          ),
+                        ),
+                        ConduitIconButton(
+                          icon: Icons.check,
+                          tooltip: AppLocalizations.of(context)!.save,
+                          onPressed: onSubmitEdit,
+                          isCompact: true,
+                        ),
+                        ConduitIconButton(
+                          icon: Icons.close,
+                          tooltip: AppLocalizations.of(context)!.cancel,
+                          onPressed: onCancelEdit,
+                          isCompact: true,
+                        ),
+                      ],
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ChannelMessageContent(
+                          content: message.content,
+                          stateScopeId: 'channel:${message.id}',
+                        ),
+                        ChannelMessageAttachments(
+                          files: message.data?['files'],
+                        ),
+                      ],
+                    ),
+                  if (message.replyCount > 0 && onThreadTap != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: Spacing.xxs),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onThreadTap,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${message.replyCount} '
+                              '${message.replyCount == 1 ? "reply" : "replies"}',
+                              style: AppTypography.bodySmallStyle.copyWith(
+                                color: theme.textPrimary.withValues(alpha: 0.6),
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 16,
+                              color: theme.textPrimary.withValues(alpha: 0.6),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (message.reactions.isNotEmpty)
+                    _buildReactions(context, theme),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const double _avatarSize = 28;
+
+  Widget _buildAvatar(ConduitThemeExtension theme) {
+    if (isModelMessage(message)) {
+      return ModelAvatar(
+        size: _avatarSize,
+        imageUrl: avatarUrl,
+        label: messageDisplayName(message),
+      );
+    }
+    return UserAvatar(
+      size: _avatarSize,
+      imageUrl: avatarUrl,
+      fallbackText: message.userName,
+    );
+  }
+
+  Widget _buildHeader(ConduitThemeExtension theme, String timestamp) {
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            messageDisplayName(message),
+            style: AppTypography.bodySmallStyle.copyWith(
+              color: theme.textSecondary,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.1,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: Spacing.sm),
+        Text(
+          timestamp,
+          style: AppTypography.labelSmallStyle.copyWith(
+            color: theme.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReactions(BuildContext context, ConduitThemeExtension theme) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: Spacing.xs),
+      child: Wrap(
+        spacing: Spacing.xs,
+        runSpacing: Spacing.xs,
+        children: message.reactions.map((reaction) {
+          final isActive = reaction.users.any(
+            (u) => u['user_id'] == currentUserId || u['id'] == currentUserId,
+          );
+          return ActionChip(
+            label: Text(
+              '${reaction.name} ${reaction.count}',
+              style: AppTypography.labelMediumStyle,
+            ),
+            backgroundColor: isActive
+                ? primaryColor.withValues(alpha: 0.15)
+                : theme.surfaceContainer,
+            side: BorderSide(
+              color: isActive
+                  ? primaryColor.withValues(alpha: 0.4)
+                  : theme.dividerColor,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppBorderRadius.chip),
+            ),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onPressed: () {
+              ConduitHaptics.selectionClick();
+              onReactionTap(reaction.name);
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _formatTimestamp(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inDays < 1) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+
+    return '${dateTime.month}/${dateTime.day}';
+  }
+}
