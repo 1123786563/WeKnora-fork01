@@ -17,7 +17,7 @@
         "docs/superpowers/plans/trpc-native/interfaces.md",
         "docs/superpowers/plans/trpc-native/p0-decision.md"
       ],
-      "status": "pending"
+      "status": "passed"
     },
     {
       "id": "P1.1",
@@ -597,4 +597,3 @@
     ]
   }
 }
-
