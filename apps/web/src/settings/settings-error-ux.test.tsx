@@ -22,7 +22,7 @@ Object.assign(globalThis, {
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
-const { SettingsPage } = await import('./SettingsPage.tsx');
+const { SettingsPage, sectionErrorMode } = await import('./SettingsPage.tsx');
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {
@@ -37,12 +37,17 @@ const UPSTREAM_FAILURE = 'simulated upstream failure';
 
 /**
  * R472 A2 — settings 分区错误态 UX 对齐（.omc/state/r470/report-A3.md）。
- * Vue 三种模式锚定：
+ * R481 A1 — 按 R480 浏览器锚定基线修订
+ * （docs/migrations/react/evidence/vue-react-parity/2026-09-19-r480-settings-error-anchoring.md）。
+ * Vue 模式锚定：
  * - models        Toast「加载模型列表失败」(本地化) + 界面保持（ModelSettings.vue:488-490）
  * - skills        Toast(后端原文优先,本地化兜底) + 中央空态 + 重试（SkillSettings.vue:1161-1164）
  * - mcp           Toast「加载 MCP 服务列表失败」(纯本地化) + 中央空态 + 重试（McpSettings.vue:144-147）
- * - members       浅红横幅(透传后端原文) + 重试（TenantMembers.vue:838-841 / 313-318）
- * - storage       浅红横幅(透传后端原文) + 重试（StorageEngineSettings.vue:920-921 / 15-19）
+ * - members       浅红横幅(透传后端原文) + 重试（TenantMembers.vue:838-841 / 313-318，面板自渲染）
+ * - parser/system/userprofile 壳层横幅(透传后端原文) + 重试替换内容区
+ *                  （ParserEngineSettings.vue:14-21 / SystemInfo.vue:13-20 / UserProfile.vue:14-21）
+ * - storage/vectorstore/websearch/weknoracloud/ollama/retrieval 完全静默降级：
+ *                  空列表/默认表单，无横幅、无 toast、无重试（R480：Vue 500 下 errHit=false）
  * 所有分区失败态下面板标题继续渲染（R470 缺陷 4：React 连标题都不渲染）。
  */
 
@@ -64,8 +69,20 @@ function failingClient(section: string): { client: WeKnoraClient; calls: Record<
     settings: {
       preferences: { get: async () => ({}) },
       tenant: { get: async () => ({ id: 10000, name: 'Parity 空间' }) },
-      profile: { get: async () => ({ id: 'u-1', username: 'parity' }) },
-      system: { info: async () => ({ version: 'unknown' }) },
+      profile: { get: () => (section === 'userprofile' ? fail('profile.get') : succeed('profile.get', { id: 'u-1', username: 'parity' })) },
+      system: { info: () => (section === 'system' ? fail('system.info') : succeed('system.info', { version: 'unknown' })) },
+      parser: {
+        engines: () => (section === 'parser' ? fail('parser.engines') : succeed('parser.engines', [])),
+        config: { get: () => (section === 'parser' ? fail('parser.config') : succeed('parser.config', {})) },
+      },
+      retrieval: { get: () => (section === 'retrieval' ? fail('retrieval.get') : succeed('retrieval.get', {})) },
+      vectorStores: { list: () => (section === 'vectorstore' ? fail('vectorStores.list') : succeed('vectorStores.list', [])) },
+      webSearch: { providers: { list: () => (section === 'websearch' ? fail('webSearch.list') : succeed('webSearch.list', [])) } },
+      weknoraCloud: { status: () => (section === 'weknoracloud' ? fail('weknoraCloud.status') : succeed('weknoraCloud.status', {})) },
+      ollama: {
+        status: () => (section === 'ollama' ? fail('ollama.status') : succeed('ollama.status', {})),
+        models: () => (section === 'ollama' ? fail('ollama.models') : succeed('ollama.models', [])),
+      },
       storage: {
         backends: { list: () => (section === 'storage' ? fail('storage.list') : succeed('storage.list', [])) },
         legacy: { status: () => (section === 'storage' ? fail('storage.legacy') : succeed('storage.legacy', {})) },
@@ -185,19 +202,100 @@ test('members: inline banner passes the backend message through and retries the 
   assert.ok((calls['members.list'] ?? 0) > listCallsBefore, 'retry re-sends the same members list request');
 });
 
-test('storage: inline banner passes the backend message through and retries the same request (Vue StorageEngineSettings.vue mode)', async () => {
-  const { client, calls } = failingClient('storage');
+// R481 A1 — 模式映射红测试：R480 浏览器锚定把 storage 从 banner-retry 改判为
+// 静默（Vue StorageBackendSettings.vue 500 下空列表+添加按钮、零错误 UI），
+// parser/system/userprofile 升级为壳层横幅+重试（此前缺重试按钮的裸 inline）。
+test('sectionErrorMode maps the R480 baseline: silent resource group + banner-retry parser/system/userprofile', () => {
+  for (const key of ['storage', 'vectorstore', 'websearch', 'weknoracloud', 'ollama', 'retrieval']) {
+    assert.equal(sectionErrorMode(key), 'silent', `${key} degrades silently like the Vue baseline`);
+  }
+  for (const key of ['members', 'parser', 'system', 'userprofile']) {
+    assert.equal(sectionErrorMode(key), 'banner-retry', `${key} keeps the banner + retry mode`);
+  }
+  assert.equal(sectionErrorMode('models'), 'toast-keep');
+  assert.equal(sectionErrorMode('skills'), 'toast-retry');
+  assert.equal(sectionErrorMode('mcp'), 'toast-retry');
+  assert.equal(sectionErrorMode('general'), 'inline');
+});
+
+test('storage: load failure degrades silently to the empty list + add button (Vue StorageBackendSettings.vue mode)', async () => {
+  const { client } = failingClient('storage');
   const container = await mountPage(client, '?section=storage');
   await settle();
   assert.ok(headingTexts(container).includes('存储引擎'), 'the storage section h2 keeps rendering on load failure');
+  assert.equal(findBanner(container), null, 'no error banner replaces the panel');
+  assert.equal(findToast(container), null, 'no toast fires for the silent degradation');
+  assert.ok(!container.textContent?.includes(UPSTREAM_FAILURE), 'no raw backend error text leaks');
+  // R480 探针：Vue 页面文本止于「添加存储实例」（空列表 + 添加按钮）。
+  assert.ok(container.textContent?.includes('尚未配置存储实例'), 'the empty-list state renders');
+  assert.ok(container.textContent?.includes('添加存储实例'), 'the add-instance button renders');
+});
+
+for (const [section, heading, panelSelector] of [
+  ['vectorstore', '向量数据库引擎', '.wk-settings-resource'],
+  ['websearch', '网络搜索配置', '.wk-settings-resource'],
+  ['weknoracloud', 'WeKnora Cloud', '.wk-settings-cloud'],
+  ['ollama', 'Ollama 配置', '.wk-settings-ollama'],
+  ['retrieval', '搜索设置', 'form.wk-settings-editor'],
+] as const) {
+  test(`${section}: load failure degrades silently with the panel rendering on a null payload (R480 Vue baseline)`, async () => {
+    const { client } = failingClient(section);
+    const container = await mountPage(client, `?section=${section}`);
+    await settle();
+    assert.ok(headingTexts(container).some((text) => text.includes(heading)), `the ${section} h2 keeps rendering on load failure`);
+    assert.equal(findBanner(container), null, 'no shell error banner renders');
+    assert.equal(findToast(container), null, 'no toast fires for the silent degradation');
+    assert.ok(!container.textContent?.includes(UPSTREAM_FAILURE), 'no raw backend error text leaks');
+    assert.ok(container.querySelector(panelSelector), 'the panel itself renders its empty/default state');
+  });
+}
+
+test('parser: banner passes the backend message through and retries the same request (Vue ParserEngineSettings.vue mode)', async () => {
+  const { client, calls } = failingClient('parser');
+  const container = await mountPage(client, '?section=parser');
+  await settle();
+  assert.ok(headingTexts(container).includes('解析引擎'), 'the parser section h2 keeps rendering on load failure');
   const banner = findBanner(container);
-  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'an inline banner shows the backend error text');
+  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
+  assert.equal(container.querySelector('[data-testid="mineru-endpoint"]'), null, 'the banner replaces the panel content');
   const retry = findRetryButton(container, '重试');
   assert.ok(retry, 'the banner offers a retry button');
-  const listCallsBefore = calls['storage.list'] ?? 0;
+  const before = calls['parser.engines'] ?? 0;
   await act(async () => { retry!.click(); });
   await settle();
-  assert.ok((calls['storage.list'] ?? 0) > listCallsBefore, 'retry re-sends the same storage backends request');
+  assert.ok((calls['parser.engines'] ?? 0) > before, 'retry re-sends the same parser engines request');
+});
+
+test('system: banner passes the backend message through and retries the same request (Vue SystemInfo.vue mode)', async () => {
+  const { client, calls } = failingClient('system');
+  const container = await mountPage(client, '?section=system');
+  await settle();
+  assert.ok(headingTexts(container).includes('系统信息'), 'the system section h2 keeps rendering on load failure');
+  const banner = findBanner(container);
+  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
+  assert.equal(container.querySelector('[data-testid="system-info-panel"]'), null, 'the banner replaces the panel content');
+  const retry = findRetryButton(container, '重试');
+  assert.ok(retry, 'the banner offers a retry button');
+  const before = calls['system.info'] ?? 0;
+  await act(async () => { retry!.click(); });
+  await settle();
+  assert.ok((calls['system.info'] ?? 0) > before, 'retry re-sends the same system info request');
+});
+
+test('userprofile: banner passes the backend message through and retries the same request (Vue UserProfile.vue mode)', async () => {
+  const { client, calls } = failingClient('userprofile');
+  const container = await mountPage(client, '?section=userprofile');
+  await settle();
+  assert.ok(headingTexts(container).includes('用户信息'), 'the userprofile section h2 keeps rendering on load failure');
+  const banner = findBanner(container);
+  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
+  assert.equal(container.querySelector('[data-testid="user-profile-section"]'), null, 'the banner replaces the panel content');
+  const retry = findRetryButton(container, '重试');
+  assert.ok(retry, 'the banner offers a retry button');
+  const before = calls['profile.get'] ?? 0;
+  await act(async () => { retry!.click(); });
+  await settle();
+  assert.ok((calls['profile.get'] ?? 0) > before, 'retry re-sends the same profile request');
 });
 
 test('toast auto-dismisses like the Vue MessagePlugin default 3s window', async () => {

@@ -60,6 +60,27 @@ test('hides model management sections when Ollama is unavailable', async () => {
   assert.equal(text.includes('已下载的模型'), false);
 });
 
+test('shows the Vue warning banner and unavailable tag when the partition failed to load', async () => {
+  const container = await mount(null);
+  const text = container.textContent ?? '';
+  assert.equal(text.includes('连接失败，请检查 Ollama 是否运行或服务地址是否正确'), true, 'the friendly Vue warning banner renders');
+  assert.equal(text.includes('不可用'), true, 'the status tag reads unavailable');
+  assert.equal(text.includes('未检测'), false, 'a failed load must not read as untested');
+});
+
+test('shows the Vue warning banner when the loaded status is unavailable', async () => {
+  const container = await mount({ status: { available: false }, models: [] });
+  const text = container.textContent ?? '';
+  assert.equal(text.includes('连接失败，请检查 Ollama 是否运行或服务地址是否正确'), true, 'the friendly Vue warning banner renders below the address row');
+});
+
+test('keeps the banner hidden when Ollama is available', async () => {
+  const container = await mount({ status: { available: true, version: '0.1' }, models: [{ name: 'llama3', size: '4.7 GB' }] });
+  const text = container.textContent ?? '';
+  assert.equal(text.includes('连接失败，请检查 Ollama 是否运行或服务地址是否正确'), false);
+  assert.equal(text.includes('可用'), true);
+});
+
 test('keeps the Vue model-library link in the download section', async () => {
   const container = await mount({ status: { available: true }, models: [] });
   const link = container.querySelector('a[href="https://ollama.com/search"]');

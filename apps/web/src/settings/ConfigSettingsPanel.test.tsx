@@ -172,3 +172,26 @@ test('parser form save failure surfaces the backend error and keeps controls ren
   assert.match(container.textContent ?? '', /bad payload/, 'the backend message is surfaced on the inline status');
   assert.ok(container.querySelector('[data-testid="mineru-model"]'), 'form controls stay rendered after a failed save');
 });
+
+/*
+ * R481-A3 — 锁行为：上游 retrieval-config 加载失败时（设置页深链
+ * ?section=retrieval 静默化后 payload=null，或抽屉降级），面板必须把
+ * initialValue=null 渲染为 Vue RetrievalSettings 的默认值表单：
+ * embedding_top_k=50、vector_threshold=0.15、keyword_threshold=0.3、
+ * rerank_top_k=10、rerank_threshold=0.2、rerank_model_id=''，无异常。
+ */
+test('retrieval section renders the Vue default form when initialValue is null (R480/R481)', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={null} models={[]} />));
+
+  const text = container.textContent ?? '';
+  assert.match(text, /向量检索数量 \(Top K\)/, 'the default retrieval form renders');
+  const outputs = [...container.querySelectorAll('output')].map((node) => node.textContent);
+  assert.deepEqual(outputs, ['50', '0.15', '0.30', '10', '0.20'], 'sliders fall back to the Vue defaults (Top K 50, thresholds 0.15/0.30/10/0.20)');
+  const rerankInput = container.querySelector('input:not([type="range"])') as HTMLInputElement | null;
+  assert.ok(rerankInput, 'models=[] renders the rerank model as a text input');
+  assert.equal(rerankInput.value, '', 'rerank model defaults to empty');
+});

@@ -5484,3 +5484,31 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 本轮零代码修改（纯锚定）；门禁不重跑（无源码变更，基线=R479 的六绿）。
   Evidence: `evidence/vue-react-parity/2026-09-19-r480-settings-error-anchoring.md`。
   R481 队列头：6 行缺口修复（TDD 先红后绿，scoped 套件）+ R039 变体 + N015 取证。
+
+## R481 (2026-09-19): settings 错误态六缺口修复 — 10/10 浏览器级 PASS，C16→C10
+
+- 三修复代理并行（文件域互斥）+ 协调者合并验证 + 独立浏览器复验代理；TDD 13 红用例先行。
+- A1（SettingsPage.tsx + settings-error-ux.test.tsx，10 红→15/0 + SettingsPage.test 23/0）：
+  sectionErrorMode 重排——新增 silent 模式（storage/vectorstore/websearch/weknoracloud/
+  ollama/retrieval，失败 setError(null) 面板以 null payload 渲染空态/默认值）；banner-retry
+  扩至 parser/system/userprofile（Vue v-else-if 内嵌重试复刻，重试文案复用
+  settings.parser.retry，5 locale 与 Vue 逐字节一致零新键）；过时注释改引 R480 基线。
+- A2（OllamaSettingsPanel，2 红→7/7）：加载失败/不可用 → 地址行下 warning 态
+  ollamaSettings.address.failed（Vue t-alert theme=warning 对齐）+ 既有「重新检测」；不透传原文。
+- A3（retrieval-settings-panel + ConfigSettingsPanel.test，1 红→10/10）：检索抽屉 get 失败
+  .catch(()=>null) → 默认表单（Top K=50 等，outputs 50/0.15/0.30/10/0.20 测试锁死）；
+  裸错误 <p> 删除；ConfigSettingsPanel 实现零改动。
+- 合并 scoped 五套件 55/55（node v26.4.0）；pnpm gates 首跑 test:shared 1 失败
+  （mobile/compatibility.test.ts 性能窗口 5s 实测 64s）=负载型抖动（浏览器代理并行），
+  单独复跑 11/11 绿；无负载完整复跑六门禁全绿（exit 0）。
+- 浏览器复验（playwright-core headless，子代理内 Playwright MCP 不可用的已验证替代）：
+  10/10 PASS——四资源分区+ollama+检索深链/抽屉+对齐三行横幅重试内容替换，截图
+  screenshots/r481-20260919/ 10 张。
+- 行升级：R028/R030/R034/R040/R041/R042 C→A（缺口修复+浏览器级验证）；R029/R036/R039
+  重试维度关闭。覆盖度 A56→A62/B17/C16→C10/D0（≤1% 需 C≤1）。
+- 新增裁决项：auth/me 整页刷新 500 → React boot 守卫（ensureSessionHydrated）跳 /login；
+  SPA 分区切换不跳（已锚定）。Vue boot 同条件行为未锚定，需双端取证后裁决。
+- 延后池更新：R039 复杂密码变体（复杂度开关需登录态读取；domain/password-policy.ts 已在位）、
+  N015、N021、auth/me boot 裁决、全域 toast 化立项选项。
+  Evidence: `evidence/vue-react-parity/2026-09-19-r481-settings-error-fixes.md`。
+  R482 队列头：N021 tool fixture 双端对齐（终局②）或剩余 C 行批量锚定。

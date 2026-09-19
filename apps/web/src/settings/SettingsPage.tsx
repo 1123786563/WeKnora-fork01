@@ -42,25 +42,36 @@ function errorText(error: unknown, fallback: string): string { return error inst
 
 /*
  * R472 A2 — settings 分区错误态 UX 模式（对齐 .omc/state/r470/report-A3.md
- * 锚定的 Vue 三种模式）：
+ * 锚定的 Vue 模式；R481 A1 按 R480 浏览器锚定修订，证据
+ * docs/migrations/react/evidence/vue-react-parity/2026-09-19-r480-settings-error-anchoring.md）：
  * - 'toast-keep'   models：Toast 本地化「加载模型列表失败」+ 界面保持
  *                  （ModelSettings.vue:488-490，骨架/默认态不清空）。
  * - 'toast-retry'  skills/mcp：Toast + 中央空态 + 重试按钮；面板自加载并
  *                  自行呈现错误（SkillSettings.vue:1161-1164、
  *                  McpSettings.vue:144-147），中央读取失败不再顶替内容区。
- * - 'banner-retry' members/storage：浅红横幅透传后端原文 + 重试
- *                  （TenantMembers.vue:838-841、StorageEngineSettings.vue:920-921）。
+ * - 'banner-retry' members/parser/system/userprofile：浅红横幅透传后端原文 +
+ *                  重试。R480 锚定：ParserEngineSettings.vue:14-21、
+ *                  SystemInfo.vue:13-20、UserProfile.vue:14-21 均为
+ *                  v-else-if="error" 的内容替换形态（重试文案 zh-CN 均为「重试」）。
  *                  members 的横幅由面板自加载渲染（标题在面板内部）；
- *                  storage 的横幅在壳层渲染并替代内容（标题由壳层 heading 保留）。
+ *                  parser/system/userprofile 的横幅在壳层渲染并替代内容
+ *                  （标题由壳层 heading 保留）。
+ * - 'silent'       storage/vectorstore/websearch/weknoracloud/ollama/retrieval：
+ *                  R480 对称 500 拦截证实 Vue 完全静默降级——空列表/默认表单，
+ *                  无横幅、无 toast、无重试（StorageBackendSettings.vue 渲染
+ *                  空列表+添加按钮；retrieval-config boot 预取失败被静默吞掉）。
+ *                  面板以 null payload 渲染；ollama/retrieval 的面板自身
+ *                  错误态由面板负责（页级不出错误 UI）。
  * - 'inline'       其余分区维持裸 Status 行为（本轮未对齐范围）。
  * 共同点：错误态下分区标题保持渲染（R470 缺陷 4）。
  */
-export type SettingsSectionErrorMode = 'inline' | 'toast-keep' | 'toast-retry' | 'banner-retry';
+export type SettingsSectionErrorMode = 'inline' | 'toast-keep' | 'toast-retry' | 'banner-retry' | 'silent';
 
 export function sectionErrorMode(key: string): SettingsSectionErrorMode {
   if (key === 'models') return 'toast-keep';
   if (key === 'skills' || key === 'mcp') return 'toast-retry';
-  if (key === 'members' || key === 'storage') return 'banner-retry';
+  if (key === 'members' || key === 'parser' || key === 'system' || key === 'userprofile') return 'banner-retry';
+  if (key === 'storage' || key === 'vectorstore' || key === 'websearch' || key === 'weknoracloud' || key === 'ollama' || key === 'retrieval') return 'silent';
   return 'inline';
 }
 
@@ -186,15 +197,19 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           // 面板保持渲染（默认空态），不透传后端原文、不清空骨架。
           setError(null);
           pushSettingsToast(modelFormatMessage(locale, 'model.editor.loadModelListFailed'));
-        } else if (mode === 'toast-retry' || selectedKey === 'members') {
+        } else if (mode === 'toast-retry' || selectedKey === 'members' || mode === 'silent') {
           // skills/mcp/members 面板自加载并渲染各自的 Vue 对齐错误态
           // （toast+空态+重试 / 横幅+重试）；中央失败不得顶替内容区，
           // 面板以 undefined 初始数据自拉。
+          // silent（R480 基线）：storage/vectorstore/websearch/weknoracloud/
+          // ollama/retrieval 在 Vue 500 下完全静默降级（空列表/默认表单）——
+          // 无横幅、无 toast、无重试；面板以 null payload 渲染。
           setError(null);
         } else if (mode === 'banner-retry') {
-          // storage：壳层横幅透传后端原文 + 重试（Vue
-          // StorageEngineSettings.vue:920-921 t-alert theme=error）。
-          setError(errorText(reason, t('settings.storage.loadFailed')));
+          // parser/system/userprofile（R480 锚定）：壳层横幅透传后端原文 +
+          // 重试，替换内容区（Vue SystemInfo.vue:13-20、UserProfile.vue:14-21、
+          // ParserEngineSettings.vue:14-21 的 t-alert theme=error 形态）。
+          setError(errorText(reason, t('common.error')));
         } else {
           setError(errorText(reason, t('common.error')));
         }
@@ -400,15 +415,18 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               </div>
             </div>
           ) : null}
-          {/* R472 A2 — banner-retry（storage）：壳层浅红横幅透传后端原文 +
-              重试按钮替代内容区（Vue StorageEngineSettings.vue:15-19
-              t-alert theme=error + retry）；分区标题由上方 heading 保留。
-              members 的横幅在 TenantMembersPanel 自加载内渲染。 */}
+          {/* R481 A1 — banner-retry（parser/system/userprofile）：壳层浅红横幅
+              透传后端原文 + 重试按钮替代内容区（R480 锚定：Vue
+              ParserEngineSettings.vue:14-21 / SystemInfo.vue:13-20 /
+              UserProfile.vue:14-21 的 t-alert theme=error + 内嵌重试）；分区
+              标题由上方 heading 保留。members 的横幅在 TenantMembersPanel
+              自加载内渲染（页级 setError(null)）；storage 已按 R480 基线改判
+              静默（StorageBackendSettings.vue 空列表+添加按钮，零错误 UI）。 */}
           {sectionDenied ?? (
           sectionError && sectionErrorMode(key) === 'banner-retry' ? (
             <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
-              <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
+              <Button type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</Button>
             </div>
           ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
           {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
