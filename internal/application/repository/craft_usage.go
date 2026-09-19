@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/metrics"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -202,8 +203,21 @@ func (s *CraftUsageStore) record(ctx context.Context, f craft.UsageFact, correct
 			Status: f.Status, InputTokens: f.Input, OutputTokens: f.Output,
 			CachedTokens: f.Cached, FactJSON: string(encoded), ObservedAt: now,
 		}
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
-			return err
+		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		if created.Error != nil {
+			return created.Error
+		}
+		// SP12: fold the freshly recorded revision into the owner's daily
+		// user_usage bucket, inside the SAME transaction. The fold runs only
+		// when THIS call created the fact row — a concurrent creator of the
+		// same revision that no-opped on the UNIQUE constraint must not fold
+		// the tokens twice — and never for corrections: the daily bucket
+		// keeps the first Append's numbers, corrected revisions flow through
+		// the commercial outbox pipeline, whose pricing owns craft cost.
+		if created.RowsAffected > 0 && !correction {
+			if err := foldCraftUsageIntoUserBucket(tx, row); err != nil {
+				return err
+			}
 		}
 		if err := enqueueCraftUsageEvent(tx, row, stored); err != nil {
 			return err
@@ -220,6 +234,42 @@ func (s *CraftUsageStore) record(ctx context.Context, f craft.UsageFact, correct
 		metrics.CraftUsageUnknown()
 	}
 	return nil
+}
+
+// foldCraftUsageIntoUserBucket upserts one craft-flow daily user_usage row for
+// a freshly recorded fact, in the record transaction. Attribution joins the
+// durable run table: agent_runs stores the sessions.user_id scope as owner_id
+// (there is no user_id column), and a fact whose run matches no row — or
+// carries no run at all — attributes to the empty user rather than being
+// dropped. Cost and cache_write stay zero (Ruling P-2): craft pricing lives
+// in the commercial outbox pipeline and craft facts expose no cache-write
+// dimension, cached tokens fold into cache_read. The bucket day comes from
+// the fact row's observed_at (record-time UTC clock), bound as a Go-side UTC
+// midnight value so no dialect date function is needed; the DO UPDATE arms
+// accumulate in place, table-qualified for PostgreSQL's ON CONFLICT.
+func foldCraftUsageIntoUserBucket(tx *gorm.DB, row craftUsageFactRow) error {
+	observed := row.ObservedAt.UTC()
+	day := time.Date(observed.Year(), observed.Month(), observed.Day(), 0, 0, 0, 0, time.UTC)
+	const foldSQL = `INSERT INTO user_usage
+	(tenant_id, user_id, window_start, model, flow,
+	 input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_microcredits,
+	 created_at, updated_at)
+	VALUES (?, COALESCE((SELECT ar.owner_id FROM agent_runs ar
+	                     WHERE ar.tenant_id = ? AND ar.run_id = ? LIMIT 1), ''),
+	        ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+	ON CONFLICT (tenant_id, user_id, window_start, model, flow) DO UPDATE SET
+	  input_tokens      = user_usage.input_tokens + excluded.input_tokens,
+	  output_tokens     = user_usage.output_tokens + excluded.output_tokens,
+	  cache_read_tokens = user_usage.cache_read_tokens + excluded.cache_read_tokens,
+	  cache_write_tokens = user_usage.cache_write_tokens + excluded.cache_write_tokens,
+	  cost_microcredits = user_usage.cost_microcredits + excluded.cost_microcredits,
+	  updated_at        = excluded.updated_at`
+	return tx.Exec(foldSQL,
+		row.TenantID, row.TenantID, row.RunID,
+		day, row.ModelID, types.UsageFlowCraft,
+		row.InputTokens, row.OutputTokens, row.CachedTokens,
+		observed, observed,
+	).Error
 }
 
 // usageContentEqual compares the observation content of two facts of the

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -242,4 +244,120 @@ func TestCraftUsageStoreRejectsUntrustedFacts(t *testing.T) {
 	var rows int64
 	require.NoError(t, db.Table("craft_usage_facts").Count(&rows).Error)
 	require.EqualValues(t, 0, rows, "nothing persisted")
+}
+
+// seedCraftUsageRun inserts one agent_runs row. The durable run table has no
+// user_id column: the sessions.user_id scope is stored as owner_id at
+// admission (types.SessionOwnerIDFromContext), so that is the attribution
+// column the daily-bucket fold joins through.
+func seedCraftUsageRun(t *testing.T, db *gorm.DB, tenant uint64, runID, owner string) {
+	t.Helper()
+	require.NoError(t, db.Exec(
+		`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id,
+		   assistant_message_id, request_hash, snapshot, deadline)
+		 VALUES (?, ?, 's1', ?, ?, ?, ?, '{}', ?)`,
+		tenant, runID, owner, "req-"+runID, "am-"+runID, "hash-"+runID,
+		time.Now().Add(time.Hour),
+	).Error)
+}
+
+// craftBucket fetches the tenant's single bucket row for one user+model under
+// the craft flow.
+func craftBucket(t *testing.T, db *gorm.DB, tenant uint64, user string) types.UserUsage {
+	t.Helper()
+	var row types.UserUsage
+	require.NoError(t, db.Where("tenant_id = ? AND user_id = ? AND model = ? AND flow = ?",
+		tenant, user, "gpt-test", types.UsageFlowCraft).Take(&row).Error)
+	return row
+}
+
+// TestCraftUsageStoreFoldsFactsIntoUserUsageDailyBuckets pins the SP12 craft
+// ingestion point: every first-recorded revision folds its token counts into
+// the owning user's (tenant, user, UTC day, model, craft) bucket inside the
+// SAME transaction as the fact row. Replays fold nothing (the content-equal
+// no-op runs first), distinct attempts of the same run accumulate in place,
+// a fact whose run matches no agent_runs row attributes to the empty user,
+// and cost stays zero — craft pricing belongs to the commercial outbox
+// pipeline, the daily bucket records the token dimension only.
+func TestCraftUsageStoreFoldsFactsIntoUserUsageDailyBuckets(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openCraftUsageDB(t)
+			store := NewCraftUsageStore(db)
+			ctx := context.Background()
+			seedCraftUsageRun(t, db, 1, "run-1", "u1")
+			day := time.Now().UTC().Format("2006-01-02")
+
+			first := usageFact(1, "run-1", "", "call-1", "att-1", craft.RuntimeMain)
+			require.NoError(t, store.Append(ctx, first))
+			require.NoError(t, store.Append(ctx, first), "replay must not fold the bucket twice")
+
+			second := usageFact(1, "run-1", "", "call-2", "att-1", craft.RuntimeMain)
+			require.NoError(t, store.Append(ctx, second))
+
+			// No agent_runs row for run-x: attribution falls back to the
+			// empty user instead of dropping the bucket.
+			orphan := usageFact(1, "run-x", "", "call-3", "att-1", craft.RuntimeMain)
+			require.NoError(t, store.Append(ctx, orphan))
+
+			// A correction is a NEW revision: the bucket keeps the first
+			// observation's numbers and the corrected revision must never
+			// re-accumulate them.
+			corrected := first
+			corrected.Output = 90
+			corrected.Status = craft.UsageStatusCorrected
+			require.NoError(t, store.Correct(ctx, corrected))
+			require.NoError(t, store.Correct(ctx, corrected), "correction replay folds nothing")
+
+			var buckets int64
+			require.NoError(t, db.Table("user_usage").Where("tenant_id = ?", uint64(1)).Count(&buckets).Error)
+			require.EqualValues(t, 2, buckets, "one bucket for u1, one for the empty user")
+
+			u1 := craftBucket(t, db, 1, "u1")
+			require.Equal(t, day, u1.WindowStart.UTC().Format("2006-01-02"), "bucket day is the fact's UTC observation day")
+			require.EqualValues(t, 240, u1.InputTokens, "two distinct attempts accumulate: 120+120")
+			require.EqualValues(t, 60, u1.OutputTokens, "corrections must not re-accumulate: 30+30, not 30+30+90")
+			require.EqualValues(t, 40, u1.CacheReadTokens, "cached tokens fold into cache_read: 20+20")
+			require.Zero(t, u1.CacheWriteTokens, "craft facts carry no cache-write dimension")
+			require.Zero(t, u1.CostMicrocredits, "pricing stays with the commercial pipeline")
+
+			anon := craftBucket(t, db, 1, "")
+			require.EqualValues(t, 120, anon.InputTokens, "unmatched run attributes to the empty user")
+			require.Zero(t, anon.CostMicrocredits)
+		})
+	}
+}
+
+// TestCraftUsageStoreUnknownFirstRevisionKeepsBucketAtFirstObservation pins
+// the chosen correction semantics (SP12 ruling): the daily bucket records
+// only the FIRST recorded revision's numbers. A stream-break unknown (zero
+// tokens) followed by a late correction with real numbers leaves the bucket
+// at the first observation — the corrected revision's tokens flow through the
+// commercial outbox pipeline, never back into the bucket. This trades a
+// possible bucket undercount for never double-counting a superseded
+// observation.
+func TestCraftUsageStoreUnknownFirstRevisionKeepsBucketAtFirstObservation(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openCraftUsageDB(t)
+			store := NewCraftUsageStore(db)
+			ctx := context.Background()
+			seedCraftUsageRun(t, db, 1, "run-1", "u1")
+
+			broken := usageFact(1, "run-1", "dlg-1", "call-1", "att-1", craft.RuntimeOC)
+			broken.Input, broken.Output, broken.Cached = 0, 0, 0
+			broken.Status = craft.UsageStatusUnknown
+			require.NoError(t, store.Append(ctx, broken))
+
+			late := broken
+			late.Input, late.Output, late.Cached = 200, 80, 40
+			late.Status = craft.UsageStatusCorrected
+			require.NoError(t, store.Correct(ctx, late))
+
+			u1 := craftBucket(t, db, 1, "u1")
+			require.Zero(t, u1.InputTokens, "bucket keeps the first (unknown) observation's numbers")
+			require.Zero(t, u1.OutputTokens)
+			require.Zero(t, u1.CacheReadTokens)
+		})
+	}
 }
