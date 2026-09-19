@@ -199,7 +199,7 @@ func (r *NativeMemoryRepository) Delete(ctx context.Context, scope nativecontrac
 }
 
 func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract.MemoryJob) error {
-	if job.ID == "" || job.ThroughEventID == "" || job.SessionKey.AppName == "" || job.SessionKey.UserID == "" || job.SessionKey.SessionID == "" {
+	if job.ID == "" || job.ThroughEventID == "" {
 		return ErrNativeMemoryWriteRejected
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -210,8 +210,11 @@ func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
 			return ErrNativeMemoryWriteRejected
 		}
-		if err := r.verifyJobSource(tx, job); err != nil {
-			return err
+		legacyJob := job.SessionKey.AppName == "" && job.SessionKey.UserID == "" && job.SessionKey.SessionID == ""
+		if !legacyJob {
+			if err := r.verifyJobSource(tx, job); err != nil {
+				return err
+			}
 		}
 		candidate := nativeMemoryJobRow{TenantID: job.Scope.TenantID, SubjectID: subject, JobID: job.ID, Generation: job.Generation, PolicyRevision: job.PolicyRevision, ThroughEventID: job.ThroughEventID, SessionAppName: job.SessionKey.AppName, SessionUserID: job.SessionKey.UserID, SessionID: job.SessionKey.SessionID, Status: NativeMemoryJobQueued}
 		var existing nativeMemoryJobRow
@@ -338,11 +341,14 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 			if persisted.Status != NativeMemoryJobQueued && persisted.Status != NativeMemoryJobRunning {
 				return nil
 			}
-			if persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID {
-				return ErrNativeMemoryWriteRejected
-			}
-			if err := r.verifyJobSource(tx, job); err != nil {
-				return err
+			legacyJob := persisted.SessionAppName == "" && persisted.SessionUserID == "" && persisted.SessionID == ""
+			if !legacyJob {
+				if persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID {
+					return ErrNativeMemoryWriteRejected
+				}
+				if err := r.verifyJobSource(tx, job); err != nil {
+					return err
+				}
 			}
 		}
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
