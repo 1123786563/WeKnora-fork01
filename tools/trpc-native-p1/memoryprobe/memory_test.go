@@ -133,17 +133,19 @@ func TestMemoryIdempotencyMetadataUpdateDeleteAndClear(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, memory.KindFact, got[0].Memory.Kind)
+		require.Equal(t, []string{"drink"}, got[0].Memory.Topics)
 		require.Equal(t, []string{"u"}, got[0].Memory.Participants)
 		require.Equal(t, "test", got[0].Memory.Location)
 
 		result := &memory.UpdateResult{}
-		require.NoError(t, svc.UpdateMemory(ctx, memory.Key{AppName: a.AppName, UserID: a.UserID, MemoryID: got[0].ID}, "prefers green tea", []string{"drink"}, memory.WithUpdateResult(result)))
+		require.NoError(t, svc.UpdateMemory(ctx, memory.Key{AppName: a.AppName, UserID: a.UserID, MemoryID: got[0].ID}, "prefers green tea", []string{"drink", "tea"}, memory.WithUpdateResult(result)))
 		require.NotEmpty(t, result.MemoryID)
 		svc = reopen()
 		got, err = svc.ReadMemories(ctx, a, 10)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, "prefers green tea", got[0].Memory.Memory)
+		require.Equal(t, []string{"drink", "tea"}, got[0].Memory.Topics)
 
 		require.NoError(t, svc.DeleteMemory(ctx, memory.Key{AppName: a.AppName, UserID: a.UserID, MemoryID: got[0].ID}))
 		got, err = svc.ReadMemories(ctx, a, 10)
