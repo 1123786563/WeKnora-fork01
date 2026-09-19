@@ -48,6 +48,7 @@ const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) =>
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage.tsx').then((module) => ({ default: module.AnalyticsPage })));
+const ExpertsPage = lazy(() => import('./experts/ExpertsPage.tsx').then((module) => ({ default: module.ExpertsPage })));
 const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
 const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
 const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
@@ -613,6 +614,18 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // Octop M2 expert-template catalog; list/detail are Viewer+ reads, the
+  // instantiate write stays Contributor+ server-side (routes_expert.go guard).
+  const expertsRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'experts',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <ExpertsPage client={client} />
+      </Suspense>
+    ),
+  });
+
   const devMarkdownRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'dev/markdown',
@@ -790,6 +803,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       chatIndexRoute,
       chatSplatRoute,
       agentsRoute,
+      expertsRoute,
       configurationRoute,
       organizationsRoute,
       settingsRoute,

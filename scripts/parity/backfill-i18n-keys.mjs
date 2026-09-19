@@ -44,6 +44,9 @@ console.log('zh-CN flattened keys:', Object.keys(vueMaps['zh-CN']).length);
 // matching the panel's current en-US fallthrough (byte-identical rendering).
 // PERSONALIZATION: Octop MBTI persona section (apps/web/src/agents/
 // PersonaSection.tsx) — React-only feature, real ja/ko/ru translations.
+// EXPERTS: Octop M2 expert-templates surface (apps/web/src/experts/ExpertsPage.tsx
+// + the provenance badge on the agents page cards) — React-only feature, real
+// ja/ko/ru translations.
 
 const PAGER_VALUES = {
   'zh-CN': {
@@ -202,8 +205,101 @@ const PERSONALIZATION_VALUES = {
   },
 };
 
+const EXPERTS_VALUES = {
+  'zh-CN': {
+    'experts.title': '专家模板',
+    'experts.subtitle': '从预置专家模板一键创建智能体',
+    'experts.skillCount': '{count} 技能',
+    'experts.empty': '暂无专家模板',
+    'experts.detail.persona': '人格设定',
+    'experts.detail.skills': '技能',
+    'experts.detail.quickPrompts': '快捷指令',
+    'experts.detail.loadFailed': '专家详情加载失败',
+    'experts.createAgent': '创建 Agent',
+    'experts.create.nameLabel': 'Agent 名称',
+    'experts.create.namePlaceholder': '默认使用专家名称',
+    'experts.create.creating': '创建中…',
+    'experts.created': '已创建 Agent',
+    'experts.createdPending': '已创建，{count} 个技能待安装',
+    'experts.createFailed': '创建失败',
+    'experts.badge': '专家·{expertId}',
+  },
+  'en-US': {
+    'experts.title': 'Expert Templates',
+    'experts.subtitle': 'Create agents instantly from preset expert templates',
+    'experts.skillCount': '{count} skills',
+    'experts.empty': 'No expert templates yet',
+    'experts.detail.persona': 'Persona',
+    'experts.detail.skills': 'Skills',
+    'experts.detail.quickPrompts': 'Quick Prompts',
+    'experts.detail.loadFailed': 'Failed to load expert details',
+    'experts.createAgent': 'Create Agent',
+    'experts.create.nameLabel': 'Agent name',
+    'experts.create.namePlaceholder': 'Defaults to the expert name',
+    'experts.create.creating': 'Creating…',
+    'experts.created': 'Agent created',
+    'experts.createdPending': 'Created — {count} skills pending install',
+    'experts.createFailed': 'Failed to create',
+    'experts.badge': 'Expert · {expertId}',
+  },
+  'ja-JP': {
+    'experts.title': 'エキスパートテンプレート',
+    'experts.subtitle': 'プリセットのエキスパートテンプレートからエージェントをすぐ作成',
+    'experts.skillCount': '{count} 個のスキル',
+    'experts.empty': 'エキスパートテンプレートはまだありません',
+    'experts.detail.persona': 'ペルソナ設定',
+    'experts.detail.skills': 'スキル',
+    'experts.detail.quickPrompts': 'クイックプロンプト',
+    'experts.detail.loadFailed': 'エキスパート詳細の読み込みに失敗しました',
+    'experts.createAgent': 'エージェントを作成',
+    'experts.create.nameLabel': 'エージェント名',
+    'experts.create.namePlaceholder': 'デフォルトはエキスパート名',
+    'experts.create.creating': '作成中…',
+    'experts.created': 'エージェントを作成しました',
+    'experts.createdPending': '作成済み、{count} 個のスキルはインストール待ち',
+    'experts.createFailed': '作成に失敗しました',
+    'experts.badge': 'エキスパート·{expertId}',
+  },
+  'ko-KR': {
+    'experts.title': '전문가 템플릿',
+    'experts.subtitle': '사전 설정된 전문가 템플릿으로 에이전트를 바로 생성',
+    'experts.skillCount': '스킬 {count}개',
+    'experts.empty': '아직 전문가 템플릿이 없습니다',
+    'experts.detail.persona': '페르소나 설정',
+    'experts.detail.skills': '스킬',
+    'experts.detail.quickPrompts': '빠른 프롬프트',
+    'experts.detail.loadFailed': '전문가 세부 정보를 불러오지 못했습니다',
+    'experts.createAgent': '에이전트 생성',
+    'experts.create.nameLabel': '에이전트 이름',
+    'experts.create.namePlaceholder': '기본값은 전문가 이름',
+    'experts.create.creating': '생성 중…',
+    'experts.created': '에이전트가 생성되었습니다',
+    'experts.createdPending': '생성됨, 스킬 {count}개 설치 대기 중',
+    'experts.createFailed': '생성 실패',
+    'experts.badge': '전문가·{expertId}',
+  },
+  'ru-RU': {
+    'experts.title': 'Шаблоны экспертов',
+    'experts.subtitle': 'Создавайте агентов в один клик из готовых шаблонов экспертов',
+    'experts.skillCount': 'Навыков: {count}',
+    'experts.empty': 'Шаблонов экспертов пока нет',
+    'experts.detail.persona': 'Персона',
+    'experts.detail.skills': 'Навыки',
+    'experts.detail.quickPrompts': 'Быстрые подсказки',
+    'experts.detail.loadFailed': 'Не удалось загрузить данные эксперта',
+    'experts.createAgent': 'Создать агента',
+    'experts.create.nameLabel': 'Имя агента',
+    'experts.create.namePlaceholder': 'По умолчанию — имя эксперта',
+    'experts.create.creating': 'Создание…',
+    'experts.created': 'Агент создан',
+    'experts.createdPending': 'Создано, ждут установки навыков: {count}',
+    'experts.createFailed': 'Не удалось создать',
+    'experts.badge': 'Эксперт·{expertId}',
+  },
+};
+
 // Keys owned by a React-side source instead of the Vue locale tables.
-const REACT_SIDE_SOURCES = [PAGER_VALUES, PERSONALIZATION_VALUES];
+const REACT_SIDE_SOURCES = [PAGER_VALUES, PERSONALIZATION_VALUES, EXPERTS_VALUES];
 const reactSideSource = (key) => REACT_SIDE_SOURCES.find((source) => key in source['zh-CN']);
 
 const RBAC_ACTIONS = ['member_added', 'member_removed', 'member_role_changed', 'member_left', 'access_denied', 'invitation_sent', 'invitation_accepted', 'invitation_declined', 'invitation_revoked', 'invitation_expired'];
@@ -265,6 +361,12 @@ const BLOCKS = [
       'agentEditor.personalization.testLoadFailed', 'agentEditor.personalization.testSubmitError',
       'agentEditor.personalization.testResultTitle', 'agentEditor.personalization.testApply',
     ],
+  },
+  {
+    module: 'experts.ts',
+    exportName: 'expertsMessages',
+    provenance: 'experts block (Octop M2 expert templates page, React-only — script-owned values, see EXPERTS_VALUES).',
+    keys: [...Object.keys(EXPERTS_VALUES['zh-CN'])],
   },
   {
     module: 'shellSessionList.ts',

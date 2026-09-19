@@ -25,6 +25,7 @@ import {
   chatNavigationPath,
   cornerBadge,
   featureBadges,
+  expertSourceId,
   hydratePinnedCards,
   kbScope,
   mcpScope,
@@ -289,6 +290,7 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
 }) {
   const mode = agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal';
   const badges = featureBadges(agent);
+  const expertBadgeId = expertSourceId(agent.config);
   const actions = cardActions(agent, viewer);
   const badge = cornerBadge(agent, viewer.userId);
   const modeTitleKey = agent.config?.agent_mode === 'smart-reasoning' ? 'agent.mode.agent' : 'agent.mode.normal';
@@ -357,6 +359,11 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
       <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-t-[rgba(127,127,127,0.25)] pt-1.5">
         <div className="flex items-center gap-1">
           {agent.disabledByMe ? <span className="inline-flex items-center rounded bg-[rgba(127,127,127,0.12)] px-1.5 py-[2px] text-[11px]">{t('agent.disabled')}</span> : null}
+          {expertBadgeId ? (
+            // Octop M2 provenance: read-only label naming the expert template
+            // the agent was instantiated from (config.expert_source).
+            <span className="inline-flex items-center rounded bg-[rgba(124,77,255,0.08)] px-1.5 py-[2px] text-[11px] font-medium text-[#7c4dff]" data-agent-expert-badge>{t('experts.badge', { expertId: expertBadgeId })}</span>
+          ) : null}
           {badges.map((key) => (
             <span key={key} className={`flex h-[22px] w-[22px] items-center justify-center rounded-[5px] transition-[background] duration-200 ease-[ease] ${FEATURE_BADGE_TONES[key] ?? ''}`} title={key === 'modeNormal' || key === 'modeAgent' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
               <FeatureBadgeSvg badge={key} />

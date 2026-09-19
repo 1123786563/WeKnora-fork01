@@ -125,6 +125,7 @@ test('authenticated platform paths match their pages inside the shell layout', (
     ['/platform/knowledge-bases/kb-1?tab=wiki', '/platform/knowledge-bases/$kbId'],
     ['/platform/knowledge-bases/kb-1/creatChat', '/platform/knowledge-bases/$kbId/creatChat'],
     ['/platform/agents', '/platform/agents'],
+    ['/platform/experts', '/platform/experts'],
     ['/platform/settings', '/platform/settings'],
     ['/platform/apps', '/platform/apps'],
     ['/platform/apps/authorization/app-1', '/platform/apps/authorization/$id'],

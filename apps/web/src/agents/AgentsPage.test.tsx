@@ -28,6 +28,7 @@ const {
   buildAllViewRows,
   buildSpaceViewRows,
   cornerBadge,
+  expertSourceId,
   sectionize,
   sharedAgentsFromRecords,
 } = await import('./list.ts');
@@ -309,6 +310,37 @@ test('disabled own agents show the 已停用 tag', () => {
     onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
   }));
   assert.match(html, /已停用/);
+});
+
+// --- expert provenance badge (Octop M2) ----------------------------------------------
+
+test('cards carry the expert provenance badge only when config.expert_source names an expert', () => {
+  const rows = buildAllViewRows([
+    { id: 'a-expert', name: '股票助手', is_builtin: false, created_by: 'user-1', config: { agent_mode: 'quick-answer', expert_source: { expert_id: 'stock-assistant', source: 'builtin', slug: '' } } },
+  ], [], { userId: 'user-1', disabledOwnIds: [] });
+  const html = renderToStaticMarkup(React.createElement(AgentCard, {
+    agent: rows[0]!, t, viewer: admin, favorited: false, menuOpen: false,
+    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
+  }));
+  assert.match(html, /data-agent-expert-badge/);
+  assert.match(html, /专家·stock-assistant/);
+
+  const plain = fixtureRows().find((row) => row.id === 'a-own')!;
+  const plainHtml = renderToStaticMarkup(React.createElement(AgentCard, {
+    agent: plain, t, viewer: admin, favorited: false, menuOpen: false,
+    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
+  }));
+  assert.doesNotMatch(plainHtml, /data-agent-expert-badge/);
+  assert.doesNotMatch(plainHtml, /专家·/);
+});
+
+test('expertSourceId tolerates absent, null and shape-drift expert_source values', () => {
+  assert.equal(expertSourceId(undefined), '');
+  assert.equal(expertSourceId({}), '');
+  assert.equal(expertSourceId({ expert_source: null }), '');
+  assert.equal(expertSourceId({ expert_source: 'builtin' }), '');
+  assert.equal(expertSourceId({ expert_source: { expert_id: '', source: 'builtin' } }), '');
+  assert.equal(expertSourceId({ expert_source: { expert_id: 'stock-assistant', source: 'builtin', slug: '' } }), 'stock-assistant');
 });
 
 // --- drawers / dialogs ---------------------------------------------------------------

@@ -37,6 +37,19 @@ export interface QuestionSuggestionsForm {
   };
 }
 
+/**
+ * Provenance stamp an expert-template instantiation writes onto the created
+ * agent (internal/types/custom_agent.go ExpertSourceStruct): which expert
+ * manifest it came from, where that template lives ("builtin" for shipped
+ * experts), and the slug reserved for future community/custom sources.
+ * Read-only for the editor — it survives hydrate/save round-trips untouched.
+ */
+export interface ExpertSourceForm {
+  expert_id: string;
+  source: string;
+  slug: string;
+}
+
 export interface AgentConfigForm {
   agent_mode: AgentMode;
   system_prompt: string;
@@ -94,6 +107,9 @@ export interface AgentConfigForm {
   // Octop M1 persona (no Vue baseline); optional so legacy payloads stay valid
   persona_mbti?: string;
   persona_style?: string;
+  // Octop M2 expert provenance (no Vue baseline); null = not expert-created.
+  // Must exist in defaults or hydrateAgentForm drops it (trap at the merge loop)
+  expert_source?: ExpertSourceForm | null;
   [key: string]: unknown;
 }
 
@@ -181,6 +197,9 @@ export function defaultAgentConfig(): AgentConfigForm {
     // must exist in defaults or hydrateAgentForm drops them (trap at :199)
     persona_mbti: '',
     persona_style: '',
+    // expert provenance stamp: null unless the agent came from an expert
+    // template; hydrate only copies a present object over this default
+    expert_source: null,
   };
 }
 

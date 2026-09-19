@@ -109,6 +109,25 @@ test('hydrateAgentForm backfills memory_enabled and mcp_auth_wait_timeout (Vue:3
   assert.equal(stale.config.mcp_auth_wait_timeout, 600);
 });
 
+// Octop M2: the expert provenance stamp must survive the editor round-trip —
+// the hydrate merge only copies keys that exist in defaultAgentConfig (the M1
+// persona trap), so expert_source defaults to null and a stored stamp is kept.
+test('hydrateAgentForm keeps the expert_source provenance stamp and defaults it to null', () => {
+  assert.equal(defaultAgentForm().config.expert_source, null);
+
+  const stamp = { expert_id: 'stock-assistant', source: 'builtin', slug: '' };
+  const fromExpert = hydrateAgentForm({ id: 'a-6', name: '股票助手', config: { expert_source: stamp } });
+  assert.deepEqual(fromExpert.config.expert_source, stamp);
+  const savedConfig = buildAgentPayload(fromExpert).config as AgentEditorForm['config'];
+  assert.deepEqual(savedConfig.expert_source, stamp, 'save must carry the stamp back');
+
+  const plain = hydrateAgentForm({ id: 'a-7', name: 'x', config: {} });
+  assert.equal(plain.config.expert_source, null);
+  // a null stamp (backend omits unset) never resurrects as an object
+  const nullStamp = hydrateAgentForm({ id: 'a-8', name: 'x', config: { expert_source: null } });
+  assert.equal(nullStamp.config.expert_source, null);
+});
+
 // --- selection modes (AgentEditorModal.vue:3564-3602, 3640-3711) ---------------------
 
 test('initKbSelectionMode prefers the stored mode, then knowledge_bases, then none', () => {

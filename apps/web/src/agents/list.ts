@@ -20,6 +20,8 @@ export interface AgentListConfig {
   multi_turn_enabled?: boolean;
   model_id?: string;
   rerank_model_id?: string;
+  /** Octop M2 provenance stamp ({expert_id, source, slug} or null/absent). */
+  expert_source?: unknown;
   [key: string]: unknown;
 }
 
@@ -337,6 +339,21 @@ export const FEATURE_BADGE_TITLE_KEYS: Record<FeatureBadgeKey, string> = {
   mcp: 'agent.features.mcp',
   multiTurn: 'agent.features.multiTurn',
 };
+
+// --- expert provenance (Octop M2, no Vue baseline) -------------------------------
+
+/**
+ * Expert-template provenance stamp the backend writes onto instantiated agents
+ * (internal/types/custom_agent.go ExpertSourceStruct, config.expert_source).
+ * Read-only display input: returns the expert_id the badge labels, or '' when
+ * the agent was not created from an expert template (absent/null/shape-drift).
+ */
+export function expertSourceId(config: Pick<AgentListConfig, 'expert_source'> | undefined): string {
+  const source = config?.expert_source;
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) return '';
+  const expertId = (source as Record<string, unknown>).expert_id;
+  return typeof expertId === 'string' && expertId !== '' ? expertId : '';
+}
 
 // --- avatar (port of frontend/src/components/AgentAvatar.vue) -----------------
 
