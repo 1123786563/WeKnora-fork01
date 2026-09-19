@@ -11,6 +11,7 @@ type ResourceRow = Record<string, unknown>;
 type ResourceApi = {
   list: () => Promise<readonly ResourceRow[]>;
   listEnvelope?: () => Promise<{ rows: readonly ResourceRow[]; defaultId?: string }>;
+  types?: () => Promise<readonly unknown[]>;
   create: (input: Record<string, unknown>) => Promise<ResourceRow>;
   update: (id: string, input: Record<string, unknown>) => Promise<ResourceRow>;
   remove: (id: string) => Promise<unknown>;
@@ -100,6 +101,7 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
   };
   const [rows, setRows] = useState<ResourceRow[]>(() => settingsResourceRows(initialValue, section));
   const [defaultId, setDefaultId] = useState<string | undefined>(undefined);
+  const [providerTypes, setProviderTypes] = useState<Array<{ id: string; name: string }>>([]);
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [configText, setConfigText] = useState('{}');
@@ -114,6 +116,21 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
   // The 默认 tag needs the list envelope's default id (storage section), which
   // the parent's prefetched initialValue does not carry — refetch on mount.
   useEffect(() => { void loadRows().catch(() => undefined); }, []);
+
+  // Websearch cards show the provider type's display name (Vue
+  // providerTypeLabel) sourced from /web-search-providers/types.
+  useEffect(() => {
+    if (section !== 'websearch' || !api.types) return;
+    let active = true;
+    void api.types().then((entries) => {
+      if (!active) return;
+      setProviderTypes(entries
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry))
+        .map((entry) => ({ id: String(entry.id ?? ''), name: String(entry.name ?? '') }))
+        .filter((entry) => entry.id));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [section]);
 
   async function loadRows() {
     if (api.listEnvelope) {
@@ -194,6 +211,9 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
   // Vue renders the raw engine_type on vectorstore/websearch cards and the
   // upper-cased provider on storage cards (LOCAL · 本地存储).
   const providerLabel = (provider: string) => (section === 'storage' ? provider.toUpperCase() : provider);
+  // Vue providerTypeLabel (WebSearchSettings.vue:486): the card subtitle shows
+  // the provider type's display name from /web-search-providers/types.
+  const providerTypeLabel = (providerId: string) => providerTypes.find((entry) => entry.id === providerId)?.name || providerId;
   // Vue VectorStoreSettings marks .env-sourced stores with a DEFAULT pill.
   const envPill = (row: ResourceRow) => row.source === 'env' ? (
     <span className="shrink-0 rounded-[4px] border border-[#e4e7ec] bg-[#f6f8fa] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#66758b]">{t('vectorStoreSettings.envTag')}</span>
@@ -242,7 +262,7 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
               {isDefault ? <span className="shrink-0 rounded-[4px] bg-[#e8f8f2] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#0a7f43]">{copy.defaultLabel}</span> : null}
             </div>
             <p className="backend-card__subtitle m-0 mt-1 flex items-center truncate text-[13px] text-muted">
-              <span>{provider ? providerLabel(provider) : copy.typeUnavailable}</span>
+              <span>{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
               {meta ? <><span className="mx-[4px]">·</span><span className="truncate">{meta}</span></> : null}
             </p>
           </div>
