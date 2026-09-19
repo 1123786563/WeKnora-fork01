@@ -1,0 +1,20 @@
+{
+  "_note": "Fixture divisions metadata; the _note key alongside \"divisions\" must be tolerated. Key order is intentionally non-alphabetical to prove the scanner preserves divisions.json order.",
+  "divisions": {
+    "product": {
+      "label": "产品",
+      "icon": "Box",
+      "color": "#D946EF"
+    },
+    "academic": {
+      "label": "学术",
+      "icon": "GraduationCap",
+      "color": "#8B5CF6"
+    },
+    "engineering": {
+      "label": "工程",
+      "icon": "Code",
+      "color": "#3B82F6"
+    }
+  }
+}

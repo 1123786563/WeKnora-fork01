@@ -1,0 +1,3 @@
+Not a role file: keeps the engineering division directory on disk while it
+holds zero .md files, proving the scanner tolerates an empty division.
+The scanner skips non-.md entries, so this file is never parsed.
