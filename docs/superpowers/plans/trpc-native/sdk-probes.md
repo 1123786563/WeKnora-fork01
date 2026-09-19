@@ -12,7 +12,13 @@
 
 任务指定的 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v` 在 v1.10.0 失败。race detector 报告 `session.(*Session).Clone`（`session/session.go:95`）与 `session.(*Session).UpdateUserSession`（`session/session.go:476`）并发访问同一 session。调用路径分别来自 function-call processor 的 state-delta snapshot 和 runner 的 in-memory `AppendEvent` 持久化。该结果是固定 SDK 内部代码的竞态，产品代码没有改动来掩盖它；因此 P0-2 的 race-quality gate 不能标记为通过，需由后续 SDK 升级/上游修复决策处理。
 
-**产品执行门：** 在明确批准一个 SDK 版本和 Session-service 配置，并且 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v` 无 race、以成功退出前，不得启用任何原生 Runner 产品执行任务。当前 v1.10.0 受上述 SDK 内部 race 阻断，不能满足此门。
+**产品执行门：** 在明确批准一个 SDK 版本和完整 Session/Memory service 配置后，必须由受审任务执行且全部通过以下固定多次 gate，才能启用任何原生 Runner 产品执行任务：
+
+```sh
+GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
+```
+
+`-count=20` 要求同一已固定组合连续二十次独立测试运行均以零退出且没有 race report；一次通过不能解除门禁。当前 v1.10.0 连单次历史探针也失败，仍为 **NO-GO**，本文件没有声称修复或重新验收它。
 
 ## 未验证的主张
 

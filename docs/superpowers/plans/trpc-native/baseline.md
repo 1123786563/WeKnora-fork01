@@ -63,4 +63,4 @@
 
 ## 覆盖判定
 
-每个当前注册入口至少对应 `features.tsv` 一行；每一行指定 P1/P2/P3/P4/P5/P6/P7 责任工作包。无当前消费者的 SDK Session/Memory 采用条目保留为“待迁移”，并写明搜索范围（`apps`、`packages`、`cli`、`client` 的 agent/chat/stream/session/memory 路径）。Task 1 已通过文档覆盖审查；没有 synthetic RED，也没有把静态、Mock、SQLite 或单元结果升级为真实提供商、浏览器、原生设备、PostgreSQL 或发布验收。
+每个当前注册入口至少对应 `features.tsv` 一行；每一行遵循总计划的固定责任：P1 存储/唯一权威，P2 治理/准入，P3 Runner/Session/Memory 执行链，P6 归档/配置迁移，P7 完整验收，P8 切换演练/发布。无当前消费者的 SDK Session/Memory 采用条目保留为“待迁移”，并写明搜索范围（`apps`、`packages`、`cli`、`client` 的 agent/chat/stream/session/memory 路径）。Task 1 已通过文档覆盖审查；没有 synthetic RED，也没有把静态、Mock、SQLite 或单元结果升级为真实提供商、浏览器、原生设备、PostgreSQL 或发布验收。

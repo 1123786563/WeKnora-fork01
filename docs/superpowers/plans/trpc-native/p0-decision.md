@@ -21,13 +21,13 @@ The matrix totals at this baseline are 4 `verified`, 79 `source-only`, 2 `blocke
 
 ## Required gate resolution and downstream ruling
 
-Before any native Runner product execution, a separate reviewed task must select an exact official SDK tag/commit, every Session/Memory storage submodule and configuration, and their checksums. It must first rerun the unchanged race probe successfully:
+Before any native Runner product execution, a separate reviewed task must select an exact official SDK tag/commit, every Session/Memory storage submodule and configuration, and their checksums. It must first pass the fixed repeated race gate; a one-off pass is not unlock evidence:
 
 ```sh
-GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v
+GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
 ```
 
-That result is necessary but not sufficient. The selected composition must then establish the Session append-failure barrier, durable event/outbox behavior, six recovery transitions, tenant/principal isolation, SQLite and PostgreSQL persistence, and the required real-Provider matrix. A replacement version may be accepted only after the same probes and failure tests; current v1.11.x files in the local module cache are not evidence.
+All twenty executions must exit zero with no race report. That result is necessary but not sufficient. The selected composition must then establish the Session append-failure barrier, durable event/outbox behavior, six recovery transitions, tenant/principal isolation, SQLite and PostgreSQL persistence, and the required real-Provider matrix. A replacement version may be accepted only after the same probes and failure tests; current v1.11.x files in the local module cache are not evidence. v1.10.0 remains **NO-GO** because its historical one-run probe reported the SDK race; this gate hardening is not a repair claim.
 
 | Downstream work | Ruling now | Unlock evidence |
 | --- | --- | --- |

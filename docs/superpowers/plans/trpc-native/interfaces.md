@@ -2,7 +2,11 @@
 
 2026-09-19；源码基线 `ba6dfcc69f167ef6250aa983484930b462ce0900`。这是后续 P1–P7 的契约草案交付，不是已实现 API。固定 SDK 为 `trpc.group/trpc-go/trpc-agent-go v1.10.0`；`sdk:` 路径相对于此模块根，`repo:` 相对于仓库根。[能力矩阵](sdk-capabilities.tsv) 的 `source-only` 表示只读了源码，`verified` 仅适用于行内命名的具体探针。本文所有新类型均是待实现的 `nativecontract` v1，不能冒充当前包导出类型。
 
-**执行门仍关闭。** Task 2 已记录 Runner + in-memory Session 的 SDK race。产品任务必须先批准确切 SDK/Session 配置，且 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=1 -v` 成功无 race。即使修复该项，Session append 错误传播、逐工具恢复边界、数据库组合和真实 Provider 仍要分别验收。文档交付可完成，不能据此解锁实现接线或发布。
+**执行门仍关闭。** Task 2 已记录 Runner + in-memory Session 的 SDK race。产品任务必须先批准确切 SDK/Session/Memory 配置，且连续二十次通过 `GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v`（零退出、无 race report）；一次通过不解锁。当前 v1.10.0 的历史单次探针已失败，仍是 **NO-GO**，本门禁加固不构成修复。即使后续通过该项，Session append 错误传播、逐工具恢复边界、数据库组合和真实 Provider 仍要分别验收。文档交付可完成，不能据此解锁实现接线或发布。
+
+## 阶段责任映射
+
+本契约与清单使用总计划的固定责任：P1 是数据存储与唯一权威；P2 是治理、准入、审批、工具副作用与预算；P3 是原生 Runner、模型、Session 与 Memory 执行链；P6 是只读归档与业务配置迁移；P7 是已集成组合的完整故障/功能验收；P8 是切换演练与具体发布。跨阶段条目只在前置、消费或验收确有责任时列出，不把 P7 或 P8 写成实现所有者。
 
 ## 1. 当前类型与权威边界
 
@@ -21,7 +25,7 @@
 
 SDK Session service 的数据库实现尚未固定。本任务没有把本机另装的 v1.11.0 SQLite/PostgreSQL 子模块混入 v1.10.0 结论。P1 必须固定每个子模块的版本/校验和、其 root SDK 依赖与 Session 实例并发语义；也可在既有业务数据库上实现固定 `session.Service` 的最小存储适配器，但需同样通过 race、分页、幂等、故障测试。选型未完成前此处为**明确阻塞**，不能只靠 root `go.mod` 声称 SQL 存储已可用。Memory 持久化实现有相同选型与版本门槛。
 
-## 2. 认证范围与键映射（P1 权威，P2/P3/P4 消费）
+## 2. 认证范围与键映射（P1 权威；P2 治理、P3 执行消费）
 
 认证入口已有 JWT、tenant API key、API external user、IM、Embed 等 principal；`types.Principal` 不代表 RBAC 用户。v1 由 `ScopeResolver` 使用当前认证上下文与资源服务生成范围。worker 恢复从准入记录取得身份，再重新验证成员资格、key/channel 状态、resource grants 与策略版本；不能重建一个永久可信的旧 request context。
 
@@ -581,7 +585,7 @@ type ArchiveReader interface {
 }
 ```
 
-## 3A. 待决策详情、读取与解决（P1/P2/P4/P5）
+## 3A. 待决策详情、读取与解决（P1 持久化；P2 治理；P4/P5 消费；P7 验收）
 
 来源是 `internal/agent/approval/gate.go` 的 `PendingRequest`/`OAuthPendingRequest`（服务、工具、说明、参数与资源关联），`internal/application/service/session.go installDurableOAuthPark`（持久 service_id/service_name/mcp_tool/call/hash/resource_ref），`internal/handler/session/agent_run.go ownedRun/PostAgentRunDecision`、`internal/application/service/agent_run_decisions.go ValidateDecision/Resolve` 与 repository `ApplyDecision`（归属、当前策略、revision/hash、幂等消费），以及 `internal/handler/mcp_oauth.go AuthorizeURL/Status/ResolveMCPOAuth`（服务与 principal 的 OAuth 确认）。旧 in-process Gate 只作交互语义来源，不充当新系统的耐久权威。
 
@@ -602,7 +606,7 @@ Get/List/BeginOAuth/Resolve 每次从认证 Scope 检查 tenant、Session owner�
 
 terminate 适用于所有开放等待（包括前置 OAuth/审批），统一通过受权取消终结事务处理，而不依赖旧 repository 对 planned-wait terminate 的分支限制。Resolve 成功返回最新详情、run revision/status 和 resume_state；queued 表示同一 run 等待 worker，held 表示已记录但因 worker/执行门或外部结果仍不能推进，terminated 表示不再恢复。运行未执行、工具未完成时绝不返回“工具成功”。SDK race 门未解除时不得 BeginOAuth/Resolve 的成功触发产品 native Runner；已有合法等待的决定仍可保存并 held，terminate/read 仍允许。所有批准/拒绝/提供结果审计保留，过期 worker 不得消费决定。P1/P2 做双数据库持久/CAS/幂等与撤权测试，P4 做真实 OAuth/service 绑定、失败/过期/取消、外部 action 核对，P5 做详情展示和重连同步；P7 复验跨进程、双 worker 和所有客户端。
 
-## 3B. 新准入开关与排空（ENG-006；P2/P7）
+## 3B. 新准入开关与排空（ENG-006；P2 实现，P7 验收）
 
 `RunControl.Admit` 必须读取服务端 `AdmissionControlSource.Current`，不是调用者 Admission 字段。来源对应当前 `config.AgentRecoveryConfig.RecoveryEnabled/RecoveryAdmissionEnabled`（未设置默认 false）、`Config.IsWorkbenchWorkerDraining`，及容器 `AgentRecoveryAdmissionEnabled/ValidateAgentRuntimeConfig`。部署环境输入为 `WEKNORA_AGENT_RECOVERY_ENABLED`、`WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED`、`WEKNORA_WORKBENCH_WORKER_DRAIN`；解析后的受控配置 revision 才是准入判断来源，不接受客户端覆盖。NativeExecutionApproved 同时要求本文件首段的批准 SDK/Session 配置与 clean race gate，DependenciesReady 要求 run store、checkpoint/journal/事件/Session、模型与执行器所需服务可用；开关打开本身不能绕过这些门槛。
 
@@ -618,7 +622,7 @@ terminate 适用于所有开放等待（包括前置 OAuth/审批），统一通
 
 源码依据为 `internal/application/service/agent_run_graph.go submitDurableAgentRun`、`internal/container/agent_runtime.go` 及 `internal/application/service/agent_run_admission_gate_test.go`/`internal/config/agent_recovery_default_test.go`。这是行为契约补齐，不新增这些测试的通过声明。P2 必须测试 nil/default、enabled/admission_enabled 的四种组合、drain 覆盖、新 child/followup lane、配置关闭与提交竞态、幂等请求、读/取消/cleanup 可达和已有 run 排空；P7 在 SQLite/PostgreSQL、重启/双 worker/维护窗口验证“新准入数为零、既有 run 可终结或安全 held、无失租 dispatch”，并保留原生 race no-go。
 
-## 4. ID、错误、重试与用量（P2/P3）
+## 4. ID、错误、重试与用量（P2 治理；P3 产生执行输入）
 
 `RequestID` 在 `(tenant, Session owner, session, client request key)` 内幂等；同键不同 InputHash 返回 conflict。新 RunID 不等于 SDK RequestID，但装配层明确将 SDK `agent.WithRequestID` 绑定 RunID，保留 client request key。`InvocationID` 用于 SDK branch/追踪；业务 Run/Attempt 不从它推导授权。所有模型 dispatch、tool dispatch、failover/hedge 实际请求均需独立持久 attempt；同一次崩溃恢复复用已提交的 attempt/result，不凭新随机 ID 逃过幂等检查。预算根由准入生成，子 run 不能改它。
 
@@ -644,7 +648,7 @@ terminate 适用于所有开放等待（包括前置 OAuth/审批），统一通
 
 `AfterModel` 在 `sdk:internal/flow/llmflow/llmflow.go` 的 response 序列中调用；不是“每次模型调用只触发一次”的结算保证。ObservationID/Revision 对 cumulative usage 做 CAS 更新，账本只收差额；重复 stream、Session 重放、checkpoint 恢复均不重复记费。失败或取消可能已有真实成本；缺失 usage 为 unknown，等待核对。`FundingBinding` 仅由服务端现有商业归属解析，platform/BYOK、价格与 credential 版本不得由模型或 Provider observation 决定。父子预算在同一预算根上原子预留/释放，SDK MaxLLMCalls 不能替代商业预算。
 
-## 5. 六间隙提交协调（P1 定义存储，P3 实现，P7 故障验收）
+## 5. 六间隙提交协调（P1 定义存储权威；P2 定义工具/准入治理；P3 实现执行链；P7 故障验收）
 
 采用**业务数据库内提交意图 + Session 幂等应用 + 显式推进屏障**契约。SQLite/PostgreSQL 分别验收，不假定 SDK Session、checkpoint、事件天然共享事务。即使物理同库，只有实现证实处于同一事务才能优化合并；否则始终执行以下协议。
 
@@ -681,7 +685,7 @@ Memory switch、成员/key 撤销、clear/delete 均递增范围 generation 或�
 
 Delegate Start 在一个准入事务固定 child run、parent、budget root、scope 子集、target/workspace 和触发 call ID；重复 Start 返回同一 child。结果必须携带 child 身份，父取消先持久化并传播至 child/Sandbox，再核对已派发动作。SDK branch/state merge 的顺序不是业务租约：并行写入以独立 branch ID 和单一 Session commit 序列协调，冲突不能 last-writer-wins 静默覆盖。现有 Craft 工作区限制和远程 provider 身份必须保留。
 
-归档 API 只暴露 ArchiveReader，Kind 仅为 session/message/tool_call/approval/audit/memory/artifact 的已有记录类别，默认分页上限 100。查询/附件访问每次使用当前空间与资源权限；不因曾是成员而允许读取。对旧 session 的 RunControl/steer/resume/model-context 操作返回 archive_read_only；旧协议客户端在切换后收到 client_upgrade_required。新协议的自动上下文组装禁止读取归档。历史主动检索工具若业务允许，可返回明确来源、当前授权的只读结果，不能冒充新 Session 历史。归档保留记录、附件和产物引用，不新增清除策略；P6/P7 验证数量/关系/权限/备份恢复后才允许切换。
+归档 API 只暴露 ArchiveReader，Kind 仅为 session/message/tool_call/approval/audit/memory/artifact 的已有记录类别，默认分页上限 100。查询/附件访问每次使用当前空间与资源权限；不因曾是成员而允许读取。对旧 session 的 RunControl/steer/resume/model-context 操作返回 archive_read_only；旧协议客户端在切换后收到 client_upgrade_required。新协议的自动上下文组装禁止读取归档。历史主动检索工具若业务允许，可返回明确来源、当前授权的只读结果，不能冒充新 Session 历史。归档保留记录、附件和产物引用，不新增清除策略；P6 实现归档与配置迁移，P7 验证数量/关系/权限/备份恢复，P8 仅在 P7 通过后演练切换。
 
 ## 8. 每类扩展的理由、测试与删除条件
 
