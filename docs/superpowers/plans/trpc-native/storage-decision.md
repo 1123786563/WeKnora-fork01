@@ -7,14 +7,13 @@ P0 product-execution ruling.
 
 ## Decision
 
-**P1 storage composition is `blocked-design`; native Runner product execution
-remains P0 `NO-GO`.**  No raw tRPC Session or Memory SQL backend is selected
-for product use.  The only selected design boundary is a WeKnora-controlled
-Session/Memory facade backed by the same business database used for the run,
-commit-intent, business-event, and governance records.  It may call an SDK
-service behind that facade only after the P1.2 implementation proves every
-contract below for each active dialect.  This is a boundary selection, not a
-physical backend approval and not permission to implement P1.2.
+**P1.0 approves and freezes the WeKnora-controlled Session/Memory facade plus
+business-database adapter as the P1 implementation boundary.**  It unlocks
+P1.1, then P1.2 after P1.1 meets its own DAG gate.  No raw tRPC Session or
+Memory SQL backend is selected for product use.  This boundary approval does
+not enable native Runner product execution: that remains P0 `NO-GO`.  P1.3,
+P1.4, P1.5 and P2 proceed only in their DAG order with their own RED/GREEN,
+review, and integration evidence; P7 remains the integrated acceptance gate.
 
 | Candidate | Decision | Evidence and consequence |
 | --- | --- | --- |
@@ -44,9 +43,25 @@ All probes are standalone Go modules, ran with `GOWORK=off`, and have no local
 | Memory probe | `trpc.group/trpc-go/trpc-agent-go/storage/postgres` | `v1.11.0` | `h1:t7sovgCKIVbxNETujKGvJ4hWZlQY+hoFmE2dNeT9piY=` | `h1:X/XSYESqsU2l80yTyi/ggBvD3ofQGyjqJU5NeSKe2/o=` |
 
 The Session probe's indirect `storage/postgres v0.8.0` differs from the
-Memory probe's explicitly resolved `v1.11.0`.  That inconsistency is itself a
-reason no combined raw SDK SQL composition is approved.  P1.2 must pin and
-verify its complete resolved graph instead of borrowing either probe's graph.
+Memory probe's explicitly resolved `v1.11.0`.  `v0.8.0` has zip sum
+`h1:8phxJucSgwhdhS0UP6uyaVtWyNL3z1RW7OfLHYUtzco=` and go.mod sum
+`h1:q1/qPdLQ8hgyGhvq2t0lmfhRcekm0chBc5+ZI32pBv0=`.  It is not selected for
+the product composition.  That mismatch is a reason no combined raw SDK SQL
+composition is approved; P1.2 pins its complete adapter graph.
+
+## v1.11.0 SDK service surface (source-confirmed only)
+
+These are actual interfaces in root package
+`trpc.group/trpc-go/trpc-agent-go@v1.11.0`: `session/session.go` and
+`memory/memory.go`.  They describe an SDK seam only.  The raw SQL backends
+above remain rejected, and the listed methods do not provide the controlled
+facade's authorization, receipt/hash, generation/tombstone, fence, or barrier
+semantics.
+
+| Service | Source-confirmed methods | P1.0 interpretation |
+| --- | --- | --- |
+| `session.Service` | `CreateSession(ctx, Key, StateMap, ...Option) (*Session, error)`; `GetSession(ctx, Key, ...Option) (*Session, error)`; `ListSessions(ctx, UserKey, ...Option) ([]*Session, error)`; `DeleteSession(ctx, Key, ...Option) error`; `UpdateAppState`, `DeleteAppState`, `ListAppStates`; `UpdateUserState`, `ListUserStates`, `DeleteUserState`; `UpdateSessionState`; `AppendEvent(ctx, *Session, *event.Event, ...Option) error`; `CreateSessionSummary`; `EnqueueSummaryJob`; `GetSessionSummaryText`; `Close() error`. | Source-confirmed root interface.  P1.3's controlled facade must implement the selected durable subset and adds stable-ID/PayloadHash receipt behavior; raw backend implementations are not accepted merely because they satisfy this interface. |
+| `memory.Service` | `ReadMemories(ctx, UserKey, int) ([]*Entry, error)`; `SearchMemories(ctx, UserKey, string, ...SearchOption) ([]*Entry, error)`; `AddMemory(ctx, UserKey, string, []string, ...AddOption) error`; `UpdateMemory(ctx, Key, string, []string, ...UpdateOption) error`; `DeleteMemory(ctx, Key) error`; `ClearMemories(ctx, UserKey) error`; `Tools() []tool.Tool`; `EnqueueAutoMemoryJob(ctx, *session.Session) error`; `Close() error`. | Source-confirmed root interface.  P1.4's facade must add scope recheck and generation/tombstone CAS around every delayed write; no raw Memory backend or auto-job method is selected for direct product use. |
 
 ## Active dialect ruling
 
@@ -88,6 +103,19 @@ The Memory forced RED clears the subject scope and then commits stale extraction
 content from the prior generation.  Those are the required negative cases,
 not hypothetical source-only risks.
 
+### Probe RED assertion boundary
+
+The forced probe REDs establish only that the **raw** backend returned no error
+for a changed stable Event.ID or an old-generation post-clear write.  They do
+not assert a controlled-facade typed `conflict`/CAS error, do not reopen and
+compare the durable changed payload, and do not reopen and prove an empty
+Memory scope after the stale write.  They are therefore rejection evidence for
+the raw candidates, never GREEN evidence for the selected facade.  P1.3 owns
+the Session RED/GREEN cases for typed conflict plus reopened payload/receipt;
+P1.4 owns the Memory RED/GREEN cases for generation/tombstone CAS plus reopened
+empty-set/retained-metadata assertions.  Probe files are not product tests and
+are not changed by this decision.
+
 ## Frozen transaction, CommitIntent, barrier, and reconcile contract
 
 `interfaces.md` already defines the required P1 types without a backend-specific
@@ -120,41 +148,48 @@ completion.  Its completion event is therefore never a barrier.  An append or
 checkpoint failure must produce `durable_store_unavailable`, latch execution,
 and prevent later model/tool/graph dispatch until reconciliation succeeds.
 
+## Six recovery gaps mapped to ownership
+
+This table expands the six rows in `recovery-gaps.md`; it is not a replacement
+for the transaction protocol above.  “Unknown” always means no automatic
+redispatch of a non-idempotent external effect.
+
+| Recovery gap | Current gap | Target CommitIntent / barrier / reconcile behavior | Unknown side-effect strategy | Responsible stages | Required concrete evidence |
+| --- | --- | --- | --- | --- | --- |
+| Model result → tool-plan commit | Runner callbacks do not atomically persist provider tool-call ID, args hash, model attempt and fence before dispatch. | CommitIntent records one validated plan before any call; Barrier blocks dispatch until it is durable; Reconcile reads that plan rather than regenerating one. | No external call exists yet: persistence failure means zero dispatch. | P1 contract, P2 plan/journal, P3 runner integration, P7 acceptance. | SIGKILL after plan commit; SQLite and PostgreSQL reopen show one unchanged plan/args hash; real-provider matrix separately proves provider IDs. |
+| Approval → external call | `graph.Interrupt` exists but raw callbacks do not make the human decision durable or recheck it at dispatch. | CommitIntent binds plan, approver, scope/revision and expiry; Barrier validates the current approval before dispatch; Reconcile keeps rejection/expiry waiting. | Invalid, revoked or expired approval gives `waiting_user` with zero dispatch. | P1 decision contract, P2 approval gate, P3 dispatch integration, P7 acceptance. | SIGKILL after approval commit before call; test wrong subject, expiry and revocation with exactly one compliant dispatch. |
+| Call success → result persistence | External success can precede local result/receipt storage. | CommitIntent stores immutable result, provider receipt/query anchor and effect state; Barrier requires the result receipt; Reconcile reuses a confirmed result. | Query if supported; idempotent retry only with proof; otherwise `unknown_effect` and `waiting_user`. | P1 result model, P2 query/idempotency policy, P3 transition, P7 real-provider/connector acceptance. | SIGKILL after success before result write; demonstrate query/reuse for queryable calls and no redispatch for unqueryable non-idempotent calls. |
+| Result persistence → checkpoint | Existing SQLite probe proves a pending write, not result-reference/checkpoint atomicity. | CommitIntent carries result references and non-runnable checkpoint pending writes; Barrier makes checkpoint runnable only after references verify; Reconcile completes the same intent. | A confirmed result is never called again; missing/invalid reference blocks recovery. | P1 invariant, P2 recovery validation, P3 saver, P7 crash matrix. | Kill once after result commit and once after checkpoint commit; SQLite/PostgreSQL reopen prove no repeat call and matching references/pending order. |
+| Checkpoint → Session | Current checkpoint evidence does not coordinate new Session history authority. | CommitIntent contains Session append receipt; Barrier requires `(AppName, UserID, SessionID, StableEventID, PayloadHash)` application before advancing; Reconcile applies idempotently. | No external call is inferred from Session state; conflict or append failure latches execution. | P1 authority contract, P1.3 Session facade, P3 recovery integration, P7 race/process acceptance. | Cross-process and two-tenant reopen on SQLite/PostgreSQL; same ID/same hash succeeds, changed hash returns typed conflict, append failure causes zero later dispatch. |
+| Event persistence → client send | Current `emit` can warn and continue; a sent client message is not durable state. | CommitIntent records business event/outbox; Barrier allocates sequence only after durable append; Reconcile replays the outbox, and client sends read committed sequence. | Client disconnect has no external-effect implication; reconnect replays from `Last-Event-ID`; append failure remains visible/recoverable. | P1 event contract, P1.5 event implementation, P3 projection, P5 protocol, P7 client acceptance. | Kill/interrupt around append, projection and send; reconnect reads ordered no-loss/no-duplicate events; append failure stops dispatch and exposes recovery. |
+
 ## Unlock conditions and executable evidence tasks
 
-P1.1 may freeze the already-defined `nativecontract` types only after this
-document is reviewed and integrated.  P1.2 and every downstream implementation
-remain `blocked-design` until all of the following have evidence on its exact
-commit and resolved module graph:
+P1.0 now unlocks P1.1 and, after P1.1 is integrated, P1.2.  P1.2 implements
+the selected adapter/migrations for SQLite and PostgreSQL, pins its exact
+resolved graph, and runs its scoped RED/GREEN/review sequence.  Its completion
+does not pre-approve P1.3/P1.4/P1.5/P2: each proceeds only after its explicit
+DAG predecessor and task-level evidence.  The required later evidence is
+assigned rather than made a self-blocking P1.2 precondition:
 
-1. Implement the selected controlled facade and its SQL migrations for both
-   PostgreSQL and SQLite.  Test scope isolation, reopen/list/delete, receipt
-   uniqueness, same-ID/same-hash idempotency and same-ID/different-hash
-   conflict.  Inject an append failure and prove zero later dispatch.
-2. Supply disposable PostgreSQL DSNs and run the Session and Memory probe
-   characterization plus forced contract commands with `P1_*_PG_DSN` and
-   `P1_REQUIRE_CONTRACT=1`; no skipped PostgreSQL case may be reported as pass.
-   Resolve the Session PostgreSQL initializer/index defect or avoid it through
-   the reviewed facade migration, then prove the chosen path.
-3. Test Memory clear/delete/disable/re-enable against delayed extraction writes
-   on both dialects; prove old generation and revoked subject writes fail and
-   all retained business metadata survives.
-4. Add six-gap crash/reconcile tests around intent creation, result persistence,
-   Session apply, barrier, event projection and finalization.  Include two
-   workers, stale fence, and cross-process recovery.  A database transaction
-   does not claim external exactly-once behavior.
-5. Repair and regression-test
-   `TestExecuteDurableRunPersistsBudgetExhaustionForNotification`: persist the
-   durable `budget_exhausted` event before notification projection, then run the
-   complete affected service suite.  This is a distinct existing-consumer
-   blocker, not a waiver.
-6. Provide `TRPC_RECOVERY_PG_DSN` and an authorized
-   `TRPC_RECOVERY_GRAPH_PROVIDER`; run PostgreSQL SIGKILL/contention and real
-   provider recovery matrices.  Record identity and resources without secrets.
+1. P1.3 proves Session scope/reopen/list/delete, receipt uniqueness,
+   same-ID/same-hash idempotency, typed same-ID/different-hash conflict and
+   append-failure zero-dispatch on both active dialects.
+2. P1.4 proves clear/delete/disable/re-enable against delayed extraction,
+   authorization recheck and generation/tombstone CAS, including reopened
+   empty-memory and retained business-metadata assertions.
+3. P1.5 proves CommitIntent, barrier, reconcile, outbox/event ordering and
+   the corresponding persistence failures.  P2 adds approval, budget and
+   side-effect policy; the currently failing `budget_exhausted` notification
+   test is a separate repair and regression obligation.
+4. P7 runs the six-gap process-kill/two-worker acceptance matrix on SQLite and
+   PostgreSQL, plus real-provider/connector and client replay evidence.  It
+   requires `TRPC_RECOVERY_PG_DSN` and an authorized
+   `TRPC_RECOVERY_GRAPH_PROVIDER`; until supplied those cases are `blocked-env`.
 
-P2 remains blocked by P1's durable store boundary.  P3 native Runner wiring,
-P4/P5 clients, and release remain blocked by the original P0 conditions plus
-their own acceptance; none of these steps changes P0 from `NO-GO` to `GO`.
+P3 native Runner wiring, P4/P5 clients, and release remain controlled by the
+original P0 conditions plus their own acceptance.  Nothing here changes P0
+from `NO-GO` to `GO`.
 
 ## P0 ruling retained
 
