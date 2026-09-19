@@ -264,8 +264,11 @@ func (r *NativeMemoryRepository) Claim(ctx context.Context, job nativecontract.M
 			}
 			return err
 		}
-		if err := r.verifyJobSource(tx, job); err != nil {
-			return err
+		legacyJob := row.SessionAppName == "" && row.SessionUserID == "" && row.SessionID == ""
+		if !legacyJob {
+			if err := r.verifyJobSource(tx, job); err != nil {
+				return err
+			}
 		}
 		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=?", job.Scope.TenantID, subject, job.ID, NativeMemoryJobQueued).Update("status", NativeMemoryJobRunning)
 		if result.Error != nil {
