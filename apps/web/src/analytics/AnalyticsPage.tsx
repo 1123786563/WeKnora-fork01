@@ -14,6 +14,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { ActiveUsersPoint, AgentUsagePoint, ChannelSessionsPoint, QueryTrendPoint } from '@weknora/contracts';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
+import { AGENT_SERIES, TREND_SERIES } from './chart-series.ts';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from './analytics-range.ts';
 
 /** Tenant membership role, mirroring scopeRuntime.role() (router wiring). */
@@ -37,11 +38,8 @@ const AN_ERROR = 'flex h-[240px] flex-col items-center justify-center gap-[10px]
 const AN_AGENT_BAR = 'mb-[16px] flex flex-wrap items-center gap-[8px]';
 const AN_FORBIDDEN = 'flex h-full min-h-[240px] flex-col items-center justify-center gap-[8px] px-[20px] py-[60px] text-center';
 
-// Query trend: queries rides the accent green, feedback splits blue/red.
-const AN_TREND_COLORS: Record<string, string> = { queries: '#07c05f', likes: '#2e6de6', dislikes: '#d54941' };
 // Channel stack palette cycles beyond the fourth source.
 const AN_SERIES_COLORS = ['#07c05f', '#2e6de6', '#7c4dff', '#faad14', '#13c2c2', '#e37318', '#8b97a8'];
-const AN_AGENT_COLORS: Record<string, string> = { messages: '#07c05f', unique_users: '#7c4dff' };
 
 function t(locale: string, key: string): string {
   return formatMessage(isLocale(locale) ? locale : 'en-US', key);
@@ -219,8 +217,8 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
                 <YAxis tick={axisTick} allowDecimals={false} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                {(['queries', 'likes', 'dislikes'] as const).map((key) => (
-                  <Line key={key} type="monotone" dataKey={key} name={t(locale, `analytics.${key}`)} stroke={AN_TREND_COLORS[key]} strokeWidth={2} dot={false} />
+                {TREND_SERIES.map((series) => (
+                  <Line key={series.dataKey} type="monotone" dataKey={series.dataKey} name={t(locale, series.labelKey)} stroke={series.color} strokeWidth={2} dot={false} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
@@ -280,8 +278,8 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
                 <YAxis tick={axisTick} allowDecimals={false} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                {(['messages', 'unique_users'] as const).map((key) => (
-                  <Line key={key} type="monotone" dataKey={key} name={t(locale, `analytics.${key}`)} stroke={AN_AGENT_COLORS[key]} strokeWidth={2} dot={false} />
+                {AGENT_SERIES.map((series) => (
+                  <Line key={series.dataKey} type="monotone" dataKey={series.dataKey} name={t(locale, series.labelKey)} stroke={series.color} strokeWidth={2} dot={false} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
