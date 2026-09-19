@@ -64,6 +64,51 @@ test('valid image destinations still render img elements', () => {
   assert.match(html, /<img src="https:\/\/example\.com\/a\.png" alt="图"/);
 });
 
+/*
+ * Vue renders content images through t-image, whose error state shows the
+ * 图片无法显示 placeholder with a 预览 preview trigger when the load fails
+ * (WikiBrowser/browser evidence 2026-09-19). Markdown and raw-HTML images both
+ * get the same wrapper + hidden fallback markup.
+ */
+test('markdown images render inside the chat-image wrapper with the hidden fallback', () => {
+  const html = renderChatMarkdown('![图](https://example.com/a.png)');
+  assert.match(html, /data-wk-chat-image/);
+  assert.match(html, /data-wk-chat-image-img/);
+  assert.match(html, /class="wk-chat-image-error"/);
+  assert.match(html, /图片无法显示/);
+  assert.match(html, /data-wk-chat-image-preview/);
+  assert.match(html, /预览/);
+});
+
+test('raw <img> tags are whitelisted with safe-src enforcement', () => {
+  const safe = renderChatMarkdown('<img src="https://example.com/b.png" alt="截图">');
+  assert.match(safe, /data-wk-chat-image/);
+  assert.match(safe, /src="https:\/\/example\.com\/b\.png"/);
+  assert.match(safe, /alt="截图"/);
+  assert.match(safe, /class="wk-chat-image-error"/);
+
+  const unsafe = renderChatMarkdown('<img src="javascript:alert(1)" alt="x">');
+  assert.match(unsafe, /<p>无效的图片链接<\/p>/);
+  assert.doesNotMatch(unsafe, /javascript:/i);
+
+  // Raw non-img HTML stays escaped (only <img> is whitelisted).
+  const html = renderChatMarkdown('<div onclick="alert(1)">hi</div>');
+  assert.match(html, /&lt;div onclick=&quot;alert\(1\)&quot;&gt;hi&lt;\/div&gt;/);
+  assert.doesNotMatch(html, /<div onclick/);
+});
+
+test('raw images inside fenced code blocks are not whitelisted', () => {
+  const html = renderChatMarkdown('```\n<img src="https://example.com/b.png">\n```');
+  assert.match(html, /&lt;img src=&quot;https:\/\/example\.com\/b\.png&quot;&gt;/);
+  assert.doesNotMatch(html, /data-wk-chat-image/);
+});
+
+test('image fallback labels carry the host-provided locale strings', () => {
+  const html = renderChatMarkdown('![x](https://example.com/a.png)', { imageFailedLabel: 'Image unavailable', imagePreviewLabel: 'Preview' });
+  assert.match(html, /Image unavailable/);
+  assert.match(html, /Preview/);
+});
+
 test('turns citation protocol tags into accessible reference buttons', () => {
   const html = renderChatMarkdown('答案 <kb doc="guide.md" chunk_id="chunk-1" />');
 

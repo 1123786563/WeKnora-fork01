@@ -60,6 +60,7 @@ async function renderChatRoutePage(input: {
             export function getAgentNotReadyReasonKeys() {
               return [];
             }
+            export function installChatImageErrorWatcher() {}
             export function agentNotReadyLabels() {
               return [];
             }

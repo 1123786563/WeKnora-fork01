@@ -72,6 +72,7 @@ async function renderChatRoutePage(input: { location: string }): Promise<Capture
             export function getAgentNotReadyReasonKeys() {
               return [];
             }
+            export function installChatImageErrorWatcher() {}
             export function agentNotReadyLabels() {
               return [];
             }

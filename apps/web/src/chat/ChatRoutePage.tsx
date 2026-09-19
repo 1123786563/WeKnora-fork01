@@ -7,6 +7,7 @@ import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@we
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
 import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
 import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
@@ -241,6 +242,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // from a previous tenant/client must not repopulate the next tenant's
   // picker, and a scope teardown must release the in-flight guard so the next
   // scope can issue a fresh request.
+  // Vue renders transcript images through t-image whose error state shows the
+  // 图片无法显示 placeholder + 预览 trigger; the capture-phase watcher swaps
+  // failed content images to that fallback (install is idempotent).
+  useEffect(() => { installChatImageErrorWatcher(); }, []);
+
   useEffect(() => {
     const generation = ++mentionGenerationRef.current;
     mentionLoadedRef.current = false;
