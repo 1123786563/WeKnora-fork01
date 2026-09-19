@@ -1,11 +1,11 @@
 task	depends_on	status	branch	base_sha	commit	owner	test_command	cwd	exit_code	evidence	spec_review	quality_review	integration
 P1.0	P0	passed	codex/trpc-native-p1-contract	f5caa23e	b494131c	/root/p1_0_storage_gate	probe test/race20/vet; forced Session/Memory RED; budget RED	tools/trpc-native-p1/*	0 for default probes; 1 for required RED	storage-decision.md; PG/provider blocked-env	PASS	PASS	integrated
 P1.1	P1.0	passed	codex/trpc-native-p1-identity-contract	1ef729dd	0062a814	/root/p1_1_identity_contract	GOWORK=off go test -race ./internal/agent/nativecontract -count=1; go vet	internal/agent/nativecontract	0	identity and wire tests; P0 validator	PASS	PASS	integrated
-P1.2	P1.1	blocked-design									pending	pending	pending
+P1.2	P1.1	blocked-env	codex/trpc-native-p1-schema	204ca14a	c91e4fba	/root/p1_2_schema_migrations	NativeSchema SQLite focused/PRAGMA PASS; PG DSN missing; aggregate legacy fixtures fail	tools/trpc-native-p1-schema	0 SQLite; PG skipped	storage schema/migrations; PG blocked-env; legacy fixture integration blocker	PASS	PASS	pending
 P1.3	P1.2	blocked-design									pending	pending	pending
 P1.4	P1.2	blocked-design									pending	pending	pending
 P1.5	P1.3,P1.4	blocked-design									pending	pending	pending
-P2.1	P1.1	blocked-design									pending	pending	pending
+P2.1	P1.1	passed	codex/trpc-native-p2-admission	204ca14a	edf84ac3	/root/p2_1_admission	GOWORK=off go test -race ./internal/application/service -run 'NativeAdmission'; go vet	internal/application/service	0 focused; existing budget test remains RED	admission/replay/concurrency/frozen authority tests	PASS	PASS	integrated
 P2.2	P2.1,P1.2	blocked-design									pending	pending	pending
 P2.3	P2.2,P1.5	blocked-design									pending	pending	pending
 P2.4	P2.3	blocked-design									pending	pending	pending
