@@ -62,6 +62,7 @@ func (nativeMemoryEntryRow) TableName() string { return "native_agent_memory_ent
 type nativeMemoryJobRow struct {
 	TenantID                                 uint64 `gorm:"column:tenant_id"`
 	SubjectID, JobID, ThroughEventID, Status string
+	SessionAppName, SessionUserID, SessionID string
 	Generation, PolicyRevision               int64
 }
 
@@ -198,7 +199,7 @@ func (r *NativeMemoryRepository) Delete(ctx context.Context, scope nativecontrac
 }
 
 func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract.MemoryJob) error {
-	if job.ID == "" || job.ThroughEventID == "" {
+	if job.ID == "" || job.ThroughEventID == "" || job.SessionKey.AppName == "" || job.SessionKey.UserID == "" || job.SessionKey.SessionID == "" {
 		return ErrNativeMemoryWriteRejected
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -209,7 +210,10 @@ func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
 			return ErrNativeMemoryWriteRejected
 		}
-		candidate := nativeMemoryJobRow{TenantID: job.Scope.TenantID, SubjectID: subject, JobID: job.ID, Generation: job.Generation, PolicyRevision: job.PolicyRevision, ThroughEventID: job.ThroughEventID, Status: NativeMemoryJobQueued}
+		if err := r.verifyJobSource(tx, job); err != nil {
+			return err
+		}
+		candidate := nativeMemoryJobRow{TenantID: job.Scope.TenantID, SubjectID: subject, JobID: job.ID, Generation: job.Generation, PolicyRevision: job.PolicyRevision, ThroughEventID: job.ThroughEventID, SessionAppName: job.SessionKey.AppName, SessionUserID: job.SessionKey.UserID, SessionID: job.SessionKey.SessionID, Status: NativeMemoryJobQueued}
 		var existing nativeMemoryJobRow
 		err = tx.Where("tenant_id=? AND subject_id=? AND job_id=?", candidate.TenantID, subject, job.ID).Take(&existing).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -218,11 +222,23 @@ func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract
 		if err != nil {
 			return err
 		}
-		if existing.Generation != candidate.Generation || existing.PolicyRevision != candidate.PolicyRevision || existing.ThroughEventID != candidate.ThroughEventID || existing.Status == NativeMemoryJobDiscarded || existing.Status == NativeMemoryJobFailed {
+		if existing.Generation != candidate.Generation || existing.PolicyRevision != candidate.PolicyRevision || existing.ThroughEventID != candidate.ThroughEventID || existing.SessionAppName != candidate.SessionAppName || existing.SessionUserID != candidate.SessionUserID || existing.SessionID != candidate.SessionID || existing.Status == NativeMemoryJobDiscarded || existing.Status == NativeMemoryJobFailed {
 			return ErrNativeMemoryWriteRejected
 		}
 		return nil
 	})
+}
+
+func (r *NativeMemoryRepository) verifyJobSource(tx *gorm.DB, job nativecontract.MemoryJob) error {
+	var count int64
+	err := tx.Table("native_agent_session_events").Where("tenant_id=? AND app_name=? AND user_id=? AND session_id=? AND stable_event_id=?", job.Scope.TenantID, job.SessionKey.AppName, job.SessionKey.UserID, job.SessionKey.SessionID, job.ThroughEventID).Count(&count).Error
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrNativeMemoryWriteRejected
+	}
+	return nil
 }
 
 func AcceptNativeMemoryWrite(enabled bool, currentGeneration, currentPolicy int64, job nativecontract.MemoryJob) bool {
@@ -321,6 +337,12 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 			}
 			if persisted.Status != NativeMemoryJobQueued && persisted.Status != NativeMemoryJobRunning {
 				return nil
+			}
+			if persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID {
+				return ErrNativeMemoryWriteRejected
+			}
+			if err := r.verifyJobSource(tx, job); err != nil {
+				return err
 			}
 		}
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
