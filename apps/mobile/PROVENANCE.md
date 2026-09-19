@@ -21,6 +21,10 @@
   的内容直接拷入（已剥离内层 `.git` 指针）。这两个是 `pubspec.yaml` 的 path
   依赖，上游以 submodule 提供；快照内联后无需 `git submodule update`。
 - **删除** 上游 `.gitmodules`（四条 submodule 记录在快照中全部失效）。
+- **剔除 katex 构建工具链**：`third_party/katex/packages/katex/tool/`（字体/
+  码表生成脚本，含 `gen_glyph_paths.py`）。Flutter 应用只消费 katex 预构建的
+  JS/CSS，这些脚本在本仓永不执行；其中 `gen_glyph_paths.py` 曾被 mimosa
+  钩子以路径穿越（high）拦截 commit，随快照移除（2026-09-19）。
 
 因此本目录**不需要** submodule 初始化，Flutter 侧从：
 
