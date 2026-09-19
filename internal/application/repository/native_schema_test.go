@@ -195,7 +195,10 @@ func TestNativeUserStateMigrationIsAdditive(t *testing.T) {
 			version, dirty, err := m.Version()
 			require.NoError(t, err)
 			require.False(t, dirty)
-			require.Equal(t, nativeUserStateMigrationVersion(dialect), version,
+			// Later tasks append their own migrations after this one, so the
+			// head only has to be AT or BEYOND the user-state migration —
+			// equality would break every subsequent migration in the tree.
+			require.GreaterOrEqual(t, version, nativeUserStateMigrationVersion(dialect),
 				"user state must be introduced by its own additive migration")
 		})
 	}
@@ -226,6 +229,17 @@ func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 				1, "rollback-guard-owner", "preferences", `{}`).Error)
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
+			// Later tasks append their own migrations after the user-state one
+			// (and may leave number gaps), so walk back to exactly that
+			// migration by target version; its guarded DOWN is the destructive
+			// rollback under test.
+			version, dirty, err := m.Version()
+			require.NoError(t, err)
+			require.False(t, dirty)
+			require.GreaterOrEqual(t, version, nativeUserStateMigrationVersion(dialect))
+			if version > nativeUserStateMigrationVersion(dialect) {
+				require.NoError(t, m.Migrate(nativeUserStateMigrationVersion(dialect)))
+			}
 			require.Error(t, m.Steps(-1), "a populated namespace must reject destructive rollback")
 			require.True(t, db.Migrator().HasTable("native_agent_runs"))
 		})

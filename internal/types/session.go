@@ -130,6 +130,15 @@ type Session struct {
 	// already provisioned. See types.ForkBootstrap.
 	ForkBootstrap *ForkBootstrap `json:"-" gorm:"type:jsonb;column:fork_bootstrap"`
 
+	// ShareToken is the opaque public capability token that opens this
+	// session's read-only history snapshot. Empty while the session is not
+	// shared. Globally unique across all sessions (NULLs excluded) via the
+	// uq_sessions_share_token partial unique index created by migration
+	// 000170; the GORM tag deliberately carries no uniqueIndex so it cannot
+	// fight the migration-built partial index. Never serialized to JSON: the
+	// share endpoints assemble their own explicit snapshot payloads.
+	ShareToken string `json:"-" gorm:"type:varchar(64)"`
+
 	// // Strategy configuration
 	// KnowledgeBaseID   string              `json:"knowledge_base_id"`                    // 关联的知识库ID
 	// MaxRounds         int                 `json:"max_rounds"`                           // 多轮保持轮数
