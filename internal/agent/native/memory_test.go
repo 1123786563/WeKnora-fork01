@@ -102,4 +102,11 @@ func TestNativeMemoryFacadePreservesMetadataAndAtomicallyUpdates(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, "new preference", entries[0].Memory.Memory)
+	// An SDK update can retain the same canonical key. It must update in place
+	// instead of tombstoning the row it has just upserted.
+	require.NoError(t, svc.UpdateMemory(ctx, memory.Key{AppName: key.AppName, UserID: key.UserID, MemoryID: entries[0].ID}, "new preference", []string{"updated"}))
+	entries, err = svc.ReadMemories(ctx, key, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, []string{"updated"}, entries[0].Memory.Topics)
 }

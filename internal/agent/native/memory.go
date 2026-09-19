@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	ErrMemoryScopeDenied = errors.New("native memory scope denied")
-	ErrMemoryWriteDenied = errors.New("native memory write denied")
+	ErrMemoryScopeDenied       = errors.New("native memory scope denied")
+	ErrMemoryWriteDenied       = errors.New("native memory write denied")
+	ErrMemorySearchUnsupported = errors.New("native memory search option unsupported")
 )
 
 // MemoryWrite is a bounded extractor output. The job stores only its source
@@ -117,8 +118,7 @@ func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJo
 func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
 	scope, err := s.authorize(ctx, job.Scope)
 	if err != nil {
-		_ = s.repo.Discard(ctx, job)
-		return nil
+		return errors.Join(err, s.repo.Discard(ctx, job))
 	}
 	job.Scope = scope
 	state, err := s.repo.State(ctx, scope)
@@ -134,15 +134,13 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 	}
 	writes, err := s.extractor(ctx, job)
 	if err != nil {
-		_ = s.repo.Fail(ctx, job)
-		return err
+		return errors.Join(err, s.repo.Fail(ctx, job))
 	}
 	// Re-resolve after extraction. A worker can spend meaningful time outside
 	// the transaction; its initial authorization is never a commit permit.
 	fresh, err := s.authorize(ctx, job.Scope)
 	if err != nil {
-		_ = s.repo.Discard(ctx, job)
-		return nil
+		return errors.Join(err, s.repo.Discard(ctx, job))
 	}
 	job.Scope = fresh
 	entries := make([]repository.NativeMemoryEntry, 0, len(writes))
@@ -151,7 +149,7 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 	}
 	_, err = s.repo.CommitWrites(ctx, job, entries)
 	if err != nil {
-		_ = s.repo.Fail(ctx, job)
+		return errors.Join(err, s.repo.Fail(ctx, job))
 	}
 	return err
 }
@@ -199,6 +197,9 @@ func (s *MemoryService) ReadMemories(ctx context.Context, key memory.UserKey, li
 }
 func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, query string, opts ...memory.SearchOption) ([]*memory.Entry, error) {
 	options := memory.ResolveSearchOptions(query, opts)
+	if options.TimeAfter != nil || options.TimeBefore != nil || options.OrderByEventTime || options.KindFallback || options.Deduplicate || options.HybridSearch || options.SimilarityThreshold != 0 || options.HybridRRFK != 0 {
+		return nil, ErrMemorySearchUnsupported
+	}
 	limit := options.MaxResults
 	if limit <= 0 {
 		limit = 100
@@ -291,10 +292,10 @@ func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) e
 	return s.repo.Clear(ctx, scope)
 }
 func (s *MemoryService) Tools() []tool.Tool {
-	if s.backend == nil {
-		return nil
-	}
-	return s.backend.Tools()
+	// SDK tools do not carry the server-resolved scope required by this
+	// facade. Exposing them would bypass authorization, so native wiring must
+	// call the scoped methods above instead of passing raw backend tools on.
+	return nil
 }
 func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
 	if sess == nil {

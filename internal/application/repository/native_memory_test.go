@@ -106,3 +106,23 @@ func TestNativeMemoryScopeIsolationAndDisabledReads(t *testing.T) {
 	require.ErrorIs(t, repo.Write(ctx, first, state.Generation, "m-2", "disabled", nil), ErrNativeMemoryWriteRejected)
 	require.False(t, errors.Is(ErrNativeMemoryWriteRejected, ErrNativeMemoryScope))
 }
+
+func TestNativeMemoryToggleAndPolicyDriftRetainUntombstonedEntries(t *testing.T) {
+	repo := newNativeMemoryTestRepository(t)
+	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	state, err := repo.State(ctx, scope)
+	require.NoError(t, err)
+	require.NoError(t, repo.Write(ctx, scope, state.Generation, "one", "first", nil))
+	require.NoError(t, repo.Write(ctx, scope, state.Generation, "two", "second", nil))
+	require.NoError(t, repo.Delete(ctx, scope, "one"))
+	require.NoError(t, repo.SetEnabled(ctx, scope, false))
+	require.NoError(t, repo.SetEnabled(ctx, scope, true))
+	changed := scope
+	changed.PolicyRevision = 2
+	require.NoError(t, repo.EnsureScope(ctx, changed))
+	entries, err := repo.Read(ctx, changed, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "two", entries[0].ID)
+}

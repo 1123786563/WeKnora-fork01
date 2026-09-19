@@ -271,6 +271,9 @@ func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontra
 		if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=?", scope.TenantID, subject, entry.ID).Assign(map[string]any{"generation": generation, "tombstoned": false, "content": entry.Content, "metadata": string(metadata)}).FirstOrCreate(&candidate).Error; err != nil {
 			return err
 		}
+		if oldID == entry.ID {
+			return nil
+		}
 		result := tx.Model(&nativeMemoryEntryRow{}).Where("tenant_id=? AND user_id=? AND memory_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, oldID, generation, false).Update("tombstoned", true)
 		if result.Error != nil {
 			return result.Error
@@ -351,7 +354,9 @@ func (r *NativeMemoryRepository) Read(ctx context.Context, scope nativecontract.
 		return []NativeMemoryEntry{}, nil
 	}
 	var rows []nativeMemoryEntryRow
-	if err := r.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, row.Generation, false).Order("memory_id").Limit(limit).Find(&rows).Error; err != nil {
+	// Generation fences delayed jobs; tombstones, not generations, decide
+	// whether an already remembered entry remains visible after policy changes.
+	if err := r.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND tombstoned=?", scope.TenantID, subject, false).Order("memory_id").Limit(limit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]NativeMemoryEntry, 0, len(rows))
@@ -381,7 +386,7 @@ func (r *NativeMemoryRepository) JobStatus(ctx context.Context, job nativecontra
 		return "", err
 	}
 	var row nativeMemoryJobRow
-	if err := r.db.WithContext(ctx).Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).Take(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID).Take(&row).Error; err != nil {
 		return "", err
 	}
 	return row.Status, nil
@@ -394,9 +399,16 @@ func (r *NativeMemoryRepository) Discard(ctx context.Context, job nativecontract
 	if err != nil {
 		return err
 	}
-	return r.db.WithContext(ctx).Model(&nativeMemoryJobRow{}).
-		Where("tenant_id=? AND subject_id=? AND job_id=?", job.Scope.TenantID, subject, job.ID).
-		Update("status", NativeMemoryJobDiscarded).Error
+	result := r.db.WithContext(ctx).Model(&nativeMemoryJobRow{}).
+		Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).
+		Update("status", NativeMemoryJobDiscarded)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrNativeMemoryWriteRejected
+	}
+	return nil
 }
 
 // Fail records a terminal extraction/storage failure. Generation and
