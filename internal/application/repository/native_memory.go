@@ -296,6 +296,37 @@ func (r *NativeMemoryRepository) Claim(ctx context.Context, candidate nativecont
 	return claimed, returnValue, err
 }
 
+// Renew extends one running attempt's durable claim. The attempt token is part
+// of every conditional update, so a worker that lost its claim to recovery can
+// neither renew nor later commit its extractor result.
+func (r *NativeMemoryRepository) Renew(ctx context.Context, job nativecontract.MemoryJob) (bool, error) {
+	renewed := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		state, subject, err := r.state(tx, job.Scope)
+		if err != nil {
+			return err
+		}
+		if !AcceptNativeMemoryWrite(state.Enabled, state.Generation, state.PolicyRevision, job) ||
+			job.SessionKey.AppName == "" || job.SessionKey.UserID == "" || job.SessionKey.SessionID == "" ||
+			r.verifyJobSource(tx, job) != nil {
+			result := tx.Model(&nativeMemoryJobRow{}).
+				Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).
+				Updates(nativeMemoryDiscardUpdates())
+			return result.Error
+		}
+		now := time.Now().UTC()
+		result := tx.Model(&nativeMemoryJobRow{}).
+			Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status=? AND retry_attempt=?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, NativeMemoryJobRunning, job.Attempt).
+			Updates(map[string]any{"next_attempt_at": now.Add(nativeMemoryClaimLease), "updated_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		renewed = result.RowsAffected == 1
+		return nil
+	})
+	return renewed, err
+}
+
 func AcceptNativeMemoryWrite(enabled bool, currentGeneration, currentPolicy int64, job nativecontract.MemoryJob) bool {
 	return enabled && currentGeneration == job.Generation && currentPolicy == job.PolicyRevision
 }

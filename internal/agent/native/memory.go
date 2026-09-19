@@ -37,17 +37,18 @@ type MemoryExtractor func(context.Context, nativecontract.MemoryJob) ([]MemoryWr
 // authoritative for permission, generation and tombstone checks; the optional
 // backend is a projection only and is never called for a rejected stale job.
 type MemoryService struct {
-	resolver  nativecontract.ScopeResolver
-	repo      *repository.NativeMemoryRepository
-	backend   memory.Service
-	extractor MemoryExtractor
+	resolver           nativecontract.ScopeResolver
+	repo               *repository.NativeMemoryRepository
+	backend            memory.Service
+	extractor          MemoryExtractor
+	claimRenewInterval time.Duration
 }
 
 var _ memory.Service = (*MemoryService)(nil)
 var _ nativecontract.MemoryGovernance = (*MemoryService)(nil)
 
 func NewMemoryService(resolver nativecontract.ScopeResolver, repo *repository.NativeMemoryRepository, backend memory.Service) *MemoryService {
-	return &MemoryService{resolver: resolver, repo: repo, backend: backend}
+	return &MemoryService{resolver: resolver, repo: repo, backend: backend, claimRenewInterval: 30 * time.Second}
 }
 func (s *MemoryService) SetExtractor(extractor MemoryExtractor) { s.extractor = extractor }
 func AcceptMemoryWrite(enabled bool, currentGeneration, jobGeneration int64) bool {
@@ -122,6 +123,60 @@ func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJo
 	job.Scope = scope
 	return s.repo.Enqueue(ctx, job)
 }
+
+// keepClaimAlive binds extraction to its durable attempt. If the claim cannot
+// be renewed (for example, a recovery worker has already reclaimed it), the
+// extractor receives cancellation and its result is never committed.
+func (s *MemoryService) keepClaimAlive(ctx context.Context, job nativecontract.MemoryJob) (context.Context, func() error) {
+	extractionCtx, cancelExtraction := context.WithCancel(ctx)
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	done := make(chan struct{})
+	errCh := make(chan error, 1)
+	interval := s.claimRenewInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if heartbeatCtx.Err() != nil {
+					return
+				}
+				renewed, err := s.repo.Renew(heartbeatCtx, job)
+				if heartbeatCtx.Err() != nil {
+					return
+				}
+				if err == nil && renewed {
+					continue
+				}
+				if err == nil {
+					err = ErrMemoryWriteDenied
+				}
+				errCh <- err
+				cancelExtraction()
+				return
+			}
+		}
+	}()
+	return extractionCtx, func() error {
+		stopHeartbeat()
+		<-done
+		cancelExtraction()
+		select {
+		case err := <-errCh:
+			return err
+		default:
+			return nil
+		}
+	}
+}
+
 func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
 	job, claimed, err := s.repo.Claim(ctx, job)
 	if err != nil {
@@ -146,7 +201,11 @@ func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJo
 	if s.extractor == nil {
 		return errors.Join(ErrMemoryExtractorUnavailable, s.repo.Fail(ctx, job, ErrMemoryExtractorUnavailable))
 	}
-	writes, err := s.extractor(ctx, job)
+	extractionCtx, finishHeartbeat := s.keepClaimAlive(ctx, job)
+	writes, err := s.extractor(extractionCtx, job)
+	if heartbeatErr := finishHeartbeat(); heartbeatErr != nil {
+		return errors.Join(ErrMemoryWriteDenied, heartbeatErr)
+	}
 	if err != nil {
 		return errors.Join(err, s.repo.Fail(ctx, job, err))
 	}

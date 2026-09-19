@@ -283,6 +283,49 @@ func TestNativeMemoryExpiredRunningClaimIsRecoveredAndFencesCrashedWorker(t *tes
 	require.True(t, written)
 }
 
+func TestNativeMemoryRenewedRunningClaimSurvivesLeaseBoundaryUntilCrashReopenReclaims(t *testing.T) {
+	repo := newNativeMemoryTestRepository(t)
+	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	job := nativeMemoryJob(t, repo, scope, "long-running-worker", "event-1")
+	require.NoError(t, repo.Enqueue(ctx, job))
+
+	live, claimed, err := repo.Claim(ctx, job)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	// Cross the original lease boundary while the worker is still live. A
+	// heartbeat must renew the durable claim before another worker can reclaim
+	// it and spend another extractor attempt.
+	require.NoError(t, repo.DB().Model(&nativeMemoryJobRow{}).
+		Where("tenant_id=? AND job_id=?", scope.TenantID, job.ID).
+		Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
+	renewed, err := repo.Renew(ctx, live)
+	require.NoError(t, err)
+	require.True(t, renewed)
+
+	reopened := NewNativeMemoryRepository(reopenRunDB(t, repo.DB()))
+	_, claimed, err = reopened.Claim(ctx, job)
+	require.NoError(t, err)
+	require.False(t, claimed, "a live renewed attempt must not be reclaimed")
+
+	// Once the worker crashes and its final renewed lease expires, a restarted
+	// repository must reclaim it under a new attempt fence.
+	require.NoError(t, reopened.DB().Model(&nativeMemoryJobRow{}).
+		Where("tenant_id=? AND job_id=?", scope.TenantID, job.ID).
+		Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
+	recovered, claimed, err := NewNativeMemoryRepository(reopenRunDB(t, reopened.DB())).Claim(ctx, job)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.Greater(t, recovered.Attempt, live.Attempt)
+
+	written, err := repo.Commit(ctx, live, "stale", "must not commit", nil)
+	require.ErrorIs(t, err, ErrNativeMemoryWriteRejected)
+	require.False(t, written)
+	written, err = reopened.Commit(ctx, recovered, "fresh", "recovered after crash", nil)
+	require.NoError(t, err)
+	require.True(t, written)
+}
+
 func TestNativeMemoryStaleGenerationIsDiscardedAndNeverScheduledForRetry(t *testing.T) {
 	repo := newNativeMemoryTestRepository(t)
 	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
