@@ -30,7 +30,7 @@
         "internal/agent/nativecontract/scope.go",
         "internal/agent/nativecontract/scope_test.go"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P1.2",
