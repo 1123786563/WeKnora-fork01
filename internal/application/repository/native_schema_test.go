@@ -237,14 +237,23 @@ func TestNativeSchemaMigrationEmptyRollbackAndRepeatUpgrade(t *testing.T) {
 			m := nativeSchemaMigrator(t, db)
 			defer func() { _, _ = m.Close() }()
 			require.ErrorIs(t, m.Up(), migrate.ErrNoChange, "repeated upgrade must be a no-op")
-			require.NoError(t, m.Steps(-1), "an empty namespace may roll back")
+			for {
+				version, dirty, err := m.Version()
+				require.NoError(t, err)
+				require.False(t, dirty)
+				if version == nativeAgentSchemaMigrationVersion(dialect) {
+					break
+				}
+				require.Greater(t, version, nativeAgentSchemaMigrationVersion(dialect))
+				require.NoError(t, m.Steps(-1), "an empty post-P1.2 migration may roll back")
+			}
 			require.False(t, db.Migrator().HasTable("native_user_state"))
 			require.True(t, db.Migrator().HasTable("native_agent_runs"), "rolling back the additive user-state migration must preserve 83/162")
 			version, dirty, err := m.Version()
 			require.NoError(t, err)
 			require.False(t, dirty)
-			require.Equal(t, nativeUserStateMigrationVersion(dialect)-1, version)
-			require.NoError(t, m.Steps(1), "83/162 schema must upgrade to the additive user-state migration")
+			require.Equal(t, nativeAgentSchemaMigrationVersion(dialect), version)
+			require.NoError(t, m.Up(), "83/162 schema must upgrade to the additive user-state migration")
 			require.True(t, db.Migrator().HasTable("native_user_state"))
 		})
 	}
@@ -270,9 +279,20 @@ func seedNativeSchemaFixture(t *testing.T, db *gorm.DB) {
 func nativeUserStateMigrationVersion(dialect string) uint {
 	switch dialect {
 	case "sqlite":
-		return 85
+		return 86
 	case "postgres":
-		return 164
+		return 165
+	default:
+		panic("unsupported native schema test dialect: " + dialect)
+	}
+}
+
+func nativeAgentSchemaMigrationVersion(dialect string) uint {
+	switch dialect {
+	case "sqlite":
+		return 83
+	case "postgres":
+		return 162
 	default:
 		panic("unsupported native schema test dialect: " + dialect)
 	}

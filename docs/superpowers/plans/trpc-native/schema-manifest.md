@@ -5,8 +5,8 @@ Migration `000162_native_agent_schema` (PostgreSQL) and
 namespace.  They create no copy of legacy `sessions`, old Memory, messages, or
 agent-run records.
 
-Migration `000164_native_user_state` (PostgreSQL) and
-`000085_native_user_state` (SQLite) add the independent user-state boundary
+Migration `000165_native_user_state` (PostgreSQL) and
+`000086_native_user_state` (SQLite) add the independent user-state boundary
 after that namespace is deployed. `owner_id` is the frozen SessionOwnerID, so
 it supports account users, tenant API keys, API external users, and embed
 sessions without requiring a synthetic native session or a `users` row.
