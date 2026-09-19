@@ -38,3 +38,15 @@ func (r *feedbackRepository) ListBySessionAndUser(ctx context.Context, tenantID 
 		Find(&list).Error
 	return list, err
 }
+
+// ListBySession returns every feedback row of one session inside the tenant,
+// across users. Ordered by creation so the audit snapshot reads in the order
+// the ratings arrived.
+func (r *feedbackRepository) ListBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.MessageFeedback, error) {
+	var list []types.MessageFeedback
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
+		Order("created_at ASC, id ASC").
+		Find(&list).Error
+	return list, err
+}

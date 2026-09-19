@@ -139,6 +139,9 @@ type sessionService struct {
 	// TenantSkillService because that service depends on this one.
 	sandboxConfigRepo repository.TenantSandboxConfigRepository
 	tenantSkillRepo   repository.TenantSkillRepository
+	// feedbackRepo reads the cross-user feedback rows of one session for the
+	// admin query-history audit snapshot (SP13).
+	feedbackRepo interfaces.FeedbackRepository
 }
 
 // NewSessionService creates a new session service instance with all required dependencies
@@ -164,6 +167,7 @@ func NewSessionService(cfg *config.Config,
 	memoryService interfaces.MemoryService,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
+	feedbackRepo interfaces.FeedbackRepository,
 ) interfaces.SessionService {
 	svc := &sessionService{
 		cfg:                   cfg,
@@ -188,6 +192,7 @@ func NewSessionService(cfg *config.Config,
 		memoryService:         memoryService,
 		sandboxConfigRepo:     sandboxConfigRepo,
 		tenantSkillRepo:       tenantSkillRepo,
+		feedbackRepo:          feedbackRepo,
 	}
 	// The durable tRPC worker resolves its graph executor lazily because the
 	// runtime is constructed before this service in the dependency graph.
@@ -444,6 +449,93 @@ func (s *sessionService) ListSessions(
 
 	pagination := &types.Pagination{Page: query.Page, PageSize: query.PageSize}
 	return types.NewPageResult(total, pagination, items), nil
+}
+
+// queryHistorySnapshotMessageLimit caps the messages carried by one admin
+// audit snapshot. Sessions longer than the cap return the most recent
+// messages with Truncated=true; the async export (SP13 Task 4) is the
+// full-fidelity surface.
+const queryHistorySnapshotMessageLimit = 200
+
+// GetQueryHistorySnapshot assembles the Admin+ audit snapshot of one session:
+// the tenant-scoped session row, its most recent messages, and every feedback
+// row recorded on the session — honoring the tenant's query-history privacy
+// policy. Disabled blocks the read before any row is fetched; anonymized
+// masks Session.UserID and every Feedback.UserID as "anonymous" so the
+// snapshot cannot be tied back to individual principals. Messages carry no
+// owner field of their own, so they pass through unchanged.
+func (s *sessionService) GetQueryHistorySnapshot(
+	ctx context.Context, tenantID uint64, sessionID string,
+) (*types.QueryHistorySnapshot, error) {
+	if tenantID == 0 {
+		return nil, stderrors.New("workspace id is required")
+	}
+	if sessionID == "" {
+		return nil, stderrors.New("session id is required")
+	}
+
+	mode, err := CheckQueryHistoryAccess(ctx, s.tenantRepo, tenantID)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"tenant_id":  tenantID,
+			"session_id": sessionID,
+		})
+		return nil, err
+	}
+
+	session, err := s.sessionRepo.GetByID(ctx, tenantID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch one row past the cap so a session exactly at the cap is not
+	// reported truncated. The repository returns the newest rows first and
+	// re-sorts them oldest-first, so an over-cap slice keeps its tail (the
+	// newest messages) when trimmed.
+	messages, err := s.messageRepo.GetRecentMessagesBySession(
+		ctx, sessionID, queryHistorySnapshotMessageLimit+1)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"session_id": sessionID,
+			"tenant_id":  tenantID,
+		})
+		return nil, err
+	}
+	truncated := len(messages) > queryHistorySnapshotMessageLimit
+	if truncated {
+		messages = messages[len(messages)-queryHistorySnapshotMessageLimit:]
+	}
+
+	feedback := []types.MessageFeedback{}
+	if s.feedbackRepo != nil {
+		rows, err := s.feedbackRepo.ListBySession(ctx, tenantID, sessionID)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"session_id": sessionID,
+				"tenant_id":  tenantID,
+			})
+			return nil, err
+		}
+		// Keep the non-nil guarantee so the snapshot serializes feedback as
+		// [] rather than null when a session has no ratings.
+		if rows != nil {
+			feedback = rows
+		}
+	}
+
+	snapshot := &types.QueryHistorySnapshot{
+		Session:   *session,
+		Messages:  messages,
+		Feedback:  feedback,
+		Truncated: truncated,
+	}
+	if mode == types.QueryHistoryModeAnonymized {
+		snapshot.Session.UserID = "anonymous"
+		for i := range snapshot.Feedback {
+			snapshot.Feedback[i].UserID = "anonymous"
+		}
+	}
+	return snapshot, nil
 }
 
 // CountSessionsBySource returns the total session count for a source filter

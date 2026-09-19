@@ -77,6 +77,25 @@ func (c *QueryHistoryConfig) Scan(value interface{}) error {
 	return json.Unmarshal(b, c)
 }
 
+// QueryHistorySnapshot is the Admin+ audit snapshot of one session: the
+// session row, its most recent messages (capped at 200 — see Truncated), and
+// every feedback row recorded on the session. When the tenant's query-history
+// mode is anonymized the service masks Session.UserID and each Feedback.UserID
+// as "anonymous" before the snapshot is returned. Messages reuse the existing
+// message serialization (knowledge_references and agent steps ride along).
+type QueryHistorySnapshot struct {
+	// Session is the tenant-scoped session row.
+	Session Session `json:"session"`
+	// Messages are the most recent messages, oldest first. Truncated reports
+	// whether older messages were dropped by the cap.
+	Messages []*Message `json:"messages"`
+	// Feedback holds every like/dislike row of the session, across users.
+	Feedback []MessageFeedback `json:"feedback"`
+	// Truncated is true when the session holds more messages than the
+	// snapshot cap; the snapshot keeps the most recent ones.
+	Truncated bool `json:"truncated"`
+}
+
 // QueryHistoryExportJob tracks one asynchronous query-history export. The
 // worker claims pending jobs, streams the archive to FilePath, and leaves
 // either done or failed with ErrorMessage set.
