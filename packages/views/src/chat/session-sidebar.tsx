@@ -29,6 +29,11 @@ export interface SessionSidebarProps {
   onTogglePin?(sessionId: string, pinned: boolean): Promise<void>;
   onClear?(sessionId: string): Promise<void>;
   onDelete?(sessionId: string): Promise<void>;
+  /**
+   * SP13 Task 8 — 会话分享入口（宿主能力开关：缺省即隐藏菜单项）。
+   * 宿主负责 mint 分享 token 并弹分享窗（apps/web SessionShareDialog）。
+   */
+  onShareSession?(sessionId: string): void;
   groups?: readonly SessionGroupView[];
   groupMode?: 'none' | 'date';
   onGroupModeChange?(mode: 'none' | 'date'): void;
@@ -73,16 +78,26 @@ export interface SessionSidebarListProps {
   /** 清空消息 (Vue menu.vue row menu → clearSession); confirm is the caller's. */
   onClear?(sessionId: string): Promise<void> | void;
   onDelete?(sessionId: string): Promise<void> | void;
+  /** SP13 Task 8 — 分享菜单项能力开关：缺省隐藏（isFeedbackAvailable 模式）。 */
+  onShareSession?(sessionId: string): void;
   /** Batch delete selected rows; returning false means the caller cancelled. */
   onBatchDelete?(sessionIds: readonly string[]): Promise<boolean | void> | boolean | void;
+}
+
+/**
+ * SP13 Task 8 — 分享菜单项能力开关（message-list isFeedbackAvailable 模式）：
+ * 宿主未提供 onShareSession 时侧栏 ⋯ 菜单不渲染分享入口。
+ */
+export function isShareActionAvailable(onShareSession?: SessionSidebarListProps['onShareSession']): boolean {
+  return typeof onShareSession === 'function';
 }
 
 /*
  * The grouped list body shared by the in-page chat sidebar and the platform
  * shell sidebar: time group headers (已置顶/今天/昨天/近7天/近30天/更早), full
- * titles, green active row, hover ⋯ menu (置顶/重命名会话/清空消息/删除会话).
+ * titles, green active row, hover ⋯ menu (置顶/重命名会话/分享/清空消息/删除会话).
  */
-export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, onBatchDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
+export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, onShareSession, onBatchDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -128,7 +143,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     }
   };
   const visibleGroups = groups ?? [{ key: 'all', items: sessions ?? [] }];
-  const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete);
+  const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete || isShareActionAvailable(onShareSession));
   const totalItems = visibleGroups.reduce((count, group) => count + group.items.length, 0);
   const visibleIds = visibleGroups.flatMap((group) => group.items.map((session) => session.id));
   useEffect(() => {
@@ -265,6 +280,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               {/* .wk-chat-session-menu-list button (+ .is-danger) → utilities. */}
               {onTogglePin ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
               {onRename ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => startRename(session)}>{t.renameSession}</button> : null}
+              {onShareSession ? <button type="button" role="menuitem" data-share-session={session.id} className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => onShareSession(session.id)}>{t.shareSession}</button> : null}
               {onClear ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => { setSessionDangerAction({ type: 'clear', sessionId: session.id }); setSessionDangerError(null); }}>{t.clearMessages}</button> : null}
               {onBatchDelete ? <button type="button" role="menuitem" aria-label={formatChatCopy(t, 'batchManage')} className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={toggleBatchMode}>{formatChatCopy(t, 'batchManage')}</button> : null}
               {onDelete ? <button type="button" role="menuitem" className="is-danger min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[#e34d59] hover:bg-[#fdecee]" onClick={() => { setSessionDangerAction({ type: 'delete', sessionId: session.id }); setSessionDangerError(null); }}>{t.deleteRecord}</button> : null}
@@ -282,7 +298,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   </>;
 }
 
-export function SessionSidebar({ copy, sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onClear, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
+export function SessionSidebar({ copy, sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onClear, onDelete, onShareSession, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const shellProvidesSessionList = useContext(SessionSidebarShellContext);
   // The platform shell already renders the grouped list next to the nav
@@ -318,6 +334,7 @@ export function SessionSidebar({ copy, sessions, selectedSessionId, loading = fa
       onTogglePin={onTogglePin}
       onClear={onClear}
       onDelete={onDelete}
+      onShareSession={onShareSession}
     />
     {onPageChange && pageCount > 1 ? <nav className="mt-auto flex items-center justify-center gap-[0.4rem] pt-[0.75rem] text-[rgba(0,0,0,0.4)] text-[12px]" aria-label={t.conversationPagesLabel}><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{t.previous}</button><span>{formatChatCopy(t, 'pageOf', { page, total: pageCount })}</span><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{t.next}</button></nav> : null}
   </aside>;

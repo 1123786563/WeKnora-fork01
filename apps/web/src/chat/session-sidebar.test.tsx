@@ -82,3 +82,39 @@ test('loading copy follows the passed chat copy table instead of navigator.langu
   assert.equal(occurrences.length, 1);
   assert.match(html.slice(Math.max(0, (occurrences[0].index ?? 0) - 30), occurrences[0].index), /class="sr-only">$/, 'loading copy is announcement-only');
 });
+
+test('SP13 share menu item follows the onShareSession capability switch', () => {
+  // 能力开关惯例（isFeedbackAvailable 模式）：prop 缺省即隐藏菜单项。
+  const base = {
+    copy: resolveChatCopy('zh-CN'),
+    sessions: [{ id: 's1', title: '产品周会纪要', is_pinned: false }],
+    selectedSessionId: 's1',
+    onSelect: () => undefined,
+    onRename: (id: string, title?: string) => { void id; void title; },
+  };
+  const withoutShare = renderToStaticMarkup(createElement(SessionSidebarList, base));
+  assert.doesNotMatch(withoutShare, /分享/, 'share menu item stays hidden without onShareSession');
+
+  const shared = renderToStaticMarkup(createElement(SessionSidebarList, {
+    ...base,
+    onShareSession: (sessionId: string) => { void sessionId; },
+  }));
+  assert.match(shared, /分享/, 'share menu item renders with onShareSession');
+  // 同一菜单形态：role=menu 内的 menuitem 按钮，携带会话 id 数据钩子。
+  assert.match(shared, /data-share-session="s1"/);
+});
+
+test('isShareActionAvailable mirrors the isFeedbackAvailable capability gate', async () => {
+  const { isShareActionAvailable } = await import('../../../../packages/views/src/chat/session-sidebar.tsx');
+  assert.equal(isShareActionAvailable(), false);
+  assert.equal(isShareActionAvailable(undefined), false);
+  assert.equal(isShareActionAvailable(() => undefined), true);
+});
+
+test('share menu label resolves in every chat-copy locale', () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const copy = resolveChatCopy(locale);
+    assert.ok(copy.shareSession.trim().length > 0, `shareSession copy exists for ${locale}`);
+  }
+  assert.equal(resolveChatCopy('zh-CN').shareSession, '分享');
+});

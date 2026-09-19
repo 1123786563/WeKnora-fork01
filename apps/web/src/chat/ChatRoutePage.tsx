@@ -53,6 +53,8 @@ import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicatio
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
+// SP13 Task 8 — 会话分享弹窗（侧栏 ⋯ 菜单「分享」→ mint 只读链接）。
+import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
 
@@ -252,6 +254,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
   const [agentToast, setAgentToast] = useState<string | null>(null);
   const agentToastTimer = useRef<number | null>(null);
+  // SP13 Task 8 — 侧栏分享入口打开的会话（null = 关窗）；弹窗自己 mint token。
+  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   useEffect(() => () => { if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current); }, []);
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
@@ -1634,6 +1638,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         {agentToast}
       </div>
     ) : null}
+    {shareSessionId ? (
+      <SessionShareDialog
+        client={client}
+        sessionId={shareSessionId}
+        sessionTitle={sessions.find((session) => session.id === shareSessionId)?.title}
+        locale={readStoredLocale()}
+        onClose={() => setShareSessionId(null)}
+        onToast={showAgentToast}
+      />
+    ) : null}
     <ChatPage
     sessions={sessions}
     selectedSessionId={selectedSessionId}
@@ -1722,6 +1736,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}
+    onShareSession={setShareSessionId}
     sessionGroups={sessionGroups(sessions, new Date(), sessionGroupMode)}
     sessionSource={sessionSource}
     sessionSourceOptions={resolveChatSessionSourceOptions(readStoredLocale(), canViewChannelSessions)}

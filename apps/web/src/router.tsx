@@ -48,6 +48,8 @@ const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) =>
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage.tsx').then((module) => ({ default: module.AnalyticsPage })));
+// SP13 Task 8 — 会话只读分享页（/platform/shared/:token）。
+const SharedSessionPage = lazy(() => import('./shared/SharedSessionPage.tsx').then((module) => ({ default: module.SharedSessionPage })));
 const ExpertsPage = lazy(() => import('./experts/ExpertsPage.tsx').then((module) => ({ default: module.ExpertsPage })));
 const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
 const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
@@ -614,6 +616,22 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // SP13 Task 8 — 会话只读分享页：挂在 platformRoute 下（Ruling P-2）复用
+  // 登录守卫与 shell；Viewer+ 即可读（GET /api/v1/shared/sessions/:token）。
+  // token 无效/已撤销由页面自身渲染占位（404 → 链接无效或已撤销）。
+  const sharedSessionRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'shared/$token',
+    component: (): ReactNode => {
+      const { token } = useParams({ strict: false }) as { token?: string };
+      return (
+        <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+          <SharedSessionPage client={client} token={decodeURIComponent(token ?? '')} />
+        </Suspense>
+      );
+    },
+  });
+
   // Octop M2 expert-template catalog; list/detail are Viewer+ reads, the
   // instantiate write stays Contributor+ server-side (routes_expert.go guard).
   const expertsRoute = createRoute({
@@ -808,6 +826,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       organizationsRoute,
       settingsRoute,
       analyticsRoute,
+      sharedSessionRoute,
       devMarkdownRoute,
       appsCatalogRoute,
       appsConnectionsRoute,

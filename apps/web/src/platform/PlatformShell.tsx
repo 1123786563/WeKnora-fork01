@@ -20,6 +20,9 @@ import {
   recentQueriesStorageKey,
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
+// SP13 Task 8 — 侧栏「分享」弹窗（ChatRoutePage 同组件；不经过 @weknora/ui
+// 以免 theme.css 拖进 shell 的 node 测试模块图）。
+import { SessionShareDialog } from '../chat/SessionShareDialog.tsx';
 import { InvitationInbox } from './InvitationInbox.tsx';
 import { navigate, subscribeNavigation } from './navigation.ts';
 import {
@@ -733,6 +736,26 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     return true;
   }
 
+  // SP13 Task 8 — 会话分享：侧栏 ⋯ 菜单「分享」→ SessionShareDialog（mint
+  // 只读链接 + 复制 + 撤销）。能力开关沿用 shell 对可选命名空间的防御式
+  // 探测（organizations/settings 同惯例）：测试替身与 embed 挂载没有
+  // queryHistory 域时不渲染入口。
+  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
+  const [shellShareToast, setShellShareToast] = useState<string | null>(null);
+  const shellShareToastTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (shellShareToastTimer.current !== null) window.clearTimeout(shellShareToastTimer.current); }, []);
+  function showShellShareToast(message: string) {
+    setShellShareToast(message);
+    if (shellShareToastTimer.current !== null) window.clearTimeout(shellShareToastTimer.current);
+    shellShareToastTimer.current = window.setTimeout(() => setShellShareToast(null), 2400);
+  }
+  const shareApi = (client as unknown as {
+    queryHistory?: { share?: unknown; unshare?: unknown };
+  }).queryHistory;
+  const canShareSessions = Boolean(
+    typeof shareApi?.share === 'function' && typeof shareApi?.unshare === 'function',
+  );
+
   // `/platform/knowledge-search?q=...` redirects to `?cmdk=...` (routes.tsx).
   // Consume it once on mount, open the palette, and strip the param so
   // Back/Refresh doesn't reopen it (mirrors platform/index.vue's route.query.cmdk watcher).
@@ -949,6 +972,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 onClear={clearShellSessionMessages}
                 onDelete={deleteShellSession}
                 onBatchDelete={deleteShellSessions}
+                onShareSession={canShareSessions ? setShareSessionId : undefined}
               />
             </nav>
           )}
@@ -1148,6 +1172,23 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           pages, so page wiring stays a one-liner. */}
       <ContextualGuideHost locale={locale} actions={guideActions} />
       <InvitationInbox client={client} />
+      {/* SP13 Task 8 — 侧栏分享弹窗 + 结果 toast（ChatRoutePage agentToast 同
+          形态；shell 侧没有聊天宿主的 toast 通道，就地挂一个）。 */}
+      {shareSessionId ? (
+        <SessionShareDialog
+          client={client}
+          sessionId={shareSessionId}
+          sessionTitle={sessions.find((session) => session.id === shareSessionId)?.title}
+          locale={locale}
+          onClose={() => setShareSessionId(null)}
+          onToast={showShellShareToast}
+        />
+      ) : null}
+      {shellShareToast ? (
+        <div role="status" aria-live="polite" className="fixed bottom-[76px] left-1/2 z-[10050] -translate-x-1/2 rounded-[8px] bg-[rgba(0,0,0,0.78)] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+          {shellShareToast}
+        </div>
+      ) : null}
     </div>
   );
 }

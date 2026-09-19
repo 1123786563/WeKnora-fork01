@@ -166,6 +166,11 @@ export interface ChatPageProps {
   onRenameSession?(sessionId: string, title?: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
   onDeleteSession?(sessionId: string): Promise<void>;
+  /**
+   * SP13 Task 8 — 侧栏 ⋯ 菜单「分享」入口（能力开关：缺省即隐藏）。宿主负责
+   * mint 分享 token（client.queryHistory.share）并渲染分享窗。
+   */
+  onShareSession?(sessionId: string): void;
   sessionGroups?: readonly { key: string; label?: string; items: readonly ChatSession[] }[];
   sessionSource?: string;
   sessionSourceOptions?: readonly { value: string; label: string }[];
@@ -645,6 +650,7 @@ export function ChatPage(props: ChatPageProps) {
       onTogglePin={props.onToggleSessionPin}
       onClear={props.onClearSession}
       onDelete={props.onDeleteSession}
+      onShareSession={props.onShareSession}
       groups={props.sessionGroups}
       source={props.sessionSource}
       sourceOptions={props.sessionSourceOptions}
