@@ -320,6 +320,7 @@ func (h *Handler) setupStopEventHandler(
 	eventBus *event.EventBus,
 	sessionID string,
 	sessionTenantID uint64,
+	sessionUserID string,
 	assistantMessage *types.Message,
 	cancel context.CancelFunc,
 ) {
@@ -333,7 +334,9 @@ func (h *Handler) setupStopEventHandler(
 			context.WithoutCancel(ctx),
 			types.TenantIDContextKey, sessionTenantID,
 		)
-		h.completeAssistantMessage(updateCtx, assistantMessage, "", "") // empty query: stopped conversations are not indexed
+		// The stopped turn still consumed tokens; attribute them to the session
+		// owner (SP12) alongside the message completion.
+		h.completeAssistantMessage(updateCtx, assistantMessage, "", "", sessionTenantID, sessionUserID) // empty query: stopped conversations are not indexed
 		return nil
 	})
 }

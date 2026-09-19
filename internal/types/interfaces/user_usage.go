@@ -21,6 +21,14 @@ type UsageAggregate struct {
 	CostMicrocredits int64  `json:"cost_microcredits"`
 }
 
+// UsageRecorderService writes one chat turn's terminal token usage into the
+// caller's daily bucket. Empty identity (tenant 0, empty user or model) or a
+// nil usage block is silently skipped — usage accounting must never break or
+// block the chat path.
+type UsageRecorderService interface {
+	RecordChatTurn(ctx context.Context, tenantID uint64, userID, model string, usage *types.TokenUsage) error
+}
+
 // UsageRepository persists daily token/cost buckets and aggregates them.
 // All aggregation windows are half-open: [from, to) over UTC days.
 type UsageRepository interface {

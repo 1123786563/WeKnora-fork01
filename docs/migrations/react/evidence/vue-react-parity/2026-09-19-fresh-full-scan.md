@@ -316,3 +316,16 @@ React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成�
 - OIDC 登录分支（需 IdP 容器另立项）
 - mono 徽章截图对账已在 DB fixture 行上完成 ✓
 - Vue 侧 t-image 幻影已修复 ✓
+
+## 用户确认（2026-09-19）
+- **OIDC 登录分支：明确划出 parity 范围**（用户已确认）。理由：双端 OIDC 入口同由 /auth/config
+  驱动，无配置时一致不渲染，无 parity 缺口证据；覆盖需 keycloak + 后端配置，属独立集成任务。
+- **助手头像 t-image 占位**：picture-preview.vue v-if 修复（62d7e573）已消除转写幻影占位 ✓；
+  后续如需恢复头像展示，属 Vue 会话快照数据管线问题（非 React parity 范围）。
+- mono 徽章真实行对账 ✓ 本轮以 DB fixture 行完成（文本+徽章双端零差异）。
+
+## ✅ 最终收敛状态（用户确认）
+第二十轮台账 + 本节确认即为目标的最终收敛状态：主路由 15 页、设置 29 分区、登录/注册登出态、
+embed 入口、websearch 真实数据、常态流式、mono/color 徽章、内容图片白名单、生成态指示——
+全部对账一致或带根因/环境记录。提交链 7bee5a64→…→acb1a667（14 个 parity 提交），门禁全程
+1877/1877 + tsc + build 全绿。

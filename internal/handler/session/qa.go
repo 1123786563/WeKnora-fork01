@@ -734,7 +734,7 @@ func (h *Handler) setupSSEStream(reqCtx *qaRequestContext, generateTitle bool, m
 	)
 
 	// Setup stop event handler
-	h.setupStopEventHandler(eventBus, reqCtx.sessionID, reqCtx.session.TenantID, reqCtx.assistantMessage, cancel)
+	h.setupStopEventHandler(eventBus, reqCtx.sessionID, reqCtx.session.TenantID, reqCtx.session.UserID, reqCtx.assistantMessage, cancel)
 
 	// Watch for stop events independently of the client SSE connection so a
 	// user-requested stop reliably cancels generation even when the client
@@ -1181,7 +1181,10 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 
 				logger.Infof(streamCtx.asyncCtx, "Knowledge QA service completed for session: %s", sessionID)
 				updateCtx := context.WithValue(streamCtx.asyncCtx, types.TenantIDContextKey, reqCtx.session.TenantID)
-				h.completeAssistantMessage(updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID)
+				h.completeAssistantMessage(
+					updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
+					reqCtx.session.TenantID, reqCtx.session.UserID,
+				)
 				streamCtx.eventBus.Emit(streamCtx.asyncCtx, event.Event{
 					Type:      event.EventAgentComplete,
 					SessionID: sessionID,
@@ -1235,11 +1238,13 @@ func (h *Handler) executeQA(reqCtx *qaRequestContext, mode qaMode, generateTitle
 					h.discardSteerBacklog(updateCtx, sessionID, streamCtx.assistantMessage.ID, injected)
 					h.completeAssistantMessage(
 						updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
+						reqCtx.session.TenantID, reqCtx.session.UserID,
 					)
 				} else {
 					kicked := h.kickNextRunFromSteerBacklog(updateCtx, reqCtx, streamCtx)
 					h.completeAssistantMessage(
 						updateCtx, streamCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID,
+						reqCtx.session.TenantID, reqCtx.session.UserID,
 					)
 					// A /steer that landed while we were completing still sits
 					// on this run. Claim it before ClearLiveRun so it is not
@@ -1662,9 +1667,22 @@ func appendQuickAnswerReasoning(msg *types.Message, content string) {
 
 // completeAssistantMessage marks an assistant message as complete, updates it,
 // and asynchronously indexes the Q&A pair into the chat history knowledge base.
+// The tenant/user pair attributes the turn's token usage to the session owner
+// (SP12 daily buckets); recording happens before the IsCompleted flip so a
+// stop racing the normal completion cannot double-count the same message.
 func (h *Handler) completeAssistantMessage(
 	ctx context.Context, assistantMessage *types.Message, userQuery, userMessageID string,
+	tenantID uint64, userID string,
 ) {
+	if h.usageRecorder != nil && !assistantMessage.IsCompleted && assistantMessage.Usage != nil {
+		// WithoutCancel: usage must land even when the turn ended via a user
+		// stop (the incoming ctx is already cancelled on that path). A failure
+		// is only logged — accounting must never block message completion.
+		bg := context.WithoutCancel(ctx)
+		if err := h.usageRecorder.RecordChatTurn(bg, tenantID, userID, assistantMessage.ModelID, assistantMessage.Usage); err != nil {
+			logger.Warnf(bg, "usage: record chat turn failed for session %s message %s: %v", assistantMessage.SessionID, assistantMessage.ID, err)
+		}
+	}
 	assistantMessage.UpdatedAt = time.Now()
 	assistantMessage.IsCompleted = true
 	_ = h.messageService.UpdateMessage(ctx, assistantMessage)
