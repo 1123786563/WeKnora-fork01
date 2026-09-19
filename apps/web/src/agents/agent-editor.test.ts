@@ -229,14 +229,18 @@ test('buildAgentPayload omits id in create mode', () => {
 test('nav groups follow the Vue section list and order for quick-answer without KB', () => {
   const groups = buildNavGroups({ isAgentMode: false, hasKnowledgeBase: false });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge']);
-  // personalization (Octop M1, no Vue baseline) rides the basic group after conversation
-  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'personalization']);
+  // quick-answer never renders persona (capability assembly is bypassed), so
+  // the personalization section is gated by agent-mode like tools/skills
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'websearch']);
 });
 
 test('nav groups add retrieval with KB capability and tools/skills in agent mode', () => {
   const groups = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability']);
+  // personalization (Octop M1, no Vue baseline) rides the basic group after
+  // conversation, offered only in smart-reasoning mode
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'personalization']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
   assert.deepEqual(groups[2]!.items.map((item) => item.key), ['tools', 'skills']);
 });

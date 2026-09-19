@@ -30,7 +30,14 @@ type AgentCapabilities struct {
 	Skills         *skills.Manager
 	KnowledgeBases []*agent.KnowledgeBaseInfo
 	Documents      []*agent.SelectedDocumentInfo
-	SystemPrompt   string
+	// SystemPrompt is the agent's custom prompt TEMPLATE only — the builtin
+	// ReAct engine resolves it (or falls back to the default scaffolding when
+	// empty); it never carries the persona segment.
+	SystemPrompt string
+	// PersonaSegment is the rendered persona block, kept separate so the
+	// builtin engine prepends it in front of whichever template applies
+	// instead of the segment becoming the whole prompt.
+	PersonaSegment string
 	EventBus       *event.EventBus
 	PinnedMCP      []*agent.PinnedMCPServiceInfo
 	PinnedSkills   []*agent.PinnedSkillInfo
@@ -49,7 +56,14 @@ func (c *AgentCapabilities) CapabilitySnapshot() trpcagent.CapabilitySnapshot {
 	if c == nil {
 		return trpcagent.CapabilitySnapshot{}
 	}
-	s := trpcagent.CapabilitySnapshot{SystemPrompt: c.SystemPrompt, MemoryPrompt: c.MemoryPrompt, ImageReferences: append([]string(nil), c.ImageReferences...)}
+	// The durable graph inserts the snapshot's system prompt verbatim as a
+	// system message (trpc/graph.go nodePrepare), so the persona segment is
+	// joined here — in the same layout the builtin engine's prepend produces.
+	s := trpcagent.CapabilitySnapshot{
+		SystemPrompt:    agent.PrependPersonaSegment(c.PersonaSegment, c.SystemPrompt),
+		MemoryPrompt:    c.MemoryPrompt,
+		ImageReferences: append([]string(nil), c.ImageReferences...),
+	}
 	if c.Tools != nil {
 		for _, definition := range c.Tools.GetFunctionDefinitions() {
 			s.ToolIdentities = append(s.ToolIdentities, definition.Name)
@@ -113,7 +127,7 @@ func (s *agentService) prepareAgentCapabilities(
 	if config.UseCustomSystemPrompt || config.SystemPrompt != "" {
 		systemPrompt = config.ResolveSystemPrompt(config.WebSearchEnabled)
 	}
-	systemPrompt = prependPersonaSegment(ctx, config, systemPrompt)
+	personaSegment := renderPersonaSegment(ctx, config)
 
 	pinnedMCP := s.resolvePinnedMCPServiceInfos(ctx, config)
 	s.attachPinnedMCPToolNames(toolRegistry, pinnedMCP)
@@ -126,6 +140,7 @@ func (s *agentService) prepareAgentCapabilities(
 		KnowledgeBases: knowledgeBases,
 		Documents:      documents,
 		SystemPrompt:   systemPrompt,
+		PersonaSegment: personaSegment,
 		EventBus:       eventBus,
 		PinnedMCP:      pinnedMCP,
 		PinnedSkills:   s.resolvePinnedSkillInfos(config),
@@ -185,15 +200,17 @@ func (s *agentService) prepareAgentCapabilities(
 // RenderPersona's own "the user" fallback.
 const personaAgentNameFallback = "the assistant"
 
-// prependPersonaSegment renders the agent's MBTI persona block in front of
-// its system prompt template. Both engines consume capabilities.SystemPrompt
-// (the builtin ReAct engine treats it as a template; trpc runs insert it
-// verbatim), so prepending here covers every execution path. An unset or
-// unknown PersonaMBTI leaves the prompt untouched — including PersonaStyle,
-// which only renders when PersonaMBTI is set.
-func prependPersonaSegment(ctx context.Context, config *types.AgentConfig, systemPrompt string) string {
+// renderPersonaSegment renders the agent's MBTI persona block. It is carried
+// separately from the custom prompt template on AgentCapabilities: the builtin
+// ReAct engine prepends it in front of whichever template applies (custom or
+// the default scaffolding) so a persona-only agent keeps its retrieval,
+// citation and language rules, while the durable trpc path joins it in front of
+// the system content verbatim (see CapabilitySnapshot). An unset or unknown
+// PersonaMBTI yields an empty segment — including PersonaStyle, which only
+// renders when PersonaMBTI is set.
+func renderPersonaSegment(ctx context.Context, config *types.AgentConfig) string {
 	if config == nil || config.PersonaMBTI == "" {
-		return systemPrompt
+		return ""
 	}
 	// RenderPersona uppercases the code before its own lookup; the gate does
 	// the same so a case-mismatched stored value keeps its persona instead of
@@ -201,17 +218,13 @@ func prependPersonaSegment(ctx context.Context, config *types.AgentConfig, syste
 	code := strings.ToUpper(strings.TrimSpace(config.PersonaMBTI))
 	if _, ok := persona.Profile(code); !ok {
 		logger.Warnf(ctx, "agent has unknown persona_mbti %q; skipping persona segment", config.PersonaMBTI)
-		return systemPrompt
+		return ""
 	}
 	locale := types.LanguageFromContextOrDefault(ctx)
 	userID, _ := types.UserIDFromContext(ctx)
-	segment := persona.RenderPersona(code, locale, persona.RenderInput{
+	return persona.RenderPersona(code, locale, persona.RenderInput{
 		AgentName:   personaAgentNameFallback,
 		UserDisplay: userID,
 		Custom:      config.PersonaStyle,
 	})
-	if systemPrompt == "" {
-		return segment
-	}
-	return segment + "\n---\n\n" + systemPrompt
 }

@@ -43,6 +43,7 @@ type AgentEngine struct {
 	pinnedSkills         []*PinnedSkillInfo      // User @mentioned skills for this turn
 	sessionID            string                  // Session ID for logging and event emission
 	systemPromptTemplate string                  // System prompt template (optional, uses default if empty)
+	personaSegment       string                  // Rendered persona block prepended in front of the resolved system prompt (optional)
 	memoryPrompt         string                  // Long-term memory envelope appended to the system prompt
 	skillsManager        *skills.Manager         // Skills manager for Progressive Disclosure (optional)
 	appConfig            *appconfig.Config       // Application config for prompt template resolution (optional)
@@ -132,8 +133,9 @@ func (e *AgentEngine) SetPinnedMentions(mcpServices []*PinnedMCPServiceInfo, ski
 
 func (e *AgentEngine) systemPromptOptions(ctx context.Context) *BuildSystemPromptOptions {
 	opts := &BuildSystemPromptOptions{
-		Language: types.LanguageNameFromContext(ctx),
-		Config:   e.appConfig,
+		Language:       types.LanguageNameFromContext(ctx),
+		Config:         e.appConfig,
+		PersonaSegment: e.personaSegment,
 	}
 	if e.skillsManager != nil && e.skillsManager.IsEnabled() {
 		opts.SkillsMetadata = e.skillsManager.GetAllMetadata()
@@ -163,6 +165,14 @@ func (e *AgentEngine) buildSystemPrompt(ctx context.Context) string {
 // input leaves the system prompt untouched.
 func (e *AgentEngine) SetMemoryPrompt(prompt string) {
 	e.memoryPrompt = prompt
+}
+
+// SetPersonaSegment supplies the rendered persona block for this run. The
+// segment is prepended in front of the resolved system prompt — default
+// scaffolding or custom template — so it never replaces the default agent
+// template. Empty input leaves the system prompt untouched.
+func (e *AgentEngine) SetPersonaSegment(segment string) {
+	e.personaSegment = segment
 }
 
 // NewAgentEngineWithSkills creates a new agent engine with skills support

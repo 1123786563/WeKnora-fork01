@@ -178,11 +178,17 @@ test('read-only edit hides the save mutation control', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT, readOnly: true });
   assert.equal($('[data-editor-save]', root), null);
+  // quick-answer never renders persona (capability assembly is bypassed), so
+  // the personalization nav item is gated like tools/skills
+  assert.equal($('[data-section-key="personalization"]', root), null);
+  assert.equal($('[data-section-key="tools"]', root), null);
 });
 
 test('personalization section renders the 16-type grid and dominant-side percent labels', async () => {
   const { client } = makeClient();
-  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, persona_mbti: 'INTJ', persona_style: '语气轻松' } };
+  // persona is only offered in smart-reasoning mode: the quick-answer pipeline
+  // never renders it, so the nav section is gated by agent-mode
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning', persona_mbti: 'INTJ', persona_style: '语气轻松' } };
   const root = await mountModal({ client, mode: 'edit', agent });
   await goto(root, 'personalization');
   // flush the client.mbti.types() resolution
@@ -228,7 +234,8 @@ test('personalization section renders the 16-type grid and dominant-side percent
 
 test('test modal: intro disclaimer, all-answered submit gate, submit payload, apply writes persona_mbti', async () => {
   const { client, requests, mbtiSubmits } = makeClient();
-  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' } };
+  const root = await mountModal({ client, mode: 'edit', agent });
   await goto(root, 'personalization');
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await Promise.resolve(); });
@@ -279,7 +286,8 @@ test('test modal: intro disclaimer, all-answered submit gate, submit payload, ap
 
 test('test modal: Escape closes only the dialog and the editor stays open', async () => {
   const { client, requests } = makeClient();
-  const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' } };
+  const root = await mountModal({ client, mode: 'edit', agent });
   await goto(root, 'personalization');
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await Promise.resolve(); });

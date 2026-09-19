@@ -354,6 +354,33 @@ type BuildSystemPromptOptions struct {
 	ShellExecEnabled bool
 	Language         string         // User language name for {{language}} placeholder (e.g. "Chinese (Simplified)")
 	Config           *config.Config // Config for reading prompt templates; nil falls back to hardcoded defaults
+	// PersonaSegment is a fully rendered persona block (e.g. the MBTI persona)
+	// prepended verbatim in front of the resolved template output — default
+	// scaffolding OR a custom template — so persona changes tone without ever
+	// replacing the retrieval/citation/language rules. It is joined AFTER
+	// placeholder resolution: the segment is treated as literal text and its
+	// content is never expanded as a template.
+	PersonaSegment string
+}
+
+// PersonaSegmentSeparator joins the persona segment in front of the system
+// prompt content on every consumption path (builtin engine prepend and the
+// trpc verbatim system message), keeping the two layouts byte-identical.
+const PersonaSegmentSeparator = "\n---\n\n"
+
+// PrependPersonaSegment joins a rendered persona segment in front of system
+// prompt content, mirroring the builtin engine's layout. An empty segment
+// leaves the content untouched; content-less persona still returns the segment
+// alone without the separator.
+func PrependPersonaSegment(segment, systemPrompt string) string {
+	switch {
+	case segment == "":
+		return systemPrompt
+	case systemPrompt == "":
+		return segment
+	default:
+		return segment + PersonaSegmentSeparator + systemPrompt
+	}
 }
 
 // BuildSystemPrompt builds the progressive RAG system prompt
@@ -411,6 +438,13 @@ func BuildSystemPromptWithOptions(
 	// Append skills metadata if available (Level 1 - Progressive Disclosure)
 	if options != nil && len(options.SkillsMetadata) > 0 {
 		basePrompt += formatSkillsMetadata(options.SkillsMetadata, options.ShellExecEnabled)
+	}
+
+	// The persona segment rides in front of whichever template was resolved —
+	// custom or default scaffolding — and is joined after placeholder
+	// resolution so its text is never expanded as template content.
+	if options != nil {
+		basePrompt = PrependPersonaSegment(options.PersonaSegment, basePrompt)
 	}
 
 	return basePrompt

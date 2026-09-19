@@ -211,6 +211,10 @@ func (s *agentService) CreateAgentEngine(
 		capabilities.SystemPrompt,
 	)
 	engine.SetAppConfig(s.cfg)
+	// The persona segment is prepended in front of the resolved template
+	// (custom or default scaffolding) inside the engine's prompt assembly, so
+	// a persona-only agent keeps the default retrieval/citation rules.
+	engine.SetPersonaSegment(capabilities.PersonaSegment)
 	engine.SetPinnedMentions(
 		capabilities.PinnedMCP,
 		capabilities.PinnedSkills,

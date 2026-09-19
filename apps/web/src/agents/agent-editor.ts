@@ -373,8 +373,6 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     { key: 'prompts', icon: 'file-paste', labelKey: 'agent.editor.promptsConfig' },
     { key: 'model', icon: 'control-platform', labelKey: 'agent.editor.modelConfig' },
     { key: 'conversation', icon: 'chat', labelKey: 'agent.editor.conversationSettings' },
-    // Octop M1 persona section (no Vue baseline) — offered in both run modes
-    { key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' },
     { key: 'knowledge', icon: 'folder', labelKey: 'agent.editor.knowledgeConfig' },
   ];
   if (options.hasKnowledgeBase) {
@@ -382,6 +380,11 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   }
   items.push({ key: 'websearch', icon: 'internet', labelKey: 'agent.editor.webSearchConfig' });
   if (options.isAgentMode) {
+    // Octop M1 persona section (no Vue baseline). Persona renders only in the
+    // smart-reasoning pipeline (capability assembly); quick-answer runs never
+    // read it, so gate the section by agent-mode exactly like tools/skills
+    // instead of offering a control that silently does nothing.
+    items.push({ key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' });
     items.push({ key: 'tools', icon: 'tools', labelKey: 'agent.editor.toolsConfig' });
     items.push({ key: 'skills', icon: 'skills', labelKey: 'agent.editor.skillsConfig' });
   }
