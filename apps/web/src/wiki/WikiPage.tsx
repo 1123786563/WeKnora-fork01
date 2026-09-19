@@ -7,7 +7,10 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
-import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
+import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
+import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
+import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
+import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createSourceRefTitleHydrator, type SourceRefTitleHydrator } from "./source-titles.ts";
 import {
@@ -20,11 +23,48 @@ import {
 } from "./markdown.ts";
 import "./wiki-reader.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
+import { navigate } from "../platform/navigation.ts";
 import { pagerState } from "../pagination.ts";
 import { wikiEditPermission } from "./edit-permission.ts";
-import type { KBSurfaceKB, KBSurfaceMe } from "../knowledge/permissions.ts";
+import { canUploadKnowledgeDocuments, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from "../knowledge/permissions.ts";
 
 const WIKI_PAGE_SIZE = 50;
+
+// Vue renders every sidebar icon as an inline t-icon SVG, so icon glyphs
+// never appear in the accessible text. The React port mirrors that with a
+// small stroke-icon set (aria-hidden, no text content).
+export function WikiGlyph({ kind, size = 14 }: { kind: "search" | "index" | "tree" | "list" | "folder-add" | "page-add" | "chevron"; size?: number }) {
+  const stroke = {
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    fill: "none",
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {kind === "search" ? <g {...stroke}><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></g> : null}
+      {kind === "index" ? <g {...stroke}><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v16" /></g> : null}
+      {kind === "tree" ? <g {...stroke}><path d="M4 6h16M4 12h10M4 18h13" /></g> : null}
+      {kind === "list" ? <g {...stroke}><path d="M8 6h12M8 12h12M8 18h12M4 5.5h.01M4 11.5h.01M4 17.5h.01" /></g> : null}
+      {kind === "folder-add" ? <g {...stroke}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M12 11v5M9.5 13.5h5" /></g> : null}
+      {kind === "page-add" ? <g {...stroke}><path d="M6 3h8l4 4v14H6z" /><path d="M12 11v5M9.5 13.5h5" /></g> : null}
+      {kind === "chevron" ? <g {...stroke}><path d="M9 6l6 6-6 6" /></g> : null}
+    </svg>
+  );
+}
+
+// Vue getPageIcon (WikiBrowser.vue:1980-1990) gives each page_type its own
+// glyph in the sidebar tree; the React tree marks the type with the same
+// color coding as the graph legend (KnowledgeGraphPage GRAPH_TYPE_DOT_BG).
+const WIKI_TYPE_DOT: Record<string, string> = {
+  summary: "bg-[#0052d9]",
+  entity: "bg-[#2ba471]",
+  concept: "bg-[#e37318]",
+  synthesis: "bg-[#0594fa]",
+  comparison: "bg-[#d54941]",
+  index: "bg-[#8c8c8c]",
+};
 
 export function wikiRevertConfirmation(
   translate: (key: string, values?: Record<string, string | number>) => string,
@@ -312,6 +352,39 @@ export function WikiPage({
   const [reverting, setReverting] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [canContribute, setCanContribute] = useState(canContributeProp);
+  // Shared documents-page chrome inputs (KnowledgeGraphPage parity): the KB
+  // switcher list, parser engines for the info card / parser hint, and the
+  // in-place KB settings dialog behind the ⚙ button.
+  const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
+  const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
+  const [canManage, setCanManage] = useState(false);
+  const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const supportedFileTypes = useMemo(() => {
+    const rules = (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? [];
+    return [...computeSupportedFileTypes(parserEngines, rules)];
+  }, [kbMeta, parserEngines]);
+  const unsupportedFileTypes = useMemo(
+    () => computeUnsupportedFileTypes(parserEngines, (kbMeta?.chunking_config as { parser_engine_rules?: { file_types: string[]; engine: string }[] } | null | undefined)?.parser_engine_rules ?? []),
+    [kbMeta, parserEngines],
+  );
+  // Vue title row (KnowledgeBase.vue L2359-2380): the third crumb level is the
+  // 文档 / Wiki / 图谱 row with the active Wiki tab.
+  const kbBasePath = `/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}`;
+  const resolvedTabs = kbMeta ? resolveKBSurfaceTabs(kbMeta) : undefined;
+  const kbTabs: DocumentsBreadcrumbTab[] | undefined = resolvedTabs
+    ? resolvedTabs.map((tab: KBSurfaceTab) => ({
+      key: tab,
+      label: tab === "documents"
+        ? t("knowledgeEditor.wikiBrowser.tabDocuments")
+        : tab === "wiki"
+          ? "Wiki"
+          : t("knowledgeEditor.wikiBrowser.tabGraph"),
+      href: tab === "documents" ? kbBasePath : `${kbBasePath}?tab=${tab}`,
+      active: tab === "wiki",
+      title: tab === "graph" ? t("knowledgeEditor.wikiBrowser.tabGraphTip") : undefined,
+    }))
+    : undefined;
   // Vue picture-preview state: the previewed image src, null closes the viewer.
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   // Vue sourceRefTitleCache: hydrated source-document titles keyed by bare
@@ -343,14 +416,24 @@ export function WikiPage({
   useEffect(() => {
     let active = true;
     setCanContribute(canContributeProp);
+    // The wiki surface shares the documents-page chrome (breadcrumb switcher,
+    // ⓘ file-type card, ⚙ settings dialog), so it sources the same inputs as
+    // KnowledgeGraphPage: kb settings, me, the tenant KB list, parser engines.
     void Promise.all([
       client.knowledgeBases.settings.get(knowledgeBaseId),
       client.auth.me().catch(() => null),
       // Vue canEdit consults the org shared-knowledge-bases list as the
       // authoritative share-grant signal; the probe mirrors those inputs.
       client.identity.organizations.knowledgeBaseShares.listShared().catch(() => null),
-    ] as const).then(([kb, me, sharedRows]) => {
-      if (!active || !me) return;
+      client.knowledgeBases.list().catch(() => []),
+      client.knowledgeBases.settings.parserEngines().catch(() => ({ data: [] })),
+    ] as const).then(([kb, me, sharedRows, list, engines]) => {
+      if (!active) return;
+      setKbMeta(kb as KBSurfaceKB);
+      setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+      setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
+      setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
+      if (!me) return;
       setCanContribute(
         wikiEditPermission(kb as KBSurfaceKB, me as KBSurfaceMe, sharedRows),
       );
@@ -363,6 +446,8 @@ export function WikiPage({
   // Vue space-epoch parity: a slow unfiltered response must not clobber the
   // newer bucket-filtered one.
   const loadEpoch = useRef(0);
+  // The index overview auto-open runs once per mount, not on every reload.
+  const didAutoOpenIndex = useRef(false);
   async function loadPages() {
     const run = ++loadEpoch.current;
     setState({ status: "loading" });
@@ -390,7 +475,14 @@ export function WikiPage({
       const requestedPage = requested
         ? response.pages.find((page) => page.slug === requested)
         : undefined;
-      if (requestedPage) choose(requestedPage);
+      if (requestedPage) {
+        choose(requestedPage);
+      } else if (!requested && !didAutoOpenIndex.current && response.pages.length > 0) {
+        // Vue WikiBrowser loadPages: without a ?slug= deep link the index
+        // overview is the natural landing view (openIndexView).
+        didAutoOpenIndex.current = true;
+        void openIndex();
+      }
       setState({ status: "success" });
     } catch (error) {
       setState({
@@ -450,6 +542,10 @@ export function WikiPage({
 
   async function openIndex() {
     if (typeof client.wiki.index !== "function") return;
+    // Vue openIndexView: entering the index overview clears the selected page
+    // (and any open editor) — the reader area shows one thing at a time.
+    setSelected(null);
+    setEditing(false);
     setIndexLoading(true);
     setIndexError(null);
     try {
@@ -567,6 +663,8 @@ export function WikiPage({
 
   function choose(page: WikiPageModel) {
     setSelected(page);
+    // Vue navigateToSlug clears the index overview when a page is opened.
+    setIndexView(null);
     setTitle(page.title);
     setSlug(page.slug);
     setSummary(page.summary);
@@ -829,28 +927,36 @@ export function WikiPage({
         : (pagesByType[type] ?? 0),
     }))
     .filter((tab) => tab.total > 0);
+  const viewToggle = (
+    <div className="wiki-view-toggle inline-flex items-center overflow-hidden rounded-[6px] border border-[#e4e7ec]" role="group" aria-label={t("wikiBrowser.viewModeToggle")}>
+      <button type="button" className={`h-[26px] cursor-pointer border-0 bg-transparent px-[7px] [font:inherit] ${viewMode === "tree" ? "bg-[#eef4ef] text-[#07c05f]" : "bg-transparent text-[#66758b]"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><WikiGlyph kind="tree" /></button>
+      <button type="button" className={`h-[26px] cursor-pointer border-0 border-l border-l-[#e4e7ec] bg-transparent px-[7px] [font:inherit] ${viewMode === "list" ? "bg-[#eef4ef] text-[#07c05f]" : "bg-transparent text-[#66758b]"}`} aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}><WikiGlyph kind="list" /></button>
+    </div>
+  );
+  const tabActions = (
+    <div className="wiki-tab-bar-actions flex shrink-0 items-center gap-[2px]">
+      {viewToggle}
+      {canContribute ? <Button type="button" className="wiki-tab-bar-action" disabled={folderBusy} aria-label={t("wikiBrowser.newRootFolder")} title={t("wikiBrowser.newRootFolder")} onClick={startInlineCreate}><WikiGlyph kind="folder-add" /></Button> : null}
+      {canContribute ? <Button type="button" className="wiki-tab-bar-action" aria-label={t("wikiBrowser.newPageBtn")} title={t("wikiBrowser.newPageBtn")} onClick={newPage}><WikiGlyph kind="page-add" /></Button> : null}
+    </div>
+  );
   const directory = (
     <>
-      {bucketTabs.length > 0 ? <div className="wk-wiki-bucket-bar flex flex-wrap items-center gap-1.5 pb-2" role="tablist" aria-label={t("wikiBrowser.viewModeToggle")}>
-        {bucketTabs.map((tab) => <button
-          key={tab.type}
-          type="button"
-          role="tab"
-          aria-selected={activeBucket === tab.type}
-          className={`cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] [font:inherit] ${activeBucket === tab.type ? "border-accent bg-accent-wash text-accent" : "border-line-soft bg-transparent text-muted hover:border-accent/50"}`}
-          onClick={() => { setActiveBucket((current) => (current === tab.type ? "" : tab.type)); setPage(1); }}
-        >
-          {tab.label} ({tab.total})
-        </button>)}
-      </div> : null}
-      <div className="wk-wiki-directory-toolbar flex flex-wrap items-center gap-[0.35rem] pb-2" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
-        {/* Vue renders these as icon-only buttons with tooltips — the labels
-            live in aria-label/title, not on the button face. */}
-        <Button type="button" aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}>☰</Button>
-        <Button type="button" aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}>≡</Button>
-        <Button type="button" aria-label={t("wikiBrowser.indexTitle")} title={t("wikiBrowser.indexTitle")} onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
-        {canContribute ? <Button type="button" disabled={folderBusy} aria-label={t("wikiBrowser.newRootFolder")} title={t("wikiBrowser.newRootFolder")} onClick={startInlineCreate}>＋</Button> : null}
-        {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
+      <div className="wiki-tab-bar flex items-center gap-1 pb-2" role="tablist" aria-label={t("wikiBrowser.viewModeToggle")}>
+        <div className="wiki-tab-bar-scroll flex min-w-0 flex-1 items-center gap-1">
+          {bucketTabs.map((tab) => <button
+            key={tab.type}
+            type="button"
+            role="tab"
+            aria-selected={activeBucket === tab.type}
+            className={`wiki-tab flex cursor-pointer items-baseline gap-[3px] border-0 border-b-2 border-b-transparent bg-transparent px-[0.55rem] py-[0.45rem] text-[13px] [font:inherit] ${activeBucket === tab.type ? "is-active border-b-[#07c05f] font-semibold text-[#07c05f]" : "border-b-transparent text-[#506078] hover:text-[#07c05f]"}`}
+            onClick={() => { setActiveBucket((current) => (current === tab.type ? "" : tab.type)); setPage(1); }}
+          >
+            <span className="wiki-tab-label">{tab.label}</span>
+            <span className="wiki-tab-count text-[11px] text-[rgba(0,0,0,0.4)]">{tab.total}</span>
+          </button>)}
+        </div>
+        {tabActions}
       </div>
       {inlineCreating ? <div className="wk-wiki-directory-item flex items-center gap-2 border-b border-line-soft py-[0.55rem]">
         <input className="min-w-0 flex-1 rounded-[6px] border border-[#e7e7e7] px-2 py-1 text-[13px] [font:inherit]" autoFocus
@@ -860,8 +966,12 @@ export function WikiPage({
         <Button type="button" disabled={folderBusy} onClick={() => void submitInlineCreate()}>{t("common.save")}</Button>
         <Button type="button" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>{t("common.cancel")}</Button>
       </div> : null}
+      {folderTrail.length > 0 ? <div className="flex items-center gap-1 pb-1 text-[12px] text-[#66758b]">
+        <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[#66758b] hover:text-[#07c05f] [font:inherit]" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</button>
+        {folderTrail.map((crumb) => <span key={crumb.path} className="text-[#344054]">/ {crumb.name}</span>)}
+      </div> : null}
       {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id}
-        className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"
+        className="group/wiki-folder flex items-center justify-between gap-2 rounded-[6px] border-0 py-[0.3rem] pl-1 pr-1 hover:bg-[#f0f3f8]"
         onDragOver={(event) => { if (canContribute) event.preventDefault(); }}
         onDrop={(event) => { if (canContribute && event.dataTransfer.getData("text/wiki-slug")) { event.preventDefault(); movePageToFolder(event.dataTransfer.getData("text/wiki-slug"), folder); } }}>
         {renamingFolderId === folder.id ? (
@@ -871,8 +981,12 @@ export function WikiPage({
             onKeyDown={(event) => { if (event.key === "Enter") { void renameFolder(folder, renamingName); setRenamingFolderId(""); } if (event.key === "Escape") setRenamingFolderId(""); }} />
         ) : (
           <>
-            <Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>
-            {canContribute ? <span className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(folder)}>🗑</Button></span> : null}
+            <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-left text-[13px] text-[#344054] [font:inherit]" onClick={() => openFolder(folder)}>
+              <span className="wiki-folder-chevron text-[#98a2b8]" aria-hidden><WikiGlyph kind="chevron" size={10} /></span>
+              <span className="truncate">{folder.name}</span>
+              <span className="ml-auto shrink-0 text-[11px] text-[rgba(0,0,0,0.4)]">{folder.page_count}</span>
+            </button>
+            {canContribute ? <span className="hidden shrink-0 items-center gap-[2px] group-hover/wiki-folder:flex"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(folder)}>🗑</Button></span> : null}
           </>
         )}
       </li>)}</ul> : null}
@@ -880,51 +994,67 @@ export function WikiPage({
   );
 
   return (
-    <main className="wk-page wk-wiki-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
-      <header className="wk-header mb-6 flex items-start justify-between gap-4">
-        <div>
-          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')}</p>
-          <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t("wikiBrowser.page.title")}</h1>
-          <p className="wk-muted text-muted">{t("wikiBrowser.page.subtitle")}</p>
-        </div>
-        {canContribute ? <Button type="button" onClick={newPage}>
-          {t("wikiBrowser.page.new")}
-        </Button> : null}
+    <main className="wk-page flex min-h-0 flex-1 flex-col box-border px-8 pt-6 pb-0">
+      <header className="wk-header mb-6">
+        <DocumentsBreadcrumb
+          t={t}
+          knowledgeBaseId={knowledgeBaseId}
+          kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
+          kbList={kbList}
+          kbMeta={{
+            type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
+            description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
+            createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
+          }}
+          supportedFileTypes={supportedFileTypes}
+          canManage={canManage}
+          onOpenSettings={() => setSettingsOpen(true)}
+          tabs={kbTabs}
+        />
+        <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
+        <ParserHint
+          t={t}
+          types={unsupportedFileTypes}
+          onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
+        />
       </header>
-      <Card>
-        <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5 max-[720px]:grid-cols-1">
-          <aside className="wk-wiki-sidebar flex min-w-0 flex-col border-r border-[#e7e7e7]">
-            <div className="wk-wiki-sidebar-header pr-2.5 pb-2">
-              <form className="wk-wiki-search flex items-center gap-[0.45rem] rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
-                <span className="wk-sr-only absolute h-px w-px m-[-1px] overflow-hidden [clip:rect(0_0_0_0)]">
-                  {t("wikiBrowser.page.search")}
-                </span>
-                <span aria-hidden="true">⌕</span>
-                <Input
-                  value={searchDraft}
-                  onChange={(event) => setSearchDraft(event.target.value)}
-                  placeholder={t("wikiBrowser.searchPlaceholder")}
-                />
-              </form>
-            </div>
-            <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
-              {directory}
+      <div className="wk-wiki-layout flex min-h-0 flex-1 items-stretch gap-[1.25rem] max-[720px]:flex-col">
+        <aside className="wk-wiki-sidebar flex w-[300px] shrink-0 flex-col rounded-[10px] border border-[#e7e7e7] bg-white p-[0.9rem] max-[720px]:w-full">
+          <div className="wk-wiki-sidebar-header pr-0 pb-2">
+            <form className="wk-wiki-search flex items-center gap-[0.45rem] rounded-[8px] border border-[#e7e7e7] bg-white px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search" aria-label={t("wikiBrowser.page.search")} onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
+              <WikiGlyph kind="search" />
+              <Input
+                className="border-0 bg-transparent p-0 text-[13px] focus:shadow-none"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder={t("wikiBrowser.searchPlaceholder")}
+              />
+            </form>
+          </div>
+          {/* Vue pins the 索引 nav item above the bucket tabs (WikiBrowser.vue:211-217). */}
+          <button
+            type="button"
+            className={`wiki-nav-item flex cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-2 py-[0.45rem] text-left text-[13px] [font:inherit] ${indexView ? "bg-[#eef4ef] font-semibold text-[#07c05f]" : "text-[#506078] hover:bg-[#f0f3f8]"}`}
+            aria-current={indexView ? "page" : undefined}
+            onClick={() => void openIndex()}
+          >
+            <WikiGlyph kind="index" />
+            <span className="wiki-nav-text">{t("wikiBrowser.indexTitle")}</span>
+          </button>
+          <div className="wiki-sidebar-divider my-1 border-t border-[#eef0f4]" aria-hidden />
+          <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-0.5 pb-3" aria-label={t('wikiBrowser.pageActions')}>
+            {directory}
               {listPages.map((page) => (
                 <button
-                  className={`wk-wiki-page-item group/wiki-item grid min-h-[98px] cursor-pointer gap-0.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
+                  className={`wk-wiki-page-item group/wiki-item flex w-full cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-2 py-[0.45rem] text-left text-[13px] text-[#344054] [font:inherit] transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
                   type="button"
                   draggable={canContribute}
                   onDragStart={(event) => { event.dataTransfer.setData("text/wiki-slug", page.slug); event.dataTransfer.effectAllowed = "move"; }}
                   onClick={() => choose(page)}
                 >
+                  <span className={`wiki-type-dot shrink-0 rounded-full ${WIKI_TYPE_DOT[(page as Record<string, unknown>).page_type as string] ?? "bg-[#8c8c8c]"}`} aria-hidden />
                   <span className="wk-wiki-page-item-title truncate text-sm leading-5 text-[#202020]">{page.title}</span>
-                  <span className="wk-wiki-page-item-summary line-clamp-2 text-xs leading-[1.5] text-[rgba(0,0,0,0.6)]">
-                    {page.summary || "—"}
-                  </span>
-                  <span className="wk-wiki-page-item-meta text-[11px] text-[rgba(0,0,0,0.4)]">
-                    v{page.version}
-                  </span>
                 </button>
               ))}
               {state.status === "loading" ? (
@@ -944,6 +1074,7 @@ export function WikiPage({
               ) : null}
             </nav>
           </aside>
+        <section className="wk-wiki-reader-pane flex min-w-0 flex-1 flex-col rounded-[10px] border border-[#e7e7e7] bg-white p-[1.4rem] max-[720px]:p-4">
           {!selected && !editing && !indexView ? (() => {
             const emptyState = wikiReaderEmptyState(t, pages.length > 0);
             return <div className="wk-wiki-reader-empty flex min-h-[22rem] min-w-0 flex-col items-center justify-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
@@ -956,8 +1087,8 @@ export function WikiPage({
             <article className="wk-wiki-reader min-w-0" aria-label={t("wikiBrowser.indexTitle")}>
               <div className="wk-header mb-6 flex items-start justify-between gap-4">
                 <div>
-                  <h2>{t("wikiBrowser.indexTitle")}</h2>
-                  <p className="wk-muted text-muted">{t("wikiBrowser.indexOverviewTag")}</p>
+                  <h2 className="m-0 text-[#07c05f]">{t("wikiBrowser.indexTitle")}</h2>
+                  <p className="m-0 mt-[6px] inline-block rounded-[4px] border border-[#e4e7ec] bg-[#f6f8fa] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#66758b]">{t("wikiBrowser.indexOverviewTag")}</p>
                 </div>
               </div>
               <WikiIndexView
@@ -1026,7 +1157,9 @@ export function WikiPage({
           ) : null}
           {canContribute ? <form
             className="wk-wiki-editor grid gap-[0.7rem]"
-            style={{ display: !selected || editing ? undefined : "none" }}
+            // The form surfaces only in edit/create mode (Vue opens the editor
+            // from 编辑/新建 actions); the index/reader views never show it.
+            style={{ display: editing ? undefined : "none" }}
             onSubmit={save}
           >
             <label>
@@ -1096,35 +1229,46 @@ export function WikiPage({
                 <Status tone="success">{t("wikiBrowser.editSaveSuccess")}</Status>
             ) : null}
           </form> : null}
-        </div>
-        {pager.total > WIKI_PAGE_SIZE ? (
-          <nav
-            className="wk-pagination flex items-center justify-center gap-3 pt-4"
-            aria-label={t("wikiBrowser.page.title")}
+        </section>
+      </div>
+      {pager.total > WIKI_PAGE_SIZE ? (
+        <nav
+          className="wk-pagination flex items-center justify-center gap-3 pt-4"
+          aria-label={t("wikiBrowser.page.title")}
+        >
+          <Button
+            type="button"
+            disabled={!pager.hasPrevious}
+            onClick={() => setPage((value) => value - 1)}
           >
-            <Button
-              type="button"
-              disabled={!pager.hasPrevious}
-              onClick={() => setPage((value) => value - 1)}
-            >
-              {t("wikiBrowser.page.previous")}
-            </Button>
-            <span>
-              {t("wikiBrowser.page.page", {
-                page: pager.page,
-                total: pager.total,
-              })}
-            </span>
-            <Button
-              type="button"
-              disabled={!pager.hasNext}
-              onClick={() => setPage((value) => value + 1)}
-            >
-              {t("wikiBrowser.page.next")}
-            </Button>
-          </nav>
-        ) : null}
-      </Card>
+            {t("wikiBrowser.page.previous")}
+          </Button>
+          <span>
+            {t("wikiBrowser.page.page", {
+              page: pager.page,
+              total: pager.total,
+            })}
+          </span>
+          <Button
+            type="button"
+            disabled={!pager.hasNext}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            {t("wikiBrowser.page.next")}
+          </Button>
+        </nav>
+      ) : null}
+      {settingsOpen ? (
+        <Dialog
+          open
+          title={t('knowledgeBase.settings')}
+          closeLabel={t('common.close')}
+          onClose={() => setSettingsOpen(false)}
+          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+        >
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} />
+        </Dialog>
+      ) : null}
       {previewSrc ? <WikiImagePreview src={previewSrc} onClose={() => setPreviewSrc(null)} /> : null}
       {historyOpen && selected ? (
         <Card className="wk-wiki-history mt-4">

@@ -106,6 +106,31 @@ platform: system
 - 流式失败 toast 化对齐
 - 环境：mock 模型 SSRF 拒绝（后端 SSRF_WHITELIST 需配域名）致流式不可用
 
+## 第十一轮：Wiki 页签结构对齐（2026-09-19 续）
+WikiPage.tsx 重构落地（浏览器截图+文本对比验证）：
+1. **迁入 KB 面包屑 chrome**：DocumentsBreadcrumb（知识库 > {KB} > 文档/Wiki(active)/图谱 + ⓘ
+   文件类型卡 + ⚙ 设置弹窗）+ document-subtitle + ParserHint 警告行（前往配置 →），数据流照
+   KnowledgeGraphPage 模式（kbMeta/kbList/canManage/parserEngines）。旧独立"Wiki"大标题页头删除。
+2. **索引视图自动打开**：无 ?slug= 深链时首载自动 openIndex()（Vue openIndexView 行为）；
+   openIndex 清 selected/editing，choose 清 indexView（互斥渲染修正）。
+3. **侧栏 Vue 化**：搜索框（SVG 放大镜）→ 索引 nav（绿+catalog 图标）→ 分隔线 → 知识/摘要
+   下划线页签（label+count）→ 树/列表切换+新建目录+新建页面 SVG 图标组 → 文件夹行（chevron+名称
+   +count，悬停显 ✎🗑）→ 页面行（类型色点+标题单行，去 summary/v1 两行）。
+4. **图标全部 SVG 化**（WikiGlyph 组件）：文本字符 ☰≡✎＋▸▤⌕ 不再进 innerText（Vue t-icon 同）；
+   搜索 sr-only span 改 aria-label（innerText 泄漏消除）。
+5. 编辑表单只在 editing 态显示（旧条件 !selected||editing 使索引视图下表单漏出）。
+6. 测试：WikiPage.test 的 resolve 钩子补 .svg（chrome 引入 DocumentsPageChrome 链）；
+   markdown/source-doc-open/source-titles 测试同补。WikiPage 12/12 绿。
+
+**Wiki 页签残余差异（后续轮）**：① 侧栏桶计数语义：Vue=树当前层级可见数（根层 知识 1），
+React=stats 全库数（知识 2）——需 folders 树嵌套重构一并处理；② 文件夹树嵌套：Vue 可折叠嵌套树，
+React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成（React 行含 summary 文案，Vue 加载完
+成后需再对比）；④ 图标形状（色点 vs t-icon 具象图标）。
+
+## 第十一轮门禁
+- test:web 1873/1873（两轮遇 2 个图谱 debounce 计时抖动，复跑即绿，与本轮改动无关）
+- tsc -b 0 错；vite build 成功；浏览器截图对比 ✓
+
 ## 修复落地与验证（本轮提交）
 1. **模型芯片首模型回退**：model-chip.ts 移除确定性"未配置"分支（round-8 竞态判断失效，
    两端 lastPick 均空的 fresh origin 上 Vue 确定性显示首模型）；更新 model-chip.test.ts。
