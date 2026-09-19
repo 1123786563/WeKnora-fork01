@@ -12,6 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
+	memorytool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -294,10 +295,13 @@ func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) e
 	return s.repo.Clear(ctx, scope)
 }
 func (s *MemoryService) Tools() []tool.Tool {
-	// SDK tools do not carry the server-resolved scope required by this
-	// facade. Exposing them would bypass authorization, so native wiring must
-	// call the scoped methods above instead of passing raw backend tools on.
-	return nil
+	// These constructors resolve the configured MemoryService and app/user
+	// from invocation context. They therefore enter this facade's keyScope
+	// checks instead of exposing a raw backend tool.
+	return []tool.Tool{
+		memorytool.NewAddTool(), memorytool.NewUpdateTool(), memorytool.NewDeleteTool(),
+		memorytool.NewClearTool(), memorytool.NewSearchTool(), memorytool.NewLoadTool(),
+	}
 }
 func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
 	if sess == nil {

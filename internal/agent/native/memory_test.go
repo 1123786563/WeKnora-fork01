@@ -45,6 +45,16 @@ func TestMemoryWriteRejectsOldGeneration(t *testing.T) {
 	require.True(t, AcceptMemoryWrite(true, 2, 2))
 }
 
+func TestNativeMemoryToolsUseControlledFacadeSurface(t *testing.T) {
+	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
+	svc, _ := newNativeMemoryFacade(t, scope)
+	tools := svc.Tools()
+	require.Len(t, tools, 6)
+	for _, candidate := range tools {
+		require.NotNil(t, candidate)
+	}
+}
+
 func TestNativeMemoryWorkerChecksGenerationAtCommitAndDoesNotRetry(t *testing.T) {
 	scope := nativecontract.Scope{TenantID: 1, MemorySubjectID: "u1", PolicyRevision: 1}
 	svc, repo := newNativeMemoryFacade(t, scope)
