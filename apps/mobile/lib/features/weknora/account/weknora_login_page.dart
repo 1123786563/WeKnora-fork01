@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../shared/theme/theme_extensions.dart';
 import '../../../shared/widgets/connection_components.dart';
 import '../../../shared/widgets/conduit_components.dart';
 import '../../../shared/widgets/utility_components.dart';
@@ -48,8 +49,11 @@ class _WeKnoraLoginPageState extends ConsumerState<WeKnoraLoginPage> {
   }
 
   void _onFieldChanged(String _) {
-    // Editing after a failure is the signal that the error is stale.
-    if (_error != null || !_canSubmit) setState(() => _error = null);
+    // Typing can both clear a stale error and complete the form, so the
+    // submit button's enabled state must be recomputed on every change.
+    // (Skipping the rebuild when the form was already complete would keep
+    // the button disabled after the last field is filled.)
+    setState(() => _error = null);
   }
 
   Future<void> _submit() async {

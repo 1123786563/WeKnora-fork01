@@ -105,6 +105,16 @@ class BackendChooserPage extends ConsumerWidget {
                 trailing: _chooserChevron(context),
                 onTap: () => context.go(Routes.hermesSettings, extra: true),
               ),
+              UtilitySelectionRow(
+                key: const Key('weknora-backend-chooser-row'),
+                leading: const _WeKnoraIcon(),
+                title: l10n.weknoraBackendChooserTitle,
+                subtitle: l10n.weknoraBackendChooserSubtitle,
+                selected: false,
+                showSelectionIndicator: false,
+                trailing: _chooserChevron(context),
+                onTap: () => context.go(Routes.weknoraLogin),
+              ),
             ],
           ),
           if (appleRows.isNotEmpty) ...[
@@ -280,6 +290,31 @@ class _DirectConnectionIcon extends StatelessWidget {
       ),
       child: Icon(
         context.usesCupertinoChrome ? CupertinoIcons.link : Icons.api_rounded,
+        color: theme.buttonPrimary,
+        size: IconSize.medium,
+      ),
+    );
+  }
+}
+
+class _WeKnoraIcon extends StatelessWidget {
+  const _WeKnoraIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.conduitTheme;
+
+    return Container(
+      width: _providerLogoSize,
+      height: _providerLogoSize,
+      decoration: BoxDecoration(
+        color: theme.buttonPrimary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppBorderRadius.md),
+      ),
+      child: Icon(
+        context.usesCupertinoChrome
+            ? CupertinoIcons.book_fill
+            : Icons.auto_stories_rounded,
         color: theme.buttonPrimary,
         size: IconSize.medium,
       ),

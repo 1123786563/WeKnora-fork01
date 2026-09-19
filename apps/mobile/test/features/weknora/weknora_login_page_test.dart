@@ -81,6 +81,9 @@ void main() {
       find.byKey(const Key('weknora-password-field')),
       'pw123456',
     );
+    // enterText does not pump; rebuild once so the submit button's
+    // enabled state reflects the now-non-empty fields before tapping.
+    await tester.pump();
     await tester.tap(find.byKey(const Key('weknora-login-button')));
     await tester.pumpAndSettle();
 
@@ -138,6 +141,8 @@ Future<void> _fillAndSubmit(WidgetTester tester) async {
     find.byKey(const Key('weknora-password-field')),
     'pw123456',
   );
+  // enterText does not pump; rebuild so the submit button is enabled.
+  await tester.pump();
   await tester.tap(find.byKey(const Key('weknora-login-button')));
   await tester.pumpAndSettle();
 }
