@@ -4,7 +4,9 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
+	"strings"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/craft"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -33,6 +35,8 @@ type CraftInteractionHandler struct {
 type CraftInteractionAPI interface {
 	ListInteractions(context.Context, craft.Scope, string) ([]service.CraftInteractionRecord, error)
 	Decide(context.Context, service.CraftDecisionRequest) (service.CraftDecisionOutcome, error)
+	Stop(context.Context, service.CraftStopRequest) (service.CraftStopStatus, error)
+	DelegationStatus(context.Context, craft.Scope, agentruntime.RunKey, string) (service.CraftStopStatus, error)
 }
 
 var _ CraftInteractionAPI = (*service.CraftControlService)(nil)
@@ -64,6 +68,8 @@ func RegisterCraftInteractionRoutes(sessions craftRouteGroup, h *CraftInteractio
 	// both names. POST routes use :session_id like their craft siblings.
 	sessions.GET("/:id/craft/interactions", h.ListCraftInteractions)
 	sessions.POST("/:session_id/craft/interactions/:interaction_id/decide", h.DecideCraftInteraction)
+	sessions.POST("/:session_id/craft/runs/:run_id/stop", h.StopCraftRun)
+	sessions.GET("/:id/craft/runs/:run_id/delegations/:task_id/status", h.GetCraftDelegationStatus)
 }
 
 // interactionView is the wire shape of one pending decision.
@@ -224,6 +230,78 @@ func craftInteractionHTTPError(c *gin.Context, err error) {
 		return
 	}
 	craftHTTPError(c, err)
+}
+
+type stopRequestBody struct {
+	TaskID string `json:"task_id"`
+}
+
+// StopCraftRun serves POST /api/v1/sessions/:session_id/craft/runs/:run_id/
+// stop: the R06 verifiable stop. The response keeps the honest phase —
+// "stopping" is a real answer (abort not yet confirmed), never folded into
+// a boolean.
+func (h *CraftInteractionHandler) StopCraftRun(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft control is unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	var body stopRequestBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(apperrors.NewBadRequestError(err.Error()))
+		return
+	}
+	runID := strings.TrimSpace(c.Param("run_id"))
+	if runID == "" || strings.TrimSpace(body.TaskID) == "" {
+		c.Error(apperrors.NewBadRequestError("run_id and task_id are required"))
+		return
+	}
+	status, err := h.svc.Stop(c.Request.Context(), service.CraftStopRequest{
+		Scope:  scope,
+		RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: runID},
+		TaskID: strings.TrimSpace(body.TaskID),
+	})
+	if err != nil {
+		craftInteractionHTTPError(c, err)
+		return
+	}
+	data := gin.H{"phase": status.Phase, "note": status.Note}
+	if status.Result != nil {
+		data["result_status"] = status.Result.Status
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// GetCraftDelegationStatus serves GET /api/v1/sessions/:id/craft/runs/
+// :run_id/delegations/:task_id/status: the read-only poll the client runs
+// after a stop answered "stopping". It writes nothing.
+func (h *CraftInteractionHandler) GetCraftDelegationStatus(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft control is unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	runID := strings.TrimSpace(c.Param("run_id"))
+	taskID := strings.TrimSpace(c.Param("task_id"))
+	if runID == "" || taskID == "" {
+		c.Error(apperrors.NewBadRequestError("run_id and task_id are required"))
+		return
+	}
+	status, err := h.svc.DelegationStatus(c.Request.Context(), scope,
+		agentruntime.RunKey{TenantID: scope.TenantID, RunID: runID}, taskID)
+	if err != nil {
+		craftInteractionHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"phase": status.Phase, "note": status.Note}})
 }
 
 // craftOperator derives the acting user for the audit trail (identity only,

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/opencode"
@@ -132,7 +133,7 @@ type CraftStopStatus struct {
 type CraftControlService struct {
 	runs         CraftRunController
 	store        craft.Store
-	executor     craft.Executor
+	executor     atomic.Pointer[craft.Executor] // post-construction injection (wireCraftInteractionRegistrar)
 	interactions CraftInteractionStore
 	reply        CraftOpenCodeReplier
 }
@@ -147,10 +148,30 @@ func NewCraftControlService(
 	interactions CraftInteractionStore,
 	reply CraftOpenCodeReplier,
 ) *CraftControlService {
-	return &CraftControlService{
-		runs: runs, store: store, executor: executor,
+	svc := &CraftControlService{
+		runs: runs, store: store,
 		interactions: interactions, reply: reply,
 	}
+	svc.SetExecutor(executor)
+	return svc
+}
+
+// SetExecutor installs the craft executor post-construction (the provider
+// cycle is broken exactly like the interaction emitter: the runtime is
+// assembled after this service). Nil keeps the recorded-intent degrade.
+func (s *CraftControlService) SetExecutor(executor craft.Executor) {
+	if s == nil || executor == nil {
+		return
+	}
+	s.executor.Store(&executor)
+}
+
+// currentExecutor returns the live executor or nil (recorded-intent stop).
+func (s *CraftControlService) currentExecutor() craft.Executor {
+	if held := s.executor.Load(); held != nil {
+		return *held
+	}
+	return nil
 }
 
 // craftControlContext derives the server-side budget context: values are
@@ -468,16 +489,17 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		task = stored
 	}
 	abortNote := ""
-	if s.executor != nil && task.ID != "" {
-		if err := s.executor.Abort(detachCtx, task); err != nil {
+	exec := s.currentExecutor()
+	if exec != nil && task.ID != "" {
+		if err := exec.Abort(detachCtx, task); err != nil {
 			abortNote = fmt.Sprintf("; abort delivery unclear: %v", err)
 		}
 	}
-	if s.executor == nil || task.ID == "" {
+	if exec == nil || task.ID == "" {
 		return CraftStopStatus{Phase: "stopping",
 			Note: "cancel intent recorded; no executor is available to abort the sub-execution"}, nil
 	}
-	observation, err := s.executor.Observe(detachCtx, task)
+	observation, err := exec.Observe(detachCtx, task)
 	if err != nil {
 		return CraftStopStatus{Phase: "stopping",
 			Note: fmt.Sprintf("cancel intent recorded and abort requested; remote state unverified: %v%s", err, abortNote)}, nil
@@ -527,8 +549,8 @@ func (s *CraftControlService) DelegationStatus(
 			return CraftStopStatus{Phase: stopPhaseForResult(result), Result: &result}, nil
 		}
 		task, err := s.store.GetTask(ctx, scope, taskID)
-		if err == nil && s.executor != nil {
-			observation, oerr := s.executor.Observe(ctx, task)
+		if exec := s.currentExecutor(); err == nil && exec != nil {
+			observation, oerr := exec.Observe(ctx, task)
 			if oerr != nil {
 				return CraftStopStatus{}, oerr
 			}
