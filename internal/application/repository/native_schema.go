@@ -25,7 +25,7 @@ func NativeSchemaManifest() []NativeSchemaTable {
 		nativeTable("native_agent_sessions", []string{"tenant_id", "owner_id", "session_id"}, []string{"tenant_id", "owner_id", "session_id"}),
 		nativeTable("native_session_state", []string{"tenant_id", "owner_id", "session_id", "state_key", "revision", "state_value"}, []string{"tenant_id", "owner_id", "session_id", "state_key"}),
 		nativeTable("native_agent_runs", []string{"tenant_id", "run_id", "owner_id", "session_id", "request_id", "input_hash", "revision", "lease_epoch"}, []string{"tenant_id", "run_id"}),
-		nativeTable("native_agent_inputs", []string{"tenant_id", "run_id", "input_id", "input_hash", "payload", "role"}, []string{"tenant_id", "run_id", "input_id"}),
+		nativeTable("native_agent_inputs", []string{"tenant_id", "run_id", "input_id", "request_id", "input_hash", "payload", "role", "revision", "ordinal", "consumed"}, []string{"tenant_id", "run_id", "input_id"}),
 		nativeTable("native_agent_config_bindings", []string{"tenant_id", "run_id", "binding_kind", "schema_version", "sdk_version", "graph_version", "config_hash", "credential_ref", "tool_set_hash", "source_kind", "source_id", "source_version", "target_id"}, []string{"tenant_id", "run_id", "binding_kind"}),
 		nativeTable("native_agent_memory_scopes", []string{"tenant_id", "user_id", "generation", "tombstone_generation"}, []string{"tenant_id", "user_id"}),
 		nativeTable("native_agent_memory_entries", []string{"tenant_id", "user_id", "memory_id", "generation", "tombstoned"}, []string{"tenant_id", "user_id", "memory_id"}),
@@ -38,8 +38,8 @@ func NativeSchemaManifest() []NativeSchemaTable {
 		nativeTable("native_agent_commit_intents", []string{"tenant_id", "run_id", "intent_id", "version", "payload", "payload_hash", "lease_epoch", "terminal_status"}, []string{"tenant_id", "run_id", "intent_id"}),
 		nativeTable("native_agent_checkpoints", []string{"tenant_id", "run_id", "checkpoint_id", "schema_version", "sdk_version", "graph_version", "namespace", "lineage_id", "request_payload"}, []string{"tenant_id", "run_id", "checkpoint_id"}),
 		nativeTable("native_agent_session_events", []string{"tenant_id", "app_name", "user_id", "session_id", "stable_event_id", "payload", "payload_hash", "ordinal"}, []string{"tenant_id", "app_name", "user_id", "session_id", "stable_event_id"}),
-		nativeTable("native_agent_events", []string{"tenant_id", "run_id", "sequence", "event_id", "intent_id", "payload", "payload_hash"}, []string{"tenant_id", "run_id", "sequence"}),
-		nativeTable("native_agent_usage_observations", []string{"tenant_id", "run_id", "attempt_id", "observation_id", "revision", "provider", "model", "input_tokens", "output_tokens", "payload_hash"}, []string{"tenant_id", "run_id", "attempt_id", "observation_id"}),
+		nativeTable("native_agent_events", []string{"tenant_id", "run_id", "sequence", "event_id", "intent_id", "attempt_id", "protocol", "schema_version", "kind", "payload", "payload_hash"}, []string{"tenant_id", "run_id", "sequence"}),
+		nativeTable("native_agent_usage_observations", []string{"tenant_id", "run_id", "attempt_id", "observation_id", "revision", "provider", "model", "provider_request_id", "funding_ref", "budget_root_run_id", "input_tokens", "output_tokens", "cached_tokens", "cache_read_tokens", "cache_create_tokens", "accounting_status", "dimensions", "occurred_at", "payload_hash"}, []string{"tenant_id", "run_id", "attempt_id", "observation_id"}),
 	}
 }
 
