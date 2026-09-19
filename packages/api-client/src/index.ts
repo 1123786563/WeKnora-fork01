@@ -102,6 +102,14 @@ export type {
   SandboxSkillUpdate,
   SkillAcceptedResult,
 } from './configuration.ts';
+export { createMbtiApi } from './mbti.ts';
+export type {
+  MbtiApi,
+  MbtiAxis,
+  MbtiProfile,
+  MbtiQuestion,
+  MbtiScore,
+} from './mbti.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';
