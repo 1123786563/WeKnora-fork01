@@ -91,3 +91,4 @@ ios/
 !apps/mobile/
 !apps/mobile/**
 .mimosa/
+parity-audit/

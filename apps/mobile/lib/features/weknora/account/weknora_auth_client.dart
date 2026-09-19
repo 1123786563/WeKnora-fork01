@@ -70,7 +70,8 @@ class WeKnoraAuthClient {
       path: 'api/v1/auth/login',
       body: {'email': email, 'password': password},
     );
-    final user = (data['user'] as Map<String, dynamic>?) ?? const {};
+    final rawUser = data['user'];
+    final user = rawUser is Map ? rawUser.cast<String, dynamic>() : const {};
     return WeKnoraLoginResult(
       tokens: WeKnoraTokenPair(
         accessToken: data['token'] as String? ?? '',
@@ -132,10 +133,15 @@ class WeKnoraAuthClient {
         ),
       );
       final data = response.data;
-      final map = data is String
-          ? jsonDecode(data) as Map<String, dynamic>
-          : (data as Map?)?.cast<String, dynamic>() ??
-                const <String, dynamic>{};
+      final map = _jsonObject(data);
+      if (map == null) {
+        // Not talking to the WeKnora API (misconfigured base URL, captive
+        // portal HTML, JSON array body): never blame the credentials.
+        throw WeKnoraAuthException(
+          'Unexpected response from the WeKnora server.',
+          serverUnreachable: true,
+        );
+      }
       final success = map['success'] == true;
       if (response.statusCode == 401 || !success) {
         throw WeKnoraAuthException(
@@ -151,6 +157,19 @@ class WeKnoraAuthClient {
         'Could not reach the WeKnora server.',
         serverUnreachable: true,
       ); // error intentionally not surfaced: it may carry the password body.
+    }
+  }
+
+  /// Decodes a JSON-object body without ever throwing: null when the payload
+  /// is not an object (HTML page, JSON array, scalar, empty body).
+  Map<String, dynamic>? _jsonObject(Object? data) {
+    if (data is Map) return data.cast<String, dynamic>();
+    if (data is! String) return null;
+    try {
+      final decoded = jsonDecode(data);
+      return decoded is Map ? decoded.cast<String, dynamic>() : null;
+    } on FormatException {
+      return null;
     }
   }
 }

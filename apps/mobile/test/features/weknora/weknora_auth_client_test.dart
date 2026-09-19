@@ -27,6 +27,12 @@ void main() {
       expect(result.tokens.refreshToken, 'refresh-1');
       expect(result.displayName, 'alice');
       expect(http.requests.single.path, 'api/v1/auth/login');
+      // The uri getter resolves the raw path against the Dio baseUrl, so
+      // this locks the base-url join (path alone would pass either way).
+      expect(
+        http.requests.single.uri.toString(),
+        'http://localhost:8084/api/v1/auth/login',
+      );
       expect(
         (http.requests.single.data as Map<String, dynamic>)['email'],
         'a@b.c',
@@ -52,9 +58,9 @@ void main() {
 
     test('maps connection error to serverUnreachable', () async {
       final throwing = _QueuedAdapter([]);
-      // 让 dio 抛 DioException.connectionError：构造一个总是失败的 HttpClientAdapter
-      // —— 在 _QueuedAdapter 为空时按其实现抛 "No reply queued"（非 Dio 路径），
-      // 因此这里直接测 _wrap 的映射函数：
+      // An empty queue makes the mock adapter throw inside dio, and dio
+      // wraps any adapter error in a DioException; the client must map that
+      // to WeKnoraAuthException rather than let it escape.
       final client = WeKnoraAuthClient(dioFactory: () => _dio(throwing));
       try {
         await client.login(baseUrl: 'http://x', email: 'a', password: '123456');
@@ -62,6 +68,59 @@ void main() {
       } on WeKnoraAuthException catch (e) {
         expect(e.serverUnreachable || e.invalidCredentials, isTrue);
       }
+    });
+
+    test('maps a non-JSON 200 body to serverUnreachable', () async {
+      // A misconfigured base URL or captive portal answers with HTML.
+      final http = _QueuedAdapter([
+        _Reply.stream([
+          utf8.encode('<html>Sign in</html>'),
+        ], contentType: 'text/html; charset=utf-8'),
+      ]);
+      final client = WeKnoraAuthClient(dioFactory: () => _dio(http));
+      await expectLater(
+        client.login(baseUrl: 'http://x', email: 'a@b.c', password: 'pw'),
+        throwsA(
+          isA<WeKnoraAuthException>().having(
+            (e) => e.serverUnreachable,
+            'serverUnreachable',
+            isTrue,
+          ),
+        ),
+      );
+    });
+
+    test('maps a JSON array 200 body to serverUnreachable', () async {
+      final http = _QueuedAdapter([
+        _Reply.stream([
+          utf8.encode('[1,2]'),
+        ], contentType: 'application/json; charset=utf-8'),
+      ]);
+      final client = WeKnoraAuthClient(dioFactory: () => _dio(http));
+      await expectLater(
+        client.login(baseUrl: 'http://x', email: 'a@b.c', password: 'pw'),
+        throwsA(isA<WeKnoraAuthException>()),
+      );
+    });
+
+    test('tolerates a non-map user field', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({
+          'success': true,
+          'token': 'access-1',
+          'refresh_token': 'refresh-1',
+          'user': 'oops',
+        }),
+      ]);
+      final client = WeKnoraAuthClient(dioFactory: () => _dio(http));
+      final result = await client.login(
+        baseUrl: 'http://x',
+        email: 'a@b.c',
+        password: 'pw',
+      );
+      expect(result.tokens.accessToken, 'access-1');
+      expect(result.userId, '');
+      expect(result.displayName, '');
     });
   });
 
@@ -138,6 +197,12 @@ final class _Reply {
         'application/json; charset=utf-8',
         statusCode,
       );
+
+  factory _Reply.stream(
+    List<List<int>> chunks, {
+    required String contentType,
+    int statusCode = 200,
+  }) => _Reply(chunks, contentType, statusCode);
 
   final List<List<int>> chunks;
   final String contentType;
