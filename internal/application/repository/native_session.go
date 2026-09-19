@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
@@ -271,9 +272,13 @@ func (s *NativeSessionStore) AppendStable(ctx context.Context, append nativecont
 	if err != nil {
 		return err
 	}
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	appendOnce := func(tx *gorm.DB) error {
 		var locked string
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Table("native_agent_sessions").Select("session_id").Where("tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, append.Key.UserID, append.Key.SessionID).Row().Scan(&locked); err != nil {
+		lockedSession := tx.Table("native_agent_sessions").Select("session_id").Where("tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, append.Key.UserID, append.Key.SessionID)
+		if tx.Dialector.Name() != "sqlite" {
+			lockedSession = lockedSession.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := lockedSession.Row().Scan(&locked); err != nil {
 			return err
 		}
 		var ordinal int64
@@ -296,8 +301,35 @@ func (s *NativeSessionStore) AppendStable(ctx context.Context, append nativecont
 			return ErrNativeSessionConflict
 		}
 		return lookup
-	})
+	}
+	if s.db.Dialector.Name() != "sqlite" {
+		return s.db.WithContext(ctx).Transaction(appendOnce)
+	}
+	const sqliteAppendAttempts = 8
+	for attempt := 0; attempt < sqliteAppendAttempts; attempt++ {
+		err = s.db.WithContext(ctx).Transaction(appendOnce)
+		if err == nil || errors.Is(err, ErrNativeSessionConflict) || !isSQLiteAppendContention(err) {
+			return err
+		}
+		wait := time.NewTimer(time.Duration(attempt+1) * 5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !wait.Stop() {
+				<-wait.C
+			}
+			return ctx.Err()
+		case <-wait.C:
+		}
+	}
 	return err
+}
+
+func isSQLiteAppendContention(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked") ||
+		strings.Contains(message, "database is busy") ||
+		strings.Contains(message, "unique constraint failed: native_agent_session_events.tenant_id, native_agent_session_events.app_name, native_agent_session_events.user_id, native_agent_session_events.session_id, native_agent_session_events.ordinal")
 }
 
 type nativeSessionEventRow struct{ Payload []byte }

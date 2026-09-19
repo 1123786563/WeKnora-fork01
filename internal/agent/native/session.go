@@ -105,7 +105,23 @@ func (s *SessionService) GetSession(ctx context.Context, key session.Key, opts .
 	if err := session.ValidateGetSessionOptions(options, false); err != nil {
 		return nil, err
 	}
-	return s.store.Get(ctx, key)
+	got, err := s.store.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if !options.EventTime.IsZero() {
+		filtered := got.Events[:0]
+		for _, e := range got.Events {
+			if !e.Timestamp.Before(options.EventTime) {
+				filtered = append(filtered, e)
+			}
+		}
+		got.Events = filtered
+	}
+	if options.EventNum > 0 && len(got.Events) > options.EventNum {
+		got.Events = got.Events[len(got.Events)-options.EventNum:]
+	}
+	return got, nil
 }
 func (s *SessionService) ListSessions(ctx context.Context, key session.UserKey, opts ...session.Option) ([]*session.Session, error) {
 	if err := s.authorizeUser(ctx, key); err != nil {

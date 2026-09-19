@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -63,4 +64,40 @@ func TestNativeSessionStateReopensAndConcurrentStableAppendIsIdempotent(t *testi
 	got, err := store.Get(context.Background(), key)
 	require.NoError(t, err)
 	require.Len(t, got.Events, 1)
+}
+
+func TestNativeSessionConcurrentDistinctStableAppendsKeepEveryEvent(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewNativeSessionStore(db)
+	key := session.Key{AppName: "weknora/native-v1/tenant/1", UserID: "owner/dTE", SessionID: "session/distinct-concurrent"}
+	require.NoError(t, store.Create(context.Background(), key, nil))
+
+	const writers = 24
+	errs := make(chan error, writers)
+	var wg sync.WaitGroup
+	for i := range writers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			id := fmt.Sprintf("event-%02d", i)
+			errs <- store.AppendStable(context.Background(), nativecontract.SessionAppend{
+				Key: key, StableEventID: id, PayloadHash: "hash-" + id,
+				Event: &event.Event{ID: id, Author: "agent"},
+			})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	got, err := store.Get(context.Background(), key)
+	require.NoError(t, err)
+	require.Len(t, got.Events, writers)
+	var distinctOrdinals int64
+	require.NoError(t, db.Raw(`SELECT COUNT(DISTINCT ordinal) FROM native_agent_session_events
+		WHERE tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ?`,
+		1, key.AppName, key.UserID, key.SessionID).Scan(&distinctOrdinals).Error)
+	require.EqualValues(t, writers, distinctOrdinals)
 }
