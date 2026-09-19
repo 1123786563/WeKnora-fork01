@@ -30,7 +30,7 @@ GraphAgent 走 `GraphAgent.Run` → `graph.Executor.Execute`，在节点前后�
 
 ## P0-4：能力矩阵与版本选择结论
 
-[八列能力矩阵](sdk-capabilities.tsv) 覆盖 Task 1 的全部功能 ID，并展开 9 个能力类别、26 个远程 chat Provider、本地 Ollama，以及只做 embedding/rerank 的 Jina 非 Agent 消费者。共 88 行：4 行 `verified`（仅继承 Task 2/3 各行指定的确定性/SQLite/策略证据）、77 行 `source-only`、2 行 `blocked-env`、5 行 `incompatible`。本任务只执行文档结构与 Go 契约编译检查；没有新增真实 Provider、数据库或客户端运行验收。
+[八列能力矩阵](sdk-capabilities.tsv) 覆盖 Task 1 的全部功能 ID，并展开 9 个能力类别、26 个远程 chat Provider、本地 Ollama，以及只做 embedding/rerank 的 Jina 非 Agent 消费者。共 90 行：4 行 `verified`（仅继承 Task 2/3 各行指定的确定性/SQLite/策略证据）、79 行 `source-only`、2 行 `blocked-env`、5 行 `incompatible`。本任务只执行文档结构与 Go 契约编译检查；没有新增真实 Provider、数据库或客户端运行验收。
 
 版本证据为根 `go.mod:99` 和 `go.sum`：v1.10.0 模块校验和 `h1:0pY2ee7tc6+3e+I7CgnkdGY2z4lrmQwQ4sq7C1dulQc=`，go.mod 校验和 `h1:lksOlht6E+LR7AKOA0XoKrkI3AJNsfukTVes9BFmTow=`。源码根固定为 `$(go env GOMODCACHE)/trpc.group/trpc-go/trpc-agent-go@v1.10.0`。本任务没有修改模块缓存、go.mod、go.sum 或产品代码，没有选用其他本机版本，也没有声称新版本已修复问题。
 
@@ -53,3 +53,9 @@ GraphAgent 走 `GraphAgent.Run` → `graph.Executor.Execute`，在节点前后�
 旧桥明确拒绝 Stop/ReasoningEffort/ThinkingTokens/ThinkingLevel/Headers/ReasoningSignature 等，不能继续包装旧桥后宣称完成原生迁移。P3 使用原生 `model.Model` 和必要 Provider 小扩展，逐项迁移并真实调用验收；非 Agent 的 chat/embedding/rerank 消费者不在无证据删除范围。
 
 完整新 Go 接口、键映射、身份、提交协调、事件 v1、归档只读、扩展测试与删除条件见 [interfaces.md](interfaces.md)。`阻塞并修订规格` 不授权降低功能：先补版本/配置决策；若不能满足已确认边界，再提交明确规格修订，而不是静默删恢复、权限或旧能力。
+
+### P0-4 review round 1：决策交互与准入行为补齐
+
+新增 `TOOLS-04`：依据现有 `approval.PendingRequest/OAuthPendingRequest`、durable OAuth park、`ownedRun`、`ValidateDecision/Resolve/ApplyDecision` 和 OAuth handler，固定 PendingDecisionService 的授权 List/Get/BeginOAuth/Resolve、完整展示 DTO、service identity、operation description、当前权限脱敏参数、等待/决定状态、OAuth token 重新确认和同一 run 的恢复语义。`decision.required` 必须引用该新鲜详情，不能仅靠事件里的 pending ID 完成审批。
+
+新增 `RUN-06` 并从 RUN-05 分离 ENG-006：RunControl.Admit 明确读取服务端 enabled/admission_enabled/worker_drain 配置及 revision；关闭开关或 drain 拒绝新准入，已有工作安全排空，读/取消/cleanup 不受准入开关屏蔽，child/followup 也不得绕过；P2/P7 负责组合、竞态、双库、重启和维护窗口验证。两行仍为 source-only；本轮没有运行产品行为测试，原生 race no-go 原样保留。

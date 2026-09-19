@@ -149,6 +149,17 @@ type SteerInput struct {
 	Message          model.Message
 	ExpectedRevision int64
 }
+
+// AdmissionControls is server-owned rollout state, never request data.
+type AdmissionControls struct {
+	Revision                                       int64
+	RecoveryEnabled, AdmissionEnabled, WorkerDrain bool
+	NativeExecutionApproved, DependenciesReady     bool
+}
+type AdmissionControlSource interface {
+	Current(context.Context) (AdmissionControls, error)
+}
+
 type RunControl interface {
 	Admit(context.Context, Admission) (RunRecord, error)
 	Get(context.Context, Scope, RunIdentity) (RunRecord, error)
@@ -204,6 +215,7 @@ type ToolPlan struct {
 	IdempotencyExpiresAt                       time.Time
 }
 type UserDecision struct {
+	Reason, ResourceRef           string
 	Version                       int
 	DecisionID, PendingID, CallID string
 	Run                           RunIdentity
@@ -214,6 +226,114 @@ type UserDecision struct {
 	ExpiresAt                     time.Time
 	ProvidedResult                json.RawMessage
 }
+type DecisionAction string
+
+const (
+	DecisionRetry         DecisionAction = "retry"
+	DecisionProvideResult DecisionAction = "provide_result"
+	DecisionTerminate     DecisionAction = "terminate"
+)
+
+type PendingStatus string
+
+const (
+	PendingOpen      PendingStatus = "pending"
+	PendingResolved  PendingStatus = "resolved"
+	PendingExpired   PendingStatus = "expired"
+	PendingRevoked   PendingStatus = "revoked"
+	PendingCancelled PendingStatus = "cancelled"
+)
+
+type PendingKey struct {
+	Run       RunIdentity
+	PendingID string
+}
+type PendingReference struct {
+	PendingID  string `json:"pending_id"`
+	DetailPath string `json:"detail_path"`
+	Revision   string `json:"revision"`
+}
+type PendingServiceIdentity struct {
+	Kind               string `json:"kind"` // builtin, mcp, connector, sandbox, delegate
+	ServiceID          string `json:"service_id,omitempty"`
+	ServiceName        string `json:"service_name"`
+	InstallationID     string `json:"installation_id,omitempty"`
+	ResourceRef        string `json:"resource_ref,omitempty"`
+	ToolName           string `json:"tool_name"`
+	RegisteredToolName string `json:"registered_tool_name"`
+	SchemaHash         string `json:"schema_hash"`
+}
+type PendingOAuth struct {
+	ServiceID string     `json:"service_id"`
+	State     string     `json:"state"` // required, pending, authorized, expired, revoked
+	BeginPath string     `json:"begin_path"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+type PendingDecisionDetail struct {
+	Version              int                    `json:"version"`
+	Ref                  PendingReference       `json:"ref"`
+	SessionID            string                 `json:"session_id"`
+	RunID                string                 `json:"run_id"`
+	CallID               string                 `json:"call_id"`
+	WaitKind             WaitKind               `json:"wait_kind"`
+	Status               PendingStatus          `json:"status"`
+	RunStatus            RunStatus              `json:"run_status"`
+	RunRevision          string                 `json:"run_revision"`
+	PlanVersion          int                    `json:"plan_version"`
+	ArgsHash             string                 `json:"args_hash"`
+	Service              PendingServiceIdentity `json:"service"`
+	OperationDescription string                 `json:"operation_description"`
+	RedactedArgs         json.RawMessage        `json:"redacted_args"`
+	RedactedPaths        []string               `json:"redacted_paths"`
+	RedactionVersion     string                 `json:"redaction_version"`
+	ExpiresAt            time.Time              `json:"expires_at"`
+	AllowedActions       []DecisionAction       `json:"allowed_actions"`
+	ResolvePath          string                 `json:"resolve_path"`
+	OAuth                *PendingOAuth          `json:"oauth,omitempty"`
+	ExternalActionID     string                 `json:"external_action_id,omitempty"`
+	ExternalActionPath   string                 `json:"external_action_path,omitempty"`
+	ExternalActionState  string                 `json:"external_action_state,omitempty"`
+	ResolvedDecisionID   string                 `json:"resolved_decision_id,omitempty"`
+	ResolvedAction       DecisionAction         `json:"resolved_action,omitempty"`
+	ResolvedAt           *time.Time             `json:"resolved_at,omitempty"`
+}
+type PendingDecisionPage struct {
+	Items      []PendingDecisionDetail `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+type ResolvePendingRequest struct {
+	DecisionID       string          `json:"decision_id"`
+	CallID           string          `json:"call_id"`
+	ExpectedRevision string          `json:"expected_revision"` // Run revision, decimal int64.
+	PendingRevision  string          `json:"pending_revision"`
+	PlanVersion      int             `json:"plan_version"`
+	ArgsHash         string          `json:"args_hash"`
+	ResourceRef      string          `json:"resource_ref,omitempty"`
+	Action           DecisionAction  `json:"action"`
+	Reason           string          `json:"reason"`
+	ProvidedResult   json.RawMessage `json:"provided_result,omitempty"`
+}
+type PendingResolution struct {
+	Detail      PendingDecisionDetail `json:"detail"`
+	RunStatus   RunStatus             `json:"run_status"`
+	RunRevision string                `json:"run_revision"`
+	ResumeState string                `json:"resume_state"` // queued, held, terminated; never implies dispatch completed.
+}
+type OAuthStartRequest struct {
+	RedirectURI string `json:"redirect_uri"`
+}
+type OAuthStartResult struct {
+	AuthorizationURL     string    `json:"authorization_url"`
+	AuthorizationAttempt string    `json:"authorization_attempt"`
+	ExpiresAt            time.Time `json:"expires_at"`
+}
+type PendingDecisionService interface {
+	List(context.Context, Scope, RunIdentity, string, int) (PendingDecisionPage, error)
+	Get(context.Context, Scope, PendingKey) (PendingDecisionDetail, error)
+	BeginOAuth(context.Context, Scope, PendingKey, OAuthStartRequest) (OAuthStartResult, error)
+	Resolve(context.Context, Scope, PendingKey, ResolvePendingRequest) (PendingResolution, error)
+}
+
 type EffectState string
 
 const (
@@ -268,6 +388,11 @@ const (
 	ErrCursor          ErrorCode = "cursor_expired"
 	ErrArchiveReadOnly ErrorCode = "archive_read_only"
 	ErrUpgrade         ErrorCode = "client_upgrade_required"
+)
+
+const (
+	ErrAdmissionClosed ErrorCode = "admission_closed"
+	ErrExecutionGate   ErrorCode = "execution_gate_closed"
 )
 
 type Failure struct {
@@ -334,21 +459,22 @@ type PublicUsage struct {
 	AccountingStatus  string `json:"accounting_status"`
 }
 type EventPayload struct {
-	Status            RunStatus    `json:"status,omitempty"`
-	Wait              WaitKind     `json:"wait_kind,omitempty"`
-	Text              string       `json:"text,omitempty"`
-	Offset            *int64       `json:"offset,omitempty"`
-	ReplacesAttemptID string       `json:"replaces_attempt_id,omitempty"`
-	CallID            string       `json:"call_id,omitempty"`
-	PlanVersion       int          `json:"plan_version,omitempty"`
-	ToolName          string       `json:"tool_name,omitempty"`
-	PendingID         string       `json:"pending_id,omitempty"`
-	ArgsHash          string       `json:"args_hash,omitempty"`
-	ExpiresAt         *time.Time   `json:"expires_at,omitempty"`
-	Outcome           *ToolOutcome `json:"outcome,omitempty"`
-	Usage             *PublicUsage `json:"usage,omitempty"`
-	Artifact          *ArtifactRef `json:"artifact,omitempty"`
-	Failure           *Failure     `json:"failure,omitempty"`
+	Pending           *PendingReference `json:"pending,omitempty"`
+	Status            RunStatus         `json:"status,omitempty"`
+	Wait              WaitKind          `json:"wait_kind,omitempty"`
+	Text              string            `json:"text,omitempty"`
+	Offset            *int64            `json:"offset,omitempty"`
+	ReplacesAttemptID string            `json:"replaces_attempt_id,omitempty"`
+	CallID            string            `json:"call_id,omitempty"`
+	PlanVersion       int               `json:"plan_version,omitempty"`
+	ToolName          string            `json:"tool_name,omitempty"`
+	PendingID         string            `json:"pending_id,omitempty"`
+	ArgsHash          string            `json:"args_hash,omitempty"`
+	ExpiresAt         *time.Time        `json:"expires_at,omitempty"`
+	Outcome           *ToolOutcome      `json:"outcome,omitempty"`
+	Usage             *PublicUsage      `json:"usage,omitempty"`
+	Artifact          *ArtifactRef      `json:"artifact,omitempty"`
+	Failure           *Failure          `json:"failure,omitempty"`
 }
 type BusinessEvent struct {
 	Protocol      string       `json:"protocol"`
@@ -455,6 +581,43 @@ type ArchiveReader interface {
 }
 ```
 
+## 3A. 待决策详情、读取与解决（P1/P2/P4/P5）
+
+来源是 `internal/agent/approval/gate.go` 的 `PendingRequest`/`OAuthPendingRequest`（服务、工具、说明、参数与资源关联），`internal/application/service/session.go installDurableOAuthPark`（持久 service_id/service_name/mcp_tool/call/hash/resource_ref），`internal/handler/session/agent_run.go ownedRun/PostAgentRunDecision`、`internal/application/service/agent_run_decisions.go ValidateDecision/Resolve` 与 repository `ApplyDecision`（归属、当前策略、revision/hash、幂等消费），以及 `internal/handler/mcp_oauth.go AuthorizeURL/Status/ResolveMCPOAuth`（服务与 principal 的 OAuth 确认）。旧 in-process Gate 只作交互语义来源，不充当新系统的耐久权威。
+
+v1 新路由固定在 `/api/v1/native/sessions/:session_id/runs/:run_id/pending-decisions`：GET 列表映射 List，GET `/:pending_id` 映射 Get，POST `/:pending_id/resolve` 映射 Resolve，POST `/:pending_id/oauth/authorize-url` 映射 BeginOAuth。这是待实现路由契约，不宣称当前 handler 已提供；每个相对 `DetailPath/ResolvePath/BeginPath` 由服务器根据绑定身份生成，不接受模型生成 URL。列表 cursor 按该 run 的持久待决策顺序分页，上限 100；列表及单项都能查询已解决状态，用于断线后同步。
+
+Get/List/BeginOAuth/Resolve 每次从认证 Scope 检查 tenant、Session owner、run/session 关系、待决策归属和当前资源权限；详情对不属于调用者的项返回 not_found，已知资源被撤权返回 forbidden。获准读取不自动获准解决，AllowedActions 由当前策略生成并在 Resolve 再检查。现有 API key/Embed 的 Session owner 与 OAuth principal 区分继续遵守第 2 节。仅持有 pending ID、过去的 SSE 帧或曾为成员不能读取参数或解决等待。
+
+`PendingDecisionDetail` 足以展示当前操作：真实 service ID/name、安装/resource ref、服务内与注册工具名、operation description、完整计划的 ArgsHash/PlanVersion，以及**按当前读取权限生成**的 RedactedArgs（JSON object）、RedactedPaths（JSON Pointer 列表）和 redaction version。不能直接发送原始 journal Args、令牌或密钥。ArgsHash 针对持久原始规范化参数，不针对脱敏显示；必要安全影响无法向该主体说明时，AllowedActions 不包含 retry。工具/服务说明和参数作为不可信显示内容，不解释为客户端命令。Revoked/expired/resolved/cancelled 均可明确显示，不能继续呈现为可批准。
+
+`decision.required` 的 `payload.pending` 为必需的 PendingReference，指向该授权详情；它与 envelope 的 run/session 和既有 pending_id/call_id/plan_version/args_hash 必须一致。事件只作通知，客户端先 GET 详情才展示和操作；不得仅靠历史 SSE 内容批准。无参数权限时不在重放中泄露历史原文。事件 revision 落后时客户端使用最新详情，不擅自修改请求 revision 以重试。Resolve 请求不含 actor/tenant/service/token 或批准人；服务端从 Scope 和持久 pending 绑定生成内部 UserDecision（ToolBoundary.Decide 仅由该服务内部调用）。Reason 必填，DecisionID 在 run 内幂等；同 ID 同载荷返回已保存结果，同 ID 不同载荷 conflict。ExpectedRevision/PendingRevision/PlanVersion/ArgsHash/CallID/ResourceRef 全部与当前绑定匹配并 CAS 消费一次，过期/撤权/策略不可用均 fail closed。
+
+| wait_kind | 展示与允许操作 | Resolve 与恢复条件 |
+| --- | --- | --- |
+| tool_approval | 展示上述服务/操作/脱敏参数；retry 文案为“批准并继续”，terminate 为“拒绝并结束”；禁止 provide_result | retry 持久记录对精确 plan/hash 的批准后仅将同一 run 排队；dispatch 前重查授权、参数与 fence；不会在 HTTP 处理器内直接调用工具 |
+| mcp_oauth | OAuth 非 nil，包含被绑定的 ServiceID、当前授权 state、BeginPath；不会提供 API key/token；retry 文案为“授权完成后继续” | BeginOAuth 固定使用 pending 绑定的 tenant/principal/service，校验 redirect allowlist，并沿用现有单次 state/authorization_attempt；客户端弹窗回调不是完成证据。GET 详情刷新服务端授权状态，Resolve retry 必须再次查询同一 scope/service 的有效令牌；失败保留 pending。授权完成仅解除 OAuth 条件，若还需工具审批则产生独立新 pending，不能视作工具批准 |
+| connector_approval | 包含 ExternalActionID/Path/State，详情从当前有权 action 查询；`awaiting_approval` 引导现有 action approve/execute 面，`unknown` 仅引导只读结果核对 | action 生命周期继续由现有业务 action 服务管理，路径依据 `internal/router/routes_app_connectors.go`；retry 只重读同一 logical call/action 的耐久状态，不能批准另一 action 或自动再次 dispatch；未确认仍 held，不把 action wait 当 MCP OAuth |
+| unknown_result | 展示操作和结果不明状态；按当前恢复政策列 retry/provide_result/terminate，retry 必须明确说明可能重复外部效果 | retry 是用户针对该 call 的显式新 attempt 授权；provide_result 只接受不超过 1 MiB 的有效 JSON object，与现有 ValidateDecision 一致并按工具结果 schema 校验，来源标记为 user；不可把用户陈述当 Provider 实测。terminate 停止后续执行但不撤销已发生外部效果 |
+
+terminate 适用于所有开放等待（包括前置 OAuth/审批），统一通过受权取消终结事务处理，而不依赖旧 repository 对 planned-wait terminate 的分支限制。Resolve 成功返回最新详情、run revision/status 和 resume_state；queued 表示同一 run 等待 worker，held 表示已记录但因 worker/执行门或外部结果仍不能推进，terminated 表示不再恢复。运行未执行、工具未完成时绝不返回“工具成功”。SDK race 门未解除时不得 BeginOAuth/Resolve 的成功触发产品 native Runner；已有合法等待的决定仍可保存并 held，terminate/read 仍允许。所有批准/拒绝/提供结果审计保留，过期 worker 不得消费决定。P1/P2 做双数据库持久/CAS/幂等与撤权测试，P4 做真实 OAuth/service 绑定、失败/过期/取消、外部 action 核对，P5 做详情展示和重连同步；P7 复验跨进程、双 worker 和所有客户端。
+
+## 3B. 新准入开关与排空（ENG-006；P2/P7）
+
+`RunControl.Admit` 必须读取服务端 `AdmissionControlSource.Current`，不是调用者 Admission 字段。来源对应当前 `config.AgentRecoveryConfig.RecoveryEnabled/RecoveryAdmissionEnabled`（未设置默认 false）、`Config.IsWorkbenchWorkerDraining`，及容器 `AgentRecoveryAdmissionEnabled/ValidateAgentRuntimeConfig`。部署环境输入为 `WEKNORA_AGENT_RECOVERY_ENABLED`、`WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED`、`WEKNORA_WORKBENCH_WORKER_DRAIN`；解析后的受控配置 revision 才是准入判断来源，不接受客户端覆盖。NativeExecutionApproved 同时要求本文件首段的批准 SDK/Session 配置与 clean race gate，DependenciesReady 要求 run store、checkpoint/journal/事件/Session、模型与执行器所需服务可用；开关打开本身不能绕过这些门槛。
+
+| 服务端状态 | Admit 及现有工作行为 |
+| --- | --- |
+| 配置缺失/读取失败、RecoveryEnabled=false，或任一必须依赖不可用 | fail closed，零新 run/预算预留/模型或工具 dispatch；返回 admission_closed 或 durable_store_unavailable。Enabled 控制 worker，不等于 admission 开关；admission=true 且 worker=false 为启动配置错误 |
+| RecoveryEnabled=true、AdmissionEnabled=false | 拒绝新准入 admission_closed；worker 继续处理已准入工作直至终态/安全等待，允许取消、只读查询、事件重放、外部结果核对和清理 |
+| WorkerDrain=true（无论 admission 配置值） | 所有新准入 lane 拒绝 admission_closed，包括新 child/delegate run 与 after-followup；不得用隐式新 run 绕过。既有 run 和已创建 child 在其他安全门通过时继续排空；必要已有等待的 Resolve 可恢复同一 run，不能顺带创建新任务；已准入父任务若必须新建 child，则安全 held 至 gate 重开 |
+| 三个开关允许、NativeExecutionApproved=false | 返回 execution_gate_closed，任何 native 产品 dispatch 禁止；不能因 drain 希望完成而越过 race no-go |
+| RecoveryEnabled=true、AdmissionEnabled=true、WorkerDrain=false 且所有安全门通过 | 才可执行幂等准入；仍校验当前授权、预算、配置与 session slot；不是无条件接受 |
+
+准入事务的线性化点必须校验配置 revision，配置在提交前转为关闭/drain 则拒绝并释放本次未提交预算预留；P2 实现需协调配置源与 admission commit，不能“请求开始读一次”后跨关闭窗口提交。同 request key 的已提交且同 hash 重复请求允许受权读取原 RunRecord，不算新准入；载荷冲突仍拒绝。关闭准入不屏蔽 Get、PendingDecisionService.Get/List、EventReader、授权归档读取、Cancel/terminate 和受控 cleanup/reconcile；RecoveryEnabled=false 不启动/领取执行工作，已经派发的外部动作仍由受控取消/核对路径确认，不声称停止 worker 已撤销外部效果。Steer inject 仅可追加到仍允许继续的已准入 run；after 输入可保存为未准入意图，但不得创建下一 run，直到 gate 重开。原生执行门关闭时所有会造成 native dispatch 的恢复同样保持 held。
+
+源码依据为 `internal/application/service/agent_run_graph.go submitDurableAgentRun`、`internal/container/agent_runtime.go` 及 `internal/application/service/agent_run_admission_gate_test.go`/`internal/config/agent_recovery_default_test.go`。这是行为契约补齐，不新增这些测试的通过声明。P2 必须测试 nil/default、enabled/admission_enabled 的四种组合、drain 覆盖、新 child/followup lane、配置关闭与提交竞态、幂等请求、读/取消/cleanup 可达和已有 run 排空；P7 在 SQLite/PostgreSQL、重启/双 worker/维护窗口验证“新准入数为零、既有 run 可终结或安全 held、无失租 dispatch”，并保留原生 race no-go。
+
 ## 4. ID、错误、重试与用量（P2/P3）
 
 `RequestID` 在 `(tenant, Session owner, session, client request key)` 内幂等；同键不同 InputHash 返回 conflict。新 RunID 不等于 SDK RequestID，但装配层明确将 SDK `agent.WithRequestID` 绑定 RunID，保留 client request key。`InvocationID` 用于 SDK branch/追踪；业务 Run/Attempt 不从它推导授权。所有模型 dispatch、tool dispatch、failover/hedge 实际请求均需独立持久 attempt；同一次崩溃恢复复用已提交的 attempt/result，不凭新随机 ID 逃过幂等检查。预算根由准入生成，子 run 不能改它。
@@ -505,7 +668,7 @@ type ArchiveReader interface {
 | text.delta / reasoning.delta | attempt_id、text、offset；offset 必须非 nil（首块为 0），为该 attempt 对应流 UTF-8 bytes 的起点；重复 event_id 不再次追加，缺口必须 resync |
 | tool.planned | call_id、plan_version、tool_name；脱敏展示，不暴露完整未授权参数 |
 | tool.result | call_id、outcome；IsError/EffectUnknown 与成功分开 |
-| decision.required | pending_id、call_id、plan_version、args_hash、expires_at、wait_kind；用户决定提交时带版本/hash，失败不可乐观显示已批准 |
+| decision.required | 必需 pending 引用（pending_id/detail_path/revision）及 call_id、plan_version、args_hash、expires_at、wait_kind；先授权读取第 3A 节完整详情；OAuth 服务由详情绑定；Resolve 返回状态前不乐观显示已批准 |
 | usage.observed | usage；允许 partial/unknown；账单不是客户端累加 delta |
 | artifact.available | artifact 引用；读取时单独重新授权，事件中不嵌长期签名下载 URL |
 | error | failure；持久失败事件不自动等于最终 run 终态 |
