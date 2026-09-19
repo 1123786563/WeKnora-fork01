@@ -11,6 +11,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -270,33 +271,32 @@ func (s *NativeSessionStore) AppendStable(ctx context.Context, append nativecont
 	if err != nil {
 		return err
 	}
-	for attempt := 0; attempt < 3; attempt++ { // ordinal contention retries from a fresh transaction.
-		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var ordinal int64
-			if err := tx.Table("native_agent_session_events").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ?", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID).Count(&ordinal).Error; err != nil {
-				return err
-			}
-			result := tx.Exec("INSERT INTO native_agent_session_events (tenant_id, app_name, user_id, session_id, stable_event_id, payload_hash, payload, ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, app_name, user_id, session_id, stable_event_id) DO NOTHING", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID, append.PayloadHash, string(payload), ordinal)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 1 {
-				return nil
-			}
-			var hash string
-			lookup := tx.Table("native_agent_session_events").Select("payload_hash").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ? AND stable_event_id = ?", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID).Row().Scan(&hash)
-			if lookup == nil {
-				if hash == append.PayloadHash {
-					return nil
-				}
-				return ErrNativeSessionConflict
-			}
-			return lookup
-		})
-		if err == nil || errors.Is(err, ErrNativeSessionConflict) {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var locked string
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Table("native_agent_sessions").Select("session_id").Where("tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, append.Key.UserID, append.Key.SessionID).Row().Scan(&locked); err != nil {
 			return err
 		}
-	}
+		var ordinal int64
+		if err := tx.Table("native_agent_session_events").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ?", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID).Count(&ordinal).Error; err != nil {
+			return err
+		}
+		result := tx.Exec("INSERT INTO native_agent_session_events (tenant_id, app_name, user_id, session_id, stable_event_id, payload_hash, payload, ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, app_name, user_id, session_id, stable_event_id) DO NOTHING", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID, append.PayloadHash, string(payload), ordinal)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 1 {
+			return nil
+		}
+		var hash string
+		lookup := tx.Table("native_agent_session_events").Select("payload_hash").Where("tenant_id = ? AND app_name = ? AND user_id = ? AND session_id = ? AND stable_event_id = ?", tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID).Row().Scan(&hash)
+		if lookup == nil {
+			if hash == append.PayloadHash {
+				return nil
+			}
+			return ErrNativeSessionConflict
+		}
+		return lookup
+	})
 	return err
 }
 
