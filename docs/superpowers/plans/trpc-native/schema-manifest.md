@@ -18,7 +18,7 @@ sessions without requiring a synthetic native session or a `users` row.
 | User state | `native_user_state` | admitted-tenant foreign key and scoped `(tenant,owner,state-key)` revision CAS for a frozen owner identity; no native session is required |
 | Run and lease fence | `native_agent_runs` | scoped request/input idempotency, owner/session binding, revision and non-negative epoch |
 | Input and config snapshot | `native_agent_inputs`, `native_agent_config_bindings` | immutable scoped hashes |
-| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence |
+| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence; new jobs retain their SessionKey `(app,user,session)` for recovery (nullable for pre-P1.4 jobs) |
 | Attempts and tools | `native_agent_attempts`, `native_agent_tool_calls`, `native_agent_tool_plans`, `native_agent_tool_results` | attempt/call/plan scope, provider identity and immutable result receipt/hash |
 | Pending decisions | `native_agent_pending_decisions` | scoped revision and status index |
 | Commit/barrier state | `native_agent_commit_intents`, `native_agent_checkpoints` | intent payload hash, epoch, non-runnable checkpoint default |

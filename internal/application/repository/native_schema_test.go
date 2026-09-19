@@ -200,6 +200,25 @@ func TestNativeUserStateMigrationIsAdditive(t *testing.T) {
 			// equality would break every subsequent migration in the tree.
 			require.GreaterOrEqual(t, version, nativeUserStateMigrationVersion(dialect),
 				"user state must be introduced by its own additive migration")
+			require.True(t, db.Migrator().HasTable("native_user_state"))
+		})
+	}
+}
+
+func TestNativeMemoryJobSessionKeyMigrationIsAdditive(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			m := nativeSchemaMigrator(t, db)
+			defer func() { _, _ = m.Close() }()
+			version, dirty, err := m.Version()
+			require.NoError(t, err)
+			require.False(t, dirty)
+			require.Equal(t, nativeMemoryJobSessionKeyMigrationVersion(dialect), version,
+				"memory-job SessionKey must be introduced by its own additive migration")
+			for _, column := range []string{"session_app_name", "session_user_id", "session_id"} {
+				require.Truef(t, db.Migrator().HasColumn("native_memory_jobs", column), "native_memory_jobs.%s must exist", column)
+			}
 		})
 	}
 }
@@ -242,6 +261,35 @@ func TestNativeSchemaMigrationRollbackGuard(t *testing.T) {
 			}
 			require.Error(t, m.Steps(-1), "a populated namespace must reject destructive rollback")
 			require.True(t, db.Migrator().HasTable("native_agent_runs"))
+		})
+	}
+}
+
+func TestNativeMemoryJobSessionKeyMigrationRollbackGuard(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openNativeSchemaTestDB(t, dialect)
+			seedNativeSchemaFixture(t, db)
+			require.NoError(t, db.Exec(`INSERT INTO native_memory_jobs
+				(tenant_id, subject_id, job_id, generation, through_event_id,
+				 session_app_name, session_user_id, session_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				1, "u1", "job-with-session", 3, "event-with-session",
+				"weknora/native-v1/tenant/1", "owner/u1", "session/s1").Error)
+			m := nativeSchemaMigrator(t, db)
+			defer func() { _, _ = m.Close() }()
+			for {
+				version, dirty, err := m.Version()
+				require.NoError(t, err)
+				require.False(t, dirty)
+				if version == nativeMemoryJobSessionKeyMigrationVersion(dialect) {
+					break
+				}
+				require.Greater(t, version, nativeMemoryJobSessionKeyMigrationVersion(dialect))
+				require.NoError(t, m.Steps(-1), "empty migrations after memory-job SessionKey may roll back")
+			}
+			require.Error(t, m.Steps(-1), "a populated memory-job SessionKey migration must reject rollback")
+			require.True(t, db.Migrator().HasColumn("native_memory_jobs", "session_id"))
 		})
 	}
 }
@@ -309,6 +357,17 @@ func nativeAgentSchemaMigrationVersion(dialect string) uint {
 		return 83
 	case "postgres":
 		return 162
+	default:
+		panic("unsupported native schema test dialect: " + dialect)
+	}
+}
+
+func nativeMemoryJobSessionKeyMigrationVersion(dialect string) uint {
+	switch dialect {
+	case "sqlite":
+		return 92
+	case "postgres":
+		return 171
 	default:
 		panic("unsupported native schema test dialect: " + dialect)
 	}
