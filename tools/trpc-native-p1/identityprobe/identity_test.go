@@ -212,12 +212,16 @@ func TestCursorRejectsMalformedForeignAndNonCanonicalValues(t *testing.T) {
 		{name: "malformed base64", cursor: "v1:***:0", expectedRun: "run"},
 		{name: "padded base64", cursor: "v1:cnVu=:0", expectedRun: "run"},
 		{name: "noncanonical base64", cursor: "v1:cnV:0", expectedRun: "run"},
+		{name: "empty encoded run", cursor: "v1::0", expectedRun: "run"},
+		{name: "canonical base64 decoded blank run", cursor: "v1:IA:0", expectedRun: "run"},
+		{name: "canonical base64 decoded invalid UTF-8 run", cursor: "v1:_w:0", expectedRun: "run"},
 		{name: "foreign run", cursor: valid, expectedRun: "other"},
 		{name: "negative sequence", cursor: "v1:cnVu:-1", expectedRun: "run"},
 		{name: "overflow sequence", cursor: "v1:cnVu:9223372036854775808", expectedRun: "run"},
 		{name: "signed sequence", cursor: "v1:cnVu:+1", expectedRun: "run"},
 		{name: "leading zero sequence", cursor: "v1:cnVu:01", expectedRun: "run"},
-		{name: "empty expected run", cursor: valid, expectedRun: ""},
+		{name: "blank expected run", cursor: valid, expectedRun: " \t"},
+		{name: "invalid UTF-8 expected run", cursor: valid, expectedRun: string([]byte{0xff})},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

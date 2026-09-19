@@ -1,7 +1,7 @@
 # P1 Track C identity and replay-cursor evidence
 
-Date: 2026-09-19  
-Track: C / Task 3  
+Date: 2026-09-19
+Track: C / Task 3
 Module: `github.com/Tencent/WeKnora/tools/trpc-native-p1/identityprobe`
 
 ## Scope and fixed inputs
@@ -58,8 +58,10 @@ independent key-domain validation;
 opaque Unicode and punctuation; delimiter-collision resistance; zero tenant;
 empty, blank-only, and invalid UTF-8 values; `uint64` maximum tenant; canonical
 checkpoint segments; `int64` maximum cursor; malformed, padded, and
-noncanonical base64url; wrong cursor version/part count/run; negative, signed,
-leading-zero, and overflow sequence values.
+noncanonical base64url; empty encoded runs; canonical base64url that decodes to
+blank or invalid UTF-8 runs; blank and invalid UTF-8 expected runs; wrong
+cursor version/part count/run; negative, signed, leading-zero, and overflow
+sequence values.
 
 ## Module metadata observation
 
