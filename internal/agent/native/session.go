@@ -3,9 +3,7 @@ package native
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
@@ -77,9 +75,15 @@ func (s *SessionService) AppendStable(ctx context.Context, a nativecontract.Sess
 	if err := s.authorize(ctx, a.Key); err != nil {
 		return err
 	}
-	err := s.store.AppendStable(ctx, a)
-	if err == repository.ErrNativeSessionConflict {
-		return &nativecontract.Failure{Code: nativecontract.ErrConflict, Message: "stable event payload changed", Effect: nativecontract.EffectNotDispatched}
+	hash, err := canonicalEventHash(a.Event)
+	if err != nil {
+		return err
+	}
+	a.PayloadHash = hash
+	err = s.store.AppendStable(ctx, a)
+	if errors.Is(err, repository.ErrNativeSessionConflict) {
+		_, conflict := StableAppendAction("persisted", hash, true)
+		return conflict
 	}
 	return err
 }
@@ -147,6 +151,7 @@ func (s *SessionService) ListSessions(ctx context.Context, key session.UserKey, 
 
 func filterSessionEvents(items []*session.Session, options *session.Options) {
 	for _, item := range items {
+		item.EventMu.Lock()
 		if !options.EventTime.IsZero() {
 			filtered := item.Events[:0]
 			for _, e := range item.Events {
@@ -159,6 +164,7 @@ func filterSessionEvents(items []*session.Session, options *session.Options) {
 		if options.EventNum > 0 && len(item.Events) > options.EventNum {
 			item.Events = item.Events[len(item.Events)-options.EventNum:]
 		}
+		item.EventMu.Unlock()
 	}
 }
 func (s *SessionService) DeleteSession(ctx context.Context, key session.Key, _ ...session.Option) error {
@@ -187,15 +193,7 @@ func (s *SessionService) AppendEvent(ctx context.Context, sess *session.Session,
 	return s.AppendStable(ctx, nativecontract.SessionAppend{Key: session.Key{AppName: sess.AppName, UserID: sess.UserID, SessionID: sess.ID}, StableEventID: e.ID, PayloadHash: hash, Event: e})
 }
 func canonicalEventHash(e *event.Event) (string, error) {
-	payload, err := json.Marshal(struct {
-		Version int          `json:"version"`
-		Event   *event.Event `json:"event"`
-	}{Version: 1, Event: e})
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(payload)
-	return "sha256:" + hex.EncodeToString(sum[:]), nil
+	return repository.CanonicalNativeSessionEventHash(e)
 }
 func (s *SessionService) UpdateAppState(ctx context.Context, app string, state session.StateMap) error {
 	if err := s.authorizeApp(ctx, app); err != nil {
@@ -262,10 +260,12 @@ func (s *SessionService) persistSummary(ctx context.Context, sess *session.Sessi
 	if err := s.authorize(ctx, key); err != nil {
 		return err
 	}
+	sess.SummariesMu.RLock()
 	text := ""
 	if sum := sess.Summaries[filter]; sum != nil {
 		text = sum.Summary
 	}
+	sess.SummariesMu.RUnlock()
 	if text == "" {
 		return &nativecontract.Failure{Code: nativecontract.ErrStore, Message: "summary text is unavailable", Retryable: true}
 	}
@@ -276,10 +276,12 @@ func (s *SessionService) persistSummary(ctx context.Context, sess *session.Sessi
 			return nil
 		}
 	}
+	sess.EventMu.RLock()
 	through := ""
 	if len(sess.Events) > 0 {
 		through = sess.Events[len(sess.Events)-1].ID
 	}
+	sess.EventMu.RUnlock()
 	stored, err := s.store.Get(ctx, key)
 	if err != nil {
 		return err
@@ -314,6 +316,8 @@ func (s *SessionService) GetSessionSummaryText(ctx context.Context, sess *sessio
 	if err != nil || !ok {
 		return "", false
 	}
+	sess.SummariesMu.Lock()
+	defer sess.SummariesMu.Unlock()
 	if sess.Summaries == nil {
 		sess.Summaries = map[string]*session.Summary{}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestNativeSessionFacadeCRUDOptionsSummaryUserStateAndDelete(t *testing.T) {
 		Key: key, StableEventID: "conflict", PayloadHash: "first", Event: &event.Event{ID: "conflict", Author: "agent"},
 	}))
 	err = svc.AppendStable(ctx, nativecontract.SessionAppend{
-		Key: key, StableEventID: "conflict", PayloadHash: "changed", Event: &event.Event{ID: "conflict", Author: "agent"},
+		Key: key, StableEventID: "conflict", PayloadHash: "changed", Event: &event.Event{ID: "conflict", Author: "agent", Timestamp: time.Unix(1, 0)},
 	})
 	var conflict *nativecontract.Failure
 	require.ErrorAs(t, err, &conflict)
@@ -128,5 +129,65 @@ func TestNativeSessionFacadeRejectsRevokedScope(t *testing.T) {
 		var failure *nativecontract.Failure
 		require.ErrorAs(t, err, &failure)
 		require.Equal(t, nativecontract.ErrForbidden, failure.Code)
+	}
+}
+
+func TestNativeSessionFacadeRejectsChangedEventWhenCallerReusesHash(t *testing.T) {
+	svc, ctx, key, _ := newNativeSessionFacade(t)
+	_, err := svc.CreateSession(ctx, key, nil)
+	require.NoError(t, err)
+	first := &event.Event{ID: "stable", Author: "first", Timestamp: time.Unix(10, 0)}
+	hash, err := canonicalEventHash(first)
+	require.NoError(t, err)
+	require.NoError(t, svc.AppendStable(ctx, nativecontract.SessionAppend{Key: key, StableEventID: first.ID, PayloadHash: hash, Event: first}))
+	changed := first.Clone()
+	changed.ID = first.ID
+	changed.Timestamp = time.Unix(11, 0)
+	changedHash, err := canonicalEventHash(changed)
+	require.NoError(t, err)
+	require.NotEqual(t, hash, changedHash)
+	err = svc.AppendStable(ctx, nativecontract.SessionAppend{Key: key, StableEventID: changed.ID, PayloadHash: hash, Event: changed})
+	var conflict *nativecontract.Failure
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, nativecontract.ErrConflict, conflict.Code)
+	got, err := svc.GetSession(ctx, key)
+	require.NoError(t, err)
+	require.Len(t, got.Events, 1)
+	require.Equal(t, "first", got.Events[0].Author)
+}
+
+func TestNativeSessionFacadeConcurrentSummaryReadAndWrite(t *testing.T) {
+	svc, ctx, key, _ := newNativeSessionFacade(t)
+	sess, err := svc.CreateSession(ctx, key, nil)
+	require.NoError(t, err)
+	require.NoError(t, svc.AppendEvent(ctx, sess, &event.Event{ID: "event", Author: "agent"}))
+	sess.SummariesMu.Lock()
+	sess.Summaries = map[string]*session.Summary{"default": {Summary: "brief"}}
+	sess.SummariesMu.Unlock()
+	require.NoError(t, svc.CreateSessionSummary(ctx, sess, "default", false))
+
+	const attempts = 32
+	errs := make(chan error, attempts*2)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			errs <- svc.CreateSessionSummary(ctx, sess, "default", false)
+		}()
+		go func() {
+			defer wg.Done()
+			text, ok := svc.GetSessionSummaryText(ctx, sess, session.WithSummaryFilterKey("default"))
+			if !ok || text != "brief" {
+				errs <- fmt.Errorf("summary read = %q, %t", text, ok)
+				return
+			}
+			errs <- nil
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
 	}
 }

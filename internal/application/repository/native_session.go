@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +32,18 @@ type NativeSessionSummary struct {
 }
 
 func NewNativeSessionStore(db *gorm.DB) *NativeSessionStore { return &NativeSessionStore{db: db} }
+
+func CanonicalNativeSessionEventHash(e *event.Event) (string, error) {
+	payload, err := json.Marshal(struct {
+		Version int          `json:"version"`
+		Event   *event.Event `json:"event"`
+	}{Version: 1, Event: e})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
 
 func (s *NativeSessionStore) Create(ctx context.Context, key session.Key, state session.StateMap) error {
 	tenant, err := nativeSessionTenant(key)
@@ -265,6 +279,10 @@ func (s *NativeSessionStore) AppendStable(ctx context.Context, append nativecont
 		return fmt.Errorf("native stable append is incomplete")
 	}
 	tenant, err := nativeSessionTenant(append.Key)
+	if err != nil {
+		return err
+	}
+	append.PayloadHash, err = CanonicalNativeSessionEventHash(append.Event)
 	if err != nil {
 		return err
 	}
