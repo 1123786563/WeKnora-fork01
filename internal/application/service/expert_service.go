@@ -31,7 +31,9 @@ const (
 
 // ExpertSkillResolution is what an ExpertSkillResolver produced for one
 // expert instantiation: the skill names the agent should pin, install jobs
-// started for bundled skills, and slugs still waiting for those installs.
+// started for bundled skills, and slugs still waiting for those installs
+// (including the ones just kicked off — an async install is not usable
+// until it lands).
 type ExpertSkillResolution struct {
 	Selected   []string
 	InstallIDs []string
@@ -39,18 +41,19 @@ type ExpertSkillResolution struct {
 }
 
 // ExpertSkillResolver installs/resolves an expert's bundled skills for a
-// tenant. Task 4 provides the real implementation (bundled-skill install
-// into the tenant sandbox image); until then the noop resolver below simply
-// selects the manifest skill names as-is.
+// tenant on the given sandbox config ("" means no sandbox: everything
+// resolves to selected-and-pending). The production implementation is
+// NewBundledSkillResolver; the noop below simply selects the manifest skill
+// names as-is.
 type ExpertSkillResolver interface {
-	ResolveExpertSkills(ctx context.Context, tenantID uint64, e *experts.Expert) (ExpertSkillResolution, error)
+	ResolveExpertSkills(ctx context.Context, tenantID uint64, sandboxConfigID string, e *experts.Expert) (ExpertSkillResolution, error)
 }
 
 // noopSkillResolver is the Task-3 stand-in ExpertSkillResolver: manifest
 // skill names are selected as-is, nothing is installed, nothing is pending.
 type noopSkillResolver struct{}
 
-func (noopSkillResolver) ResolveExpertSkills(_ context.Context, _ uint64, e *experts.Expert) (ExpertSkillResolution, error) {
+func (noopSkillResolver) ResolveExpertSkills(_ context.Context, _ uint64, _ string, e *experts.Expert) (ExpertSkillResolution, error) {
 	return ExpertSkillResolution{Selected: append([]string(nil), e.Manifest.Skills...)}, nil
 }
 
@@ -101,9 +104,19 @@ func (s *expertService) findExpert(id string) *experts.Expert {
 }
 
 // Instantiate creates a tenant custom agent from an expert template:
-// resolve the expert → build the agent (pure mapping) → CreateAgent (which
-// fills defaults, validates and persists) → resolve bundled skills for the
-// tenant. The locale for label/description/starter resolution comes from ctx.
+// resolve the expert → build the agent (pure mapping) → resolve bundled
+// skills for the tenant → CreateAgent (which fills defaults, validates and
+// persists). The locale for label/description/starter resolution comes from
+// ctx.
+//
+// Skills resolve BEFORE the agent is persisted so the record carries the
+// resolved install names the runtime matches AllowedSkills against — the
+// SKILL.md frontmatter name, which may differ from the manifest slug. The
+// cost of this order is that a later CreateAgent failure leaves the already
+// started installs running; they are tenant-scoped and idempotent (a ready
+// archive is skipped without billing a sandbox), while the reverse order
+// would need a second write to patch SelectedSkills and could leave the
+// persisted agent pinned to slugs no installed skill answers to.
 func (s *expertService) Instantiate(
 	ctx context.Context,
 	tenantID uint64,
@@ -121,18 +134,24 @@ func (s *expertService) Instantiate(
 		agent.Config.SandboxConfigID = req.SandboxConfigID
 	}
 
+	resolution, err := s.skills.ResolveExpertSkills(ctx, tenantID, req.SandboxConfigID, e)
+	if err != nil {
+		return nil, fmt.Errorf("experts: instantiate %q: resolve skills: %w", expertID, err)
+	}
+	// The resolver names one selection per bundled skill; a resolver that
+	// produced none leaves the builder's manifest skills in place.
+	if len(resolution.Selected) > 0 {
+		agent.Config.SelectedSkills = append([]string(nil), resolution.Selected...)
+	}
+
 	created, err := s.agents.CreateAgent(ctx, agent)
 	if err != nil {
 		return nil, fmt.Errorf("experts: instantiate %q: create agent: %w", expertID, err)
 	}
 
-	resolution, err := s.skills.ResolveExpertSkills(ctx, tenantID, e)
-	if err != nil {
-		return nil, fmt.Errorf("experts: instantiate %q: resolve skills: %w", expertID, err)
-	}
-
-	logger.Infof(ctx, "Instantiated expert %q as agent %s (tenant %d)",
-		expertID, created.ID, tenantID)
+	logger.Infof(ctx, "Instantiated expert %q as agent %s (tenant %d, skills: %d selected, %d install(s) started, %d pending)",
+		expertID, created.ID, tenantID,
+		len(resolution.Selected), len(resolution.InstallIDs), len(resolution.Pending))
 	return &interfaces.InstantiateResult{
 		Agent:           created,
 		PendingSkills:   resolution.Pending,
