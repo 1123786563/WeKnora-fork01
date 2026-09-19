@@ -12,6 +12,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
+	"trpc.group/trpc-go/trpc-agent-go/event"
 )
 
 // NativeCommitCoordinator persists the authoritative commit intent before it
@@ -40,6 +41,7 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 		return nativecontract.CommitReceipt{}, err
 	}
 	var receipt nativecontract.CommitReceipt
+	applied := false
 	err := c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := c.assertFence(tx, intent.Fence); err != nil {
 			return err
@@ -54,6 +56,7 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 			}
 			if row.State == "applied" {
 				receipt, err = c.receipt(tx, intent.Fence.Run, intent.ID)
+				applied = err == nil
 				return err
 			}
 		} else {
@@ -72,6 +75,18 @@ func (c *NativeCommitCoordinator) Commit(ctx context.Context, intent nativecontr
 			if created.RowsAffected != 1 {
 				return typedFailure(nativecontract.ErrConflict, "commit intent identity conflict")
 			}
+		}
+		return nil
+	})
+	if err != nil || applied {
+		return receipt, err
+	}
+	// The pending record is an explicit durable barrier. Downstream writes use
+	// their own transaction so a failed Session/checkpoint/event projection
+	// cannot roll back the recovery instruction.
+	err = c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := c.assertFence(tx, intent.Fence); err != nil {
+			return err
 		}
 		receipt, err = c.apply(tx, intent)
 		return err
@@ -202,11 +217,23 @@ func appendStableInCommit(tx *gorm.DB, tenant uint64, append nativecontract.Sess
 	if append.Event == nil || append.StableEventID == "" || append.PayloadHash == "" {
 		return typedFailure(nativecontract.ErrInvalid, "session append is incomplete")
 	}
+	if append.StableEventID != append.Event.ID {
+		return typedFailure(nativecontract.ErrInvalid, "stable session event ID does not match event")
+	}
 	keyTenant, err := nativeSessionTenant(append.Key)
 	if err != nil || keyTenant != tenant {
 		return typedFailure(nativecontract.ErrInvalid, "session append has another tenant")
 	}
-	payload, err := json.Marshal(append.Event)
+	payload, err := json.Marshal(struct {
+		Version int          `json:"version"`
+		Event   *event.Event `json:"event"`
+	}{Version: 1, Event: append.Event})
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(payload)
+	append.PayloadHash = "sha256:" + hex.EncodeToString(sum[:])
+	eventPayload, err := json.Marshal(append.Event)
 	if err != nil {
 		return err
 	}
@@ -216,7 +243,7 @@ func appendStableInCommit(tx *gorm.DB, tenant uint64, append nativecontract.Sess
 	}
 	inserted := tx.Exec(`INSERT INTO native_agent_session_events
 		(tenant_id, app_name, user_id, session_id, stable_event_id, payload_hash, payload, ordinal)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID, append.PayloadHash, string(payload), ordinal)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, tenant, append.Key.AppName, append.Key.UserID, append.Key.SessionID, append.StableEventID, append.PayloadHash, string(eventPayload), ordinal)
 	if inserted.Error != nil || inserted.RowsAffected == 1 {
 		return inserted.Error
 	}
