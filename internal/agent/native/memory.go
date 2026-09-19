@@ -62,7 +62,11 @@ func (s *MemoryService) scope(ctx context.Context) (nativecontract.Scope, error)
 	if err != nil {
 		return nativecontract.Scope{}, ErrMemoryScopeDenied
 	}
-	return s.resolver.Recheck(ctx, scope, nil)
+	scope, err = s.resolver.Recheck(ctx, scope, nil)
+	if err != nil {
+		return nativecontract.Scope{}, errors.Join(ErrMemoryScopeDenied, err)
+	}
+	return scope, nil
 }
 func (s *MemoryService) authorize(ctx context.Context, scope nativecontract.Scope) (nativecontract.Scope, error) {
 	fresh, err := s.scope(ctx)
@@ -119,7 +123,7 @@ func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJo
 	return s.repo.Enqueue(ctx, job)
 }
 func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
-	claimed, err := s.repo.Claim(ctx, job)
+	job, claimed, err := s.repo.Claim(ctx, job)
 	if err != nil {
 		return err
 	}

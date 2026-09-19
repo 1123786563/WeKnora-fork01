@@ -7,6 +7,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/stretchr/testify/require"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 func nativeMemoryScope(tenant uint64, subject string) nativecontract.Scope {
@@ -20,13 +21,37 @@ func newNativeMemoryTestRepository(t *testing.T) *NativeMemoryRepository {
 	return NewNativeMemoryRepository(db)
 }
 
+func nativeMemoryJob(t *testing.T, repo *NativeMemoryRepository, scope nativecontract.Scope, id, eventID string) nativecontract.MemoryJob {
+	t.Helper()
+	key := session.Key{AppName: "weknora/native-v1/tenant/1", UserID: "owner/dTE", SessionID: "session/czE"}
+	require.NoError(t, repo.DB().Exec("INSERT INTO native_agent_sessions (tenant_id, owner_id, session_id) VALUES (?, ?, ?)", scope.TenantID, key.UserID, key.SessionID).Error)
+	require.NoError(t, repo.DB().Exec("INSERT INTO native_agent_session_events (tenant_id, app_name, user_id, session_id, stable_event_id, payload_hash, payload, ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", scope.TenantID, key.AppName, key.UserID, key.SessionID, eventID, "fixture-"+eventID, "{}", 0).Error)
+	state, err := repo.State(context.Background(), scope)
+	require.NoError(t, err)
+	return nativecontract.MemoryJob{ID: id, Scope: scope, SessionKey: key, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: eventID}
+}
+
+func TestNativeMemoryEnqueueRejectsMissingOrUnverifiedSessionSource(t *testing.T) {
+	repo := newNativeMemoryTestRepository(t)
+	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	state, err := repo.State(ctx, scope)
+	require.NoError(t, err)
+
+	for _, job := range []nativecontract.MemoryJob{
+		{ID: "empty-key", Scope: scope, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event-empty"},
+		{ID: "partial-key", Scope: scope, SessionKey: session.Key{AppName: "native", UserID: "owner"}, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event-partial"},
+		{ID: "unknown-event", Scope: scope, SessionKey: session.Key{AppName: "native", UserID: "owner", SessionID: "session"}, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event-unknown"},
+	} {
+		require.ErrorIs(t, repo.Enqueue(ctx, job), ErrNativeMemoryWriteRejected)
+	}
+}
+
 func TestNativeMemoryOldExtractionAfterClearCannotResurrect(t *testing.T) {
 	repo := newNativeMemoryTestRepository(t)
 	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
 	require.NoError(t, repo.EnsureScope(ctx, scope))
-	before, err := repo.State(ctx, scope)
-	require.NoError(t, err)
-	job := nativecontract.MemoryJob{ID: "old-job", Scope: scope, Generation: before.Generation, PolicyRevision: before.PolicyRevision, ThroughEventID: "event-1"}
+	job := nativeMemoryJob(t, repo, scope, "old-job", "event-1")
 	require.NoError(t, repo.Enqueue(ctx, job))
 	require.NoError(t, repo.Clear(ctx, scope))
 
@@ -47,7 +72,7 @@ func TestNativeMemoryDeleteWritesTombstoneAndInvalidatesOldJob(t *testing.T) {
 	require.NoError(t, repo.EnsureScope(ctx, scope))
 	state, err := repo.State(ctx, scope)
 	require.NoError(t, err)
-	job := nativecontract.MemoryJob{ID: "extract", Scope: scope, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event-1"}
+	job := nativeMemoryJob(t, repo, scope, "extract", "event-1")
 	require.NoError(t, repo.Enqueue(ctx, job))
 	require.NoError(t, repo.Write(ctx, scope, state.Generation, "m-1", "present", nil))
 	require.NoError(t, repo.Delete(ctx, scope, "m-1"))
@@ -66,9 +91,7 @@ func TestNativeMemoryDisableAndReenableRejectOldGenerationAfterRestart(t *testin
 	repo := NewNativeMemoryRepository(db)
 	ctx, scope := context.Background(), nativeMemoryScope(1, "subject-1")
 	require.NoError(t, repo.EnsureScope(ctx, scope))
-	state, err := repo.State(ctx, scope)
-	require.NoError(t, err)
-	job := nativecontract.MemoryJob{ID: "old", Scope: scope, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "event-1"}
+	job := nativeMemoryJob(t, repo, scope, "old", "event-1")
 	require.NoError(t, repo.Enqueue(ctx, job))
 	require.NoError(t, repo.SetEnabled(ctx, scope, false))
 	require.NoError(t, repo.SetEnabled(ctx, scope, true))
@@ -77,7 +100,7 @@ func TestNativeMemoryDisableAndReenableRejectOldGenerationAfterRestart(t *testin
 	written, err := repo.Commit(ctx, job, "m-1", "old generation", nil)
 	require.NoError(t, err)
 	require.False(t, written)
-	state, err = repo.State(ctx, scope)
+	state, err := repo.State(ctx, scope)
 	require.NoError(t, err)
 	require.True(t, state.Enabled)
 	require.Greater(t, state.Generation, job.Generation)

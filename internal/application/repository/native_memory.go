@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 var (
@@ -203,7 +204,7 @@ func (r *NativeMemoryRepository) Delete(ctx context.Context, scope nativecontrac
 }
 
 func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract.MemoryJob) error {
-	if job.ID == "" || job.ThroughEventID == "" {
+	if job.ID == "" || job.ThroughEventID == "" || job.SessionKey.AppName == "" || job.SessionKey.UserID == "" || job.SessionKey.SessionID == "" {
 		return ErrNativeMemoryWriteRejected
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -214,11 +215,8 @@ func (r *NativeMemoryRepository) Enqueue(ctx context.Context, job nativecontract
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
 			return ErrNativeMemoryWriteRejected
 		}
-		legacyJob := job.SessionKey.AppName == "" && job.SessionKey.UserID == "" && job.SessionKey.SessionID == ""
-		if !legacyJob {
-			if err := r.verifyJobSource(tx, job); err != nil {
-				return err
-			}
+		if err := r.verifyJobSource(tx, job); err != nil {
+			return err
 		}
 		candidate := nativeMemoryJobRow{TenantID: job.Scope.TenantID, SubjectID: subject, JobID: job.ID, Generation: job.Generation, PolicyRevision: job.PolicyRevision, ThroughEventID: job.ThroughEventID, SessionAppName: job.SessionKey.AppName, SessionUserID: job.SessionKey.UserID, SessionID: job.SessionKey.SessionID, Status: NativeMemoryJobQueued}
 		var existing nativeMemoryJobRow
@@ -250,27 +248,30 @@ func (r *NativeMemoryRepository) verifyJobSource(tx *gorm.DB, job nativecontract
 
 // Claim loads the durable job identity before a worker may invoke an extractor.
 // A caller supplied struct is never authority to run background extraction.
-func (r *NativeMemoryRepository) Claim(ctx context.Context, job nativecontract.MemoryJob) (bool, error) {
+func (r *NativeMemoryRepository) Claim(ctx context.Context, candidate nativecontract.MemoryJob) (nativecontract.MemoryJob, bool, error) {
+	var claimed nativecontract.MemoryJob
 	returnValue := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		_, subject, err := r.state(tx, job.Scope)
+		_, subject, err := r.state(tx, candidate.Scope)
 		if err != nil {
 			return err
 		}
 		var row nativeMemoryJobRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND session_app_name=? AND session_user_id=? AND session_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, job.SessionKey.AppName, job.SessionKey.UserID, job.SessionKey.SessionID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Take(&row).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND session_app_name=? AND session_user_id=? AND session_id=? AND status IN ?", candidate.Scope.TenantID, subject, candidate.ID, candidate.Generation, candidate.PolicyRevision, candidate.ThroughEventID, candidate.SessionKey.AppName, candidate.SessionKey.UserID, candidate.SessionKey.SessionID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
 			return err
 		}
-		legacyJob := row.SessionAppName == "" && row.SessionUserID == "" && row.SessionID == ""
-		if !legacyJob {
-			if err := r.verifyJobSource(tx, job); err != nil {
-				return err
+		claimed = nativecontract.MemoryJob{ID: row.JobID, Scope: candidate.Scope, SessionKey: session.Key{AppName: row.SessionAppName, UserID: row.SessionUserID, SessionID: row.SessionID}, Generation: row.Generation, PolicyRevision: row.PolicyRevision, ThroughEventID: row.ThroughEventID}
+		if claimed.SessionKey.AppName == "" || claimed.SessionKey.UserID == "" || claimed.SessionKey.SessionID == "" || r.verifyJobSource(tx, claimed) != nil {
+			result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status IN ?", candidate.Scope.TenantID, subject, row.JobID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Update("status", NativeMemoryJobDiscarded)
+			if result.Error != nil {
+				return result.Error
 			}
+			return nil
 		}
-		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=?", job.Scope.TenantID, subject, job.ID, NativeMemoryJobQueued).Update("status", NativeMemoryJobRunning)
+		result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND status=?", candidate.Scope.TenantID, subject, row.JobID, NativeMemoryJobQueued).Update("status", NativeMemoryJobRunning)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -280,7 +281,7 @@ func (r *NativeMemoryRepository) Claim(ctx context.Context, job nativecontract.M
 		returnValue = true
 		return nil
 	})
-	return returnValue, err
+	return claimed, returnValue, err
 }
 
 func AcceptNativeMemoryWrite(enabled bool, currentGeneration, currentPolicy int64, job nativecontract.MemoryJob) bool {
@@ -380,14 +381,12 @@ func (r *NativeMemoryRepository) commit(ctx context.Context, job nativecontract.
 			if persisted.Status != NativeMemoryJobQueued && persisted.Status != NativeMemoryJobRunning {
 				return nil
 			}
-			legacyJob := persisted.SessionAppName == "" && persisted.SessionUserID == "" && persisted.SessionID == ""
-			if !legacyJob {
-				if persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID {
-					return ErrNativeMemoryWriteRejected
+			if persisted.SessionAppName == "" || persisted.SessionUserID == "" || persisted.SessionID == "" || persisted.SessionAppName != job.SessionKey.AppName || persisted.SessionUserID != job.SessionKey.UserID || persisted.SessionID != job.SessionKey.SessionID || r.verifyJobSource(tx, job) != nil {
+				result := tx.Model(&nativeMemoryJobRow{}).Where("tenant_id=? AND subject_id=? AND job_id=? AND generation=? AND policy_revision=? AND through_event_id=? AND status IN ?", job.Scope.TenantID, subject, job.ID, job.Generation, job.PolicyRevision, job.ThroughEventID, []string{NativeMemoryJobQueued, NativeMemoryJobRunning}).Update("status", NativeMemoryJobDiscarded)
+				if result.Error != nil {
+					return result.Error
 				}
-				if err := r.verifyJobSource(tx, job); err != nil {
-					return err
-				}
+				return nil
 			}
 		}
 		if !AcceptNativeMemoryWrite(row.Enabled, row.Generation, row.PolicyRevision, job) {
