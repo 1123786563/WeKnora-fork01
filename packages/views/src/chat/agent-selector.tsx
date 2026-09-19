@@ -54,6 +54,30 @@ function missingItemLabel(copy: ChatCopyTable, key: AgentNotReadyReasonKey): str
   return key === 'rerank_model' ? copy.agentMissingRerankModel : copy.agentMissingChatModel;
 }
 
+/**
+ * R484 D14 — Vue AgentSelector.vue:31-35 renders TDesign `error-circle` (a
+ * circled exclamation mark) as the not-ready marker. The bare ⚠ text glyph
+ * diverged visually from the Vue baseline; this svg mirrors the TDesign
+ * error-circle geometry.
+ */
+function NotReadyMarker(props: { agentId: string; label: string }) {
+  return (
+    <span
+      role="img"
+      data-agent-not-ready={props.agentId}
+      aria-label={props.label}
+      title={props.label}
+      className="shrink-0 text-[#e3730e]"
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="5.6" stroke="currentColor" strokeWidth="1.3" />
+        <line x1="7" y1="4" x2="7" y2="7.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        <circle cx="7" cy="10" r="0.8" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
 export function agentNotReadyLabels(copy: ChatCopyTable, keys: readonly AgentNotReadyReasonKey[]): string[] {
   return keys.map((key) => missingItemLabel(copy, key));
 }
@@ -174,7 +198,7 @@ export function AgentSelectorPanel(props: AgentSelectorProps) {
                   <span className="wk-agent-option-icon min-w-[16px] text-center" aria-hidden="true">{agent.config?.agent_mode === 'smart-reasoning' ? '✦' : '💬'}</span>
                   <span className="min-w-0 flex-1 truncate">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
-                    <span role="img" aria-label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} title={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} className="shrink-0 text-[13px] text-[#e3730e]">⚠</span>
+                    <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
                 </button>
               ))}
@@ -198,7 +222,7 @@ export function AgentSelectorPanel(props: AgentSelectorProps) {
                   <span className="min-w-[16px] text-center text-[12px] text-[rgba(0,0,0,0.4)]" aria-hidden="true">{agent.name.slice(0, 1).toUpperCase()}</span>
                   <span className="min-w-0 flex-1 truncate">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
-                    <span role="img" aria-label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} title={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} className="shrink-0 text-[13px] text-[#e3730e]">⚠</span>
+                    <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
                 </button>
               ))}

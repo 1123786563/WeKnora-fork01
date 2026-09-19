@@ -254,7 +254,9 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   const thinkingSelect = modelOptionTrigger(container, 1);
   assert.ok(thinkingSelect, 'chat + remote renders the thinking control select');
   assert.equal(thinkingSelect.value, 'chat_template_kwargs');
-  assert.match(text, /自定义 OpenAI 兼容、NVIDIA NIM、vLLM \/ 本地 Qwen 部署/);
+  // R484 G4 D4: Vue always shows the full form-desc below the select
+  // (ModelEditorDialog.vue line 385), not the selected option's short hint.
+  assert.match(text, /决定智能体「思考模式」开\/关时如何写入 API。已尝试按厂商\/模型预选，若与实际情况不符请按 API 文档手动修改；选「不写入」时，智能体「思考模式」开关不生效。/);
 
   // Context window + concurrency placeholders/desc (ModelEditorDialog.vue lines 347-398).
   assert.ok(inputByPlaceholder(container, '默认 200000'));
@@ -264,6 +266,40 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   // Custom headers section (ModelEditorDialog.vue lines 285-306).
   assert.match(text, /自定义请求头（可选）/);
   assert.match(text, /添加请求头/);
+});
+
+// R484 G4 D4 (R482 report-B3.md D4): three add-editor micro-diffs vs the Vue
+// ModelEditorDialog — (1) the provider select trigger shows only the option
+// label when closed (t-select semantics; the description stays in the
+// dropdown), (2) the thinking helper text is the full thinkingControlDesc
+// form-desc (line 385), (3) the footer order is 测试连接 / 取消 / 保存
+// (SettingDrawer footer-left + footer-right lines 50-66).
+test('add editor matches the Vue provider trigger, thinking desc and footer button order', async () => {
+  const { client } = makeClient();
+  const container = await mount(client, 'admin');
+  await openAddEditor(container);
+
+  // (1) Closed trigger shows the localized label only — no description text.
+  const providerTrigger = modelOptionTrigger(container);
+  const triggerText = providerTrigger.textContent ?? '';
+  assert.ok(triggerText.includes('自定义 (OpenAI兼容接口)'), 'the provider label renders in the closed trigger');
+  assert.equal(triggerText.includes('Generic API endpoint (OpenAI-compatible)'), false, 'the provider description must stay in the dropdown only');
+
+  // (2) The thinking helper is the full thinkingControlDesc, not the hint.
+  const editorText = container.textContent ?? '';
+  assert.match(editorText, /决定智能体「思考模式」开\/关时如何写入 API/);
+
+  // (3) Footer order: 测试连接 → 取消 → 保存 like the Vue drawer footer.
+  const footer = container.querySelector('.wk-model-editor .wk-list-actions:last-of-type') ?? container;
+  const footerButtons = Array.from(footer.querySelectorAll('button')).map((button) => button.textContent ?? '');
+  const testIndex = footerButtons.findIndex((label) => label.includes('测试连接'));
+  const cancelIndex = footerButtons.findIndex((label) => label === '取消');
+  const saveIndex = footerButtons.findIndex((label) => label === '保存');
+  assert.ok(testIndex >= 0, 'the test-connection action renders');
+  assert.ok(cancelIndex >= 0, 'the cancel action renders');
+  assert.ok(saveIndex >= 0, 'the save action renders');
+  assert.ok(cancelIndex < saveIndex, 'Vue footer order: 取消 before 保存');
+  assert.ok(testIndex < cancelIndex, 'Vue footer order: 测试连接 before 取消');
 });
 
 test('model provider and thinking selectors keep Vue two-line options and keyboard behavior', async () => {

@@ -56,6 +56,9 @@ async function renderChatRoutePage(input: {
         export function resolveChatCopy() {
           return { deleteConfirmBody: 'Delete this conversation? This cannot be undone.', knowledgeBasesLoadFailed: 'Failed to load knowledge bases', streamFailed: '流式连接失败' };
         }
+        export function isAgentWebSearchReady() { return false; }
+        export function isTenantWebSearchReady() { return false; }
+
         export function splitLiveThinking(content) {
           if (!content || !content.includes('<think>')) {
             return { showThink: false, thinking: false, thinkContent: '', answer: content ?? '' };

@@ -959,6 +959,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
                 <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2 max-[720px]:hidden">
                   <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
+                  {/* R484 G4 D6 — Vue create mode groups both nav items under
+                      the 「基础」 title (OrganizationSettingsModal.vue
+                      navGroups lines 1028-1040, organization.navGroups.basic). */}
+                  {settingsMode === 'create' ? <div className="px-[10px] pb-[2px] pt-[6px] text-[12px] font-semibold tracking-[0.02em] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.navGroups.basic')}</div> : null}
                   {settingsNavItems.map(([key, labelKey]) => (
                     <button key={key} type="button" className={'flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] border-0 px-[10px] py-[9px] text-left font-[inherit] text-[13px] ' + (settingsSection === key ? 'bg-accent-wash font-medium text-accent' : 'bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5]')} onClick={() => setSettingsSection(key)}>{t(locale, labelKey)}</button>
                   ))}
@@ -988,7 +992,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       </div>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
-                        <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
+                        {/* R484 G4 D6 — Vue t-textarea :maxlength="500" shows
+                            the TDesign 0/500 counter (OrganizationSettingsModal
+                            line 102). */}
+                        <div className="min-w-0">
+                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
+                          <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
+                        </div>
                       </div>
                     </form>
                   ) : settingsMode === 'create' ? (
@@ -1135,7 +1145,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </div>
                 <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[16px]">
                   <button type="button" className={ORG_BTN_NEUTRAL} onClick={closeSettings}>{t(locale, 'common.cancel')}</button>
-                  {settingsMode === 'create' ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitCreate()}>{t(locale, 'organization.createOrg')}</button> : null}
+                  {/* R484 G4 D6 — Vue create-mode confirm reads common.create
+                      (OrganizationSettingsModal.vue line 809), not the modal
+                      title createOrg. */}
+                  {settingsMode === 'create' ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitCreate()}>{t(locale, 'common.create')}</button> : null}
                 </div>
               </div>
             </div>

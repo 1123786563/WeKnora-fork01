@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
 import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
 import {
+  AGENT_FILE_TYPE_OPTIONS,
   applyAgentModeSwitch,
   applyKbSelectionMode,
   applyScopeSelectionMode,
@@ -38,6 +39,7 @@ import {
 } from './agent-editor.ts';
 import { PersonaSection } from './PersonaSection.tsx';
 import { SubagentsSection } from './SubagentsSection.tsx';
+import { navigate } from '../platform/navigation.ts';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -776,6 +778,39 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             </Row>
           ) : null}
           {hasKnowledgeBase ? (
+            // R484 D8 — Vue AgentEditorModal.vue:1523-1536: 支持的文件类型
+            // multi-select limits the file types users can @ mention; empty =
+            // all types (the t-select placeholder, shown as a trailing hint).
+            <Row label={t('agentEditor.fileTypes.label')} desc={t('agentEditor.fileTypes.desc')}>
+              <div className="flex w-full max-w-[460px] flex-wrap items-center gap-1" data-field-group="supported_file_types">
+                {AGENT_FILE_TYPE_OPTIONS.map((option) => {
+                  const checked = form.config.supported_file_types.includes(option.value);
+                  return (
+                    <label key={option.value} title={t(option.descriptionKey)}
+                      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
+                      <Checkbox
+                        data-file-type={option.value}
+                        checked={checked}
+                        onChange={(event) => {
+                          const next = event.target.checked;
+                          patch((draft) => {
+                            const set = new Set(draft.config.supported_file_types);
+                            if (next) set.add(option.value); else set.delete(option.value);
+                            draft.config.supported_file_types = [...set];
+                          });
+                        }}
+                      />
+                      <span>{option.labelKey ? t(option.labelKey) : option.label}</span>
+                    </label>
+                  );
+                })}
+                {form.config.supported_file_types.length === 0 ? (
+                  <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.fileTypes.allTypes')}</span>
+                ) : null}
+              </div>
+            </Row>
+          ) : null}
+          {hasKnowledgeBase ? (
             <Row label={t('agent.editor.retrieveKBOnlyWhenMentioned')} desc={t('agent.editor.retrieveKBOnlyWhenMentionedDesc')}>
               <Switch field="retrieve_kb_only_when_mentioned" label={t('agent.editor.retrieveKBOnlyWhenMentioned')}
                 checked={form.config.retrieve_kb_only_when_mentioned}
@@ -989,6 +1024,13 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               <option value="">{t('agent.editor.sandboxBackendDefault')}</option>
               {sandboxOptions.map((cfg) => <option key={cfg.id} value={cfg.id}>{cfg.name}</option>)}
             </Select>
+            {/* R484 D11 — Vue AgentEditorModal.vue:1323-1331 sandbox-select-links:
+                管理沙箱 jumps to the settings sandbox section (uiStore.openSettings('sandbox')). */}
+            <button type="button" data-go-sandbox-settings
+              className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[var(--td-brand-color,#0052d9)] hover:underline"
+              onClick={() => navigate('/platform/settings?section=sandbox')}>
+              {t('agent.editor.goSandboxSettings')}
+            </button>
             {sandboxOptions.length === 0 ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sandboxNoConfigs')}</p> : null}
           </Row>
           <Row label={t('agent.editor.skillsSelection')} desc={t('agent.editor.skillsSelectionDesc')}>

@@ -342,6 +342,11 @@ export function WikiPage({
   const [slug, setSlug] = useState("");
   const [summary, setSummary] = useState("");
   const [content, setContent] = useState("");
+  // Vue createPageForm.pageType + createPageSlugTouched (WikiBrowser.vue
+  // L3010-3035): the create form carries a page type (concept default) and
+  // derives the slug from "<type>/<slugified-title>" until the user edits it.
+  const [pageType, setPageType] = useState("concept");
+  const [slugTouched, setSlugTouched] = useState(false);
   const [editing, setEditing] = useState(false);
   const [version, setVersion] = useState(1);
   const [state, setState] = useState<{
@@ -713,29 +718,60 @@ export function WikiPage({
     setSummary("");
     setContent("");
     setVersion(1);
+    setPageType("concept");
+    setSlugTouched(false);
     setSaveState(null);
     setEditing(true);
+  }
+
+  // Vue syncCreatePageSlug (WikiBrowser.vue L3022-3035): derive
+  // "<type>/<slugified-title>" from the title while the user has not touched
+  // the slug field themselves. Only ASCII-ish titles produce a usable base;
+  // otherwise the user types one.
+  function onTitleInputForCreate(nextTitle: string) {
+    setTitle(nextTitle);
+    if (slugTouched) return;
+    const base = nextTitle
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s_-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-|-$/g, "");
+    setSlug(base ? `${pageType}/${base}` : "");
+  }
+
+  // Vue create-dialog cancel: drop the draft and leave edit mode without
+  // posting anything.
+  function cancelCreate() {
+    setEditing(false);
+    setSaveState(null);
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canContribute) return;
     if (!selected) {
-      const validationError = validateWikiPageInput(
-        { title, content },
-        { titleRequired: t("wikiBrowser.newPageMissingFields"), contentRequired: t("wikiBrowser.newPageMissingFields"), conflict: t("wikiBrowser.editSaveFailed"), saveFailed: t("wikiBrowser.newPageFailed") },
-      );
-      if (validationError) {
-        setSaveState({ status: "error", message: validationError });
+      // Vue submitCreatePage (WikiBrowser.vue L3037-3059): title + slug are
+      // required (content stays optional), the slug pattern gates the shape,
+      // and the payload posts { slug, title, page_type, content } — no
+      // summary on create.
+      const trimmedTitle = title.trim();
+      const trimmedSlug = slug.trim().replace(/^\/+|\/+$/g, "");
+      if (!trimmedTitle || !trimmedSlug) {
+        setSaveState({ status: "error", message: t("wikiBrowser.newPageMissingFields") });
+        return;
+      }
+      if (!/^[\p{L}\p{N}][\p{L}\p{N}\s_\-/]*$/u.test(trimmedSlug)) {
+        setSaveState({ status: "error", message: t("wikiBrowser.newPageSlugHint") });
         return;
       }
       try {
         const page = await client.wiki.create(knowledgeBaseId, {
-          title,
-          slug,
-          summary,
+          slug: trimmedSlug,
+          title: trimmedTitle,
+          page_type: pageType,
           content,
-          version: 1,
         });
         choose(page);
         setSaveState({ status: "saved", page });
@@ -1253,40 +1289,75 @@ export function WikiPage({
               {t("wikiBrowser.newPageTitleLabel")}{" "}
               <Input
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                required
+                onChange={(event) => (selected ? setTitle(event.target.value) : onTitleInputForCreate(event.target.value))}
+                placeholder={selected ? undefined : t("wikiBrowser.newPageTitlePlaceholder")}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageSlugLabel")}{" "}
               <Input
                 value={slug}
-                onChange={(event) => setSlug(event.target.value)}
-                required
+                onChange={(event) => {
+                  setSlug(event.target.value);
+                  if (!selected) setSlugTouched(true);
+                }}
                 disabled={Boolean(selected)}
+                placeholder={selected ? undefined : t("wikiBrowser.newPageSlugPlaceholder")}
               />
+              {!selected ? (
+                <span className="mt-[2px] block text-[12px] leading-[1.4] text-muted">{t("wikiBrowser.newPageSlugHint")}</span>
+              ) : null}
             </label>
-            <label>
-              {t("wikiBrowser.editSummaryPlaceholder")}{" "}
-              <Input
-                value={summary}
-                onChange={(event) => setSummary(event.target.value)}
-              />
-            </label>
+            {!selected ? (
+              <label>
+                {t("wikiBrowser.newPageTypeLabel")}{" "}
+                <select
+                  className="h-8 w-full cursor-pointer rounded-[4px] border border-line-input bg-white px-2 text-[13px] text-ink"
+                  value={pageType}
+                  onChange={(event) => setPageType(event.target.value)}
+                >
+                  <option value="concept">{t("wikiBrowser.filterConcept")}</option>
+                  <option value="entity">{t("wikiBrowser.filterEntity")}</option>
+                  <option value="synthesis">{t("wikiBrowser.filterSynthesis")}</option>
+                  <option value="comparison">{t("wikiBrowser.filterComparison")}</option>
+                </select>
+              </label>
+            ) : null}
+            {selected ? (
+              <label>
+                {t("wikiBrowser.editSummaryPlaceholder")}{" "}
+                <Input
+                  value={summary}
+                  onChange={(event) => setSummary(event.target.value)}
+                />
+              </label>
+            ) : null}
             <label>
               {t("wikiBrowser.newPageContentLabel")}{" "}
               <Textarea
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 rows={14}
-                required
+                placeholder={selected ? undefined : t("wikiBrowser.editContentPlaceholder")}
               />
             </label>
             <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <span className="mr-auto text-[0.85rem] text-muted">{selected ? t("wikiBrowser.version", { ver: version }) : t("wikiBrowser.page.new")}</span>
-              <Button type="submit">
-                {selected ? t("wikiBrowser.editSave") : t("wikiBrowser.page.new")}
-              </Button>
+              {selected ? <span className="mr-auto text-[0.85rem] text-muted">{t("wikiBrowser.version", { ver: version })}</span> : null}
+              {selected ? (
+                <Button type="submit">
+                  {t("wikiBrowser.editSave")}
+                </Button>
+              ) : (
+                <>
+                  {/* Vue create dialog footer: 取消 outline + 确认 primary. */}
+                  <Button type="button" onClick={cancelCreate}>
+                    {t("common.cancel")}
+                  </Button>
+                  <Button type="submit">
+                    {t("common.confirm")}
+                  </Button>
+                </>
+              )}
               {selected ? (
                 <>
                   <Button type="button" onClick={cancelEdit}>

@@ -5,9 +5,9 @@ import { renderChatMarkdown } from '@weknora/views';
 import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewport, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
-import { DocumentsBreadcrumb, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
-import { computeSupportedFileTypes } from '../documents/page-chrome.ts';
-import { KnowledgeSettingsPage } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
+import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
+import { computeSupportedFileTypes, computeUnsupportedFileTypes } from '../documents/page-chrome.ts';
+import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
 import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
 import { useKbDetailGuideTrigger } from '../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts';
 
@@ -107,6 +107,17 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return [...computeSupportedFileTypes(parserEngines, rules)];
   }, [kbMeta, parserEngines]);
 
+  // Vue unsupportedFileTypes computed (KnowledgeBase.vue:224-234): every type
+  // advertised by a tenant engine minus the supported set, sorted — drives the
+  // .parser-hint warning line under the header on every KB tab (graph included).
+  const parserRules = useMemo(() => {
+    const chunking = kbMeta?.chunking_config as { parser_engine_rules?: unknown } | null | undefined;
+    return Array.isArray(chunking?.parser_engine_rules)
+      ? (chunking.parser_engine_rules as { file_types: string[]; engine: string }[])
+      : [];
+  }, [kbMeta]);
+  const unsupportedFileTypes = useMemo(() => computeUnsupportedFileTypes(parserEngines, parserRules), [parserEngines, parserRules]);
+
   // Vue title row (KnowledgeBase.vue L2359-2380): wiki KBs render the third
   // crumb level as the 文档 / Wiki / 图谱 breadcrumb-tab row; the active graph
   // tab carries the tabGraphTip concept-clarification tooltip (Vue t-tooltip).
@@ -147,6 +158,13 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   // React hosts the settled KB settings content (KnowledgeSettingsPage, the
   // same surface the /settings route renders) inside a Dialog overlay.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Vue uiStore.openKBSettings(kbId, 'parser') seeds the drawer at a section;
+  // the parser-hint banner routes there while the ⚙ gear opens the default.
+  const [settingsSection, setSettingsSection] = useState<KnowledgeSettingsSectionKey | undefined>(undefined);
+  function openParserSettings() {
+    setSettingsSection('parser');
+    setSettingsOpen(true);
+  }
 
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
@@ -355,6 +373,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   // (graphFilterTypesToArray, re-fetched server-side), which the selectedTypes
   // load effect mirrors — keep query out of this filter.
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { types: selectedTypes }) : null, [graph, selectedTypes]);
+  // Vue graphReady (WikiBrowser.vue renderGraph, L3759-3764 + L4349): the
+  // overlays (search shell, ? help, legend chips/actions, status card) mount
+  // only after the renderer actually drew nodes — renderGraph returns early
+  // for a node-less payload, so a 0-node graph keeps them ALL hidden behind
+  // the 暂无图谱数据 empty state.
+  const graphReady = status.kind === 'success' && visible !== null && visible.nodes.length > 0;
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, surfaceSize.width, surfaceSize.height) : [], [visible, surfaceSize.width, surfaceSize.height]);
   const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
   const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);
@@ -579,12 +603,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           }}
           supportedFileTypes={supportedFileTypes}
           canManage={canManage}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => { setSettingsSection(undefined); setSettingsOpen(true); }}
           tabs={kbTabs}
         />
         {/* Vue keeps the document upload subtitle under every tab — the
             document-subtitle line is unconditional in KnowledgeBase.vue. */}
         <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t('knowledgeEditor.document.subtitle')}</p>
+        {/* Vue parser-hint warning line (KnowledgeBase.vue:2458-2465): types
+            advertised by an engine but unresolved by the KB rules render the
+            banner + 前往配置 link on every KB detail tab. */}
+        <ParserHint t={t} types={unsupportedFileTypes} onConfigure={openParserSettings} />
       </header>
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
@@ -673,7 +701,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
               </g>
             </svg>
           ) : null}
-          {status.kind === 'success' ? <div role="search" className="absolute left-4 top-4 z-10 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3 max-[720px]:left-2 max-[720px]:top-2">
+          {graphReady ? <div role="search" className="absolute left-4 top-4 z-10 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3 max-[720px]:left-2 max-[720px]:top-2">
             <div className="flex items-center gap-2">
               {/* Vue renders the graph search as a t-select (filterable):
                   search prefix icon + suffix chevron that rotates when the
@@ -710,7 +738,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
               </details>
             </div>
           </div> : null}
-          {status.kind === 'success' ? <div data-testid="knowledge-graph-legend" className="absolute right-4 top-4 z-10 flex flex-col gap-3 rounded-[6px] border border-line-neutral bg-white p-[10px_12px] opacity-95 shadow-[0_1px_10px_rgba(0,0,0,0.05)] transition-all duration-300 max-[720px]:right-2 max-[720px]:top-2" style={drawerNode ? { right: 'calc(480px + 16px)' } : undefined}>
+          {graphReady ? <div data-testid="knowledge-graph-legend" className="absolute right-4 top-4 z-10 flex flex-col gap-3 rounded-[6px] border border-line-neutral bg-white p-[10px_12px] opacity-95 shadow-[0_1px_10px_rgba(0,0,0,0.05)] transition-all duration-300 max-[720px]:right-2 max-[720px]:top-2" style={drawerNode ? { right: 'calc(480px + 16px)' } : undefined}>
             <div className="flex flex-col gap-2">
               {LEGEND_GRAPH_TYPES.map((graphType) => {
                 const enabled = selectedTypes.includes(graphType);
@@ -798,7 +826,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           onClose={() => setSettingsOpen(false)}
           className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
         >
-          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} />
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} initialSection={settingsSection} />
         </Dialog>
       ) : null}
     </main>

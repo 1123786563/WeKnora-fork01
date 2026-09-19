@@ -171,7 +171,7 @@ test('edit-mode document KB with files locks the indexing checks with the Vue lo
 
   // The locked draft still saves with the committed strategy (lock is a UI
   // contract, not a save blocker) — the base update keeps the round-trip flags.
-  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save Configuration');
+  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save and Close');
   assert.ok(save);
   await act(async () => { save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });

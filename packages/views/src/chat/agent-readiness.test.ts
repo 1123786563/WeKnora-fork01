@@ -72,3 +72,37 @@ test('reasons map to the model editor section with the first missing item highli
   assert.equal(resolveAgentNotReadyHighlight(['summary_model', 'rerank_model']), 'summary_model');
   assert.equal(resolveAgentNotReadyHighlight([]), undefined);
 });
+
+// R484 D14 — shared-agent branches ported from the Vue judgement source
+// (frontend/src/utils/agent-readiness.ts getAgentNotReadyReasonKeys): for a
+// shared agent the models live in the source tenant, so a non-empty
+// model/rerank id is accepted without local existence validation.
+test('shared agents pass readiness with non-empty model ids (Vue isSharedAgent branch)', () => {
+  assert.deepEqual(
+    getAgentNotReadyReasonKeys(
+      { agent_mode: 'smart-reasoning', model_id: 'remote-model', kb_selection_mode: 'all', rerank_model_id: 'remote-rerank' },
+      [],
+      { isAgentMode: true, isSharedAgent: true },
+    ),
+    [],
+    'remote ids are trusted without local model lookup',
+  );
+  assert.deepEqual(
+    getAgentNotReadyReasonKeys(
+      { agent_mode: 'smart-reasoning', model_id: '', kb_selection_mode: 'all', rerank_model_id: 'remote-rerank' },
+      MODELS,
+      { isAgentMode: true, isSharedAgent: true },
+    ),
+    ['summary_model'],
+    'an empty model id is still not ready even for shared agents',
+  );
+  assert.deepEqual(
+    getAgentNotReadyReasonKeys(
+      { agent_mode: 'smart-reasoning', model_id: 'chat-1', kb_selection_mode: 'all', rerank_model_id: '' },
+      MODELS,
+      { isAgentMode: true, isSharedAgent: true },
+    ),
+    ['rerank_model'],
+    'an empty rerank id is still not ready even for shared agents',
+  );
+});

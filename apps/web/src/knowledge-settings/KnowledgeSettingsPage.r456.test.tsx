@@ -128,7 +128,8 @@ test('summarizeKnowledgeSettings keeps data-driven literals key-free and keys th
   assert.equal(idWithoutProvider.storage.detailKey, undefined);
 });
 
-// ---- render: zh-CN shows translated tiles, en-US keeps the English copy -------
+// ---- render (R484): the overview tiles are gone from the drawer; the
+// summary only feeds the vectorStore/storage control labels ---------------
 
 function clientFor(): WeKnoraClient {
   const request = async () => ({ success: true });
@@ -181,87 +182,70 @@ afterEach(async () => {
   dom.window.localStorage.setItem('locale', 'zh-CN');
 });
 
-test('zh-CN renders the parser tile without hardcoded English', async () => {
+test('zh-CN parser tab renders the Vue per-file-type list instead of the summary tile', async () => {
   const bodyText = await renderSection('parser');
-  assert.ok(bodyText.includes('默认解析引擎'), `expected the zh parser default label, got: ${JSON.stringify(bodyText.slice(0, 400))}`);
-  assert.ok(bodyText.includes('未按文件类型覆盖'), 'expected the zh parser default detail');
-  assert.ok(!bodyText.includes('Default parser'), 'the parser tile must not render hardcoded English');
-  assert.ok(!bodyText.includes('No file-type overrides'), 'the parser tile detail must not render hardcoded English');
+  assert.ok(!bodyText.includes('默认解析引擎'), `the parser tile label must be gone, got: ${JSON.stringify(bodyText.slice(0, 400))}`);
+  assert.ok(!bodyText.includes('未按文件类型覆盖'), 'the parser tile detail must be gone');
+  assert.ok(!bodyText.includes('Default parser'), 'no hardcoded English either');
+  assert.ok(!bodyText.includes('No file-type overrides'), 'no hardcoded English detail either');
 });
 
-test('zh-CN renders the parser tile fallback branches without hardcoded English', async () => {
+test('zh-CN parser tab renders no custom-rules tile fallback', async () => {
   const customRules: KnowledgeSettingsInput = {
     ...baseKnowledgeBase,
-    // A rule without engine or file types resolves both fallback branches.
+    // A rule without engine or file types resolves the old fallback branches.
     chunking_config: { parser_engine_rules: [{}] },
   };
   const bodyText = await renderSection('parser', customRules);
-  assert.ok(bodyText.includes('自定义规则'), 'expected the zh custom-rules label');
-  assert.ok(bodyText.includes('按文件类型覆盖'), 'expected the zh file-type overrides detail');
-  assert.ok(!bodyText.includes('Custom rules'), 'the parser fallback label must not render hardcoded English');
-  assert.ok(!bodyText.includes('File-type overrides'), 'the parser fallback detail must not render hardcoded English');
+  assert.ok(!bodyText.includes('自定义规则'), 'the custom-rules tile label must be gone');
+  assert.ok(!bodyText.includes('按文件类型覆盖'), 'the file-type overrides tile detail must be gone');
+  assert.ok(!bodyText.includes('Custom rules'), 'no hardcoded English either');
 });
 
-test('zh-CN renders the vectorStore tile without hardcoded English', async () => {
+test('zh-CN vectorStore select keeps the localized label, the tile detail is gone', async () => {
   const bodyText = await renderSection('vectorStore');
-  assert.ok(bodyText.includes('系统默认'), 'expected the zh vector default label');
-  assert.ok(bodyText.includes('未显式绑定'), 'expected the zh vector no-binding detail');
-  assert.ok(!bodyText.includes('System default'), 'the vector tile must not render hardcoded English');
-  assert.ok(!bodyText.includes('No explicit binding'), 'the vector tile detail must not render hardcoded English');
+  assert.ok(bodyText.includes('系统默认'), 'the disabled select carries the localized default label');
+  assert.ok(!bodyText.includes('未显式绑定'), 'the vector no-binding tile detail must be gone');
+  assert.ok(!bodyText.includes('No explicit binding'), 'no hardcoded English detail either');
 
   const unavailable: KnowledgeSettingsInput = { ...baseKnowledgeBase, vector_store_status: 'unavailable' };
   const unavailableText = await renderSection('vectorStore', unavailable);
-  assert.ok(unavailableText.includes('向量存储不可用'), 'expected the zh vector unavailable label');
-  assert.ok(unavailableText.includes('请检查全局向量存储设置'), 'expected the zh vector unavailable detail');
-  assert.ok(!unavailableText.includes('Vector store unavailable'), 'the vector unavailable label must not render hardcoded English');
-  assert.ok(!unavailableText.includes('Check the global vector-store settings'), 'the vector unavailable detail must not render hardcoded English');
+  assert.ok(!unavailableText.includes('请检查全局向量存储设置'), 'the vector unavailable tile detail must be gone');
 
   const bound: KnowledgeSettingsInput = { ...baseKnowledgeBase, vector_store_id: 'vec-1' };
   const boundText = await renderSection('vectorStore', bound);
-  assert.ok(boundText.includes('已绑定的向量存储'), 'expected the zh bound label');
-  assert.ok(boundText.includes('显式绑定'), 'expected the zh explicit-binding detail');
-  assert.ok(!boundText.includes('Bound vector store'), 'the bound label must not render hardcoded English');
-  assert.ok(!boundText.includes('Explicit binding'), 'the explicit-binding detail must not render hardcoded English');
+  assert.ok(boundText.includes('已绑定的向量存储'), 'the bound label feeds the disabled select');
+  assert.ok(!boundText.includes('显式绑定'), 'the explicit-binding tile detail must be gone');
 });
 
-test('zh-CN renders the storage tile without hardcoded English', async () => {
+test('zh-CN storage select keeps its labels, the tile detail is gone', async () => {
   const bodyText = await renderSection('storage');
-  assert.ok(bodyText.includes('系统默认'), 'expected the zh storage default label');
-  assert.ok(bodyText.includes('未绑定实例'), 'expected the zh storage no-instance detail');
-  assert.ok(!bodyText.includes('System default'), 'the storage tile must not render hardcoded English');
-  assert.ok(!bodyText.includes('No explicit instance'), 'the storage tile detail must not render hardcoded English');
+  assert.ok(!bodyText.includes('未绑定实例'), 'the storage no-instance tile detail must be gone');
+  assert.ok(!bodyText.includes('No explicit instance'), 'no hardcoded English detail either');
 
   const providerOnly: KnowledgeSettingsInput = {
     ...baseKnowledgeBase,
     storage_provider_config: { provider: 'local' },
   };
   const providerText = await renderSection('storage', providerOnly);
-  assert.ok(providerText.includes('已配置存储提供方'), 'expected the zh provider-configured detail');
-  assert.ok(!providerText.includes('Provider configured'), 'the provider detail must not render hardcoded English');
-  assert.ok(!providerText.includes('Storage instance'), 'the storage fallback label must not render hardcoded English');
+  assert.ok(!providerText.includes('已配置存储提供方'), 'the provider-configured tile detail must be gone');
 });
 
-test('en-US keeps the original parser/vectorStore/storage tile copy byte-identical', async () => {
+test('en-US renders no parser/vectorStore/storage tile copy', async () => {
   const bodyText = await renderSection('parser', baseKnowledgeBase, 'en-US');
-  assert.ok(bodyText.includes('Default parser') && bodyText.includes('No file-type overrides'), 'expected the en parser default copy');
+  assert.ok(!bodyText.includes('Default parser') && !bodyText.includes('No file-type overrides'), 'the parser tile copy is gone');
 
   const vectorText = await renderSection('vectorStore', baseKnowledgeBase, 'en-US');
-  assert.ok(vectorText.includes('System default') && vectorText.includes('No explicit binding'), 'expected the en vector default copy');
+  assert.ok(vectorText.includes('System default'), 'the disabled select keeps the localized default label');
+  assert.ok(!vectorText.includes('No explicit binding'), 'the vector tile detail is gone');
 
   const storageText = await renderSection('storage', baseKnowledgeBase, 'en-US');
-  assert.ok(storageText.includes('System default') && storageText.includes('No explicit instance'), 'expected the en storage default copy');
-
-  const providerOnly: KnowledgeSettingsInput = {
-    ...baseKnowledgeBase,
-    storage_provider_config: { provider: 'local' },
-  };
-  const providerText = await renderSection('storage', providerOnly, 'en-US');
-  assert.ok(providerText.includes('Local') && providerText.includes('Provider configured'), 'expected the en storage configured copy');
+  assert.ok(!storageText.includes('No explicit instance'), 'the storage tile detail is gone');
 
   const customRules: KnowledgeSettingsInput = {
     ...baseKnowledgeBase,
     chunking_config: { parser_engine_rules: [{}] },
   };
   const customText = await renderSection('parser', customRules, 'en-US');
-  assert.ok(customText.includes('Custom rules') && customText.includes('File-type overrides'), 'expected the en parser configured copy');
+  assert.ok(!customText.includes('Custom rules') && !customText.includes('File-type overrides'), 'the parser configured tile copy is gone');
 });

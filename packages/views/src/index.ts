@@ -2,6 +2,9 @@ export { ChatComposer, createChatSubmission } from './chat/composer.tsx';
 export type { ChatComposerProps, ChatMentionView, ChatSteerQueueChip, ChatSubmission } from './chat/composer.tsx';
 export { AgentSelectorPanel, agentNotReadyLabels } from './chat/agent-selector.tsx';
 export type { AgentSelectorAgent, AgentSelectorModel, AgentSelectorProps } from './chat/agent-selector.tsx';
+// R484 D15 — Vue agentWebSearch.ts gates backing the composer globe toggle.
+export { isAgentWebSearchEnabled, isAgentWebSearchReady, isTenantWebSearchReady, resolveAgentWebSearchProviderId } from './chat/web-search.ts';
+export type { AgentWebSearchConfigLike, WebSearchProviderLike } from './chat/web-search.ts';
 export { resolveForkAffordance, stashForkLanding, takeForkLanding } from './chat/fork-point.ts';
 export { MessageList, renderMessageHtml } from './chat/message-list.tsx';
 export type { MessageListProps, PendingChatMessage } from './chat/message-list.tsx';

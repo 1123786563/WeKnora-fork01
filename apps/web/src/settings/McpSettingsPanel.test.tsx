@@ -341,6 +341,16 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.ok(sections.every((index) => index >= 0), 'all Vue sections render');
     assert.ok(sections[0] < sections[1] && sections[1] < sections[2] && sections[2] < sections[3], 'Vue section order preserved');
     assert.match(text, /关闭后该服务不会被调用/);
+    // R484 G4 D5 (R482 report-B3.md D5): the drawer subtitle shows the
+    // transport label + enabled chip like Vue McpServiceDialog.vue lines
+    // 27-36 (transportLabel + subtitle-tag). The scanner's 「SSE已启用」 vs
+    // 「已启用」 diff was an innerText tokenization artifact (Vue concatenates
+    // the two inline spans; the live DOMs are equivalent) — this locks the
+    // aligned state so the SSE prefix cannot silently disappear.
+    const subtitle = dialog?.querySelector('.wk-settings-panel-heading p') ?? null;
+    assert.ok(subtitle, 'the drawer subtitle renders');
+    assert.match(subtitle.textContent ?? '', /SSE/, 'the transport label prefixes the chip');
+    assert.match(subtitle.textContent ?? '', /已启用/, 'the enabled chip renders');
     const unitText = Array.from(dialog?.querySelectorAll('span.pointer-events-none') ?? []).map((node) => node.textContent).join('');
     assert.equal(unitText, '秒次秒', 'advanced inputs show Vue unit suffixes');
     const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');

@@ -13,6 +13,7 @@
     "./chat/live-thinking": "./src/chat/live-thinking.ts",
     "./chat/mermaid": "./src/chat/mermaid.ts",
     "./chat/page": "./src/chat/page.tsx",
+    "./chat/web-search": "./src/chat/web-search.ts",
     "./craft/document": "./src/craft/document.tsx",
     "./craft/files": "./src/craft/files.tsx",
     "./craft/home": "./src/craft/home.tsx",

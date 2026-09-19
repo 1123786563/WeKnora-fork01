@@ -11,6 +11,9 @@ import {
   visibleCommands,
   type CommandDescriptor,
 } from './command-palette.ts';
+// R484 D17 — the product-tour command re-opens the welcome guide the same way
+// Vue commands.ts openNewUserGuide() does (contextualGuides.ts event dispatch).
+import { openNewUserGuide } from '@weknora/views';
 import {
   usePaletteLiveSearch,
   type PaletteSearchClient,
@@ -306,7 +309,11 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     if (command) {
       if (trimmed) onSearch(trimmed);
       onClose();
-      onNavigate(command.path);
+      // R484 D17 — Vue commands.ts:86-93 open-product-tour: the tour command
+      // re-opens the welcome guide (weknora:open-new-user-guide event) instead
+      // of navigating; PlatformShell's NewUserGuide listens for it.
+      if (command.action === 'open-new-user-guide') openNewUserGuide();
+      else if (command.path) onNavigate(command.path);
     }
   };
 

@@ -125,7 +125,7 @@ function clientFor(calls: ClientCalls): WeKnoraClient {
         list: async () => ({ data: [], total: 0 }),
       },
       settings: {
-        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU self-hosted', Available: true }] }),
+        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU self-hosted', Available: true, FileTypes: ['pdf'] }] }),
         storageBackends: async () => ({ data: [{ id: 'st-1', name: 'Main storage', provider: 's3', status: 'ready' }] }),
         vectorStores: async () => ({ data: [{ id: 'vs-1', name: 'Vectors', engine_type: 'pgvector', source: 'tenant', readonly: false }] }),
         activity: async (kbId: string, _query?: Record<string, unknown>) => {

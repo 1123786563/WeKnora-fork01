@@ -718,3 +718,55 @@ test('double-clicking save only submits once while the request is in flight', as
   await act(async () => { resolveCreate({ id: 'new-2', name: 'x', is_builtin: false, config: {} }); });
   assert.equal(requests.length, 1);
 });
+
+// --- R484 D8: knowledge section offers the supported file types picker -------------------
+
+test('knowledge section renders the supported-file-types picker with the 7 Vue options (D8)', async () => {
+  const { client, requests } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'knowledge');
+  const section = $('[data-editor-section="knowledge"]', root);
+  assert.ok(section, 'knowledge section missing');
+
+  // Vue AgentEditorModal.vue:1523-1536 — row only when a KB scope is configured
+  assert.ok(section!.textContent!.includes('支持的文件类型'), 'supported file types label missing');
+  assert.ok(section!.textContent!.includes('限制可选择的文件类型，留空表示支持所有类型'), 'file types desc missing');
+  const boxes = $$('[data-file-type]', section) as HTMLInputElement[];
+  assert.deepEqual(boxes.map((box) => box.getAttribute('data-file-type')), ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg']);
+
+  // toggling writes through to config.supported_file_types on save
+  await checkCheckbox(section, 'input[data-file-type="pdf"]');
+  await checkCheckbox(section, 'input[data-file-type="csv"]');
+  await click(root, '[data-editor-save]');
+  const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.deepEqual(payload.supported_file_types, ['pdf', 'csv']);
+});
+
+test('knowledge section hides the file-types picker when the KB scope is none (D8)', async () => {
+  const { client } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, kb_selection_mode: 'none', knowledge_bases: [] } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'knowledge');
+  const section = $('[data-editor-section="knowledge"]', root);
+  assert.ok(section);
+  assert.equal($('[data-file-type]', section), null, 'picker must be hidden without a KB scope');
+});
+
+// --- R484 D11: skills section carries the manage-sandboxes link --------------------------
+
+test('skills section renders the manage-sandboxes link navigating to settings?sandbox (D11)', async () => {
+  const { client } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'skills');
+  const section = $('[data-editor-section="skills"]', root);
+  assert.ok(section, 'skills section missing');
+  const link = $('[data-go-sandbox-settings]', section) as HTMLAnchorElement | null;
+  assert.ok(link, 'manage-sandboxes link missing');
+  assert.equal(link!.textContent, '管理沙箱');
+  await act(async () => {
+    link!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  assert.equal(window.location.pathname + window.location.search, '/platform/settings?section=sandbox');
+});

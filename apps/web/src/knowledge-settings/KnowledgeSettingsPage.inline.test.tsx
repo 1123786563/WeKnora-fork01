@@ -72,7 +72,7 @@ function clientFor(calls: ClientCalls): WeKnoraClient {
         list: async () => ({ data: [], total: 0 }),
       },
       settings: {
-        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU self-hosted', Available: true }, { Name: 'builtin', Description: 'Built-in', Available: false }] }),
+        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU self-hosted', Available: true, FileTypes: ['pdf'] }, { Name: 'builtin', Description: 'Built-in', Available: false, FileTypes: ['pdf'] }] }),
         storageBackends: async () => ({ data: [{ id: 'st-1', name: 'Main storage', provider: 's3', status: 'ready' }] }),
         vectorStores: async () => ({ data: [{ id: 'vs-1', name: 'Vectors', engine_type: 'pgvector', source: 'tenant', readonly: false }] }),
         activity: async (kbId: string, query?: Record<string, unknown>) => {

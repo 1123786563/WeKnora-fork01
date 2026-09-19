@@ -193,7 +193,7 @@ async function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: 
 }
 
 async function clickSave(): Promise<void> {
-  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save Configuration');
+  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save and Close');
   assert.ok(save, 'expected the save button');
   await act(async () => { save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
 }

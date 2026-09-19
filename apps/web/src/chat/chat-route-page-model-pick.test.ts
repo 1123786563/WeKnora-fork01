@@ -51,6 +51,9 @@ async function renderChatRoutePage(input: {
             export function resolveChatCopy() {
               return { streamFailed: '流式连接失败' };
             }
+            export function isAgentWebSearchReady() { return false; }
+            export function isTenantWebSearchReady() { return false; }
+
             export function splitLiveThinking(content) {
               return { showThink: false, thinking: false, thinkContent: '', answer: content ?? '' };
             }

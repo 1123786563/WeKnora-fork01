@@ -140,3 +140,32 @@ test('hover detail card shows capability badges and a configure jump for not-rea
 test('not-ready labels map reason keys to localized copy', () => {
   assert.deepEqual(agentNotReadyLabels(copy, ['summary_model', 'rerank_model']), ['对话模型', '重排模型']);
 });
+
+// R484 D14 — Vue AgentSelector.vue:31-35 renders TDesign `error-circle` (a
+// circled exclamation icon) for the not-ready marker. The R482 audit read the
+// Vue screenshot as "no warning" because the React ⚠ text glyph looked
+// different; parity = the Vue icon shape, not a bare ⚠ character.
+test('not-ready marker renders the Vue error-circle icon, not a bare ⚠ glyph (D14)', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const r = createRoot(container);
+  root = r;
+  await act(async () => r.render(<AgentSelectorPanel
+    copy={copy}
+    currentAgentId=""
+    agents={AGENTS}
+    models={MODELS}
+    anchorRect={anchorRect}
+    onSelect={() => undefined}
+    onNotReady={() => undefined}
+    onManage={() => undefined}
+    onConfigureAgent={() => undefined}
+    onClose={() => undefined}
+  />));
+  const marker = document.body.querySelector('[data-agent-not-ready="builtin-wiki"]');
+  assert.ok(marker, 'not-ready marker element present');
+  assert.equal(marker.textContent ?? '', '', 'marker carries no ⚠ text glyph');
+  assert.ok(marker.querySelector('svg'), 'marker renders the error-circle svg icon');
+  const readyRow = document.body.querySelector('[data-agent-not-ready="builtin-smart-reasoning"]');
+  assert.equal(readyRow, null, 'ready agent has no marker');
+});

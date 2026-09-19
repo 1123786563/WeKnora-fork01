@@ -902,11 +902,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   const credentialHint = signed
     ? t(signed === "volcengine" ? "model.editor.volcengine.rerankCredentialHint" : "model.editor.lkeap.rerankCredentialHint")
     : null;
-  const selectedThinkingHint = useMemo(() => {
-    if (!draft || draft.type !== "chat" || draft.source !== "remote") return null;
-    const option = THINKING_CONTROL_OPTIONS.find((item) => item.value === draft.thinkingControl);
-    return option ? t(`model.editor.thinkingControl.${option.key}.hint`) : null;
-  }, [draft, t]);
+  // R484 G4 D4 — Vue always renders the full thinkingControlDesc form-desc
+  // under the select (ModelEditorDialog.vue line 385); the per-option hint
+  // only appears inside the dropdown options below.
   const thinkingOptions = useMemo(() => THINKING_CONTROL_OPTIONS.map((option) => ({
     value: option.value,
     label: t(`model.editor.thinkingControl.${option.key}.label`),
@@ -1481,7 +1479,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         updateDraft("thinkingControl", value);
                       }}
                     />
-                    <span className="wk-muted text-muted">{selectedThinkingHint ?? t("model.editor.thinkingControlDesc")}</span>
+                    <span className="wk-muted text-muted">{t("model.editor.thinkingControlDesc")}</span>
                   </label>
                 ) : null}
                 <label>
@@ -1517,15 +1515,17 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
               {remoteMessage ? (
                 <Status tone={remoteMessage.ok ? "success" : "error"}>{remoteMessage.text}</Status>
               ) : null}
+              {/* R484 G4 D4 — Vue footer order (SettingDrawer.vue footer):
+                  footer-left 测试连接, footer-right 取消 then 保存. */}
+              <Button type="button" disabled={busy} onClick={closeEditor}>
+                {t("common.cancel")}
+              </Button>
               <Button
                 type="submit"
                 loading={busy}
                 disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
               >
                 {t("common.save")}
-              </Button>
-              <Button type="button" disabled={busy} onClick={closeEditor}>
-                {t("common.cancel")}
               </Button>
             </div>
           </form>

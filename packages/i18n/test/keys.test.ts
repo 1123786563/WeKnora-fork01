@@ -235,3 +235,20 @@ test('keeps the analytics usage System placeholder aligned across every locale',
   assert.equal(formatMessage('en-US', 'analytics.usageSystemUser'), 'System');
   assert.equal(formatMessage('zh-CN', 'analytics.usageSystemUser'), '系统');
 });
+
+// R484 G4 D6 (R482 report-B3.md D6): the org create modal footer confirm reads
+// common.create (OrganizationSettingsModal.vue line 809
+// `isCreateMode ? $t('common.create') : $t('common.save')`). Port the key
+// byte-exact from frontend/src/i18n/locales/*.ts common block in every locale.
+test('keeps common.create byte-exact from the Vue common block in every locale', () => {
+  const vueBaseline = {
+    'zh-CN': '创建',
+    'en-US': 'Create',
+    'ja-JP': '作成',
+    'ko-KR': '생성',
+    'ru-RU': 'Создать',
+  } as const;
+  for (const locale of supportedLocales) {
+    assert.equal(formatMessage(locale, 'common.create'), vueBaseline[locale as keyof typeof vueBaseline], `${locale} common.create diverges from the Vue baseline`);
+  }
+});

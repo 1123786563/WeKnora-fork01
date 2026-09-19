@@ -343,6 +343,30 @@ test('platform API keys section renders the Vue table and one-time token surface
   assert.ok(container.querySelector('[role="alert"]'), 'creation renders the one-time token surface');
 });
 
+// R484 G4 D7 (R482 report-B3.md D7): Vue Settings.vue renders ONLY the
+// role-denied block when canSeeSection fails (lines 85-94) — the section
+// component (and with it the section h2/description) never mounts. The React
+// shell must not render its wrapper heading on top of the denied panel.
+test('role-denied system sections render only the Vue denied block without the section heading', async () => {
+  const container = await mountPage(makeClient(), '?section=system-global', 'owner');
+  const text = container.textContent ?? '';
+  assert.ok(container.querySelector('[data-testid="role-denied-panel"]'), 'the role-denied panel renders');
+  assert.ok(text.includes('权限不足'), 'the Vue denied title renders');
+  assert.ok(text.includes('你当前的角色无权访问此设置项'), 'the Vue denied description renders');
+  assert.equal(text.includes('系统全局设置'), false, 'the section heading must not render when role-denied');
+  assert.equal(text.includes('管理平台级配置'), false, 'the section description must not render when role-denied');
+
+  const queues = await mountPage(makeClient(), '?section=runtime-queues', 'owner');
+  const queuesText = queues.textContent ?? '';
+  assert.ok(queues.querySelector('[data-testid="role-denied-panel"]'), 'runtime-queues shows the denied panel');
+  assert.equal(queuesText.includes('运行时队列'), false, 'runtime-queues heading must not render when role-denied');
+
+  const keys = await mountPage(makeClient(), '?section=platform-api-keys', 'owner');
+  const keysText = keys.textContent ?? '';
+  assert.ok(keys.querySelector('[data-testid="role-denied-panel"]'), 'platform-api-keys shows the denied panel');
+  assert.equal(keysText.includes('平台 API Key'), false, 'platform-api-keys heading must not render when role-denied');
+});
+
 test('system audit section renders Vue rows and opens a keyboard-accessible detail drawer', async () => {
   const container = await mountPage(makeClient({ audit: [{ id: 9, created_at: '2026-09-14T10:00:00Z', actor_user_id: 'u-1', actor_role: 'system_admin', action: 'system.setting_changed', target_id: 'auth.registration_mode', outcome: 'success', request_path: '/api/v1/system/admin/settings/auth.registration_mode' }] }), '?section=system-audit-log', 'system-admin');
   assert.ok(container.textContent?.includes('审计日志'), 'the Vue audit heading renders');

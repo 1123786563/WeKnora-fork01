@@ -51,6 +51,10 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   // no workspace sandbox backend there is nothing to bind values to, so the
   // form is replaced by the noConfig notice.
   const [sandboxes, setSandboxes] = useState<SandboxConfigOption[] | null>(null);
+  // R484 G4 D3 — the Vue section header carries a help-circle hint trigger
+  // (EnvVarSettings.vue lines 6-22) opening a hover popup with the two intro
+  // blocks; React keeps the same hover semantics via mouseover/mouseleave.
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,8 +92,54 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     void run(remove, t('envVarSettings.deleteSuccess'));
   }
 
+  // Section header ported from EnvVarSettings.vue lines 3-25: the panel owns
+  // its h2 + help popup + description (the settings shell heading is skipped
+  // for envvars) so the hint entry matches the Vue baseline in every state,
+  // including the noConfig notice below.
+  const sectionHeader = <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+    <div className="relative w-full">
+      <div className="flex items-center gap-[6px]">
+        <h2 className="m-0 text-[20px] font-semibold leading-[normal] text-[#27364d]">{t('envVarSettings.title')}</h2>
+        <span className="relative inline-flex" onMouseLeave={() => setHelpOpen(false)}>
+          <button
+            type="button"
+            className="inline-flex cursor-help items-center justify-center border-0 bg-transparent p-[2px] text-[#8a8a8a] hover:text-accent focus-visible:text-accent focus-visible:outline-none"
+            aria-label={t('envVarSettings.helpAria')}
+            aria-expanded={helpOpen}
+            onMouseOver={() => setHelpOpen(true)}
+            onFocus={() => setHelpOpen(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <path d="M12 17h.01" />
+            </svg>
+          </button>
+          {helpOpen ? (
+            <div
+              data-testid="envvar-help-popover"
+              role="tooltip"
+              className="absolute left-[calc(100%+6px)] top-0 z-30 grid w-[340px] max-w-[380px] gap-3 rounded-[8px] border border-[#e7e7e7] bg-white p-3 text-left shadow-[0_8px_24px_rgba(23,32,51,.14)]"
+            >
+              <div>
+                <p className="m-0 text-[13px] font-semibold text-[#27364d]">{t('envVarSettings.introPersonalTitle')}</p>
+                <p className="m-0 mt-1 text-[12px] leading-[1.55] text-[#66758b]">{t('envVarSettings.introPersonalBody')}</p>
+              </div>
+              <div>
+                <p className="m-0 text-[13px] font-semibold text-[#27364d]">{t('envVarSettings.introRuntimeTitle')}</p>
+                <p className="m-0 mt-1 text-[12px] leading-[1.55] text-[#66758b]">{t('envVarSettings.introRuntimeBody')}</p>
+              </div>
+            </div>
+          ) : null}
+        </span>
+      </div>
+      <p className="wk-muted text-muted m-0 mt-2">{t('envVarSettings.description')}</p>
+    </div>
+  </div>;
+
   if (sandboxes !== null && sandboxes.length === 0) {
     return <Card data-testid="envvar-panel">
+      {sectionHeader}
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       <div className="py-6 text-center">
@@ -100,6 +150,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   }
 
   return <Card data-testid="envvar-panel">
+    {sectionHeader}
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     <form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={setVariable}>

@@ -454,6 +454,22 @@ const TOOL = (value: string, name: string, group: ToolDefinition['group'], requi
   ...(requirement.allOf ? { allOf: requirement.allOf } : {}),
 });
 
+// R484 D8 — supported file types offered on the knowledge section, mirroring
+// Vue AgentEditorModal.vue:2564-2570 availableFileTypes (pdf/docx/txt/md/csv/
+// xlsx/jpg). Values are stored verbatim in config.supported_file_types; the
+// localized labels/descriptions resolve through agentEditor.fileTypes.*
+// (label stays literal where Vue keeps a proper noun: PDF/Word/Markdown/CSV/Excel).
+export interface SupportedFileTypeOption { value: string; label: string; labelKey?: string; descriptionKey: string }
+export const AGENT_FILE_TYPE_OPTIONS: SupportedFileTypeOption[] = [
+  { value: 'pdf', label: 'PDF', descriptionKey: 'agentEditor.fileTypes.pdf' },
+  { value: 'docx', label: 'Word', descriptionKey: 'agentEditor.fileTypes.word' },
+  { value: 'txt', label: '文本', labelKey: 'agentEditor.fileTypes.textLabel', descriptionKey: 'agentEditor.fileTypes.text' },
+  { value: 'md', label: 'Markdown', descriptionKey: 'agentEditor.fileTypes.markdown' },
+  { value: 'csv', label: 'CSV', descriptionKey: 'agentEditor.fileTypes.csv' },
+  { value: 'xlsx', label: 'Excel', descriptionKey: 'agentEditor.fileTypes.excel' },
+  { value: 'jpg', label: '图片', labelKey: 'agentEditor.fileTypes.imageLabel', descriptionKey: 'agentEditor.fileTypes.image' },
+];
+
 // Order and grouping mirror AgentEditorModal.vue:2379-2406.
 export const TOOL_CATALOG: ToolDefinition[] = [
   TOOL('thinking', 'thinking', 'base'),

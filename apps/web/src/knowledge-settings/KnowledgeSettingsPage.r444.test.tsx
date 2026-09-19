@@ -156,7 +156,7 @@ test('a KB with files locks the Embedding selector with the Vue warning while RA
 
   // The locked draft still saves the committed embedding model — the lock is
   // a UI contract, not a save blocker.
-  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save Configuration');
+  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save and Close');
   assert.ok(save);
   await act(async () => { save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });

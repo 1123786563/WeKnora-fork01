@@ -25,23 +25,32 @@ const t = (key: string): string => {
     'commandPalette.quick.experts': 'Open expert templates',
     'commandPalette.quick.organizations': 'Open shared spaces',
     'commandPalette.quick.settings': 'Open settings',
+    'commandPalette.quick.productTour': 'Product tour',
   };
   return labels[key] ?? key;
 };
 
-test('the command catalogue mirrors Vue quick actions (plus the React-only experts entry)', () => {
-  assert.equal(COMMANDS.length, 6);
+// R484 D17 — Vue buildCommands() (commands.ts:86-93) appends open-product-tour
+// after open-settings. The React-only experts entry (exempt, added later) parks
+// at the tail so the commands shared with Vue keep their Vue ⌘1-⌘6 anchors:
+// new-chat 1 / kb 2 / agents 3 / organizations 4 / settings 5 / product-tour 6.
+test('the command catalogue mirrors Vue quick actions + product tour, experts parked last (D17)', () => {
+  assert.equal(COMMANDS.length, 7);
   assert.deepEqual(COMMANDS.map((c) => c.id), [
-    'new-chat', 'open-kb-list', 'open-agents', 'open-experts', 'open-organizations', 'open-settings',
+    'new-chat', 'open-kb-list', 'open-agents', 'open-organizations', 'open-settings', 'open-product-tour', 'open-experts',
   ]);
-  assert.deepEqual(COMMANDS.map((c) => c.path), [
-    '/platform/creatChat', '/platform/knowledge-bases', '/platform/agents', '/platform/experts', '/platform/organizations', '/platform/settings',
+  assert.deepEqual(COMMANDS.map((c) => c.path ?? null), [
+    '/platform/creatChat', '/platform/knowledge-bases', '/platform/agents', '/platform/organizations', '/platform/settings', null, '/platform/experts',
   ]);
+  const tour = COMMANDS.find((c) => c.id === 'open-product-tour');
+  assert.equal(tour?.action, 'open-new-user-guide');
+  assert.deepEqual(tour?.keywords, ['guide', 'tour', 'onboarding', 'help', '引导', '新手', '教程']);
+  assert.equal(tour?.labelKey, 'commandPalette.quick.productTour');
 });
 
 test('filterCommands returns everything for a blank query', () => {
-  assert.equal(filterCommands(COMMANDS, '', t).length, 6);
-  assert.equal(filterCommands(COMMANDS, '   ', t).length, 6);
+  assert.equal(filterCommands(COMMANDS, '', t).length, 7);
+  assert.equal(filterCommands(COMMANDS, '   ', t).length, 7);
 });
 
 test('filterCommands matches localized label text case-insensitively', () => {
@@ -52,6 +61,12 @@ test('filterCommands matches localized label text case-insensitively', () => {
 test('filterCommands matches non-English keywords not present in the label', () => {
   const matches = filterCommands(COMMANDS, '智能体', t);
   assert.deepEqual(matches.map((c) => c.id), ['open-agents']);
+});
+
+test('filterCommands matches the product tour by its Vue keywords (D17)', () => {
+  assert.deepEqual(filterCommands(COMMANDS, 'tour', t).map((c) => c.id), ['open-product-tour']);
+  assert.deepEqual(filterCommands(COMMANDS, '新手', t).map((c) => c.id), ['open-product-tour']);
+  assert.deepEqual(filterCommands(COMMANDS, '引导', t).map((c) => c.id), ['open-product-tour']);
 });
 
 test('filterCommands returns no results for an unmatched query', () => {
@@ -184,14 +199,14 @@ test('consumeCmdkParam is a no-op when there is no cmdk param', () => {
 
 test('visibleCommands hides "Open agents" without the agents capability', () => {
   const visible = visibleCommands(COMMANDS, { canOpenAgents: false, canOpenOrganizations: true });
-  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-experts', 'open-organizations', 'open-settings']);
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-organizations', 'open-settings', 'open-product-tour', 'open-experts']);
 });
 
 test('visibleCommands hides "Open shared spaces" without admin+organizations access', () => {
   const visible = visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: false });
-  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-agents', 'open-experts', 'open-settings']);
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-agents', 'open-settings', 'open-product-tour', 'open-experts']);
 });
 
 test('visibleCommands keeps every command when both capabilities are granted', () => {
-  assert.equal(visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: true }).length, 6);
+  assert.equal(visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: true }).length, 7);
 });

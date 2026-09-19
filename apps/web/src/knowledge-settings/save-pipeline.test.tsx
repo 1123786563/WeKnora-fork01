@@ -170,7 +170,7 @@ function clientFor(calls: UiCalls, mode: 'ok' | 'fail' = 'ok'): WeKnoraClient {
     knowledgeBases: {
       documents: { list: documentsList(request) },
       settings: {
-        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true }, { Name: 'builtin', Description: 'Built-in', Available: true }] }),
+        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true, FileTypes: ['pdf'] }, { Name: 'builtin', Description: 'Built-in', Available: true, FileTypes: ['pdf'] }] }),
         storageBackends: async () => ({ data: [{ id: 'st-1', name: 'Main storage', provider: 's3', status: 'ready' }] }),
         vectorStores: async () => ({ data: [{ id: 'vs-1', name: 'Vectors', engine_type: 'pgvector', source: 'tenant', readonly: false }] }),
       },
@@ -226,7 +226,7 @@ test('save button is gated to owner/admin and disabled while a save is in flight
     },
   } as unknown as WeKnoraClient;
   await renderPage(slowClient, 'owner');
-  const save = findButton('Save Configuration');
+  const save = findButton('Save and Close');
   assert.equal(save.disabled, false, 'idle save button must be enabled for owner');
   await act(async () => {
     save.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -253,13 +253,14 @@ test('a successful save persists the Vue update payload carrying the pending par
     const sectionButton = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Parser'));
     sectionButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
-  const select = document.body.querySelector('select');
-  assert.ok(select, 'expected the parser engine select');
+  const select = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
+  assert.ok(select, 'expected the per-file-type parser engine select for the pdf group');
+  assert.equal(select.value, 'mineru', 'the committed pdf rule preselects the group select');
   await act(async () => {
-    select!.value = 'builtin';
-    select!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    [...select.options].forEach((option) => { option.selected = option.value === 'builtin'; });
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   });
-  await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount probe plus the Vue doSubmit pair: base update first, then the config PUT');
   const request = calls.requests[2]!;
@@ -278,20 +279,20 @@ test('a failed save keeps the form state and surfaces the error message', async 
     const sectionButton = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').includes('Parser'));
     sectionButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   });
-  const select = document.body.querySelector('select')!;
-  assert.ok(select);
+  const select = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
+  assert.ok(select, 'expected the per-file-type parser engine select for the pdf group');
   await act(async () => {
-    select.value = 'builtin';
+    [...select.options].forEach((option) => { option.selected = option.value === 'builtin'; });
     select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   });
-  await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.match(document.body.textContent ?? '', /storage backend unavailable/, 'the server error message must surface');
   assert.equal(document.body.textContent?.includes('Configuration saved successfully'), false, 'no success feedback on failure');
-  const selectAfter = document.body.querySelector('select')!;
+  const selectAfter = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'PDF Documents')!;
   assert.equal(selectAfter.value, 'builtin', 'the pending selection must survive a failed save');
   assert.equal(selectAfter.disabled, false, 'the form must stay editable after a failed save');
-  await act(async () => { findButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { findButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount probe plus the original pair and the retry PUT');
 });
@@ -300,7 +301,7 @@ test('viewers get no save button (Vue canManage gating)', async () => {
   const calls: UiCalls = { requests: [] };
   await renderPage(clientFor(calls), 'viewer');
   const labels = [...document.body.querySelectorAll('button')].map((candidate) => (candidate.textContent ?? '').trim());
-  assert.equal(labels.includes('Save Configuration'), false, 'viewer must not see the save button');
+  assert.equal(labels.includes('Save and Close'), false, 'viewer must not see the save button');
   assert.equal(calls.requests.length, 1, 'only the mount-time documents probe runs for a viewer');
 });
 

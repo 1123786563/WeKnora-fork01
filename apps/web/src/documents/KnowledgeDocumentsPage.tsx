@@ -4685,7 +4685,9 @@ export function KnowledgeDocumentsPage({
           onClose={() => setKbSettingsOpen(false)}
           className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
         >
-          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} />
+          {/* R484: the Vue settings footer 取消 (handleClose) discards the
+              drafts and closes the drawer — onClose wires that close. */}
+          <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canContribute ? "admin" : "viewer"} onClose={() => setKbSettingsOpen(false)} />
         </Dialog>
       ) : null}
     </main>

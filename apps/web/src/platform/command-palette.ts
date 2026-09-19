@@ -10,28 +10,39 @@
 // called a search endpoint). This module keeps the static command catalogue,
 // capability filtering, recent-query persistence, keyboard-navigation
 // helpers, and the global shortcut/`?cmdk=` wiring.
-// "Product tour" is intentionally omitted from the command catalogue:
-// frontend/src/components/NewUserGuide.vue has no React port yet, so there is
-// nothing for that command to open.
+// R484 D17 — "Product tour" is now in the catalogue: the React port of
+// NewUserGuide landed with PlatformShell (packages/views/src/guides), so the
+// command dispatches the weknora:open-new-user-guide event through
+// openNewUserGuide() instead of navigating a path.
+
+export type CommandAction = 'open-new-user-guide';
 
 export interface CommandDescriptor {
   id: string;
   labelKey: string;
-  icon: 'new-chat' | 'knowledge-bases' | 'agents' | 'experts' | 'organizations' | 'settings';
+  icon: 'new-chat' | 'knowledge-bases' | 'agents' | 'experts' | 'organizations' | 'settings' | 'product-tour';
   keywords: string[];
-  path: string;
+  /** Navigation target; omitted when `action` handles the command instead. */
+  path?: string;
+  /** Non-navigation commands (product tour) name their host hook here. */
+  action?: CommandAction;
 }
 
 // Mirrors GlobalCommandPalette/commands.ts buildCommands() order and targets.
+// R484 D17 — the Vue list ends with open-product-tour after open-settings; the
+// React-only experts entry (added later, exempt from Vue parity) parks at the
+// tail so every command shared with Vue keeps its Vue ⌘ digit anchor
+// (organizations ⌘4 / settings ⌘5 / product tour ⌘6, Vue screenshot r482).
 export const COMMANDS: readonly CommandDescriptor[] = [
   { id: 'new-chat', labelKey: 'commandPalette.quick.newChat', icon: 'new-chat', keywords: ['new', 'chat', 'conversation', '新建', '对话', 'создать'], path: '/platform/creatChat' },
   { id: 'open-kb-list', labelKey: 'commandPalette.quick.knowledgeBases', icon: 'knowledge-bases', keywords: ['kb', 'knowledge', 'base', '知识库', '文档'], path: '/platform/knowledge-bases' },
   { id: 'open-agents', labelKey: 'commandPalette.quick.agents', icon: 'agents', keywords: ['agent', 'bot', '智能体', '助手'], path: '/platform/agents' },
+  { id: 'open-organizations', labelKey: 'commandPalette.quick.organizations', icon: 'organizations', keywords: ['org', 'organization', 'team', 'space', '组织', '共享'], path: '/platform/organizations' },
+  { id: 'open-settings', labelKey: 'commandPalette.quick.settings', icon: 'settings', keywords: ['settings', 'preferences', 'config', '设置', '配置'], path: '/platform/settings' },
+  { id: 'open-product-tour', labelKey: 'commandPalette.quick.productTour', icon: 'product-tour', keywords: ['guide', 'tour', 'onboarding', 'help', '引导', '新手', '教程'], action: 'open-new-user-guide' },
   // M2 expert templates (React-only surface; label key registered React-side
   // in scripts/parity/backfill-i18n-keys.mjs EXPERTS_VALUES).
   { id: 'open-experts', labelKey: 'commandPalette.quick.experts', icon: 'experts', keywords: ['expert', 'template', '专家', '模板', 'テンプレート'], path: '/platform/experts' },
-  { id: 'open-organizations', labelKey: 'commandPalette.quick.organizations', icon: 'organizations', keywords: ['org', 'organization', 'team', 'space', '组织', '共享'], path: '/platform/organizations' },
-  { id: 'open-settings', labelKey: 'commandPalette.quick.settings', icon: 'settings', keywords: ['settings', 'preferences', 'config', '设置', '配置'], path: '/platform/settings' },
 ];
 
 /**

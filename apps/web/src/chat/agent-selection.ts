@@ -82,7 +82,7 @@ export interface ChatMentionItem {
   skill_name?: string;
 }
 
-export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string, attachmentIds?: readonly string[], mentionedItems?: readonly ChatMentionItem[], modelId?: string): WebChatStreamOptions {
+export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string, attachmentIds?: readonly string[], mentionedItems?: readonly ChatMentionItem[], modelId?: string, webSearchEnabled?: boolean): WebChatStreamOptions {
   const selected = agentId?.trim();
   const mentionedKnowledgeBaseIds = mentionedItems?.filter((item) => item.type === 'kb').map((item) => item.kb_id?.trim() || item.id.trim()).filter(Boolean) ?? [];
   const knowledgeBaseIds = [...new Set([
@@ -105,10 +105,13 @@ export function buildWebChatStreamOptions(sessionId: string, content: string, ag
     ...(mentionSkillNames.length > 0 ? { skill_names: [...new Set(mentionSkillNames)] } : {}),
   };
   const modelBody = modelId?.trim() ? { summary_model_id: modelId.trim() } : {};
-  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...modelBody } };
+  // R484 D15 — Vue chat/index.vue:1255,1295: the settings-store toggle rides
+  // along on both stream modes as web_search_enabled (omitted when off).
+  const webSearchBody = webSearchEnabled === true ? { web_search_enabled: true } : {};
+  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...modelBody, ...webSearchBody } };
   return {
     sessionId,
     mode: 'agent',
-    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...agentResourceMentionBody, ...modelBody },
+    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseBody, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...agentResourceMentionBody, ...modelBody, ...webSearchBody },
   };
 }

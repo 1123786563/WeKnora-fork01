@@ -221,6 +221,15 @@ export interface ChatPageProps {
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
   /**
+   * R484 D15 — Vue Input-field.vue web-search toggle, forwarded to the
+   * composer globe button. Visibility gates on readiness (tenant default
+   * engine, or the selected agent's engine); the host owns the toggle.
+   */
+  webSearchVisible?: boolean;
+  webSearchConfigured?: boolean;
+  webSearchEnabled?: boolean;
+  onWebSearchToggle?(): void;
+  /**
    * R483 D16 — Vue ChatHeader utility block rendered between 修改标题 and
    * 清空消息 (ChatHeader.vue:61-77): copy session id / copy link / copy as
    * Markdown / open in new window, framed by the two Vue menu dividers.
@@ -803,6 +812,10 @@ export function ChatPage(props: ChatPageProps) {
           modelOptions={props.modelOptions}
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
+          webSearchVisible={props.webSearchVisible}
+          webSearchConfigured={props.webSearchConfigured}
+          webSearchEnabled={props.webSearchEnabled}
+          onWebSearchToggle={props.onWebSearchToggle}
           streaming={streaming || sending}
           canSteer={canSteer}
           onStop={props.onStopStream}

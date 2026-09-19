@@ -10,6 +10,8 @@ import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
 import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
 import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
 import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
+// R484 D15 — Vue agentWebSearch.ts readiness gates for the composer globe toggle.
+import { isAgentWebSearchReady, isTenantWebSearchReady } from '@weknora/views/chat/web-search';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
@@ -86,6 +88,15 @@ function chatModelStorageKey(scope: ReturnType<ScopeController['current']>['scop
 
 function readStoredChatModelId(scope: ReturnType<ScopeController['current']>['scope']): string {
   try { return window.localStorage.getItem(chatModelStorageKey(scope))?.trim() ?? ''; } catch { return ''; }
+}
+
+// R484 D15 — per-browser web-search toggle persistence (Vue keeps it in the
+// settings store; the tenant KV write there is admin-gated and not ported).
+const WEB_SEARCH_ENABLED_KEY = 'weknora:web-search-enabled';
+
+/** Selected agent row, or undefined for the built-in quick-answer default. */
+function selectedAgentIdRefForWebSearch(agents: readonly AgentConfiguration[], selectedAgentId: string): AgentConfiguration | undefined {
+  return selectedAgentId ? agents.find((item) => item.id === selectedAgentId) : undefined;
 }
 
 export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId, canViewChannelSessions = false }: ChatRoutePageProps) {
@@ -252,6 +263,45 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // hydrated from client.chat.feedback.mine on session load.
   const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
   const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
+  // R484 D15 — Vue settingsStore.isWebSearchEnabled + chatResources.webSearchProviders
+  // (Input-field.vue showWebSearchButton / isWebSearchConfigured / toggleWebSearch).
+  // The toggle persists per browser like the per-user chat-model pick; the Vue
+  // store's tenant KV write is admin-gated and not ported.
+  const [webSearchProviders, setWebSearchProviders] = useState<Array<{ id: string; is_default?: boolean }>>([]);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
+    try { return window.localStorage.getItem(WEB_SEARCH_ENABLED_KEY) === '1'; } catch { return false; }
+  });
+  // R484 D15 — Vue Input-field.vue isWebSearchConfigured / showWebSearchButton:
+  // an agent selection gates on its own engine readiness (isAgentWebSearchReady),
+  // the default quick-answer on the tenant default engine (isTenantWebSearchReady).
+  // The React composer shows the globe only when the gate passes, matching the
+  // Vue computed pair (readiness unknown → hidden until providers resolve).
+  const webSearchConfigured = useMemo(() => {
+    const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
+    return agent
+      ? isAgentWebSearchReady(agent.config as Record<string, unknown> | undefined, webSearchProviders)
+      : isTenantWebSearchReady(webSearchProviders);
+  }, [agents, selectedAgentId, webSearchProviders]);
+  const webSearchVisible = webSearchConfigured;
+  function toggleWebSearch(): void {
+    // Vue toggleWebSearch (Input-field.vue:2504-2541): agent-disabled wins,
+    // an unconfigured engine prompts instead of flipping, otherwise the store
+    // toggle flips with a toast. The not-configured prompt is plain text here
+    // (the React toast surface has no link affordance).
+    const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
+    if (agent && (agent.config as Record<string, unknown> | undefined)?.web_search_enabled !== true) {
+      showAgentToast(copy.webSearchDisabledByAgent);
+      return;
+    }
+    if (!webSearchConfigured) {
+      showAgentToast(copy.webSearchNotConfiguredToast);
+      return;
+    }
+    const next = !webSearchEnabled;
+    setWebSearchEnabled(next);
+    try { window.localStorage.setItem(WEB_SEARCH_ENABLED_KEY, next ? '1' : '0'); } catch { /* storage may be unavailable */ }
+    showAgentToast(next ? copy.webSearchEnabledToast : copy.webSearchDisabledToast);
+  }
   const [agentToast, setAgentToast] = useState<string | null>(null);
   const agentToastTimer = useRef<number | null>(null);
   // SP13 Task 8 — 侧栏分享入口打开的会话（null = 关窗）；弹窗自己 mint token。
@@ -383,6 +433,32 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
+
+  // R484 D15 — Vue Input-field.vue loadWebSearchConfig
+  // (chatResources.ensureWebSearchProviders): fetch the tenant engines once;
+  // a stale enabled toggle whose engine disappeared is turned off like Vue's
+  // `!isWebSearchConfigured && isWebSearchEnabled → toggleWebSearch(false)`.
+  useEffect(() => {
+    let active = true;
+    void client.settings.webSearch.providers.list(scope.signal).then(
+      (result) => {
+        if (!active || !scopeController.isCurrent(scope.scope)) return;
+        const providers = (Array.isArray(result) ? result : []).map((provider) => ({
+          id: String(provider.id ?? ''),
+          is_default: provider.is_default === true,
+        }));
+        setWebSearchProviders(providers);
+        const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
+        const configured = agent
+          ? isAgentWebSearchReady(agent.config as Record<string, unknown> | undefined, providers)
+          : isTenantWebSearchReady(providers);
+        if (!configured) setWebSearchEnabled(false);
+      },
+      () => { if (active) setWebSearchProviders([]); },
+    );
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, scope.scope, scopeController, selectedAgentId]);
 
   // Vue AttachmentUpload discovers additional parser-supported extensions at
   // runtime. Keep the static baseline if this optional capability is offline.
@@ -1575,7 +1651,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         ...(item.kbName || item.type === 'kb' ? { kb_name: item.kbName ?? item.name } : {}),
         ...(item.skillName ? { skill_name: item.skillName } : {}),
       }));
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions, submission.modelId ?? selectedModelId), signal: runController.signal };
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions, submission.modelId ?? selectedModelId, webSearchEnabled && webSearchConfigured), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -1696,6 +1772,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelContextIsDefault={modelChipIsDefault}
     modelOptions={modelOptions}
     selectedModelId={selectedModelId}
+    webSearchVisible={webSearchVisible}
+    webSearchConfigured={webSearchConfigured}
+    webSearchEnabled={webSearchEnabled}
+    onWebSearchToggle={toggleWebSearch}
     onModelChange={(modelId) => {
       // Vue handleModelChange order: persist the explicit pick first, then
       // update the in-memory selection states.

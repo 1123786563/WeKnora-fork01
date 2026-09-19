@@ -30,6 +30,8 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.agents": "打开智能体",
     "commandPalette.quick.organizations": "打开共享空间",
     "commandPalette.quick.settings": "打开设置",
+    // R484 D17 — Vue locales commandPalette.quick.productTour (product tour command).
+    "commandPalette.quick.productTour": "新手引导",
     "commandPalette.empty.noResults": "没有找到匹配结果",
     "commandPalette.empty.askAi": "直接向 AI 提问",
     "commandPalette.empty.adjustRetrieval": "调整检索参数",
@@ -61,6 +63,8 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.agents": "Open agents",
     "commandPalette.quick.organizations": "Open shared spaces",
     "commandPalette.quick.settings": "Open settings",
+    // R484 D17 — Vue locales commandPalette.quick.productTour (product tour command).
+    "commandPalette.quick.productTour": "Product tour",
     "commandPalette.empty.noResults": "No matches found",
     "commandPalette.empty.askAi": "Ask the AI directly",
     "commandPalette.empty.adjustRetrieval": "Adjust retrieval",
@@ -92,6 +96,8 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.agents": "エージェントを開く",
     "commandPalette.quick.organizations": "共有スペースを開く",
     "commandPalette.quick.settings": "設定を開く",
+    // R484 D17 — Vue locales commandPalette.quick.productTour (product tour command).
+    "commandPalette.quick.productTour": "プロダクトツアー",
     "commandPalette.empty.noResults": "一致する項目がありません",
     "commandPalette.empty.askAi": "AIに直接質問する",
     "commandPalette.empty.adjustRetrieval": "検索設定を調整",
@@ -123,6 +129,8 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.agents": "에이전트 열기",
     "commandPalette.quick.organizations": "공유 공간 열기",
     "commandPalette.quick.settings": "설정 열기",
+    // R484 D17 — Vue locales commandPalette.quick.productTour (product tour command).
+    "commandPalette.quick.productTour": "사용 가이드",
     "commandPalette.empty.noResults": "일치하는 결과 없음",
     "commandPalette.empty.askAi": "AI에게 직접 질문하기",
     "commandPalette.empty.adjustRetrieval": "검색 설정 조정",
@@ -154,6 +162,8 @@ export const commandPaletteMessages: Record<Locale, Record<string, string>> = {
     "commandPalette.quick.agents": "Открыть агенты",
     "commandPalette.quick.organizations": "Открыть общие пространства",
     "commandPalette.quick.settings": "Открыть настройки",
+    // R484 D17 — Vue locales commandPalette.quick.productTour (product tour command).
+    "commandPalette.quick.productTour": "Обучение",
     "commandPalette.empty.noResults": "Совпадений не найдено",
     "commandPalette.empty.askAi": "Спросить ИИ",
     "commandPalette.empty.adjustRetrieval": "Настроить поиск",

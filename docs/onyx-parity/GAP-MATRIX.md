@@ -218,10 +218,10 @@
 | P-3 | 套餐/计费页 | `/admin/billing` 两档卡片+Stripe Checkout | commercial 后端全套（计划版本/订阅/订单/退款/支付宝微信 `internal/commercial/`）；前端组件已写好**未挂路由**（`apps/web/src/commercial/BillingPage.tsx` 等 4 个） | 🟡→SP14 | 纯接线；Stripe/seats 不引入（有意不同） |
 | P-4 | 消息反馈 like/dislike | `chat_feedback` 表 `db/models.py:3607` | ✅ `message_feedback` 表（migration 000079/000158）+ 提交/撤销/回显 API + 消息气泡 like/dislike（乐观更新+回显），见 SP11 验收证据 | ✅ | 交付物：`c9310a09`/`722ec67c`/`3c248161`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md) |
 | P-5 | 分析聚合+图表页 | `/api/analytics/admin/*` 实时 SQL 聚合+recharts（EE） | ✅ 四组读时聚合端点（queries/users/channels/agents）+ `/platform/analytics` recharts 四图（日期过滤+RBAC 门），见 SP11 验收证据 | ✅ | 交付物：`ce42a1ae`(Task3 文件)/`66964201`/`3726f8c2`/`b0783bf2`/`524fe997`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md) |
-| P-6 | admin 查询历史审计 | `chat-session-history` 分页+完整快照（EE） | admin 仅渠道会话可见（source=api/embed/IM，`internal/application/service/session.go:394`）；web 会话按 user 隔离不可见 | 🟡→SP13 | 扩展现有 admin 视图到全 source+按用户过滤 |
-| P-7 | 查询历史 CSV 导出 | Celery 三段式（触发/状态/下载） | 无 | ❌→SP13 | 用已有 asynq 替代 Celery |
-| P-8 | 隐私三档开关 | NORMAL/ANONYMIZED/DISABLED | 无 | ❌→SP13 | 租户级设置 |
-| P-9 | 会话分享 | PUBLIC 链接匿名只读 | 无 | ❌→SP13 | **有意收紧**：租户内登录分享（token+同租户校验），不做匿名公开链接 |
+| P-6 | admin 查询历史审计 | `chat-session-history` 分页+完整快照（EE） | ✅ `GET /sessions?source=all` 全 source+user/时间/反馈过滤+分页 与 `GET /admin/sessions/:id/snapshot`（会话+200 条消息+反馈行；隐私 gate 内联），见 SP13 验收证据 | ✅ | 交付物：`158c46d2`/`df6a5095`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md) |
+| P-7 | 查询历史 CSV 导出 | Celery 三段式（触发/状态/下载） | ✅ asynq 三段式：`POST /admin/sessions/export` → `status` 轮询 → `download` CSV 流（query_history_export_jobs 表+同过滤参数+Admin+/full-access-key），见 SP13 验收证据 | ✅ | 交付物：`c2e2bb04`/`3b4b71c3`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md) |
+| P-8 | 隐私三档开关 | NORMAL/ANONYMIZED/DISABLED | ✅ 租户 KV `query-history-config`（normal/anonymized/disabled）：anonymized 列表/快照/导出 user_id→anonymous；disabled 审计三面 403+前端面板占位，见 SP13 验收证据 | ✅ | 交付物：`c2e2bb04`/`158c46d2`/`df6a5095`/`ec141d7f`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md) |
+| P-9 | 会话分享 | PUBLIC 链接匿名只读 | ✅ 租户内登录分享：mint/轮换/revoke + `GET /shared/sessions/:token` 只读快照 + `/platform/shared/:token` 只读页 + 侧栏/聊天页分享入口弹窗，见 SP13 验收证据 | ✅ | **有意收紧**：不做匿名公开链接；交付物：`c2e2bb04`/`182f8237`/`e22b1a65`；[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md) |
 | P-10 | API 文档入口 | docs.onyx.app 外链 | 后端 swagger 有（非 release 模式 `internal/router/router.go:158`）；前端 API key 面板无文档入口 | 🟡→SP14 | 加 `/swagger` 入口+capabilities 文案 |
 | P-11 | per-user 默认模型偏好 | `User.default_model` 等+设置页 `web/src/views/SettingsPage.tsx` | `user.preferences` JSONB 仅 3 项（`internal/types/user.go:24`）；无默认模型/温度 | ❌→SP14 | JSONB 扩展无迁移；解析链 会话>agent>用户>租户（对齐 Onyx 优先级） |
 

@@ -29,10 +29,16 @@ function asString(value: unknown): string {
  * An agent is chat-ready only when it explicitly references a usable chat
  * model. A tenant-wide default model must not hide an incomplete agent
  * configuration.
+ *
+ * R484 D14 — `sourceModelIsRemote` ports the Vue shared-agent branch
+ * (frontend/src/utils/agent-readiness.ts agentHasConfiguredChatModel): the
+ * models of a shared agent live in the source tenant, so a non-empty id is
+ * accepted without local existence validation.
  */
-export function agentHasConfiguredChatModel(config: AgentReadinessConfig | undefined, models: readonly AgentReadinessModel[]): boolean {
+export function agentHasConfiguredChatModel(config: AgentReadinessConfig | undefined, models: readonly AgentReadinessModel[], sourceModelIsRemote = false): boolean {
   const modelId = asString(config?.model_id);
   if (!modelId) return false;
+  if (sourceModelIsRemote) return true;
   return models.some((model) => model.type === 'KnowledgeQA' && model.id === modelId);
 }
 
@@ -53,15 +59,20 @@ export function agentRequiresRerankModel(config: AgentReadinessConfig | undefine
 export function getAgentNotReadyReasonKeys(
   config: AgentReadinessConfig | undefined,
   models: readonly AgentReadinessModel[],
-  options: { isAgentMode: boolean },
+  options: { isAgentMode: boolean; isSharedAgent?: boolean },
 ): AgentNotReadyReasonKey[] {
   const reasons: AgentNotReadyReasonKey[] = [];
-  if (!agentHasConfiguredChatModel(config, models)) {
+  // R484 D14 — the Vue judgement source takes isSharedAgent (models of a
+  // shared agent belong to the source tenant); local-only callers keep the
+  // previous behaviour by omitting it.
+  const isSharedAgent = options.isSharedAgent === true;
+  if (!agentHasConfiguredChatModel(config, models, isSharedAgent)) {
     reasons.push('summary_model');
   }
   if (options.isAgentMode && agentRequiresRerankModel(config)) {
     const rerankModelId = asString(config?.rerank_model_id);
-    const rerankExists = !!rerankModelId && models.some((model) => model.type === 'Rerank' && model.id === rerankModelId);
+    const rerankExists = !!rerankModelId && (isSharedAgent
+      || models.some((model) => model.type === 'Rerank' && model.id === rerankModelId));
     if (!rerankExists) {
       reasons.push('rerank_model');
     }

@@ -138,7 +138,7 @@ function embeddingSelect(): HTMLSelectElement | undefined {
 }
 
 async function saveConfiguration(calls: UiCalls): Promise<Record<string, unknown>> {
-  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save Configuration');
+  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save and Close');
   assert.ok(save, 'expected the save button');
   await act(async () => { save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });

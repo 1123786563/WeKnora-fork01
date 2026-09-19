@@ -63,6 +63,9 @@ async function renderChatRoutePage(input: { location: string }): Promise<Capture
             export function resolveChatCopy() {
               return { deleteConfirmBody: 'Delete this conversation?', streamFailed: '流式连接失败' };
             }
+            export function isAgentWebSearchReady() { return false; }
+            export function isTenantWebSearchReady() { return false; }
+
             export function splitLiveThinking() {
               return { showThink: false, thinking: false, thinkContent: '', answer: '' };
             }

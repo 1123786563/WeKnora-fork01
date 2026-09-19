@@ -249,7 +249,7 @@ test('multimodal section renders the Vue rows and saves the draft through the PU
   await setValue(vllm, 'vlm-9');
   await setValue(language, 'Korean');
   await setValue(instructions, 'alt text');
-  await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { navButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 3, 'mount-time documents probe plus the doSubmit pair for document bases');
   const body = calls.requests[2]!.body as { vlm_config?: Record<string, unknown> };
@@ -264,7 +264,7 @@ test('switching multimodal off hides the Vue conditional rows and clears model_i
   await setValue(toggle, '', false);
   assert.equal(document.body.querySelector(`select[aria-label="${t('knowledgeEditor.advanced.multimodal.vllmLabel')}"]`), null, 'Vue v-if="multimodalConfig.enabled" hides the VLLM row');
 
-  await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { navButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   const body = calls.requests[2]!.body as { vlm_config?: Record<string, unknown> };
   assert.deepEqual(body.vlm_config, { enabled: false, model_id: '', description_language: 'Chinese', custom_instructions: 'describe' });
@@ -274,7 +274,7 @@ test('enabled multimodal without a model blocks the save with the Vue multimodal
   const calls: UiCalls = { requests: [] };
   await renderPage(clientFor(calls), { ...documentKb, vlm_config: { enabled: true, model_id: '', description_language: '', custom_instructions: '' } });
   await openSection('multimodal');
-  await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { navButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 1, 'Vue validateForm returns before any request (only the mount-time documents probe ran)');
   assert.match(document.body.textContent ?? '', /multimodal/i);
@@ -297,7 +297,7 @@ test('asr section renders the Vue toggle and ASR model selector', async () => {
   assert.deepEqual([...model.options].map((option) => option.value), ['', 'asr-1', 'asr-9', 'asr-2'], 'only available ASR models are offered');
 
   await setValue(model, 'asr-9');
-  await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { navButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   const body = calls.requests[2]!.body as { asr_config?: Record<string, unknown> };
   assert.deepEqual(body.asr_config, { enabled: true, model_id: 'asr-9', language: 'zh-CN' });
@@ -323,7 +323,7 @@ test('faq section renders the Vue index-mode radios and saves through the base u
   assert.equal(combined.checked, false);
   await setValue(combined, 'combined');
 
-  await act(async () => { navButton('Save Configuration').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { navButton('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   assert.equal(calls.requests.length, 2, 'Vue doSubmit: base update first, then the config PUT (FAQ bases never run the document probe)');
   const base = calls.requests[0]!;

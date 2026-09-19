@@ -293,9 +293,46 @@ test('create modal matches the Vue editor dimensions and keeps the primary actio
   assert.match(dialog.className, /max-w-\[1100px\]/, 'Vue editor caps the modal at 1100px');
   assert.match(dialog.className, /max-h-\[750px\]/, 'Vue editor caps the modal height at 750px');
 
-  const createButtons = textButtons(dialog, '创建共享空间');
+  const createButtons = textButtons(dialog, '创建');
   assert.equal(createButtons.length, 1, 'expected one primary create action');
   assert.match(createButtons[0]?.parentElement?.className ?? '', /border-t/, 'primary action belongs to the footer');
+});
+
+// R484 G4 D6 (R482 report-B3.md D6): the create modal must mirror the Vue
+// OrganizationSettingsModal create mode — nav carries the 「基础」 group title
+// (organization.navGroups.basic, OrganizationSettingsModal.vue navGroups
+// lines 1028-1040), the footer confirm reads common.create (「创建」, line 809)
+// and the description textarea shows the TDesign maxlength counter 0/500
+// (line 102 :maxlength="500").
+test('create modal keeps the Vue nav group title, common.create submit and 0/500 counter', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const root = await mountPage(client);
+  await click(buttonWithLabel(root, '创建共享空间'));
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected create modal');
+
+  // Nav: the 「基础」 group title precedes the 基本信息 nav item like Vue.
+  const nav = dialog.querySelector('nav');
+  assert.ok(nav, 'expected the modal sidebar nav');
+  const navTexts = [...nav.querySelectorAll(':scope > *')].map((node) => node.textContent ?? '');
+  const groupIndex = navTexts.findIndex((text) => text.trim() === '基础');
+  const basicIndex = navTexts.findIndex((text) => text.trim() === '基本信息');
+  assert.ok(groupIndex >= 0, 'the Vue nav group title 基础 renders (organization.navGroups.basic)');
+  assert.ok(basicIndex > groupIndex, '基本信息 follows the 基础 group title');
+  assert.ok(navTexts.some((text) => text.trim() === '权限说明'), 'the permissions nav item renders');
+
+  // Footer confirm reads common.create (创建), not the modal title.
+  const footerButtons = [...dialog.querySelectorAll('footer button, .border-t button')].map((button) => button.textContent ?? '');
+  assert.ok(footerButtons.includes('取消'), 'the footer cancel renders');
+  assert.ok(footerButtons.includes('创建'), 'the footer confirm reads common.create (创建)');
+  assert.equal(footerButtons.filter((label) => label === '创建共享空间').length, 0, 'the footer must not reuse the modal title');
+
+  // Description textarea: Vue t-textarea maxlength counter 0/500.
+  const description = dialog.querySelector('textarea[name="organization-description"]') as HTMLTextAreaElement | null;
+  assert.ok(description, 'expected the description textarea');
+  assert.equal(description.maxLength, 500, 'the Vue :maxlength=500 cap applies');
+  assert.match(dialog.textContent ?? '', /0\/500/, 'the TDesign-style 0/500 counter renders');
 });
 
 test('join modal previews an invite code and submits an approval-gated request', async () => {

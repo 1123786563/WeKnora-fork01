@@ -98,7 +98,7 @@ function clientFor(calls: UiCalls): WeKnoraClient {
         },
       },
       settings: {
-        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true }] }),
+        parserEngines: async () => ({ data: [{ Name: 'mineru', Description: 'MinerU', Available: true, FileTypes: ['pdf'] }] }),
         storageBackends: async () => ({ data: [] }),
         vectorStores: async () => ({ data: [] }),
       },
@@ -144,7 +144,7 @@ function setSelectValues(select: HTMLSelectElement, values: string[]): void {
 }
 
 function clickSave(): Promise<void> {
-  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save Configuration');
+  const save = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Save and Close');
   assert.ok(save, 'expected the save button');
   return act(async () => { save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
 }

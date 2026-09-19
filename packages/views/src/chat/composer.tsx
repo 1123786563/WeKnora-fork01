@@ -153,6 +153,20 @@ export interface ChatComposerProps {
   onSteerRemove?(steerId: string): void;
   /** Vue retry-steer: re-run the failed enqueue POST. */
   onSteerRetry?(steerId: string): void;
+  /**
+   * R484 D15 — Vue Input-field.vue:451-461 showWebSearchButton: the globe
+   * toggle renders only while the host reports web-search readiness (tenant
+   * default engine, or the selected agent's engine). The host owns the toggle
+   * behaviour (Vue toggleWebSearch): toasts, the agent-disabled warning and
+   * the not-configured prompt.
+   */
+  webSearchVisible?: boolean;
+  /** Vue isWebSearchConfigured — false keeps the notConfigured title/look. */
+  webSearchConfigured?: boolean;
+  /** Vue settingsStore.isWebSearchEnabled — the persisted toggle state. */
+  webSearchEnabled?: boolean;
+  /** Vue toggleWebSearch click handler. */
+  onWebSearchToggle?(): void;
   /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
   copy?: ChatCopyTable;
 }
@@ -163,7 +177,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -377,6 +391,35 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                 onClose={() => setAgentPanelOpen(false)}
               /> : null}
             </>;
+          })() : null}
+          {/* R484 D15 — Vue Input-field.vue:2690-2719: the web-search globe
+              toggle sits between the agent chip and the image/attachment
+              buttons, only while the host reports readiness. The active state
+              (enabled && configured) mirrors the Vue .websearch-btn.active
+              binding; the host toggle owns toasts and warnings. */}
+          {webSearchVisible && onWebSearchToggle ? (() => {
+            const configured = webSearchConfigured !== false;
+            const active = webSearchEnabled === true && configured;
+            const title = !configured ? t.webSearchNotConfigured : webSearchEnabled ? t.webSearchToggleOff : t.webSearchToggleOn;
+            return <button
+              type="button"
+              data-web-search-toggle
+              data-active={active ? 'true' : undefined}
+              data-configured={configured ? undefined : 'false'}
+              className="wk-chat-websearch-btn flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={title}
+              title={title}
+              disabled={disabled}
+              onClick={() => onWebSearchToggle()}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" className={active ? 'text-[#07c05f]' : 'text-[rgba(0,0,0,0.6)]'}>
+                <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                <path d="M 9 2 A 3.5 7 0 0 0 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                <path d="M 9 2 A 3.5 7 0 0 1 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                <line x1="2.94" y1="5.5" x2="15.06" y2="5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="2.94" y1="12.5" x2="15.06" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </button>;
           })() : null}
           {imageUploadEnabled && onAttachmentSelect ? <>
             {/* Vue Input-field.vue ~2596: hidden image input accepts the four multimodal MIME types, multiple picks. */}

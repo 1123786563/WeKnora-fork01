@@ -114,3 +114,16 @@ test('initial agent selection accepts a requested URL agent only when it is enab
   assert.equal(initialAgentSelection('?agentId=agent%2F2', agents, ['agent/2']), '');
   assert.equal(initialAgentSelection('?agentId=missing', agents, []), '');
 });
+
+// --- R484 D15: web search toggle rides along on the stream body --------------------------
+// Vue chat/index.vue:1255,1295 — settingsStore.isWebSearchEnabled flows into
+// both /api/v1/knowledge-chat and /api/v1/agent-chat as web_search_enabled.
+test('webSearchEnabled=true injects web_search_enabled on both stream modes (D15)', () => {
+  assert.equal(buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, undefined, true).body.web_search_enabled, true);
+  assert.equal(buildWebChatStreamOptions('session/1', 'Question', 'agent/1', undefined, undefined, undefined, undefined, true).body.web_search_enabled, true);
+});
+
+test('web search stays disabled by default in the stream body (D15)', () => {
+  assert.equal('web_search_enabled' in buildWebChatStreamOptions('session-1', 'Question', '').body, false);
+  assert.equal('web_search_enabled' in buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, undefined, false).body, false);
+});

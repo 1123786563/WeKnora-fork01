@@ -25,6 +25,7 @@ import {
   type KnowledgeSettingsModelOption,
 } from './editorSections.ts';
 import { CHUNKING_SAMPLES, DEFAULT_SAMPLE_ID } from './chunkingSamples.ts';
+import { ParserSettingsSection, allParserFileTypes, buildCompleteParserRules, buildParserFileTypeGroups, type ParserEngineInfo, type ParserEngineRule } from './parserSettings.tsx';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import './KnowledgeSettingsPage.css';
 
@@ -33,7 +34,7 @@ type ProjectUi = typeof import('@weknora/ui');
 export type { KnowledgeSettingsModelOption } from './editorSections.ts';
 
 export interface KnowledgeEditorOptions {
-  parserEngines: Array<{ Name: string; Description: string; Available?: boolean }>;
+  parserEngines: Array<{ Name: string; Description: string; FileTypes?: string[]; Available?: boolean }>;
   storageBackends: Array<{ id: string; name: string; provider: string; status: string }>;
   vectorStores: Array<{ id: string; name: string; engine_type: string; source: string; readonly: boolean }>;
   models: KnowledgeSettingsModelOption[];
@@ -58,7 +59,7 @@ export async function loadKnowledgeSettingsOptions(client: WeKnoraClient): Promi
   const failures = outcomes.filter((outcome) => outcome.status === 'rejected') as Array<PromiseRejectedResult>;
   const text = (value: unknown): string => (typeof value === 'string' ? value : '');
   return {
-    parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
+    parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.FileTypes === undefined ? {} : { FileTypes: item.FileTypes }), ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
     storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
     vectorStores: vector.status === 'fulfilled' ? vector.value.data.map((item) => ({ id: item.id, name: item.name, engine_type: item.engine_type, source: item.source, readonly: item.readonly })) : [],
     models: models.status === 'fulfilled' ? models.value.map((item) => ({ id: item.id, name: item.name, displayName: text(item.display_name), type: text(item.type), source: text(item.source), ...(item.status === undefined ? {} : { status: text(item.status) }) })) : [],
@@ -157,24 +158,29 @@ interface SettingSummary {
   detailKey?: string;
 }
 
-// R457: label/description keep the en-US fallback copy; the rendered surface
-// resolves kbSettings.sections.* through the locale translator (all five
-// locales carry the keys; zh-CN aligns with the Vue sidebar vocabulary).
+// R484 (R482 B1 差异4): labelKey/descriptionKey now point at the exact Vue
+// section-header keys each settings component renders
+// (KnowledgeBaseEditorModal.vue basic header + KBModelConfig/
+// KBVectorStoreSettings/KBParserSettings/KBChunkingSettings/
+// KBAdvancedSettings/KBStorageSettings/GraphSettings/DataSourceSettings/
+// KBShareSettings/KnowledgeBaseActivitySettings h2/h3 + section-description),
+// replacing the React-invented kbSettings.sections.* copy. label/description
+// keep the en-US fallback text for raw-contract consumers.
 const sections: KnowledgeSettingsSection[] = [
-  { key: 'basic', label: 'Basics', description: 'Name, description and knowledge-base type', labelKey: 'kbSettings.sections.basic.label', descriptionKey: 'kbSettings.sections.basic.description' },
-  { key: 'models', label: 'Models', description: 'Language and embedding models', labelKey: 'kbSettings.sections.models.label', descriptionKey: 'kbSettings.sections.models.description' },
-  { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes', labelKey: 'kbSettings.sections.faq.label', descriptionKey: 'kbSettings.sections.faq.description' },
-  { key: 'multimodal', label: 'Multimodal', description: 'Image description processing', labelKey: 'kbSettings.sections.multimodal.label', descriptionKey: 'kbSettings.sections.multimodal.description' },
-  { key: 'asr', label: 'Speech recognition', description: 'Audio transcription model', labelKey: 'kbSettings.sections.asr.label', descriptionKey: 'kbSettings.sections.asr.description' },
-  { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health', labelKey: 'kbSettings.sections.vectorStore.label', descriptionKey: 'kbSettings.sections.vectorStore.description' },
-  { key: 'parser', label: 'Parser', description: 'File-type parser rules', labelKey: 'kbSettings.sections.parser.label', descriptionKey: 'kbSettings.sections.parser.description' },
-  { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior', labelKey: 'kbSettings.sections.chunking.label', descriptionKey: 'kbSettings.sections.chunking.description' },
-  { key: 'advanced', label: 'Advanced', description: 'Question generation and extra options', labelKey: 'kbSettings.sections.advanced.label', descriptionKey: 'kbSettings.sections.advanced.description' },
-  { key: 'storage', label: 'Storage', description: 'Files and document instance', labelKey: 'kbSettings.sections.storage.label', descriptionKey: 'kbSettings.sections.storage.description' },
-  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status', labelKey: 'kbSettings.sections.datasource.label', descriptionKey: 'kbSettings.sections.datasource.description' },
-  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base', labelKey: 'kbSettings.sections.share.label', descriptionKey: 'kbSettings.sections.share.description' },
-  { key: 'activity', label: 'Activity', description: 'Recent configuration changes', labelKey: 'kbSettings.sections.activity.label', descriptionKey: 'kbSettings.sections.activity.description' },
-  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction', labelKey: 'kbSettings.sections.graph.label', descriptionKey: 'kbSettings.sections.graph.description' },
+  { key: 'basic', label: 'Basics', description: 'Name, description and knowledge-base type', labelKey: 'knowledgeEditor.basic.title', descriptionKey: 'knowledgeEditor.basic.description' },
+  { key: 'models', label: 'Models', description: 'Language and embedding models', labelKey: 'knowledgeEditor.models.title', descriptionKey: 'knowledgeEditor.models.description' },
+  { key: 'faq', label: 'FAQ', description: 'FAQ indexing modes', labelKey: 'knowledgeEditor.faq.title', descriptionKey: 'knowledgeEditor.faq.description' },
+  { key: 'multimodal', label: 'Multimodal', description: 'Image description processing', labelKey: 'knowledgeEditor.multimodal.title', descriptionKey: 'knowledgeEditor.multimodal.description' },
+  { key: 'asr', label: 'Speech recognition', description: 'Audio transcription model', labelKey: 'knowledgeEditor.asr.title', descriptionKey: 'knowledgeEditor.asr.description' },
+  { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health', labelKey: 'kbSettings.vectorStore.title', descriptionKey: 'kbSettings.vectorStore.description' },
+  { key: 'parser', label: 'Parser', description: 'File-type parser rules', labelKey: 'kbSettings.parser.title', descriptionKey: 'kbSettings.parser.description' },
+  { key: 'chunking', label: 'Chunking', description: 'Chunk size and splitting behavior', labelKey: 'knowledgeEditor.chunking.title', descriptionKey: 'knowledgeEditor.chunking.description' },
+  { key: 'advanced', label: 'Advanced', description: 'Question generation and extra options', labelKey: 'knowledgeEditor.advanced.title', descriptionKey: 'knowledgeEditor.advanced.description' },
+  { key: 'storage', label: 'Storage', description: 'Files and document instance', labelKey: 'kbSettings.storage.title', descriptionKey: 'kbSettings.storage.selectDescription' },
+  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status', labelKey: 'dataSource.title', descriptionKey: 'dataSource.description' },
+  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base', labelKey: 'organization.share.title', descriptionKey: 'knowledgeEditor.share.description' },
+  { key: 'activity', label: 'Activity', description: 'Recent configuration changes', labelKey: 'knowledgeEditor.activity.title', descriptionKey: 'knowledgeEditor.activity.description' },
+  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction', labelKey: 'graphSettings.title', descriptionKey: 'graphSettings.description' },
 ];
 
 function isFaqKnowledgeBase(knowledgeBase: KnowledgeSettingsInput): boolean {
@@ -198,10 +204,17 @@ function parserLabel(value: string): string {
   return knownLabels[value.toLowerCase()] ?? titleCase(value);
 }
 
-function parserRules(knowledgeBase: KnowledgeSettingsInput): Array<Record<string, unknown>> {
+function parserRules(knowledgeBase: KnowledgeSettingsInput | null | undefined): Array<Record<string, unknown>> {
+  if (!knowledgeBase) return [];
   return Array.isArray(knowledgeBase.chunking_config?.parser_engine_rules)
     ? knowledgeBase.chunking_config.parser_engine_rules
     : [];
+}
+
+// The parser tab edits the rules through the ParserEngineRule shape (Vue
+// KBParserSettings ParserEngineRule); the raw KB rows cast across.
+function parserRulesAsEngineRules(knowledgeBase: KnowledgeSettingsInput | null | undefined): ParserEngineRule[] {
+  return parserRules(knowledgeBase) as unknown as ParserEngineRule[];
 }
 
 export function getKnowledgeSettingsSections(
@@ -719,12 +732,6 @@ export async function saveKnowledgeSettings(client: WeKnoraClient, knowledgeBase
   await client.request({ method: 'PUT', path: getKnowledgeBaseConfigPath(knowledgeBaseId), body: payload });
 }
 
-function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
-  if (summary.kind === 'unavailable') return 'error';
-  if (summary.kind === 'ready' || summary.kind === 'configured' || summary.kind === 'available') return 'success';
-  return 'neutral';
-}
-
 // R455: resolves the overview-tile copy through the locale translator when the
 // summary carries a message key. R456 extends this to the parser/vectorStore/
 // storage tiles' fallback branches; their data-driven literals (engine and
@@ -742,20 +749,24 @@ interface KnowledgeSettingsPageProps {
   role?: 'owner' | 'admin' | 'viewer';
   canViewActivity?: boolean;
   initialSection?: KnowledgeSettingsSectionKey;
+  /** Vue handleClose (settings footer 取消): discard drafts and close the host. */
+  onClose?: () => void;
 }
 
 export function knowledgeSettingsCanEdit(role: 'owner' | 'admin' | 'viewer' | undefined): boolean {
   return role === 'owner' || role === 'admin';
 }
 
-export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, knowledgeBaseId, client, role = 'viewer', canViewActivity = true, initialSection }: KnowledgeSettingsPageProps) {
+export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, knowledgeBaseId, client, role = 'viewer', canViewActivity = true, initialSection, onClose }: KnowledgeSettingsPageProps) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const [ui, setUi] = useState<ProjectUi | null>(null);
   const [loadedKnowledgeBase, setLoadedKnowledgeBase] = useState<KnowledgeSettingsInput | null>(providedKnowledgeBase ?? null);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [editorOptions, setEditorOptions] = useState<KnowledgeEditorOptions>(idleEditorOptions);
-  const [pendingParserEngine, setPendingParserEngine] = useState('');
+  // R484: the parser tab edits the full per-file-type rule set (Vue
+  // KBParserSettings localEngineRules), not a single pending engine.
+  const [parserEngineRules, setParserEngineRules] = useState<ParserEngineRule[]>(() => parserRulesAsEngineRules(providedKnowledgeBase ?? loadedKnowledgeBase));
   const knowledgeBase = providedKnowledgeBase ?? loadedKnowledgeBase;
   useEffect(() => {
     if (providedKnowledgeBase || !knowledgeBaseId || !client) return;
@@ -814,14 +825,22 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     relations: currentKnowledgeBase.extract_config?.relations ?? [],
     customInstructions: currentKnowledgeBase.extract_config?.customInstructions ?? currentKnowledgeBase.extract_config?.custom_instructions ?? '',
   }));
-  const parserRulesForSummary = pendingParserEngine
-    ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
-    : currentKnowledgeBase.chunking_config?.parser_engine_rules;
-  // Committed rules come back from the last successful save so the summary
-  // reflects persisted state instead of the pre-save KB payload.
-  const [savedParserRules, setSavedParserRules] = useState<Array<Record<string, unknown>> | null>(null);
-  const effectiveParserRules = savedParserRules ?? parserRulesForSummary;
-  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, chunking_config: { parser_engine_rules: effectiveParserRules } });
+  // Vue KBParserSettings watches props.parserEngineRules (the loaded KB row)
+  // and replaces its local rules; mirror that so a late KB load seeds the
+  // per-group selects.
+  useEffect(() => {
+    setParserEngineRules(parserRulesAsEngineRules(currentKnowledgeBase));
+  }, [currentKnowledgeBase]);
+  // Vue ensureCompleteRules: once the engine catalogue lands, materialise a
+  // rule per file-type group (defaults filled in) so a save persists the
+  // complete set like buildCompleteRules().
+  useEffect(() => {
+    if (editorOptions.loading || editorOptions.parserEngines.length === 0) return;
+    const groups = buildParserFileTypeGroups((key) => key, allParserFileTypes(editorOptions.parserEngines));
+    const complete = buildCompleteParserRules(groups, parserEngineRules, editorOptions.parserEngines);
+    if (complete.length > 0 && complete.length > parserEngineRules.length) setParserEngineRules(complete);
+  }, [editorOptions.loading, editorOptions.parserEngines, parserEngineRules]);
+  const summary = summarizeKnowledgeSettings(currentKnowledgeBase);
   // Vue editor save semantics: one in-flight save at a time (button :loading),
   // success toast, failure keeps the form intact and surfaces the message.
   const [saveState, setSaveState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'error'; message: string }>({ status: 'idle', message: '' });
@@ -838,8 +857,10 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   );
   const handleSave = () => {
     if (!client || !currentKnowledgeBase.id || saveState.status === 'saving' || !canSave) return;
-    const rules = (pendingParserEngine
-      ? [{ file_types: ['pdf'], engine: pendingParserEngine }]
+    // Vue KBParserSettings buildCompleteRules: the per-group rule set (loaded
+    // rules materialised with resolved defaults) is what a save persists.
+    const rules = (parserEngineRules.length > 0
+      ? parserEngineRules
       : parserRules(currentKnowledgeBase)) as Array<Record<string, unknown>>;
     const payload = buildKnowledgeSettingsConfigPayload(currentKnowledgeBase, rules, graphExtract, editorDraft);
     // Vue validateForm subset owned by these sections, in Vue order: the name
@@ -894,12 +915,28 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     void saveKnowledgeSettingsBaseUpdate(client, currentKnowledgeBase.id, baseUpdate)
       .then(() => saveKnowledgeSettings(client, currentKnowledgeBase.id, payload))
       .then(() => {
-        setSavedParserRules(rules);
-        setPendingParserEngine('');
         setSaveState({ status: 'saved', message: t('knowledgeEditor.messages.updateSuccess') });
       }).catch((error: unknown) => {
         setSaveState({ status: 'error', message: error instanceof Error && error.message ? error.message : t('common.error') });
       });
+  };
+  // Vue settings-footer 取消 (handleClose): every unsaved draft is dropped —
+  // the loaded KB row becomes the editor state again — and the host surface
+  // closes.
+  const handleCancel = () => {
+    if (saveState.status === 'saving') return;
+    setEditorDraft({});
+    setParserEngineRules(parserRulesAsEngineRules(currentKnowledgeBase));
+    setGraphExtract({
+      enabled: currentKnowledgeBase.extract_config?.enabled === true,
+      text: currentKnowledgeBase.extract_config?.text ?? '',
+      tags: currentKnowledgeBase.extract_config?.tags ?? [],
+      nodes: currentKnowledgeBase.extract_config?.nodes ?? [],
+      relations: currentKnowledgeBase.extract_config?.relations ?? [],
+      customInstructions: currentKnowledgeBase.extract_config?.customInstructions ?? currentKnowledgeBase.extract_config?.custom_instructions ?? '',
+    });
+    setSaveState({ status: 'idle', message: '' });
+    onClose?.();
   };
   const active = availableSections.find((section) => section.key === activeSection);
 
@@ -956,26 +993,39 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
             <div className="wkbs-content-wrapper">
               {active ? (
                 <>
-                  <p className="wk-eyebrow">{t(active.labelKey)}</p>
-                  <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{t(active.labelKey)}</h3>
+                  {/* Vue section-header: one section-title + section-description
+                      per tab (KnowledgeBaseEditorModal.vue basic header / each
+                      settings component's own h2-h3 header). No eyebrow line. */}
+                  <h3 id="knowledge-settings-section-title" style={{ margin: '0 0 0.2rem', fontSize: '1.4rem' }}>{t(active.labelKey)}</h3>
                   <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{t(active.descriptionKey)}</p>
                 </>
               ) : null}
-              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} pendingParserEngine={pendingParserEngine} configuredParserEngine={parserRules(currentKnowledgeBase)[0] ? text(parserRules(currentKnowledgeBase)[0]!.engine ?? parserRules(currentKnowledgeBase)[0]!.parser) : ''} indexingLocked={indexingLocked} onPendingParserEngine={setPendingParserEngine} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
+              {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} parserEngineRules={parserEngineRules} indexingLocked={indexingLocked} onParserEngineRules={setParserEngineRules} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
                 // Vue renders this section fully; the React port has not migrated
                 // it yet — surface the shared notice instead of a fabricated editor.
                 <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
               )}
               {canSave ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #dce3ed', paddingTop: '1rem' }}>
+                  {/* Vue settings-footer-actions: 取消 discards the drafts
+                      (handleClose) and 保存并关闭 submits (saveButtonLabel in
+                      edit mode). */}
+                  <ButtonComponent
+                    type="button"
+                    disabled={saveState.status === 'saving'}
+                    aria-label={t('common.cancel')}
+                    onClick={handleCancel}
+                  >
+                    {t('common.cancel')}
+                  </ButtonComponent>
                   <ButtonComponent
                     type="button"
                     disabled={saveState.status === 'saving'}
                     aria-busy={saveState.status === 'saving'}
-                    aria-label={t('knowledgeEditor.buttons.save')}
+                    aria-label={t('knowledgeEditor.buttons.saveAndClose')}
                     onClick={handleSave}
                   >
-                    {t('knowledgeEditor.buttons.save')}
+                    {t('knowledgeEditor.buttons.saveAndClose')}
                   </ButtonComponent>
                   {saveState.message ? (
                     <span role="status" aria-live="polite" style={{ color: saveState.status === 'error' ? '#b42318' : '#067647', fontWeight: 600 }}>{saveState.message}</span>
@@ -1001,10 +1051,9 @@ interface SettingsSectionProps {
   knowledgeBaseName: string;
   canManage: boolean;
   editorOptions: KnowledgeEditorOptions;
-  pendingParserEngine: string;
-  configuredParserEngine: string;
+  parserEngineRules: ParserEngineRule[];
   indexingLocked: boolean;
-  onPendingParserEngine: (value: string) => void;
+  onParserEngineRules: (value: ParserEngineRule[]) => void;
   t: (key: string, values?: Record<string, string | number>) => string;
   StatusComponent: ElementType;
   onGraphChange: (value: GraphExtractConfig) => void;
@@ -1013,28 +1062,15 @@ interface SettingsSectionProps {
   onDraftChange: (value: KnowledgeSettingsEditorOverrides) => void;
 }
 
-function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, pendingParserEngine, configuredParserEngine, indexingLocked, onPendingParserEngine, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
-  // models/chunking/advanced carry no summary card (Vue has none either);
-  // the legacy sections keep theirs. R446 D5: the activity overview card
-  // read activity data the KB payload never carries, so its "No activity
-  // yet" empty state coexisted with the populated audit table below. Vue's
-  // activity section (KnowledgeBaseActivitySettings.vue) has no overview
-  // card at all — its empty state lives inside the table — so the empty
-  // summary card is dropped here while a data-backed one (available) stays.
-  const showSummary = summary !== undefined && !(section === 'activity' && summary.kind === 'empty');
-  // R456: section controls that echo the summary copy (the disabled vector
-  // store select, the missing-storage option) render the localized label
-  // instead of the raw en-US fallback literal.
+function SettingsSection({ summary, section, graphExtract, modelId, client, knowledgeBase, knowledgeBaseId, knowledgeBaseName, canManage, editorOptions, parserEngineRules, indexingLocked, onParserEngineRules, t, StatusComponent, onGraphChange, editorPayload, editorDraft, onDraftChange }: SettingsSectionProps) {
+  // R484 (R482 B1 差异4): the R455 overview tiles are a React-side addition —
+  // Vue's settings drawer carries no per-tab overview card — so they no
+  // longer render inside the drawer. The summary still feeds the controls
+  // that echo it (the disabled vector-store select, the missing-storage
+  // option) with the localized label.
   const summaryLabel = summary ? localizedSummaryField(summary, 'label', t) : '';
-  const summaryDetail = summary ? localizedSummaryField(summary, 'detail', t) : '';
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
-      {showSummary ? (
-        <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
-          <StatusComponent tone={summaryTone(summary)}>{localizedSummaryField(summary, 'label', t)}</StatusComponent>
-          <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{localizedSummaryField(summary, 'detail', t)}</p>
-        </div>
-      ) : null}
       {section === 'basic' ? (
         <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} indexingLocked={indexingLocked} t={t} onDraftChange={onDraftChange} />
       ) : null}
@@ -1069,21 +1105,14 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         </div>
       ) : null}
       {section === 'parser' ? (
-        <div style={{ display: 'grid', gap: '0.4rem' }}>
-          <label style={{ display: 'grid', gap: '0.25rem' }}>
-            {t('kbSettings.parser.title')}
-            <select
-              value={pendingParserEngine || configuredParserEngine}
-              disabled={editorOptions.loading}
-              aria-label={t('kbSettings.parser.title')}
-              onChange={(event) => onPendingParserEngine(event.target.value)}
-            >
-              <option value="">{t('kbSettings.parser.default')}</option>
-              {editorOptions.parserEngines.filter((engine) => engine.Available !== false).map((engine) => <option key={engine.Name} value={engine.Name}>{localizedEngineName(engine.Name, t)}</option>)}
-            </select>
-          </label>
-          <p className="wk-muted" style={{ margin: 0 }}>{editorOptions.error ?? t('kbSettings.parser.goConfig')}</p>
-        </div>
+        <ParserSettingsSection
+          engines={editorOptions.parserEngines as ParserEngineInfo[]}
+          loading={editorOptions.loading}
+          error={editorOptions.error}
+          rules={parserEngineRules}
+          onChange={onParserEngineRules}
+          t={t}
+        />
       ) : null}
       {section === 'storage' ? (
         <div style={{ display: 'grid', gap: '0.4rem' }}>
@@ -1115,12 +1144,12 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
       ) : null}
       {section === 'activity' ? (
         client && knowledgeBaseId
-          ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={knowledgeBaseId} />
+          ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={knowledgeBaseId} embedded />
           : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.activity.sectionEmpty')}</p>
       ) : null}
       {section === 'datasource' ? (
         client && knowledgeBaseId
-          ? <div style={{ maxHeight: '34rem', overflow: 'auto' }}><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={canManage} /></div>
+          ? <div style={{ maxHeight: '34rem', overflow: 'auto' }}><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={canManage} embedded /></div>
           : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.datasource.sectionEmpty')}</p>
       ) : null}
       {section === 'share' ? (
@@ -2067,10 +2096,4 @@ function FaqSettingsSection({ knowledgeBase, editorDraft, t, onDraftChange }: { 
       <p className="wk-muted" style={{ margin: 0 }}>{t('knowledgeEditor.faq.entryGuide')}</p>
     </div>
   );
-}
-
-function localizedEngineName(name: string, t: (key: string) => string): string {
-  const key = `kbSettings.parser.engines.${name}.name`;
-  const translated = t(key);
-  return translated === key ? name : translated;
 }

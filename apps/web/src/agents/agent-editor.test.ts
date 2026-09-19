@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  AGENT_FILE_TYPE_OPTIONS,
   agentModeOf,
   applyAgentModeSwitch,
   applyKbSelectionMode,
@@ -374,4 +375,31 @@ test('agentModeOf maps config values to the radio value', () => {
   assert.equal(agentModeOf({ agent_mode: 'smart-reasoning' }), 'smart-reasoning');
   assert.equal(agentModeOf({}), 'quick-answer');
   assert.equal(agentModeOf({ agent_mode: 'quick-answer' }), 'quick-answer');
+});
+
+// --- R484 D7: temperature description copy must stay Vue-identical ----------------------
+// Vue zh-CN.ts desc.temperature (AgentEditorModal.vue:606) reads
+// 「控制输出的随机性，0 最确定，1 最随机」— the R482 audit caught a React-side
+// 「0 最稳定」 divergence; the lock below keeps the resolved copy on the Vue wording.
+test('temperature description copy stays Vue-identical across locales (D7)', () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const resolved = editorT(locale, 'agentEditor.desc.temperature');
+    assert.ok(resolved.includes('确定') || locale !== 'zh-CN', locale + ' resolves');
+    if (locale === 'zh-CN') {
+      assert.equal(resolved, '控制输出的随机性，0 最确定，1 最随机');
+      assert.ok(!resolved.includes('最稳定'), 'divergent 0-最稳定 wording must not resurface');
+    }
+  }
+});
+
+// --- R484 D8: supported file type options mirror Vue availableFileTypes ------------------
+// Vue AgentEditorModal.vue:2564-2570 offers 7 options (pdf/docx/txt/md/csv/xlsx/jpg).
+test('AGENT_FILE_TYPE_OPTIONS mirror the Vue availableFileTypes list (D8)', () => {
+  assert.deepEqual(AGENT_FILE_TYPE_OPTIONS.map((option) => option.value), ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg']);
+  assert.equal(editorT('zh-CN', 'agentEditor.fileTypes.label'), '支持的文件类型');
+  assert.equal(editorT('zh-CN', 'agentEditor.fileTypes.desc'), '限制可选择的文件类型，留空表示支持所有类型');
+  assert.equal(editorT('zh-CN', 'agentEditor.fileTypes.allTypes'), '全部类型');
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    assert.ok(agentEditorFallback[locale]?.['agentEditor.fileTypes.label'], 'fileTypes fallback missing for ' + locale);
+  }
 });
