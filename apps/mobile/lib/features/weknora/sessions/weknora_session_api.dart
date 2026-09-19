@@ -11,6 +11,23 @@ class WeKnoraSessionNotFoundException implements Exception {
   String toString() => 'WeKnoraSessionNotFoundException: $sessionId';
 }
 
+/// Thrown when the WeKnora session endpoints answer with any non-2xx status
+/// other than 404. Without this, a 401/500 would silently parse into an empty
+/// list and look like "no history on the server".
+class WeKnoraSessionApiException implements Exception {
+  const WeKnoraSessionApiException({
+    required this.statusCode,
+    required this.message,
+  });
+
+  /// The HTTP status the server answered with; null when unavailable.
+  final int? statusCode;
+  final String message;
+
+  @override
+  String toString() => 'WeKnoraSessionApiException: $statusCode $message';
+}
+
 class WeKnoraSessionSummary {
   const WeKnoraSessionSummary({
     required this.id,
@@ -61,8 +78,10 @@ class WeKnoraSessionApi {
       queryParameters: {'limit': limit},
       options: Options(
         headers: {'Authorization': 'Bearer ${connection.token}'},
+        validateStatus: (status) => true,
       ),
     );
+    _ensureSuccess(response);
     return [
       for (final raw in _dataList(response.data))
         if (raw is Map) _parseSession(raw.cast<String, dynamic>()),
@@ -82,12 +101,13 @@ class WeKnoraSessionApi {
         queryParameters: {'limit': limit},
         options: Options(
           headers: {'Authorization': 'Bearer ${connection.token}'},
-          validateStatus: (status) => status != null && status < 500,
+          validateStatus: (status) => true,
         ),
       );
       if (response.statusCode == 404) {
         throw WeKnoraSessionNotFoundException(sessionId);
       }
+      _ensureSuccess(response);
       return [
         for (final raw in _dataList(response.data))
           if (raw is Map) _parseHistoryMessage(raw.cast<String, dynamic>()),
@@ -100,6 +120,30 @@ class WeKnoraSessionApi {
       }
       rethrow;
     }
+  }
+
+  /// Maps any non-2xx response to [WeKnoraSessionApiException]. 404 handling
+  /// is endpoint-specific and done by the callers, so it is not special-cased
+  /// here.
+  void _ensureSuccess(Response<dynamic> response) {
+    final statusCode = response.statusCode;
+    if (statusCode != null && statusCode >= 200 && statusCode < 300) return;
+    throw WeKnoraSessionApiException(
+      statusCode: statusCode,
+      message: _serverErrorMessage(response.data),
+    );
+  }
+
+  /// Best-effort extraction of the server's own error text from the common
+  /// `{"error": ".."}` / `{"message": ".."}` / `{"detail": ".."}` bodies.
+  String _serverErrorMessage(Object? body) {
+    if (body is Map) {
+      for (final key in const ['error', 'message', 'detail']) {
+        final value = body[key];
+        if (value is String && value.isNotEmpty) return value;
+      }
+    }
+    return 'WeKnora request failed';
   }
 
   WeKnoraSessionSummary _parseSession(Map<String, dynamic> map) {

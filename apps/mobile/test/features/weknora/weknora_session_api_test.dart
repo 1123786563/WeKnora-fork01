@@ -67,17 +67,52 @@ void main() {
       expect(request.headers['Authorization'], 'Bearer at-1');
     });
 
-    test('passes a custom limit and tolerates a base URL without slash',
-        () async {
+    test(
+      'passes a custom limit and tolerates a base URL without slash',
+      () async {
+        final http = _QueuedAdapter([
+          _Reply.json({'data': <dynamic>[], 'total': 0}),
+        ]);
+        final api = newApi(http, baseUrl: 'http://x:8084');
+        final sessions = await api.listSessions(limit: 7);
+        expect(sessions, isEmpty);
+        expect(
+          http.requests.single.uri.toString(),
+          'http://x:8084/api/v1/sessions?limit=7',
+        );
+      },
+    );
+    test('500 on listSessions throws WeKnoraSessionApiException', () async {
       final http = _QueuedAdapter([
-        _Reply.json({'data': <dynamic>[], 'total': 0}),
+        _Reply.json({'error': 'boom'}, statusCode: 500),
       ]);
-      final api = newApi(http, baseUrl: 'http://x:8084');
-      final sessions = await api.listSessions(limit: 7);
-      expect(sessions, isEmpty);
-      expect(
-        http.requests.single.uri.toString(),
-        'http://x:8084/api/v1/sessions?limit=7',
+      final api = newApi(http);
+
+      await expectLater(
+        api.listSessions(),
+        throwsA(
+          isA<WeKnoraSessionApiException>()
+              .having((e) => e.statusCode, 'statusCode', 500)
+              .having((e) => e.message, 'message', 'boom'),
+        ),
+      );
+    });
+
+    test('401 on listSessions throws WeKnoraSessionApiException', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'error': 'Unauthorized'}, statusCode: 401),
+      ]);
+      final api = newApi(http);
+
+      await expectLater(
+        api.listSessions(),
+        throwsA(
+          isA<WeKnoraSessionApiException>().having(
+            (e) => e.statusCode,
+            'statusCode',
+            401,
+          ),
+        ),
       );
     });
   });
@@ -125,10 +160,7 @@ void main() {
                   'knowledge_snippet': null,
                   'source_url': 'https://c/d',
                 },
-                {
-                  'source_title': '无链接',
-                  'knowledge_snippet': '只有标题',
-                },
+                {'source_title': '无链接', 'knowledge_snippet': '只有标题'},
               ],
             },
             {
@@ -182,6 +214,39 @@ void main() {
       final api = newApi(http);
       final messages = await api.loadMessages(sessionId: 's1');
       expect(messages, isEmpty);
+    });
+
+    test('401 on loadMessages throws WeKnoraSessionApiException, not a silent '
+        'empty history', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'error': 'Unauthorized'}, statusCode: 401),
+      ]);
+      final api = newApi(http);
+
+      await expectLater(
+        api.loadMessages(sessionId: 's1'),
+        throwsA(
+          isA<WeKnoraSessionApiException>()
+              .having((e) => e.statusCode, 'statusCode', 401)
+              .having((e) => e.message, 'message', 'Unauthorized'),
+        ),
+      );
+    });
+
+    test('500 on loadMessages throws WeKnoraSessionApiException', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'error': 'boom'}, statusCode: 500),
+      ]);
+      final api = newApi(http);
+
+      await expectLater(
+        api.loadMessages(sessionId: 's1'),
+        throwsA(
+          isA<WeKnoraSessionApiException>()
+              .having((e) => e.statusCode, 'statusCode', 500)
+              .having((e) => e.message, 'message', 'boom'),
+        ),
+      );
     });
 
     test('404 throws WeKnoraSessionNotFoundException', () async {
