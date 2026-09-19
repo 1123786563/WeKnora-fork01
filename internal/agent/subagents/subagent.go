@@ -3,9 +3,11 @@
 // paired by filename stem across locales, plus the division metadata from
 // zh/divisions.json.
 //
-// The package is pure logic and data: no import-time disk IO — scanning is
+// The catalog is pure logic and data: no import-time disk IO — scanning is
 // explicit (ScanSubagents) or lazy on first use (LoadBuiltinSubagents),
-// mirroring the experts package's loading model.
+// mirroring the experts package's loading model. The executor (executor.go)
+// adds the budgeted trpc sub-run behind the catalog; it too performs no
+// import-time work.
 package subagents
 
 // SubagentFrontmatter is the parsed YAML frontmatter of one role markdown
