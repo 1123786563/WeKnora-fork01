@@ -218,6 +218,10 @@ func TestNativeAdmissionReplaysAuthorizedRecordDuringDrainAndProtectsGetScope(t 
 	if err != nil || replay.Admission.Run.RunID != first.Admission.Run.RunID || budget.reservations != 1 {
 		t.Fatalf("replay=%+v err=%v reservations=%d", replay, err, budget.reservations)
 	}
+	got, err := svc.Get(context.Background(), admission.Scope, admission.Run)
+	if err != nil || got.Admission.Run.RunID != first.Admission.Run.RunID {
+		t.Fatalf("drain Get() = %+v, %v", got, err)
+	}
 	closed.WorkerDrain = false
 	closed.AdmissionEnabled = false
 	controls.values = []nativecontract.AdmissionControls{closed}
