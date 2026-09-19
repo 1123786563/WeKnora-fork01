@@ -247,7 +247,66 @@ func TestNativeCommitReconcilePersistsUsageFromPendingIntent(t *testing.T) {
 	require.JSONEq(t, `{"reasoning":4}`, stored.Dimensions)
 }
 
-func TestNativeCommitUsageIdentityChangedPayloadConflicts(t *testing.T) {
+func TestNativeCommitUsageHigherRevisionReplacesCumulativeObservation(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts
+		(tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-usage", 7).Error)
+	first := nativeCommitIntent(fence, "intent-usage-revision-0", "hash-usage-revision-0")
+	first.Usage = []nativecontract.UsageObservation{{
+		Version: 1, Run: fence.Run, AttemptID: "attempt-usage", ObservationID: "usage-1", Revision: 0,
+		Funding: nativecontract.FundingBinding{Service: "openai", PriceVersion: "gpt-5"}, PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18,
+		AccountingStatus: "reported", Dimensions: map[string]int64{"reasoning": 4}, OccurredAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
+	}}
+	_, err := coordinator.Commit(context.Background(), first)
+	require.NoError(t, err)
+
+	higher := nativeCommitIntent(fence, "intent-usage-revision-1", "hash-usage-revision-1")
+	higher.Usage = append([]nativecontract.UsageObservation(nil), first.Usage...)
+	higher.Usage[0].Revision = 1
+	higher.Usage[0].PromptTokens = 19
+	higher.Usage[0].CompletionTokens = 13
+	higher.Usage[0].TotalTokens = 32
+	higher.Usage[0].Dimensions = map[string]int64{"reasoning": 9}
+	_, err = coordinator.Commit(context.Background(), higher)
+	require.NoError(t, err)
+
+	var stored struct {
+		Revision, InputTokens, OutputTokens int64
+		Dimensions                          string
+	}
+	require.NoError(t, coordinator.db.Table("native_agent_usage_observations").
+		Select("revision, input_tokens, output_tokens, dimensions").
+		Where("tenant_id=? AND run_id=? AND attempt_id=? AND observation_id=?", 1, "run-1", "attempt-usage", "usage-1").Take(&stored).Error)
+	require.Equal(t, int64(1), stored.Revision)
+	require.Equal(t, int64(19), stored.InputTokens)
+	require.Equal(t, int64(13), stored.OutputTokens)
+	require.JSONEq(t, `{"reasoning":9}`, stored.Dimensions)
+}
+
+func TestNativeCommitUsageStaleRevisionConflicts(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts
+		(tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-usage", 7).Error)
+	current := nativeCommitIntent(fence, "intent-usage-current", "hash-usage-current")
+	current.Usage = []nativecontract.UsageObservation{{
+		Version: 1, Run: fence.Run, AttemptID: "attempt-usage", ObservationID: "usage-1", Revision: 2,
+		Funding: nativecontract.FundingBinding{Service: "openai", PriceVersion: "gpt-5"}, PromptTokens: 19, CompletionTokens: 13, TotalTokens: 32,
+		AccountingStatus: "reported", OccurredAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
+	}}
+	_, err := coordinator.Commit(context.Background(), current)
+	require.NoError(t, err)
+
+	stale := nativeCommitIntent(fence, "intent-usage-stale", "hash-usage-stale")
+	stale.Usage = append([]nativecontract.UsageObservation(nil), current.Usage...)
+	stale.Usage[0].Revision = 1
+	stale.Usage[0].PromptTokens = 11
+	stale.Usage[0].CompletionTokens = 7
+	stale.Usage[0].TotalTokens = 18
+	_, err = coordinator.Commit(context.Background(), stale)
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativeCommitUsageSameRevisionIsIdempotentAndChangedPayloadConflicts(t *testing.T) {
 	coordinator, fence := nativeCommitFixture(t)
 	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts
 		(tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-usage", 7).Error)
@@ -258,6 +317,11 @@ func TestNativeCommitUsageIdentityChangedPayloadConflicts(t *testing.T) {
 		AccountingStatus: "reported", OccurredAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
 	}}
 	_, err := coordinator.Commit(context.Background(), first)
+	require.NoError(t, err)
+
+	replay := nativeCommitIntent(fence, "intent-usage-replay", "hash-usage-replay")
+	replay.Usage = append([]nativecontract.UsageObservation(nil), first.Usage...)
+	_, err = coordinator.Commit(context.Background(), replay)
 	require.NoError(t, err)
 
 	changed := nativeCommitIntent(fence, "intent-usage-changed", "hash-usage-changed")

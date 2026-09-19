@@ -385,15 +385,36 @@ func persistUsage(tx *gorm.DB, intent nativecontract.CommitIntent) error {
 		if inserted.RowsAffected == 1 {
 			continue
 		}
-		var stored string
-		if err := tx.Table("native_agent_usage_observations").Select("payload_hash").
+		advanced := tx.Exec(`UPDATE native_agent_usage_observations SET
+			revision = ?, provider = ?, model = ?, provider_request_id = ?, funding_ref = ?, budget_root_run_id = ?,
+			input_tokens = ?, output_tokens = ?, cached_tokens = ?, cache_read_tokens = ?, cache_create_tokens = ?,
+			accounting_status = ?, dimensions = ?, occurred_at = ?, payload_hash = ?
+			WHERE tenant_id = ? AND run_id = ? AND attempt_id = ? AND observation_id = ? AND revision < ?`,
+			observation.Revision, observation.Funding.Service, observation.Funding.PriceVersion, observation.ProviderRequestID,
+			observation.Funding.BudgetRef, observation.Funding.BudgetRootRunID, observation.PromptTokens, observation.CompletionTokens,
+			observation.CachedTokens, observation.CacheReadTokens, observation.CacheCreateTokens, observation.AccountingStatus,
+			string(dimensions), observation.OccurredAt, hash, intent.Fence.Run.TenantID, intent.Fence.Run.RunID,
+			observation.AttemptID, observation.ObservationID, observation.Revision)
+		if advanced.Error != nil {
+			return advanced.Error
+		}
+		if advanced.RowsAffected == 1 {
+			continue
+		}
+		var storedRevision int64
+		var storedHash string
+		if err := tx.Table("native_agent_usage_observations").Select("revision, payload_hash").
 			Where("tenant_id=? AND run_id=? AND attempt_id=? AND observation_id=?", intent.Fence.Run.TenantID, intent.Fence.Run.RunID, observation.AttemptID, observation.ObservationID).
-			Row().Scan(&stored); err != nil {
+			Row().Scan(&storedRevision, &storedHash); err != nil {
 			return err
 		}
-		if stored != hash {
+		if storedRevision == observation.Revision && storedHash == hash {
+			continue
+		}
+		if storedRevision == observation.Revision {
 			return typedFailure(nativecontract.ErrConflict, "usage observation payload changed")
 		}
+		return typedFailure(nativecontract.ErrConflict, "usage observation revision is stale")
 	}
 	return nil
 }
