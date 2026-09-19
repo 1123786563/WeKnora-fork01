@@ -19,7 +19,8 @@ import {
   formatArtifactSize,
   type ArtifactPreviewPayload,
 } from './artifact-preview.tsx';
-import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { conversationTimeLabels, formatChatCopy, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { groupChatReferences } from '@weknora/domain/chat/references';
 import { splitHistoryThinking, type LiveThinkingState } from './live-thinking.ts';
 
 /*
@@ -78,6 +79,11 @@ export interface MessageListProps {
   sessionId?: string | null;
   /** True while the turn streams and no assistant content has arrived (Vue index.vue typing dots). */
   typingIndicator?: boolean;
+  /** Vue ChatReferencesDrawer entry: the collapsed 检索完成 summary toggles the
+   *  shared reference panel; absent renders the summary without a toggle. */
+  onToggleReferences?(): void;
+  /** Whether the shared reference panel is currently expanded (drives aria-expanded). */
+  referencesOpen?: boolean;
   /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
   copy?: ChatCopyTable;
 }
@@ -141,6 +147,42 @@ export function isBookmarkActionAvailable(onBookmark?: MessageListProps['onBookm
 
 export function isFeedbackAvailable(onRateMessage?: MessageListProps['onRateMessage']): boolean {
   return typeof onRateMessage === 'function';
+}
+
+/**
+ * Vue ChatRequestInfoButton parity: an ⓘ button on the assistant toolbar that
+ * opens a small card with the request's debug rows (request/message/session
+ * ids and the sent time) plus a copy-all action.
+ */
+function RequestInfoButton({ copy: t, message, sessionId }: { copy: ChatCopyTable; message: ChatMessage; sessionId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const requestId = typeof (message as Record<string, unknown>).request_id === 'string' ? String((message as Record<string, unknown>).request_id) : '';
+  const rows = [
+    { label: 'Request ID', value: requestId },
+    { label: t.requestInfoMessageId, value: message.id },
+    { label: t.requestInfoSessionId, value: sessionId ?? '' },
+    { label: t.requestInfoSentAt, value: typeof message.created_at === 'string' ? message.created_at : '' },
+  ].filter((row) => row.value);
+  const copyAll = () => {
+    const text = rows.map((row) => `${row.label}: ${row.value}`).join('\n');
+    void navigator.clipboard?.writeText(text).catch(() => undefined);
+  };
+  return <div className="relative">
+    <button type="button" className={ANSWER_TOOL_BUTTON} title={t.requestInfo} aria-label={t.requestInfo} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
+    </button>
+    {open ? <div className="absolute bottom-full left-0 z-20 mb-[6px] w-[320px] rounded-[10px] border border-[#dce3ed] bg-white p-[12px] shadow-[0_6px_24px_rgba(15,23,42,0.12)]" role="dialog" aria-label={t.requestInfo}>
+      <div className="flex items-center justify-between gap-2 border-b border-[#eef1f5] pb-[6px]">
+        <strong className="text-[13px] text-[#101828]">{t.requestInfo}</strong>
+        <button type="button" aria-label={t.copy} title={t.copy} className="cursor-pointer border-0 bg-transparent p-[2px] text-[rgba(0,0,0,0.5)] hover:text-[rgba(0,0,0,0.9)]" onClick={copyAll}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 012-2h10" /></svg>
+        </button>
+      </div>
+      <div className="mt-[6px] grid gap-[4px]">
+        {rows.map((row) => <div key={row.label} className="flex items-baseline justify-between gap-2 text-[12px]"><span className="shrink-0 text-[rgba(0,0,0,0.45)]">{row.label}</span><span className="truncate font-mono text-[rgba(0,0,0,0.75)]" title={row.value}>{row.value}</span></div>)}
+      </div>
+    </div> : null}
+  </div>;
 }
 
 function BookmarkAnswerButton({ copy: copyTable, messageId, onBookmark }: { copy: ChatCopyTable; messageId: string; onBookmark?: MessageListProps['onBookmark'] }) {
@@ -259,9 +301,29 @@ function HistoryDeepThink({ copy: copyTable, state }: { copy: ChatCopyTable; sta
   </details>;
 }
 
-function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
+function completedReferenceDocCount(message: ChatMessage): number {
+  // Vue AgentStreamDisplay counts distinct documents (web hits excluded) for
+  // 引用了{count}篇文档; the same grouping powers the shared reference panel.
+  const row = message as Record<string, unknown>;
+  const raw = [...(Array.isArray(row.knowledge_references) ? row.knowledge_references : []), ...(Array.isArray(row.references) ? row.references : [])];
+  return groupChatReferences(raw).flatMap((group) => (group.kind === 'document' ? group.items : [])).length;
+}
+
+function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage; onToggleReferences?: () => void; referencesOpen?: boolean }) {
   const items = assistantTimelineItems(props.message);
   if (items.length === 0) return null;
+  if (props.message.is_completed === true) {
+    // Vue AgentStreamDisplay completed face: the live tool timeline folds into
+    // the single 检索完成 summary line, with the cited-document count beside it
+    // and the reference panel one click away (ChatReferencesDrawer).
+    const docCount = completedReferenceDocCount(props.message);
+    return <section className='wk-chat-message-extras mt-[8px]' aria-label={props.copy.thinkingAndTools}>
+      <button type='button' className='wk-chat-retrieval-summary inline-flex cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-0 py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] transition-[color,background] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]' aria-expanded={props.referencesOpen === true} onClick={() => props.onToggleReferences?.()}>
+        <span>{props.copy.searchDone}</span>
+        {docCount > 0 ? <span>{formatChatCopy(props.copy, 'referencesDocCount', { count: docCount })}</span> : null}
+      </button>
+    </section>;
+  }
   return <section className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]' aria-label={props.copy.thinkingAndTools}>
     <ol className='wk-chat-agent-timeline m-0 list-none p-[6px]'>
       {items.map((item) => item.kind === 'tool' ? <li key={item.id} className={`wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0`} data-status={item.status}>
@@ -288,7 +350,7 @@ function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenL
   </section>;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const timestampLabels = conversationTimeLabels(t);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -464,21 +526,11 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
           {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
           {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
-          {!isAssistant && onForkMessage && canForkMessage?.(message.id) === true ? (
-            <button type="button" className="mt-[4px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" title={t.forkFromUserTooltip} aria-label={t.forkFromUserTooltip} onClick={() => onForkMessage(message.id)}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>
-            </button>
-          ) : null}
           {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
             <FallbackInfoButton copy={t} message={message} />
-            {isFeedbackAvailable(onRateMessage) ? <FeedbackButtons copy={t} message={message} ratingOf={ratingOf} onRateMessage={onRateMessage} onRemoveRating={onRemoveRating} /> : null}
-            {onForkMessage && canForkMessage?.(message.id) === true ? (
-              <button type="button" className={`${ANSWER_TOOL_BUTTON} wk-chat-fork`} title={t.forkFromAssistantTooltip} aria-label={t.forkFromAssistantTooltip} onClick={() => onForkMessage(message.id)}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>
-              </button>
-            ) : null}
+            <RequestInfoButton copy={t} message={message} sessionId={sessionId} />
             {suggestions?.status === 'generating' && index === messages.length - 1 ? (
               <span className="wk-chat-follow-up-loading inline-flex items-center gap-[4px] text-[12px] text-[rgba(0,0,0,0.45)]" role="status">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 00-4 10c.6.6 1 1.2 1 2h6c0-.8.4-1.4 1-2a6 6 0 00-4-10z" /></svg>
@@ -486,7 +538,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
               </span>
             ) : null}
           </div> : null}
-          {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
+          {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
           {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}
         </div>
       </li>

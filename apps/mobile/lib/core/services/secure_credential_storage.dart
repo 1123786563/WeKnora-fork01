@@ -30,6 +30,7 @@ class SecureCredentialStorage {
       'hermes_desktop_credentials_v1';
   static const String _directConnectionProfilesKey =
       'direct_connection_profiles_v1';
+  static const String _weknoraAccountKey = 'weknora_account_v1';
   static const String _directMcpServersKey = 'direct_mcp_servers_v1';
   static const String _openWebUiDirectIdentityKey =
       'openwebui_direct_identity_key_v1';
@@ -421,6 +422,53 @@ class SecureCredentialStorage {
       DebugLogger.error(
         'delete-failed',
         scope: 'direct-connections/profiles',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// Persists the versioned WeKnora account document without logging its
+  /// payload. The account includes refresh tokens, so it must never be placed
+  /// in preferences.
+  Future<void> writeWeKnoraAccount(String accountJson) async {
+    try {
+      await _secureStorage.write(key: _weknoraAccountKey, value: accountJson);
+    } catch (error, stackTrace) {
+      DebugLogger.error(
+        'save-failed',
+        scope: 'weknora/account',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// Reads the versioned WeKnora account document from secure storage.
+  /// Storage failures are surfaced rather than being confused with no config.
+  Future<String?> readWeKnoraAccount() async {
+    try {
+      return await _secureStorage.read(key: _weknoraAccountKey);
+    } catch (error, stackTrace) {
+      DebugLogger.error(
+        'read-failed',
+        scope: 'weknora/account',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<void> deleteWeKnoraAccount() async {
+    try {
+      await _secureStorage.delete(key: _weknoraAccountKey);
+    } catch (error, stackTrace) {
+      DebugLogger.error(
+        'delete-failed',
+        scope: 'weknora/account',
         error: error,
         stackTrace: stackTrace,
       );

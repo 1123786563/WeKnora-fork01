@@ -3464,7 +3464,8 @@ export function KnowledgeDocumentsPage({
             />
           ) : null}
           {showFolderTree ? <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
-            <strong>{t("knowledgeBase.documents.folders")}</strong>
+            {/* Vue folderTree title (目录), not documents.folders (文件夹). */}
+            <strong>{t("knowledgeBase.folderTree.title")}</strong>
             {folderState.status === "loading" ? (
               <Status>{t("knowledgeBase.documents.loadingFolders")}</Status>
             ) : null}
@@ -3486,7 +3487,7 @@ export function KnowledgeDocumentsPage({
                     }
                     onClick={() => setFolderPath(folder.path || undefined)}
                   >
-                    {folder.name} <span className="text-[0.8rem] text-muted">{folder.total_count}</span>
+                    {folder.path === "" ? rootRowLabel : folder.name} <span className="text-[0.8rem] text-muted">{folder.total_count}</span>
                   </button>
                 </li>
               ))}
@@ -3857,14 +3858,17 @@ export function KnowledgeDocumentsPage({
                   <span role="columnheader">{t("knowledgeBase.columnUpdatedAt")}</span>
                   {canContribute ? <span role="columnheader" /> : null}
                 </li>
-                {folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).map((folder) => (
+                {/* Vue KnowledgeBase.vue L719-721: with the folder tree open it
+                    already lists the same folders, so the list skips duplicate
+                    sub-folder rows (tree closed keeps the navigable rows). */}
+                {!showFolderTree ? folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).map((folder) => (
                   <li key={`folder-${folder.path}`} className="wk-document-list-folder flex cursor-pointer items-center gap-3 border-b border-line-soft px-2 py-3 text-[13px] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" role="row" title={folder.path} onClick={() => setFolderPath(folder.path)}>
                     <span aria-hidden="true" />
                     <span className="flex min-w-0 items-center gap-2 font-medium text-primary-deep"><FolderIcon size={16} /><span className="truncate">{folder.name}</span></span>
                     <span />
                     <span className="text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span><span /><span /><span /><span />
                   </li>
-                ))}
+                )) : null}
                 {marquee.visible ? (
                   <li
                     className={`wk-document-marquee-box is-${marquee.mode} items-center! pointer-events-none absolute z-[4] rounded-[2px] border ${marquee.mode === "subtract" ? "border-[color-mix(in_srgb,var(--wk-danger,#d92d20)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-danger,#d92d20)_10%,transparent)]" : "border-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_12%,transparent)]"} flex justify-between gap-4 border-b border-line-soft py-[0.9rem]`}

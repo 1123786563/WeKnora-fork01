@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
+	"sync"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -66,6 +67,18 @@ type Handler struct {
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
 	usageRecorder interfaces.UsageRecorderService
+	// usageRecordOnce is the one-shot gate for that accounting: the message
+	// completion paths (stop watcher, QA defer, final-answer event) can race
+	// on one assistant message with no lock between them, and LoadOrStore on
+	// the message ID lets exactly one path record the turn — a user stop
+	// racing the normal completion must not double-count the tokens. One
+	// small entry per completed turn, for the handler's lifetime.
+	usageRecordOnce sync.Map
+	// completeMsgMu serializes completeAssistantMessage's message-mutation
+	// section (UpdatedAt/IsCompleted + UpdateMessage) for the same racing
+	// completion paths. Every path must still run the update — the mutex
+	// orders the writes, it never skips them.
+	completeMsgMu sync.Mutex
 }
 
 // CraftSessionTombstoner starts the resource teardown of a deleted craft

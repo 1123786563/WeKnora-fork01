@@ -671,10 +671,23 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         }), '/agents/suggested-questions');
         const questions = (data as { questions?: unknown }).questions;
-        if (!Array.isArray(questions) || questions.some((item) => typeof item !== 'string')) {
-          throw new Error('/agents/suggested-questions.data.questions must be a string array');
+        if (!Array.isArray(questions)) {
+          throw new Error('/agents/suggested-questions.data.questions must be an array');
         }
-        return questions as string[];
+        // Backend items are {question, source, knowledge_base_id} objects
+        // (frontend/src/api/agent SuggestedQuestion); plain strings stay
+        // accepted for older payloads.
+        const parsed = questions.map((item) => {
+          if (typeof item === 'string') return item;
+          if (item !== null && typeof item === 'object' && typeof (item as { question?: unknown }).question === 'string') {
+            return (item as { question: string }).question;
+          }
+          return null;
+        });
+        if (parsed.some((item) => item === null)) {
+          throw new Error('/agents/suggested-questions.data.questions items must be strings or {question} objects');
+        }
+        return parsed as string[];
       },
     },
     models: {

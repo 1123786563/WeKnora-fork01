@@ -1,0 +1,599 @@
+{
+  "version": 1,
+  "externalPrerequisites": [
+    "P0"
+  ],
+  "maxParallelTracks": 4,
+  "gate": "P0 NO-GO remains until reviewed evidence changes it",
+  "tasks": [
+    {
+      "id": "P1.0",
+      "title": "关闭存储选型门槛，冻结业务契约",
+      "dependsOn": [
+        "P0"
+      ],
+      "files": [
+        "docs/superpowers/plans/trpc-native/storage-decision.md",
+        "docs/superpowers/plans/trpc-native/interfaces.md",
+        "docs/superpowers/plans/trpc-native/p0-decision.md"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "P1.1",
+      "title": "身份、错误与跨 Track 接口冻结",
+      "dependsOn": [
+        "P1.0"
+      ],
+      "files": [
+        "internal/agent/nativecontract/contracts.go",
+        "internal/agent/nativecontract/scope.go",
+        "internal/agent/nativecontract/scope_test.go"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "P1.2",
+      "title": "新命名空间、表约束与方言迁移",
+      "dependsOn": [
+        "P1.1"
+      ],
+      "files": [
+        "internal/application/repository/native_schema.go",
+        "internal/application/repository/native_schema_test.go",
+        "docs/superpowers/plans/trpc-native/schema-manifest.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P1.3",
+      "title": "Session Service 持久化、幂等与授权 facade",
+      "dependsOn": [
+        "P1.2"
+      ],
+      "files": [
+        "internal/agent/native/session.go",
+        "internal/agent/native/session_test.go",
+        "internal/application/repository/native_session.go",
+        "internal/application/repository/native_session_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P1.4",
+      "title": "Memory generation 与删除防复活",
+      "dependsOn": [
+        "P1.2"
+      ],
+      "files": [
+        "internal/agent/native/memory.go",
+        "internal/agent/native/memory_test.go",
+        "internal/application/repository/native_memory.go",
+        "internal/application/repository/native_memory_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P1.5",
+      "title": "CommitIntent、检查点屏障与可靠事件日志",
+      "dependsOn": [
+        "P1.3",
+        "P1.4"
+      ],
+      "files": [
+        "internal/application/repository/native_commit.go",
+        "internal/application/repository/native_commit_test.go",
+        "internal/application/repository/native_events.go",
+        "internal/application/repository/native_events_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.1",
+      "title": "准入、幂等请求与排空开关",
+      "dependsOn": [
+        "P1.1"
+      ],
+      "files": [
+        "internal/application/service/native_admission.go",
+        "internal/application/service/native_admission_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.2",
+      "title": "租约、epoch fencing 与恢复资格",
+      "dependsOn": [
+        "P2.1",
+        "P1.2"
+      ],
+      "files": [
+        "internal/application/repository/native_lease.go",
+        "internal/application/repository/native_lease_test.go",
+        "internal/application/service/native_recovery.go",
+        "internal/application/service/native_recovery_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.3",
+      "title": "工具计划、attempt 与外部副作用恢复",
+      "dependsOn": [
+        "P2.2",
+        "P1.5"
+      ],
+      "files": [
+        "internal/agent/native/tool.go",
+        "internal/agent/native/tool_test.go",
+        "internal/application/repository/native_tool_journal.go",
+        "internal/application/repository/native_tool_journal_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.4",
+      "title": "审批、OAuth 等待与一次性决策",
+      "dependsOn": [
+        "P2.3"
+      ],
+      "files": [
+        "internal/application/service/native_pending.go",
+        "internal/application/service/native_pending_test.go",
+        "internal/application/repository/native_pending.go",
+        "internal/application/repository/native_pending_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.5",
+      "title": "父子预算、用量去重与失败结算",
+      "dependsOn": [
+        "P2.2",
+        "P1.5"
+      ],
+      "files": [
+        "internal/application/service/native_usage.go",
+        "internal/application/service/native_usage_test.go",
+        "internal/application/repository/native_usage.go",
+        "internal/application/repository/native_usage_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P2.6",
+      "title": "取消、追加输入与子任务控制",
+      "dependsOn": [
+        "P2.4",
+        "P2.5"
+      ],
+      "files": [
+        "internal/application/service/native_control.go",
+        "internal/application/service/native_control_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P3.1",
+      "title": "原生模型工厂与 Provider 参数保真",
+      "dependsOn": [
+        "P1.5",
+        "P2.5"
+      ],
+      "files": [
+        "internal/agent/native/model.go",
+        "internal/agent/native/model_test.go",
+        "internal/agent/native/provider_matrix_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P3.2",
+      "title": "Runner 生命周期及合法终态",
+      "dependsOn": [
+        "P3.1",
+        "P2.6"
+      ],
+      "files": [
+        "internal/agent/native/runner.go",
+        "internal/agent/native/runner_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P3.3",
+      "title": "GraphAgent 恢复、版本 envelope 与六间隙",
+      "dependsOn": [
+        "P3.2"
+      ],
+      "files": [
+        "internal/agent/native/graph.go",
+        "internal/agent/native/checkpoint.go",
+        "internal/agent/native/recovery_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P3.4",
+      "title": "上下文压缩、Memory 与会话能力装配",
+      "dependsOn": [
+        "P3.3",
+        "P1.4"
+      ],
+      "files": [
+        "internal/agent/native/context.go",
+        "internal/agent/native/context_test.go",
+        "internal/application/service/native_capabilities.go",
+        "internal/application/service/native_capabilities_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.1",
+      "title": "知识检索、引用与文档工具",
+      "dependsOn": [
+        "P3.4",
+        "P2.3"
+      ],
+      "files": [
+        "internal/agent/native/tools/knowledge.go",
+        "internal/agent/native/tools/knowledge_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.2",
+      "title": "MCP 动态发现、OAuth 与名称映射",
+      "dependsOn": [
+        "P3.4",
+        "P2.4"
+      ],
+      "files": [
+        "internal/agent/native/tools/mcp.go",
+        "internal/agent/native/tools/mcp_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.3",
+      "title": "Skills 安装绑定与 Sandbox 执行",
+      "dependsOn": [
+        "P3.4",
+        "P2.3"
+      ],
+      "files": [
+        "internal/agent/native/tools/skills.go",
+        "internal/agent/native/tools/skills_test.go",
+        "internal/agent/native/tools/sandbox.go",
+        "internal/agent/native/tools/sandbox_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.4",
+      "title": "Connector 与专业 Agent/远程执行器",
+      "dependsOn": [
+        "P3.4",
+        "P2.4"
+      ],
+      "files": [
+        "internal/agent/native/tools/connector.go",
+        "internal/agent/native/tools/connector_test.go",
+        "internal/agent/native/tools/specialist.go",
+        "internal/agent/native/tools/specialist_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.5",
+      "title": "原生多 Agent 委派",
+      "dependsOn": [
+        "P3.4",
+        "P2.6"
+      ],
+      "files": [
+        "internal/agent/native/delegate.go",
+        "internal/agent/native/delegate_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P4.6",
+      "title": "工具注册集成与全功能覆盖核对",
+      "dependsOn": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5"
+      ],
+      "files": [
+        "internal/agent/native/tools/registry.go",
+        "internal/agent/native/tools/registry_test.go",
+        "internal/application/service/native_tool_registry.go",
+        "internal/container/agent_runtime.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.1",
+      "title": "冻结 Go/TS wire 与跨语言 fixture",
+      "dependsOn": [
+        "P1.1",
+        "P1.5"
+      ],
+      "files": [
+        "packages/contracts/src/chat/native.ts",
+        "packages/contracts/test/native-agent.test.ts",
+        "internal/agent/nativecontract/wire_test.go",
+        "tests/native-agent/wire-v1.json",
+        "packages/contracts/package.json"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.2",
+      "title": "可靠 HTTP/SSE 与命令入口",
+      "dependsOn": [
+        "P5.1",
+        "P3.4",
+        "P2.6"
+      ],
+      "files": [
+        "internal/handler/session/native_run.go",
+        "internal/handler/session/native_stream.go",
+        "internal/handler/session/native_run_test.go",
+        "internal/handler/session/native_stream_test.go",
+        "internal/router/routes_native_agent.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.3",
+      "title": "API client 与纯领域 reducer",
+      "dependsOn": [
+        "P5.1"
+      ],
+      "files": [
+        "packages/api-client/src/chat/native.ts",
+        "packages/api-client/src/chat/native.test.ts",
+        "packages/domain/src/chat/native.ts",
+        "packages/domain/src/chat/native.test.ts",
+        "packages/api-client/package.json",
+        "packages/domain/package.json"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.4",
+      "title": "Web 交互完整适配",
+      "dependsOn": [
+        "P5.2",
+        "P5.3"
+      ],
+      "files": [
+        "apps/web/src/chat/native-controller.ts",
+        "apps/web/src/chat/native-controller.test.ts",
+        "apps/web/src/chat/ChatRoutePage.tsx",
+        "apps/web/src/chat/native-agent.test.tsx"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.5",
+      "title": "Desktop 与 Embed 平台适配",
+      "dependsOn": [
+        "P5.4"
+      ],
+      "files": [
+        "apps/desktop/src/native-agent.test.ts",
+        "apps/embed/src/native-agent.ts",
+        "apps/embed/src/native-agent.test.ts",
+        "apps/embed/src/main.tsx"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.6",
+      "title": "Flutter 与 Expo 移动端分别迁移",
+      "dependsOn": [
+        "P5.2",
+        "P5.3"
+      ],
+      "files": [
+        "apps/mobile/lib/core/services/native_agent_service.dart",
+        "apps/mobile/test/native_agent_service_test.dart",
+        "apps/mobile/lib/features/chat/providers/chat_providers.dart",
+        "apps/mobile-next/src/features/conversations/chat/nativeAgent.ts",
+        "apps/mobile-next/src/features/conversations/chat/nativeAgent.test.ts",
+        "apps/mobile-next/src/features/conversations/chat/ChatService.ts"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P5.7",
+      "title": "Go client/CLI、小程序与 DSH 消费者",
+      "dependsOn": [
+        "P5.2",
+        "P5.3"
+      ],
+      "files": [
+        "client/native_agent.go",
+        "client/native_agent_test.go",
+        "cli/native_agent.go",
+        "apps/miniprogram/src/services/native-agent.ts",
+        "apps/miniprogram/tests/native-agent.test.mjs",
+        "packages/dsh-weknora/src/native-agent.ts",
+        "packages/dsh-weknora/test/native-agent.test.mjs"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P6.1",
+      "title": "归档清单、附件与只读权限 API",
+      "dependsOn": [
+        "P1.5",
+        "P5.1"
+      ],
+      "files": [
+        "internal/application/service/native_archive.go",
+        "internal/application/service/native_archive_test.go",
+        "internal/handler/session/native_archive.go",
+        "internal/handler/session/native_archive_test.go",
+        "internal/router/routes_native_archive.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P6.2",
+      "title": "可重入配置迁移与校验报告",
+      "dependsOn": [
+        "P6.1"
+      ],
+      "files": [
+        "cmd/native-agent-migrate/main.go",
+        "internal/application/service/native_migration.go",
+        "internal/application/service/native_migration_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P6.3",
+      "title": "归档/迁移集成与恢复核对",
+      "dependsOn": [
+        "P6.2",
+        "P5.4"
+      ],
+      "files": [
+        "tests/native-agent/archive_migration_test.go",
+        "docs/superpowers/plans/trpc-native/archive-manifest.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P7.1",
+      "title": "六间隙 SIGKILL 与双 Worker 矩阵",
+      "dependsOn": [
+        "P3.4",
+        "P4.6",
+        "P5.7",
+        "P5.6",
+        "P5.5",
+        "P6.3"
+      ],
+      "files": [
+        "internal/agent/recoverytest/native_matrix_test.go",
+        "internal/agent/recoverytest/native_worker_test.go",
+        "internal/agent/recoverytest/native_external_test.go"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P7.2",
+      "title": "全功能/全客户端与性能验收",
+      "dependsOn": [
+        "P7.1"
+      ],
+      "files": [
+        "tests/native-agent/acceptance_manifest.json",
+        "tests/native-agent/acceptance_test.go",
+        "docs/superpowers/plans/trpc-native/acceptance-report.md",
+        "docs/superpowers/plans/trpc-native/performance-policy.json"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P7.3",
+      "title": "完整测试、CI 门禁与最终集成审查",
+      "dependsOn": [
+        "P7.2"
+      ],
+      "files": [
+        "scripts/check-native-agent-evidence.py",
+        "scripts/check-native-agent-evidence_test.py",
+        ".github/workflows/native-agent-acceptance.yml",
+        "docs/superpowers/plans/trpc-native/integration-report.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P8.1",
+      "title": "隔离生产等价环境全流程演练",
+      "dependsOn": [
+        "P7.3"
+      ],
+      "files": [
+        "docs/runbooks/native-agent-cutover.md",
+        "scripts/native-agent-cutover-check.sh",
+        "docs/superpowers/plans/trpc-native/rehearsal-report.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P8.2",
+      "title": "开放前/开放后回退演练",
+      "dependsOn": [
+        "P8.1"
+      ],
+      "files": [
+        "docs/runbooks/native-agent-rollback.md",
+        "tests/native-agent/rollback_test.go",
+        "docs/superpowers/plans/trpc-native/rollback-report.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P8.3",
+      "title": "发布包、生产批准与一次切换",
+      "dependsOn": [
+        "P8.2"
+      ],
+      "files": [
+        "docs/superpowers/plans/trpc-native/release-manifest.json",
+        "docs/superpowers/plans/trpc-native/release-record.md"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P9.1",
+      "title": "固定观察窗口与退役资格",
+      "dependsOn": [
+        "P8.3"
+      ],
+      "files": [
+        "docs/superpowers/plans/trpc-native/observation-report.md",
+        "scripts/native-agent-observation.py",
+        "scripts/native-agent-observation_test.py"
+      ],
+      "status": "blocked-design"
+    },
+    {
+      "id": "P9.2",
+      "title": "按消费者边界退役旧执行与适配器",
+      "dependsOn": [
+        "P9.1"
+      ],
+      "files": [
+        "docs/superpowers/plans/trpc-native/retirement-manifest.md",
+        "internal/application/service/agent_service.go",
+        "internal/application/service/session_agent_qa.go",
+        "internal/application/service/agent_run_graph.go",
+        "internal/container/agent_runtime.go",
+        "internal/agent/trpc/model.go",
+        "internal/agent/trpc/graph.go",
+        "internal/agent/trpc/checkpoint.go"
+      ],
+      "status": "blocked-design"
+    }
+  ],
+  "subtracks": {
+    "P5.6": [
+      "P5.6F: Flutter",
+      "P5.6E: Expo"
+    ],
+    "P5.7": [
+      "P5.7G: Go client/CLI",
+      "P5.7M: miniprogram",
+      "P5.7D: DSH"
+    ]
+  }
+}

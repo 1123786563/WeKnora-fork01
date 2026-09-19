@@ -34,6 +34,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'memory', viewId: 'MemoryWorkspaceSettings', apiDomain: 'memory.workspace', scope: 'tenant', minRole: 'admin', operations: ['read', 'save'], ported: true },
   { key: 'mymemory', viewId: 'MemorySettings', apiDomain: 'memory.personal', scope: 'user', minRole: 'viewer', operations: ['read', 'save', 'delete'], ported: true },
   { key: 'envvars', viewId: 'EnvVarSettings', apiDomain: 'envVars', scope: 'user', minRole: 'viewer', operations: ['read', 'save', 'delete'], ported: true },
+  { key: 'usage', viewId: 'UsageSettings', apiDomain: 'usage', scope: 'user', minRole: 'viewer', operations: ['read'], ported: true },
   { key: 'members', viewId: 'TenantMemberSettings', apiDomain: 'identity.tenants.members', scope: 'tenant', minRole: 'viewer', operations: ['read', 'save', 'delete'], ported: false },
   { key: 'mcp', viewId: 'McpServiceSettings', apiDomain: 'configuration.mcp', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'test', 'delete'], ported: false },
   { key: 'sandbox', viewId: 'SandboxSettings', apiDomain: 'sandbox.configs', scope: 'tenant', minRole: 'admin', operations: ['read', 'save', 'delete'], ported: false },

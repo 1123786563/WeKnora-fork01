@@ -100,7 +100,7 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
   return client.settings.webSearch.providers;
 }
 
-export function ResourceSettingsPanel({ client, section, initialValue }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown }) {
+export function ResourceSettingsPanel({ client, section, initialValue, role = 'owner' }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown; role?: string }) {
   const api = apiFor(client, section);
   const locale = readInitialLocale();
   const t = settingsT(locale);
@@ -334,7 +334,9 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
         <span className="text-[13px]">{t(keys.add)}</span>
       </button>
     </div>
-    {rows.length === 0 ? <Status>{t(keys.empty)}</Status> : null}
+    {/* Vue WebSearchSettings L13: the empty-state hint only renders for
+        non-admin viewers; admins get the bare grid, no desc line. */}
+    {rows.length === 0 && !(section === 'websearch' && (role === 'owner' || role === 'admin')) ? <Status>{t(keys.empty)}</Status> : null}
     <Sheet
       open={drawerOpen}
       title={editingId ? t(keys.edit) : t(keys.add)}

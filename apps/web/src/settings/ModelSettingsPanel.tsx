@@ -969,7 +969,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             const modelParams = params(model);
             const builtin = isBuiltin(model);
             const canEdit = builtin ? role === "system-admin" : canCreate;
-            const dimension = modelParams.dimension;
+            const embeddingParams = modelParams.embedding_parameters;
+            const dimension = typeof modelParams.dimension === "number"
+              ? modelParams.dimension
+              : embeddingParams && typeof embeddingParams === "object" && !Array.isArray(embeddingParams) && typeof (embeddingParams as Record<string, unknown>).dimension === "number"
+                ? (embeddingParams as Record<string, unknown>).dimension
+                : undefined;
             const contextWindow = typeof modelParams.context_window === "number" ? modelParams.context_window : undefined;
             const supportsVision = modelParams.supports_vision === true;
             const menuOpen = menuFor === model.id;
@@ -1039,7 +1044,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         <span>{t("model.editor.dimensionLabel")} {dimension}</span>
                       </>
                     ) : null}
-                    {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
+                    {/* Vue ModelSettings.vue L110-117 renders the ctx chip for
+                        every chat/vllm card; formatContextWindow falls back to
+                        the 200K default (dimmed) when no value is stored. */}
+                    {(type === "chat" || type === "vllm") ? (
                       <>
                         <span className="mx-[4px] text-[#97a3b6]">·</span>
                         <span
@@ -1532,9 +1540,4 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       ) : null}
     </section>
   );
-}
-
-function modelHasContext(model: ModelConfiguration): boolean {
-  const type = modelType(model);
-  return type === "chat" || type === "vllm";
 }

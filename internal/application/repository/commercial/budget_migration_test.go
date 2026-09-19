@@ -39,7 +39,7 @@ func TestReserveWorksOnMigratedSchema(t *testing.T) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	exec(db, "migrations"+string(filepath.Separator)+"sqlite"+string(filepath.Separator)+"000036_commercial_budgets.up.sql")
-	exec(db, "migrations"+string(filepath.Separator)+"sqlite"+string(filepath.Separator)+"000079_commercial_reservations_owner.up.sql")
+	exec(db, "migrations"+string(filepath.Separator)+"sqlite"+string(filepath.Separator)+"000082_commercial_reservations_owner.up.sql")
 
 	store := NewBudgetStore(db)
 	// Seed one account so Reserve passes the account guard.

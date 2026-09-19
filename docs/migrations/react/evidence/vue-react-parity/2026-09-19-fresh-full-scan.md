@@ -329,3 +329,77 @@ React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成�
 embed 入口、websearch 真实数据、常态流式、mono/color 徽章、内容图片白名单、生成态指示——
 全部对账一致或带根因/环境记录。提交链 7bee5a64→…→acb1a667（14 个 parity 提交），门禁全程
 1877/1877 + tsc + build 全绿。
+
+## 第二十一轮（2026-09-19 续）：助手操作行对齐（≤1% 收敛）
+1. **操作集合对齐**：Vue botmsg 工具栏 = 复制 / 添加到知识库 / 请求信息（ⓘ 弹层：Request ID/
+   消息 ID/会话 ID/发起时间 + copy-all，showRequestInfo=session.request_id||id）；React 原有
+   赞/踩/从这条回答继续分叉为 Vue 不存在的多余入口 → message-list.tsx 移除，新增
+   RequestInfoButton（ⓘ svg + 弹层 + copy-all，chat-copy 五语言行标签）。
+2. **用户行 fork 移除**：Vue 用户行无 fork 入口（⑂ 为 React 多余），随本轮回退移除（SVG 化
+   版本一并移除）。
+3. **composer 占位符**：clip 版 visually-hidden label 文本仍进 innerText → display:none +
+   aria-hidden，可访问名由 placeholder 承担（与 Vue 一致），双端同会话对比中
+   直接向模型提问 不再单侧出现 ✓。
+4. 双端同会话刷新后终对比：仅剩 已知噪音/项外（瞬态加载推荐问题=Vue 侧 suppressed 环境卡态、
+   数据分析=并行会话新功能、⑂/占位符已消除）。
+5. 门禁：1877/1877 + tsc + build 全绿。（bf6bea1f）
+
+## 最终遗留（更新）
+- Vue 加载推荐问题 灰显标签：suggestions suppressed 环境下 Vue 轮询卡 loading 的自身表现；
+  React 对 suppressed 集合不渲染（正确行为）。生成启用后两端语义一致（均有 loading→ready）。
+- 其余长尾同前（OIDC 划出 ✓ 用户确认、Vue 会话快照 avatar 数据管线、mono 可达端点截图）。
+
+## ✅ 最终双端复核证据（2026-09-19，『你好』会话 2d5bc5b5）
+- 双端重开同一会话截图对比：Vue t-image 错误占位 **0 个**、无 图片无法显示/预览 文本；
+  React 同样无该元素。转写内容（用户消息 你好 / 日期分隔 今天 18:11 / 助手回答确定性
+  mock 文本）、操作行（复制/添加到知识库/请求信息）、模型芯片（mock-stream-model 200K）、
+  智能体芯片（快速问答）、composer 双端一致 ✓。
+- 截图证据：sess 工件目录 call_19b6eb58（Vue/React 各一张）。
+- 结论：picture-preview v-if 修复 + avatar=/favicon.ico 数据修复后，Vue 转写占位彻底消失，
+  双端『你好』会话转写一致。本目标（每页 ≤1% 差异）达成；OIDC 分支经用户确认划出范围。
+
+## 第二十二轮（2026-09-19 续）：真实账号活体全页复扫 + 七处真差异修复
+
+用户要求登录测试改用 wu18349270334@gmail.com（tenant 10001 wuyj's Workspace，真实迪士尼
+KB「11」+ 真实会话/引用数据）。以仓库 playwright-core 起独立 headless Chrome（隔离 profile，
+双 context 登录后逐路由 body.innerText 多重集对称差分），避开被并行会话共用的 mcp-chrome
+profile 争抢。16 条路由（主路由 8 + KB 详情 + 聊天会话 + 设置 6 分区）。
+
+### 七处真差异与修复（commit 03684e49，并行会话代为入库，内容逐文件核实）
+1. creatChat 推荐问题整块缺失：api-client suggestedQuestions 按 string[] 校验，而后端
+   （与 Vue 契约一致）返回 {question,source,knowledge_base_id} 对象数组 → 抛错降级空。
+   修复 configuration.ts：兼容两种形态，映射 question 文本。
+2. 模型芯片（select 分支）无 200K 上下文后缀 + sr-only「对话模型」泄漏进 innerText：
+   composer.tsx select 分支补 modelContext 渲染（与 button 分支同构），sr-only 改
+   display:none+aria-hidden（aria 名由 select aria-label 承担）。（此前 mock 会话无
+   可选模型，走 button 分支故未暴露。）
+3. 聊天页完成态把工具时间线常驻渲染（query_understand/completed/✓/已处理）且「引用来源」
+   面板整块内联展开：Vue 完成面折叠为 检索完成 + 引用了{count}篇文档（ChatReferencesDrawer
+   点击打开）。message-list AssistantExtras 增加完成态折叠分支（is_completed 时渲染摘要按钮，
+   文档计数复用 groupChatReferences 文档分组），page.tsx ReferenceList 改为摘要点击后展开。
+   chat-copy 五语言新增 searchDone / referencesDocCount（值逐字节取自 Vue locale）。
+4. KB 文档页目录树标题用 文件夹、根行用后端硬编码 Root：改 folderTree.title（目录）、
+   path==='' 行渲染 rootRowLabel（根目录）。
+5. KB 列表区内联文件夹行与目录树重复：按 Vue KnowledgeBase.vue L719-721 规则
+   （树展开时列表跳过重复文件夹行）加 !showFolderTree 门。
+6. 模型卡 embedding 维度缺失（Ollama 无 ·向量维度 768）：API 把维度放在
+   parameters.embedding_parameters.dimension，React 只读 parameters.dimension；
+   ctx 徽章去掉 modelHasContext 门（Vue 对 chat/vllm 恒渲染，缺省 200K 灰显）。
+7. websearch 空态描述对 admin 常驻渲染：按 Vue WebSearchSettings L13（仅非 admin 显示）
+   加 role 门（SettingsPage 把 role 传入 ResourceSettingsPanel）。
+附：成员管理 邀请成员 改图标方块钮（Vue TenantMembers.vue L202-205 仅 title/aria 带文案）。
+
+### 验证
+- 门禁：typecheck:shared/web、test:shared 884/884、test:web 1893/1893（两条测试契约随
+  新对齐口径更新：chat-page 引用不再常驻、message-extras 完成态折叠+流态时间线分例）、
+  build:web 全绿。
+- 活体（独立 headless 双端对扫）：主路由/KB 详情/creatChat/聊天会话（真实 8 篇引用会话）
+  仅剩 已知噪音（原生 select option 泄漏、表头 tab 合行）+ 数据分析（见下）。设置 6 分区
+  的活体复验被环境阻塞：并行 lane（sp2a-connectors）重启共享后端 :8084 期间大量 500/下线，
+  采集到错位页；设置三处修复以单测+build 佐证，待后端稳定可按本脚手法复扫。
+
+### 遗留与决策项
+- 「数据分析」侧边栏项为 React 独有（SP11 并行车道特性，admin 可见，Vue 无此入口）：
+  按并行工作保护原则未删，是否对齐待用户定夺。
+- 已知噪音类维持台账口径：原生 select option 进 innerText、表头列名 tab 合行、引导弹层时机。
+- 登录测试账号自本轮起固定为 wu18349270334@gmail.com（用户指定）。

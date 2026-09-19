@@ -285,7 +285,9 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 		tenant_id INTEGER NOT NULL, id VARCHAR(128) NOT NULL, run_id VARCHAR(128) NOT NULL,
 		owner_id VARCHAR(255) NOT NULL, kind VARCHAR(32) NOT NULL, args_hash VARCHAR(128) NOT NULL,
 		decision_id VARCHAR(128) NOT NULL DEFAULT '', action VARCHAR(32) NOT NULL DEFAULT '',
-		status VARCHAR(32) NOT NULL DEFAULT 'pending', expected_revision INTEGER NOT NULL DEFAULT 0,
+		status VARCHAR(32) NOT NULL DEFAULT 'pending', external_pending_id VARCHAR(255) NOT NULL DEFAULT '',
+		credential_version INTEGER NOT NULL DEFAULT 0,
+		expected_revision INTEGER NOT NULL DEFAULT 0,
 		expires_at DATETIME, revoked INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -338,12 +340,17 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	require.False(t, result.Result.Success)
 	require.Equal(t, "request-42", observed.RequestID)
 
-	var runID, ownerID, kind string
-	require.NoError(t, db.Raw("SELECT run_id, owner_id, kind FROM workbench_interactions WHERE tenant_id = 7").Row().Scan(&runID, &ownerID, &kind))
+	var runID, ownerID, kind, externalPendingID string
+	row := db.Raw(
+		"SELECT run_id, owner_id, kind, external_pending_id " +
+			"FROM workbench_interactions WHERE tenant_id = 7",
+	).Row()
+	require.NoError(t, row.Scan(&runID, &ownerID, &kind, &externalPendingID))
 	require.Equal(t, "durable-run-42", runID)
 	require.NotEqual(t, observed.RequestID, runID)
 	require.Equal(t, principal.StorageID(), ownerID)
 	require.Equal(t, "tool_approval", kind)
+	require.Equal(t, observed.PendingID, externalPendingID)
 }
 
 func strPtr(value string) *string { return &value }

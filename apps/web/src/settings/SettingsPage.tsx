@@ -30,6 +30,7 @@ const SandboxSettingsPanel = lazy(() => import('./SandboxSettingsPanel.tsx').the
 const SkillSettingsPanel = lazy(() => import('./SkillSettingsPanel.tsx').then((m) => ({ default: m.SkillSettingsPanel })));
 const TenantMembersPanel = lazy(() => import('./TenantMembersPanel.tsx').then((m) => ({ default: m.TenantMembersPanel })));
 const GeneralPreferencesPanel = lazy(() => import('./GeneralPreferencesPanel.tsx').then((m) => ({ default: m.GeneralPreferencesPanel })));
+const UsagePanel = lazy(() => import('./UsagePanel.tsx').then((m) => ({ default: m.UsagePanel })));
 const TenantInfoSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.TenantInfoSection })));
 const UserProfileSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.UserProfileSection })));
 const SystemInfoPanel = lazy(() => import('./SystemInfoPanel.tsx').then((m) => ({ default: m.SystemInfoPanel })));
@@ -93,6 +94,9 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     ]).then(([status, models]) => ({ status, models }));
     // Vue ParserEngineSettings loads engines/config/wkc itself on mount.
     case 'parser': return Promise.resolve(null);
+    // The usage panel self-fetches client.usage.my + commercial.summary for
+    // its date window (parser precedent: no shell-level read needed).
+    case 'usage': return Promise.resolve(null);
     case 'retrieval': return client.settings.retrieval.get();
     case 'memory': return client.settings.memory.workspace.get();
     // Vue mounts MemorySettings.vue (personal surface) under "mymemory"; the
@@ -331,7 +335,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
       : null;
     const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
     const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
-      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} />
+      ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} role={role} />
       : null;
     const configPanel = key === 'retrieval'
       ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
@@ -349,6 +353,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           ? <ParserEngineSettingsPanel client={client} />
           : null;
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
+    const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
     // Vue Settings.vue: these two sections stay nav-visible but render no panel
@@ -420,7 +425,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
               <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
             </div>
-          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
           {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
         </div>}
       </div>
@@ -491,7 +496,7 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 
 
 const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: readonly string[] }> = [
-  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars'] },
+  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars', 'usage'] },
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
   { key: 'models_runtime', labelKey: 'settings.navGroups.modelsRuntime', sections: ['models', 'ollama', 'weknoracloud'] },
   { key: 'integrations', labelKey: 'integrations.title', sections: INTEGRATION_SECTIONS.map((item) => `integration-${item.key}`) },
@@ -514,6 +519,7 @@ const SECTION_LABEL_KEYS: Record<string, string> = {
   userprofile: 'userProfile.title',
   mymemory: 'memorySettings.title',
   envvars: 'envVarSettings.title',
+  usage: 'settings.usage.title',
   tenant: 'settings.tenantInfo',
   members: 'tenantMember.title',
   chathistory: 'chatHistorySettings.title',
@@ -569,6 +575,7 @@ const SECTION_ICONS: Record<string, ReactNode> = {
   userprofile: icon(<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>),
   mymemory: icon(<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />),
   envvars: icon(<><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></>),
+  usage: icon(<><path d="M3 3v18h18" /><path d="M7 15v-4M12 15V8M17 15v-7" /></>),
   tenant: icon(<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01" /></>),
   members: icon(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>),
   chathistory: icon(<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />),
