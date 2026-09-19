@@ -145,6 +145,9 @@ export { createFeedbackApi } from './chat/feedback.ts';
 export type { FeedbackApi } from './chat/feedback.ts';
 export { createAnalyticsApi } from './analytics/index.ts';
 export type { AnalyticsApi, AnalyticsRangeParams } from './analytics/index.ts';
+export { createUsageApi } from './usage/index.ts';
+export type { UsageApi, UsageRangeParams, UsageByUserParams } from './usage/index.ts';
+export type { UsageRow, UsageByUserRow } from '@weknora/contracts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,
