@@ -1,0 +1,114 @@
+{
+  "notes": [
+    {
+      "version": "4.1.0",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Hermes kann jetzt ein Desktop Gateway nutzen, und Bots liegen in der Seitenleiste. Ich habe Listen und Dialoge neu gebaut und ein paar Fehler weggemacht, die schon zu lange rumlagen.",
+      "bullets": [
+        {
+          "text": "Hermes Bot Mode: Desktop Gateway verbinden, Bot in der Seitenleiste wählen, zusammenhängende Antworten unter einer Überschrift.",
+          "icon": "hermes"
+        },
+        {
+          "text": "Native gruppierte Listen, Glas auf iOS 26, Systemschrift und eine Tablet-Seitenleiste, deren Breite du ziehen kannst.",
+          "icon": "polish"
+        },
+        {
+          "text": "Weniger Ruckeln beim Streamen. LaTeX erscheint wirklich. Die Stimme antwortet sich nicht mehr selbst. Polnisch steht in der Sprachenliste.",
+          "icon": "direct"
+        }
+      ]
+    },
+    {
+      "version": "4.1.2",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Apple On-Device läuft auf dem Telefon. Nutze es in Direct chats, oder in Open WebUI-Chats wenn du offline bist. Sprachanrufe kommen aus dem Lautsprecher und sprechen die Antwort, nicht das Nachdenken. Hermes kommt nach einer Pause zurück, und ich habe ein paar Chat-Fehler weggemacht.",
+      "bullets": [
+        {
+          "text": "Apple On-Device: Direct chats lokal, und Open WebUI-Chats wenn du offline bist.",
+          "icon": "direct"
+        },
+        {
+          "text": "Sprachanrufe: starten über den Lautsprecher, wenn nichts eingesteckt ist. Sie überspringen das Nachdenken und sprechen die ganze Antwort.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: holt fertige Durchläufe nach einer Pause zurück und nimmt PDFs. Skills vervollständigen sich beim Tippen. Zitat-Links, Checklisten in Notizen und Open WebUI 0.11.1 funktionieren.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.3",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Direct chats können MCP-Server vom Telefon aus aufrufen. Du genehmigst jedes Tool. Am Mac gibt es Tastaturkürzel und Chat-Scrollbalken. Hermes-Freigaben und Markdown-Zitate habe ich auch repariert.",
+      "bullets": [
+        {
+          "text": "MCP-Server: füge sie für Direct chats hinzu, auch für Apple On-Device. Tools einmal, für die Sitzung oder immer genehmigen. Prompts und Ressourcen in den Chat einfügen.",
+          "icon": "direct"
+        },
+        {
+          "text": "Mac: Tastaturkürzel, Hover in der Seitenleiste und Rechtsklick-Menüs. Chats bekommen Scrollbalken. Blockzitate werden als Zitate dargestellt.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: gestreamte Tool-Aufrufe erscheinen als Blöcke. Freigaben bleiben am richtigen Durchlauf. Öffne eine laufende Desktop-Sitzung wieder, und der Spinner ist noch da.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.4",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Open WebUI 0.11.3 funktioniert. Ich habe die Warnung für Server, die wir noch nicht unterstützen, auf den neuen Chat gelegt, damit sie Unterhaltungen nicht mehr unterbricht, die du schon angefangen hast.",
+      "bullets": [
+        {
+          "text": "Open WebUI 0.11.2 und 0.11.3: keine Kompatibilitätswarnung.",
+          "icon": "direct"
+        },
+        {
+          "text": "Warnung bei nicht unterstütztem Server: nur bei einem neuen Chat. In bestehenden Unterhaltungen erscheint sie nicht mehr.",
+          "icon": "polish"
+        }
+      ]
+    },
+    {
+      "version": "4.1.5",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Geteilte Ordner aus Open WebUI erscheinen in der Seitenleiste. Du siehst das Nachdenken schon während das Modell denkt, und der Bildschirm bleibt wach, bis die Antwort fertig ist. Lange Hermes-Chats laden wieder. Android-Lautsprecher und die iOS-Toolbar habe ich auch repariert.",
+      "bullets": [
+        {
+          "text": "Geteilte Ordner: sie erscheinen in der Seitenleiste. Chats, die jemand anderes besitzt, sind nur lesbar. Mit Schreibzugriff kannst du dort einen neuen Chat starten.",
+          "icon": "direct"
+        },
+        {
+          "text": "Nachdenken: es erscheint schon während das Modell denkt. Die Überschrift zeigt, wie viele Sekunden das Modell nachgedacht hat. Den Denkaufwand, den du für ein Modell wählst, schickt die App mit der Anfrage. Direct-Ollama-Chats schicken das letzte Nachdenken beim nächsten Mal mit.",
+          "icon": "polish"
+        },
+        {
+          "text": "Hermes: lange Telegram-Sitzungen laden auch, wenn die Verbindung fehlschlägt. Zu große und fehlende Sitzungen haben eigene Fehlermeldungen. Die Warnung zur Serverversion kannst du schließen.",
+          "icon": "hermes"
+        }
+      ]
+    },
+    {
+      "version": "4.1.6",
+      "title": "Neuigkeiten",
+      "intro": "Hallo! Das Nachdenken bleibt in seinem eigenen Block, während es streamt. Think-Tags erscheinen nicht mehr in der Antwort. PDFs kommen wieder beim Modell an. Die Stimme wird transkribiert, wenn du aufhörst zu reden, und der Lautsprecher-Knopf funktioniert. Der Chat-Scrollbar springt nicht mehr.",
+      "bullets": [
+        {
+          "text": "Nachdenken: es bleibt in seinem eigenen Block, während das Modell schreibt. Think-Tags erscheinen nicht mehr in der Antwort. Tool-Blöcke bleiben an der richtigen Stelle.",
+          "icon": "polish"
+        },
+        {
+          "text": "Sprache und Dateien: wenn du aufhörst zu reden, erscheint Transkribieren. Android-Gerätesprache nutzt jeden installierten Erkenner. Der Lautsprecher-Knopf stoppt die Antwort, die schon läuft. PDF-Anhänge werden wieder an das Modell geschickt. Zitate können Seitentitel zeigen. Wenn eine Proxy-Sitzung abläuft, kannst du dich wieder anmelden, ohne dich abzumelden.",
+          "icon": "direct"
+        },
+        {
+          "text": "Hermes: beim Einrichten kannst du das Desktop Gateway prüfen, auch wenn der Schalter noch aus ist.",
+          "icon": "hermes"
+        }
+      ]
+    }
+  ]
+}

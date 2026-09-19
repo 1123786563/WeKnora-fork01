@@ -1,0 +1,263 @@
+import 'dart:io' show Platform;
+
+import 'package:conduit/shared/widgets/platform_ui/platform_ui.dart';
+import 'package:conduit/l10n/app_localizations.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../../../core/models/chat_message.dart';
+import '../../../core/services/native_sheet_bridge.dart';
+import '../../../shared/theme/theme_extensions.dart';
+import '../../../shared/utils/external_link_launcher.dart';
+import '../../../shared/widgets/themed_sheets.dart';
+import 'assistant_detail_header.dart';
+
+/// Displays a list of code execution results as interactive chips.
+///
+/// Each chip shows the execution status (success, error, or running)
+/// and opens a detail bottom sheet when tapped.
+class CodeExecutionListView extends StatelessWidget {
+  const CodeExecutionListView({super.key, required this.executions});
+
+  final List<ChatCodeExecution> executions;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    if (executions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: executions.map((execution) {
+            final hasError = execution.result?.error != null;
+            final hasOutput = execution.result?.output != null;
+            final label = execution.name?.isNotEmpty == true
+                ? execution.name!
+                : l10n.execution;
+            final title = hasError
+                ? l10n.codeExecutionFailed(label)
+                : hasOutput
+                ? label
+                : l10n.codeExecutionRunning(label);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.xs),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showCodeExecutionDetails(context, execution),
+                child: AssistantDetailHeader(
+                  title: title,
+                  showShimmer: !hasError && !hasOutput,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showCodeExecutionDetails(
+    BuildContext context,
+    ChatCodeExecution execution,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = context.conduitTheme;
+    if (Platform.isIOS) {
+      try {
+        final result = execution.result;
+        await NativeSheetBridge.instance.presentSheet(
+          root: NativeSheetDetailConfig(
+            id: 'code-execution-details',
+            title: execution.name ?? l10n.codeExecutionTitle,
+            items: [
+              if (execution.language != null)
+                NativeSheetItemConfig(
+                  id: 'code-language',
+                  title: l10n.language,
+                  subtitle: execution.language,
+                  sfSymbol: 'chevron.left.forwardslash.chevron.right',
+                  kind: NativeSheetItemKind.info,
+                ),
+              if (execution.code != null && execution.code!.isNotEmpty)
+                NativeSheetItemConfig(
+                  id: 'code-source',
+                  title: l10n.code,
+                  sfSymbol: 'doc.plaintext',
+                  kind: NativeSheetItemKind.readOnlyText,
+                  value: execution.code!,
+                ),
+              if (result?.error != null)
+                NativeSheetItemConfig(
+                  id: 'code-error',
+                  title: l10n.error,
+                  sfSymbol: 'exclamationmark.triangle',
+                  kind: NativeSheetItemKind.readOnlyText,
+                  value: result!.error!,
+                  destructive: true,
+                ),
+              if (result?.output != null)
+                NativeSheetItemConfig(
+                  id: 'code-output',
+                  title: l10n.output,
+                  sfSymbol: 'terminal',
+                  kind: NativeSheetItemKind.readOnlyText,
+                  value: result!.output!,
+                ),
+              if (result?.files.isNotEmpty == true)
+                for (var index = 0; index < result!.files.length; index++)
+                  NativeSheetItemConfig(
+                    id: 'code-file-$index',
+                    title:
+                        result.files[index].name ??
+                        result.files[index].url ??
+                        l10n.download,
+                    sfSymbol: 'doc',
+                    url: result.files[index].url,
+                  ),
+            ],
+          ),
+          rethrowErrors: true,
+        );
+        return;
+      } catch (_) {
+        if (!context.mounted) {
+          return;
+        }
+      }
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await ThemedSheets.showSurface<void>(
+      context: context,
+      isScrollControlled: true,
+      showHandle: false,
+      padding: EdgeInsets.zero,
+      builder: (ctx) {
+        final result = execution.result;
+        return DraggableScrollableSheet(
+          initialChildSize: DraggableModalSheetSizes.initialChildSize,
+          maxChildSize: DraggableModalSheetSizes.maxChildSize,
+          expand: false,
+          builder: (_, controller) {
+            return Padding(
+              padding: const EdgeInsets.all(Spacing.lg),
+              child: ListView(
+                controller: controller,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          execution.name ?? l10n.codeExecutionTitle,
+                          style: AppTypography.bodyLargeStyle.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.textPrimary,
+                          ),
+                        ),
+                      ),
+                      SheetCloseButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        color: theme.textSecondary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Spacing.sm),
+                  if (execution.language != null)
+                    Text(
+                      l10n.languageWithValue(execution.language!),
+                      style: AppTypography.bodyMediumStyle.copyWith(
+                        color: theme.textSecondary,
+                      ),
+                    ),
+                  const SizedBox(height: Spacing.sm),
+                  if (execution.code != null && execution.code!.isNotEmpty) ...[
+                    Text(
+                      l10n.code,
+                      style: AppTypography.labelStyle.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xs),
+                    Container(
+                      padding: const EdgeInsets.all(Spacing.sm),
+                      decoration: BoxDecoration(
+                        color: theme.surfaceContainer,
+                        borderRadius: BorderRadius.circular(AppBorderRadius.md),
+                      ),
+                      child: SelectableText(
+                        execution.code!,
+                        style: AppTypography.codeStyle.copyWith(height: 1.4),
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.md),
+                  ],
+                  if (result?.error != null) ...[
+                    Text(
+                      l10n.error,
+                      style: AppTypography.labelStyle.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.error,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xs),
+                    SelectableText(result!.error!),
+                    const SizedBox(height: Spacing.md),
+                  ],
+                  if (result?.output != null) ...[
+                    Text(
+                      l10n.output,
+                      style: AppTypography.labelStyle.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xs),
+                    SelectableText(result!.output!),
+                    const SizedBox(height: Spacing.md),
+                  ],
+                  if (result?.files.isNotEmpty == true) ...[
+                    Text(
+                      l10n.files,
+                      style: AppTypography.labelStyle.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xs),
+                    ...result!.files.map((file) {
+                      final name = file.name ?? file.url ?? l10n.download;
+                      return AdaptiveListTile(
+                        padding: EdgeInsets.zero,
+                        leading: const Icon(Icons.insert_drive_file_outlined),
+                        title: Text(name),
+                        onTap: file.url != null
+                            ? () => launchExternalLink(
+                                file.url!,
+                                scope: 'chat/assistant',
+                              )
+                            : null,
+                        trailing: file.url != null
+                            ? const Icon(Icons.open_in_new)
+                            : null,
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
