@@ -509,7 +509,11 @@ const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: r
 // model but does not expose it in navItems. Keep the React deep-link route
 // readable for historical URLs while avoiding a navigation-only fallback item
 // that has no Vue counterpart.
-const NAV_HIDDEN_SECTIONS = new Set(['retrieval']);
+const NAV_HIDDEN_SECTIONS = new Set(['retrieval',
+  // Round-22 parity (2026-09-19): SP12's 用量统计 section has no Vue
+  // counterpart in Settings.vue navItems, so it joins retrieval as nav-hidden
+  // while ?section=usage and the panel stay reachable for direct URLs.
+  'usage']);
 
 // Vue label sources (Settings.vue navItems): every label is a settings.* i18n
 // string auto-ported into packages/i18n/src/settings.ts; ollama/weknoracloud

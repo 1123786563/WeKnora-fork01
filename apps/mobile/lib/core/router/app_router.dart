@@ -41,6 +41,7 @@ import '../../features/hermes/views/hermes_mcp_page.dart';
 import '../../features/profile/views/personalization_page.dart';
 import '../../features/profile/views/profile_page.dart';
 import '../../features/notifications/views/notification_settings_page.dart';
+import '../../features/weknora/account/weknora_login_page.dart';
 import '../../features/workspace/providers/workspace_capabilities_provider.dart';
 import '../../features/workspace/views/workspace_page.dart';
 import '../../features/workspace/workspace_navigation.dart';
@@ -161,9 +162,15 @@ class RouterNotifier extends ChangeNotifier {
         (directProfiles.value?.any((profile) => profile.isUsable) ?? false);
     final usesAccountlessPrimaryBackend =
         (prefersDirect && directUsable) || (prefersHermes && hermesUsable);
+    // WeKnora sign-in is a self-hosted backend setup surface: like the
+    // chooser that links to it, it must render regardless of OpenWebUI
+    // session state so a fresh install (or a Direct-primary user) can reach
+    // it. It is deliberately NOT an _isAuthLocation, which would bounce
+    // authenticated OpenWebUI users off it mid-flow.
     final isLocalBackendSetup =
         location == Routes.backendChooser ||
         location == Routes.hermesSettings ||
+        location == Routes.weknoraLogin ||
         isDirectConnectionsLocation(location);
 
     // A stale optional Open WebUI credential must not block local-backend
@@ -506,6 +513,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       name: RouteNames.backendChooser,
       pageBuilder: (context, state) =>
           _buildPlatformPage(state: state, child: const BackendChooserPage()),
+    ),
+    GoRoute(
+      path: Routes.weknoraLogin,
+      name: RouteNames.weknoraLogin,
+      pageBuilder: (context, state) =>
+          _buildPlatformPage(state: state, child: const WeKnoraLoginPage()),
     ),
     GoRoute(
       path: Routes.serverConnection,
