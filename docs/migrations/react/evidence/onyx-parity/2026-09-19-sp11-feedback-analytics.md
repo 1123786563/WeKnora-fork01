@@ -85,6 +85,10 @@ Task 7（embed 不接线）按计划为"不做"项：按钮仅在 web 宿主接�
 
 ## 5. 已知遗留（deferred minors）
 
+### 终审补充：聚合索引迁移
+
+- 终审要求补齐读时聚合索引：新增 PG `000159` / sqlite `000080` `analytics_aggregation_indexes`（`idx_messages_created_at`、`idx_sessions_tenant_created_at (tenant_id, created_at)`），支撑 analytics.go 按 `messages.created_at` / `sessions.tenant_id+created_at` 的范围过滤，up/down 成对且经 `TestAnalyticsAggregations`（sqlite 全量迁移真实执行）与 sqlite3 CLI 复核。
+
 - IM 渠道会话在渠道分布图落 web 桶（sessions 无 source 物理列，owner 派生三桶；细分需 join im_channel_sessions）
 - Task 2 `:id` 兜底分支无执行测试；纯空白 start_time 绕过 400（继承 parseFilterTime 惯例）
 - Task 8 快速连点并发在途 UI 态覆盖（乐观更新已知局限）；copy/showAgentToast deps
