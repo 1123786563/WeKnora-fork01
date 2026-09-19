@@ -1,6 +1,6 @@
-# Onyx ↔ WeKnora 能力差距矩阵（craft + connectors）
+# Onyx ↔ WeKnora 能力差距矩阵（craft + connectors + 平台运营面）
 
-> **任务**：以 Onyx 仓库为参照，盘点 craft 功能面与连接器（connectors）体系在 WeKnora fork 的现状差距，作为增量对齐的分期决策输入。
+> **任务**：以 Onyx 仓库为参照，盘点 craft 功能面、连接器（connectors）体系与平台运营面（用量/套餐/分析/查询历史/OpenAPI/对话偏好）在 WeKnora fork 的现状差距，作为增量对齐的分期决策输入。
 > **对照维度说明**：`docs/upstream-parity/LEDGER.md` 对照的是 Tencent/WeKnora 上游；本矩阵对照 **Onyx**，是独立维度，条目编号不与该台账混用。craft/appconnector 在该台账中属"fork 独有域（不适用上游对照）"，本矩阵补上 Onyx 这一参照系。
 
 ## 基线
@@ -205,15 +205,40 @@
 
 ---
 
-# 三、总体结论与分期建议
+# 三、平台运营面（六域，P-n 条目）
 
-## 3.1 总体定性
+> 2026-09-19 增补。设计定稿见 [docs/superpowers/specs/2026-09-19-onyx-platform-parity-design.md](../superpowers/specs/2026-09-19-onyx-platform-parity-design.md)，
+> 总原则：**语义对齐 + 基建复用**（不照抄 Onyx 表结构/API 路径，复用 commercial/API key/chat session 等已有体系）。
+> "→SPxx" 表示该项已排入 ROADMAP 对应子项目。
+
+| # | 能力 | Onyx 实现要点 | WeKnora 现状 | 定性 | 备注 |
+|---|------|--------------|--------------|------|------|
+| P-1 | 用量日桶聚合 | `user_usage` 表（user×日×model×flow）upsert 累加 token/成本 `backend/onyx/db/models.py:6206`、tracing 采集 `tracing/processors/user_usage_processor.py` | craft/commercial 双账本（`craft_usage_facts`/`commercial_usage_facts`+微积分定价+预算预留）完备；普通聊天仅 `messages.usage` JSONB（`internal/types/message.go:383`） | ❌→SP12 | 缺按用户/模型/日的跨会话聚合层；成本复用 commercial 费率 |
+| P-2 | 用户/admin 用量视图 | `/app/settings/usage`、`/admin/performance/usage` | 无任何用量页面（仅 craft 会话内用量面板 `packages/views/src/craft/usage.tsx`） | ❌→SP12 | 前端无图表库（随 SP11 引 recharts） |
+| P-3 | 套餐/计费页 | `/admin/billing` 两档卡片+Stripe Checkout | commercial 后端全套（计划版本/订阅/订单/退款/支付宝微信 `internal/commercial/`）；前端组件已写好**未挂路由**（`apps/web/src/commercial/BillingPage.tsx` 等 4 个） | 🟡→SP14 | 纯接线；Stripe/seats 不引入（有意不同） |
+| P-4 | 消息反馈 like/dislike | `chat_feedback` 表 `db/models.py:3607` | 无（Message 无反馈字段，全仓无 feedback 端点） | ❌→SP11 | 新表 `message_feedback` |
+| P-5 | 分析聚合+图表页 | `/api/analytics/admin/*` 实时 SQL 聚合+recharts（EE） | 无 query/活跃用户聚合 API；前端无图表库无分析页 | ❌→SP11 | Onyx 属 EE 目录，**语义重写不复制代码**；无独立分析表（同构） |
+| P-6 | admin 查询历史审计 | `chat-session-history` 分页+完整快照（EE） | admin 仅渠道会话可见（source=api/embed/IM，`internal/application/service/session.go:394`）；web 会话按 user 隔离不可见 | 🟡→SP13 | 扩展现有 admin 视图到全 source+按用户过滤 |
+| P-7 | 查询历史 CSV 导出 | Celery 三段式（触发/状态/下载） | 无 | ❌→SP13 | 用已有 asynq 替代 Celery |
+| P-8 | 隐私三档开关 | NORMAL/ANONYMIZED/DISABLED | 无 | ❌→SP13 | 租户级设置 |
+| P-9 | 会话分享 | PUBLIC 链接匿名只读 | 无 | ❌→SP13 | **有意收紧**：租户内登录分享（token+同租户校验），不做匿名公开链接 |
+| P-10 | API 文档入口 | docs.onyx.app 外链 | 后端 swagger 有（非 release 模式 `internal/router/router.go:158`）；前端 API key 面板无文档入口 | 🟡→SP14 | 加 `/swagger` 入口+capabilities 文案 |
+| P-11 | per-user 默认模型偏好 | `User.default_model` 等+设置页 `web/src/views/SettingsPage.tsx` | `user.preferences` JSONB 仅 3 项（`internal/types/user.go:24`）；无默认模型/温度 | ❌→SP14 | JSONB 扩展无迁移；解析链 会话>agent>用户>租户（对齐 Onyx 优先级） |
+
+**API key 域结论**：WeKnora 两级 key（tenant/platform）+capabilities+swagger 已与 Onyx 语义等价（Onyx 的"服务账号合成 User+用户组"模型 vs WeKnora 的细粒度 capabilities 模型属有意不同），仅补文档入口，不重写。
+
+---
+
+# 四、总体结论与分期建议
+
+## 4.1 总体定性
 
 - **Craft**：WeKnora 已有强治理形态（不可变版本/恢复程序/usage 账本/发布门控，反向领先 15 项）；相对 Onyx 的缺口集中在**生态面**：定时任务、User Library、craft 内 MCP、AGENTS.md 模板、外部应用桥、admin 管理页、onboarding。另有**两处"已实现未接线"**（模型网关、Stop 路由）。
 - **Connectors**：WeKnora 强在治理与写操作（审批/预授权/open-connector），弱在**广度**（11 vs 57，西文 SaaS 几乎全空）与**文档级权限**（EE 三件套全缺）。框架层 6 项中 4 项对齐/有意不同，管道层缺 attempt 级进度/心跳/定向重索引/级联删除。
+- **平台运营面**：套餐后端与 API key 已是等价物（甚至更贴合国内支付）；真正缺口是**分析（全新）**、**用量聚合层（新建）**、**查询历史 admin 审计+分享（补齐）**三块，已排 SP11–SP14。
 - **共同注意**：两个"有意不同"大项（webapp 实时预览反代、cc_pair 模型重构）改造成本高且与 WeKnora 现有形态冲突，建议默认**不追随**，除非有明确产品诉求。
 
-## 3.2 缺失清单分组（建议优先级）
+## 4.2 缺失清单分组（建议优先级）
 
 **P0 · 已实现未接线 + 低成本债**（快速收割）
 - C-25 craft 模型网关生产挂载（router/container 装配 + G4 billing 缺口决策）
@@ -237,12 +262,16 @@
 **P2 · Connectors 广度扩展**（按需求逐个立项）
 - GitHub（已有声明+元数据）、Web 爬虫、IMAP/邮件、Google Drive、Slack…
 
+**P2 · 平台运营面（SP11–SP14，设计已定稿）**
+- SP11 反馈+分析（P-4/P-5）→ SP12 用量聚合（P-1/P-2）→ SP13 查询历史审计+分享（P-6~P-9）；SP14 轻项收割（P-3/P-10/P-11）穿插
+- 详见 `docs/superpowers/specs/2026-09-19-onyx-platform-parity-design.md`
+
 **P3 · 大改造/需产品决策**（🔷 项，默认不追随）
 - C-10 webapp 实时预览反代（与 W02 受控预览冲突）
 - C-20/22 craft↔外部应用 OAuth 桥（若做，建议桥接现有 appconnector 而非新造 ExternalApp）
 - K-23/24/25 文档权限同步三件套（改变"导入即共享"模型，牵动检索过滤）
 - K-4 cc_pair 多对多重构（当前 1:1 内聚够用）
 
-## 3.3 后续流程
+## 4.3 后续流程
 
 用户审阅本矩阵 → 圈定首期范围 → 按 brainstorming 流程对首个子系统走 方案对比 → 分节设计 → spec（docs/superpowers/specs/）→ writing-plans 实施计划。
