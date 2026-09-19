@@ -642,6 +642,18 @@ func craftParseUsage(body []byte) *craft.UsageTotals {
 	}
 }
 
+// registeredCraftModelGateway holds the production gateway for route
+// mounting (two auth planes: credential issuance behind the global Auth,
+// Forward/ListModels pre-auth on the cmg1 HMAC credential).
+var registeredCraftModelGateway *CraftModelGateway
+
+// RegisterCraftModelGateway installs the gateway for route mounting.
+func RegisterCraftModelGateway(g *CraftModelGateway) { registeredCraftModelGateway = g }
+
+// RegisteredCraftModelGateway returns the registered gateway (nil keeps
+// every gateway route unmounted — fail-closed, no 503 shims).
+func RegisteredCraftModelGateway() *CraftModelGateway { return registeredCraftModelGateway }
+
 func newCraftJTI() string {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {

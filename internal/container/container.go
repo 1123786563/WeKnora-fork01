@@ -421,6 +421,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newCraftLifecycleService))
 	must(container.Provide(newCraftUsageService))
 	must(container.Provide(newCraftUsageViewService))
+	must(container.Provide(newCraftModelGatewayHandler))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -558,6 +559,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(validateCraftKnowledgeAssembly))
 	// O04: the usage view handler rides the craft session route table.
 	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// O02: the controlled model gateway (credential issuance + HMAC forward),
+	// assembled only when the runtime dial and signing secret are both set.
+	must(container.Invoke(registerCraftModelGatewayHTTPHandlers))
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))
