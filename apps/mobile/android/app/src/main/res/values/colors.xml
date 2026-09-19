@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Widget Colors (Light Mode) -->
+    
+    <!-- Primary colors for main button -->
+    <color name="widget_primary">@android:color/system_accent1_600</color>
+    <color name="widget_primary_dark">@android:color/system_accent1_800</color>
+    <color name="widget_on_primary">@android:color/white</color>
+    
+    <!-- Mic button colors (lighter accent inside pill) -->
+    <color name="widget_mic_background">@android:color/system_accent1_100</color>
+    <color name="widget_mic_icon">@android:color/system_accent1_700</color>
+    
+    <!-- Secondary container colors for action buttons -->
+    <color name="widget_secondary_container">@android:color/system_accent2_100</color>
+    <color name="widget_on_secondary_container">@android:color/system_accent1_700</color>
+    
+    <!-- Surface colors for widget background -->
+    <color name="widget_surface">@android:color/system_neutral1_10</color>
+    <color name="widget_surface_variant">@android:color/system_neutral2_100</color>
+    
+    <!-- Fallback colors for pre-Android 12 -->
+    <color name="widget_primary_fallback">#6750A4</color>
+    <color name="widget_primary_dark_fallback">#4A3880</color>
+    <color name="widget_mic_background_fallback">#E8DEF8</color>
+    <color name="widget_mic_icon_fallback">#6750A4</color>
+    <color name="widget_secondary_container_fallback">#E8DEF8</color>
+    <color name="widget_on_secondary_container_fallback">#1D192B</color>
+    <color name="widget_surface_fallback">#FFFBFE</color>
+</resources>
+
+
+
+
