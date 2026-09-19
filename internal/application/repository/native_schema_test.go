@@ -22,12 +22,10 @@ func TestNativeSchemaMigrationsCreateScopedNamespace(t *testing.T) {
 		t.Run(dialect, func(t *testing.T) {
 			db := openRunTestDB(t)
 			require.NoError(t, ValidateNativeSchemaManifest())
-			for _, table := range nativeSchemaTableNames {
-				require.Truef(t, db.Migrator().HasTable(table), "native schema table %q must exist", table)
-			}
-			for table, columns := range nativeSchemaRequiredColumns {
-				for _, column := range columns {
-					require.Truef(t, db.Migrator().HasColumn(table, column), "%s.%s must exist", table, column)
+			for _, table := range NativeSchemaManifest() {
+				require.Truef(t, db.Migrator().HasTable(table.Name), "native schema table %q must exist", table.Name)
+				for _, column := range table.Columns {
+					require.Truef(t, db.Migrator().HasColumn(table.Name, column), "%s.%s must exist", table.Name, column)
 				}
 			}
 
@@ -120,45 +118,6 @@ func TestNativeSchemaMigrationEmptyRollbackAndRepeatUpgrade(t *testing.T) {
 			require.True(t, db.Migrator().HasTable("native_agent_runs"))
 		})
 	}
-}
-
-var nativeSchemaTableNames = []string{
-	"native_agent_tenants",
-	"native_agent_sessions",
-	"native_session_state",
-	"native_agent_runs",
-	"native_agent_inputs",
-	"native_agent_config_bindings",
-	"native_agent_memory_scopes",
-	"native_agent_memory_entries",
-	"native_memory_jobs",
-	"native_agent_attempts",
-	"native_agent_tool_calls",
-	"native_agent_tool_plans",
-	"native_agent_tool_results",
-	"native_agent_pending_decisions",
-	"native_agent_commit_intents",
-	"native_agent_checkpoints",
-	"native_agent_session_events",
-	"native_agent_events",
-	"native_agent_usage_observations",
-}
-
-var nativeSchemaRequiredColumns = map[string][]string{
-	"native_agent_runs":               {"tenant_id", "run_id", "owner_id", "session_id", "request_id", "input_hash", "revision", "lease_owner", "lease_epoch"},
-	"native_session_state":            {"tenant_id", "owner_id", "session_id", "state_key", "revision", "state_value"},
-	"native_memory_jobs":              {"tenant_id", "subject_id", "job_id", "generation", "through_event_id", "status"},
-	"native_agent_session_events":     {"tenant_id", "app_name", "user_id", "session_id", "stable_event_id", "payload", "payload_hash", "ordinal"},
-	"native_agent_attempts":           {"kind", "logical_call_id", "invocation_id", "attempt_number", "provider_request_id", "lease_epoch"},
-	"native_agent_tool_plans":         {"call_id", "plan_version", "kind", "service_id", "installation_id", "name", "schema_hash", "config_version", "args", "args_hash", "policy", "idempotency_key"},
-	"native_agent_tool_results":       {"provider_receipt", "query_anchor", "result_hash", "effect_state", "is_error", "content"},
-	"native_agent_pending_decisions":  {"call_id", "plan_version", "args_hash", "wait_kind", "expected_revision", "decision_id", "decision_hash", "detail"},
-	"native_agent_commit_intents":     {"version", "payload", "payload_hash", "lease_epoch", "terminal_status"},
-	"native_agent_checkpoints":        {"schema_version", "sdk_version", "graph_version", "namespace", "lineage_id", "request_payload"},
-	"native_agent_events":             {"sequence", "event_id", "intent_id", "payload", "payload_hash"},
-	"native_agent_usage_observations": {"revision", "provider", "model", "input_tokens", "output_tokens", "payload_hash"},
-	"native_agent_inputs":             {"input_id", "input_hash", "payload", "role", "created_at"},
-	"native_agent_config_bindings":    {"schema_version", "sdk_version", "graph_version", "config_hash", "credential_ref", "tool_set_hash", "source_kind", "source_id", "source_version", "target_id"},
 }
 
 // seedNativeSchemaFixture uses only parameter-bound SQL so the migration
