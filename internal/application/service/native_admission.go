@@ -2,60 +2,80 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// NativeAdmissionStore is the durable boundary needed before a native run may
-// execute. Its CreateAdmission implementation must atomically enforce the
-// (tenant, owner, request ID) uniqueness rule and verify controlRevision at
-// commit; this package deliberately does not select a storage schema.
+// NativeAdmissionKey identifies one idempotent admission independently of the
+// caller. The session owner, rather than ActorUserID, owns replay identity.
+type NativeAdmissionKey struct {
+	TenantID                                       uint64
+	OwnerID, AppName, UserID, SessionID, RequestID string
+}
+
+// NativeAdmissionStore owns the linearization point for native admission.
+// Implementations execute lookup, fingerprint comparison, budget reservation,
+// revision verification, and run creation in one transaction. Same fingerprints
+// return the stored record with replay=true; changed fingerprints return
+// ErrConflict without a second reservation.
 type NativeAdmissionStore interface {
-	FindAdmission(context.Context, uint64, string, string) (nativecontract.RunRecord, bool, error)
-	CreateAdmission(context.Context, nativecontract.Admission, int64) (nativecontract.RunRecord, error)
+	Admit(context.Context, NativeAdmissionKey, nativecontract.Admission, int64, func(context.Context) error) (nativecontract.RunRecord, bool, error)
 	Get(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.RunRecord, error)
 }
 
-// NativeAdmissionBudget reserves the admission budget before a run exists.
-// P2.1 never invokes a model or Runner: an unsuccessful reservation therefore
-// has no dispatch path.
 type NativeAdmissionBudget interface {
 	Reserve(context.Context, nativecontract.Admission) error
 	Release(context.Context, nativecontract.Admission) error
 }
 
-// NativeAdmissionService provides the Admit/Get portion of RunControl. Scope,
-// admission, and input/config hashes are already server-frozen inputs at this
-// boundary; no request fields are accepted to choose tenant or grants.
-type NativeAdmissionService struct {
-	controls nativecontract.AdmissionControlSource
-	store    NativeAdmissionStore
-	budget   NativeAdmissionBudget
+// NativeAdmissionAuthority supplies server-owned values which callers cannot
+// choose in an Admission request.
+type NativeAdmissionAuthority interface {
+	CurrentConfig(context.Context, nativecontract.Scope) (nativecontract.ConfigBinding, error)
+	RequiredGrants(context.Context, nativecontract.Scope, nativecontract.RunIdentity) ([]nativecontract.ResourceGrant, error)
+	ValidateSession(context.Context, nativecontract.Scope, session.Key) error
 }
 
-var _ interface {
-	Admit(context.Context, nativecontract.Admission) (nativecontract.RunRecord, error)
-	Get(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.RunRecord, error)
-} = (*NativeAdmissionService)(nil)
+// NativeAdmissionDispatcher is a P3 seam only. P2.1 retains P0's NO-GO and
+// never calls Dispatch; accepting it makes that absence directly testable.
+type NativeAdmissionDispatcher interface {
+	Dispatch(context.Context, nativecontract.RunRecord) error
+}
+
+type NativeAdmissionService struct {
+	controls   nativecontract.AdmissionControlSource
+	scopes     nativecontract.ScopeResolver
+	authority  NativeAdmissionAuthority
+	store      NativeAdmissionStore
+	budget     NativeAdmissionBudget
+	dispatcher NativeAdmissionDispatcher
+}
 
 func NewNativeAdmissionService(
 	controls nativecontract.AdmissionControlSource,
+	scopes nativecontract.ScopeResolver,
+	authority NativeAdmissionAuthority,
 	store NativeAdmissionStore,
 	budget NativeAdmissionBudget,
+	dispatcher NativeAdmissionDispatcher,
 ) *NativeAdmissionService {
-	return &NativeAdmissionService{controls: controls, store: store, budget: budget}
+	return &NativeAdmissionService{
+		controls: controls, scopes: scopes, authority: authority, store: store, budget: budget, dispatcher: dispatcher,
+	}
 }
 
-// ValidateAdmissionControls rejects every state that cannot create a new
-// native run. Read, cancel, cleanup, and an authorized idempotent replay do
-// not call this function, so a drain never hides existing work.
+// ValidateAdmissionControls is only for new run creation. Existing result
+// reads and valid replays remain available while a deployment drains.
 func ValidateAdmissionControls(c nativecontract.AdmissionControls) error {
 	if !c.RecoveryEnabled || !c.AdmissionEnabled || c.WorkerDrain {
 		return nativeAdmissionFailure(nativecontract.ErrAdmissionClosed, "native admission is closed")
 	}
-	if !c.NativeExecutionApproved || !c.DependenciesReady {
-		return nativeAdmissionFailure(nativecontract.ErrExecutionGate, "native execution gate is closed")
+	if !c.DependenciesReady {
+		return nativeAdmissionFailure(nativecontract.ErrStore, "native admission dependencies are unavailable")
+	}
+	if !c.NativeExecutionApproved {
+		return nativeAdmissionFailure(nativecontract.ErrExecutionGate, "native execution is not approved")
 	}
 	if c.Revision < 1 {
 		return nativeAdmissionFailure(nativecontract.ErrInvalid, "admission controls revision is required")
@@ -63,59 +83,63 @@ func ValidateAdmissionControls(c nativecontract.AdmissionControls) error {
 	return nil
 }
 
-func (s *NativeAdmissionService) Admit(ctx context.Context, admission nativecontract.Admission) (nativecontract.RunRecord, error) {
-	if err := validateNativeAdmission(admission); err != nil {
-		return nativecontract.RunRecord{}, err
-	}
-	if s == nil || s.controls == nil || s.store == nil || s.budget == nil {
+func (s *NativeAdmissionService) Admit(ctx context.Context, requested nativecontract.Admission) (nativecontract.RunRecord, error) {
+	if s == nil || s.controls == nil || s.scopes == nil || s.authority == nil || s.store == nil || s.budget == nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "native admission dependencies are unavailable")
 	}
-
-	// Replay is an authorized read of an already admitted run. It remains
-	// available while drain/rollout gates are closed, but a changed payload or
-	// configuration fingerprint is never allowed to reuse the request ID.
-	existing, found, err := s.store.FindAdmission(ctx, admission.Scope.TenantID, admission.Scope.ActorUserID, admission.Run.RequestID)
-	if err != nil {
+	if err := validateNativeAdmissionBinding(requested); err != nil {
 		return nativecontract.RunRecord{}, err
 	}
-	if found {
-		if sameNativeAdmissionFingerprint(existing.Admission, admission) {
-			return existing, nil
-		}
-		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrConflict, "request ID was already admitted with different input or configuration")
+
+	// Admission.Scope contains an initial frozen snapshot, never a final grant.
+	// Recheck starts from it but rebuilds authority server-side before any
+	// budget reservation or storage transaction.
+	scope, err := s.scopes.Recheck(ctx, requested.Scope, nil)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "scope is no longer authorized")
+	}
+	if err := validateNativeAdmissionBindingForScope(requested, scope); err != nil {
+		return nativecontract.RunRecord{}, err
+	}
+	config, err := s.authority.CurrentConfig(ctx, scope)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "current configuration is unavailable")
+	}
+	if !sameNativeAdmissionConfig(requested.Config, config) {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "requested configuration is no longer current")
+	}
+	grants, err := s.authority.RequiredGrants(ctx, scope, requested.Run)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "required grants are unavailable")
+	}
+	scope, err = s.scopes.Recheck(ctx, scope, grants)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "required grants were revoked")
+	}
+	if err := s.authority.ValidateSession(ctx, scope, requested.Session); err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrForbidden, "session slot is not authorized")
 	}
 
-	controls, err := s.controls.Current(ctx)
+	key := nativeAdmissionKey(scope, requested)
+	first, err := s.controls.Current(ctx)
 	if err != nil {
 		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "cannot read admission controls")
 	}
-	if err := ValidateAdmissionControls(controls); err != nil {
+	if err := ValidateAdmissionControls(first); err != nil {
 		return nativecontract.RunRecord{}, err
 	}
-	if err := s.budget.Reserve(ctx, admission); err != nil {
+	second, err := s.controls.Current(ctx)
+	if err != nil {
+		return nativecontract.RunRecord{}, nativeAdmissionFailure(nativecontract.ErrStore, "cannot read admission controls")
+	}
+	if err := ValidateAdmissionControls(second); err != nil {
 		return nativecontract.RunRecord{}, err
 	}
 
-	// Re-read immediately before the durable linearization point. A store must
-	// check the supplied revision in the same transaction as CreateAdmission;
-	// if deployment switches to drain/closed here, release this uncommitted hold.
-	controls, err = s.controls.Current(ctx)
-	if err == nil {
-		err = ValidateAdmissionControls(controls)
-	}
+	record, _, err := s.store.Admit(ctx, key, requested, second.Revision, func(ctx context.Context) error {
+		return s.budget.Reserve(ctx, requested)
+	})
 	if err != nil {
-		releaseErr := s.budget.Release(ctx, admission)
-		if releaseErr != nil {
-			return nativecontract.RunRecord{}, fmt.Errorf("%w; budget release failed: %v", err, releaseErr)
-		}
-		return nativecontract.RunRecord{}, err
-	}
-	record, err := s.store.CreateAdmission(ctx, admission, controls.Revision)
-	if err != nil {
-		releaseErr := s.budget.Release(ctx, admission)
-		if releaseErr != nil {
-			return nativecontract.RunRecord{}, fmt.Errorf("%w; budget release failed: %v", err, releaseErr)
-		}
 		return nativecontract.RunRecord{}, err
 	}
 	return record, nil
@@ -128,21 +152,43 @@ func (s *NativeAdmissionService) Get(ctx context.Context, scope nativecontract.S
 	return s.store.Get(ctx, scope, run)
 }
 
-func validateNativeAdmission(admission nativecontract.Admission) error {
-	if admission.Scope.TenantID == 0 || admission.Scope.ActorUserID == "" || admission.Run.RequestID == "" || admission.Run.RunID == "" {
-		return nativeAdmissionFailure(nativecontract.ErrInvalid, "tenant, owner, run ID, and request ID are required")
+func nativeAdmissionKey(scope nativecontract.Scope, admission nativecontract.Admission) NativeAdmissionKey {
+	return NativeAdmissionKey{
+		TenantID: scope.TenantID, OwnerID: scope.SessionOwnerID,
+		AppName: admission.Session.AppName, UserID: admission.Session.UserID,
+		SessionID: admission.Session.SessionID, RequestID: admission.Run.RequestID,
 	}
-	if admission.Run.TenantID != admission.Scope.TenantID {
-		return nativeAdmissionFailure(nativecontract.ErrInvalid, "run tenant does not match frozen scope")
+}
+
+func validateNativeAdmissionBinding(admission nativecontract.Admission) error {
+	if admission.Scope.TenantID == 0 || admission.Scope.SessionOwnerID == "" || admission.Run.RequestID == "" || admission.Run.RunID == "" {
+		return nativeAdmissionFailure(nativecontract.ErrInvalid, "tenant, session owner, run ID, and request ID are required")
 	}
-	if admission.InputHash == "" || admission.Config.ConfigHash == "" {
-		return nativeAdmissionFailure(nativecontract.ErrInvalid, "input and configuration hashes are required")
+	if admission.Run.TenantID != admission.Scope.TenantID || admission.Run.SessionID != admission.Session.SessionID ||
+		admission.Session.SessionID == "" || admission.Session.UserID != admission.Scope.SessionOwnerID || admission.Session.AppName == "" {
+		return nativeAdmissionFailure(nativecontract.ErrInvalid, "run, session, and frozen scope are not bound")
+	}
+	if admission.InputHash == "" || admission.Config.ConfigHash == "" || admission.Config.ModelConfigVersion == "" {
+		return nativeAdmissionFailure(nativecontract.ErrInvalid, "input hash and configuration version/hash are required")
 	}
 	return nil
 }
 
+func validateNativeAdmissionBindingForScope(admission nativecontract.Admission, scope nativecontract.Scope) error {
+	if scope.TenantID != admission.Run.TenantID || scope.SessionOwnerID != admission.Session.UserID {
+		return nativeAdmissionFailure(nativecontract.ErrForbidden, "current scope no longer owns the run session")
+	}
+	return nil
+}
+
+func sameNativeAdmissionConfig(requested, current nativecontract.ConfigBinding) bool {
+	return requested.ConfigHash == current.ConfigHash &&
+		requested.ModelConfigVersion == current.ModelConfigVersion &&
+		requested.CredentialVersion == current.CredentialVersion
+}
+
 func sameNativeAdmissionFingerprint(existing, requested nativecontract.Admission) bool {
-	return existing.InputHash == requested.InputHash && existing.Config.ConfigHash == requested.Config.ConfigHash
+	return existing.InputHash == requested.InputHash && sameNativeAdmissionConfig(existing.Config, requested.Config)
 }
 
 func nativeAdmissionFailure(code nativecontract.ErrorCode, message string) error {
