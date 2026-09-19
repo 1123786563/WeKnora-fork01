@@ -93,8 +93,15 @@ func (s *SessionService) CreateSession(ctx context.Context, key session.Key, sta
 	}
 	return s.store.Get(ctx, key)
 }
-func (s *SessionService) GetSession(ctx context.Context, key session.Key, _ ...session.Option) (*session.Session, error) {
+func (s *SessionService) GetSession(ctx context.Context, key session.Key, opts ...session.Option) (*session.Session, error) {
 	if err := s.authorize(ctx, key); err != nil {
+		return nil, err
+	}
+	options := &session.Options{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	if err := session.ValidateGetSessionOptions(options, false); err != nil {
 		return nil, err
 	}
 	return s.store.Get(ctx, key)
