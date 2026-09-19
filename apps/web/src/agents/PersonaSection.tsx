@@ -66,7 +66,8 @@ function DimensionBar({ axis, letters, color }: { axis: MbtiAxis; letters: reado
         />
       </div>
       <span className={`w-11 shrink-0 text-right text-[13px] ${leftDominant ? 'font-normal text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]' : 'font-semibold'}`} style={leftDominant ? undefined : { color }}>
-        {letters[1]}{leftDominant ? '' : ` ${Math.round(100 - percent)}%`}
+        {/* percent is the DOMINANT pole's strength — the dominant side shows it verbatim */}
+        {letters[1]}{leftDominant ? '' : ` ${Math.round(percent)}%`}
       </span>
     </div>
   );

@@ -71,9 +71,27 @@ const EDIT_AGENT = {
 
 interface RoutedRequest { method?: string; path?: string; body?: unknown }
 
+// MBTI catalog fixture — INTJ carries mixed-pole dimensions so the dominant
+// label sides can be asserted (ei/jp right-vs-left pole dominance mix).
+const mbtiProfile = (code: string) => ({
+  code, name_zh: '类型' + code, name_en: 'Type ' + code, nickname_zh: '昵称' + code,
+  summary_zh: '中文综述', summary_en: 'English summary',
+  descriptors_zh: '描述', descriptors_en: 'descriptor',
+  dimensions: code === 'INTJ'
+    ? { ei: { pole: 'I', percent: 85 }, sn: { pole: 'S', percent: 62 }, tf: { pole: 'F', percent: 71 }, jp: { pole: 'J', percent: 55 } }
+    : { ei: { pole: 'E', percent: 60 }, sn: { pole: 'N', percent: 55 }, tf: { pole: 'T', percent: 65 }, jp: { pole: 'P', percent: 70 } },
+  behavior: {
+    answer_style: '', casual_chat: '', conflict: '', creativity: '', emotion: '', planning: '',
+    answer_style_zh: '', casual_chat_zh: '', conflict_zh: '', creativity_zh: '', emotion_zh: '', planning_zh: '',
+  },
+  color: '#123456', symbol: '*',
+});
+const MBTI_TYPES = ['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'].map(mbtiProfile);
+
 function makeClient(options: { createReject?: Error } = {}): { client: WeKnoraClient; requests: RoutedRequest[] } {
   const requests: RoutedRequest[] = [];
   const client = {
+    mbti: { types: async () => MBTI_TYPES },
     configuration: {
       models: { list: async () => MODELS },
       agents: {
@@ -139,6 +157,50 @@ test('read-only edit hides the save mutation control', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT, readOnly: true });
   assert.equal($('[data-editor-save]', root), null);
+});
+
+test('personalization section renders the 16-type grid and dominant-side percent labels', async () => {
+  const { client } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, persona_mbti: 'INTJ', persona_style: '语气轻松' } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'personalization');
+  // flush the client.mbti.types() resolution
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+
+  // 16 type cards + the None card that clears persona_mbti
+  const codes = $$(document.body, '[data-mbti-code]').map((el) => el.getAttribute('data-mbti-code'));
+  assert.equal(codes.length, 17);
+  assert.ok(codes.includes(''));
+  assert.equal($('[data-mbti-code="INTJ"]', document.body)?.getAttribute('aria-pressed'), 'true');
+
+  // dimension rows: [left span, track (aria-label), right span]
+  const dims = $('[data-mbti-dimensions="INTJ"]', document.body);
+  assert.ok(dims, 'dimension block missing for the selected type');
+  const rows = Array.from(dims.children);
+  assert.equal(rows.length, 4);
+  const leftOf = (row: number) => rows[row]!.children[0]!.textContent;
+  const rightOf = (row: number) => rows[row]!.children[2]!.textContent;
+  const trackOf = (row: number) => rows[row]!.children[1]!.getAttribute('aria-label');
+  // percent is the DOMINANT pole's strength — the dominant side prints it verbatim,
+  // whichever side that is (regression: right-dominant used to print 100-percent)
+  assert.equal(leftOf(0), 'E');
+  assert.equal(rightOf(0), 'I 85%');
+  assert.equal(trackOf(0), 'E / I: I 85%');
+  assert.equal(leftOf(1), 'S 62%');
+  assert.equal(rightOf(1), 'N');
+  assert.equal(leftOf(2), 'T');
+  assert.equal(rightOf(2), 'F 71%');
+  assert.equal(leftOf(3), 'J 55%');
+  assert.equal(rightOf(3), 'P');
+
+  // style textarea mirrors the stored persona_style; take-test stays disabled until Task 9
+  const styleEl = $('#wk-ae-persona-style', document.body) as HTMLTextAreaElement | null;
+  assert.ok(styleEl, 'persona_style textarea missing');
+  assert.equal(styleEl.value, '语气轻松');
+  const takeTest = $('[data-mbti-take-test]', document.body) as HTMLButtonElement | null;
+  assert.ok(takeTest, 'take-the-test button missing');
+  assert.equal(takeTest.disabled, true);
 });
 
 const asNode = (a: ParentNode | string, b: ParentNode | string): ParentNode => (typeof a === 'string' ? (b as ParentNode) : (a as ParentNode));

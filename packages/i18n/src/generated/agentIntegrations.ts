@@ -1,8 +1,6 @@
 // AUTO-PORTED (scripts/parity/backfill-i18n-keys.mjs) from
-// frontend/src/i18n/locales/*.ts -> agentEditor.im / agentEditor.embed / embedPublish blocks (integrations surface).
+// frontend/src/i18n/locales/*.ts -> agentEditor.im / agentEditor.embed / embedPublish blocks (integrations surface) + agentEditor.personalization block (Octop MBTI persona, React-only — script-owned values, see PERSONALIZATION_VALUES).
 // Keys are flattened with dot separators; values are byte-exact ports.
-// The trailing agentEditor.personalization block is a React-side addition
-// (Octop MBTI persona, no Vue baseline) — same flattened shape, all locales.
 import type { Locale } from '../index.ts';
 
 export const agentIntegrationsMessages: Record<Locale, Record<string, string>> = {
