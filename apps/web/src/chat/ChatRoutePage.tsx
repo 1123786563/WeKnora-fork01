@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { ApiError } from '@weknora/api-client';
-import type { ChatStreamEvent } from '@weknora/contracts';
+import type { ChatStreamEvent, FeedbackRating } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
@@ -223,6 +223,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  // SP11 message feedback (like/dislike): the pressed state per message,
+  // hydrated from client.chat.feedback.mine on session load.
+  const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
   const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
   const [agentToast, setAgentToast] = useState<string | null>(null);
   const agentToastTimer = useRef<number | null>(null);
@@ -397,6 +400,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       suggestionForMessage.current = null;
       impressionForSuggestion.current = null;
       applySteerQueue(clearSteerQueue);
+      setRatings({});
       return;
     }
     // Vue chat/index.vue session switch: the queue belongs to the previous
@@ -408,12 +412,27 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     impressionForSuggestion.current = null;
     setLoadingMessages(true);
     setError(undefined);
+    setRatings({});
     setStreamState(initialChatStreamState());
     void client.sessions.messages(selectedSessionId, { limit: 50, signal: scope.signal }).then(
       (result) => {
         if (active && scopeController.isCurrent(scope.scope)) {
           setMessages(appendMessages([], result));
           setHasMoreMessages(hasOlderMessages(result, 50));
+          // SP11 feedback echo: hydrate my persisted like/dislike after the
+          // history lands. Isolated on purpose (async IIFE + catch-all) so an
+          // echo failure — or a host client without the feedback API — can
+          // neither skip the suggestion loader nor reject unhandled.
+          void (async () => {
+            try {
+              const mine = await client.chat.feedback.mine(selectedSessionId, scope.signal);
+              if (active && scopeController.isCurrent(scope.scope)) {
+                setRatings(Object.fromEntries(mine.items
+                  .filter((entry) => entry.rating === 'like' || entry.rating === 'dislike')
+                  .map((entry) => [entry.message_id, entry.rating] as const)));
+              }
+            } catch { /* echo failure must never block the chat */ }
+          })();
           const assistant = result.filter((message) => message.role === 'assistant' && message.is_completed).at(-1);
           if (assistant) {
             suggestionForMessage.current = assistant.id;
@@ -751,6 +770,33 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current);
     agentToastTimer.current = window.setTimeout(() => setAgentToast(null), 2400);
   }
+
+  // SP11 message feedback (Task 8): optimistic pressed-state with symmetric
+  // rollback when the persisted rating call fails (transient toast, no banner).
+  const ratingOf = useCallback((messageId: string): FeedbackRating | undefined => ratings[messageId], [ratings]);
+  const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {
+    setRatings((prev) => ({ ...prev, [messageId]: rating }));
+    const sessionId = selectedSessionId;
+    if (!sessionId) return;
+    try {
+      await client.chat.feedback.submit(sessionId, messageId, rating);
+    } catch {
+      setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
+      showAgentToast(copy.operationFailed);
+    }
+  }, [client, selectedSessionId]);
+  const onRemoveRating = useCallback(async (messageId: string): Promise<void> => {
+    const previous = ratings[messageId];
+    setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
+    const sessionId = selectedSessionId;
+    if (!sessionId) return;
+    try {
+      await client.chat.feedback.remove(sessionId, messageId);
+    } catch {
+      if (previous) setRatings((prev) => ({ ...prev, [messageId]: previous }));
+      showAgentToast(copy.operationFailed);
+    }
+  }, [client, ratings, selectedSessionId]);
 
   /** SPA navigation to the agents page (manage entry / configure jump). */
   function navigateToAgentsPage(query?: string) {
@@ -1615,6 +1661,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
+    onRateMessage={onRateMessage}
+    onRemoveRating={onRemoveRating}
+    ratingOf={ratingOf}
     starterQuestionsLoading={starterQuestionsLoading}
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}
