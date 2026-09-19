@@ -16,6 +16,9 @@ Baseline: `c4882bca3972f130b72e4fc22d2d4e15483ef7da`. Integration branch: `codex
 | --- | --- | --- | --- | --- | --- |
 | Read-only Session API analysis | sdd_implementer | gpt-5.6-terra | medium | /root/p1_session_analysis | 未验证 |
 | Read-only Memory API analysis | sdd_implementer | gpt-5.6-terra | medium | /root/p1_memory_analysis | 未验证 |
+| A Session SQL implementation | sdd_implementer | gpt-5.6-terra | medium | /root/p1_session_impl | 未验证 |
+| B Memory SQL implementation | sdd_implementer | gpt-5.6-terra | medium | /root/p1_memory_impl | 未验证 |
+| C Identity implementation | sdd_implementer | gpt-5.6-terra | medium | /root/p1_identity_impl | 未验证 |
 
 Analysis correction: Memory SQL backends exist as separate modules `memory/sqlite@v1.11.0` and `memory/postgres@v1.11.0`, confirmed from their downloaded go.mod/source. The analysis that inferred nonexistence from root-module directories is rejected. Exact backend compilation/runtime evidence belongs to Track B.
 
@@ -28,4 +31,6 @@ Analysis correction: Memory SQL backends exist as separate modules `memory/sqlit
 | C Identity/cursor probes | pending | pending | pending | pending |
 | Wave 2 product storage | blocked on reviewed backend/transaction boundary | pending | pending | pending |
 
-Root baseline test command is running: `GOWORK=off go test ./... -count=1 -timeout=180s`; output `/tmp/trpc-p1-baseline.log`.
+Root baseline command: `GOWORK=off go test ./... -count=1 -timeout=180s`; output `/tmp/trpc-p1-baseline.log`; exit 1. Failure packages: repository (migration-head expectation), service (budget notification), database (migration-head/rollback fixtures), handler (registration fixtures), workbench (missing `tests/mobile-v2/fixtures/mx-003-crosslang.json`). These failures occurred before Track implementation and do not authorize declaring full tests green. The independent probe modules do not change these packages.
+
+Track worktrees: `/Users/wuyongjun/.codex/worktrees/trpc-native-p1-{session,memory,identity}/WeKnora-fork01`; each corresponding `codex/trpc-native-p1-{session,memory,identity}` branch starts at `474ed75b`. Exactly one implementer per worktree. PostgreSQL probe uses controller-created disposable `weknora-trpc-p1-probe` (postgres:15.2-alpine), each test owns an isolated schema; never use user data.
