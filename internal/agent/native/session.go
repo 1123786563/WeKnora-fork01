@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -258,6 +259,22 @@ func (s *SessionService) persistSummary(ctx context.Context, sess *session.Sessi
 	if len(sess.Events) > 0 {
 		through = sess.Events[len(sess.Events)-1].ID
 	}
+	stored, err := s.store.Get(ctx, key)
+	if err != nil {
+		return err
+	}
+	if through != "" {
+		found := false
+		for _, persisted := range stored.Events {
+			if persisted.ID == through {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return &nativecontract.Failure{Code: nativecontract.ErrConflict, Message: "summary boundary is not a persisted session event"}
+		}
+	}
 	return s.store.SaveSummary(ctx, key, filter, repository.NativeSessionSummary{Text: text, ThroughEventID: through, Revision: 1})
 }
 func (s *SessionService) GetSessionSummaryText(ctx context.Context, sess *session.Session, opts ...session.SummaryOption) (string, bool) {
@@ -276,6 +293,10 @@ func (s *SessionService) GetSessionSummaryText(ctx context.Context, sess *sessio
 	if err != nil || !ok {
 		return "", false
 	}
+	if sess.Summaries == nil {
+		sess.Summaries = map[string]*session.Summary{}
+	}
+	sess.Summaries[options.FilterKey] = &session.Summary{Summary: summary.Text, Boundary: session.NewSummaryBoundaryWithEventID(options.FilterKey, time.Time{}, summary.ThroughEventID)}
 	return summary.Text, true
 }
 func (s *SessionService) Close() error { return nil }
