@@ -3267,4 +3267,25 @@
   }
   ,"directBearerDescription": "通过 Authorization: Bearer 请求头发送凭据。大多数 OpenAI 兼容服务器（llama.cpp、vLLM、LM Studio、Ollama）都采用此方式。"
   ,"directApiKeyHeaderAzureOnlyDescription": "通过 api-key 请求头发送凭据。仅用于 Azure OpenAI；其他 OpenAI 兼容服务器需要 Bearer 令牌。"
+  ,"weknoraLoginTitle": "登录 WeKnora"
+  ,"weknoraLoginServerField": "服务器地址"
+  ,"weknoraLoginEmailField": "邮箱"
+  ,"weknoraLoginPasswordField": "密码"
+  ,"weknoraLoginButton": "登录"
+  ,"weknoraLoginInvalidCredentials": "邮箱或密码不正确。"
+  ,"weknoraLoginUnreachable": "无法连接 WeKnora 服务器，请检查地址和网络连接。"
+  ,"weknoraBackendChooserTitle": "WeKnora"
+  ,"weknoraBackendChooserSubtitle": "登录自部署的 WeKnora 知识库。"
+  ,"weknoraAccountSectionTitle": "WeKnora"
+  ,"weknoraAccountSignIn": "登录 WeKnora"
+  ,"weknoraAccountSignedInAs": "已登录：{email}"
+  ,"@weknoraAccountSignedInAs": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  }
+  ,"weknoraAccountServer": "服务器"
+  ,"weknoraAccountSignOut": "退出登录"
 }

@@ -784,8 +784,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // SP11 — the analytics entry follows the canViewChannelSessions gate
     // (systemAdmin || owner || admin; canSeeAdminSessionSources mirrors it
     // in applyAuthMe) and stays fail-closed until auth/me resolves.
-    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && (item.key !== 'analytics' || canSeeAdminSessionSources)),
-    [navItems, canSeeOrganizations, isLiteEdition, canSeeAdminSessionSources],
+    // Round-22 parity (2026-09-19): Vue's rail (stores/menu.ts) has no
+    // analytics entry on any surface, so the sidebar link is dropped to keep
+    // the two rails byte-identical; the SP11 /platform/analytics route stays
+    // reachable by URL — restore by removing the analytics clause below.
+    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics'),
+    [navItems, canSeeOrganizations, isLiteEdition],
   );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).

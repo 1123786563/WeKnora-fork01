@@ -6076,5 +6076,40 @@
   "directBearerDescription": "Sends the credential as an Authorization: Bearer header. Most OpenAI-compatible servers (llama.cpp, vLLM, LM Studio, Ollama) expect this.",
   "@directBearerDescription": {"description":"Help text for the Bearer token authentication mode of a direct connection."},
   "directApiKeyHeaderAzureOnlyDescription": "Sends the credential in the api-key header. Use this only for Azure OpenAI; other OpenAI-compatible servers expect a Bearer token.",
-  "@directApiKeyHeaderAzureOnlyDescription": {"description":"Help text for the Azure OpenAI api-key header authentication mode, noting it is Azure-only."}
+  "@directApiKeyHeaderAzureOnlyDescription": {"description":"Help text for the Azure OpenAI api-key authentication mode, noting it is Azure-only."},
+  "weknoraLoginTitle": "Sign in to WeKnora",
+  "@weknoraLoginTitle": {"description":"Title of the WeKnora sign-in page."},
+  "weknoraLoginServerField": "Server address",
+  "@weknoraLoginServerField": {"description":"Label for the WeKnora server address field on the sign-in page."},
+  "weknoraLoginEmailField": "Email",
+  "@weknoraLoginEmailField": {"description":"Label for the WeKnora email field on the sign-in page."},
+  "weknoraLoginPasswordField": "Password",
+  "@weknoraLoginPasswordField": {"description":"Label for the WeKnora password field on the sign-in page."},
+  "weknoraLoginButton": "Sign in",
+  "@weknoraLoginButton": {"description":"Button that submits the WeKnora sign-in form."},
+  "weknoraLoginInvalidCredentials": "Incorrect email or password.",
+  "@weknoraLoginInvalidCredentials": {"description":"Inline error shown when the WeKnora server rejects the credentials."},
+  "weknoraLoginUnreachable": "Could not reach the WeKnora server. Check the address and your connection.",
+  "@weknoraLoginUnreachable": {"description":"Inline error shown when the WeKnora server cannot be reached."},
+  "weknoraBackendChooserTitle": "WeKnora",
+  "@weknoraBackendChooserTitle": {"description":"Title of the WeKnora option on the backend chooser."},
+  "weknoraBackendChooserSubtitle": "Sign in to your self-hosted WeKnora knowledge base.",
+  "@weknoraBackendChooserSubtitle": {"description":"Description of the WeKnora option on the backend chooser."},
+  "weknoraAccountSectionTitle": "WeKnora",
+  "@weknoraAccountSectionTitle": {"description":"Title of the WeKnora account section in settings."},
+  "weknoraAccountSignIn": "Sign in to WeKnora",
+  "@weknoraAccountSignIn": {"description":"Settings entry that opens the WeKnora sign-in page when nobody is signed in."},
+  "weknoraAccountSignedInAs": "Signed in as {email}",
+  "@weknoraAccountSignedInAs": {
+    "description": "Caption naming the signed-in WeKnora account.",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "weknoraAccountServer": "Server",
+  "@weknoraAccountServer": {"description":"Label prefix for the WeKnora server URL in the settings account section."},
+  "weknoraAccountSignOut": "Sign out",
+  "@weknoraAccountSignOut": {"description":"Button that signs out of WeKnora in the settings account section."}
 }

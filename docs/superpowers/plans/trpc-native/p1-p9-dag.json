@@ -43,7 +43,7 @@
         "internal/application/repository/native_schema_test.go",
         "docs/superpowers/plans/trpc-native/schema-manifest.md"
       ],
-      "status": "blocked-design"
+      "status": "blocked-env"
     },
     {
       "id": "P1.3",
@@ -98,7 +98,7 @@
         "internal/application/service/native_admission.go",
         "internal/application/service/native_admission_test.go"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P2.2",

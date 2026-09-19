@@ -13,6 +13,15 @@ import 'weknora_account.dart';
 import 'weknora_account_service.dart';
 import 'weknora_auth_client.dart';
 
+/// Decodes the persisted WeKnora account document; null when absent.
+Future<WeKnoraAccount?> _readPersistedWeKnoraAccount(
+  SecureCredentialStorage storage,
+) async {
+  final raw = await storage.readWeKnoraAccount();
+  if (raw == null) return null;
+  return WeKnoraAccount.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+}
+
 /// App-wide WeKnora account service.
 ///
 /// The account document lives in secure storage under its own versioned key;
@@ -29,11 +38,7 @@ final weknoraAccountServiceProvider = Provider<WeKnoraAccountService>((ref) {
     authClient: WeKnoraAuthClient(
       dioFactory: () => Dio(BaseOptions(baseUrl: 'unused')),
     ),
-    loadAccount: () async {
-      final raw = await storage.readWeKnoraAccount();
-      if (raw == null) return null;
-      return WeKnoraAccount.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    },
+    loadAccount: () => _readPersistedWeKnoraAccount(storage),
     persistAccount: (account) => account == null
         ? storage.deleteWeKnoraAccount()
         : storage.writeWeKnoraAccount(jsonEncode(account.toJson())),
@@ -41,6 +46,22 @@ final weknoraAccountServiceProvider = Provider<WeKnoraAccountService>((ref) {
     upsertProfile: (profile) =>
         ref.read(directConnectionProfilesProvider.notifier).upsert(profile),
   );
+});
+
+/// Signed-in WeKnora account for reactive UI (the settings account section).
+///
+/// The account service is a plain class without change notifications, so this
+/// provider reads the same secure-storage document the service persists to.
+/// The login page and the settings sign-out flow `ref.invalidate` it after
+/// mutating the session; while the read is in flight, watchers see no account
+/// and render the signed-out entry.
+final weknoraAccountProvider = FutureProvider<WeKnoraAccount?>((ref) {
+  // Watching the service keeps this provider in step with test overrides.
+  ref.watch(weknoraAccountServiceProvider);
+  final storage = SecureCredentialStorage(
+    instance: ref.watch(secureStorageProvider),
+  );
+  return _readPersistedWeKnoraAccount(storage);
 });
 
 /// Bridges [WeKnoraSessionSync] onto the app's conversation list.

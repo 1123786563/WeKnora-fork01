@@ -132,8 +132,21 @@ class Handler(BaseHTTPRequestHandler):
             }
 
         events = [chunk({"role": "assistant", "content": ""}),
-                  chunk({"content": _content_for(body)}),
-                  chunk({}, finish="stop")]
+                  chunk({"content": _content_for(body)})]
+        # SMOKE PATCH (SP12, temporary): honor stream_options.include_usage like
+        # real OpenAI-compatible providers so terminal usage lands in the turn.
+        so = body.get("stream_options") or {}
+        if so.get("include_usage"):
+            usage_chunk = {
+                "id": cid, "object": "chat.completion.chunk", "created": now(),
+                "model": body.get("model", MOCK_MODEL),
+                "choices": [],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+            }
+            events.append(chunk({}))
+            events = events + [usage_chunk]
+        else:
+            events.append(chunk({}, finish="stop"))
         try:
             for ev in events:
                 data = ("data: " + json.dumps(ev) + "\n\n").encode()
