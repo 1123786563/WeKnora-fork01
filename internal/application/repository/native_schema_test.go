@@ -150,15 +150,15 @@ var nativeSchemaRequiredColumns = map[string][]string{
 	"native_memory_jobs":              {"tenant_id", "subject_id", "job_id", "generation", "through_event_id", "status"},
 	"native_agent_session_events":     {"tenant_id", "app_name", "user_id", "session_id", "stable_event_id", "payload", "payload_hash", "ordinal"},
 	"native_agent_attempts":           {"kind", "logical_call_id", "invocation_id", "attempt_number", "provider_request_id", "lease_epoch"},
-	"native_agent_tool_plans":         {"call_id", "plan_version", "provider_tool_call_id", "args", "args_hash", "policy", "idempotency_key"},
+	"native_agent_tool_plans":         {"call_id", "plan_version", "kind", "service_id", "installation_id", "name", "schema_hash", "config_version", "args", "args_hash", "policy", "idempotency_key"},
 	"native_agent_tool_results":       {"provider_receipt", "query_anchor", "result_hash", "effect_state", "is_error", "content"},
-	"native_agent_pending_decisions":  {"call_id", "plan_version", "args_hash", "wait_kind", "expected_revision", "decision_id"},
+	"native_agent_pending_decisions":  {"call_id", "plan_version", "args_hash", "wait_kind", "expected_revision", "decision_id", "decision_hash", "detail"},
 	"native_agent_commit_intents":     {"version", "payload", "payload_hash", "lease_epoch", "terminal_status"},
 	"native_agent_checkpoints":        {"schema_version", "sdk_version", "graph_version", "namespace", "lineage_id", "request_payload"},
 	"native_agent_events":             {"sequence", "event_id", "intent_id", "payload", "payload_hash"},
 	"native_agent_usage_observations": {"revision", "provider", "model", "input_tokens", "output_tokens", "payload_hash"},
 	"native_agent_inputs":             {"input_id", "input_hash", "payload", "role", "created_at"},
-	"native_agent_config_bindings":    {"schema_version", "sdk_version", "graph_version", "config_hash", "credential_ref", "tool_set_hash"},
+	"native_agent_config_bindings":    {"schema_version", "sdk_version", "graph_version", "config_hash", "credential_ref", "tool_set_hash", "source_kind", "source_id", "source_version", "target_id"},
 }
 
 // seedNativeSchemaFixture uses only parameter-bound SQL so the migration

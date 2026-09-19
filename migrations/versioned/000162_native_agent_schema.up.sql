@@ -248,8 +248,10 @@ ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS tool_set_hash 
 ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS skill_set_hash VARCHAR(128) NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS execution_target_id VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS workspace_ref VARCHAR(255) NOT NULL DEFAULT '';
-ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS source VARCHAR(255) NOT NULL DEFAULT '';
-ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS target VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS source_kind VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS source_id VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS source_version VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN IF NOT EXISTS target_id VARCHAR(255) NOT NULL DEFAULT '';
 
 ALTER TABLE native_agent_attempts ADD COLUMN IF NOT EXISTS kind VARCHAR(32) NOT NULL DEFAULT 'model';
 ALTER TABLE native_agent_attempts ADD COLUMN IF NOT EXISTS logical_call_id VARCHAR(255) NOT NULL DEFAULT '';
@@ -268,6 +270,7 @@ CREATE TABLE IF NOT EXISTS native_agent_tool_plans (
     call_id VARCHAR(255) NOT NULL,
     plan_version BIGINT NOT NULL CHECK (plan_version > 0),
     provider_tool_call_id VARCHAR(255) NOT NULL DEFAULT '',
+    kind VARCHAR(64) NOT NULL DEFAULT '',
     service_id VARCHAR(255) NOT NULL DEFAULT '',
     installation_id VARCHAR(255) NOT NULL DEFAULT '',
     name VARCHAR(255) NOT NULL DEFAULT '',
@@ -300,6 +303,8 @@ ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS expected_rev
 ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS decision_id VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS action VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS resource_ref VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS decision_hash VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN IF NOT EXISTS detail JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_pending_decision_id ON native_agent_pending_decisions (tenant_id, run_id, decision_id) WHERE decision_id <> '';
 
 ALTER TABLE native_agent_commit_intents ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;

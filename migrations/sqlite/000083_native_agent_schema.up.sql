@@ -245,8 +245,10 @@ ALTER TABLE native_agent_config_bindings ADD COLUMN tool_set_hash TEXT NOT NULL 
 ALTER TABLE native_agent_config_bindings ADD COLUMN skill_set_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN execution_target_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_config_bindings ADD COLUMN workspace_ref TEXT NOT NULL DEFAULT '';
-ALTER TABLE native_agent_config_bindings ADD COLUMN source TEXT NOT NULL DEFAULT '';
-ALTER TABLE native_agent_config_bindings ADD COLUMN target TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN source_kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN source_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN source_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN target_id TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE native_agent_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'model';
 ALTER TABLE native_agent_attempts ADD COLUMN logical_call_id TEXT NOT NULL DEFAULT '';
@@ -265,6 +267,7 @@ CREATE TABLE IF NOT EXISTS native_agent_tool_plans (
     call_id TEXT NOT NULL,
     plan_version INTEGER NOT NULL CHECK (plan_version > 0),
     provider_tool_call_id TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT '',
     service_id TEXT NOT NULL DEFAULT '',
     installation_id TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL DEFAULT '',
@@ -297,6 +300,8 @@ ALTER TABLE native_agent_pending_decisions ADD COLUMN expected_revision INTEGER 
 ALTER TABLE native_agent_pending_decisions ADD COLUMN decision_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_pending_decisions ADD COLUMN action TEXT NOT NULL DEFAULT '';
 ALTER TABLE native_agent_pending_decisions ADD COLUMN resource_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN decision_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN detail TEXT NOT NULL DEFAULT '{}';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_pending_decision_id ON native_agent_pending_decisions (tenant_id, run_id, decision_id) WHERE decision_id <> '';
 
 ALTER TABLE native_agent_commit_intents ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
