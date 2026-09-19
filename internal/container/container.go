@@ -35,6 +35,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/experts"
+	"github.com/Tencent/WeKnora/internal/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
@@ -657,6 +658,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		resolver := service.NewBundledSkillResolver(tenantSkills, skillRepo)
 		expertSvc := service.NewExpertService(experts.LoadBuiltinExperts, agents, resolver)
 		return handler.NewExpertHandler(expertSvc)
+	}))
+	// Sub-agent catalog API (M3): the real builtin library (lazy scan, shared
+	// read-only catalog — the same loading model the delegate gate uses),
+	// agent persistence through the shared CustomAgentService (the persona
+	// Apply pattern), and installed-role rows through the tenant subagent
+	// repository.
+	must(container.Provide(func(
+		agents interfaces.CustomAgentService,
+		store repository.TenantSubagentRepository,
+	) *handler.SubagentHandler {
+		subagentSvc := service.NewSubagentService(subagents.LoadBuiltinSubagents, agents, store)
+		return handler.NewSubagentHandler(subagentSvc)
 	}))
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(s *service.TenantSkillService) *handler.SkillHandler {
