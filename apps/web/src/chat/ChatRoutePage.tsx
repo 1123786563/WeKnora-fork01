@@ -1510,13 +1510,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
         } catch (retryCause) {
           if (runController.signal.aborted) return;
-          if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
-            setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
-            streamStateRef.current = { ...streamStateRef.current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false };
+          // Vue parity (chat/index.vue onerror → MessagePlugin.error): a failed
+          // stream surfaces as a transient toast and ends the turn — the
+          // transcript keeps the user message without a persistent inline
+          // error row, so the failure is not re-thrown into the failed-send
+          // pending row.
+          const toastMessage = isChatStreamApplicationError(retryCause)
+            ? retryCause.message
+            : streamFailureMessage(retryCause, copy.streamFailed);
+          if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
+            showAgentToast(toastMessage);
+            setStreamState((current) => ({ ...current, phase: 'error', artifactsPending: false }));
+            streamStateRef.current = { ...streamStateRef.current, phase: 'error', artifactsPending: false };
           }
-          // Application errors keep the server-provided message (Vue renders
-          // the SSE error event content); transport errors carry the copy.
-          throw isChatStreamApplicationError(retryCause) ? retryCause : new Error(streamFailureMessage(retryCause, copy.streamFailed));
+          return;
         }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;

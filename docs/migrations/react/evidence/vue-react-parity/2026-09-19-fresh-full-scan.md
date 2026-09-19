@@ -161,3 +161,34 @@ React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成�
 ### 环境注记
 - 验证后已把 builtin-quick-answer 的 model_id 恢复为 builtin-llm-mock（清库曾致其为空）。
 - React dev server 已用同参重启（vite.config alias 变更需重启）。
+
+## 第十二轮（2026-09-19 续）：Wiki 三项残余关闭 + 三引擎面板卡片网格
+1. **桶计数语义**：React 改为树当前层级可见数（loadPages 存全量列表、activeBucket 在渲染期
+   过滤），树模式 知识 1/摘要 1 与 Vue 逐行一致 ✓
+2. **文件夹嵌套树**：treeRows 交错目录/页面行 + expandedDirs 展开态 + ensureDirChildren 懒加载
+   （folders(parent)+pages(category_path)），chevron 旋转+层级缩进+拖拽投放保留。展开后双端
+   侧栏逐行一致 ✓
+3. **索引目录行构成**：Vue 加载完成后双端 .wiki-reader-body innerText 逐字节一致 ✓
+   （提交 579c9b59）
+4. **三引擎面板卡片网格**：ResourceSettingsPanel（storage/vectorstore/websearch 共享）删除
+   常驻表单+表格代，改为 Vue 后端卡解剖——实例卡（provider 徽章+名称+默认/DEFAULT 胶囊+
+   provider·meta 副标题）+虚线添加卡；创建/编辑表单移入 Sheet 抽屉（抽屉 footer 承载
+   测试连接/设为默认/删除）；storage 默认 id 走 listEnvelope（api-client 新增
+   listWithEnvelope）；vectorstore .env 行显示 DEFAULT 胶囊；storage 分区描述五语言对齐
+   settings.storageBackend.description；类型未知随 provider 字段修正消失。（提交 337d4e60；
+   注：另三个文件改动被并行会话的 56bf720a 卷入提交，内容已核实在库且工作区干净）
+5. 门禁：1873/1873 + tsc + build 全绿（多轮）。
+
+## 剩余项（下一轮）
+- **Ollama 面板**：双标题重复/服务地址禁用输入框/可用胶囊徽章/重新检测位置/下载按钮宽度/
+  size-date 分行（细节见上文 settings 分区扫描第 2 条）
+- **流式失败 toast 化**：Vue=瞬态 MessagePlugin，React=持久内联「流式连接失败: …」行；注意
+  stream-recovery 重试 UX 与 Vue 语义对齐；先解决 mock 模型 SSRF 环境问题才能常态验证
+- storage 卡片徽章字母 vs Vue provider 彩色 logo 资产
+- 登录/注册页视觉对比（需登出状态）、embed 独立入口未测
+
+## Git 事故记录（并行会话共享仓库）
+- bcd8a281：无 pathspec 提交卷入并行会话暂存的 2113 文件 → reset --soft + pathspec 重提为
+  337d4e60（仅含我的 2 文件）；另 3 文件改动被并行会话 56bf720a 卷入（内容核实无损）。
+  并行会话随后自行提交 a7206dd9 清理误入库的 335MB 二进制。教训：共享仓库提交必须用显式
+  pathspec 且提交前 porcelain 核对。

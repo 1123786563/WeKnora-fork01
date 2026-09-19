@@ -133,6 +133,10 @@ export { createChatSuggestionsApi } from './chat/suggestions.ts';
 export type { ChatSuggestionsApi, SuggestionEventType } from './chat/suggestions.ts';
 export { createChatArtifactsApi } from './chat/artifacts.ts';
 export type { ChatArtifactsApi } from './chat/artifacts.ts';
+export { createFeedbackApi } from './chat/feedback.ts';
+export type { FeedbackApi } from './chat/feedback.ts';
+export { createAnalyticsApi } from './analytics/index.ts';
+export type { AnalyticsApi, AnalyticsRangeParams } from './analytics/index.ts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,

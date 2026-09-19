@@ -82,29 +82,41 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
 
   return <div className="wk-settings-ollama">
     <Card>
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-        <div><h3>{t('ollamaSettings.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.description')}</p></div>
-        <Button type="button" disabled={busy} onClick={() => void refresh()}>{t('ollamaSettings.status.retest')}</Button>
-      </div>
-      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
+      {/* Vue OllamaSettings.vue: the section heading lives in the settings
+          wrapper — the card starts directly at the status row. 重新检测 is a
+          text link on the status row's right, next to the 可用 pill. */}
+      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] items-center gap-[.8rem] py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
         <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.status.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.status.desc')}</p></div>
-        <div className="setting-control"><Status tone={testing ? 'neutral' : status?.available ? 'success' : 'warning'}>{testing ? t('ollamaSettings.status.testing') : status?.available ? t('ollamaSettings.status.available') : status ? t('ollamaSettings.status.unavailable') : t('ollamaSettings.status.untested')}</Status></div>
+        <div className="setting-control flex items-center justify-end gap-[10px]">
+          {testing ? <Status tone="neutral">{t('ollamaSettings.status.testing')}</Status>
+            : status?.available ? (
+              <span className="inline-flex items-center gap-[4px] rounded-full bg-[#e8f8f2] px-[10px] py-[3px] text-[12px] text-[#0a7f43]">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M20 6L9 17l-5-5" /></svg>
+                {t('ollamaSettings.status.available')}
+              </span>
+            ) : <Status tone={status ? 'warning' : 'neutral'}>{status ? t('ollamaSettings.status.unavailable') : t('ollamaSettings.status.untested')}</Status>}
+          <button type="button" className="flex cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-[13px] text-[#344054] [font:inherit] hover:text-[#07c05f] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || testing} onClick={() => void refresh()}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+            {t('ollamaSettings.status.retest')}
+          </button>
+        </div>
       </div>
-      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
+      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] items-center gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
         <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.address.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.address.desc')}</p></div>
-        <dd className="m-0 self-center font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{status?.baseUrl || '—'}</dd>
+        {/* Vue renders the detected address in a disabled input box. */}
+        <dd className="m-0 self-center"><Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full max-w-[360px] justify-self-end bg-[#f3f3f3] text-right font-mono text-[.85rem] text-[#98a2b8]" aria-label={t('ollamaSettings.address.label')} /></dd>
       </div>
     </Card>
     {status?.available && !testing ? <>
       <Card>
         <h3>{t('ollamaSettings.download.title')}</h3>
         <p className="wk-muted text-muted">{t('ollamaSettings.download.descPrefix')} <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer">{t('ollamaSettings.download.browse')}</a></p>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Input aria-label={t('ollamaSettings.download.placeholder')} className="w-full min-w-0" value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" disabled={busy || !modelName.trim()} onClick={() => void download()}>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Input aria-label={t('ollamaSettings.download.placeholder')} className="w-full min-w-0" value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" className="shrink-0 whitespace-nowrap" disabled={busy || !modelName.trim()} onClick={() => void download()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M4 21h16" /></svg>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>
         {progress ? <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.task}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{activeTask || copy.accepted}</dd></div><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.progress}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{String(progress.progress ?? progress.status ?? copy.reported)}</dd></div></dl> : null}
       </Card>
       <Card>
         <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h3>{t('ollamaSettings.installed.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.installed.desc')}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>
-        {models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list m-0 list-none p-0">{models.map((model) => <li key={model.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{model.name}</strong><span className="font-mono text-[0.8rem] text-muted">{model.size ? formatSize(Number(model.size)) : copy.sizeUnavailable}{model.modified_at ? ` · ${formatDate(model.modified_at, t)}` : ''}</span></div></li>)}</ul>}
+        {models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 p-0">{models.map((model) => <li key={model.name} className="rounded-[10px] border border-[#e4e7ec] bg-white px-4 py-3"><div className="min-w-0"><strong className="block truncate text-[14px] text-[#101828]" title={model.name}>{model.name}</strong>{model.size ? <span className="mt-1 block text-[12px] text-muted">{formatSize(Number(model.size))}</span> : null}{model.modified_at ? <span className="mt-[2px] block text-[12px] text-muted">{formatDate(model.modified_at, t)}</span> : null}</div></li>)}</ul>}
       </Card>
     </> : null}
   </div>;
