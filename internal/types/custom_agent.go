@@ -164,6 +164,11 @@ type CustomAgentConfig struct {
 	// block. Only rendered when PersonaMBTI is set.
 	PersonaStyle string `yaml:"persona_style" json:"persona_style,omitempty"`
 
+	// ===== Provenance Settings =====
+	// ExpertSource records which expert template this agent was instantiated
+	// from, when any. Absent on hand-built agents.
+	ExpertSource *ExpertSourceStruct `yaml:"expert_source,omitempty" json:"expert_source,omitempty"`
+
 	// ===== Sandbox Settings =====
 	// SandboxConfigID selects which workspace sandbox config this agent's
 	// skill scripts run on. Empty means sandbox execution is disabled.
@@ -305,6 +310,20 @@ type CustomAgentConfig struct {
 	// before the first user turn and the contextual follow-up questions shown
 	// after a completed assistant answer.
 	QuestionSuggestions *QuestionSuggestionConfig `yaml:"question_suggestions,omitempty" json:"question_suggestions,omitempty"`
+}
+
+// ExpertSourceStruct is the provenance stamp an expert instantiation writes
+// onto the created agent: which expert template it came from and where that
+// template lives. Source is "builtin" for experts shipped under config/experts;
+// Slug is reserved for future community/custom expert sources and stays empty
+// for builtin ones (their manifest ID already is the slug).
+type ExpertSourceStruct struct {
+	// ExpertID is the expert manifest ID (e.g. "stock-assistant").
+	ExpertID string `yaml:"expert_id" json:"expert_id"`
+	// Source is where the template came from; "builtin" for shipped experts.
+	Source string `yaml:"source" json:"source"`
+	// Slug disambiguates same-ID templates from non-builtin sources.
+	Slug string `yaml:"slug,omitempty" json:"slug,omitempty"`
 }
 
 const (
