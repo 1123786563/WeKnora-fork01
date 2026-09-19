@@ -845,7 +845,16 @@ export default {
       feedUrls: '피드 주소',
       feedUrlsHint: '한 줄에 하나씩 RSS / Atom 피드 주소를 입력하세요. 여러 개를 함께 입력할 수 있습니다.',
       authHeaders: '사용자 지정 헤더 (선택)',
-      authHeadersHint: '비공개 피드 접근용. 한 줄에 하나씩 「이름: 값」 형식으로 입력하세요. 예: Authorization: Bearer xxxx'
+      authHeadersHint: '비공개 피드 접근용. 한 줄에 하나씩 「이름: 값」 형식으로 입력하세요. 예: Authorization: Bearer xxxx',
+      confluenceEdition: 'Edition (server / cloud)',
+      confluenceUsername: 'Username',
+      confluenceApiToken: 'API Token',
+      confluenceApiTokenHint: 'Required for the cloud edition',
+      confluencePassword: 'Password',
+      confluencePasswordHint: 'Required for the server edition',
+      dingtalkClientId: 'Client ID (AppKey)',
+      dingtalkClientSecret: 'Client Secret (AppSecret)',
+      dingtalkOperatorId: 'Operator ID'
     },
     connectorDesc: {
       feishu: '페이슈 위키에서 문서, 스프레드시트, 파일 동기화',
@@ -856,7 +865,9 @@ export default {
       yuque: '위큐 지식베이스에서 문서 동기화',
       ima: 'Tencent IMA 지식베이스에서 문서, 노트 및 파일 동기화 (AI 세션과 동영상 분석은 지원되지 않음)',
       rss: 'RSS / Atom 피드에서 글 동기화',
-      gitlab: 'GitLab 프로젝트의 파일 동기화'
+      gitlab: 'GitLab 프로젝트의 파일 동기화',
+      confluence: 'Sync pages from Confluence spaces',
+      dingtalk: 'Sync online documents from DingTalk knowledge bases'
     },
     connector: {
       feishu: '페이슈 (Feishu)',
@@ -867,7 +878,9 @@ export default {
       yuque: '위큐 (Yuque)',
       ima: 'Tencent IMA',
       rss: 'RSS / Atom 피드',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      confluence: 'Confluence',
+      dingtalk: 'DingTalk (Knowledge Base)'
     },
     logDetail: {
       startTime: '시작 시간',
