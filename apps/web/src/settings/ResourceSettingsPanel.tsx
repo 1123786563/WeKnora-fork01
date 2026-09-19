@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Input, Sheet, Status, Textarea } from '@weknora/ui';
@@ -41,6 +42,37 @@ function nestedText(row: ResourceRow, objectKey: string, key: string): string {
 }
 
 function providerInitial(provider: string): string { return (provider.trim().charAt(0) || '?').toUpperCase(); }
+
+// Per-provider brand colors (Vue .backend-card--<id>/.store-card--<id> badge
+// rules: StorageBackendSettings.vue:524-531, VectorStoreSettings.vue:949-987).
+// Monogram and mono-logo badges tint with the brand color; color logos render
+// the multi-color SVG as-is.
+const PROVIDER_BRAND: Record<ResourceSection, Record<string, { bg: string; color: string }>> = {
+  storage: {
+    local: { bg: 'rgba(70, 70, 70, 0.1)', color: '#464646' },
+    minio: { bg: 'rgba(225, 38, 38, 0.12)', color: '#C0382B' },
+    cos: { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' },
+    tos: { bg: 'rgba(0, 137, 255, 0.12)', color: '#0089FF' },
+    s3: { bg: 'rgba(255, 153, 0, 0.12)', color: '#D97706' },
+    oss: { bg: 'rgba(255, 90, 0, 0.12)', color: '#E55A00' },
+    ks3: { bg: 'rgba(7, 192, 95, 0.12)', color: '#07A050' },
+    obs: { bg: 'rgba(206, 17, 38, 0.1)', color: '#CE1126' },
+  },
+  vectorstore: {
+    qdrant: { bg: 'rgba(225, 38, 38, 0.12)', color: '#E12626' },
+    milvus: { bg: 'rgba(0, 137, 255, 0.12)', color: '#0089FF' },
+    weaviate: { bg: 'rgba(7, 192, 95, 0.12)', color: '#07A050' },
+    elasticsearch: { bg: 'rgba(255, 153, 0, 0.12)', color: '#D97706' },
+    elasticfaiss: { bg: 'rgba(255, 153, 0, 0.12)', color: '#D97706' },
+    postgres: { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' },
+    opensearch: { bg: 'rgba(98, 53, 187, 0.12)', color: '#6235BB' },
+    infinity: { bg: 'rgba(98, 53, 187, 0.12)', color: '#6235BB' },
+    tencent_vectordb: { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' },
+    doris: { bg: 'rgba(255, 90, 0, 0.12)', color: '#E55A00' },
+    sqlite: { bg: 'rgba(70, 70, 70, 0.1)', color: '#464646' },
+  },
+  websearch: {},
+};
 
 function safeConfig(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -240,6 +272,20 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
         const isDefault = row.default === true || (typeof defaultId === 'string' && id === defaultId);
         const meta = resourceMeta(row, provider);
         const logo = providerLogo(section, provider);
+        const brand = PROVIDER_BRAND[section][provider.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
+        const monoMaskStyle = logo?.mode === 'mono' ? {
+          width: '22px',
+          height: '22px',
+          backgroundColor: 'currentColor',
+          WebkitMaskImage: `url("${logo.url}")`,
+          WebkitMaskPosition: 'center',
+          WebkitMaskRepeat: 'no-repeat',
+          WebkitMaskSize: 'contain',
+          maskImage: `url("${logo.url}")`,
+          maskPosition: 'center',
+          maskRepeat: 'no-repeat',
+          maskSize: 'contain',
+        } as CSSProperties : undefined;
         return <article
           key={id || index}
           role="button"
@@ -249,11 +295,13 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
           onKeyDown={(event) => { if (event.key === 'Enter') edit(row); }}
         >
           {logo ? (
-            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3f3f3]" aria-label={provider}>
-              <img src={logo.url} alt="" className="h-7 w-7 object-contain" />
+            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" style={{ color: brand.color }} aria-label={provider}>
+              {logo.mode === 'color'
+                ? <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
+                : <span style={monoMaskStyle} aria-hidden="true" />}
             </div>
           ) : (
-            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[14px] font-semibold text-[#66758b]" aria-label={provider}>{providerInitial(provider || nameValue)}</div>
+            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
           )}
           <div className="min-w-0 flex-1">
             <div className="backend-card__header flex items-center gap-2">
