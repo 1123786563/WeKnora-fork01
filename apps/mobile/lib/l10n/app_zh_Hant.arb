@@ -3289,4 +3289,5 @@
   ,"weknoraAccountServer": "服務器"
   ,"weknoraAccountSignOut": "退出登錄"
   ,"weknoraSessionDeletedNotice": "該會話已在服務器上刪除。"
+  ,"weknoraAccountManagedHint": "WeKnora 直連設定由此登入管理。"
 }

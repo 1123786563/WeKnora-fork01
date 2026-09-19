@@ -3289,4 +3289,5 @@
   ,"weknoraAccountServer": "Servidor"
   ,"weknoraAccountSignOut": "Cerrar sesión"
   ,"weknoraSessionDeletedNotice": "Esta conversación fue eliminada en el servidor."
+  ,"weknoraAccountManagedHint": "La conexión directa de WeKnora se gestiona mediante este inicio de sesión."
 }

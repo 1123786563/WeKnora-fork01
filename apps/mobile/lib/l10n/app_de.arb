@@ -3289,4 +3289,5 @@
   ,"weknoraAccountServer": "Server"
   ,"weknoraAccountSignOut": "Abmelden"
   ,"weknoraSessionDeletedNotice": "Diese Unterhaltung wurde auf dem Server gelöscht."
+  ,"weknoraAccountManagedHint": "Die WeKnora-Direktverbindung wird über diese Anmeldung verwaltet."
 }

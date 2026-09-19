@@ -62,6 +62,16 @@ class WeKnoraSessionSync {
     }
   }
 
+  /// Deletes the server-side session a conversation is bound to. A no-op for
+  /// conversations without `weknoraSessionId` metadata; callers treat
+  /// failures as best-effort (the 404 case is already a success inside the
+  /// API layer).
+  Future<void> deleteRemoteSession({required Conversation conversation}) async {
+    final sessionId = conversation.metadata['weknoraSessionId'];
+    if (sessionId is! String || sessionId.isEmpty) return;
+    await _api.deleteSession(sessionId: sessionId);
+  }
+
   /// After a locally started turn completes, persist the server session the
   /// adapter bound this conversation to.
   Future<void> stampBoundSessionId({

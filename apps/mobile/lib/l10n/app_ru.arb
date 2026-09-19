@@ -3403,5 +3403,6 @@
   },
   "weknoraAccountServer": "Сервер",
   "weknoraAccountSignOut": "Выйти",
-  "weknoraSessionDeletedNotice": "Этот чат был удалён на сервере."
+  "weknoraSessionDeletedNotice": "Этот чат был удалён на сервере.",
+  "weknoraAccountManagedHint": "Прямое подключение к WeKnora управляется этим входом."
 }

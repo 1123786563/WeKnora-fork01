@@ -4944,4 +4944,5 @@
   ,"weknoraAccountServer": "Server"
   ,"weknoraAccountSignOut": "Odhlásiť sa"
   ,"weknoraSessionDeletedNotice": "Táto konverzácia bola na serveri odstránená."
+  ,"weknoraAccountManagedHint": "Priame pripojenie WeKnora spravuje toto prihlásenie."
 }

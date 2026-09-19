@@ -6494,4 +6494,5 @@
   ,"weknoraAccountServer": "Serwer"
   ,"weknoraAccountSignOut": "Wyloguj się"
   ,"weknoraSessionDeletedNotice": "Ta rozmowa została usunięta na serwerze."
+  ,"weknoraAccountManagedHint": "Bezpośrednie połączenie WeKnora jest zarządzane przez to logowanie."
 }

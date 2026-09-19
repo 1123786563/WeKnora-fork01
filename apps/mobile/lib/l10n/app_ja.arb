@@ -4629,4 +4629,5 @@
   ,"weknoraAccountServer": "サーバー"
   ,"weknoraAccountSignOut": "サインアウト"
   ,"weknoraSessionDeletedNotice": "この会話はサーバー上で削除されました。"
+  ,"weknoraAccountManagedHint": "WeKnora の直接接続はこのログインで管理されます。"
 }

@@ -3067,4 +3067,5 @@
   ,"weknoraAccountServer": "서버"
   ,"weknoraAccountSignOut": "로그아웃"
   ,"weknoraSessionDeletedNotice": "이 대화는 서버에서 삭제되었습니다."
+  ,"weknoraAccountManagedHint": "WeKnora 직접 연결은 이 로그인에서 관리됩니다."
 }

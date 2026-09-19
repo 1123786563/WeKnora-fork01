@@ -74,6 +74,8 @@ class WeKnoraAccountService {
   /// Returns a non-expired access token, refreshing (single-flight) when
   /// needed. Throws [WeKnoraAuthException] when the refresh token is dead;
   /// account state is cleared and auth-expired listeners fire first.
+  /// Transient refresh failures (server unreachable) rethrow with the stored
+  /// account intact so a later call retries the refresh.
   Future<String> accessToken() async {
     final account = await _restore();
     if (account == null) {
@@ -104,7 +106,12 @@ class WeKnoraAccountService {
       await _persistAccount(next);
       await _mirrorIntoProfile(next);
       return pair;
-    } on WeKnoraAuthException {
+    } on WeKnoraAuthException catch (error) {
+      // Only a definitively rejected refresh token ends the session. A
+      // transient failure (server unreachable, network blip) must keep the
+      // stored account so the next call retries the refresh instead of
+      // wiping credentials that may still be perfectly good.
+      if (!error.invalidCredentials) rethrow;
       _account = null;
       await _persistAccount(null);
       for (final listener in List.of(_authExpiredListeners)) {
@@ -161,10 +168,14 @@ class WeKnoraAccountService {
       );
       final profiles = await _listProfiles();
       final origin = DirectConnectionProfile.originOf(account.baseUrl);
+      // Normalize the stored base URL the same way the login mirror does:
+      // a profile saved with a trailing slash (or without one) still belongs
+      // to this origin and must be disabled on logout.
       final mine = profiles.where(
         (profile) =>
             profile.adapterKey == kWeKnoraAdapterKey &&
-            (origin == null || profile.baseUrl == origin),
+            (origin == null ||
+                DirectConnectionProfile.originOf(profile.baseUrl) == origin),
       );
       for (final profile in mine) {
         await _upsertProfile(profile.copyWith(enabled: false));

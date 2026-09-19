@@ -391,6 +391,10 @@ class ProfilePage extends ConsumerWidget {
 
     return InsetGroupedList(
       title: l10n.weknoraAccountSectionTitle,
+      // While signed in, the login owns the mirrored WeKnora direct
+      // connection profile (token + enablement); say so instead of letting
+      // the profile look freely editable in Direct Connections.
+      footer: account != null ? l10n.weknoraAccountManagedHint : null,
       children: [
         if (account != null)
           UtilityRow(

@@ -12,11 +12,13 @@ import 'package:conduit/shared/widgets/themed_sheets.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:conduit/core/services/haptic_service.dart';
+import 'package:conduit/core/utils/debug_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:conduit/features/chat/providers/chat_providers.dart' as chat;
 import 'package:conduit/features/chat/widgets/chat_share_sheet.dart';
 import 'package:conduit/features/navigation/widgets/folder_tree_guides.dart';
+import 'package:conduit/features/weknora/account/weknora_providers.dart';
 
 /// Defines an action for use in Conduit context menus.
 class ConduitContextMenuAction {
@@ -640,6 +642,32 @@ Future<void> _renameConversation(
   }
 }
 
+/// Deletes the WeKnora server-side session a conversation is bound to,
+/// best-effort: bounded by a short timeout, guarded by account presence, and
+/// never failing the caller (a failed remote delete must not block the local
+/// removal — the conversation disappears locally either way).
+Future<void> _deleteWeKnoraSessionBestEffort(
+  WidgetRef ref,
+  Conversation conversation,
+) async {
+  try {
+    final account = await ref.read(weknoraAccountProvider.future);
+    if (account == null) return;
+    await ref
+        .read(weknoraSessionSyncProvider)
+        .deleteRemoteSession(conversation: conversation)
+        .timeout(const Duration(seconds: 5));
+  } catch (error, stackTrace) {
+    DebugLogger.error(
+      'weknora-session-delete-failed',
+      scope: 'weknora/sync',
+      error: error,
+      stackTrace: stackTrace,
+      data: {'conversationId': conversation.id},
+    );
+  }
+}
+
 Future<void> _confirmAndDeleteConversation(
   BuildContext context,
   WidgetRef ref,
@@ -661,9 +689,23 @@ Future<void> _confirmAndDeleteConversation(
   if (!confirmed) return;
 
   final deleteError = l10n.failedToDeleteChat;
+  // A WeKnora-backed conversation deletes its server-side session through
+  // the WeKnora API, never through the Open WebUI conversation endpoint.
+  final weknoraSessionId = conversation.metadata['weknoraSessionId'];
+  final isWeKnoraBacked = weknoraSessionId is String && weknoraSessionId.isNotEmpty;
   try {
     if (isOnDevice) {
+      // Server session first (best-effort, short timeout), then the local
+      // row: a slow WeKnora server must not stall the local delete.
+      if (isWeKnoraBacked) {
+        await _deleteWeKnoraSessionBestEffort(ref, conversation);
+      }
       await chat.deleteDirectLocalConversation(ref, conversationId);
+    } else if (isWeKnoraBacked) {
+      await _deleteWeKnoraSessionBestEffort(ref, conversation);
+      ref
+          .read(conversationsProvider.notifier)
+          .removeConversation(conversationId);
     } else {
       final api = ref.read(apiServiceProvider);
       if (api == null) throw Exception('No API service');

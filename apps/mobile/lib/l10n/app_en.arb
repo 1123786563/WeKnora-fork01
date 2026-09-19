@@ -6113,5 +6113,7 @@
   "weknoraAccountSignOut": "Sign out",
   "@weknoraAccountSignOut": {"description":"Button that signs out of WeKnora in the settings account section."},
   "weknoraSessionDeletedNotice": "This conversation was deleted on the server.",
-  "@weknoraSessionDeletedNotice": {"description":"Notice shown when a WeKnora conversation was deleted on the server."}
+  "@weknoraSessionDeletedNotice": {"description":"Notice shown when a WeKnora conversation was deleted on the server."},
+  "weknoraAccountManagedHint": "The WeKnora direct connection is managed by this sign-in.",
+  "@weknoraAccountManagedHint": {"description":"Caption in the WeKnora account section noting the direct connection profile is managed by this sign-in."}
 }

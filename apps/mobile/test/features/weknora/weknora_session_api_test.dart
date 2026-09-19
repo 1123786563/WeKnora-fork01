@@ -267,6 +267,51 @@ void main() {
       expect(http.requests.single.path, 'api/v1/messages/gone/load');
     });
   });
+
+  group('deleteSession', () {
+    test('sends bearer DELETE to the session route', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'success': true}),
+      ]);
+      final api = newApi(http);
+
+      await api.deleteSession(sessionId: 's1');
+
+      final request = http.requests.single;
+      expect(request.method, 'DELETE');
+      expect(request.path, 'api/v1/sessions/s1');
+      expect(
+        request.uri.toString(),
+        'http://localhost:8084/api/v1/sessions/s1',
+      );
+      expect(request.headers['Authorization'], 'Bearer at-1');
+    });
+
+    test('tolerates 404 as success', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'error': 'not found'}, statusCode: 404),
+      ]);
+      final api = newApi(http);
+
+      await expectLater(api.deleteSession(sessionId: 'gone'), completes);
+    });
+
+    test('500 throws WeKnoraSessionApiException', () async {
+      final http = _QueuedAdapter([
+        _Reply.json({'error': 'boom'}, statusCode: 500),
+      ]);
+      final api = newApi(http);
+
+      await expectLater(
+        api.deleteSession(sessionId: 's1'),
+        throwsA(
+          isA<WeKnoraSessionApiException>()
+              .having((e) => e.statusCode, 'statusCode', 500)
+              .having((e) => e.message, 'message', 'boom'),
+        ),
+      );
+    });
+  });
 }
 
 // Copied (behavior-identical) from

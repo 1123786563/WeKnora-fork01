@@ -289,6 +289,48 @@ void main() {
     expect(expiredEvents, 1);
   });
 
+  test('transient refresh failure keeps the account and fires no listener',
+      () async {
+    final now = DateTime.now().toUtc();
+    final stored = WeKnoraAccount(
+      baseUrl: 'http://localhost:8080',
+      email: 'a@b.c',
+      userId: 'u1',
+      displayName: 'alice',
+      accessToken: _jwt(exp: now.subtract(const Duration(minutes: 5))),
+      refreshToken: 'refresh-maybe-fine',
+    );
+    final auth = _FakeAuth(
+      refreshError: const WeKnoraAuthException(
+        'Could not reach the server.',
+        serverUnreachable: true,
+      ),
+    );
+    final harness = _makeService(
+      auth: auth,
+      stored: {'weknora_account_v1': stored},
+    );
+    var expiredEvents = 0;
+    harness.service.addAuthExpiredListener(() => expiredEvents++);
+
+    await expectLater(
+      harness.service.accessToken(),
+      throwsA(
+        isA<WeKnoraAuthException>().having(
+          (error) => error.serverUnreachable,
+          'serverUnreachable',
+          isTrue,
+        ),
+      ),
+    );
+
+    // The stored session survives an offline blip: tokens stay so a later
+    // call retries the refresh instead of forcing a re-login.
+    expect(harness.service.currentAccount, isNotNull);
+    expect(harness.storage.single, isNotNull);
+    expect(expiredEvents, 0);
+  });
+
   test('logout clears account and disables profile', () async {
     final auth = _FakeAuth(loginResult: _loginResult());
     final harness = _makeService(auth: auth);
@@ -304,5 +346,32 @@ void main() {
     expect(harness.storage.isEmpty, isTrue);
     expect(harness.profileSink.profiles.single.enabled, isFalse);
     expect(auth.logoutCalls, 1);
+  });
+
+  test('logout disables a profile stored with a trailing-slash baseUrl',
+      () async {
+    // The raw `profile.baseUrl == origin` comparison used to miss this
+    // profile; matching must go through the same origin normalization the
+    // login mirror applies.
+    final preset = DirectConnectionProfile(
+      id: 'p1',
+      name: 'WeKnora',
+      adapterKey: kWeKnoraAdapterKey,
+      baseUrl: 'http://localhost:8080/',
+      apiKey: 'stale-key',
+    );
+    final auth = _FakeAuth(loginResult: _loginResult());
+    final harness = _makeService(auth: auth, profiles: [preset]);
+
+    await harness.service.login(
+      baseUrl: 'http://localhost:8080',
+      email: 'a@b.c',
+      password: 'pw',
+    );
+    await harness.service.logout();
+
+    expect(harness.profileSink.profiles, hasLength(1));
+    expect(harness.profileSink.profiles.single.id, 'p1');
+    expect(harness.profileSink.profiles.single.enabled, isFalse);
   });
 }

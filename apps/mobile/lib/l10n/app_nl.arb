@@ -3289,4 +3289,5 @@
   ,"weknoraAccountServer": "Server"
   ,"weknoraAccountSignOut": "Uitloggen"
   ,"weknoraSessionDeletedNotice": "Dit gesprek is op de server verwijderd."
+  ,"weknoraAccountManagedHint": "De directe WeKnora-verbinding wordt beheerd door deze aanmelding."
 }

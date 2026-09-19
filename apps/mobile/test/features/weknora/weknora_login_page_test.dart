@@ -210,7 +210,9 @@ Future<void> _pumpLoginPage(
         weknoraAccountServiceProvider.overrideWithValue(service),
         // The real bundle touches secure storage and the conversations
         // notifier; the login page only needs it to not throw.
-        weknoraSessionRefreshAndHydrateProvider.overrideWithValue(() async {}),
+        weknoraSessionRefreshAndHydrateProvider.overrideWithValue(
+          () async => const <String>[],
+        ),
         preferredBackendProvider.overrideWith(() => backend),
       ],
       child: MaterialApp.router(

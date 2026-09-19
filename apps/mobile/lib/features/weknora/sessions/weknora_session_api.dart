@@ -122,6 +122,31 @@ class WeKnoraSessionApi {
     }
   }
 
+  /// Deletes a server-side session. A 404 is treated as success (the session
+  /// is already gone server-side); any other non-2xx throws
+  /// [WeKnoraSessionApiException].
+  Future<void> deleteSession({required String sessionId}) async {
+    final connection = await _connection();
+    final dio = _dioFactory();
+    _applyBaseUrl(dio, connection.baseUrl);
+    try {
+      final response = await dio.delete<dynamic>(
+        'api/v1/sessions/$sessionId',
+        options: Options(
+          headers: {'Authorization': 'Bearer ${connection.token}'},
+          validateStatus: (status) => true,
+        ),
+      );
+      if (response.statusCode == 404) return;
+      _ensureSuccess(response);
+    } on DioException catch (error) {
+      // Mirrors [loadMessages]: a 404 that arrives as an adapter-level
+      // rejection still means "already deleted", not a failure.
+      if (error.response?.statusCode == 404) return;
+      rethrow;
+    }
+  }
+
   /// Maps any non-2xx response to [WeKnoraSessionApiException]. 404 handling
   /// is endpoint-specific and done by the callers, so it is not special-cased
   /// here.
