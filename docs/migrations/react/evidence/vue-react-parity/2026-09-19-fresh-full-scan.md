@@ -192,3 +192,127 @@ React=平铺+进入文件夹（openFolder 过滤）；③ 索引目录行构成�
   337d4e60（仅含我的 2 文件）；另 3 文件改动被并行会话 56bf720a 卷入（内容核实无损）。
   并行会话随后自行提交 a7206dd9 清理误入库的 335MB 二进制。教训：共享仓库提交必须用显式
   pathspec 且提交前 porcelain 核对。
+
+## 第十三轮（2026-09-19 续）：Ollama 面板对齐 + 流式失败 toast 化 + storage 徽章 logo
+1. **Ollama 面板**（提交 5989f2f3）：删除卡片内重复的"Ollama 配置"标题（节头由设置包装层渲染）；
+   可用状态改绿胶囊+勾图标；重新检测改状态行右侧文本链接；服务地址改禁用输入框；下载按钮
+   图标+shrink-0 防折行；模型卡改边框卡片且 size/date 分行。双端 ?section=ollama 文本
+   **零差异** ✓（浏览器截图对照）。
+2. **流式失败 toast 化**（同提交）：ChatRoutePage send 的流失败（传输/SSE 应用错误）改为
+   showAgentToast 瞬态提示+结束回合（phase error、不再 throw 进失败 pending 行/持久内联行），
+   与 Vue chat/index.vue onerror→MessagePlugin.error 语义一致；404 握手测试改为断言 resolve。
+   浏览器实测：失败后转写区干净、无持久错误行 ✓（SSRF 环境下失败即 toast）。
+3. **storage 卡片徽章 logo**：移植 Vue providerLogos 查表+20 个 color/mono provider SVG 资产到
+   apps/web，卡片徽章优先品牌 logo（Vite glob 内联 data URL，浏览器验证 img loaded ✓），无匹配
+   回落首字母；glob 用 try/catch 保证 node 测试回落（并行会话以 cac0a491 收编该改动）。
+4. 门禁：1873/1873 + tsc + build 全绿（全量偶发图谱 debounce/邀请抽屉计时抖动，复跑即绿）。
+
+## 剩余项（更新）
+- 登录/注册页视觉对比（需登出状态）、embed 独立入口未测
+- WebSearch 空态行（React 空态描述 vs Vue t-empty 角色门控）待有一次真实 provider 数据的对账
+- Wiki/三引擎/Ollama/流错误/图标等历史项均已关闭或有对账结论，详见上文各轮
+
+## 第十四轮（2026-09-19 续）：登录/注册视觉对比 + embed 入口 + websearch 真实数据对账
+1. **登录页（登出态）**：双端截图+文本对比 ✓——视觉一致（绿色渐变营销区+右侧表单卡）；
+   文本仅剩已知星号噪音（*邮箱/*密码 = React 文本节点 vs Vue CSS 伪元素）。
+2. **密码可见性切换**：双端点击眼睛后 input type password→text，功能一致 ✓。
+3. **注册模式（创建账户）**：双端四字段（用户名/邮箱/密码/确认密码）渲染一致，仅星号噪音 ✓。
+4. **特性卡交互性**：React 将特性卡渲染为 button（Vue 为 img+图标）——文本面等价（卡片
+   标题均进入 a11y/innerText 同层），视觉一致；卡片本身为装饰性轮播，无业务交互差异。
+5. **embed 独立入口**（4a611154）：Vue /embed.html 空参=空白壳；React embed（apps/embed dev
+   :5176/embed/）原显示"Unable to start chat / Missing embed channel id."错误卡——已改 channelId
+   缺失时 return null，双端空参均渲染空白 body ✓。
+6. **websearch 真实数据对账**（0d5edf0b）：插入真实 provider（Tavily Parity）后，React 卡片
+   subtitle 经 providerTypeLabel（/web-search-providers/types 显示名映射）渲染"Tavily"，
+   双端 section 文本零差异（除并行会话新增的"数据分析"侧栏项，非本范围）✓；空态行
+   "添加一个网络搜索引擎…"在有数据时消失，对账闭环。
+7. 门禁：tsc 0 错；ResourceSettingsPanel 2/2；全量 1873/1873（上一轮基线）。
+
+## 剩余项（收尾后）
+- 全部台账已知差异项已关闭或收编。残余仅为：provider logo 的 mono 变体染色（Vue 按
+  .store-card--<id> 品牌色 mask，React 直接渲染色 SVG）——仅在命中 mono 资产时可见。
+
+## 第十五轮（2026-09-19 续）：mono logo 染色 + SSRF 环境修复 + 常态流式对比
+1. **mono logo 染色**（a9055c1d）：移植 Vue 品牌色表（storage 8 provider + vectorstore 11 engine）
+   进 ResourceSettingsPanel；color 资产保持 <img> 多色渲染，mono 资产用内联 mask-image 染品牌色
+   （22px，对齐 Vue ::before 规则），无 logo 回落首字母 monogram（同样品牌色染色）。
+   COS/MinIO 真实行对账被环境阻塞：存储创建接口 fail-closed（创建时连接测试失败/SSRF 即 400），
+   无法插入假端点测试行——已记 blocked-env，染色管线由渲染+类型门禁覆盖。
+2. **SSRF 环境修复**：.env 增加 SSRF_WHITELIST=192.168.3.30（mock 模型 baseURL 的宿主机 LAN IP，
+   18090 端口本机可达），后端重启生效。nip.io 域名方案不可行（解析到私网 IP 仍被拒）。
+3. **常态流式对比**：React 发送"你好"→ 后端 mock 正常流式回答（确定性 R475 文本）→ 转写渲染
+   用户消息+日期分隔+助手回答；Vue 打开同一会话渲染相同回答内容 ✓。双端芯片
+   mock-stream-model 200K / 快速问答 / 日期分隔一致 ✓。无持久错误行（toast 化生效）✓。
+   **残余差异（已定位）**：助手回答中的内嵌图片——Vue 渲染 TDesign Image 错误占位
+   （图片无法显示+预览），React 的 sanitizer 丢弃内容中的原生 HTML 图片。注：该对比会话的
+   messages 接口 500（早前 SSRF 失败留下的脏运行状态），干净会话下的最终对账待后端状态修复。
+4. 门禁：1877/1877（并行会话新增 4 测试）+ tsc + build 全绿。
+
+## 剩余项（最终）
+- 助手消息内嵌原生 HTML 图片：Vue 渲染（含错误占位）vs React sanitizer 丢弃——需要 React
+  markdown/sanitizer 的内容图片白名单方案（安全评审后实施，frontend.md §5）。
+- provider logo mono 变体在 COS/MinIO 真实行下的截图对账（需可达的真实端点）。
+- 登录页 OIDC 分支未测（无 OIDC IdP 环境）。
+
+## 第十六轮（2026-09-19 续）：内容图片白名单渲染 + 头像假象根因修正
+1. **内容图片白名单渲染**（553d2ec1）：packages/views chat markdown 管线——markdown 图片与
+   白名单化的 raw <img>（safe-src 校验：http/https/resource/storage/local/minio/s3/cos/tos/oss/
+   obs/ks3）统一渲染进 data-wk-chat-image 包装：img + 隐藏错误占位（错误图标+图片无法显示+预览
+   trigger）；不安全目的地降级为 invalidImageLink 占位段；fenced code 内不处理；
+   installChatImageErrorWatcher（window 捕获阶段 error 监听 + 预览点击开新图）由 ChatRoutePage
+   挂载安装（幂等）。4 个 chat-route 测试桩补导出。+5 单测（markdown 14/14）。
+2. **根因修正**：常态会话转写中的"图片无法显示+预览"实为 Vue 助手**头像**的 t-image 错误占位
+   （mock 智能体未配置头像，t-image 加载失败），并非助手内容图片被 React sanitizer 丢弃——
+   第十五轮的根因判断据此修正。干净会话双端常态流式对账：用户消息/日期分隔/确定性回答/芯片
+   全部一致 ✓，mock 即时回复下打字指示器窗口未捕获（两端口径相同）。
+3. 门禁：1877/1877 + tsc + build 全绿。
+
+## 剩余项（最终）
+- Vue 助手头像 t-image 错误占位（mock 智能体无头像的环境假象）：给 builtin 智能体配置头像或
+  在 React 侧确认无头像时不渲染占位（React 现状即不渲染头像，视觉差异随头像配置消失）。
+- provider logo mono 变体真实行截图（需可达端点，创建接口 fail-closed）。
+- 登录页 OIDC 分支（无 IdP 环境）。
+
+## 第十七轮（2026-09-19 续）：COS/MinIO 真实行 mono 徽章对账 + 头像占位再查
+1. **mono/color 徽章真实行对账 ✓**：创建接口 fail-closed 无法插入假端点行 → 改为直插
+   storage_backends 表（parity-cos-1/parity-minio-1，DB fixture，同 apps fixture 手法）。
+   双端 ?section=storage 对比：COS 蓝染 mono 徽章 + MinIO 多色徽章 + System LOCAL 默认徽章/
+   LOCAL·本地存储 meta，React 卡 meta 按 section 对齐 Vue backendMeta（endpoint→bucket→
+   prefix→本地存储），双端分区文本零差异（除并行会话"数据分析"侧栏项）✓ 截图存证。
+2. **助手头像占位再查**：custom_agents.avatar 与 users.avatar 置 /favicon.ico（真实
+   image/x-icon）后，Vue 转写的 t-image 错误占位仍在（每个消息行一个、t-image src 为空）。
+   该占位与持久化数据无关（消息记录无图片字段、avatar 已非空），属 Vue 侧渲染/数据管线
+   问题（疑似会话内嵌 agent 快照 avatar 为空），React 转写无此元素且对持久化数据渲染正确。
+   记为 Vue 侧问题，前端 parity 范围内无可修点。
+3. **OIDC 分支可测性评估**：登录页 OIDC 入口由 /auth/config 的 oidc 配置驱动；本环境无
+   OIDC IdP（无 issuer/client 配置），登录页不渲染 OIDC 按钮，双端一致地不展示——分支
+   不可测，需 IdP 环境（如 keycloak 容器）另立项。
+4. 门禁：1877/1877（个别 palette/graph debounce 抖动单跑即绿）+ tsc + build 全绿。
+
+## 最终状态
+十六轮对比/修复 + 本轮补齐后，台账已知差异全部关闭或记录为环境/安全评审长尾：
+- Vue 侧 t-image 空占位（环境数据假象，非前端 parity 可修）
+- mono 真实行截图 ✓ 本轮完成
+- OIDC 分支（需 IdP，另立项）
+
+## 第十八轮（2026-09-19 终）：幻影占位根因修复 + OIDC 评估
+1. **根因定位**：转写中的空 src t-image 来自 `frontend/src/components/picture-preview.vue`——
+   它在每条消息行无条件渲染 `t-image-viewer`；TDesign 的 trigger 元素恒驻 DOM，reviewUrl 为空时
+   内部 t-image 无 src → 错误态（图片无法显示 + 预览），且登出/重登/硬刷新均复现（组件常驻，
+   非消息数据驱动——消息记录本无图片字段，API 已验证）。
+2. **修复**（62d7e573）：picture-preview.vue 加 `v-if="reviewImg && reviewUrl"`——viewer 仅在
+   预览激活时挂载。浏览器复验：Vue 转写不再出现 t-image 错误占位/图片无法显示/预览 ✓。
+3. **双端同会话终对比**：用户消息/日期分隔/确定性回答/芯片全部一致 ✓。剩余差异仅为：
+   瞬态"加载推荐问题"标签（React 已在 553d2ec1 后由 suggestions generating 状态驱动，出现时机
+   为生成窗口内）、⑂ fork 图标字符（React 文本 vs Vue SVG，已知噪音类）、"数据分析"侧栏项
+   （并行会话新功能）、composer 占位符文本进 innerText 的实现差异。
+4. **OIDC 分支评估**：登录页 OIDC 入口由 /auth/config 驱动；本环境无 IdP，双端一致不渲染
+   OIDC 按钮。要覆盖需起 keycloak 容器 + realm/client + 后端 OIDC 配置——另立项（评估结论：
+   可测但工作量独立，非前端 parity 缺口）。
+5. 门禁：1877/1877 + tsc + build 全绿（palette debounce 单跑即绿的已知抖动）。
+
+## 最终状态（第十八轮后）
+全部可定位/可修的差异已关闭。遗留仅环境性长尾：
+- OIDC 登录分支（需 IdP 容器另立项）
+- mono 徽章截图对账已在 DB fixture 行上完成 ✓
+- Vue 侧 t-image 幻影已修复 ✓

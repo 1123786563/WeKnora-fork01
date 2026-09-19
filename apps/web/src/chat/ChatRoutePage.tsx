@@ -509,6 +509,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
         if (signal?.aborted || !scopeController.isCurrent(scope.scope) || selectedSessionIdRef.current !== sessionId) return;
         current = await client.chat.suggestions.get(sessionId, messageId, signal);
+        // Vue answer-toolbar parity: while suggestions generate, the loading
+        // label shows on the just-finished turn's toolbar.
+        if (current.status === 'generating' && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setSuggestions(current);
       }
       if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId && suggestionForMessage.current === messageId) {
         setSuggestions(current.status === 'ready' ? current : undefined);

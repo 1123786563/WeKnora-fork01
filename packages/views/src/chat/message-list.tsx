@@ -477,6 +477,12 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>
               </button>
             ) : null}
+            {suggestions?.status === 'generating' && index === messages.length - 1 ? (
+              <span className="wk-chat-follow-up-loading inline-flex items-center gap-[4px] text-[12px] text-[rgba(0,0,0,0.45)]" role="status">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 00-4 10c.6.6 1 1.2 1 2h6c0-.8.4-1.4 1-2a6 6 0 00-4-10z" /></svg>
+                {t.followUpQuestionsLoading}
+              </span>
+            ) : null}
           </div> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
           {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}
