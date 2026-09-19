@@ -4,7 +4,7 @@ Decision date: 2026-09-19. Evidence baseline: `950716d62f0a7ff1b06865dcf1f025bc4
 
 ## Decision
 
-**NO-GO for any v1.10.0 native Runner product execution.** The deterministic tool probe is useful SDK evidence, but its required race invocation fails inside the fixed SDK Session implementation. No approved target SDK version or Session/Memory persistence configuration exists. Product code must therefore not construct or dispatch a native Runner, including through MCP, Skills, child Agents, or a feature flag.
+**NO-GO for native Runner product execution.** v1.10.0 remains rejected because its repeated race invocation fails inside the fixed SDK Session implementation. Task 1's exact v1.11.0 candidate passes the bounded native Runner normal probe and `-race -count=20` gate, but that result is necessary only: direct `internal/application/service` and recovery-consumer command results are still unverified in the current command host, and no Session/Memory persistence configuration has been selected. Product code must therefore not construct or dispatch a native Runner, including through MCP, Skills, child Agents, or a feature flag.
 
 This does not erase the independent P1/P2 work still required by the confirmed specification. It prevents those work packages from using a draft `nativecontract` or an unapproved SDK/storage composition as though it were an executable product interface. No reduction of recovery, authorization, tenant isolation, archive retention, or existing functionality is approved.
 
@@ -17,7 +17,7 @@ This does not erase the independent P1/P2 work still required by the confirmed s
 | Blocked environment | `TestCrashMatrixPostgreSQL` and `TestTwoWorkerContentionPostgreSQL` require `TRPC_RECOVERY_PG_DSN`; `TestCrashAfterToolResult` requires `TRPC_RECOVERY_GRAPH_PROVIDER`. All three were explicitly skipped. | PostgreSQL and real-Provider recovery remain `blocked-env`, never passed by SQLite or deterministic models. |
 | Behavior incompatible | `RUN-02` reports the SDK-internal `Session.Clone` / `UpdateUserSession` data race. `SESSION-05` does not make an append failure a durable barrier. `EVENT-01` preserves the old warning-only append gap. `SKILL-02` can fall back to a local executor. `MODEL-06` shows the old bridge rejects required fields. | The race closes the native Runner product gate; the other rows retain required P1/P2/P3/P4/P5/P7 remediation and acceptance. None is an authorization to bypass the affected boundary. |
 
-The matrix totals at this baseline are 4 `verified`, 79 `source-only`, 2 `blocked-env`, and 5 `incompatible` rows. The only pinned root SDK is `trpc-agent-go v1.10.0`; it is an analysis baseline, **not** an approved product target. No candidate upgrade, Session backend, Memory backend, or root/submodule compatibility set has been selected.
+The matrix totals at this baseline are 4 `verified`, 79 `source-only`, 2 `blocked-env`, and 5 `incompatible` rows. The root now pins `trpc-agent-go v1.11.0`; Task 1's bounded candidate evidence is recorded in `sdk-probes.md`, but it is **not** an approved product target. No Session backend, Memory backend, or complete root/submodule compatibility set has been selected.
 
 ## Required gate resolution and downstream ruling
 

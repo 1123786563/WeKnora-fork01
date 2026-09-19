@@ -1,6 +1,34 @@
 # tRPC 原生 SDK 探针
 
-探针日期：2026-09-19。固定依赖为 `trpc.group/trpc-go/trpc-agent-go v1.10.0`（`go.mod`）；源码从本机 `go env GOMODCACHE` 的 `trpc.group/trpc-go/trpc-agent-go@v1.10.0` 读取。未使用浮动版本或本机同时存在的 v1.11.x 源码。
+探针日期：2026-09-19。初始固定依赖为 `trpc.group/trpc-go/trpc-agent-go v1.10.0`；Task 1 以 `go get trpc.group/trpc-go/trpc-agent-go@v1.11.0` 和 `GOWORK=off go mod tidy` 精确升级根模块至 `v1.11.0`。未使用浮动版本或本地路径 `replace`。v1.10.0 证据保留为 RED 基线；v1.11.0 只是在本文件记录的候选，不构成产品执行许可。
+
+## Task 1 candidate probe — v1.11.0
+
+`internal/agent/nativeprobe/runner_test.go` 现在在真实 `runner.Run` 工具往返结束后读取同一个 `inmemory.SessionService`：除“工具恰好调用一次”和最终 `finished` 外，还断言 Runner 已把事件同步到 `Session.Events` 且 `Session.UpdatedAt` 已被写入。这使 repeated-race gate 覆盖实际 Runner Session mutation 路径，而不是直接单元调用 SDK Session。
+
+在升级前，该断言的普通运行通过，而以下 v1.10.0 RED 命令以退出码 1 失败并报告 SDK 内部 race：
+
+```sh
+GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
+```
+
+race 路径是 `session.(*Session).Clone` 与 `session.(*Session).UpdateUserSession` 并发访问 `UpdatedAt`，分别经 function-call state-delta snapshot 与 Runner 的 in-memory `AppendEvent` 到达；报告源码均为 `trpc-agent-go@v1.10.0`。
+
+升级后下列命令均以退出码 0 通过：
+
+```sh
+GOWORK=off go test ./internal/agent/nativeprobe -count=1 -v -timeout 45s
+GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
+GOWORK=off go test ./internal/agent/trpc -count=1 -v
+```
+
+最后一个直接 consumer（`internal/agent/trpc`）通过。依赖清单由以下命令获得：
+
+```sh
+GOWORK=off go list -deps -f '{{with .Module}}{{if eq .Path "github.com/Tencent/WeKnora"}}{{$.ImportPath}} {{join $.Imports " "}}{{end}}{{end}}' ./... | rg 'trpc\\.group/trpc-go/trpc-agent-go'
+```
+
+它还列出 `internal/application/service` 与 `internal/agent/recoverytest/provider`。Task 1 分别运行了 `GOWORK=off go test ./internal/application/service -count=1` 和 `GOWORK=off go test ./internal/agent/recoverytest ./internal/agent/recoverytest/provider -count=1 -timeout=2m`，但当前命令宿主在结果回传前结束，未取得可验证的退出码或日志；它们是 **unverified**, 不能从“已启动”推断通过。该缺口连同 PostgreSQL、真实 Provider、持久 Session/Memory、append-failure barrier、恢复和客户端门禁，使产品执行仍为 **NO-GO**。
 
 ## 已观察到的确定性 SDK 往返
 

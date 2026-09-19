@@ -57,9 +57,10 @@ func TestNativeRunnerToolRoundTrip(t *testing.T) {
 	}, function.WithName("count"), function.WithDescription("Count one invocation"))
 	ag := llmagent.New("native-probe", llmagent.WithModel(&scriptedModel{}),
 		llmagent.WithTools([]tool.Tool{count}))
-	r := runner.NewRunner("native-probe", ag,
-		runner.WithSessionService(inmemory.NewSessionService()))
+	svc := inmemory.NewSessionService()
+	r := runner.NewRunner("native-probe", ag, runner.WithSessionService(svc))
 	defer r.Close()
+	defer svc.Close()
 	events, err := r.Run(ctx, "user-1", "session-1", model.NewUserMessage("count"))
 	require.NoError(t, err)
 	finished := false
@@ -77,6 +78,14 @@ func TestNativeRunnerToolRoundTrip(t *testing.T) {
 	require.NoError(t, ctx.Err())
 	require.True(t, finished)
 	require.EqualValues(t, 1, calls.Load())
+
+	sess, err := svc.GetSession(ctx, session.Key{
+		AppName: "native-probe", UserID: "user-1", SessionID: "session-1",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	require.NotEmpty(t, sess.Events, "Runner must synchronize its emitted events into the Session")
+	require.False(t, sess.UpdatedAt.IsZero(), "Runner session mutation must update UpdatedAt")
 }
 
 func TestSessionScopeKeysSeparateTenants(t *testing.T) {
