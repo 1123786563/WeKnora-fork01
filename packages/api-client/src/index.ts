@@ -120,6 +120,14 @@ export type {
   InstantiateResult,
   InstantiateExpertInput,
 } from './experts.ts';
+export { createSubagentsApi } from './subagents.ts';
+export type {
+  SubagentsApi,
+  SubagentCatalogEntry,
+  SubagentDivision,
+  SubagentCatalog,
+  SubagentDetail,
+} from './subagents.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';
