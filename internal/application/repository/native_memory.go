@@ -267,6 +267,13 @@ func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontra
 		if err != nil {
 			return err
 		}
+		var source nativeMemoryEntryRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND memory_id=? AND tombstoned=?", scope.TenantID, subject, oldID, false).Take(&source).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNativeMemoryWriteRejected
+			}
+			return err
+		}
 		if oldID != entry.ID {
 			var target nativeMemoryEntryRow
 			targetErr := tx.Where("tenant_id=? AND user_id=? AND memory_id=? AND tombstoned=?", scope.TenantID, subject, entry.ID, false).Take(&target).Error
@@ -276,13 +283,6 @@ func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontra
 			if !errors.Is(targetErr, gorm.ErrRecordNotFound) {
 				return targetErr
 			}
-			var source nativeMemoryEntryRow
-			if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, oldID, generation, false).Take(&source).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return ErrNativeMemoryWriteRejected
-				}
-				return err
-			}
 		}
 		candidate := nativeMemoryEntryRow{TenantID: scope.TenantID, UserID: subject, MemoryID: entry.ID, Generation: uint64(generation), Content: entry.Content, Metadata: string(metadata)}
 		if err := tx.Where("tenant_id=? AND user_id=? AND memory_id=?", scope.TenantID, subject, entry.ID).Assign(map[string]any{"generation": generation, "tombstoned": false, "content": entry.Content, "metadata": string(metadata)}).FirstOrCreate(&candidate).Error; err != nil {
@@ -291,7 +291,7 @@ func (r *NativeMemoryRepository) Replace(ctx context.Context, scope nativecontra
 		if oldID == entry.ID {
 			return nil
 		}
-		result := tx.Model(&nativeMemoryEntryRow{}).Where("tenant_id=? AND user_id=? AND memory_id=? AND generation=? AND tombstoned=?", scope.TenantID, subject, oldID, generation, false).Update("tombstoned", true)
+		result := tx.Model(&nativeMemoryEntryRow{}).Where("tenant_id=? AND user_id=? AND memory_id=? AND tombstoned=?", scope.TenantID, subject, oldID, false).Update("tombstoned", true)
 		if result.Error != nil {
 			return result.Error
 		}

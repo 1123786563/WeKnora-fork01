@@ -125,6 +125,13 @@ func TestNativeMemoryToggleAndPolicyDriftRetainUntombstonedEntries(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, "two", entries[0].ID)
+	state, err = repo.State(ctx, changed)
+	require.NoError(t, err)
+	require.NoError(t, repo.Replace(ctx, changed, state.Generation, "two", NativeMemoryEntry{ID: "three", Content: "updated"}))
+	entries, err = repo.Read(ctx, changed, 10)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "three", entries[0].ID)
 }
 
 func TestNativeMemoryReplaceRejectsPolicyDriftAndActiveTargetCollision(t *testing.T) {
@@ -143,4 +150,9 @@ func TestNativeMemoryReplaceRejectsPolicyDriftAndActiveTargetCollision(t *testin
 	drifted.PolicyRevision++
 	require.NoError(t, repo.EnsureScope(ctx, drifted))
 	require.ErrorIs(t, repo.Replace(ctx, scope, state.Generation, "source", NativeMemoryEntry{ID: "new", Content: "replacement"}), ErrNativeMemoryWriteRejected)
+	require.ErrorIs(t, repo.Replace(ctx, drifted, state.Generation+1, "missing", NativeMemoryEntry{ID: "missing", Content: "replacement"}), ErrNativeMemoryWriteRejected)
+	require.NoError(t, repo.Delete(ctx, drifted, "source"))
+	state, err = repo.State(ctx, drifted)
+	require.NoError(t, err)
+	require.ErrorIs(t, repo.Replace(ctx, drifted, state.Generation, "source", NativeMemoryEntry{ID: "source", Content: "revive"}), ErrNativeMemoryWriteRejected)
 }
