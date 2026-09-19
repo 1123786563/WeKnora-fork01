@@ -222,6 +222,7 @@ const EXPERTS_VALUES = {
     'experts.created': '已创建 Agent',
     'experts.createdPending': '已创建，{count} 个技能待安装',
     'experts.createFailed': '创建失败',
+    'experts.createFailedMessage': '创建失败：{message}',
     'experts.badge': '专家·{expertId}',
   },
   'en-US': {
@@ -240,6 +241,7 @@ const EXPERTS_VALUES = {
     'experts.created': 'Agent created',
     'experts.createdPending': 'Created — {count} skills pending install',
     'experts.createFailed': 'Failed to create',
+    'experts.createFailedMessage': 'Failed to create: {message}',
     'experts.badge': 'Expert · {expertId}',
   },
   'ja-JP': {
@@ -258,6 +260,7 @@ const EXPERTS_VALUES = {
     'experts.created': 'エージェントを作成しました',
     'experts.createdPending': '作成済み、{count} 個のスキルはインストール待ち',
     'experts.createFailed': '作成に失敗しました',
+    'experts.createFailedMessage': '作成に失敗しました：{message}',
     'experts.badge': 'エキスパート·{expertId}',
   },
   'ko-KR': {
@@ -276,6 +279,7 @@ const EXPERTS_VALUES = {
     'experts.created': '에이전트가 생성되었습니다',
     'experts.createdPending': '생성됨, 스킬 {count}개 설치 대기 중',
     'experts.createFailed': '생성 실패',
+    'experts.createFailedMessage': '생성 실패: {message}',
     'experts.badge': '전문가·{expertId}',
   },
   'ru-RU': {
@@ -294,6 +298,7 @@ const EXPERTS_VALUES = {
     'experts.created': 'Агент создан',
     'experts.createdPending': 'Создано, ждут установки навыков: {count}',
     'experts.createFailed': 'Не удалось создать',
+    'experts.createFailedMessage': 'Не удалось создать: {message}',
     'experts.badge': 'Эксперт·{expertId}',
   },
 };

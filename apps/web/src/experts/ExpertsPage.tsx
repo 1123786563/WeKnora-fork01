@@ -149,7 +149,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
     } catch (reason) {
       setInstantiating(false);
       const message = errorText(reason, '');
-      setToast({ tone: 'error', text: message !== '' ? `${t(locale, 'experts.createFailed')}：${message}` : t(locale, 'experts.createFailed') });
+      setToast({ tone: 'error', text: message !== '' ? t(locale, 'experts.createFailedMessage', { message }) : t(locale, 'experts.createFailed') });
     }
   }
 
