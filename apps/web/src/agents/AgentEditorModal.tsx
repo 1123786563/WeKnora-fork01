@@ -2,10 +2,11 @@
  * React port of frontend/src/views/agent/AgentEditorModal.vue (Vue baseline).
  * Behaviour parity notes cite the Vue source per block; the pure logic lives
  * in agent-editor.ts. Stage scope: create/edit shell + grouped rail, basic
- * info, prompts, model config, conversation, knowledge, retrieval, web
- * search, tools and skills. Out of scope (recorded gaps): intent prompts,
- * question suggestions, multimodal/attachments, MCP services, agent type
- * presets, share settings and the placeholder autocomplete popup.
+ * info, prompts, model config, conversation, personalization (MBTI persona),
+ * knowledge, retrieval, web search, tools and skills. Out of scope (recorded
+ * gaps): intent prompts, question suggestions, multimodal/attachments, MCP
+ * services, agent type presets, share settings and the placeholder
+ * autocomplete popup.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
@@ -35,6 +36,7 @@ import {
   type ToolCapabilityScope,
   type Translate,
 } from './agent-editor.ts';
+import { PersonaSection } from './PersonaSection.tsx';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -197,7 +199,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setInitializing(true);
     setSaveError(null);
     setIssues([]);
-    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
+    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'personalization', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
     const highlight = initialHighlightField && VALID_INITIAL_HIGHLIGHTS.has(initialHighlightField) ? initialHighlightField : null;
     setHighlightedField(highlight);
     setPostCreate(false);
@@ -1020,6 +1022,10 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     );
   }
 
+  function renderPersonalization() {
+    return <PersonaSection config={form.config} patchConfig={patchConfig} client={client} t={t} />;
+  }
+
   function renderSkillRow(row: ReturnType<typeof catalogSkillRows>[number]) {
     const checked = form.config.selected_skills.includes(row.name);
     const selectable = row.selectable;
@@ -1068,6 +1074,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       case 'websearch': return renderWebSearch();
       case 'tools': return renderTools();
       case 'skills': return renderSkills();
+      case 'personalization': return renderPersonalization();
       default: return renderBasic();
     }
   };

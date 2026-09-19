@@ -229,7 +229,8 @@ test('buildAgentPayload omits id in create mode', () => {
 test('nav groups follow the Vue section list and order for quick-answer without KB', () => {
   const groups = buildNavGroups({ isAgentMode: false, hasKnowledgeBase: false });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge']);
-  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation']);
+  // personalization (Octop M1, no Vue baseline) rides the basic group after conversation
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'personalization']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'websearch']);
 });
 

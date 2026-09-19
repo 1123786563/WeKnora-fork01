@@ -91,6 +91,9 @@ export interface AgentConfigForm {
   rerank_threshold: number;
   question_suggestions: QuestionSuggestionsForm;
   welcome_message: string;
+  // Octop M1 persona (no Vue baseline); optional so legacy payloads stay valid
+  persona_mbti?: string;
+  persona_style?: string;
   [key: string]: unknown;
 }
 
@@ -175,6 +178,9 @@ export function defaultAgentConfig(): AgentConfigForm {
       },
     },
     welcome_message: '',
+    // must exist in defaults or hydrateAgentForm drops them (trap at :199)
+    persona_mbti: '',
+    persona_style: '',
   };
 }
 
@@ -288,7 +294,7 @@ export const agentModeOf = (config: Record<string, unknown> | undefined): AgentM
 
 export type AgentSectionKey =
   | 'basic' | 'prompts' | 'model' | 'conversation' | 'knowledge' | 'retrieval'
-  | 'websearch' | 'tools' | 'skills';
+  | 'websearch' | 'tools' | 'skills' | 'personalization';
 
 export type AgentFieldError =
   | 'name' | 'system_prompt' | 'context_template' | 'model_id'
@@ -367,6 +373,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     { key: 'prompts', icon: 'file-paste', labelKey: 'agent.editor.promptsConfig' },
     { key: 'model', icon: 'control-platform', labelKey: 'agent.editor.modelConfig' },
     { key: 'conversation', icon: 'chat', labelKey: 'agent.editor.conversationSettings' },
+    // Octop M1 persona section (no Vue baseline) — offered in both run modes
+    { key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' },
     { key: 'knowledge', icon: 'folder', labelKey: 'agent.editor.knowledgeConfig' },
   ];
   if (options.hasKnowledgeBase) {
@@ -381,7 +389,7 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
     keys.map((key) => byKey.get(key)).filter((item): item is AgentNavItem => item !== undefined);
   return [
-    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation']) },
+    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'personalization']) },
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
     { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['tools', 'skills']) },
   ].filter((group) => group.items.length > 0);
