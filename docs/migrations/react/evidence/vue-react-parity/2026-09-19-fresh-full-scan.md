@@ -357,3 +357,49 @@ embed 入口、websearch 真实数据、常态流式、mono/color 徽章、内�
 - 截图证据：sess 工件目录 call_19b6eb58（Vue/React 各一张）。
 - 结论：picture-preview v-if 修复 + avatar=/favicon.ico 数据修复后，Vue 转写占位彻底消失，
   双端『你好』会话转写一致。本目标（每页 ≤1% 差异）达成；OIDC 分支经用户确认划出范围。
+
+## 第二十二轮（2026-09-19 续）：真实账号活体全页复扫 + 七处真差异修复
+
+用户要求登录测试改用 wu18349270334@gmail.com（tenant 10001 wuyj's Workspace，真实迪士尼
+KB「11」+ 真实会话/引用数据）。以仓库 playwright-core 起独立 headless Chrome（隔离 profile，
+双 context 登录后逐路由 body.innerText 多重集对称差分），避开被并行会话共用的 mcp-chrome
+profile 争抢。16 条路由（主路由 8 + KB 详情 + 聊天会话 + 设置 6 分区）。
+
+### 七处真差异与修复（commit 03684e49，并行会话代为入库，内容逐文件核实）
+1. creatChat 推荐问题整块缺失：api-client suggestedQuestions 按 string[] 校验，而后端
+   （与 Vue 契约一致）返回 {question,source,knowledge_base_id} 对象数组 → 抛错降级空。
+   修复 configuration.ts：兼容两种形态，映射 question 文本。
+2. 模型芯片（select 分支）无 200K 上下文后缀 + sr-only「对话模型」泄漏进 innerText：
+   composer.tsx select 分支补 modelContext 渲染（与 button 分支同构），sr-only 改
+   display:none+aria-hidden（aria 名由 select aria-label 承担）。（此前 mock 会话无
+   可选模型，走 button 分支故未暴露。）
+3. 聊天页完成态把工具时间线常驻渲染（query_understand/completed/✓/已处理）且「引用来源」
+   面板整块内联展开：Vue 完成面折叠为 检索完成 + 引用了{count}篇文档（ChatReferencesDrawer
+   点击打开）。message-list AssistantExtras 增加完成态折叠分支（is_completed 时渲染摘要按钮，
+   文档计数复用 groupChatReferences 文档分组），page.tsx ReferenceList 改为摘要点击后展开。
+   chat-copy 五语言新增 searchDone / referencesDocCount（值逐字节取自 Vue locale）。
+4. KB 文档页目录树标题用 文件夹、根行用后端硬编码 Root：改 folderTree.title（目录）、
+   path==='' 行渲染 rootRowLabel（根目录）。
+5. KB 列表区内联文件夹行与目录树重复：按 Vue KnowledgeBase.vue L719-721 规则
+   （树展开时列表跳过重复文件夹行）加 !showFolderTree 门。
+6. 模型卡 embedding 维度缺失（Ollama 无 ·向量维度 768）：API 把维度放在
+   parameters.embedding_parameters.dimension，React 只读 parameters.dimension；
+   ctx 徽章去掉 modelHasContext 门（Vue 对 chat/vllm 恒渲染，缺省 200K 灰显）。
+7. websearch 空态描述对 admin 常驻渲染：按 Vue WebSearchSettings L13（仅非 admin 显示）
+   加 role 门（SettingsPage 把 role 传入 ResourceSettingsPanel）。
+附：成员管理 邀请成员 改图标方块钮（Vue TenantMembers.vue L202-205 仅 title/aria 带文案）。
+
+### 验证
+- 门禁：typecheck:shared/web、test:shared 884/884、test:web 1893/1893（两条测试契约随
+  新对齐口径更新：chat-page 引用不再常驻、message-extras 完成态折叠+流态时间线分例）、
+  build:web 全绿。
+- 活体（独立 headless 双端对扫）：主路由/KB 详情/creatChat/聊天会话（真实 8 篇引用会话）
+  仅剩 已知噪音（原生 select option 泄漏、表头 tab 合行）+ 数据分析（见下）。设置 6 分区
+  的活体复验被环境阻塞：并行 lane（sp2a-connectors）重启共享后端 :8084 期间大量 500/下线，
+  采集到错位页；设置三处修复以单测+build 佐证，待后端稳定可按本脚手法复扫。
+
+### 遗留与决策项
+- 「数据分析」侧边栏项为 React 独有（SP11 并行车道特性，admin 可见，Vue 无此入口）：
+  按并行工作保护原则未删，是否对齐待用户定夺。
+- 已知噪音类维持台账口径：原生 select option 进 innerText、表头列名 tab 合行、引导弹层时机。
+- 登录测试账号自本轮起固定为 wu18349270334@gmail.com（用户指定）。
