@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,6 +130,21 @@ func TestResolveTenantSubagentRolesLocaleFallback(t *testing.T) {
 	en := resolveTenantSubagentRoles(t.Context(), rows, []string{"both", "zh-only"}, "en")
 	require.Equal(t, "English both", en["both"].Label)
 	require.Equal(t, "中文角色", en["zh-only"].Label)
+}
+
+// TestRoleMappingTargetsSurviveSharedAgentReadOnlyNarrowing guards the
+// read-only shared-agent contract: if a future role mapping ever targeted a
+// wiki write tool, a shared agent's specialist could mutate the source
+// workspace's Wiki state through delegation, silently escaping
+// filterSharedAgentWriteTools. None of the mappable targets may be dropped by
+// the read-only filter today.
+func TestRoleMappingTargetsSurviveSharedAgentReadOnlyNarrowing(t *testing.T) {
+	raw := "WebSearch, WebFetch, Read, Write, Edit, Bash, 搜索, 网页, 阅读, 写作, 编辑, 终端"
+	mapped := subagents.MapRoleTools(raw)
+	require.NotEmpty(t, mapped)
+	narrowed := filterSharedAgentWriteTools(mapped)
+	assert.Equal(t, mapped, narrowed,
+		"a role-mapped tool is subject to the shared-agent read-only filter and must be re-reviewed")
 }
 
 func TestEffectiveAllowedToolsMirrorsRegisterToolsSemantics(t *testing.T) {

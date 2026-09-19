@@ -393,3 +393,54 @@ func TestSubagentDelegateToolRejectsArguments(t *testing.T) {
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "subagent_delegate arguments rejected")
 }
+
+// TestSubagentDelegateToolUserIDFallsBackToToolExecContext pins the durable
+// path: the worker's registration ctx carries no UserIDContextKey, but the
+// durable graph wraps every tool call in a ToolExecContext carrying the run
+// row's user id (agent_run_graph.go) — the same identity the main run's own
+// tools get. Delegation must reuse it instead of running userless.
+func TestSubagentDelegateToolUserIDFallsBackToToolExecContext(t *testing.T) {
+	var gotUserID string
+	newTool := func(registrationUserID string) *SubagentDelegateTool {
+		tool, err := NewSubagentDelegateTool(SubagentDelegateToolConfig{
+			SessionID: "session-1",
+			UserID:    registrationUserID,
+			Slugs:     []string{"code-reviewer"},
+			Model:     fakeDelegateChat{},
+			Lookup: func(slug string) (ResolvedRole, error) {
+				return ResolvedRole{Slug: slug, SystemPrompt: "p"}, nil
+			},
+			Exec: func(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
+				gotUserID = req.UserID
+				return ExecuteResult{Summary: "done"}, nil
+			},
+		})
+		require.NoError(t, err)
+		return tool
+	}
+
+	// Durable run: registration saw no user id; the graph's ToolExecContext
+	// (run.UserID) resolves it at delegation time.
+	durableCtx := tools.WithToolExecContext(t.Context(), &tools.ToolExecContext{
+		UserID: "durable-run-user",
+	})
+	result, err := newTool("").Execute(durableCtx, json.RawMessage(`{"slug":"code-reviewer","goal":"g"}`))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "durable-run-user", gotUserID)
+
+	// Live run: the registration-time user id wins over the execution
+	// context (whose UserID the builtin engine formats differently).
+	liveCtx := tools.WithToolExecContext(t.Context(), &tools.ToolExecContext{
+		UserID: "web_user:u1",
+	})
+	_, err = newTool("u1").Execute(liveCtx, json.RawMessage(`{"slug":"code-reviewer","goal":"g"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "u1", gotUserID)
+
+	// No identity anywhere: delegation still runs (the sub-run falls back to
+	// its own default user), it never fails the tool call.
+	_, err = newTool("").Execute(t.Context(), json.RawMessage(`{"slug":"code-reviewer","goal":"g"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "", gotUserID)
+}

@@ -173,7 +173,10 @@ type SubagentDelegateToolConfig struct {
 	// events to it and derives its own trpc session from it.
 	SessionID string
 	// UserID is the authenticated user of the main run; it rides the
-	// sub-run's ToolExecContext so HITL gates can authorize the caller.
+	// sub-run's ToolExecContext so HITL gates can authorize the caller. It
+	// is resolved from the registration context; on durable runs (whose
+	// worker ctx carries no UserIDContextKey) Execute falls back to the
+	// ToolExecContext the graph wraps every tool call in.
 	UserID string
 	// Slugs are the specialists installed for this tenant AND configured on
 	// this agent. They are rendered into the description at construction —
@@ -307,6 +310,25 @@ func (t *SubagentDelegateTool) intersectRoleTools(ctx context.Context, toolsRaw 
 	return execTools
 }
 
+// delegationUserID resolves the user the sub-run acts for. Live sessions
+// carry the authenticated user id on the registration context (cfg.UserID).
+// Durable-resumed runs do not: the worker's context has no request identity,
+// so registration captured an empty id — but the durable graph wraps every
+// tool call in a ToolExecContext carrying the run row's user id, the same
+// identity the main run's own tools get (agent_run_graph.go executeTool).
+// Falling back to it there keeps delegation's authorization identical to the
+// main run's tools; the registration-time id keeps precedence everywhere a
+// live assembly resolved one.
+func (t *SubagentDelegateTool) delegationUserID(ctx context.Context) string {
+	if strings.TrimSpace(t.cfg.UserID) != "" {
+		return t.cfg.UserID
+	}
+	if meta, ok := tools.ToolExecFromContext(ctx); ok {
+		return meta.UserID
+	}
+	return ""
+}
+
 // Execute resolves the strictly parsed slug against the installed roles,
 // intersects the role's tools with the main run's, delegates to the budgeted
 // sub-run and returns its summary as the tool result. Every failure is an
@@ -346,7 +368,7 @@ func (t *SubagentDelegateTool) Execute(ctx context.Context, args json.RawMessage
 		InputRefs:    parsed.InputRefs,
 		Model:        t.cfg.Model,
 		Tools:        execTools,
-		UserID:       t.cfg.UserID,
+		UserID:       t.delegationUserID(ctx),
 		Emit:         t.cfg.Emit,
 	})
 	if err != nil {
