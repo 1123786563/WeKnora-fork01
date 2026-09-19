@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
+import type { ChatMessage, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { assistantMessageExtras } from '@weknora/domain/chat/message-extras';
@@ -61,6 +61,14 @@ export interface MessageListProps {
   onCitationClick?(citationId: string): void;
   /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
   onBookmark?(messageId: string): void | Promise<void>;
+  /** SP11 message feedback entry: hosts that provide it get the like/dislike
+   *  pair on every assistant toolbar; absent hides the whole affordance
+   *  (the embed channel never wires it — same capability gate as onBookmark). */
+  onRateMessage?(messageId: string, rating: FeedbackRating): void;
+  /** SP11 toggle-off path: clears the persisted rating for a message. */
+  onRemoveRating?(messageId: string): void;
+  /** SP11 current rating lookup driving aria-pressed; undefined = unrated. */
+  ratingOf?(messageId: string): FeedbackRating | undefined;
   /** Vue usermsg/botmsg 分叉 entry: fork this session at the given message. */
   onForkMessage?(messageId: string): void;
   /** Vue index.vue forkAffordanceOf gate; absent hides every fork button. */
@@ -131,6 +139,10 @@ export function isBookmarkActionAvailable(onBookmark?: MessageListProps['onBookm
   return Boolean(onBookmark);
 }
 
+export function isFeedbackAvailable(onRateMessage?: MessageListProps['onRateMessage']): boolean {
+  return typeof onRateMessage === 'function';
+}
+
 function BookmarkAnswerButton({ copy: copyTable, messageId, onBookmark }: { copy: ChatCopyTable; messageId: string; onBookmark?: MessageListProps['onBookmark'] }) {
   // Keep the control truthful until the host provides the Vue manual-editor
   // action; consumers with that capability get the same enabled affordance.
@@ -153,6 +165,49 @@ function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable;
       <circle cx="8" cy="5" r="0.7" fill="currentColor" stroke="none" />
     </svg>
   </button>;
+}
+
+/** Thumbs-up silhouette (Lucide geometry scaled to the 16x16 toolbar grid); down rotates it 180°. */
+function ThumbIcon({ down = false }: { down?: boolean }) {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <g transform={down ? 'rotate(180 8 8)' : undefined}>
+      <path d="M5 6.8V14" />
+      <path d="M9.8 4.3 9.2 6.8h3.5a1.2 1.2 0 0 1 1.15 1.54l-1.4 4.8a1.2 1.2 0 0 1-1.15.86H3.2a1.2 1.2 0 0 1-1.2-1.2V8a1.2 1.2 0 0 1 1.2-1.2h1.1a1.2 1.2 0 0 0 1.07-.67L8 2a1.9 1.9 0 0 1 1.8 2.3Z" />
+    </g>
+  </svg>;
+}
+
+/*
+ * SP11 like/dislike pair: aria-pressed mirrors ratingOf; clicking the pressed
+ * rating removes it (toggle), any other click (re)rates the message. The
+ * pressed button's tooltip switches to the remove hint so the affordance is
+ * truthful before the click.
+ */
+function FeedbackButtons({ copy: copyTable, message, ratingOf, onRateMessage, onRemoveRating }: {
+  copy: ChatCopyTable;
+  message: ChatMessage;
+  ratingOf?: MessageListProps['ratingOf'];
+  onRateMessage?: MessageListProps['onRateMessage'];
+  onRemoveRating?: MessageListProps['onRemoveRating'];
+}) {
+  const current = ratingOf?.(message.id);
+  const toggle = (rating: FeedbackRating) => {
+    if (current === rating) {
+      onRemoveRating?.(message.id);
+      return;
+    }
+    onRateMessage?.(message.id, rating);
+  };
+  const likeLabel = current === 'like' ? copyTable.feedbackRemoveTooltip : copyTable.feedbackLikeTooltip;
+  const dislikeLabel = current === 'dislike' ? copyTable.feedbackRemoveTooltip : copyTable.feedbackDislikeTooltip;
+  return <>
+    <button type="button" className={`${ANSWER_TOOL_BUTTON} wk-chat-feedback-like`} aria-label={likeLabel} title={likeLabel} aria-pressed={current === 'like'} onClick={() => toggle('like')}>
+      <ThumbIcon />
+    </button>
+    <button type="button" className={`${ANSWER_TOOL_BUTTON} wk-chat-feedback-dislike`} aria-label={dislikeLabel} title={dislikeLabel} aria-pressed={current === 'dislike'} onClick={() => toggle('dislike')}>
+      <ThumbIcon down />
+    </button>
+  </>;
 }
 
 /*
@@ -233,7 +288,7 @@ function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenL
   </section>;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const timestampLabels = conversationTimeLabels(t);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -416,6 +471,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
             <FallbackInfoButton copy={t} message={message} />
+            {isFeedbackAvailable(onRateMessage) ? <FeedbackButtons copy={t} message={message} ratingOf={ratingOf} onRateMessage={onRateMessage} onRemoveRating={onRemoveRating} /> : null}
             {onForkMessage && canForkMessage?.(message.id) === true ? (
               <button type="button" className={`${ANSWER_TOOL_BUTTON} wk-chat-fork`} title={t.forkFromAssistantTooltip} aria-label={t.forkFromAssistantTooltip} onClick={() => onForkMessage(message.id)}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6" /><circle cx="12" cy="3.5" r="1.6" /><circle cx="8" cy="12.5" r="1.6" /><path d="M4 5.1v1.2a2.4 2.4 0 0 0 2.4 2.4h3.2A2.4 2.4 0 0 0 12 6.3V5.1" /><path d="M8 8.7v2.2" /></svg>

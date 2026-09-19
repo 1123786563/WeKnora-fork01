@@ -275,8 +275,9 @@ test('a 404 stream handshake rejects with the Vue-localized stream failure messa
     location: 'http://weknora.test/platform/creatChat',
   });
 
-  await assert.rejects(
-    () => props.send({ content: 'hello', status: 'pending' }),
-    /流式连接失败: HTTP 404/,
-  );
+  // Vue parity (chat/index.vue onerror → MessagePlugin.error): the failure
+  // surfaces as a transient toast and the turn ends WITHOUT rejecting — the
+  // composer's failed-send pending row must not appear for a mid-stream drop,
+  // so send() resolves instead of throwing.
+  await props.send({ content: 'hello', status: 'pending' });
 });

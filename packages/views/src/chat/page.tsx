@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
+import type { ChatMessage, ChatSession, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
 import { ChatComposer, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
@@ -188,6 +188,12 @@ export interface ChatPageProps {
   onCitationClick?(citationId: string): void;
   /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
   onBookmark?(messageId: string): void | Promise<void>;
+  /** SP11 message feedback (like/dislike on assistant bubbles); absent hides the pair. */
+  onRateMessage?(messageId: string, rating: FeedbackRating): void;
+  /** SP11 toggle-off: clears the persisted rating for a message. */
+  onRemoveRating?(messageId: string): void;
+  /** SP11 current rating lookup for the pressed (aria-pressed) state. */
+  ratingOf?(messageId: string): FeedbackRating | undefined;
   /** Vue usermsg/botmsg 分叉 entry (A11 phase 4). */
   onForkMessage?(messageId: string): void;
   canForkMessage?(messageId: string): boolean;
@@ -721,6 +727,9 @@ export function ChatPage(props: ChatPageProps) {
           onDismissSuggestions={props.onDismissSuggestions}
           onCitationClick={activateCitation}
           onBookmark={props.onBookmark}
+          onRateMessage={props.onRateMessage}
+          onRemoveRating={props.onRemoveRating}
+          ratingOf={props.ratingOf}
           onForkMessage={props.onForkMessage}
           canForkMessage={props.canForkMessage}
           onArtifactDownload={props.onArtifactDownload}
