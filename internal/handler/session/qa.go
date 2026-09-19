@@ -1668,24 +1668,33 @@ func appendQuickAnswerReasoning(msg *types.Message, content string) {
 // completeAssistantMessage marks an assistant message as complete, updates it,
 // and asynchronously indexes the Q&A pair into the chat history knowledge base.
 // The tenant/user pair attributes the turn's token usage to the session owner
-// (SP12 daily buckets); recording happens before the IsCompleted flip so a
-// stop racing the normal completion cannot double-count the same message.
+// (SP12 daily buckets); usage recording is gated by a one-shot
+// LoadOrStore(messageID) on the handler, so the completion paths racing on one
+// message (stop watcher vs QA defer vs final-answer event) account the turn
+// exactly once.
 func (h *Handler) completeAssistantMessage(
 	ctx context.Context, assistantMessage *types.Message, userQuery, userMessageID string,
 	tenantID uint64, userID string,
 ) {
-	if h.usageRecorder != nil && !assistantMessage.IsCompleted && assistantMessage.Usage != nil {
-		// WithoutCancel: usage must land even when the turn ended via a user
-		// stop (the incoming ctx is already cancelled on that path). A failure
-		// is only logged — accounting must never block message completion.
-		bg := context.WithoutCancel(ctx)
-		if err := h.usageRecorder.RecordChatTurn(bg, tenantID, userID, assistantMessage.ModelID, assistantMessage.Usage); err != nil {
-			logger.Warnf(bg, "usage: record chat turn failed for session %s message %s: %v", assistantMessage.SessionID, assistantMessage.ID, err)
+	// LoadOrStore reports loaded=false only for the first completion path to
+	// reach this message — the losers skip, closing the concurrent
+	// double-count window a check-then-record on IsCompleted would leave open.
+	if h.usageRecorder != nil && assistantMessage.Usage != nil {
+		if _, loaded := h.usageRecordOnce.LoadOrStore(assistantMessage.ID, struct{}{}); !loaded {
+			// WithoutCancel: usage must land even when the turn ended via a user
+			// stop (the incoming ctx is already cancelled on that path). A failure
+			// is only logged — accounting must never block message completion.
+			bg := context.WithoutCancel(ctx)
+			if err := h.usageRecorder.RecordChatTurn(bg, tenantID, userID, assistantMessage.ModelID, assistantMessage.Usage); err != nil {
+				logger.Warnf(bg, "usage: record chat turn failed for session %s message %s: %v", assistantMessage.SessionID, assistantMessage.ID, err)
+			}
 		}
 	}
+	h.completeMsgMu.Lock()
 	assistantMessage.UpdatedAt = time.Now()
 	assistantMessage.IsCompleted = true
 	_ = h.messageService.UpdateMessage(ctx, assistantMessage)
+	h.completeMsgMu.Unlock()
 
 	// Asynchronously index the Q&A pair into the chat history knowledge base for vector search.
 	// Use WithoutCancel so the goroutine survives after the HTTP request context is done.
