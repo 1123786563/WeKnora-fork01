@@ -3,13 +3,16 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM native_agent_tenants
         UNION ALL SELECT 1 FROM native_agent_sessions
+        UNION ALL SELECT 1 FROM native_session_state
         UNION ALL SELECT 1 FROM native_agent_runs
         UNION ALL SELECT 1 FROM native_agent_inputs
         UNION ALL SELECT 1 FROM native_agent_config_bindings
         UNION ALL SELECT 1 FROM native_agent_memory_scopes
         UNION ALL SELECT 1 FROM native_agent_memory_entries
+        UNION ALL SELECT 1 FROM native_memory_jobs
         UNION ALL SELECT 1 FROM native_agent_attempts
         UNION ALL SELECT 1 FROM native_agent_tool_calls
+        UNION ALL SELECT 1 FROM native_agent_tool_plans
         UNION ALL SELECT 1 FROM native_agent_tool_results
         UNION ALL SELECT 1 FROM native_agent_pending_decisions
         UNION ALL SELECT 1 FROM native_agent_commit_intents
@@ -25,6 +28,9 @@ END $$;
 DROP TABLE native_agent_usage_observations;
 DROP TABLE native_agent_events;
 DROP TABLE native_agent_session_events;
+DROP TABLE native_agent_tool_plans;
+DROP TABLE native_memory_jobs;
+DROP TABLE native_session_state;
 DROP TABLE native_agent_checkpoints;
 DROP TABLE native_agent_commit_intents;
 DROP TABLE native_agent_pending_decisions;

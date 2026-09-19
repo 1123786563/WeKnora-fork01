@@ -195,3 +195,121 @@ CREATE TABLE IF NOT EXISTS native_agent_usage_observations (
     PRIMARY KEY (tenant_id, run_id, attempt_id, observation_id),
     FOREIGN KEY (tenant_id, run_id, attempt_id) REFERENCES native_agent_attempts(tenant_id, run_id, attempt_id) ON DELETE RESTRICT
 );
+
+ALTER TABLE native_agent_runs ADD COLUMN owner_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_runs ADD COLUMN request_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_runs ADD COLUMN input_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_runs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_runs_request_scope ON native_agent_runs (tenant_id, owner_id, session_id, request_id);
+
+CREATE TABLE IF NOT EXISTS native_session_state (
+    tenant_id INTEGER NOT NULL,
+    owner_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    state_key TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    state_value TEXT NOT NULL DEFAULT '{}',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, owner_id, session_id, state_key),
+    FOREIGN KEY (tenant_id, owner_id, session_id) REFERENCES native_agent_sessions(tenant_id, user_id, session_id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_native_session_state_scope_revision ON native_session_state (tenant_id, owner_id, session_id, revision);
+
+CREATE TABLE IF NOT EXISTS native_memory_jobs (
+    tenant_id INTEGER NOT NULL,
+    subject_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    through_event_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    policy_revision INTEGER NOT NULL DEFAULT 0 CHECK (policy_revision >= 0),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, subject_id, job_id),
+    UNIQUE (tenant_id, subject_id, through_event_id, generation),
+    FOREIGN KEY (tenant_id, subject_id) REFERENCES native_agent_memory_scopes(tenant_id, user_id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_native_memory_jobs_scope_status ON native_memory_jobs (tenant_id, subject_id, status, created_at);
+
+ALTER TABLE native_agent_inputs ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE native_agent_inputs ADD COLUMN request_id TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_inputs_request_scope ON native_agent_inputs (tenant_id, run_id, request_id);
+
+ALTER TABLE native_agent_config_bindings ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE native_agent_config_bindings ADD COLUMN sdk_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN graph_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN credential_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN credential_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_config_bindings ADD COLUMN tool_set_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN skill_set_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN execution_target_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_config_bindings ADD COLUMN workspace_ref TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE native_agent_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'model';
+ALTER TABLE native_agent_attempts ADD COLUMN logical_call_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_attempts ADD COLUMN invocation_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_attempts ADD COLUMN replaces_attempt_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_attempts ADD COLUMN attempt_number INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_attempts ADD COLUMN provider_request_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_attempts ADD COLUMN effect_state TEXT NOT NULL DEFAULT 'not_dispatched';
+ALTER TABLE native_agent_attempts ADD COLUMN finished_at DATETIME;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_attempts_number ON native_agent_attempts (tenant_id, run_id, attempt_number);
+
+CREATE TABLE IF NOT EXISTS native_agent_tool_plans (
+    tenant_id INTEGER NOT NULL,
+    run_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    call_id TEXT NOT NULL,
+    plan_version INTEGER NOT NULL CHECK (plan_version > 0),
+    provider_tool_call_id TEXT NOT NULL DEFAULT '',
+    args TEXT NOT NULL DEFAULT '{}',
+    args_hash TEXT NOT NULL CHECK (length(args_hash) > 0),
+    policy TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    idempotency_expires_at DATETIME,
+    required_grants TEXT NOT NULL DEFAULT '[]',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, run_id, attempt_id, call_id, plan_version),
+    FOREIGN KEY (tenant_id, run_id, attempt_id, call_id) REFERENCES native_agent_tool_calls(tenant_id, run_id, attempt_id, call_id) ON DELETE RESTRICT
+);
+
+ALTER TABLE native_agent_tool_results ADD COLUMN provider_receipt TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_tool_results ADD COLUMN query_anchor TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_tool_results ADD COLUMN effect_state TEXT NOT NULL DEFAULT 'not_dispatched';
+ALTER TABLE native_agent_tool_results ADD COLUMN is_error INTEGER NOT NULL DEFAULT 0 CHECK (is_error IN (0, 1));
+ALTER TABLE native_agent_tool_results ADD COLUMN truncated INTEGER NOT NULL DEFAULT 0 CHECK (truncated IN (0, 1));
+ALTER TABLE native_agent_tool_results ADD COLUMN content TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE native_agent_tool_results ADD COLUMN failure TEXT;
+
+ALTER TABLE native_agent_pending_decisions ADD COLUMN call_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_pending_decisions ADD COLUMN args_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN wait_kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN expected_revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_pending_decisions ADD COLUMN decision_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN action TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_pending_decisions ADD COLUMN resource_ref TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_pending_decision_id ON native_agent_pending_decisions (tenant_id, run_id, decision_id) WHERE decision_id <> '';
+
+ALTER TABLE native_agent_commit_intents ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE native_agent_commit_intents ADD COLUMN payload TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE native_agent_commit_intents ADD COLUMN terminal_status TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE native_agent_checkpoints ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE native_agent_checkpoints ADD COLUMN sdk_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_checkpoints ADD COLUMN graph_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_checkpoints ADD COLUMN namespace TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_checkpoints ADD COLUMN lineage_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_checkpoints ADD COLUMN request_payload TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE native_agent_checkpoints ADD COLUMN result_call_ids TEXT NOT NULL DEFAULT '[]';
+
+ALTER TABLE native_agent_session_events ADD COLUMN payload TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE native_agent_session_events ADD COLUMN ordinal INTEGER NOT NULL DEFAULT 0 CHECK (ordinal >= 0);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_native_agent_session_events_ordinal ON native_agent_session_events (tenant_id, app_name, user_id, session_id, ordinal);
+
+ALTER TABLE native_agent_usage_observations ADD COLUMN provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN model TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_agent_usage_observations ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE native_agent_usage_observations ADD COLUMN cost_micros INTEGER NOT NULL DEFAULT 0;

@@ -8,11 +8,11 @@ agent-run records.
 | Logical record | Physical table | Authority and minimum constraint |
 | --- | --- | --- |
 | Tenant admission scope | `native_agent_tenants` | one row per business tenant |
-| Session scope | `native_agent_sessions` | `(tenant_id,user_id,session_id)` and tenant-local session identity |
-| Run and lease fence | `native_agent_runs` | `(tenant_id,run_id)`, non-negative `lease_epoch` |
+| Session scope and state | `native_agent_sessions`, `native_session_state` | tenant/owner/session/state-key revision CAS |
+| Run and lease fence | `native_agent_runs` | scoped request/input idempotency, owner/session binding, revision and non-negative epoch |
 | Input and config snapshot | `native_agent_inputs`, `native_agent_config_bindings` | immutable scoped hashes |
-| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries` | generation/tombstone CAS fields and scope-generation index |
-| Attempts and tools | `native_agent_attempts`, `native_agent_tool_calls`, `native_agent_tool_results` | attempt/call scope and immutable result hash |
+| Memory governance | `native_agent_memory_scopes`, `native_agent_memory_entries`, `native_memory_jobs` | generation/tombstone CAS and delayed-job generation/through-event fence |
+| Attempts and tools | `native_agent_attempts`, `native_agent_tool_calls`, `native_agent_tool_plans`, `native_agent_tool_results` | attempt/call/plan scope, provider identity and immutable result receipt/hash |
 | Pending decisions | `native_agent_pending_decisions` | scoped revision and status index |
 | Commit/barrier state | `native_agent_commit_intents`, `native_agent_checkpoints` | intent payload hash, epoch, non-runnable checkpoint default |
 | Session receipt | `native_agent_session_events` | stable event identity `(tenant,app,user,session,event)` plus immutable payload hash |
