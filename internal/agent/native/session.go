@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
@@ -79,9 +78,8 @@ func (s *SessionService) AppendStable(ctx context.Context, a nativecontract.Sess
 		return err
 	}
 	err := s.store.AppendStable(ctx, a)
-	if errors.Is(err, repository.ErrNativeSessionConflict) {
-		_, e := StableAppendAction("stored", a.PayloadHash, true)
-		return e
+	if err == repository.ErrNativeSessionConflict {
+		return &nativecontract.Failure{Code: nativecontract.ErrConflict, Message: "stable event payload changed", Effect: nativecontract.EffectNotDispatched}
 	}
 	return err
 }
@@ -109,18 +107,7 @@ func (s *SessionService) GetSession(ctx context.Context, key session.Key, opts .
 	if err != nil {
 		return nil, err
 	}
-	if !options.EventTime.IsZero() {
-		filtered := got.Events[:0]
-		for _, e := range got.Events {
-			if !e.Timestamp.Before(options.EventTime) {
-				filtered = append(filtered, e)
-			}
-		}
-		got.Events = filtered
-	}
-	if options.EventNum > 0 && len(got.Events) > options.EventNum {
-		got.Events = got.Events[len(got.Events)-options.EventNum:]
-	}
+	filterSessionEvents([]*session.Session{got}, options)
 	return got, nil
 }
 func (s *SessionService) ListSessions(ctx context.Context, key session.UserKey, opts ...session.Option) ([]*session.Session, error) {
@@ -149,12 +136,30 @@ func (s *SessionService) ListSessions(ctx context.Context, key session.UserKey, 
 		}
 		items = items[page.Offset:end]
 	}
+	filterSessionEvents(items, options)
 	if options.ListSessionOnlyMeta {
 		for _, item := range items {
 			item.Events = nil
 		}
 	}
 	return items, nil
+}
+
+func filterSessionEvents(items []*session.Session, options *session.Options) {
+	for _, item := range items {
+		if !options.EventTime.IsZero() {
+			filtered := item.Events[:0]
+			for _, e := range item.Events {
+				if !e.Timestamp.Before(options.EventTime) {
+					filtered = append(filtered, e)
+				}
+			}
+			item.Events = filtered
+		}
+		if options.EventNum > 0 && len(item.Events) > options.EventNum {
+			item.Events = item.Events[len(item.Events)-options.EventNum:]
+		}
+	}
 }
 func (s *SessionService) DeleteSession(ctx context.Context, key session.Key, _ ...session.Option) error {
 	if err := s.authorize(ctx, key); err != nil {
