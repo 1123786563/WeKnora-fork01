@@ -356,6 +356,19 @@ type Service struct {
 	// instanceID uniquely identifies this service instance for leader election.
 	instanceID string
 
+	// usageRecorder accumulates each finished IM chat turn's token usage into
+	// the caller's user_usage daily bucket (SP12 final fix: IM completions
+	// previously wrote msg.Usage but never recorded it, so agent-mode IM turns
+	// never reached the usage aggregation). Nil (tests / Lite without the
+	// recorder assembled) skips accounting.
+	usageRecorder interfaces.UsageRecorderService
+	// usageRecordOnce is the one-shot gate for that accounting, mirroring the
+	// session Handler's gate: a turn's completion paths are mutually exclusive
+	// today (select on done/ctx.Done), but the gate keeps the accounting
+	// exactly-once even if a future path (stop handling, retries) completes
+	// the same assistant message twice. Keyed by assistant message ID.
+	usageRecordOnce sync.Map
+
 	stopCh         chan struct{}
 	stopOnce       sync.Once
 	subscriberOnce sync.Once
@@ -756,6 +769,64 @@ func applyIMCompleteDataToMessage(msg *types.Message, data event.AgentCompleteDa
 	}
 }
 
+// imUsageModel resolves the model that attributes an IM turn's usage. IM
+// assistant messages are created without ModelID; the agent-mode turns that
+// carry usage (EventAgentComplete) run on the custom agent's binding, so the
+// agent config is the effective model. Returns "" when unknown — the recorder
+// skips empty models rather than guessing.
+func imUsageModel(assistantMsg *types.Message, customAgent *types.CustomAgent) string {
+	if assistantMsg != nil && assistantMsg.ModelID != "" {
+		return assistantMsg.ModelID
+	}
+	if customAgent != nil {
+		return customAgent.Config.ModelID
+	}
+	return ""
+}
+
+// recordIMChatUsage accounts one finished IM turn's token usage into the
+// user_usage daily bucket (SP12 final fix: IM completions previously persisted
+// msg.Usage but never recorded it, so agent-mode IM turns were missing from
+// the aggregation). Attribution follows the domain's IM principal semantics:
+// sessions auto-created from IM carry no WeKnora owner, so the turn belongs to
+// the IM principal injected by withIMIdentity ("<tenant>:<channel>:<platform>:
+// <im user>"); a session with a real owner falls back to it. Exactly-once via
+// the usageRecordOnce LoadOrStore gate; fail-soft — a recording error is only
+// logged and must never block or fail the reply path. WithoutCancel: usage
+// must land even when the turn ended via /stop (incoming ctx cancelled).
+func (s *Service) recordIMChatUsage(ctx context.Context, assistantMsg *types.Message, session *types.Session, customAgent *types.CustomAgent) {
+	if s == nil || s.usageRecorder == nil || assistantMsg == nil || assistantMsg.Usage == nil {
+		return
+	}
+	if assistantMsg.ModelID == "" {
+		// Persist the resolved binding so the message row matches what the
+		// usage bucket records (web assistant messages carry it too).
+		assistantMsg.ModelID = imUsageModel(assistantMsg, customAgent)
+	}
+	if assistantMsg.ModelID == "" {
+		return
+	}
+	tenantID := uint64(0)
+	userID := ""
+	if session != nil {
+		tenantID = session.TenantID
+		userID = session.UserID
+	}
+	if principal, ok := types.PrincipalFromContext(ctx); ok && principal.Type == types.PrincipalIMUser && principal.ID != "" {
+		userID = principal.ID
+	}
+	if tenantID == 0 || userID == "" {
+		return
+	}
+	if _, loaded := s.usageRecordOnce.LoadOrStore(assistantMsg.ID, struct{}{}); loaded {
+		return
+	}
+	bg := context.WithoutCancel(ctx)
+	if err := s.usageRecorder.RecordChatTurn(bg, tenantID, userID, assistantMsg.ModelID, assistantMsg.Usage); err != nil {
+		logger.Warnf(bg, "[IM] usage: record chat turn failed for session %s message %s: %v", assistantMsg.SessionID, assistantMsg.ID, err)
+	}
+}
+
 // waitForIMAgentComplete blocks until EventAgentComplete, ctx cancellation, or timeout.
 func waitForIMAgentComplete(ctx context.Context, completeDone <-chan struct{}, sessionID string) {
 	timer := time.NewTimer(agentCompleteWaitTimeout)
@@ -838,6 +909,7 @@ func resolveIMConfig(appCfg *config.Config) (workers, maxQueue, maxPerUser, glob
 // redisClient may be nil — in that case the service falls back to local
 // in-memory state (Lite / single-instance mode).
 // cfg may be nil — in that case built-in defaults are used.
+// usageRecorder may be nil — in that case IM turns skip usage accounting.
 func NewService(
 	db *gorm.DB,
 	sessionService interfaces.SessionService,
@@ -853,6 +925,7 @@ func NewService(
 	redisClient *redis.Client,
 	appCfg *config.Config,
 	storageResolver interfaces.StorageBackendResolver,
+	usageRecorder interfaces.UsageRecorderService,
 ) *Service {
 	// Resolve IM configuration with defaults.
 	workers, maxQueue, maxPerUser, globalMaxWorkers, rlWindow, rlMax := resolveIMConfig(appCfg)
@@ -887,6 +960,7 @@ func NewService(
 		rateLimitMax:     rlMax,
 		redis:            redisClient,
 		instanceID:       instanceID,
+		usageRecorder:    usageRecorder,
 		stopCh:           make(chan struct{}),
 	}
 
@@ -2907,6 +2981,9 @@ loop:
 
 	assistantMsg.Content = answer
 	assistantMsg.IsCompleted = true
+	// SP12 final fix: account the turn's token usage before the message row is
+	// persisted (the helper also stamps the resolved model onto the message).
+	s.recordIMChatUsage(ctx, assistantMsg, session, customAgent)
 	if err := s.messageService.UpdateMessage(ctx, assistantMsg); err != nil {
 		logger.Warnf(ctx, "[IM] Failed to update assistant message: %v", err)
 	}
@@ -3093,6 +3170,9 @@ func (s *Service) runQA(ctx context.Context, session *types.Session, query strin
 		// Mark assistant message as completed to avoid dangling incomplete records
 		assistantMsg.Content = imCancelledFallback
 		assistantMsg.IsCompleted = true
+		// Usage may have already landed on the message (agent complete raced
+		// the stop); record it before the cancelled row is persisted.
+		s.recordIMChatUsage(ctx, assistantMsg, session, customAgent)
 		// Use a fresh context since the original is cancelled
 		if updateErr := s.messageService.UpdateMessage(context.WithoutCancel(ctx), assistantMsg); updateErr != nil {
 			logger.Warnf(ctx, "[IM] Failed to update cancelled assistant message: %v", updateErr)
@@ -3119,6 +3199,9 @@ func (s *Service) runQA(ctx context.Context, session *types.Session, query strin
 	// Update assistant message with the full answer (including citation tags for web rendering).
 	assistantMsg.Content = answer
 	assistantMsg.IsCompleted = true
+	// SP12 final fix: account the turn's token usage before the message row is
+	// persisted (the helper also stamps the resolved model onto the message).
+	s.recordIMChatUsage(ctx, assistantMsg, session, customAgent)
 	if err := s.messageService.UpdateMessage(ctx, assistantMsg); err != nil {
 		logger.Warnf(ctx, "[IM] Failed to update assistant message: %v", err)
 	}

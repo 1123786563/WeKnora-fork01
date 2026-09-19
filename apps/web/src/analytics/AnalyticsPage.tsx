@@ -38,6 +38,17 @@ export function sortUsageRows(rows: readonly UsageByUserRow[]): UsageByUserRow[]
   return [...rows].sort((a, b) => b.cost_microcredits - a.cost_microcredits);
 }
 
+/**
+ * True for the backend's unattributed bucket: the craft fold attributes
+ * orphan facts to the empty user (COALESCE fallback in craft_usage.go), so
+ * by-user pages can legitimately contain user_id:'' rows. The table shows
+ * them under the analytics.usageSystemUser placeholder instead of failing —
+ * the contract keeps the column required but tolerates the empty value.
+ */
+export function isUnattributedUsageRow(row: Pick<UsageByUserRow, 'user_id'>): boolean {
+  return row.user_id === '';
+}
+
 // Both transports (xhr shim / createJsonTransport) lowercase response header
 // names, so content-disposition is always the lowercase key. filename*=UTF-8''
 // (RFC 5987) wins over a plain/bare filename= token.
@@ -434,7 +445,7 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
                     // One row per user × model × window bucket; the index
                     // disambiguates when the backend buckets finer than a day.
                     <tr key={`${row.user_id}|${row.model}|${row.window_start}|${index}`}>
-                      <td className={AN_USAGE_CELL}>{row.user_id}</td>
+                      <td className={AN_USAGE_CELL}>{isUnattributedUsageRow(row) ? t(locale, 'analytics.usageSystemUser') : row.user_id}</td>
                       <td className={AN_USAGE_CELL}>{row.model}</td>
                       <td className={AN_USAGE_CELL}>{row.window_start}</td>
                       <td className={AN_USAGE_NUM}>{row.input_tokens.toLocaleString(locale)}</td>

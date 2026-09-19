@@ -223,3 +223,15 @@ test('keeps the command palette empty-state action keys aligned across every loc
   assert.equal(formatMessage('zh-CN', 'commandPalette.empty.adjustRetrieval'), '调整检索参数');
   assert.equal(formatMessage('zh-CN', 'commandPalette.retrieval'), '检索参数');
 });
+
+// SP12 终审 — analytics.usageSystemUser labels the by-user table's
+// unattributed bucket (backend craft fold COALESCE fallback emits user_id:''
+// rows); every locale must carry the placeholder so the admin table never
+// renders a raw empty cell.
+test('keeps the analytics usage System placeholder aligned across every locale', () => {
+  for (const locale of supportedLocales) {
+    assert.ok(typeof messages[locale]['analytics.usageSystemUser'] === 'string' && messages[locale]['analytics.usageSystemUser']!.length > 0, `${locale} is missing analytics.usageSystemUser`);
+  }
+  assert.equal(formatMessage('en-US', 'analytics.usageSystemUser'), 'System');
+  assert.equal(formatMessage('zh-CN', 'analytics.usageSystemUser'), '系统');
+});

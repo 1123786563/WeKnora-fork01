@@ -78,7 +78,8 @@
 
 ## 4. 冒烟发现的缺陷
 
-- **发现（欠账级，非阻断）**：§3.4 第 1 条——quick-answer（web 默认模式）消息不带 usage，导致 P-1 chat 日桶在纯 web 快答场景无数据来源。归属上游「会话 token 用量统计」（af33e632 同代的管道填充缺口），不改变 SP12 写入点正确性（tRPC/IM 路径与 stop 竞态路径均正确记账）；建议后续任务在 quick-answer 管道 `response.Done` 处把 StreamResponse.Usage 落到 ChatResponse/消息。
+- **发现（欠账级，非阻断）**：§3.4 第 1 条——quick-answer（web 默认模式）消息不带 usage，导致 P-1 chat 日桶在纯 web 快答场景无数据来源。归属上游「会话 token 用量统计」（af33e632 同代的管道填充缺口），不改变 SP12 写入点正确性（tRPC 路径与 stop 竞态路径正确记账）；建议后续任务在 quick-answer 管道 `response.Done` 处把 StreamResponse.Usage 落到 ChatResponse/消息。
+- **终审更正（I-2，已修）**：本节初稿「IM 路径正确记账」表述失实——IM 路径（`im/service.go`）虽把 `AgentCompleteData.Usage` 写进 `msg.Usage`，但三处完成点直接 `UpdateMessage`，从未调用 usageRecorder，IM 渠道带 usage 的聊天轮此前不进 `user_usage`（漏计）。终审已在 IM 三处完成点（handleMessageStream 完成、runQA 正常完成、runQA 取消路径）补 `recordIMChatUsage`：usageRecorder 经 dig 注入 IM Service（构造参数追加），归属取 `withIMIdentity` 注入的 `PrincipalIMUser`（`<tenant>:<channel>:<platform>:<im user>`），模型取消息 ModelID 或 agent 绑定（并回写消息列），幂等用与 session Handler 同款 `usageRecordOnce` sync.Map 按消息 ID 一次性 gate，`internal/im/usage_record_test.go` 六项单测覆盖（归属/一次性 gate/无 usage/无 recorder/无模型跳过/取消上下文仍记账/记账失败 fail-soft）。
 - 环境问题（非交付物）：`.env SSRF_WHITELIST` + `config/builtin_models.yaml` 钉死旧 LAN IP 192.168.3.30（本机已变更为 .32），mock LLM 不可达；修复需改共享 env/yaml 并重启共享后端，超出本任务权限，未动。租户自建 ollama 模型（空 base_url 走本机默认）可绕过。
 
 ## 5. 已知遗留（deferred minors）
