@@ -719,3 +719,4 @@ export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchRes
 
 export * from './analytics.ts';
 export * from './usage.ts';
+export * from './query-history.ts';

@@ -166,6 +166,9 @@ export type { AnalyticsApi, AnalyticsRangeParams } from './analytics/index.ts';
 export { createUsageApi } from './usage/index.ts';
 export type { UsageApi, UsageRangeParams, UsageByUserParams } from './usage/index.ts';
 export type { UsageRow, UsageByUserRow } from '@weknora/contracts';
+export { createQueryHistoryApi } from './queryHistory/index.ts';
+export type { QueryHistoryApi, QueryHistoryAdminListParams, QueryHistoryExportInput } from './queryHistory/index.ts';
+export type { QueryHistorySessionRow, QueryHistorySnapshot, SharedSessionSnapshot, QueryHistoryExportStatus, MessageFeedbackRow, QueryHistoryMode, QueryHistoryConfig } from '@weknora/contracts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,
