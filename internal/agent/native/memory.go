@@ -21,6 +21,7 @@ var (
 	ErrMemoryWriteDenied          = errors.New("native memory write denied")
 	ErrMemorySearchUnsupported    = errors.New("native memory search option unsupported")
 	ErrMemoryExtractorUnavailable = errors.New("native memory extractor unavailable")
+	ErrMemorySessionScopeDenied   = errors.New("native memory session scope denied")
 )
 
 // MemoryWrite is a bounded extractor output. The job stores only its source
@@ -306,11 +307,19 @@ func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.
 	if err != nil {
 		return err
 	}
+	expected, err := nativecontract.SessionKey(scope, sess.ID)
+	if err != nil || expected.AppName != sess.AppName || expected.UserID != sess.UserID {
+		return ErrMemorySessionScopeDenied
+	}
+	if len(sess.Events) == 0 || sess.Events[len(sess.Events)-1].ID == "" {
+		return ErrMemorySessionScopeDenied
+	}
 	state, err := s.repo.State(ctx, scope)
 	if err != nil {
 		return err
 	}
-	return s.Enqueue(ctx, nativecontract.MemoryJob{ID: memoryID(sess.AppName + "\x00" + sess.UserID + "\x00" + sess.ID), Scope: scope, SessionKey: session.Key{AppName: sess.AppName, UserID: sess.UserID, SessionID: sess.ID}, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: sess.ID})
+	throughEventID := sess.Events[len(sess.Events)-1].ID
+	return s.Enqueue(ctx, nativecontract.MemoryJob{ID: memoryID(sess.AppName + "\x00" + sess.UserID + "\x00" + sess.ID + "\x00" + throughEventID), Scope: scope, SessionKey: expected, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: throughEventID})
 }
 func (s *MemoryService) Close() error {
 	if s.backend != nil {

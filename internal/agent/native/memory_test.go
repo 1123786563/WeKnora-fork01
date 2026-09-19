@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 type memoryScopeResolver struct{ scope nativecontract.Scope }
@@ -124,4 +126,23 @@ func TestNativeMemoryNilExtractorPersistsFailedJob(t *testing.T) {
 	status, err := repo.JobStatus(ctx, job)
 	require.NoError(t, err)
 	require.Equal(t, repository.NativeMemoryJobFailed, status)
+}
+
+func TestNativeMemoryAutoJobUsesAuthorizedSessionAndLastEvent(t *testing.T) {
+	scope := nativecontract.Scope{TenantID: 1, SessionOwnerID: "owner", MemorySubjectID: "u1", PolicyRevision: 1}
+	svc, repo := newNativeMemoryFacade(t, scope)
+	ctx := context.Background()
+	require.NoError(t, repo.EnsureScope(ctx, scope))
+	key, err := nativecontract.SessionKey(scope, "session-1")
+	require.NoError(t, err)
+	sess := &session.Session{ID: "session-1", AppName: key.AppName, UserID: key.UserID, Events: []event.Event{{ID: "e1"}, {ID: "e2"}}}
+	require.NoError(t, svc.EnqueueAutoMemoryJob(ctx, sess))
+	state, err := repo.State(ctx, scope)
+	require.NoError(t, err)
+	job := nativecontract.MemoryJob{ID: memoryID(sess.AppName + "\x00" + sess.UserID + "\x00" + sess.ID + "\x00e2"), Scope: scope, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: "e2"}
+	status, err := repo.JobStatus(ctx, job)
+	require.NoError(t, err)
+	require.Equal(t, repository.NativeMemoryJobQueued, status)
+	sess.UserID = "forged"
+	require.ErrorIs(t, svc.EnqueueAutoMemoryJob(ctx, sess), ErrMemorySessionScopeDenied)
 }
