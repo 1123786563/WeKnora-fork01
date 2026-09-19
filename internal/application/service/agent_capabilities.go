@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent"
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/agent/persona"
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
@@ -111,6 +113,7 @@ func (s *agentService) prepareAgentCapabilities(
 	if config.UseCustomSystemPrompt || config.SystemPrompt != "" {
 		systemPrompt = config.ResolveSystemPrompt(config.WebSearchEnabled)
 	}
+	systemPrompt = prependPersonaSegment(ctx, config, systemPrompt)
 
 	pinnedMCP := s.resolvePinnedMCPServiceInfos(ctx, config)
 	s.attachPinnedMCPToolNames(toolRegistry, pinnedMCP)
@@ -172,4 +175,43 @@ func (s *agentService) prepareAgentCapabilities(
 	}
 
 	return capabilities, nil
+}
+
+// personaAgentNameFallback fills the persona template's agent-name slot.
+// types.AgentConfig carries no display-name field — the custom agent's name is
+// not threaded into capability assembly — and persona.RenderPersona has no
+// name fallback of its own, so without this the segment would read
+// "You are , an AI assistant…". Keeping it English inside a zh segment matches
+// RenderPersona's own "the user" fallback.
+const personaAgentNameFallback = "the assistant"
+
+// prependPersonaSegment renders the agent's MBTI persona block in front of
+// its system prompt template. Both engines consume capabilities.SystemPrompt
+// (the builtin ReAct engine treats it as a template; trpc runs insert it
+// verbatim), so prepending here covers every execution path. An unset or
+// unknown PersonaMBTI leaves the prompt untouched — including PersonaStyle,
+// which only renders when PersonaMBTI is set.
+func prependPersonaSegment(ctx context.Context, config *types.AgentConfig, systemPrompt string) string {
+	if config == nil || config.PersonaMBTI == "" {
+		return systemPrompt
+	}
+	// RenderPersona uppercases the code before its own lookup; the gate does
+	// the same so a case-mismatched stored value keeps its persona instead of
+	// silently dropping it.
+	code := strings.ToUpper(strings.TrimSpace(config.PersonaMBTI))
+	if _, ok := persona.Profile(code); !ok {
+		logger.Warnf(ctx, "agent has unknown persona_mbti %q; skipping persona segment", config.PersonaMBTI)
+		return systemPrompt
+	}
+	locale := types.LanguageFromContextOrDefault(ctx)
+	userID, _ := types.UserIDFromContext(ctx)
+	segment := persona.RenderPersona(code, locale, persona.RenderInput{
+		AgentName:   personaAgentNameFallback,
+		UserDisplay: userID,
+		Custom:      config.PersonaStyle,
+	})
+	if systemPrompt == "" {
+		return segment
+	}
+	return segment + "\n---\n\n" + systemPrompt
 }
