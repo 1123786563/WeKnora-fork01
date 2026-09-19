@@ -47,6 +47,7 @@ const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.t
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
+const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage.tsx').then((module) => ({ default: module.AnalyticsPage })));
 const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
 const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
 const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
@@ -599,6 +600,19 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // SP11 admin analytics dashboard; the page itself renders the
+  // no-permission placeholder for contributor/viewer roles (the nav entry
+  // applies the same canViewChannelSessions gate).
+  const analyticsRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'analytics',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <AnalyticsPage client={client} role={scopeRuntime.role()} />
+      </Suspense>
+    ),
+  });
+
   const devMarkdownRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'dev/markdown',
@@ -779,6 +793,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       configurationRoute,
       organizationsRoute,
       settingsRoute,
+      analyticsRoute,
       devMarkdownRoute,
       appsCatalogRoute,
       appsConnectionsRoute,

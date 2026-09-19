@@ -150,6 +150,14 @@ const ICONS = {
     'M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.45 4.15 14.45 4.2 14.2L4.5 13Z',
   ],
   users: 'M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z',
+  // SP11 analytics entry — bar-chart glyph drawn to the same 24×24 stroke
+  // geometry as the ported icons above (stroke = currentColor).
+  chart: [
+    'M5 20V11',
+    'M12 20V5',
+    'M19 20V14',
+    'M3.5 20H20.5',
+  ],
 };
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
@@ -158,6 +166,7 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
     { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: <Icon path={ICONS.book} />, match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: <Icon path={ICONS.bot} />, match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: <Icon path={ICONS.users} />, match: (p: string) => p.startsWith('/platform/organizations') },
+    { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: <Icon path={ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
   ];
 }
 
@@ -187,6 +196,8 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     newChat: formatMessage(locale, 'menu.newChat'),
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
+    // SP11 analytics dashboard (admin-only entry, gated below).
+    analytics: formatMessage(locale, 'menu.analytics'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
     // R449-A2 — Vue UserMenu.vue:83 labels the tenant quick link with
     // $t('settings.workspaceSettings') (「空间设置」), not settings.tenantInfo
@@ -757,8 +768,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // R450-A2 — Vue stores/menu.ts:64,73 adds 'organizations' (and the
     // sidebar logout) to liteHiddenPaths; the React rail only owns the
     // organizations entry, so it drops out under lite mode too.
-    () => navItems.filter((item) => item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)),
-    [navItems, canSeeOrganizations, isLiteEdition],
+    // SP11 — the analytics entry follows the canViewChannelSessions gate
+    // (systemAdmin || owner || admin; canSeeAdminSessionSources mirrors it
+    // in applyAuthMe) and stays fail-closed until auth/me resolves.
+    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && (item.key !== 'analytics' || canSeeAdminSessionSources)),
+    [navItems, canSeeOrganizations, isLiteEdition, canSeeAdminSessionSources],
   );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
