@@ -59,9 +59,9 @@ opaque Unicode and punctuation; delimiter-collision resistance; zero tenant;
 empty, blank-only, and invalid UTF-8 values; `uint64` maximum tenant; canonical
 checkpoint segments; `int64` maximum cursor; malformed, padded, and
 noncanonical base64url; empty encoded runs; canonical base64url that decodes to
-blank or invalid UTF-8 runs; blank and invalid UTF-8 expected runs; wrong
-cursor version/part count/run; negative, signed, leading-zero, and overflow
-sequence values.
+blank or invalid UTF-8 runs; empty, blank, and invalid UTF-8 expected runs;
+wrong cursor version/part count/run; negative, signed, leading-zero, and
+overflow sequence values.
 
 ## Module metadata observation
 

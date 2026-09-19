@@ -220,6 +220,7 @@ func TestCursorRejectsMalformedForeignAndNonCanonicalValues(t *testing.T) {
 		{name: "overflow sequence", cursor: "v1:cnVu:9223372036854775808", expectedRun: "run"},
 		{name: "signed sequence", cursor: "v1:cnVu:+1", expectedRun: "run"},
 		{name: "leading zero sequence", cursor: "v1:cnVu:01", expectedRun: "run"},
+		{name: "empty expected run", cursor: valid, expectedRun: ""},
 		{name: "blank expected run", cursor: valid, expectedRun: " \t"},
 		{name: "invalid UTF-8 expected run", cursor: valid, expectedRun: string([]byte{0xff})},
 	}
