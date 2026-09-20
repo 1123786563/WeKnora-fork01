@@ -302,7 +302,12 @@ func (r *SyncLogRepository) FindLatest(ctx context.Context, dsID string) (*types
 	return &log, nil
 }
 
-// HasRunningSync checks if a data source has any sync currently in "running" status.
+// HasRunningSync checks if a data source has any sync currently running, used
+// to prevent overlapping sync executions. Liveness is judged by the latest
+// heartbeat (heartbeat_at, falling back to started_at for runs that have not
+// checkpointed yet): a "running" row with no liveness signal inside
+// types.SyncStallWindow belongs to a dead run and does not count — otherwise
+// one stalled row would block the data source's scheduled syncs forever.
 func (r *SyncLogRepository) HasRunningSync(ctx context.Context, dsID string) (bool, error) {
 	if dsID == "" {
 		return false, errors.New("data source id is empty")
@@ -312,6 +317,7 @@ func (r *SyncLogRepository) HasRunningSync(ctx context.Context, dsID string) (bo
 		Model(&types.SyncLog{}).
 		Where("data_source_id = ?", dsID).
 		Where("status = ?", types.SyncLogStatusRunning).
+		Where("COALESCE(heartbeat_at, started_at) > ?", time.Now().Add(-types.SyncStallWindow)).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

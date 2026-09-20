@@ -11,7 +11,11 @@ import (
 	"gorm.io/gorm"
 )
 
-const resetPendingStaleWindow = 30 * time.Minute
+// resetPendingStaleWindow is the distributed-mode sync-log stall window: the
+// sync task timeout (2h) plus a 15-minute buffer (types.SyncStallWindow). A
+// running sync log whose latest liveness signal — heartbeat_at, falling back
+// to started_at — is older than this window is treated as dead.
+const resetPendingStaleWindow = types.SyncStallWindow
 
 const restartInterruptedMessage = "Task interrupted due to application restart"
 
@@ -163,7 +167,11 @@ func stuckSyncLogQuery(db *gorm.DB, distributed bool, staleCutoff time.Time) *go
 	q := db.Model(&types.SyncLog{}).
 		Where("status = ?", types.SyncLogStatusRunning)
 	if distributed {
-		q = q.Where("started_at < ?", staleCutoff)
+		// Liveness comes from the latest heartbeat, falling back to
+		// started_at for runs that have not checkpointed yet. Judging by
+		// started_at alone would fail a long task another replica is still
+		// actively executing when this replica starts up.
+		q = q.Where("COALESCE(heartbeat_at, started_at) < ?", staleCutoff)
 	}
 	return q
 }

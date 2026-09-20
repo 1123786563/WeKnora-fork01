@@ -103,3 +103,61 @@ func TestSyncLogLifecycleRequestCancel(t *testing.T) {
 	assert.False(t, storedSuccess.CancelRequested, "terminal row must not be flagged")
 	assert.False(t, storedPending.CancelRequested, "pending row must not be flagged")
 }
+
+// TestSyncLogLifecycleHasRunningSyncExcludesStalledRuns is the bug-2
+// regression: a "running" row whose latest liveness signal —
+// COALESCE(heartbeat_at, started_at) — is older than types.SyncStallWindow
+// belongs to a dead run and must not count as running. Before the fix such a
+// row blocked the scheduler for that data source forever.
+func TestSyncLogLifecycleHasRunningSyncExcludesStalledRuns(t *testing.T) {
+	db := setupDataSourceRepoTestDB(t)
+	repo := NewSyncLogRepository(db)
+	ctx := context.Background()
+	// Local time on purpose: the sqlite driver persists timestrings with
+	// their zone offset, so seeded values must share the zone of the
+	// time.Now() cutoff inside HasRunningSync for SQL comparisons to order
+	// correctly (same convention as the container reset tests).
+	now := time.Now()
+
+	stalled := &types.SyncLog{
+		ID: "log-stalled", DataSourceID: "ds-stalled", TenantID: 1,
+		Status: types.SyncLogStatusRunning,
+	}
+	live := &types.SyncLog{
+		ID: "log-live", DataSourceID: "ds-live", TenantID: 1,
+		Status: types.SyncLogStatusRunning,
+	}
+	justStarted := &types.SyncLog{
+		ID: "log-just-started", DataSourceID: "ds-just-started", TenantID: 1,
+		Status: types.SyncLogStatusRunning,
+	}
+	for _, row := range []*types.SyncLog{stalled, live, justStarted} {
+		require.NoError(t, repo.Create(ctx, row))
+	}
+	// Heartbeat three hours ago: beyond the 2h15m stall window.
+	require.NoError(t, db.Exec(
+		`UPDATE sync_logs SET started_at = ?, heartbeat_at = ? WHERE id = ?`,
+		now.Add(-4*time.Hour), now.Add(-3*time.Hour), stalled.ID).Error)
+	// Heartbeating long task: started past the task timeout, still alive.
+	require.NoError(t, db.Exec(
+		`UPDATE sync_logs SET started_at = ?, heartbeat_at = ? WHERE id = ?`,
+		now.Add(-40*time.Minute), now.Add(-1*time.Minute), live.ID).Error)
+	// No heartbeat yet: liveness falls back to started_at.
+	require.NoError(t, db.Exec(
+		`UPDATE sync_logs SET started_at = ? WHERE id = ?`,
+		now.Add(-1*time.Minute), justStarted.ID).Error)
+
+	runningStalled, err := repo.HasRunningSync(ctx, stalled.DataSourceID)
+	require.NoError(t, err)
+	assert.False(t, runningStalled,
+		"a running row with no liveness inside the stall window must not block scheduling")
+
+	runningLive, err := repo.HasRunningSync(ctx, live.DataSourceID)
+	require.NoError(t, err)
+	assert.True(t, runningLive, "a heartbeating run still counts as running")
+
+	runningJustStarted, err := repo.HasRunningSync(ctx, justStarted.DataSourceID)
+	require.NoError(t, err)
+	assert.True(t, runningJustStarted,
+		"a run without any heartbeat yet falls back to started_at")
+}

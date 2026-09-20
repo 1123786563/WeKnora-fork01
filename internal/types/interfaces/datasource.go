@@ -111,8 +111,10 @@ type SyncLogRepository interface {
 	// FindLatest retrieves the most recent sync log for a data source
 	FindLatest(ctx context.Context, dsID string) (*types.SyncLog, error)
 
-	// HasRunningSync checks if a data source has any sync currently in "running" status.
-	// Used to prevent overlapping sync executions.
+	// HasRunningSync checks if a data source has any sync currently running,
+	// used to prevent overlapping sync executions. A "running" row whose
+	// latest liveness signal (COALESCE(heartbeat_at, started_at)) is older
+	// than types.SyncStallWindow is treated as dead and does not count.
 	HasRunningSync(ctx context.Context, dsID string) (bool, error)
 
 	// Update updates an existing sync log entry

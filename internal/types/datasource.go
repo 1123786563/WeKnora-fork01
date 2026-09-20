@@ -57,6 +57,13 @@ const (
 	SyncLogStatusFailed   = "failed"
 	SyncLogStatusCanceled = "canceled"
 
+	// SyncStallWindow is how long a "running" sync log stays credible without
+	// a heartbeat: the sync task timeout (2h) plus a 15-minute buffer. Both
+	// liveness checks — the startup reset hook and HasRunningSync — judge a
+	// running row by COALESCE(heartbeat_at, started_at) against this window,
+	// so live long tasks are spared while stalled runs stop blocking.
+	SyncStallWindow = 2*time.Hour + 15*time.Minute
+
 	// Conflict resolution strategies
 	ConflictStrategyOverwrite = "overwrite"
 	ConflictStrategySkip      = "skip"
