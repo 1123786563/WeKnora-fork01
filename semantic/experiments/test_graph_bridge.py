@@ -86,3 +86,14 @@ def test_evidence_metadata_excludes_topology_password() -> None:
     assert len(metadata["commit_sha"]) == 40
     assert metadata["platform"]
     assert "password" not in metadata
+
+
+def test_topology_manifest_is_explicit_and_password_free(tmp_path: Path) -> None:
+    from bridge_probe import TopologyConfig
+    from run_v02 import load_topology_manifest, write_topology_manifest
+
+    config = TopologyConfig("bolt://127.0.0.1:17687", "neo4j", "local-only-password", "neo4j", "dedicated")
+    manifest = write_topology_manifest(config, tmp_path / "topology.json")
+
+    assert "local-only-password" not in manifest.read_text()
+    assert load_topology_manifest(manifest, password="local-only-password") == config

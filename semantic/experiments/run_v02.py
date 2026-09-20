@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
@@ -34,6 +35,27 @@ def from_environment() -> TopologyConfig:
     )
 
 
+def write_topology_manifest(config: TopologyConfig, path: Path) -> Path:
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "uri": config.uri,
+        "user": config.user,
+        "database": config.database,
+        "topology": config.topology,
+    }, sort_keys=True) + "\n")
+    return path
+
+
+def load_topology_manifest(path: Path, *, password: str) -> TopologyConfig:
+    payload = json.loads(path.read_text())
+    if payload.get("schema_version") != 1 or not password:
+        raise ValueError("topology manifest or runtime password is invalid")
+    return TopologyConfig(
+        uri=payload["uri"], user=payload["user"], password=password,
+        database=payload["database"], topology=payload["topology"],
+    )
+
+
 def _reader_result(config: TopologyConfig, fixture_path: Path) -> dict[str, Any]:
     target = [
         *read_scope(config, Scope("T1", "K1", "D1", 1, "g1")),
@@ -54,20 +76,15 @@ def _reader_result(config: TopologyConfig, fixture_path: Path) -> dict[str, Any]
 
 
 def _run_child(mode: str, fixture_path: Path, config: TopologyConfig) -> dict[str, Any]:
-    child_environment = dict(os.environ)
-    child_environment.update({
-        "SEMANTICA_V02_NEO4J_URI": config.uri,
-        "SEMANTICA_V02_NEO4J_USER": config.user,
-        "SEMANTICA_V02_NEO4J_DATABASE": config.database,
-    })
-    process = subprocess.run(
-        [sys.executable, str(Path(__file__)), mode, "--fixture", str(fixture_path)],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        env=child_environment,
-    )
+    with tempfile.TemporaryDirectory(prefix="semantica-v02-manifest-") as directory:
+        manifest = write_topology_manifest(config, Path(directory) / "topology.json")
+        process = subprocess.run(
+            [sys.executable, str(Path(__file__)), mode, "--fixture", str(fixture_path), "--manifest", str(manifest)],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     return json.loads(process.stdout)
 
 
@@ -170,8 +187,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--phase")
     parser.add_argument("--reader-only", action="store_true")
+    parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
-    config = from_environment()
+    config = load_topology_manifest(args.manifest, password=os.environ.get("SEMANTICA_V02_NEO4J_PASSWORD", "")) if args.manifest else from_environment()
     if args.mode == "writer":
         written = write_fixture(config, load_fixture(args.fixture))
         print(json.dumps({"writer_pid": os.getpid(), "written_ids": sorted(written)}))
