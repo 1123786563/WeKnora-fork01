@@ -95,6 +95,14 @@ def check_from(criterion, expected, observed=None, observed_error=None, secrets=
             "outcome": outcome}
 
 
+def outcome_of(checks, criterion):
+    """Return the outcome of one check row (None if the criterion is absent)."""
+    for row in checks:
+        if row.get("criterion") == criterion:
+            return row.get("outcome")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Synthetic identities and fixture payload builders (decimal-string credits)
 
@@ -116,7 +124,14 @@ def new_batch_key():
 
 
 def batch_metadata(batch_key):
+    """Wallet-create metadata (object form; wallets accept a dict)."""
     return {"weknora_t03_batch": batch_key}
+
+
+def batch_metadata_list(batch_key):
+    """Wallet-transaction metadata (array form; the transaction API rejects
+    a dict with metadata: ["invalid_type"] on v1.53.0)."""
+    return [{"key": "weknora_t03_batch", "value": batch_key}]
 
 
 def customer_payload(external_id, name="WeKnora T03 Lab", currency="USD"):
@@ -163,7 +178,7 @@ def wallet_grant_payload(wallet_lago_id, granted_credits=None, paid_credits=None
     if name is not None:
         transaction["name"] = name
     if batch_key is not None:
-        transaction["metadata"] = batch_metadata(batch_key)
+        transaction["metadata"] = batch_metadata_list(batch_key)
     return {"wallet_transaction": transaction}
 
 
@@ -228,16 +243,32 @@ class LagoClient:
 
     @staticmethod
     def _error_reason(error):
-        """Short, sanitized reason from an error body -- never a raw dump."""
+        """Short, sanitized reason from an error body -- never a raw dump.
+
+        v1.53.0 renders validation failures as
+        ``{"code": "validation_errors", "error_details": {field: [code, ..]}}``,
+        so the specific contract code (e.g. ``wallet_limit_reached``) is dug
+        out of ``error_details`` first; the top-level code is the fallback.
+        """
         reason = ""
         try:
             raw = error.read()
             parsed = json.loads(raw.decode("utf-8"))
             if isinstance(parsed, dict):
-                reason = str(
-                    parsed.get("code") or parsed.get("error") or parsed.get("status")
-                    or parsed.get("message") or ""
-                )
+                details = parsed.get("error_details")
+                if isinstance(details, dict):
+                    for value in details.values():
+                        if isinstance(value, list) and value and value[0]:
+                            reason = str(value[0])
+                            break
+                        if isinstance(value, str) and value:
+                            reason = value
+                            break
+                if not reason:
+                    reason = str(
+                        parsed.get("code") or parsed.get("error")
+                        or parsed.get("status") or parsed.get("message") or ""
+                    )
         except (OSError, ValueError):
             pass
         return sanitize_text(reason or "no error body") if reason else "no error body"

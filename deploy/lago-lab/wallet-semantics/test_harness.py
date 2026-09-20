@@ -83,9 +83,13 @@ class RecordingLagoHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         self._record(body)
         if self.server.api_status >= 400:
+            # Mirrors the v1.53.0 validation-error shape: the specific
+            # contract code lives inside error_details.
             self._send(
                 self.server.api_status,
-                {"status": 422, "error": "unprocessable_entity", "code": self.server.api_error_code},
+                {"status": 422, "error": "Unprocessable Entity",
+                 "code": "validation_errors",
+                 "error_details": {"customer": [self.server.api_error_code]}},
             )
             return
         self._send(200, {"ok": True, "received": {"echo": "SENTINEL-RAW-BODY"}})
@@ -194,7 +198,12 @@ class SyntheticIdentityTests(unittest.TestCase):
                                              batch_key=batch)
         self.assertEqual(grant["wallet_transaction"]["wallet_id"], "lago-1")
         self.assertEqual(grant["wallet_transaction"]["granted_credits"], "10.5")
-        self.assertEqual(grant["wallet_transaction"]["metadata"]["weknora_t03_batch"], batch)
+        # Transaction metadata uses the array form (dict is rejected with
+        # metadata: ["invalid_type"] on v1.53.0); wallet metadata uses dict.
+        self.assertEqual(grant["wallet_transaction"]["metadata"],
+                         [{"key": "weknora_t03_batch", "value": batch}])
+        self.assertEqual(wallet["wallet"]["metadata"],
+                         {"weknora_t03_batch": batch})
 
         invoice = harness.one_off_invoice_payload(
             external_customer_id=customer["customer"]["external_id"],
@@ -236,6 +245,8 @@ class ClientAuthTests(ServerTestCase):
         with self.assertRaises(harness.LagoHttpError) as raised:
             client.post("/api/v1/wallets", payload={"wallet": {}})
         self.assertEqual(raised.exception.status, 422)
+        # The specific contract code is dug out of error_details, not the
+        # generic top-level "validation_errors".
         self.assertIn("wallet_limit_reached", str(raised.exception))
         self.assertNotIn("SENTINEL-RAW-BODY", str(raised.exception))
 

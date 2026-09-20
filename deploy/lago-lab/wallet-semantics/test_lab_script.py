@@ -175,12 +175,18 @@ class DelegationTests(LabScriptTestCase):
     def test_status_delegates_to_lago_sh_health_snapshot_with_lab_port(self):
         self.run_lab("env")
         result = self.run_lab("status", stub_docker=True)
-        # With a stubbed docker the snapshot is honestly "unavailable" and
-        # health.py exits 1; the JSON proves the delegation ran end-to-end.
-        self.assertNotEqual(result.returncode, 0)
+        # The stubbed docker yields no Compose rows, so services report
+        # unknown/unavailable in the snapshot; the delegation proof is that
+        # the real deploy/lago/health.py chain ran (release from the lock,
+        # docker compose ps invoked). The exit code depends on whether the
+        # real lab stack happens to be listening on 48893 right now, so it is
+        # deliberately not asserted here.
         snapshot = json.loads(result.stdout)
         self.assertEqual(snapshot["release"], "v1.53.0")
-        self.assertEqual(snapshot["overall"], "unavailable")
+        self.assertIn(["compose", "ps", "--format", "json"], self.docker_calls())
+        service_states = {state for state in
+                          (s["state"] for s in snapshot["services"].values())}
+        self.assertIn("unknown", service_states)
 
     def test_down_delegates_to_compose_down_and_preserves_volumes(self):
         self.run_lab("env")
