@@ -108,6 +108,16 @@ def send_event(base_url: str, api_key: str, event_payload: dict) -> CallResult:
     )
 
 
+def request(base_url: str, api_key: str, method: str, path: str, payload=None) -> CallResult:
+    """Arbitrary authenticated JSON call on the configured origin.
+
+    Used by the lab phase runner for object provisioning (billable metrics,
+    plans, customers, subscriptions) on the pinned v1.53.0 API.
+    """
+    _require_key(api_key)
+    return _call(method, f"{_base(base_url)}{path}", api_key, payload)
+
+
 def send_batch(base_url: str, api_key: str, event_payloads: list) -> CallResult:
     """POST /api/v1/events/batch with at most 100 events."""
     _require_key(api_key)

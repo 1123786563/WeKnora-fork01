@@ -397,3 +397,23 @@ class RedactionTests(ClientTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GenericRequestTests(ClientTestCase):
+    def test_request_uses_bearer_on_the_configured_origin_for_any_path(self):
+        from lago_client import request
+
+        result = request(self.base, API_KEY, "POST", "/api/v1/plans", {"plan": {"code": "x"}})
+        self.assertEqual(result.status, 404)  # fake server has no /plans route
+        recorded = self.server.requests[-1]
+        self.assertEqual(recorded["method"], "POST")
+        self.assertEqual(recorded["path"], "/api/v1/plans")
+        self.assertEqual(recorded["authorization"], f"Bearer {API_KEY}")
+        self.assertEqual(recorded["body"], {"plan": {"code": "x"}})
+
+    def test_request_without_key_blocks_before_any_traffic(self):
+        from lago_client import request
+
+        with self.assertRaises(BlockedEnvError):
+            request(self.base, "", "GET", "/api/v1/plans")
+        self.assertEqual(self.server.requests, [])
