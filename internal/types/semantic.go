@@ -75,6 +75,15 @@ func SemanticEvidenceFromWire(wire *semanticpb.Evidence) (SemanticEvidence, erro
 	return SemanticEvidence{EvidenceID: wire.EvidenceId, DocumentID: wire.DocumentId, Revision: wire.Revision, ChunkID: wire.ChunkId, ContentHash: wire.ContentHash, Quote: wire.Quote, StartChar: wire.StartChar, EndChar: wire.EndChar}, nil
 }
 
+func SemanticEvidenceToWire(value SemanticEvidence) *semanticpb.Evidence {
+	wire := &semanticpb.Evidence{EvidenceId: value.EvidenceID, DocumentId: value.DocumentID, Revision: value.Revision, ChunkId: value.ChunkID, ContentHash: value.ContentHash, Quote: value.Quote}
+	if value.StartChar != nil {
+		wire.StartChar = value.StartChar
+		wire.EndChar = value.EndChar
+	}
+	return wire
+}
+
 type SemanticAccessScope struct {
 	Scope                                                          SemanticScopeKey
 	SubjectID, ScopeRef, ScopeHash, ExpiresAt, Audience, BudgetRef string

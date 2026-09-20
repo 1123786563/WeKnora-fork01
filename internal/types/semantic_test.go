@@ -57,6 +57,10 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 	if err != nil || evidence.StartChar != nil || evidence.EndChar != nil {
 		t.Fatalf("evidence = %#v, %v", evidence, err)
 	}
+	roundTripEvidence, err := SemanticEvidenceFromWire(SemanticEvidenceToWire(evidence))
+	if err != nil || roundTripEvidence != evidence {
+		t.Fatalf("evidence round trip = %#v, %v", roundTripEvidence, err)
+	}
 	scope, err := SemanticAccessScopeFromWire(&semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: 1, KbId: "kb"}, SubjectId: "user", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: semanticpb.Purpose_PURPOSE_SEARCH, BudgetRef: "budget"})
 	if err != nil || scope.PermissionEpoch != 2 || scope.ExpiresAt != "2026-09-20T00:00:00Z" {
 		t.Fatalf("scope = %#v, %v", scope, err)
