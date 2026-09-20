@@ -470,6 +470,7 @@ func newReindexEnqueueFixture(t *testing.T, enq *reindexEnqueuer) (*scopedRecord
 		},
 	}
 	logRepo := &reindexSyncLogRepo{}
+	logRepo.logs = map[string]*types.SyncLog{}
 	svc := &DataSourceService{dsRepo: dsRepo, syncLogRepo: logRepo, taskEnqueuer: enq}
 	return dsRepo, logRepo, svc
 }
