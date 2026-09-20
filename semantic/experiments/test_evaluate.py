@@ -45,6 +45,17 @@ def test_citation_does_not_make_an_incorrect_conclusion_correct() -> None:
     assert assessment["correct"] is False
 
 
+def test_conclusion_oracle_rejects_wrong_final_dependency_that_mentions_expected_entity() -> None:
+    case = {"conclusion_oracle": {"must_contain": ["甲服务最终依赖丙服务"], "must_not_contain": ["甲服务最终依赖乙服务"]}}
+    assert assess_answer(case, "甲服务最终依赖乙服务，因为乙服务依赖丙服务。", {"e1"})["correct"] is False
+
+
+def test_summary_separates_query_phases_from_indexing() -> None:
+    summary = evaluate_rows([{"status": "completed", "expected_evidence": [], "evidence_ids": [], "latency_ms": 99, "indexing_ms": 20, "query_attempts": [{"query_phase": "cold", "latency_ms": 3}, {"query_phase": "warm", "latency_ms": 2}]}])
+    assert summary["cold_query_latency"] == {"available_count": 1, "p50_ms": 3.0, "p95_ms": 3.0}
+    assert summary["indexing_latency"]["p95_ms"] == 20.0
+
+
 def test_expected_positive_conclusion_rejects_a_negated_term_match() -> None:
     assessment = assess_answer(
         {"expected_answer_terms": ["支付服务", "依赖", "库存服务"], "expected_polarity": "positive"},

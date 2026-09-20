@@ -66,10 +66,12 @@ def assess_answer(case: Mapping[str, Any], answer: str, actual_evidence: set[str
     if case.get("unanswerable"):
         abstained = "证据不足" in answer and not actual_evidence
         return {"correct": abstained, "unanswerable_correct": abstained}
-    expected_terms = [str(term) for term in case.get("expected_answer_terms", [])]
+    oracle = case.get("conclusion_oracle", {})
+    required = [str(value) for value in oracle.get("must_contain", case.get("expected_answer_terms", []))]
+    forbidden = [str(value) for value in oracle.get("must_not_contain", [])]
     polarity = case.get("expected_polarity")
     negated = any(marker in answer for marker in ("不依赖", "并非", "不是", "未依赖", "没有依赖"))
-    correct = bool(actual_evidence) and bool(expected_terms) and all(term in answer for term in expected_terms) and (polarity != "positive" or not negated)
+    correct = bool(actual_evidence) and bool(required) and all(term in answer for term in required) and not any(term in answer for term in forbidden) and (polarity != "positive" or not negated)
     return {"correct": correct, "unanswerable_correct": False}
 
 
@@ -144,6 +146,10 @@ def _summary(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     latencies = [float(row["latency_ms"]) for row in materialized if isinstance(row.get("latency_ms"), (int, float))]
     token_values = [int((row.get("tokens") or {}).get("total_tokens", 0)) for row in materialized if isinstance(row.get("tokens"), Mapping)]
     privacy = any(bool(row.get("privacy_violation")) for row in materialized)
+    def phase_values(phase: str) -> list[float]:
+        return [float(item["latency_ms"]) for row in materialized for item in row.get("query_attempts", []) if item.get("query_phase") == phase and isinstance(item.get("latency_ms"), (int, float))]
+    cold, warm = phase_values("cold"), phase_values("warm")
+    indexing = [float(row["indexing_ms"]) for row in materialized if isinstance(row.get("indexing_ms"), (int, float))]
     return {
         "cases": len(materialized),
         "source_precision": round(sum(score["precision"] for score in scores) / len(scores), 4) if scores else 0.0,
@@ -156,6 +162,9 @@ def _summary(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         # separately approved policy may promote this value.
         "quality_gate_passed": False,
         "latency_p50_ms": _percentile(latencies, 0.5), "latency_p95_ms": _percentile(latencies, 0.95),
+        "cold_query_latency": {"available_count": len(cold), "p50_ms": _percentile(cold, .5), "p95_ms": _percentile(cold, .95)},
+        "warm_query_latency": {"available_count": len(warm), "p50_ms": _percentile(warm, .5), "p95_ms": _percentile(warm, .95)},
+        "indexing_latency": {"available_count": len(indexing), "p50_ms": _percentile(indexing, .5), "p95_ms": _percentile(indexing, .95)},
         "actual_total_tokens": sum(token_values) if token_values else None,
     }
 
@@ -222,8 +231,8 @@ class _V03Provider(BaseProvider):
         return str(payload.get("text", ""))
 
 
-def _register_provider() -> None:
-    provider_registry.register(PROVIDER_NAME, _V03Provider)
+def _register_provider(name: str) -> None:
+    provider_registry.register(name, _V03Provider)
 
 
 def _source_valid_evidence(case: Mapping[str, Any], answer: str) -> set[str]:
@@ -236,17 +245,18 @@ def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
     started = time.monotonic()
     row = {"case_id": case["case_id"], "document_revision": case["document_revision"], "requested_mode": "semantica", "actual_mode": "semantica-llm-ner-re", "engine_version": version("semantica"), "model_version": "qwen2.5:0.5b", "expected_evidence": case["expected_evidence"], "allowed_evidence": case["allowed_evidence"], "evidence_ids": [], "attempts": [], "tokens": None, "error": None}
     collector = UsageCollector()
+    provider_name = f"{PROVIDER_NAME}-{case['case_id']}"
     _V03Provider.active_collector = collector
     try:
-        _register_provider()
+        _register_provider(provider_name)
         indexing_started = time.monotonic()
         entities: list[Any] = []
         relations: list[Any] = []
         for document in case["documents"]:
-            ner = NERExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, entity_types=["服务", "组件", "系统"], usage_collector=collector)
+            ner = NERExtractor(method="llm", provider=provider_name, llm_model="qwen2.5:0.5b", silent_fail=False, entity_types=["服务", "组件", "系统"], usage_collector=collector)
             extracted = ner.extract(document["text"])
             entities.extend(extracted)
-            re = RelationExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, relation_types=["depends_on", "conflicts_with"], usage_collector=collector)
+            re = RelationExtractor(method="llm", provider=provider_name, llm_model="qwen2.5:0.5b", silent_fail=False, relation_types=["depends_on", "conflicts_with"], usage_collector=collector)
             relations.extend(re.extract(document["text"], extracted))
         graph = build_provenance_graph(relations, case["documents"])
         if not graph["relationships"]:
@@ -255,7 +265,7 @@ def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
         if not retrieved_graph["relationships"]:
             raise RuntimeError("graph retrieval found no source-validated relation for the question")
         row["indexing_ms"] = round((time.monotonic() - indexing_started) * 1000, 3)
-        reasoner = GraphReasoner(provider=PROVIDER_NAME, model="qwen2.5:0.5b")
+        reasoner = GraphReasoner(provider=provider_name, model="qwen2.5:0.5b")
         query_attempts: list[dict[str, Any]] = []
         for phase in ("cold", "warm"):
             query_started = time.monotonic()
