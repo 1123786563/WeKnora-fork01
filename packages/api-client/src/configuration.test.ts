@@ -386,3 +386,83 @@ test('accepts an actual 204 empty response only for a 204-compatible action', as
   await api.mcp.oauth.revoke('mcp-1');
   await assert.rejects(() => api.skills.catalog.remove('cat-1'), /success|object|empty/);
 });
+
+// --- R491: agent editor runtime catalogs (type-presets / placeholders) ---------------
+
+test('agents.typePresets fetches GET /agents/type-presets and returns validated catalog rows', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    return {
+      success: true,
+      data: [
+        {
+          id: 'rag-qa',
+          i18n: {
+            default: { label: 'RAG Q&A', description: 'Evidence-based retrieval.' },
+            'zh-CN': { label: 'RAG 问答', description: '基于文档分块的检索式问答。' },
+          },
+          config: { system_prompt_id: 'progressive_rag_agent', temperature: 0.7, allowed_tools: ['knowledge_search'], kb_selection_mode: 'all' },
+        },
+        { id: 'custom', i18n: { default: { label: 'Custom', description: 'Free-form.' } } },
+      ],
+    };
+  });
+
+  const presets = await api.agents.typePresets();
+  assert.equal((requests[0] as { method: string; path: string }).method, 'GET');
+  assert.equal((requests[0] as { method: string; path: string }).path, '/api/v1/agents/type-presets');
+  assert.equal(presets.length, 2);
+  assert.equal(presets[0]!.id, 'rag-qa');
+  assert.equal(presets[0]!.i18n['zh-CN']!.label, 'RAG 问答');
+  assert.equal(presets[0]!.config?.system_prompt_id, 'progressive_rag_agent');
+  assert.equal(presets[1]!.config, undefined, 'custom preset carries no config');
+});
+
+test('agents.typePresets rejects malformed payloads instead of returning a broken catalog', async () => {
+  const notArray = createConfigurationApi(async () => ({ success: true, data: { id: 'rag-qa' } }));
+  await assert.rejects(() => notArray.agents.typePresets(), /array/);
+
+  const missingId = createConfigurationApi(async () => ({ success: true, data: [{ i18n: {} }] }));
+  await assert.rejects(() => missingId.agents.typePresets(), /id/);
+
+  const missingI18n = createConfigurationApi(async () => ({ success: true, data: [{ id: 'rag-qa' }] }));
+  await assert.rejects(() => missingI18n.agents.typePresets(), /i18n/);
+
+  const failed = createConfigurationApi(async () => ({ success: false, data: [] }));
+  await assert.rejects(() => failed.agents.typePresets(), /success/);
+});
+
+test('agents.placeholders fetches GET /agents/placeholders grouped by prompt field', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    return {
+      success: true,
+      data: {
+        agent_system_prompt: [
+          { name: 'knowledge_bases', label: '知识库列表', description: '自动格式化的知识库列表' },
+          { name: 'language', label: '用户语言', description: '用户界面的语言偏好' },
+        ],
+        system_prompt: [{ name: 'query', label: '用户问题', description: '用户当前的问题' }],
+      },
+    };
+  });
+
+  const catalog = await api.agents.placeholders();
+  assert.equal((requests[0] as { method: string; path: string }).method, 'GET');
+  assert.equal((requests[0] as { method: string; path: string }).path, '/api/v1/agents/placeholders');
+  assert.deepEqual(catalog.agent_system_prompt?.map((def) => def.name), ['knowledge_bases', 'language']);
+  assert.equal(catalog.system_prompt?.[0]?.label, '用户问题');
+});
+
+test('agents.placeholders rejects non-object data and malformed definitions', async () => {
+  const notObject = createConfigurationApi(async () => ({ success: true, data: [] }));
+  await assert.rejects(() => notObject.agents.placeholders(), /object/);
+
+  const malformedDef = createConfigurationApi(async () => ({
+    success: true,
+    data: { system_prompt: [{ name: 'query', label: 7 }] },
+  }));
+  await assert.rejects(() => malformedDef.agents.placeholders(), /system_prompt/);
+});

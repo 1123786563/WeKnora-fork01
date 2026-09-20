@@ -418,6 +418,10 @@ export function createSettingsApi(request: SettingsRequest) {
     ollama,
     parser,
     retrieval: kvApi(request, 'retrieval-config'),
+    // R491 — tenant KV prompt templates (Vue api/system getPromptTemplates,
+    // GET /api/v1/tenants/kv/prompt-templates). Read-only from the editor's
+    // perspective; `update` ships with the kvApi helper like every other key.
+    promptTemplates: kvApi(request, 'prompt-templates'),
     memory,
     envVars,
     storage,

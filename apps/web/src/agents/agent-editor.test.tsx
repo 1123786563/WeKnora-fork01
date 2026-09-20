@@ -28,6 +28,7 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 const { createRoot } = await import('react-dom/client');
 const { AgentEditorModal } = await import('./AgentEditorModal.tsx');
 const { makeEditorT } = await import('./agent-editor.ts');
+const { resetAgentEditorResourcesCache } = await import('./agent-editor-resources.ts');
 import type { WeKnoraClient } from '@weknora/api-client';
 
 const t = makeEditorT('zh-CN');
@@ -132,7 +133,19 @@ const SUBAGENT_CATALOG = {
 
 interface SubagentCall { kind: 'install' | 'remove'; agentId: string; slug: string; locale?: string }
 
-function makeClient(options: { createReject?: Error; initialSubagents?: string[]; retrievalConfig?: Record<string, unknown> | null; parserEngines?: Array<Record<string, unknown>> | null } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
+// R491 — editor runtime catalogs (GET /agents/type-presets, /agents/placeholders,
+// /tenants/kv/prompt-templates). undefined = endpoint absent on the stub client
+// -> the editor degrades to the vendored static catalogs (R485/R486 behaviour);
+// null = endpoint present but failing; a value = a successful payload.
+function makeClient(options: {
+  createReject?: Error;
+  initialSubagents?: string[];
+  retrievalConfig?: Record<string, unknown> | null;
+  parserEngines?: Array<Record<string, unknown>> | null;
+  typePresets?: Array<Record<string, unknown>> | null;
+  placeholders?: Record<string, Array<Record<string, unknown>>> | null;
+  promptTemplates?: Record<string, Array<Record<string, unknown>>> | null;
+} = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
   const requests: RoutedRequest[] = [];
   const mbtiSubmits: Array<Record<string, 'A' | 'B'>> = [];
   const subagentCalls: SubagentCall[] = [];
@@ -169,6 +182,12 @@ function makeClient(options: { createReject?: Error; initialSubagents?: string[]
     configuration: {
       models: { list: async () => MODELS },
       agents: {
+        typePresets: options.typePresets === undefined
+          ? undefined
+          : async () => (options.typePresets === null ? Promise.reject(new Error('no presets')) : { data: options.typePresets, success: true }),
+        placeholders: options.placeholders === undefined
+          ? undefined
+          : async () => (options.placeholders === null ? Promise.reject(new Error('no placeholders')) : { data: options.placeholders, success: true }),
         create: async (input: Record<string, unknown>) => {
           requests.push({ method: 'POST', path: '/api/v1/agents', body: input });
           if (options.createReject) throw options.createReject;
@@ -216,6 +235,16 @@ function makeClient(options: { createReject?: Error; initialSubagents?: string[]
             ? Promise.reject(new Error('no retrieval config'))
             : options.retrievalConfig,
       },
+      // R491 prompt-template catalog (GET /tenants/kv/prompt-templates);
+      // undefined = absent -> static builtin template list stays in place.
+      promptTemplates: options.promptTemplates === undefined
+        ? undefined
+        : {
+            get: async () =>
+              options.promptTemplates === null
+                ? Promise.reject(new Error('no prompt templates'))
+                : { data: options.promptTemplates, success: true },
+          },
     },
   };
   return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls };
@@ -1283,4 +1312,132 @@ test('edit form keeps the stored retrieval values over tenant defaults (D9)', as
   const section = $('[data-editor-section="retrieval"]', root)!;
   assert.equal(($('[data-field="embedding_top_k"]', section) as HTMLInputElement).value, '7', 'stored value survives hydration');
   assert.equal(($$('input[type="range"]', section)[0] as HTMLInputElement).value, '0.4');
+});
+
+// --- R491: runtime catalogs drive the editor UI (Vue editorResources parity) -----------
+
+const RUNTIME_PRESETS = [
+  {
+    id: 'rag-qa',
+    i18n: {
+      default: { label: 'RAG Q&A', description: 'Evidence-based retrieval.' },
+      'zh-CN': { label: '后端问答', description: '后端预设描述' },
+    },
+    config: { system_prompt_id: 'backend_prompt', temperature: 0.42, allowed_tools: ['knowledge_search'], kb_selection_mode: 'all' },
+  },
+  { id: 'custom', i18n: { default: { label: 'Custom', description: '' }, 'zh-CN': { label: '自定义', description: '' } } },
+];
+
+const RUNTIME_TEMPLATES = {
+  agent_system_prompt: [
+    { id: 'backend_prompt', name: '后端模板', description: '来自租户 KV 的模板', content: 'backend prompt body', default: true, mode: 'rag' },
+    { id: 'backend_extra', name: '后端追加模板', description: '租户自定义追加', content: 'extra body' },
+  ],
+};
+
+const RUNTIME_PLACEHOLDERS = {
+  agent_system_prompt: [
+    { name: 'knowledge_bases', label: '知识库列表', description: '自动格式化的知识库列表' },
+    { name: 'backend_var', label: '后端变量', description: '后端新增的变量' },
+  ],
+  system_prompt: [{ name: 'query', label: '用户问题', description: '用户当前的问题' }],
+  context_template: [{ name: 'query', label: '用户问题', description: '用户当前的问题' }],
+};
+
+test('runtime catalogs render in the type dropdown, template panel and placeholder strip', async () => {
+  resetAgentEditorResourcesCache();
+  try {
+    const { client } = makeClient({
+      typePresets: RUNTIME_PRESETS as never,
+      promptTemplates: RUNTIME_TEMPLATES as never,
+      placeholders: RUNTIME_PLACEHOLDERS as never,
+    });
+    const root = await mountModal({ client, mode: 'create' });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    // type dropdown + description + 我的<label> prefill come from the backend
+    const select = $('[data-field="agent_type"]', root) as HTMLSelectElement;
+    assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'custom']);
+    assert.equal(select.value, 'rag-qa');
+    assert.match(root.textContent!, /后端预设描述/);
+    assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我的后端问答');
+    // create prefill applied the backend preset body + temperature
+    assert.equal(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value, 'backend prompt body');
+
+    // template panel lists the tenant-KV templates with backend strings
+    await goto(root, 'prompts');
+    const section = $('[data-editor-section="prompts"]', root)!;
+    await click(section, '[data-prompt-template-toggle]');
+    const panel = $('[data-prompt-template-panel]', root)!;
+    assert.deepEqual(
+      $$('[data-prompt-template]', panel).map((item) => item.getAttribute('data-prompt-template')),
+      ['backend_prompt', 'backend_extra'],
+    );
+    assert.match(panel.textContent!, /后端模板/);
+    assert.match(panel.textContent!, /租户自定义追加/);
+
+    // placeholder strip shows the backend variable set
+    const tags = $$('[data-placeholder-tags="system"] [data-placeholder-tag]', section).map((node) => node.getAttribute('data-placeholder-tag'));
+    assert.deepEqual(tags, ['knowledge_bases', 'backend_var']);
+  } finally {
+    resetAgentEditorResourcesCache();
+  }
+});
+
+test('failing runtime catalog endpoints fall back to the vendored static catalogs', async () => {
+  resetAgentEditorResourcesCache();
+  try {
+    const { client } = makeClient({ typePresets: null, promptTemplates: null, placeholders: null });
+    const root = await mountModal({ client, mode: 'create' });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    // static preset table: the five shipped presets, rag-qa selected with its
+    // vendored system prompt body
+    const select = $('[data-field="agent_type"]', root) as HTMLSelectElement;
+    assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
+    assert.ok(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value.startsWith('You are WeKnora, an assistant'));
+
+    // static builtin template list answers the template panel
+    await goto(root, 'prompts');
+    const section = $('[data-editor-section="prompts"]', root)!;
+    await click(section, '[data-prompt-template-toggle]');
+    const panel = $('[data-prompt-template-panel]', root)!;
+    assert.equal($$('[data-prompt-template]', panel).length, 7);
+
+    // static placeholder catalogue answers the variable strip
+    const tags = $$('[data-placeholder-tags="system"] [data-placeholder-tag]', section).map((node) => node.getAttribute('data-placeholder-tag'));
+    assert.deepEqual(tags, ['knowledge_bases', 'web_search_status', 'current_time', 'language']);
+  } finally {
+    resetAgentEditorResourcesCache();
+  }
+});
+
+test('restore-default prefers the preset-bound runtime template over the global default (R491)', async () => {
+  resetAgentEditorResourcesCache();
+  try {
+    // wiki-qa preset bound to wiki_prompt while backend_prompt is the global default
+    const presets = [
+      ...RUNTIME_PRESETS,
+      { id: 'wiki-qa', i18n: { default: { label: 'Wiki Q&A', description: '' }, 'zh-CN': { label: 'Wiki 问答', description: '' } }, config: { system_prompt_id: 'wiki_prompt' } },
+    ];
+    const templates = {
+      agent_system_prompt: [
+        { id: 'backend_prompt', name: '全局默认', description: '', content: 'global default body', default: true },
+        { id: 'wiki_prompt', name: 'Wiki 模板', description: '', content: 'wiki preset body' },
+      ],
+    };
+    const { client } = makeClient({ typePresets: presets as never, promptTemplates: templates as never, placeholders: null });
+    const root = await mountModal({ client, mode: 'create' });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
+    await goto(root, 'prompts');
+    const section = $('[data-editor-section="prompts"]', root)!;
+    await click(section, '[data-prompt-reset-default]');
+    assert.equal(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value, 'wiki preset body');
+  } finally {
+    resetAgentEditorResourcesCache();
+  }
 });

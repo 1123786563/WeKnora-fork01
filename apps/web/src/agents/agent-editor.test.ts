@@ -37,6 +37,7 @@ import {
   TOOL_CATALOG,
   validateAgentForm,
   type AgentEditorForm,
+  type AgentTypePreset,
   type KbOption,
   type ToolCapabilityScope,
 } from './agent-editor.ts';
@@ -755,4 +756,120 @@ test('agentEditor.placeholders.hint renders a clean {{ in every fallback locale'
     assert.ok(hint.includes('{{'), `${locale} keeps the {{ trigger`);
     assert.ok(!hint.includes(`{'`), `${locale} drops the vue-i18n literal quoting`);
   }
+});
+
+// --- R491: runtime catalogs override the vendored static tables ----------------------
+// The editor fetches type-presets / prompt-templates / placeholders at runtime
+// (Vue editorResources parity); the pure helpers take the runtime data as an
+// optional trailing argument and keep the static catalog as the default so
+// pre-fetch renders and the R485/R486 tests keep working.
+
+test('promptPlaceholdersFor prefers runtime placeholder definitions and keeps the static set otherwise', () => {
+  const runtime = {
+    agent_system_prompt: [
+      { name: 'knowledge_bases', label: '知识库列表', description: '自动格式化的知识库列表' },
+      { name: 'extra_var', label: '新增变量', description: '后端新增' },
+    ],
+    context_template: [],
+  };
+  const defs = promptPlaceholdersFor('agent_system_prompt', runtime);
+  assert.deepEqual(defs.map((def) => def.name), ['knowledge_bases', 'extra_var']);
+  // an empty runtime section is treated as "not fetched" -> static fallback
+  assert.equal(promptPlaceholdersFor('context_template', runtime)[0]!.name, 'query');
+  // no runtime data at all -> static catalog (R486 behaviour)
+  assert.equal(promptPlaceholdersFor('agent_system_prompt', null)[0]!.name, 'knowledge_bases');
+  assert.equal(promptPlaceholdersFor('system_prompt')[1]!.name, 'contexts');
+});
+
+test('findAgentTypePreset / isNameSystemGenerated accept a runtime preset list', () => {
+  const t = makeEditorT('zh-CN');
+  const runtimePresets = [
+    { id: 'custom', i18n: { default: { label: 'Custom', description: '' }, 'zh-CN': { label: '自定义', description: '自定义描述' } } },
+    { id: 'ops-agent', i18n: { default: { label: 'Ops', description: 'Ops preset' }, 'zh-CN': { label: '运维', description: '运维预设' } } },
+  ];
+  assert.equal(findAgentTypePreset('ops-agent', runtimePresets)!.id, 'ops-agent');
+  assert.equal(findAgentTypePreset('rag-qa', runtimePresets), null, 'runtime list shadows the static one');
+  assert.equal(findAgentTypePreset('rag-qa')!.id, 'rag-qa', 'static list stays the default');
+
+  // 我的运维 is generated from the runtime preset -> safe to override
+  assert.equal(isNameSystemGenerated('我的运维', t, 'zh-CN', runtimePresets), true);
+  // the static 我的RAG 问答 is unknown to the runtime list -> user-owned
+  assert.equal(isNameSystemGenerated('我的RAG 问答', t, 'zh-CN', runtimePresets), false);
+});
+
+test('applyAgentTypePreset reads the system prompt body from the runtime template list', () => {
+  const form = defaultAgentForm();
+  const runtimePreset: AgentTypePreset = {
+    id: 'rag-qa',
+    i18n: { default: { label: 'RAG Q&A', description: '' } },
+    config: {
+      system_prompt_id: 'tenant_prompt',
+      temperature: 0.4,
+      allowed_tools: ['knowledge_search'],
+      kb_selection_mode: 'all',
+    },
+  };
+  const runtimeTemplates = [
+    { id: 'tenant_prompt', name: '租户模板', description: '', content: 'tenant body', default: true },
+  ];
+  applyAgentTypePreset(form, runtimePreset, runtimeTemplates);
+  assert.equal(form.config.system_prompt, 'tenant body');
+  assert.equal(form.config.system_prompt_id, 'tenant_prompt');
+  assert.equal(form.config.temperature, 0.4);
+
+  // unknown template id in the runtime list -> clear so the change is visible
+  const unknown = { ...form, config: { ...form.config } };
+  applyAgentTypePreset(unknown, { ...runtimePreset, config: { system_prompt_id: 'missing' } }, runtimeTemplates);
+  assert.equal(unknown.config.system_prompt, '');
+
+  // default template source stays the vendored catalog
+  const form2 = defaultAgentForm();
+  applyAgentTypePreset(form2, findAgentTypePreset('rag-qa')!);
+  assert.ok(form2.config.system_prompt.startsWith('You are WeKnora, an assistant'));
+});
+
+test('resolveAgentSystemPromptResetTemplate honours runtime presets and templates', () => {
+  const runtimePresets: AgentTypePreset[] = [
+    {
+      id: 'wiki-qa',
+      i18n: { default: { label: 'Wiki Q&A', description: '' } },
+      config: { system_prompt_id: 'tenant_wiki' },
+    },
+  ];
+  const runtimeTemplates = [
+    { id: 'tenant_wiki', name: '租户Wiki模板', description: '', content: 'tenant wiki body' },
+    { id: 'tenant_default', name: '租户默认', description: '', content: 'tenant default body', default: true },
+  ];
+  // preset-bound template wins over the global default (Vue 4691-4703)
+  assert.equal(resolveAgentSystemPromptResetTemplate('wiki-qa', runtimePresets, runtimeTemplates)!.id, 'tenant_wiki');
+  // custom / unknown type -> global default entry, then first row
+  assert.equal(resolveAgentSystemPromptResetTemplate('custom', runtimePresets, runtimeTemplates)!.id, 'tenant_default');
+  assert.equal(resolveAgentSystemPromptResetTemplate(undefined, runtimePresets, runtimeTemplates)!.id, 'tenant_default');
+  // static defaults stay intact when nothing runtime is passed
+  assert.equal(resolveAgentSystemPromptResetTemplate('wiki-qa')!.id, 'wiki_researcher');
+});
+
+test('seedCreateAgentForm applies the runtime default preset (backend rag-qa without retain_retrieval_history)', () => {
+  const runtimePresets: AgentTypePreset[] = [
+    {
+      id: 'rag-qa',
+      i18n: { default: { label: 'RAG Q&A', description: 'backend desc' }, 'zh-CN': { label: 'RAG 问答', description: '后端描述' } },
+      config: {
+        system_prompt_id: 'progressive_rag_agent',
+        temperature: 0.55,
+        allowed_tools: ['knowledge_search'],
+        kb_selection_mode: 'all',
+      },
+    },
+  ];
+  const runtimeTemplates = [
+    { id: 'progressive_rag_agent', name: '渐进式 RAG 智能体', description: '', content: 'backend rag body', default: true },
+  ];
+  const form = seedCreateAgentForm(t, 'zh-CN', [], runtimePresets, runtimeTemplates);
+  assert.equal(form.config.system_prompt, 'backend rag body');
+  assert.equal(form.config.temperature, 0.55);
+  assert.equal(form.name, '我的RAG 问答');
+  assert.equal(form.description, '后端描述');
+  // retain_retrieval_history is untouched when the backend preset omits it
+  assert.equal(form.config.retain_retrieval_history, false);
 });

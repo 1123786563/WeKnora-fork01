@@ -164,3 +164,27 @@ test('reads the active tenant from the authenticated user envelope', async () =>
   assert.deepEqual(await api.tenant.get(), { id: 7, name: 'React tenant', description: 'Live' });
   assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/auth/me' }]);
 });
+
+// --- R491: tenant KV prompt templates (Vue getPromptTemplates parity) -----------------
+
+test('promptTemplates reads GET /tenants/kv/prompt-templates like the other KV settings', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createSettingsApi(async (request) => {
+    requests.push(request as { method: string; path: string });
+    return {
+      success: true,
+      data: {
+        agent_system_prompt: [
+          { id: 'progressive_rag_agent', name: '渐进式 RAG 智能体', description: '带知识库的渐进式检索增强生成智能体系统提示词', content: 'You are WeKnora…', default: true, mode: 'rag' },
+        ],
+        system_prompt: [{ id: 'default_kb', name: '知识库问答助手', content: '…', default: true }],
+      },
+    };
+  });
+
+  const config = await api.promptTemplates.get();
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/tenants/kv/prompt-templates' }]);
+  const agentPrompts = (config as { agent_system_prompt?: Array<{ id: string; default?: boolean }> }).agent_system_prompt;
+  assert.equal(agentPrompts?.[0]?.id, 'progressive_rag_agent');
+  assert.equal(agentPrompts?.[0]?.default, true);
+});

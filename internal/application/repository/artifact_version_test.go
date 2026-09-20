@@ -415,18 +415,21 @@ func TestArtifactVersionsMigrationDownIsReversible(t *testing.T) {
 		return count
 	}
 	require.Equal(t, 1, tableCount(), "000067 up must create artifact_versions")
-	// Step back to exactly 000066 so the 000067 DOWN runs last: the head
-	// keeps advancing with later tasks (W30's 000068 voice_sessions already
-	// follows), so the step count is derived from the live head instead of
-	// assuming this migration is the newest one.
+	// Step back to exactly 000066 so the 000067 DOWN runs last: the head keeps
+	// advancing with later tasks (W30's 000068 voice_sessions already follows),
+	// and parallel lanes leave number gaps above 66 (85/86/88/89/90 here), so
+	// step arithmetic on version numbers overshoots — Steps counts applied
+	// files, not version IDs — and the re-up replays 000062's deliberately
+	// no-op DOWN, tripping duplicate columns. Migrating to the exact target
+	// version (as native_schema_test.go does) is gap-proof and never rolls back
+	// past 000066.
 	version, dirty, err := migrator.Version()
 	require.NoError(t, err)
 	require.False(t, dirty)
 	require.Greater(t, version, uint(66), "000067 must already be applied")
-	stepsTo := int(version - 66) // land on 000066 so the 000067 DOWN runs last
-	require.NoError(t, migrator.Steps(-stepsTo))
+	require.NoError(t, migrator.Migrate(66)) // land on 000066 so the 000067 DOWN runs last
 	require.Zero(t, tableCount(), "000067 down must drop artifact_versions")
 	// Re-applying must restore the table.
-	require.NoError(t, migrator.Steps(stepsTo))
+	require.NoError(t, migrator.Up())
 	require.Equal(t, 1, tableCount())
 }

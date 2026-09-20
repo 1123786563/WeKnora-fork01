@@ -33,6 +33,31 @@ export interface AgentSuggestedQuestionsOptions {
   signal?: AbortSignal;
 }
 
+// --- R491: agent editor runtime catalogs (routes_agent.go) ----------------------------
+// GET /api/v1/agents/type-presets and /api/v1/agents/placeholders back the
+// editor the same way frontend/src/api/agent/index.ts getAgentTypePresets /
+// getPlaceholders feed the Vue editorResources store. The preset config keys
+// evolve with config/agent_type_presets.yaml, so `config` stays an open record
+// and consumers narrow the fields they apply.
+
+/** Localized label/description block of an agent type preset. */
+export interface AgentTypePresetI18nEntry { label: string; description: string }
+
+/** Agent type preset row (config/agent_type_presets.yaml via the API). */
+export interface AgentTypePresetCatalog {
+  id: string;
+  i18n: Record<string, AgentTypePresetI18nEntry>;
+  /** absent = "custom" style preset that auto-fills nothing */
+  config?: Record<string, unknown>;
+  kb_filter?: { any_of?: string[]; all_of?: string[]; none_of?: string[] };
+}
+
+/** Placeholder definition (internal/types/placeholder.go). */
+export interface AgentPlaceholderDefinition { name: string; label: string; description: string }
+
+/** Placeholder catalog grouped by prompt field (system_prompt, agent_system_prompt, …). */
+export type AgentPlaceholderCatalog = Record<string, AgentPlaceholderDefinition[]>;
+
 export interface ModelProvider {
   value: string;
   label: string;
@@ -688,6 +713,51 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
           throw new Error('/agents/suggested-questions.data.questions items must be strings or {question} objects');
         }
         return parsed as string[];
+      },
+      /** GET /api/v1/agents/type-presets — editor type-preset catalog (Viewer+). */
+      async typePresets(signal?: AbortSignal): Promise<AgentTypePresetCatalog[]> {
+        const data = successfulData(await request({
+          method: 'GET', path: '/api/v1/agents/type-presets', ...(signal === undefined ? {} : { signal }),
+        }), '/agents/type-presets');
+        if (!Array.isArray(data)) throw new Error('/agents/type-presets.data must be an array');
+        return data.map((item, index) => {
+          const row = record(item, `/agents/type-presets.data[${index}]`);
+          const presetId = required(row.id, `/agents/type-presets.data[${index}].id`);
+          const i18n = record(row.i18n, `/agents/type-presets.data[${index}].i18n`);
+          for (const [locale, entry] of Object.entries(i18n)) {
+            const block = record(entry, `/agents/type-presets.data[${index}].i18n.${locale}`);
+            required(block.label, `/agents/type-presets.data[${index}].i18n.${locale}.label`);
+            if (block.description !== undefined && typeof block.description !== 'string') {
+              throw new Error(`/agents/type-presets.data[${index}].i18n.${locale}.description must be a string`);
+            }
+          }
+          return {
+            id: presetId,
+            i18n: i18n as unknown as Record<string, AgentTypePresetI18nEntry>,
+            ...(row.config === undefined ? {} : { config: record(row.config, `/agents/type-presets.data[${index}].config`) }),
+            ...(row.kb_filter === undefined ? {} : { kb_filter: record(row.kb_filter, `/agents/type-presets.data[${index}].kb_filter`) as AgentTypePresetCatalog['kb_filter'] }),
+          };
+        });
+      },
+      /** GET /api/v1/agents/placeholders — placeholder catalog grouped by prompt field. */
+      async placeholders(signal?: AbortSignal): Promise<AgentPlaceholderCatalog> {
+        const data = successfulData(await request({
+          method: 'GET', path: '/api/v1/agents/placeholders', ...(signal === undefined ? {} : { signal }),
+        }), '/agents/placeholders');
+        const catalog = record(data, '/agents/placeholders.data');
+        const result: AgentPlaceholderCatalog = {};
+        for (const [field, defs] of Object.entries(catalog)) {
+          if (!Array.isArray(defs)) throw new Error(`/agents/placeholders.data.${field} must be an array`);
+          result[field] = defs.map((item, index) => {
+            const row = record(item, `/agents/placeholders.data.${field}[${index}]`);
+            return {
+              name: required(row.name, `/agents/placeholders.data.${field}[${index}].name`),
+              label: required(row.label, `/agents/placeholders.data.${field}[${index}].label`),
+              description: typeof row.description === 'string' ? row.description : '',
+            };
+          });
+        }
+        return result;
       },
     },
     models: {
