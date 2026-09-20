@@ -24,9 +24,11 @@ def test_valid_identity_reaches_unimplemented_method(rpc_client) -> None:
 
 
 def test_process_health_does_not_claim_semantic_readiness(rpc_client) -> None:
-    response = rpc_client.health.Check(
-        health_pb2.HealthCheckRequest(service="weknora.semantic.v1.SemanticService"),
-        timeout=2,
-        metadata=(("authorization", "Bearer test-service-token"), ("x-weknora-audience", "weknora-semantic")),
-    )
-    assert response.status == health_pb2.HealthCheckResponse.NOT_SERVING
+    metadata = (("authorization", "Bearer test-service-token"), ("x-weknora-audience", "weknora-semantic"))
+    for service in ("", "weknora.semantic.v1.SemanticService"):
+        response = rpc_client.health.Check(
+            health_pb2.HealthCheckRequest(service=service),
+            timeout=2,
+            metadata=metadata,
+        )
+        assert response.status == health_pb2.HealthCheckResponse.NOT_SERVING

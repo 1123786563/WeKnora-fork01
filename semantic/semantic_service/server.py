@@ -26,7 +26,7 @@ def create_server(config: SemanticServiceConfig) -> grpc.Server:
     )
     semantic_pb2_grpc.add_SemanticServiceServicer_to_server(_UnimplementedSemanticService(), server)
     health_servicer = health.HealthServicer()
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
     health_servicer.set("weknora.semantic.v1.SemanticService", health_pb2.HealthCheckResponse.NOT_SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     bound_port = server.add_secure_port(config.address, credentials)
