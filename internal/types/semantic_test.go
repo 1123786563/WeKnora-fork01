@@ -61,4 +61,8 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 	if err != nil || scope.PermissionEpoch != 2 || scope.ExpiresAt != "2026-09-20T00:00:00Z" {
 		t.Fatalf("scope = %#v, %v", scope, err)
 	}
+	roundTrip, err := SemanticAccessScopeFromWire(SemanticAccessScopeToWire(scope))
+	if err != nil || roundTrip != scope {
+		t.Fatalf("scope round trip = %#v, %v", roundTrip, err)
+	}
 }

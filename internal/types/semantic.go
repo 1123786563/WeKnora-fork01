@@ -90,6 +90,19 @@ func SemanticAccessScopeFromWire(wire *semanticpb.AccessScope) (SemanticAccessSc
 	return SemanticAccessScope{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, ExpiresAt: wire.ExpiresAt, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
 }
 
+func SemanticAccessScopeToWire(value SemanticAccessScope) *semanticpb.AccessScope {
+	purposes := map[string]semanticpb.Purpose{
+		"PURPOSE_SEARCH": semanticpb.Purpose_PURPOSE_SEARCH,
+		"PURPOSE_REASON": semanticpb.Purpose_PURPOSE_REASON,
+		"PURPOSE_INDEX":  semanticpb.Purpose_PURPOSE_INDEX,
+	}
+	purpose, ok := purposes[value.Purpose]
+	if !ok {
+		panic("unsupported semantic access scope purpose")
+	}
+	return &semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, SubjectId: value.SubjectID, ScopeRef: value.ScopeRef, ScopeHash: value.ScopeHash, PermissionEpoch: value.PermissionEpoch, ExpiresAt: value.ExpiresAt, Audience: value.Audience, Purpose: purpose, BudgetRef: value.BudgetRef}
+}
+
 func semanticRetrievalModeFromWire(mode semanticpb.RetrievalMode) (SemanticRetrievalMode, error) {
 	switch mode {
 	case semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG:
