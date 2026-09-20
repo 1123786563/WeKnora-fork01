@@ -25,6 +25,7 @@ export interface RuntimeRemote {
   oidcUrl(redirectUri: string, frontendRedirectUri?: string, codeChallenge?: string): Promise<{ authorizationUrl: string; state: string }>;
   oidcExchange(code: string, state: string, codeVerifier?: string): Promise<StoredCredential>;
   oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<StoredCredential>;
+  refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }>;
 }
 
 /** Declared here for Task 4, which owns persistence and one-time callback consumption. */
@@ -32,6 +33,7 @@ export interface PendingOidcStore {
   savePending(input: PendingOidc): Promise<void>;
   loadPending(): Promise<PendingOidc | undefined>;
   consumePending(): Promise<PendingOidc | undefined>;
+  clearPending(): Promise<void>;
 }
 
 export interface PendingOidc {

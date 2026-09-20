@@ -70,6 +70,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let revocableLease: RuntimeScopeLease | undefined;
   let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
   let deploymentMutation: Promise<void> = Promise.resolve();
+  let credentialMutation: Promise<void> = Promise.resolve();
+  let pendingOidcMutation: Promise<void> = Promise.resolve();
+  const refreshFlights = new Map<string, { requestEpoch: number; promise: Promise<StoredCredential | undefined> }>();
   let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -92,23 +95,65 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     return epoch;
   };
   const current = (requestEpoch: number, deployment: Deployment): boolean => requestEpoch === epoch && activeDeployment?.origin === deployment.origin;
-  const mutateDeployment = (mutation: () => Promise<void>): Promise<void> => {
-    const next = deploymentMutation.then(mutation, mutation);
-    deploymentMutation = next.catch(() => {});
+  const mutate = <T>(tail: Promise<void>, setTail: (next: Promise<void>) => void, mutation: () => Promise<T>): Promise<T> => {
+    const next = tail.then(mutation, mutation);
+    setTail(next.then(() => {}, () => {}));
     return next;
   };
+  const mutateDeployment = <T>(mutation: () => Promise<T>): Promise<T> =>
+    mutate(deploymentMutation, (next) => { deploymentMutation = next; }, mutation);
+  const mutateCredential = <T>(mutation: () => Promise<T>): Promise<T> =>
+    mutate(credentialMutation, (next) => { credentialMutation = next; }, mutation);
+  const mutatePendingOidc = <T>(mutation: () => Promise<T>): Promise<T> =>
+    mutate(pendingOidcMutation, (next) => { pendingOidcMutation = next; }, mutation);
+  const persistCredential = async (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<boolean> =>
+    mutateCredential(async () => {
+      if (!current(requestEpoch, deployment)) return false;
+      await ports.credentialStore.write(deployment.origin, credential);
+      return current(requestEpoch, deployment);
+    });
   const safe = (requestEpoch: number, deployment: Deployment, reason: RuntimeReason): RuntimeSnapshot =>
     current(requestEpoch, deployment) ? publish({ surface: 'upgrade-required', deployment, reason }) : state;
+
+  const refreshedCredential = (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<StoredCredential | undefined> => {
+    const flight = refreshFlights.get(deployment.origin);
+    if (flight?.requestEpoch === requestEpoch) return flight.promise;
+    let promise!: Promise<StoredCredential | undefined>;
+    promise = (async (): Promise<StoredCredential | undefined> => {
+      try {
+        const rotated = await ports.remoteFor(deployment.origin).refresh(credential.refreshToken);
+        if (typeof rotated.access_token !== 'string' || rotated.access_token.trim() === '' || typeof rotated.refresh_token !== 'string' || rotated.refresh_token.trim() === '') return undefined;
+        const next = { token: rotated.access_token, refreshToken: rotated.refresh_token };
+        return await persistCredential(requestEpoch, deployment, next) ? next : undefined;
+      } catch {
+        return undefined;
+      } finally {
+        if (refreshFlights.get(deployment.origin)?.promise === promise) refreshFlights.delete(deployment.origin);
+      }
+    })();
+    refreshFlights.set(deployment.origin, { requestEpoch, promise });
+    return promise;
+  };
 
   const authenticate = async (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<RuntimeSnapshot> => {
     try {
       const remote = ports.remoteFor(deployment.origin);
-      const me = await remote.me(credential.token);
+      let verifiedCredential = credential;
+      let me;
+      try {
+        me = await remote.me(credential.token);
+      } catch {
+        const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
+        if (!refreshed) return safe(requestEpoch, deployment, 'authentication-required');
+        if (!current(requestEpoch, deployment)) return state;
+        verifiedCredential = refreshed;
+        me = await remote.me(refreshed.token);
+      }
       if (!current(requestEpoch, deployment)) return state;
       const authenticatedUserId = userId(me.user);
       const activeTenantId = tenantId(me.tenant);
       if (!authenticatedUserId || !activeTenantId) return safe(requestEpoch, deployment, 'tenant-required');
-      const capabilities = await remote.deploymentCapabilities(credential.token);
+      const capabilities = await remote.deploymentCapabilities(verifiedCredential.token);
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
       if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
@@ -125,8 +170,11 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     const deployment = activeDeployment;
     reserve();
     publish({ surface: 'deployment-login', reason: 'authentication-required' });
-    if (deployment) await ports.credentialStore.clear(deployment.origin);
-    await mutateDeployment(async () => { await ports.deploymentStore?.clear(); });
+    await Promise.all([
+      deployment ? mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); }) : Promise.resolve(),
+      ports.pendingOidcStore ? mutatePendingOidc(async () => { await ports.pendingOidcStore!.clearPending(); }) : Promise.resolve(),
+      mutateDeployment(async () => { await ports.deploymentStore?.clear(); }),
+    ]);
   };
 
   return {
@@ -155,8 +203,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       try {
         const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
         if (!current(requestEpoch, deployment)) return state;
-        await ports.credentialStore.write(deployment.origin, credential);
-        if (!current(requestEpoch, deployment)) return state;
+        if (!await persistCredential(requestEpoch, deployment, credential)) return state;
         return await authenticate(requestEpoch, deployment, credential);
       } catch {
         return safe(requestEpoch, deployment, 'authentication-required');
@@ -179,8 +226,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         const authorization = await remote.oidcUrl(serverOidcCallback(deployment), redirectUri, challenge);
         if (!current(requestEpoch, deployment)) return;
         if (!authorization.state.trim() || !authorization.authorizationUrl.trim()) throw new Error('OIDC_AUTHORIZATION');
-        await ports.pendingOidcStore.savePending({ deploymentOrigin: deployment.origin, state: authorization.state, codeVerifier: verifier, redirectUri });
-        if (!current(requestEpoch, deployment)) return;
+        const persisted = await mutatePendingOidc(async () => {
+          if (!current(requestEpoch, deployment)) return false;
+          await ports.pendingOidcStore!.savePending({ deploymentOrigin: deployment.origin, state: authorization.state, codeVerifier: verifier, redirectUri });
+          return current(requestEpoch, deployment);
+        });
+        if (!persisted) return;
         await ports.oidcBrowser.open(authorization.authorizationUrl);
       } catch {
         safe(requestEpoch, deployment, 'authentication-required');
@@ -190,7 +241,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (oidcCompletion) return oidcCompletion;
       const completion = (async (): Promise<RuntimeSnapshot> => {
       if (!ports.pendingOidcStore) return state;
-      const pending = await ports.pendingOidcStore.consumePending();
+      const pending = await mutatePendingOidc(async () => await ports.pendingOidcStore!.consumePending());
       if (!pending) {
         if (!activeDeployment) return state;
         const requestEpoch = begin(activeDeployment);
@@ -207,8 +258,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
           code, state: pending.state, redirectUri: pending.redirectUri, codeVerifier: pending.codeVerifier,
         });
         if (!current(requestEpoch, deployment)) return state;
-        await ports.credentialStore.write(deployment.origin, credential);
-        if (!current(requestEpoch, deployment)) return state;
+        if (!await persistCredential(requestEpoch, deployment, credential)) return state;
         return await authenticate(requestEpoch, deployment, credential);
       } catch {
         return safe(requestEpoch, deployment, 'authentication-required');

@@ -19,6 +19,10 @@ test('secure pending OIDC storage consumes the verifier once', async () => {
     deploymentOrigin: 'https://weknora.example.test', state: 'state-1', codeVerifier: 'verifier-1', redirectUri: 'weknora://oidc',
   });
   assert.equal(await pending.consumePending(), undefined);
+
+  await pending.savePending({ deploymentOrigin: 'https://weknora.example.test', state: 'state-2', codeVerifier: 'verifier-2', redirectUri: 'weknora://oidc' });
+  await pending.clearPending();
+  assert.equal(await pending.consumePending(), undefined);
 });
 
 test('native browser returns only the registered callback URL', async () => {

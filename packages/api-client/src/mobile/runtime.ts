@@ -7,7 +7,7 @@ type Request = (input: ClientRequest) => Promise<unknown>;
 export interface MobileRuntimeRemoteOptions {
   /**
    * 部署 Origin。构造即强校验：必须是绝对 HTTPS URL、无内嵌 user-info、
-   * 无 query/fragment——非法 Origin 在任何请求发出前同步抛错。
+   * 无 path/query/fragment——非法 Origin 在任何请求发出前同步抛错。
    */
   origin: string;
   /** 复用既有 ClientRequest 通道（createWeKnoraClient().request），本适配器不新建传输。 */
@@ -42,6 +42,7 @@ function requireDeploymentOrigin(origin: string): void {
   if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
   if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
   if (parsed.hostname === '') throw new Error('deployment origin must include a host');
+  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
   if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
 }
 

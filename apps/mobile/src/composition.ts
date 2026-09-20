@@ -2,6 +2,7 @@ import { createElement, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport } from '@weknora/api-client/transport';
+import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
 import type { MobileRuntime, RuntimeSnapshot } from '@weknora/mobile-core';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
@@ -27,7 +28,7 @@ export function createNativeMobileRuntime(): MobileRuntime {
   runtime = createMobileRuntime({
     credentialStore: createNativeSecureCredentialStore(),
     deploymentStore: createNativeSecureDeploymentStore(),
-    clientVersion: 3,
+    clientVersion: CLIENT_PROTOCOL_VERSION,
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });

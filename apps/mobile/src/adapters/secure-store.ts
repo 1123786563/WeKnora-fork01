@@ -37,6 +37,9 @@ export function createSecurePendingOidcStore(store: SecureStorePort): PendingOid
       await store.deleteItemAsync(PENDING_OIDC_KEY);
       return parsePending(raw);
     },
+    async clearPending() {
+      await store.deleteItemAsync(PENDING_OIDC_KEY);
+    },
   };
 }
 

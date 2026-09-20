@@ -82,6 +82,9 @@ test('rejects an invalid or non-HTTPS deployment origin before any request is se
     'http://insecure.example.test',
     'ftp://weknora.example.test',
     'https://user:pass@weknora.example.test',
+    'https://weknora.example.test/api/v1',
+    'https://weknora.example.test?next=/signin',
+    'https://weknora.example.test#fragment',
     'not-a-url',
     '',
   ];
