@@ -56,7 +56,7 @@ def scope_read_query(scope: Scope) -> tuple[str, dict[str, Any]]:
 
 
 def _node_parameters(assertion: dict[str, Any]) -> dict[str, Any]:
-    required = {"semantic_id", "tenant_id", "kb_id", "document_id", "revision", "chunk_id", "generation", "content_hash", "quote", "predicate", "subject", "object", "evidence_ids"}
+    required = {"semantic_id", "tenant_id", "kb_id", "document_id", "revision", "chunk_id", "generation", "content_hash", "quote", "start_char", "end_char", "rule_version", "predicate", "subject", "object", "evidence_ids"}
     missing = required.difference(assertion)
     if missing:
         raise ValueError(f"assertion missing required properties: {sorted(missing)}")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 from hashlib import sha256
@@ -122,6 +123,8 @@ def evidence_metadata(config: TopologyConfig) -> dict[str, Any]:
         "semantica_version": version("semantica"),
         "v01_lock_sha256": V01_LOCK_SHA256,
         "v02_lock_sha256": sha256(LOCK_PATH.read_bytes()).hexdigest(),
+        "commit_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "platform": platform.platform(),
     }
 
 
@@ -150,6 +153,11 @@ def capture_dedicated_run(
     else:
         result = run_writer_then_reader(config, fixture_path)
     existing["runs"][phase] = evidence_record(result)
+    existing["runs"][phase]["execution"] = {
+        "argv": [sys.executable, str(Path(__file__)), "capture", "--fixture", str(fixture_path), "--output", str(output), "--phase", phase],
+        "exit_code": 0,
+        "python": sys.version,
+    }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n")
     return existing

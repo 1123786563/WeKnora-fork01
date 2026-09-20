@@ -35,6 +35,8 @@ def test_fixture_declares_target_and_foreign_records() -> None:
 
     assert {item["semantic_id"] for item in fixture["assertions"]} == {"a-d1", "a-d2", "a-foreign"}
     assert {item["semantic_id"] for item in fixture["assertions"] if item["tenant_id"] == "T1"} == {"a-d1", "a-d2"}
+    assert all(item["start_char"] >= 0 and item["end_char"] > item["start_char"] for item in fixture["assertions"])
+    assert all(item["rule_version"] == "source@v1" for item in fixture["assertions"])
 
 
 def test_fresh_reader_process_recovers_persisted_provenance() -> None:
@@ -81,4 +83,6 @@ def test_evidence_metadata_excludes_topology_password() -> None:
     assert metadata["account_identity"] == "neo4j"
     assert metadata["v01_lock_sha256"] == "c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54"
     assert metadata["v02_lock_sha256"] != metadata["v01_lock_sha256"]
+    assert len(metadata["commit_sha"]) == 40
+    assert metadata["platform"]
     assert "password" not in metadata
