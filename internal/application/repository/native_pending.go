@@ -287,6 +287,9 @@ func (r *NativePendingDecisionRepository) resolve(ctx context.Context, scope nat
 	if r == nil || r.db == nil {
 		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrStore, "pending decision store is unavailable")
 	}
+	if !validNativePendingKey(key) || scope.TenantID != key.Run.TenantID || scope.SessionOwnerID == "" {
+		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
+	}
 	hash, err := nativePendingDecisionHash(req)
 	if err != nil {
 		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrInvalid, "decision payload cannot be encoded")
@@ -294,17 +297,25 @@ func (r *NativePendingDecisionRepository) resolve(ctx context.Context, scope nat
 	var resolution nativecontract.PendingResolution
 	expired := false
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Every resolution, including cancellation, acquires the scoped run
+		// lock BEFORE reading/updating the pending row. Besides preventing a
+		// PostgreSQL lock inversion, making this the first statement avoids
+		// SQLite's deferred read-to-write transaction upgrade race.
+		lock := nativeLeaseScope(tx, key.Run).Where("owner_id=? AND session_id=?", scope.SessionOwnerID, key.Run.SessionID)
 		if fence != nil {
-			// UPDATE acquires the same run lock used by cancellation on both
-			// SQLite and PostgreSQL. Never trust a caller's lease deadline.
+			// Never trust a caller's lease deadline.
 			lease := NewNativeLeaseStore(tx)
-			locked := nativeLeaseScope(tx, key.Run).Where("lease_owner=? AND lease_epoch=? AND status IN (?, ?) AND lease_expires_at IS NOT NULL AND "+lease.expirySQL()+" > "+lease.nowSQL(), fence.Owner, fence.Epoch, string(nativecontract.RunWaiting), string(nativecontract.RunQueued)).UpdateColumn("revision", gorm.Expr("revision"))
-			if locked.Error != nil {
-				return locked.Error
-			}
-			if locked.RowsAffected != 1 {
+			lock = lock.Where("lease_owner=? AND lease_epoch=? AND status IN (?, ?) AND lease_expires_at IS NOT NULL AND "+lease.expirySQL()+" > "+lease.nowSQL(), fence.Owner, fence.Epoch, string(nativecontract.RunWaiting), string(nativecontract.RunQueued))
+		}
+		locked := lock.UpdateColumn("revision", gorm.Expr("revision"))
+		if locked.Error != nil {
+			return locked.Error
+		}
+		if locked.RowsAffected != 1 {
+			if fence != nil {
 				return nativePendingFailure(nativecontract.ErrLeaseLost, "pending resolution fence is stale")
 			}
+			return nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
 		}
 		run, err := r.scopedRun(tx, scope, key.Run)
 		if err != nil {
