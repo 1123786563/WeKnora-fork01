@@ -1,4 +1,4 @@
-import { clientGate } from '@weknora/domain/mobile';
+import { clientGate, validateAuthReturn } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
 import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
@@ -28,6 +28,33 @@ function tenantId(value: unknown): string | undefined {
   const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
   if (typeof id === 'string' && id.trim() !== '') return id;
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function randomBytes(ports: MobileRuntimePorts, size: number): Uint8Array {
+  const injected = ports.randomBytes?.(size);
+  if (injected) {
+    if (injected.length !== size) throw new Error('OIDC_RANDOM');
+    return injected;
+  }
+  const bytes = new Uint8Array(size);
+  if (!globalThis.crypto?.getRandomValues) throw new Error('OIDC_RANDOM');
+  return globalThis.crypto.getRandomValues(bytes);
+}
+
+async function codeChallenge(verifier: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error('OIDC_CRYPTO');
+  const bytes = new TextEncoder().encode(verifier);
+  return base64Url(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes)));
+}
+
+function serverOidcCallback(deployment: Deployment): string {
+  return `${deployment.origin}/api/v1/auth/oidc/callback`;
 }
 
 class RuntimeScopeLease {
@@ -117,11 +144,53 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         return safe(requestEpoch, deployment, 'authentication-required');
       }
     },
-    async beginOidc(): Promise<void> {
-      throw new Error('OIDC_NOT_IMPLEMENTED');
+    async beginOidc(input): Promise<void> {
+      if (!ports.pendingOidcStore || !ports.oidcBrowser) throw new Error('OIDC_UNAVAILABLE');
+      const deployment = normalizeDeployment(input.deployment);
+      const redirectUri = input.redirectUri.trim();
+      if (!redirectUri) throw new Error('OIDC_REDIRECT');
+      let registeredRedirect: URL;
+      try { registeredRedirect = new URL(redirectUri); } catch { throw new Error('OIDC_REDIRECT'); }
+      if (!registeredRedirect.protocol || !registeredRedirect.host) throw new Error('OIDC_REDIRECT');
+      const requestEpoch = begin(deployment);
+      const verifier = base64Url(randomBytes(ports, 32));
+      const challenge = await codeChallenge(verifier);
+      if (!current(requestEpoch, deployment)) return;
+      try {
+        const remote = ports.remoteFor(deployment.origin);
+        const authorization = await remote.oidcUrl(serverOidcCallback(deployment), redirectUri, challenge);
+        if (!current(requestEpoch, deployment)) return;
+        if (!authorization.state.trim() || !authorization.authorizationUrl.trim()) throw new Error('OIDC_AUTHORIZATION');
+        await ports.pendingOidcStore.savePending({ deploymentOrigin: deployment.origin, state: authorization.state, codeVerifier: verifier, redirectUri });
+        if (!current(requestEpoch, deployment)) return;
+        await ports.oidcBrowser.open(authorization.authorizationUrl);
+      } catch {
+        safe(requestEpoch, deployment, 'authentication-required');
+      }
     },
-    async completeOidc(): Promise<RuntimeSnapshot> {
-      return state;
+    async completeOidc(callbackUrl: string): Promise<RuntimeSnapshot> {
+      if (!ports.pendingOidcStore) return state;
+      const pending = await ports.pendingOidcStore.consumePending();
+      if (!pending) {
+        if (!activeDeployment) return state;
+        const requestEpoch = begin(activeDeployment);
+        return safe(requestEpoch, activeDeployment, 'authentication-required');
+      }
+      let deployment: Deployment;
+      try { deployment = normalizeDeployment({ origin: pending.deploymentOrigin }); } catch { return state; }
+      const requestEpoch = begin(deployment);
+      try {
+        const callback = validateAuthReturn(pending.state, callbackUrl, pending.redirectUri);
+        const code = callback.searchParams.get('code')?.trim();
+        if (!code) throw new Error('AUTH_RETURN');
+        const credential = await ports.remoteFor(deployment.origin).oidcExchange(code, pending.state, pending.codeVerifier);
+        if (!current(requestEpoch, deployment)) return state;
+        await ports.credentialStore.write(deployment.origin, credential);
+        if (!current(requestEpoch, deployment)) return state;
+        return await authenticate(requestEpoch, deployment, credential);
+      } catch {
+        return safe(requestEpoch, deployment, 'authentication-required');
+      }
     },
     scopeLease: () => lease,
     signOut,

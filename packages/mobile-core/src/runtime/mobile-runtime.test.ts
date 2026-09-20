@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createMobileRuntime } from './mobile-runtime.ts';
-import type { CredentialStore, MobileRuntimePorts, RuntimeRemote, StoredCredential } from './ports.ts';
+import type { CredentialStore, MobileRuntimePorts, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './ports.ts';
 import type { DeploymentInput } from './types.ts';
 
 const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
@@ -30,12 +30,24 @@ function remote(overrides: Partial<RuntimeRemote> = {}): RuntimeRemote {
     passwordLogin: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     me: async () => ({ user: { id: 'user-1' }, tenant: { id: 'tenant-1' } }),
     deploymentCapabilities: async () => FULL_CAPABILITIES,
+    oidcUrl: async () => ({ authorizationUrl: 'https://idp.example.test/authorize', state: 'state-1' }),
+    oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     ...overrides,
   };
 }
 
 function ports(store = fakeStore(), remoteFor = (_deployment: string) => remote()): MobileRuntimePorts {
   return { credentialStore: store, remoteFor, clientVersion: 3 };
+}
+
+function pendingStore(): PendingOidcStore & { value?: PendingOidc; calls: string[] } {
+  const store: PendingOidcStore & { value?: PendingOidc; calls: string[] } = {
+    calls: [],
+    async savePending(input) { store.calls.push('save'); store.value = { ...input }; },
+    async loadPending() { store.calls.push('load'); return store.value && { ...store.value }; },
+    async consumePending() { store.calls.push('consume'); const pending = store.value; store.value = undefined; return pending && { ...pending }; },
+  };
+  return store;
 }
 
 test('boot restores Task 2 credentials before identity and capabilities', async () => {
@@ -128,4 +140,58 @@ test('late responses after sign out are ignored', async () => {
   await signIn;
   assert.deepEqual(runtime.snapshot(), { surface: 'deployment-login', reason: 'authentication-required' });
   assert.equal(runtime.scopeLease(), undefined);
+});
+
+test('OIDC persists the verifier and server state before browser launch then a fresh Runtime consumes them once', async () => {
+  const pending = pendingStore();
+  const browserCalls: string[] = [];
+  const exchangeCalls: Array<{ code: string; state: string; verifier?: string }> = [];
+  const oidcRemote = remote({
+    oidcUrl: async (_serverRedirect, frontendRedirect, challenge) => {
+      assert.equal(frontendRedirect, 'weknora://oidc');
+      assert.equal(challenge, '3Ev4DHdHPRMPoN6GukAY_pi7IUAF5qWJHRK6kURvnoE');
+      return { authorizationUrl: 'https://idp.example.test/authorize', state: 'server-state' };
+    },
+    oidcExchange: async (code, state, verifier) => {
+      exchangeCalls.push({ code, state, verifier });
+      return { token: 'oidc-access', refreshToken: 'oidc-refresh' };
+    },
+  });
+  const store = fakeStore();
+  const start = createMobileRuntime({
+    ...ports(store, () => oidcRemote), pendingOidcStore: pending,
+    oidcBrowser: { async open(url) { browserCalls.push(url); return 'weknora://oidc?code=code-1&state=server-state'; } },
+    randomBytes: (size) => new Uint8Array(size).fill(7),
+  });
+
+  await start.beginOidc({ deployment: { origin: 'https://weknora.example.test/' }, redirectUri: 'weknora://oidc' });
+
+  assert.deepEqual(browserCalls, ['https://idp.example.test/authorize']);
+  assert.deepEqual(pending.calls, ['save']);
+  assert.deepEqual(pending.value && { ...pending.value, codeVerifier: pending.value.codeVerifier.length }, {
+    deploymentOrigin: DEPLOYMENT.origin, state: 'server-state', redirectUri: 'weknora://oidc', codeVerifier: 43,
+  });
+  const persistedVerifier = pending.value!.codeVerifier;
+
+  const resumed = createMobileRuntime({ ...ports(store, () => oidcRemote), pendingOidcStore: pending });
+  await resumed.completeOidc('weknora://oidc?code=code-1&state=server-state');
+
+  assert.deepEqual(exchangeCalls, [{ code: 'code-1', state: 'server-state', verifier: persistedVerifier }]);
+  assert.deepEqual(store.calls, [`write:${DEPLOYMENT.origin}`]);
+  assert.equal(resumed.snapshot().surface, 'authorized');
+  await resumed.completeOidc('weknora://oidc?code=code-1&state=server-state');
+  assert.equal(exchangeCalls.length, 1);
+  assert.equal(resumed.snapshot().surface, 'upgrade-required');
+});
+
+test('OIDC consumes and rejects a callback outside its exact registered redirect', async () => {
+  const pending = pendingStore();
+  pending.value = { deploymentOrigin: DEPLOYMENT.origin, state: 'state-1', codeVerifier: 'verifier-1', redirectUri: 'weknora://oidc' };
+  const runtime = createMobileRuntime({ ...ports(), pendingOidcStore: pending });
+
+  await runtime.completeOidc('weknora://other?code=code-1&state=state-1');
+
+  assert.deepEqual(pending.calls, ['consume']);
+  assert.equal(pending.value, undefined);
+  assert.deepEqual(runtime.snapshot(), { surface: 'upgrade-required', deployment: { origin: DEPLOYMENT.origin, label: DEPLOYMENT.origin }, reason: 'authentication-required' });
 });

@@ -15,6 +15,8 @@ export interface RuntimeRemote {
   passwordLogin(input: { email: string; password: string }): Promise<StoredCredential>;
   me(accessToken: string): Promise<{ user: { id: unknown }; tenant?: { id: unknown } | null }>;
   deploymentCapabilities(accessToken: string): Promise<unknown>;
+  oidcUrl(redirectUri: string, frontendRedirectUri?: string, codeChallenge?: string): Promise<{ authorizationUrl: string; state: string }>;
+  oidcExchange(code: string, state: string, codeVerifier?: string): Promise<StoredCredential>;
 }
 
 /** Declared here for Task 4, which owns persistence and one-time callback consumption. */
@@ -49,4 +51,6 @@ export interface MobileRuntimePorts {
   pendingOidcStore?: PendingOidcStore;
   oidcBrowser?: OidcBrowserPort;
   lifecycle?: AppLifecyclePort;
+  /** Native platform entropy hook. Omit only where Web Crypto is available. */
+  randomBytes?: (size: number) => Uint8Array;
 }
