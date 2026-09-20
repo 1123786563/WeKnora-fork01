@@ -219,7 +219,9 @@ func (s *Scheduler) triggerSync(dataSourceID string, tenantID uint64) {
 			syncLog.Status = types.SyncLogStatusCanceled
 			now := time.Now().UTC()
 			syncLog.FinishedAt = &now
-			syncLog.ErrorMessage = "deduplicated: another instance enqueued first"
+			// Distinguish a deduplicated cron fire from a user cancel: the
+			// status stays canceled for compatibility, the message says skip.
+			syncLog.ErrorMessage = "skipped: another sync already queued"
 			_ = s.syncLogRepo.Update(ctx, syncLog)
 			return
 		}
@@ -230,6 +232,12 @@ func (s *Scheduler) triggerSync(dataSourceID string, tenantID uint64) {
 		syncLog.ErrorMessage = fmt.Sprintf("enqueue failed: %v", err)
 		_ = s.syncLogRepo.Update(ctx, syncLog)
 		return
+	}
+
+	// Correlate the log row with its queue record (SP2-a Task 5) so cancel
+	// flows and the runtime dashboard can reach the task by id. Best-effort.
+	if err := s.syncLogRepo.UpdateAsynqTaskID(ctx, syncLog.ID, taskID); err != nil {
+		logger.Warnf(ctx, "[Scheduler] failed to record asynq task id for syncLog=%s: %v", syncLog.ID, err)
 	}
 
 	logger.Infof(ctx, "[Scheduler] sync task enqueued for ds=%s syncLog=%s", dataSourceID, syncLog.ID)

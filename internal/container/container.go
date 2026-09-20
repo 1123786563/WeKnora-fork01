@@ -532,6 +532,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(initConnectorRegistry))
 	must(container.Provide(datasource.NewScheduler))
 	must(container.Provide(service.NewDataSourceService))
+	// SP2-a Task 5: install the queue inspector before the scheduler starts so
+	// the very first delete/pause can already hard-cancel queued syncs.
+	must(container.Invoke(injectDataSourceTaskInspector))
 	must(container.Invoke(startDataSourceScheduler))
 	logger.Debugf(ctx, "[Container] Data source sync framework registered")
 	must(container.Invoke(startAuditLogRetention))
@@ -2114,6 +2117,17 @@ func initConnectorRegistry() (*datasource.ConnectorRegistry, error) {
 		return nil, errs
 	}
 	return registry, nil
+}
+
+// injectDataSourceTaskInspector wires the queue inspector into the data source
+// service so delete/pause can hard-cancel queued (and running) datasource:sync
+// tasks (SP2-a Task 5). Setter injection mirrors SetSyncExecution. In asynq
+// mode this is the real inspector; in Lite mode it is the no-op one, and the
+// service internally falls back to the sync-log sweep.
+func injectDataSourceTaskInspector(svc interfaces.DataSourceService, inspector interfaces.TaskInspector) {
+	if impl, ok := svc.(*service.DataSourceService); ok && impl != nil {
+		impl.SetTaskInspector(inspector)
+	}
 }
 
 // startDataSourceScheduler starts the data source cron scheduler and registers cleanup.

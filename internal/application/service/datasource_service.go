@@ -37,6 +37,9 @@ type DataSourceService struct {
 	tenantRepo        interfaces.TenantRepository
 	tagService        interfaces.KnowledgeTagService
 	audit             interfaces.AuditLogService
+	// taskInspector hard-cancels queued/running datasource:sync tasks on
+	// delete/pause (SP2-a Task 5). nil keeps the legacy sweep-only behavior.
+	taskInspector interfaces.TaskInspector
 
 	// --- A07: scoped connector sync execution (additive, zero values = legacy path) ---
 	syncBindingStore appconnector.SyncBindingStore
@@ -92,6 +95,48 @@ func (s *DataSourceService) SetSyncExecution(
 	s.syncPlanActive = planActive
 	if s.syncFences == nil {
 		s.syncFences = make(map[string]int64)
+	}
+}
+
+// SetTaskInspector installs the queue inspector used to hard-cancel queued
+// (and running) datasource:sync tasks when a data source is deleted or paused
+// (SP2-a Task 5). Setter injection mirrors SetSyncExecution so the dig graph
+// stays acyclic and tests can construct the service without a queue backend.
+// nil degrades to the legacy sweep-only behavior.
+func (s *DataSourceService) SetTaskInspector(inspector interfaces.TaskInspector) {
+	s.taskInspector = inspector
+}
+
+// hardCancelSyncTasks removes this data source's queued datasource:sync tasks
+// from the task backend and signals any active worker to stop. Best-effort:
+// errors are logged and swallowed because CancelPendingByDataSource remains
+// the durable stop signal — a Redis blip must not fail the delete/pause.
+//
+// kbID is deliberately passed as "" (verified against matchesKnowledgeBase,
+// pinned by TestMatchesKnowledgeBaseEmptyKBIDScopesToDataSource): the
+// datasource:sync payload carries no knowledge_base_id, and the matcher
+// treats an empty kbID as "skip the KB filter" rather than matching-empty, so
+// the call is scoped strictly to dataSourceIDs. Passing ds.KnowledgeBaseID
+// instead would over-cancel every queued task of the whole knowledge base.
+func (s *DataSourceService) hardCancelSyncTasks(ctx context.Context, dsID string) {
+	if s.taskInspector == nil {
+		logger.Warnf(ctx, "task inspector not configured; queued sync tasks for ds=%s not hard-cancelled", dsID)
+		return
+	}
+	canceller, ok := s.taskInspector.(interfaces.KnowledgeBaseTaskCanceller)
+	if !ok {
+		// Lite-mode noop inspector: inline executors cannot be dequeued before
+		// they start; CancelPendingByDataSource below remains the stop signal.
+		return
+	}
+	deleted, cancelled, err := canceller.CancelTasksForKnowledgeBase(ctx, "", nil, []string{dsID})
+	if err != nil {
+		logger.Warnf(ctx, "failed to hard-cancel sync tasks for ds=%s: %v", dsID, err)
+		return
+	}
+	if deleted > 0 || cancelled > 0 {
+		logger.Infof(ctx, "hard-cancelled sync tasks for ds=%s: deleted_from_queue=%d active_cancel_signaled=%d",
+			dsID, deleted, cancelled)
 	}
 }
 
@@ -435,6 +480,12 @@ func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) err
 	// Remove cron schedule
 	s.scheduler.Remove(id)
 
+	// Hard-cancel queued (and running) sync tasks BEFORE the durable sweep
+	// (SP2-a Task 5): the inspector also deletes the retry records a killed
+	// active task transitions into, so flipping the rows first would race a
+	// task that the sweep alone cannot stop.
+	s.hardCancelSyncTasks(ctx, id)
+
 	// Cancel any pending/running sync logs so queued asynq tasks won't retry
 	if err := s.syncLogRepo.CancelPendingByDataSource(ctx, id); err != nil {
 		logger.Warnf(ctx, "failed to cancel pending sync logs for ds=%s: %v", id, err)
@@ -626,7 +677,16 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types
 		return nil, err
 	}
 
-	logger.Infof(ctx, "sync task enqueued: ds=%s syncLog=%s", dsID, syncLog.ID)
+	// Correlate the log row with its queue record (SP2-a Task 5) so cancel
+	// flows and the runtime dashboard can reach the task by id. Best-effort:
+	// the sync itself is already queued.
+	if err := s.syncLogRepo.UpdateAsynqTaskID(ctx, syncLog.ID, info.ID); err != nil {
+		logger.Warnf(ctx, "failed to record asynq task id for syncLog=%s: %v", syncLog.ID, err)
+	} else {
+		syncLog.AsynqTaskID = info.ID
+	}
+
+	logger.Infof(ctx, "sync task enqueued: ds=%s syncLog=%s taskID=%s", dsID, syncLog.ID, info.ID)
 	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncStarted,
 		"data_source", ds.ID, types.AuditOutcomeAccepted,
 		map[string]any{
@@ -651,6 +711,14 @@ func (s *DataSourceService) PauseDataSource(ctx context.Context, id string) erro
 
 	// Remove cron schedule
 	s.scheduler.Remove(id)
+
+	// Pause also stops work already in flight (SP2-a Task 5): hard-cancel
+	// queued/running tasks first, then flip the log rows so a killed worker's
+	// log does not stay "running" forever.
+	s.hardCancelSyncTasks(ctx, id)
+	if err := s.syncLogRepo.CancelPendingByDataSource(ctx, id); err != nil {
+		logger.Warnf(ctx, "failed to cancel pending sync logs for paused ds=%s: %v", id, err)
+	}
 
 	logger.Infof(ctx, "data source paused: id=%s", id)
 	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourcePaused,

@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -403,5 +404,83 @@ func TestScheduler_TriggerSync_NotFound(t *testing.T) {
 
 	if enqueuer.count.Load() != 0 {
 		t.Error("should not enqueue for non-existent data source")
+	}
+}
+
+// snapshotForDS returns the fake repo's stored logs for one data source.
+func (r *fakeSyncLogRepo) snapshotForDS(dsID string) []*types.SyncLog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var logs []*types.SyncLog
+	for _, log := range r.logs {
+		if log.DataSourceID == dsID {
+			logs = append(logs, log)
+		}
+	}
+	return logs
+}
+
+// failingTaskEnqueuer simulates enqueue failures (asynq.ErrTaskIDConflict etc.).
+type failingTaskEnqueuer struct{ err error }
+
+func (e *failingTaskEnqueuer) Enqueue(*asynq.Task, ...asynq.Option) (*asynq.TaskInfo, error) {
+	return nil, e.err
+}
+
+// SP2-a Task 5: the ErrTaskIDConflict branch must leave a distinguishable,
+// non-alarming error message on the canceled log row ("skipped", not
+// "deduplicated"), while keeping the canceled status for compatibility.
+func TestScheduler_TriggerSync_TaskIDConflictMarksSkipped(t *testing.T) {
+	repo := newFakeDataSourceRepo()
+	_ = repo.Create(context.Background(), &types.DataSource{
+		ID:       "ds-conflict",
+		TenantID: 1,
+		Status:   types.DataSourceStatusActive,
+	})
+	logRepo := newFakeSyncLogRepo()
+	scheduler := NewScheduler(repo, logRepo, &failingTaskEnqueuer{err: asynq.ErrTaskIDConflict})
+
+	scheduler.triggerSync("ds-conflict", 1)
+
+	logs := logRepo.snapshotForDS("ds-conflict")
+	if len(logs) != 1 {
+		t.Fatalf("logs = %d, want 1", len(logs))
+	}
+	log := logs[0]
+	if log.Status != types.SyncLogStatusCanceled {
+		t.Errorf("status = %q, want %q", log.Status, types.SyncLogStatusCanceled)
+	}
+	if log.ErrorMessage != "skipped: another sync already queued" {
+		t.Errorf("error message = %q, want %q", log.ErrorMessage, "skipped: another sync already queued")
+	}
+	if log.FinishedAt == nil {
+		t.Error("finished_at must be set on the skipped log")
+	}
+	if log.AsynqTaskID != "" {
+		t.Errorf("asynq_task_id = %q, want empty on the skipped log", log.AsynqTaskID)
+	}
+}
+
+// SP2-a Task 5: a successful scheduled enqueue must persist the deterministic
+// asynq task id onto the sync log so cancel flows can reach the queue record.
+func TestScheduler_TriggerSync_RecordsAsynqTaskID(t *testing.T) {
+	repo := newFakeDataSourceRepo()
+	_ = repo.Create(context.Background(), &types.DataSource{
+		ID:       "ds-taskid",
+		TenantID: 1,
+		Status:   types.DataSourceStatusActive,
+	})
+	logRepo := newFakeSyncLogRepo()
+	scheduler := NewScheduler(repo, logRepo, &fakeTaskEnqueuer{})
+
+	scheduler.triggerSync("ds-taskid", 1)
+
+	logs := logRepo.snapshotForDS("ds-taskid")
+	if len(logs) != 1 {
+		t.Fatalf("logs = %d, want 1", len(logs))
+	}
+	log := logs[0]
+	if !strings.HasPrefix(log.AsynqTaskID, "dssync:ds-taskid:") {
+		t.Errorf("asynq_task_id = %q, want prefix %q", log.AsynqTaskID, "dssync:ds-taskid:")
 	}
 }
