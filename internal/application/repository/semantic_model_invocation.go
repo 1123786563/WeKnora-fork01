@@ -54,7 +54,7 @@ func (s *SemanticModelInvocationStore) Claim(ctx context.Context, c types.Semant
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &result) })
 	// SQLite serializes writers. A transient lock is retried; PostgreSQL still
 	// relies on its transaction isolation and unique call key for convergence.
-	for attempts := 0; err != nil && strings.Contains(err.Error(), "database is locked") && attempts < 4; attempts++ {
+	for attempts := 0; err != nil && (strings.Contains(err.Error(), "database is locked") || strings.Contains(strings.ToLower(err.Error()), "duplicate key")) && attempts < 4; attempts++ {
 		time.Sleep(time.Duration(attempts+1) * 10 * time.Millisecond)
 		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &result) })
 	}
@@ -62,11 +62,15 @@ func (s *SemanticModelInvocationStore) Claim(ctx context.Context, c types.Semant
 }
 func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticModelCapability, requestHash string, result *types.SemanticModelInvocationResult) error {
 	var run int
-	if err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=?", semanticUint(c.OwnerTenantID), c.RunID).Scan(&run).Error; err != nil {
-		return err
+	runQuery := "SELECT 1 FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=?"
+	if tx.Dialector.Name() == "postgres" {
+		runQuery += " FOR UPDATE"
 	}
-	if run != 1 {
-		return ErrSemanticModelInvocationNotFound
+	if err := tx.Raw(runQuery, semanticUint(c.OwnerTenantID), c.RunID).Row().Scan(&run); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSemanticModelInvocationNotFound
+		}
+		return err
 	}
 	var state, hash string
 	var response []byte
@@ -109,7 +113,8 @@ func (s *SemanticModelInvocationStore) transition(ctx context.Context, c types.S
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		args := []any{state, result.Result, result.InputTokens, result.OutputTokens, semanticUint(c.OwnerTenantID), c.CallID}
-		q := "UPDATE semantic_model_invocations SET state=?,result=?,input_tokens=?,output_tokens=? WHERE tenant_id=? AND call_id=? AND state='claimed'"
+		q := "UPDATE semantic_model_invocations SET state=?,result=?,input_tokens=?,output_tokens=?,reserved_input_tokens=?,reserved_output_tokens=? WHERE tenant_id=? AND call_id=? AND state='claimed'"
+		args = []any{state, result.Result, result.InputTokens, result.OutputTokens, result.InputTokens, result.OutputTokens, semanticUint(c.OwnerTenantID), c.CallID}
 		if !usage {
 			q = "UPDATE semantic_model_invocations SET state=? WHERE tenant_id=? AND call_id=? AND state='claimed'"
 			args = []any{state, semanticUint(c.OwnerTenantID), c.CallID}
