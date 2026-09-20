@@ -28,34 +28,38 @@ import (
 type RouterParams struct {
 	dig.In
 
-	Config                       *config.Config
-	FileService                  interfaces.FileService
-	UserService                  interfaces.UserService
-	KBService                    interfaces.KnowledgeBaseService
-	KnowledgeService             interfaces.KnowledgeService
-	ChunkService                 interfaces.ChunkService
-	SessionService               interfaces.SessionService
-	MessageService               interfaces.MessageService
-	ModelService                 interfaces.ModelService
-	EvaluationService            interfaces.EvaluationService
-	KBShareService               interfaces.KBShareService
-	AgentShareService            interfaces.AgentShareService
-	KBHandler                    *handler.KnowledgeBaseHandler
-	KnowledgeHandler             *handler.KnowledgeHandler
-	TenantHandler                *handler.TenantHandler
-	TenantService                interfaces.TenantService
-	TenantAPIKeyService          interfaces.TenantAPIKeyService
-	TenantMemberService          interfaces.TenantMemberService
-	TenantMemberHandler          *handler.TenantMemberHandler
-	TenantInvitationHandler      *handler.TenantInvitationHandler
-	AuditLogHandler              *handler.AuditLogHandler
-	AuditLogService              interfaces.AuditLogService
-	ChunkHandler                 *handler.ChunkHandler
-	SessionHandler               *session.Handler
-	WorkbenchHandler             *session.WorkbenchReadHandler         `optional:"true"`
-	WorkbenchListHandler         *session.WorkbenchListHandler         `optional:"true"`
-	WorkbenchStartHandler        *session.WorkbenchStartHandler        `optional:"true"`
-	WorkbenchCommandHandler      *session.WorkbenchCommandHandler      `optional:"true"`
+	Config                  *config.Config
+	FileService             interfaces.FileService
+	UserService             interfaces.UserService
+	KBService               interfaces.KnowledgeBaseService
+	KnowledgeService        interfaces.KnowledgeService
+	ChunkService            interfaces.ChunkService
+	SessionService          interfaces.SessionService
+	MessageService          interfaces.MessageService
+	ModelService            interfaces.ModelService
+	EvaluationService       interfaces.EvaluationService
+	KBShareService          interfaces.KBShareService
+	AgentShareService       interfaces.AgentShareService
+	KBHandler               *handler.KnowledgeBaseHandler
+	KnowledgeHandler        *handler.KnowledgeHandler
+	TenantHandler           *handler.TenantHandler
+	TenantService           interfaces.TenantService
+	TenantAPIKeyService     interfaces.TenantAPIKeyService
+	TenantMemberService     interfaces.TenantMemberService
+	TenantMemberHandler     *handler.TenantMemberHandler
+	TenantInvitationHandler *handler.TenantInvitationHandler
+	AuditLogHandler         *handler.AuditLogHandler
+	AuditLogService         interfaces.AuditLogService
+	ChunkHandler            *handler.ChunkHandler
+	SessionHandler          *session.Handler
+	WorkbenchHandler        *session.WorkbenchReadHandler    `optional:"true"`
+	WorkbenchListHandler    *session.WorkbenchListHandler    `optional:"true"`
+	WorkbenchStartHandler   *session.WorkbenchStartHandler   `optional:"true"`
+	WorkbenchCommandHandler *session.WorkbenchCommandHandler `optional:"true"`
+	// NativeArchiveHandler is absent until an approved archive store and scope
+	// resolver are assembled.  The router then fails closed (no archive route)
+	// rather than mounting a reader without an authority boundary.
+	NativeArchiveHandler         *session.NativeArchiveHandler         `optional:"true"`
 	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler     `optional:"true"`
 	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler     `optional:"true"`
 	WorkbenchInboxHandler        *session.WorkbenchInboxHandler        `optional:"true"`
@@ -343,6 +347,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
 		RegisterSessionShareRoutes(v1, params.SessionHandler, rbacGuards)
+		RegisterNativeArchiveRoutes(v1, params.NativeArchiveHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, params.WorkbenchListHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
 		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
