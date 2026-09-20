@@ -110,7 +110,7 @@ message DocumentRevision {
 
 **接口：** 新增 NewClient(config SemanticClientConfig)(interfaces.SemanticClient,error)、Close()error；Python create_server(config)->grpc.Server。rpc_client fixture启动随机本地端口和测试证书，缺认证不提供业务RPC；未实现方法返回UNIMPLEMENTED而不是假成功。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_missing_service_identity_is_denied(rpc_client):
@@ -119,13 +119,13 @@ def test_missing_service_identity_is_denied(rpc_client):
     assert exc.value.code() == grpc.StatusCode.UNAUTHENTICATED
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立server启动/关闭、健康探针与认证拦截器；生产缺TLS或内部认证配置时启动失败；测试证书仅测试使用**
+- [x] **3. 建立server启动/关闭、健康探针与认证拦截器；生产缺TLS或内部认证配置时启动失败；测试证书仅测试使用**
 
-- [ ] **4. Go客户端传递trace、deadline、取消，映射标准错误；仅Get/Capabilities等读操作可透明重试，Apply由业务按幂等键重试**
+- [x] **4. Go客户端传递trace、deadline、取消，映射标准错误；仅Get/Capabilities等读操作可透明重试，Apply由业务按幂等键重试**
 
-- [ ] **5. 注册可选服务配置；enabled=false时原系统可启动，禁止因client连接对象存在就判定服务ready**
+- [x] **5. 注册可选服务配置；enabled=false时原系统可启动，禁止因client连接对象存在就判定服务ready**
 
 关键实现约束：
 
@@ -137,9 +137,9 @@ if context.time_remaining() is not None and context.time_remaining() <= 0:
 # verified_service_identity 在 auth.py 验证 mTLS 身份或批准的内部token及受众。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`，预期退出码 0；另完成：Go TestSemanticClient 覆盖连接失败、deadline、取消与UNIMPLEMENTED；健康readiness真实反映依赖，不公开宿主机业务端口。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`，预期退出码 0；另完成：Go TestSemanticClient 覆盖连接失败、deadline、取消与UNIMPLEMENTED；健康readiness真实反映依赖，不公开宿主机业务端口。
 
-- [ ] **7. 留证与提交**。更新 `docs/plans/semantica/progress.md` 的 C02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c02 认证服务骨架和Go客户端`。
+- [x] **7. 留证与提交**。更新 `docs/plans/semantica/progress.md` 的 C02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c02 认证服务骨架和Go客户端`。
 
 ## C03：事实与证据校验模型
 
