@@ -335,12 +335,7 @@ type nativeToolDispatchFence struct {
 }
 
 type nativeToolDispatchReservation struct {
-	Root        nativeToolDispatchRunKey
-	Units       int64
-	CallID      string
-	AttemptID   string
-	ArgsHash    string
-	ProviderKey string
+	Fingerprint [sha256.Size]byte
 }
 
 // InMemoryNativeToolDispatchReservation is a deterministic, storage-only
@@ -433,16 +428,20 @@ func (c *InMemoryNativeToolDispatchReservation) ReserveAndConsume(_ context.Cont
 	if err != nil {
 		return err
 	}
+	// The request is server-assembled and immutable. Encode the complete
+	// contract deterministically so replay cannot substitute any authorization
+	// binding, including fields added to the contract in the future.
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return nativeUsageFailure(nativecontract.ErrInvalid, "tool dispatch reservation cannot be encoded")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	live, ok := c.liveFence[run]
 	if !ok || live.Owner != req.Fence.Owner || live.Epoch != req.Fence.Epoch {
 		return nativeUsageFailure(nativecontract.ErrLeaseLost, "tool dispatch reservation fence is stale")
 	}
-	reservation := nativeToolDispatchReservation{
-		Root: root, Units: req.ReservationUnits, CallID: req.Plan.CallID,
-		AttemptID: req.Attempt.ID, ArgsHash: req.Plan.ArgsHash, ProviderKey: req.Plan.IdempotencyKey,
-	}
+	reservation := nativeToolDispatchReservation{Fingerprint: sha256.Sum256(payload)}
 	byPending := c.consumed[run]
 	if prior, exists := byPending[req.DecisionReference]; exists {
 		if prior != reservation {
@@ -474,6 +473,9 @@ func validateNativeToolDispatchReservation(req nativecontract.ToolDispatchReques
 	run, runOK := nativeToolDispatchRootKey(req.Fence.Run)
 	if !runOK || req.Fence.Owner == "" || req.Fence.Epoch <= 0 || req.Scope.TenantID != req.Fence.Run.TenantID || req.Scope.SessionOwnerID == "" || req.DecisionReference == "" || req.ReservationUnits <= 0 || req.Plan.Version <= 0 || req.Plan.CallID == "" || req.Plan.ArgsHash == "" || req.Plan.Run != req.Fence.Run || req.Attempt.ID == "" || req.Attempt.Run != req.Fence.Run || req.Attempt.Kind != nativecontract.ToolAttempt || req.Funding.BudgetRootRunID == "" {
 		return nativeToolDispatchRunKey{}, nativeToolDispatchRunKey{}, nativeUsageFailure(nativecontract.ErrInvalid, "tool dispatch reservation is incomplete")
+	}
+	if req.Attempt.Epoch != req.Fence.Epoch {
+		return nativeToolDispatchRunKey{}, nativeToolDispatchRunKey{}, nativeUsageFailure(nativecontract.ErrLeaseLost, "tool dispatch attempt epoch is stale")
 	}
 	root := req.Fence.Run
 	root.RunID = req.Funding.BudgetRootRunID
