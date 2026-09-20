@@ -124,12 +124,17 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 		pending <- evt.Data.(event.ToolApprovalRequiredData).PendingID
 		return nil
 	})
-	result := make(chan approval.Decision, 1)
+	result := make(chan struct {
+		decision approval.Decision
+		err      error
+	}, 1)
 	approvalCtx := types.WithPrincipal(context.Background(), types.Principal{Type: types.PrincipalWebUser, ID: "u1"})
 	go func() {
-		decision, waitErr := gate.RequestAndWait(approvalCtx, approval.PendingRequest{TenantID: 7, UserID: "u1", RunID: "run-1", RequestID: "request-1", EventBus: bus, Args: args})
-		require.NoError(t, waitErr)
-		result <- decision
+		decision, waitErr := gate.RequestAndWait(approvalCtx, approval.PendingRequest{TenantID: 7, CredentialVersion: 1, UserID: "u1", RunID: "run-1", RequestID: "request-1", EventBus: bus, Args: args})
+		result <- struct {
+			decision approval.Decision
+			err      error
+		}{decision: decision, err: waitErr}
 	}()
 	id := <-pending
 	var row struct {
@@ -154,7 +159,9 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 		return w
 	}
 	require.Equal(t, http.StatusOK, post(7, "u1", "approve", "d1").Code)
-	require.True(t, (<-result).Approved)
+	approvalResult := <-result
+	require.NoError(t, approvalResult.err)
+	require.True(t, approvalResult.decision.Approved)
 	var status string
 	require.NoError(t, db.Table("workbench_interactions").Select("status").Where("id = ?", id).Scan(&status).Error)
 	require.Equal(t, "resolved", status)
@@ -173,6 +180,8 @@ func TestWorkbenchDecisionHTTPResumesDurableApprovalAndScopesIdentity(t *testing
 type workbenchserviceInteractionRow struct {
 	TenantID                                                       uint64
 	ID, RunID, OwnerID, Kind, ArgsHash, DecisionID, Action, Status string
+	ExternalPendingID                                              string
+	CredentialVersion                                              int64
 	ExpectedRevision                                               int64
 	ExpiresAt                                                      *time.Time
 	Revoked                                                        bool

@@ -53,6 +53,8 @@ func newDeletionEnv(t *testing.T, tombstoner *recordingTombstoner) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db := openCraftHTTPDB(t)
+	require.NoError(t, db.Exec(
+		"INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s-del', 1, 'delete', 'u1', 'trpc')").Error)
 	h := &Handler{
 		sessionService:  deletionSessions{},
 		agentRunService: service.NewAgentRunService(repository.NewAgentRunStore(db)),
