@@ -50,3 +50,25 @@
 - 轻残留（噪音/后续轮）：分块 ▶/▸/× 符号、策略占位「不填则按长度切分」（Vue 无）、select option 泄漏类、questionGeneration customInstructions 计数器（开关关闭不显示）、B1 共享智能体路径（待该域落地）、React 独立 integrations 页 URL（超前面豁免）。
 - 环境阻断不变：FAQ 条目 500、三端点、system-admin、工具会话。
 - 扫描方法反馈（R491+）：t-select 触发器改采 input.value；icon-only 按钮 aria-label 与 innerText 分列；hover popover 探针用 mouseover {bubbles:true}+300ms。
+
+## 第二轮收尾（同日续，61c4d78d 收编）——轻残留清零 + 4 面活体复验 8/8 PASS
+
+**轻残留修复**（本轮直改，scoped 131/131+10/10 绿）：
+1. 分块分区 5 处文本符号 → 内联 SVG（ChevronGlyph 高级选项/chunk 展开双处、PlayCircleGlyph 测试分块效果、CloseGlyph 分隔符 chip 移除+debug 抽屉关闭），对齐 Vue tdesign-icons SVG 语义，innerText 不再泄漏 ▶/▸/▾/×。
+2. questionGeneration customInstructions 补 t-textarea 同款 x/4000 计数器（data-question-instructions-count）。
+
+**勘误**：策略占位「选择分块策略（不填则按长度切分）」**与 Vue 逐字一致**（KBChunkingSettings strategyPlaceholder 同款；Vue 侧因 t-select 占位不进 innerText 误记为差异）——无需修复，台账更正。
+
+**浏览器活体复验（8 面 PASS）**：
+| 面 | 结果 |
+|----|------|
+| B2 标签管理弹窗 | PASS：下拉底部「管理标签…」入口 → 弹窗（标题/新建、重命名或删除知识库标签/新建标签/未找到匹配的标签 空态） |
+| B3 加入知识库 | PASS：wk-chat-bookmark 不再 disabled；完成态会话点击 →「在线编辑 Markdown 知识」弹窗（文档型 KB 过滤=Wiki Parity Fixture+Parity KB Demo、知识内容预填 mock summary）；404 失败会话为脏数据非缺陷 |
+| C1 owner「我」badge | PASS：成员表 owner 行=parity-test's Workspace/创建者/**我**/parity-test/管理员/2026-09-20，与 Vue 逐项一致 |
+| C3 三引擎按钮 | PASS：添加数据库弹窗 footer=测试连接/取消/保存（Vue SettingDrawer 序），提交=「保存」 |
+| 分块符号清理 | PASS：▶/▸/▾/× 全部从 innerText 消失，测试分块效果/高级选项/分隔符 7 项保留 |
+| 组织卡片形态 | PASS：卡片点击直开「共享空间设置」弹窗，三分组导航（基础/成员与协作/共享资源）齐 |
+| @ 弹层（回归） | PASS 保持 |
+| A4 索引锁定提示（回归） | PASS 保持 |
+
+**最终收敛口径**：前端侧已知可见差异全部关闭；剩余仅 (a) 原生 select option 文本泄漏 / TDesign input.value 渲染差 = DOM 实现噪音（视觉一致）；(b) 4 项环境阻断面（FAQ 条目后端 500 code1007、模板/预设/占位符三端点未实现、system-admin 管理员态不可达、租户无工具调用会话）= 双端同样阻断，属后端/fixture 缺口非 React 缺陷，解锁后需复扫。
