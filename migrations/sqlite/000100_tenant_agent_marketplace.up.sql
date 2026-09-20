@@ -1,4 +1,6 @@
 -- SQLite twin of versioned migration 000179.
+CREATE UNIQUE INDEX uq_agent_versions_source_binding ON agent_versions (tenant_id, id, agent_id);
+
 CREATE TABLE agent_marketplace_listings (
  id VARCHAR(36) NOT NULL, tenant_id INTEGER NOT NULL, source_agent_id VARCHAR(36) NOT NULL,
  display_name VARCHAR(255) NOT NULL, summary TEXT NOT NULL DEFAULT '', state VARCHAR(32) NOT NULL DEFAULT 'listed',
@@ -13,7 +15,7 @@ CREATE TABLE agent_release_submissions (
  status VARCHAR(32) NOT NULL DEFAULT 'submitted', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY (id, tenant_id),
  FOREIGN KEY (listing_id, tenant_id) REFERENCES agent_marketplace_listings(id, tenant_id),
- FOREIGN KEY (agent_version_id, tenant_id) REFERENCES agent_versions(id, tenant_id)
+ FOREIGN KEY (tenant_id, agent_version_id, source_agent_id) REFERENCES agent_versions(tenant_id, id, agent_id)
 );
 CREATE TABLE agent_release_reviews (
  id VARCHAR(36) NOT NULL, tenant_id INTEGER NOT NULL, submission_id VARCHAR(36) NOT NULL, reviewer_id VARCHAR(255) NOT NULL,
@@ -22,12 +24,12 @@ CREATE TABLE agent_release_reviews (
 );
 CREATE TABLE agent_releases (
  id VARCHAR(36) NOT NULL, tenant_id INTEGER NOT NULL, listing_id VARCHAR(36) NOT NULL, submission_id VARCHAR(36) NOT NULL,
- agent_version_id VARCHAR(36) NOT NULL, release_number INTEGER NOT NULL CHECK (release_number >= 1), semantic_version VARCHAR(64) NOT NULL,
+ agent_version_id VARCHAR(36) NOT NULL, source_agent_id VARCHAR(36) NOT NULL, release_number INTEGER NOT NULL CHECK (release_number >= 1), semantic_version VARCHAR(64) NOT NULL,
  bundle_digest VARCHAR(64) NOT NULL, manifest_json TEXT NOT NULL, dependency_lock_json TEXT NOT NULL, bundle BLOB NOT NULL,
  published_by VARCHAR(255) NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id, tenant_id),
  FOREIGN KEY (listing_id, tenant_id) REFERENCES agent_marketplace_listings(id, tenant_id),
  FOREIGN KEY (submission_id, tenant_id) REFERENCES agent_release_submissions(id, tenant_id),
- FOREIGN KEY (agent_version_id, tenant_id) REFERENCES agent_versions(id, tenant_id)
+ FOREIGN KEY (tenant_id, agent_version_id, source_agent_id) REFERENCES agent_versions(tenant_id, id, agent_id)
 );
 CREATE INDEX idx_agent_release_submissions_review_queue ON agent_release_submissions(tenant_id, status, created_at);
 CREATE INDEX idx_agent_release_reviews_submission ON agent_release_reviews(tenant_id, submission_id, created_at);

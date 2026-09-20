@@ -53,6 +53,7 @@ type AgentReleaseEntity struct {
 	ListingID          string `gorm:"type:varchar(36);not null"`
 	SubmissionID       string `gorm:"type:varchar(36);not null"`
 	AgentVersionID     string `gorm:"type:varchar(36);not null"`
+	SourceAgentID      string `gorm:"type:varchar(36);not null"`
 	ReleaseNumber      int    `gorm:"not null"`
 	SemanticVersion    string `gorm:"type:varchar(64);not null"`
 	BundleDigest       string `gorm:"type:varchar(64);not null"`

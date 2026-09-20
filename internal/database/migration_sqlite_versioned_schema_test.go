@@ -99,7 +99,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
 		// 000099: the (tenant, agent, version_number) scope guard that makes
 		// frozen agent version numbers collision-free.
-		"uq_agent_versions_scope",
+		"uq_agent_versions_scope", "uq_agent_versions_source_binding",
 		"uq_agent_marketplace_listing_scope", "uq_agent_release_review_decision",
 		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
 	} {
@@ -164,7 +164,7 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	}
 	for _, index := range []string{
 		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
-		"uq_agent_versions_scope", // 000099 twin of the PostgreSQL 000178 scope guard
+		"uq_agent_versions_scope", "uq_agent_versions_source_binding", // 000099 twin of the PostgreSQL 000178 scope guard
 	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "upgraded SQLite DB must create index %s", index)
 	}
