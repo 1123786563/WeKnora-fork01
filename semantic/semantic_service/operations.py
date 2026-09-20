@@ -91,8 +91,13 @@ class PostgresOperationStore:
         migration = (Path(__file__).parent.parent / "migrations" / "001_operations.sql").read_text()
         with self._connect() as connection:
             with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"semantic-operations:{self.schema}",))
                 cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(self._schema))
-                cursor.execute(migration.replace("{{schema}}", self._schema.as_string(connection)))
+                cursor.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {}.schema_migrations (version INTEGER PRIMARY KEY)").format(self._schema))
+                cursor.execute(sql.SQL("SELECT version FROM {}.schema_migrations WHERE version = 1").format(self._schema))
+                if cursor.fetchone() is None:
+                    cursor.execute(migration.replace("{{schema}}", self._schema.as_string(connection)))
+                    cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (1)").format(self._schema))
 
     def accept(self, request: ApplyRequest) -> Operation:
         request_bytes = apply_request_to_wire(request).SerializeToString(deterministic=True)
@@ -107,8 +112,11 @@ class PostgresOperationStore:
                               AND (idempotency_key = %s OR (document_id = %s AND revision = %s AND config_digest = %s))
                             FOR UPDATE
                         """), (scope.tenant_id, scope.kb_id, request.idempotency_key, request.document.document_id, request.document.revision, request.config.config_digest))
-                        row = cursor.fetchone()
-                        if row is not None:
+                        rows = cursor.fetchall()
+                        if len(rows) > 1:
+                            raise OperationPayloadConflict("idempotency and document identities resolve to different operations")
+                        if rows:
+                            row = rows[0]
                             same_document_identity = (
                                 row["document_id"] == request.document.document_id
                                 and int(row["revision"]) == request.document.revision
@@ -120,8 +128,8 @@ class PostgresOperationStore:
                         operation_id = str(uuid4())
                         cursor.execute(self._query("""
                             INSERT INTO {schema}.operations
-                              (operation_id, tenant_id, kb_id, document_id, revision, config_digest, idempotency_key, payload_hash, phase, request_bytes)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'accepted', %s)
+                              (operation_id, tenant_id, kb_id, document_id, revision, config_digest, idempotency_key, payload_hash, phase, stage, request_bytes)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'accepted', 'accepted', %s)
                             RETURNING *
                         """), (operation_id, scope.tenant_id, scope.kb_id, request.document.document_id, request.document.revision,
                                 request.config.config_digest, request.idempotency_key, request.payload_hash, request_bytes))
@@ -156,9 +164,12 @@ class PostgresOperationStore:
                 row = cursor.fetchone()
                 if row is None:
                     return None
+                if int(row["lease_token"]) >= 2**64 - 1:
+                    raise OperationFailedPrecondition("operation lease fence is exhausted")
                 cursor.execute(self._query("""
                     UPDATE {schema}.operations
                     SET phase = CASE WHEN phase = 'accepted' THEN 'running' ELSE phase END,
+                        stage = CASE WHEN phase = 'accepted' THEN 'running' ELSE stage END,
                         lease_owner = %s,
                         lease_until = clock_timestamp() + (%s * interval '1 second'),
                         lease_token = lease_token + 1,
@@ -187,23 +198,29 @@ class PostgresOperationStore:
                 """), (lease_seconds, operation_id, worker_id, lease_token))
                 return cursor.rowcount == 1
 
-    def transition(self, operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase) -> bool:
+    def transition(self, operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase,
+                   stage: str, error_code: str | None = None, result_generation: str | None = None) -> bool:
         if (expected, next) not in _ALLOWED_TRANSITIONS:
             raise OperationFailedPrecondition("operation transition is not allowed")
+        if not stage:
+            raise ValueError("operation stage is required")
         terminal = next in TERMINAL_PHASES
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(self._query("""
                     UPDATE {schema}.operations
                     SET phase = %s,
+                        stage = %s,
                         request_bytes = CASE WHEN %s THEN NULL ELSE request_bytes END,
                         lease_owner = CASE WHEN %s THEN NULL ELSE lease_owner END,
                         lease_until = CASE WHEN %s THEN NULL ELSE lease_until END,
-                        error_code = CASE WHEN %s = 'superseded' THEN 'operation_superseded' ELSE error_code END,
+                        error_code = CASE WHEN %s = 'superseded' THEN 'operation_superseded' ELSE %s END,
+                        result_generation = %s,
                         updated_at = clock_timestamp()
                     WHERE operation_id = %s AND phase = %s AND lease_owner = %s AND lease_token = %s
                       AND lease_until > clock_timestamp()
-                """), (next.value, terminal, terminal, terminal, next.value, operation_id, expected.value, worker_id, lease_token))
+                """), (next.value, stage, terminal, terminal, terminal, next.value, error_code, result_generation,
+                          operation_id, expected.value, worker_id, lease_token))
                 return cursor.rowcount == 1
 
     def cancel(self, scope: ScopeKey, operation_id: str) -> Operation:
@@ -219,8 +236,8 @@ class PostgresOperationStore:
                     raise OperationFailedPrecondition("terminal operation cannot be cancelled")
                 cursor.execute(self._query("""
                     UPDATE {schema}.operations
-                    SET phase = 'cancelled', request_bytes = NULL, lease_owner = NULL, lease_until = NULL,
-                        lease_token = lease_token + 1, updated_at = clock_timestamp()
+                    SET phase = 'cancelled', stage = 'cancelled', request_bytes = NULL, lease_owner = NULL, lease_until = NULL,
+                        updated_at = clock_timestamp()
                     WHERE operation_id = %s
                     RETURNING *
                 """), (operation_id,))
@@ -235,13 +252,13 @@ class PostgresOperationStore:
     def _operation(row: dict) -> Operation:
         phase = OperationPhase(row["phase"])
         state, stage, error_code = {
-            OperationPhase.ACCEPTED: ("pending", "accepted", row["error_code"]),
-            OperationPhase.RUNNING: ("running", "running", row["error_code"]),
-            OperationPhase.STAGED: ("running", "staged", row["error_code"]),
-            OperationPhase.PUBLISHING: ("running", "publishing", row["error_code"]),
-            OperationPhase.SUCCEEDED: ("succeeded", "succeeded", row["error_code"]),
-            OperationPhase.FAILED: ("failed", "failed", row["error_code"]),
-            OperationPhase.CANCELLED: ("cancelled", "cancelled", row["error_code"]),
+            OperationPhase.ACCEPTED: ("pending", row["stage"], row["error_code"]),
+            OperationPhase.RUNNING: ("running", row["stage"], row["error_code"]),
+            OperationPhase.STAGED: ("running", row["stage"], row["error_code"]),
+            OperationPhase.PUBLISHING: ("running", row["stage"], row["error_code"]),
+            OperationPhase.SUCCEEDED: ("succeeded", row["stage"], row["error_code"]),
+            OperationPhase.FAILED: ("failed", row["stage"], row["error_code"]),
+            OperationPhase.CANCELLED: ("cancelled", row["stage"], row["error_code"]),
             OperationPhase.SUPERSEDED: ("failed", "superseded", "operation_superseded"),
         }[phase]
         return Operation(row["operation_id"], ScopeKey(int(row["tenant_id"]), row["kb_id"]), row["document_id"], int(row["revision"]),

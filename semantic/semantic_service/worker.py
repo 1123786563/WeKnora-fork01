@@ -13,5 +13,6 @@ class OperationWorker:
     def renew(self, operation_id: str, worker_id: str, lease_token: int, lease_seconds: int) -> bool:
         return self._store.renew(operation_id, worker_id, lease_token, lease_seconds)
 
-    def transition(self, operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase) -> bool:
-        return self._store.transition(operation_id, worker_id, lease_token, expected, next)
+    def transition(self, operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase,
+                   stage: str, error_code: str | None = None, result_generation: str | None = None) -> bool:
+        return self._store.transition(operation_id, worker_id, lease_token, expected, next, stage, error_code, result_generation)
