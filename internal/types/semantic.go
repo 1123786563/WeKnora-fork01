@@ -184,3 +184,85 @@ func SemanticSearchResponseToWire(value SemanticSearchResponse) (*semanticpb.Sea
 	}
 	return &semanticpb.SearchResponse{QueryId: value.QueryID, Generation: value.Generation, RequestedMode: requested, ActualMode: actual, Evidence: evidence, AssertionIds: append([]string(nil), value.AssertionIDs...), Paths: paths, Stale: value.Stale, Partial: value.Partial, Truncated: value.Truncated}, nil
 }
+
+type SemanticReasonStatus string
+
+const (
+	SemanticReasonStatusDerived              SemanticReasonStatus = "derived"
+	SemanticReasonStatusInsufficientEvidence SemanticReasonStatus = "insufficient_evidence"
+	SemanticReasonStatusConflict             SemanticReasonStatus = "conflict"
+	SemanticReasonStatusUnavailable          SemanticReasonStatus = "unavailable"
+)
+
+type SemanticReasonResponse struct {
+	Status         SemanticReasonStatus
+	Conclusion     *string
+	Retrieval      *SemanticSearchResponse
+	ConclusionKind *string
+	PremiseIDs     []string
+	RuleIDs        []string
+	ModelVersion   *string
+	PromptVersion  *string
+	Limitations    []string
+}
+
+func SemanticReasonResponseFromWire(wire *semanticpb.ReasonResponse) (SemanticReasonResponse, error) {
+	if wire == nil {
+		return SemanticReasonResponse{}, fmt.Errorf("semantic reason response is nil")
+	}
+	statuses := map[semanticpb.ReasonStatus]SemanticReasonStatus{semanticpb.ReasonStatus_REASON_STATUS_DERIVED: SemanticReasonStatusDerived, semanticpb.ReasonStatus_REASON_STATUS_INSUFFICIENT_EVIDENCE: SemanticReasonStatusInsufficientEvidence, semanticpb.ReasonStatus_REASON_STATUS_CONFLICT: SemanticReasonStatusConflict, semanticpb.ReasonStatus_REASON_STATUS_UNAVAILABLE: SemanticReasonStatusUnavailable}
+	status, ok := statuses[wire.Status]
+	if !ok {
+		return SemanticReasonResponse{}, fmt.Errorf("unsupported semantic reason status")
+	}
+	result := SemanticReasonResponse{Status: status, PremiseIDs: append([]string(nil), wire.PremiseIds...), RuleIDs: append([]string(nil), wire.RuleIds...), Limitations: append([]string(nil), wire.Limitations...)}
+	if wire.Conclusion != nil {
+		result.Conclusion = wire.Conclusion
+	}
+	if wire.ConclusionKind != nil {
+		result.ConclusionKind = wire.ConclusionKind
+	}
+	if wire.ModelVersion != nil {
+		result.ModelVersion = wire.ModelVersion
+	}
+	if wire.PromptVersion != nil {
+		result.PromptVersion = wire.PromptVersion
+	}
+	if wire.Retrieval != nil {
+		mapped, err := SemanticSearchResponseFromWire(wire.Retrieval)
+		if err != nil {
+			return SemanticReasonResponse{}, err
+		}
+		result.Retrieval = &mapped
+	}
+	return result, nil
+}
+
+func SemanticReasonResponseToWire(value SemanticReasonResponse) (*semanticpb.ReasonResponse, error) {
+	statuses := map[SemanticReasonStatus]semanticpb.ReasonStatus{SemanticReasonStatusDerived: semanticpb.ReasonStatus_REASON_STATUS_DERIVED, SemanticReasonStatusInsufficientEvidence: semanticpb.ReasonStatus_REASON_STATUS_INSUFFICIENT_EVIDENCE, SemanticReasonStatusConflict: semanticpb.ReasonStatus_REASON_STATUS_CONFLICT, SemanticReasonStatusUnavailable: semanticpb.ReasonStatus_REASON_STATUS_UNAVAILABLE}
+	status, ok := statuses[value.Status]
+	if !ok {
+		return nil, fmt.Errorf("unsupported semantic reason status")
+	}
+	wire := &semanticpb.ReasonResponse{Status: status, PremiseIds: append([]string(nil), value.PremiseIDs...), RuleIds: append([]string(nil), value.RuleIDs...), Limitations: append([]string(nil), value.Limitations...)}
+	if value.Conclusion != nil {
+		wire.Conclusion = value.Conclusion
+	}
+	if value.ConclusionKind != nil {
+		wire.ConclusionKind = value.ConclusionKind
+	}
+	if value.ModelVersion != nil {
+		wire.ModelVersion = value.ModelVersion
+	}
+	if value.PromptVersion != nil {
+		wire.PromptVersion = value.PromptVersion
+	}
+	if value.Retrieval != nil {
+		mapped, err := SemanticSearchResponseToWire(*value.Retrieval)
+		if err != nil {
+			return nil, err
+		}
+		wire.Retrieval = mapped
+	}
+	return wire, nil
+}

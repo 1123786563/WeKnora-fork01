@@ -54,6 +54,18 @@ func TestSemanticSearchResponseWireRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSemanticReasonResponseWireRoundTripPreservesAbsentConclusion(t *testing.T) {
+	original := SemanticReasonResponse{Status: SemanticReasonStatusInsufficientEvidence, Limitations: []string{"missing"}}
+	wire, err := SemanticReasonResponseToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticReasonResponseFromWire(wire)
+	if err != nil || result.Status != original.Status || result.Conclusion != nil || len(result.Limitations) != 1 {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,
