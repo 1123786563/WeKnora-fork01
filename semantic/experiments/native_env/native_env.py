@@ -126,6 +126,7 @@ class NativeEnvClient:
     engine_version: str | None = None
     model_version: str = "qwen2.5:0.5b"
     _knowledge_evidence: dict[str, str] = field(default_factory=dict)
+    last_sse_raw: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.app_url = _loopback_url(self.app_url)
@@ -141,6 +142,7 @@ class NativeEnvClient:
         except URLError as error:
             raise RuntimeError(f"{path} is unavailable: {error.reason}") from error
         if stream:
+            self.last_sse_raw = raw
             return self._sse_events(raw)
         return json.loads(raw) if raw else {}
 
@@ -190,11 +192,14 @@ class NativeEnvClient:
         events = self._request(f"/api/v1/knowledge-chat/{session_id}", {"query": case["question"], "knowledge_ids": list(allowed_document_ids), "disable_title": True}, stream=True)
         references: list[dict[str, Any]] = []
         complete = False
+        usage: Mapping[str, Any] | None = None
         for event in events:
             if event.get("response_type") == "error":
                 raise RuntimeError(str(event.get("content") or "SSE error"))
             if event.get("response_type") == "references":
                 references.extend(item for item in event.get("knowledge_references", []) if isinstance(item, dict))
+            if isinstance(event.get("usage"), Mapping):
+                usage = event["usage"]
             complete = complete or event.get("response_type") == "complete"
         if not complete:
             raise RuntimeError("SSE ended without complete event")
@@ -203,7 +208,7 @@ class NativeEnvClient:
             "requested_mode": "native", "actual_mode": "native", "status": "completed",
             "engine_version": self.engine_version, "model_version": self.model_version,
             "evidence_ids": self.evidence_ids_for_references(references, allowed_document_ids), "references": references,
-            "latency_ms": round((time.monotonic() - started) * 1000, 3), "tokens": None, "error": None,
+            "latency_ms": round((time.monotonic() - started) * 1000, 3), "tokens": usage, "error": None,
         }
 
     def run_case(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str) -> dict[str, Any]:
