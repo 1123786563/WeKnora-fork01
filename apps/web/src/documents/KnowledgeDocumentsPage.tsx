@@ -3647,7 +3647,7 @@ export function KnowledgeDocumentsPage({
   };
 
   return (
-    <main className="wk-page wk-documents-page box-border ml-[4px] mr-[16px] mt-0 mb-0 pl-8 pr-8 py-6">
+    <main className="wk-page wk-documents-page box-border ml-[4px] mr-0 mt-0 mb-0 w-full pl-8 pr-8 py-6">
       {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)} fixed left-1/2 top-[1.25rem] z-[1000] -translate-x-1/2 max-w-[min(30rem,calc(100vw-2rem))] rounded-[6px] border bg-[var(--wk-surface,#fff)] px-[0.875rem] py-[0.625rem] text-[0.875rem] shadow-[0_6px_20px_rgb(16_24_40/14%)] ${STAGE_NOTICE_TONE_CLASS[stageNotice.tone]}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <header className="wk-header wk-document-header mb-5 flex items-start justify-between gap-4">
         <div className="document-header-title flex min-w-0 flex-col gap-1">

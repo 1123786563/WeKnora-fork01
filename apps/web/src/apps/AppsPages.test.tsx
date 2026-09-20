@@ -69,6 +69,7 @@ test('catalog tables use the Vue unboxed section layout and centered empty state
   const { container, cleanup } = await renderCatalogPage();
   try {
     assert.equal(container.querySelectorAll('section.rounded-card').length, 0, 'catalog and installed tables are not wrapped in cards');
+    assert.ok(container.querySelector('header button svg[aria-hidden="true"]'), 'refresh control includes the Vue refresh icon');
     const emptyCells = Array.from(container.querySelectorAll('td'));
     assert.equal(emptyCells.length, 2);
     for (const cell of emptyCells) {

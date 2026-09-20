@@ -2,11 +2,13 @@
 """Pixel diff for Vue/React parity screenshots.
 
 Usage: python3 pixdiff.py <vue.png> <react.png> [diff_out.png]
-Prints JSON: overall diff pct, per-row-band diff pct, and bounding box of diffs.
+Prints JSON: overall diff pct, per-band diff pct, bounding box, hot cells.
+Lives in scripts/parity/ (git-tracked); the docs/migrations copy was wiped by
+a parallel session after migrations/ landed in .gitignore.
 """
 import sys, json
 import numpy as np
-from PIL import Image, ImageChops
+from PIL import Image
 
 def main(vue_p, react_p, diff_out=None):
     a = Image.open(vue_p).convert("RGB")
@@ -16,20 +18,18 @@ def main(vue_p, react_p, diff_out=None):
         return
     A = np.asarray(a, dtype=np.int16)
     B = np.asarray(b, dtype=np.int16)
-    D = np.abs(A - B).max(axis=2)  # per-pixel max channel delta
-    diff_mask = D > 8  # tolerance for antialiasing
+    D = np.abs(A - B).max(axis=2)
+    diff_mask = D > 8
     total = diff_mask.size
     ndiff = int(diff_mask.sum())
     pct = round(ndiff / total * 100, 3)
 
-    # per-band stats (12 horizontal bands)
     h = A.shape[0]
     bands = []
     for i in range(12):
         seg = diff_mask[i*h//12:(i+1)*h//12]
         bands.append(round(float(seg.sum())/seg.size*100, 2))
 
-    # bounding box of diff region
     bbox = None
     if ndiff:
         rows = np.any(diff_mask, axis=1)
@@ -38,7 +38,6 @@ def main(vue_p, react_p, diff_out=None):
         x0, x1 = np.argmax(cols), A.shape[1] - 1 - np.argmax(cols[::-1])
         bbox = [int(x0), int(y0), int(x1), int(y1)]
 
-    # cluster approximation: split into 8x8 grid, report cells > 1%
     grid = []
     gh, gw = A.shape[0]//8, A.shape[1]//8
     for gy in range(8):
@@ -49,7 +48,6 @@ def main(vue_p, react_p, diff_out=None):
                 grid.append({"cell": f"{gy},{gx}", "pct": round(p, 1)})
 
     if diff_out and ndiff:
-        # heatmap: red where diff, dimmed base
         base = (np.asarray(a, dtype=np.float32) * 0.35).astype(np.uint8)
         heat = base.copy()
         heat[diff_mask] = [255, 0, 0]

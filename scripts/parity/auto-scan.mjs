@@ -128,7 +128,7 @@ async function newAuthedPage(ctx, base, auth) {
 
 function pixdiff(vuePng, reactPng, diffPng) {
   const out = execFileSync('python3', [
-    join(EVIDENCE, 'screenshots/r492-20260920/pixdiff.py'), vuePng, reactPng, diffPng,
+    join(ROOT, 'scripts/parity/pixdiff.py'), vuePng, reactPng, diffPng,
   ], { encoding: 'utf8' });
   return JSON.parse(out);
 }
