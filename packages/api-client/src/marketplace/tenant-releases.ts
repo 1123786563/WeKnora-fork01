@@ -16,20 +16,20 @@ export interface ReleaseMetadataInput {
   semantic_version: string;
   display_name: string;
   summary: string;
-  supported_languages?: string[];
-  use_cases?: string[];
+  supported_languages: string[];
+  use_cases: string[];
   non_use_cases?: string[];
   capability_requirements?: string[];
   data_categories?: string[];
   external_side_effects?: string[];
-  minimum_weknora_capability?: string;
+  minimum_weknora_capability: string;
   license_id: string;
   change_notes?: string;
 }
 
 export interface ReviewReleaseInput {
   expected_digest: string;
-  decision: 'approve' | 'reject';
+  decision: 'approved' | 'rejected' | 'changes_requested';
   reason?: string;
 }
 
@@ -64,7 +64,9 @@ export function createTenantReleaseApi(request: Request) {
       return parseReleaseSubmissionListResponse(await request({ method: 'GET', path: `${base}/release-submissions/review-queue` }));
     },
     async review(submissionID: string, input: ReviewReleaseInput): Promise<TenantReleaseReviewResult> {
-      if (input.decision !== 'approve' && input.decision !== 'reject') throw new Error('decision must be approve or reject');
+      if (input.decision !== 'approved' && input.decision !== 'rejected' && input.decision !== 'changes_requested') {
+        throw new Error('decision must be approved, rejected, or changes_requested');
+      }
       const reason = input.reason;
       if (reason !== undefined && typeof reason !== 'string') throw new Error('reason must be a string');
       return parseReleaseReviewResponse(await request({

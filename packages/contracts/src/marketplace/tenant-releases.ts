@@ -21,7 +21,7 @@ export interface ReleaseReview {
   submission_id: string;
   reviewer_id: string;
   reviewed_digest: string;
-  decision: 'approve' | 'reject';
+  decision: 'approved' | 'rejected' | 'changes_requested';
   reason: string;
   created_at: string;
   [key: string]: unknown;
@@ -117,7 +117,9 @@ function parseSubmission(value: unknown, path: string): ReleaseSubmission {
 function parseReview(value: unknown, path: string): ReleaseReview {
   const row = object(value, path);
   const decision = row.decision;
-  if (decision !== 'approve' && decision !== 'reject') throw new ContractError(`${path}.decision`, 'expected approve or reject');
+  if (decision !== 'approved' && decision !== 'rejected' && decision !== 'changes_requested') {
+    throw new ContractError(`${path}.decision`, 'expected approved, rejected, or changes_requested');
+  }
   if (typeof row.reason !== 'string') throw new ContractError(`${path}.reason`, 'expected a string');
   return {
     ...row,
@@ -181,8 +183,11 @@ export function parseReleaseReviewResponse(value: unknown): ReleaseReviewResult 
   const data = object(envelopeData(value), 'data');
   const review = parseReview(data.review, 'data.review');
   const release = data.release === null ? null : parseRelease(data.release, 'data.release');
-  if (review.decision === 'approve' && release === null) throw new ContractError('data.release', 'is required for approval');
-  if (review.decision === 'reject' && release !== null) throw new ContractError('data.release', 'must be null for rejection');
+  if (review.decision === 'approved' && release === null) throw new ContractError('data.release', 'is required for approval');
+  if (review.decision !== 'approved' && release !== null) throw new ContractError('data.release', 'must be null for a non-approval decision');
+  if (release !== null && release.submission_id !== review.submission_id) {
+    throw new ContractError('data.release.submission_id', 'must match the reviewed submission');
+  }
   if (release !== null && release.bundle_digest !== review.reviewed_digest) throw new ContractError('data.release.bundle_digest', 'must match the reviewed digest');
   return { review, release };
 }
