@@ -21,7 +21,8 @@ import (
 )
 
 func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
-	semanticTables := []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"}
+	semanticControlTables := []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"}
+	semanticPolicyTables := []string{"semantic_model_policies", "semantic_model_policy_revisions"}
 	dsn := os.Getenv("TRPC_TEST_POSTGRES_DSN")
 	if dsn == "" {
 		t.Fatal("TRPC_TEST_POSTGRES_DSN is required for semantic PostgreSQL integration")
@@ -61,10 +62,10 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, m.Up())
 	version, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(178), version)
+	require.Equal(t, uint(179), version)
 	require.False(t, dirty)
 	assertTablesAndIndex := func(want bool) {
-		for _, table := range semanticTables {
+		for _, table := range append(semanticControlTables, semanticPolicyTables...) {
 			var n int
 			require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
 			if want {
@@ -83,11 +84,20 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	}
 	assertTablesAndIndex(true)
 	require.NoError(t, m.Steps(-1))
-	assertTablesAndIndex(false)
+	for _, table := range semanticPolicyTables {
+		var n int
+		require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
+		require.Zero(t, n)
+	}
+	for _, table := range semanticControlTables {
+		var n int
+		require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
+		require.Equal(t, 1, n)
+	}
 	require.NoError(t, m.Up())
 	version, dirty, err = m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(178), version)
+	require.Equal(t, uint(179), version)
 	require.False(t, dirty)
 	assertTablesAndIndex(true)
 	_ = sql.ErrNoRows

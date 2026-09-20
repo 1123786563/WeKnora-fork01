@@ -47,6 +47,8 @@ Evidence pointers: the spec requires a KB administrator to select the pilot KB a
 - Create: `internal/handler/semantic_model_policy.go`
 - Create: `internal/handler/semantic_model_policy_test.go`
 - Modify: `internal/router/routes_knowledge.go`
+- Modify: `internal/container/container.go` for the policy service/handler/router dependency-injection provider path
+- Modify: `internal/database/semantic_migration_test.go` and `internal/database/semantic_migration_pg_test.go` for the new formal migration head and policy-table up/down coverage
 - Modify: `internal/types/knowledgebase.go` only if the existing KB policy route cannot own the DTO cleanly
 - Create: PostgreSQL migration `migrations/versioned/000179_semantic_model_policy.up.sql` and `.down.sql`
 - Create: SQLite migration `migrations/sqlite/000100_semantic_model_policy.up.sql` and `.down.sql`
