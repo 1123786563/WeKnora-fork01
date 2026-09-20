@@ -187,6 +187,11 @@ type ToolDispatchRequest struct {
 	Plan              ToolPlan
 	Attempt           Attempt
 	DecisionReference string
+	// Funding and ReservationUnits are server-assembled from the durable
+	// admission and quote. A tool delegate, SDK callback, or client request
+	// never supplies either value.
+	Funding          FundingBinding
+	ReservationUnits int64
 }
 
 // ToolDispatchPreflight owns the last authorization boundary before a tool
