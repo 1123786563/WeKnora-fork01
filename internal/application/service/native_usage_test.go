@@ -223,10 +223,29 @@ func TestNativeUsageServiceConcurrentDuplicateHasOneBudgetEffect(t *testing.T) {
 	}
 	wg.Wait()
 	close(errs)
+	var success, conflict int
 	for err := range errs {
-		require.NoError(t, err)
+		if err == nil {
+			success++
+			continue
+		}
+		if nativeUsageFailureCode(t, err) == nativecontract.ErrConflict {
+			conflict++
+		}
 	}
+	require.Equal(t, 2, success+conflict)
 	require.Equal(t, 1, budget.settles)
+}
+
+func TestNativeUsageServicePartialUsageIsReconciled(t *testing.T) {
+	o := nativeUsageServiceObservation()
+	o.AccountingStatus = "partial"
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
+	budget := &nativeUsageBudgetFake{remaining: 10}
+	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
+	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
+	require.Equal(t, 1, budget.unknowns)
+	require.Zero(t, budget.settles)
 }
 
 func nativeUsageFailureCode(t *testing.T, err error) nativecontract.ErrorCode {

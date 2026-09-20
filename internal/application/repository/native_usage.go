@@ -212,7 +212,7 @@ func (s *NativeUsageLedger) ClaimSettlement(ctx context.Context, fence nativecon
 		if err := nativeUsageFence(tx, fence); err != nil {
 			return err
 		}
-		r := tx.Exec(`UPDATE native_agent_commit_intents SET state='applying' WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='pending'`, fence.Run.TenantID, fence.Run.RunID, intentID)
+		r := tx.Exec(`UPDATE native_agent_commit_intents SET state='applying', lease_epoch=? WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='pending'`, fence.Epoch, fence.Run.TenantID, fence.Run.RunID, intentID)
 		if r.Error != nil {
 			return r.Error
 		}
@@ -220,11 +220,25 @@ func (s *NativeUsageLedger) ClaimSettlement(ctx context.Context, fence nativecon
 			claimed = true
 			return nil
 		}
-		var state string
-		if err := tx.Table("native_agent_commit_intents").Select("state").Where("tenant_id=? AND run_id=? AND intent_id=?", fence.Run.TenantID, fence.Run.RunID, intentID).Take(&state).Error; err != nil {
+		var row struct {
+			State      string
+			LeaseEpoch int64
+		}
+		if err := tx.Table("native_agent_commit_intents").Select("state, lease_epoch").Where("tenant_id=? AND run_id=? AND intent_id=?", fence.Run.TenantID, fence.Run.RunID, intentID).Take(&row).Error; err != nil {
 			return nativeUsageFailure(nativecontract.ErrNotFound, "usage settlement intent was not found")
 		}
-		if state == "applying" || state == "applied" {
+		if row.State == "applying" && row.LeaseEpoch < fence.Epoch {
+			reclaimed := tx.Exec(`UPDATE native_agent_commit_intents SET lease_epoch=? WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='applying' AND lease_epoch < ?`, fence.Epoch, fence.Run.TenantID, fence.Run.RunID, intentID, fence.Epoch)
+			if reclaimed.Error != nil {
+				return reclaimed.Error
+			}
+			if reclaimed.RowsAffected == 1 {
+				claimed = true
+				return nil
+			}
+			return nil
+		}
+		if row.State == "applying" || row.State == "applied" {
 			return nil
 		}
 		return nativeUsageFailure(nativecontract.ErrConflict, "usage settlement intent is invalid")

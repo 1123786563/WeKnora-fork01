@@ -95,11 +95,13 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 		return err
 	}
 	if !claimed {
-		return nil
+		return nativeUsageServiceFailure(nativecontract.ErrConflict, "usage settlement is being recovered by another worker")
 	}
-	if o.AccountingStatus == "unknown" {
+	if o.AccountingStatus == "unknown" || o.AccountingStatus == "partial" {
 		if err := s.budget.MarkUnknown(ctx, root, key); err != nil {
-			_ = s.store.ReleaseSettlement(ctx, fence, delta.IntentID)
+			if releaseErr := s.store.ReleaseSettlement(ctx, fence, delta.IntentID); releaseErr != nil {
+				return nativeUsageServiceFailure(nativecontract.ErrStore, "usage reconciliation and claim release failed")
+			}
 			return err
 		}
 		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
@@ -108,7 +110,9 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
 	}
 	if err := s.budget.Settle(ctx, root, key, delta); err != nil {
-		_ = s.store.ReleaseSettlement(ctx, fence, delta.IntentID)
+		if releaseErr := s.store.ReleaseSettlement(ctx, fence, delta.IntentID); releaseErr != nil {
+			return nativeUsageServiceFailure(nativecontract.ErrStore, "usage settlement and claim release failed")
+		}
 		return err
 	}
 	return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)

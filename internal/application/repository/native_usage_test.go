@@ -121,3 +121,22 @@ func TestNativeUsageCorruptPendingIntentReturnsStoreFailure(t *testing.T) {
 	_, err = ledger.ObserveDelta(context.Background(), fence, observation)
 	require.Equal(t, nativecontract.ErrStore, nativeUsageCode(t, err))
 }
+
+func TestNativeUsageApplyingIntentIsReclaimedByNewLeaseEpoch(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	delta, err := ledger.ObserveDelta(context.Background(), fence, observation)
+	require.NoError(t, err)
+	claimed, err := ledger.ClaimSettlement(context.Background(), fence, delta.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	// Simulate a crashed worker: the run lease is recovered by a new owner and
+	// epoch, which is the durable drain authority for an applying intent.
+	require.NoError(t, ledger.db.Exec(`UPDATE native_agent_runs SET lease_owner=?, lease_epoch=?, lease_expires_at=? WHERE tenant_id=? AND run_id=?`, "worker-2", fence.Epoch+1, time.Now().Add(time.Hour), 1, "run-1").Error)
+	recovered := fence
+	recovered.Owner = "worker-2"
+	recovered.Epoch++
+	claimed, err = ledger.ClaimSettlement(context.Background(), recovered, delta.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), recovered, delta.IntentID))
+}
