@@ -9,6 +9,7 @@ import signal
 import socket
 import subprocess
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -108,6 +109,21 @@ def up(config: NativeEnvConfig) -> int:
     with paths.app_log.open("w", encoding="utf-8") as log:
         app = subprocess.Popen(["go", "run", "./cmd/server"], cwd=Path(__file__).parents[3], stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
     _write_private(paths.app_pid, f"{app.pid}\n")
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        if app.poll() is not None:
+            _compose(config, paths, "down", "--volumes", "--remove-orphans")
+            return 1
+        try:
+            with urllib.request.urlopen(config.app_url + "/health", timeout=1) as response:
+                if response.status == 200:
+                    break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        os.killpg(app.pid, signal.SIGTERM)
+        _compose(config, paths, "down", "--volumes", "--remove-orphans")
+        return 1
     metadata = json.loads(paths.metadata.read_text(encoding="utf-8"))
     metadata.update({"state": "started", "server_pid": app.pid})
     _write_private(paths.metadata, json.dumps(metadata, indent=2) + "\n")
@@ -131,7 +147,10 @@ def teardown(config: NativeEnvConfig) -> int:
             # ``go run`` forks the compiled server.  The process group created
             # by start_new_session owns both processes, so killing only the go
             # parent would leave a server with stale experiment credentials.
-            os.killpg(int(paths.app_pid.read_text().strip()), signal.SIGTERM)
+            pid = int(paths.app_pid.read_text().strip())
+            command = subprocess.run(["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True, check=False).stdout
+            if "go run ./cmd/server" in command or "go-build" in command:
+                os.killpg(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
     result = _compose(config, paths, "down", "--volumes", "--remove-orphans")
