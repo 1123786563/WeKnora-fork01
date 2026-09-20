@@ -302,6 +302,16 @@ func persistOutcomes(tx *gorm.DB, intent nativecontract.CommitIntent) error {
 // provenance rule as the journal: the executable tool call must resolve to
 // exactly one model call with matching immutable plan version and args hash.
 func assertCommittedOutcomeSource(tx *gorm.DB, run nativecontract.RunIdentity, outcome nativecontract.ToolOutcome) error {
+	var attempt struct {
+		Kind          string
+		LogicalCallID string
+	}
+	if err := tx.Table("native_agent_attempts").Select("kind, logical_call_id").Where("tenant_id=? AND run_id=? AND attempt_id=?", run.TenantID, run.RunID, outcome.AttemptID).Take(&attempt).Error; err != nil {
+		return typedFailure(nativecontract.ErrNotFound, "tool result executable attempt was not found")
+	}
+	if attempt.Kind != string(nativecontract.ToolAttempt) || attempt.LogicalCallID != outcome.CallID {
+		return typedFailure(nativecontract.ErrConflict, "tool result executable attempt identity changed")
+	}
 	var toolCall struct {
 		Version  int
 		ArgsHash string

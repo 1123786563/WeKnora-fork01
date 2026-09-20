@@ -101,6 +101,27 @@ func TestNativeCommitRejectsOutcomeWithoutBoundSourceModelAttempt(t *testing.T) 
 	}
 }
 
+func TestNativeCommitRejectsModelAttemptAsExecutableOutcomeAttempt(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	outcome := nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")
+	outcome.AttemptID = "model-result"
+	intent := nativeCommitIntent(fence, "intent-model-as-tool", "hash-model-as-tool")
+	intent.Results = []nativecontract.ToolOutcome{outcome}
+	_, err := coordinator.Commit(context.Background(), intent)
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativeCommitRejectsAmbiguousOutcomeSourceModelAttempt(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	outcome := nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, attempt_number) VALUES (?, ?, ?, ?, 'model', ?)`, 1, "run-1", "model-duplicate", fence.Epoch, 3).Error)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", "model-duplicate", "call-result", 1, "args", fence.Epoch).Error)
+	intent := nativeCommitIntent(fence, "intent-ambiguous-source", "hash-ambiguous-source")
+	intent.Results = []nativecontract.ToolOutcome{outcome}
+	_, err := coordinator.Commit(context.Background(), intent)
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
 func TestNativeCommitReconcileRejectsStaleFence(t *testing.T) {
 	coordinator, fence := nativeCommitFixture(t)
 	ctx := context.Background()
@@ -388,14 +409,9 @@ func TestNativeCommitCheckpointRequiresAndRecordsDurableToolReceipt(t *testing.T
 
 	// Tool-call identity is owned by the already durable P1.4 journal. Commit
 	// writes its actual result into that identity before it makes the checkpoint runnable.
-	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts
-		(tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-1", 7).Error)
-	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls
-		(tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", "attempt-1", "call-1", 1, "args-1", 7).Error)
 	applied := nativeCommitIntent(fence, "intent-applied", "hash-applied")
 	applied.Checkpoint = checkpoint
-	applied.Results = []nativecontract.ToolOutcome{{AttemptID: "attempt-1", CallID: "call-1", ResultHash: "result-1", Effect: nativecontract.EffectConfirmed, Content: []byte(`{}`)}}
+	applied.Results = []nativecontract.ToolOutcome{nativeCommitToolOutcome(t, coordinator, fence, "model-1", "attempt-1", "call-1", "args-1", "result-1")}
 	_, err = coordinator.Commit(ctx, applied)
 	require.NoError(t, err)
 	var resultCalls string
