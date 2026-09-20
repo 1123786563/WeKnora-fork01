@@ -47,7 +47,9 @@ func TestNativePendingDecisionRepositoryScopesDetailsAndConsumesCASOnce(t *testi
 	require.Equal(t, json.RawMessage(`{"title":"Planning"}`), got.RedactedArgs)
 	require.Empty(t, got.OAuth)
 	_, err = repo.Get(ctx, nativecontract.Scope{TenantID: 2, SessionOwnerID: "owner"}, key)
-	require.Equal(t, nativecontract.ErrForbidden, failureCode(t, err))
+	require.Equal(t, nativecontract.ErrNotFound, failureCode(t, err))
+	_, err = repo.Get(ctx, nativecontract.Scope{TenantID: 1, SessionOwnerID: "another-owner"}, key)
+	require.Equal(t, nativecontract.ErrNotFound, failureCode(t, err))
 
 	for _, changed := range []nativecontract.ResolvePendingRequest{
 		func() nativecontract.ResolvePendingRequest {
@@ -95,6 +97,43 @@ func TestNativePendingDecisionRepositoryScopesDetailsAndConsumesCASOnce(t *testi
 	changed.Reason = "a different payload"
 	_, err = repo.Resolve(ctx, scope, key, changed)
 	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativePendingDecisionRepositoryHoldsOAuthAndUnknownEffectsWithoutProviderAuthority(t *testing.T) {
+	for _, wait := range []nativecontract.WaitKind{nativecontract.WaitOAuth, nativecontract.WaitUnknown} {
+		t.Run(string(wait), func(t *testing.T) {
+			repo, scope, key := nativePendingFixture(t)
+			detail := nativePendingDetail(key)
+			detail.WaitKind = wait
+			detail.AllowedActions = []nativecontract.DecisionAction{nativecontract.DecisionRetry, nativecontract.DecisionTerminate}
+			if wait == nativecontract.WaitOAuth {
+				detail.OAuth = &nativecontract.PendingOAuth{ServiceID: "svc-1", State: "required"}
+			}
+			require.NoError(t, repo.Create(context.Background(), key.Run, detail))
+			_, err := repo.Resolve(context.Background(), scope, key, nativeResolveRequest())
+			if wait == nativecontract.WaitOAuth {
+				require.Equal(t, nativecontract.ErrStore, failureCode(t, err))
+			} else {
+				require.Equal(t, nativecontract.ErrUnknownEffect, failureCode(t, err))
+			}
+			got, err := repo.Get(context.Background(), scope, key)
+			require.NoError(t, err)
+			require.Equal(t, nativecontract.PendingOpen, got.Status)
+			require.Equal(t, nativecontract.RunWaiting, got.RunStatus)
+		})
+	}
+}
+
+func TestNativePendingDecisionRepositoryReplayReturnsSavedResolutionAfterRestart(t *testing.T) {
+	repo, scope, key := nativePendingFixture(t)
+	require.NoError(t, repo.Create(context.Background(), key.Run, nativePendingDetail(key)))
+	first, err := repo.Resolve(context.Background(), scope, key, nativeResolveRequest())
+	require.NoError(t, err)
+	require.NoError(t, repo.db.Exec("UPDATE native_agent_runs SET status=?, revision=? WHERE tenant_id=? AND run_id=?", "failed", 99, 1, "run-1").Error)
+	restarted := NewNativePendingDecisionRepository(repo.db)
+	replayed, err := restarted.Resolve(context.Background(), scope, key, nativeResolveRequest())
+	require.NoError(t, err)
+	require.Equal(t, first, replayed)
 }
 
 func TestNativePendingDecisionRepositoryRejectsExpiredAndCrossRunDecisionReplay(t *testing.T) {

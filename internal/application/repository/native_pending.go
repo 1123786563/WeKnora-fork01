@@ -114,7 +114,7 @@ func validateNativePendingDetail(detail nativecontract.PendingDecisionDetail) er
 
 func (r *NativePendingDecisionRepository) scopedRun(tx *gorm.DB, scope nativecontract.Scope, run nativecontract.RunIdentity) (nativePendingRunRow, error) {
 	if !validNativePendingKey(nativecontract.PendingKey{Run: run, PendingID: "scope"}) || scope.TenantID == 0 || scope.TenantID != run.TenantID || scope.SessionOwnerID == "" {
-		return nativePendingRunRow{}, nativePendingFailure(nativecontract.ErrForbidden, "pending scope is incomplete")
+		return nativePendingRunRow{}, nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
 	}
 	var row nativePendingRunRow
 	err := tx.Table("native_agent_runs").Select("owner_id, session_id, status, revision").Where("tenant_id=? AND run_id=?", run.TenantID, run.RunID).Take(&row).Error
@@ -125,7 +125,7 @@ func (r *NativePendingDecisionRepository) scopedRun(tx *gorm.DB, scope nativecon
 		return nativePendingRunRow{}, err
 	}
 	if row.OwnerID != scope.SessionOwnerID || row.SessionID != run.SessionID {
-		return nativePendingRunRow{}, nativePendingFailure(nativecontract.ErrForbidden, "pending run is outside the current scope")
+		return nativePendingRunRow{}, nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
 	}
 	return row, nil
 }
@@ -151,7 +151,10 @@ func nativePendingDetailFromRow(row nativePendingDecisionRow, run nativePendingR
 	}
 	detail.Ref.PendingID, detail.Ref.Revision = row.PendingID, strconv.FormatInt(row.Revision, 10)
 	detail.CallID, detail.PlanVersion, detail.ArgsHash = row.CallID, row.PlanVersion, row.ArgsHash
-	detail.Status, detail.RunStatus, detail.RunRevision = nativecontract.PendingStatus(row.Status), nativecontract.RunStatus(run.Status), strconv.FormatInt(run.Revision, 10)
+	detail.Status = nativecontract.PendingStatus(row.Status)
+	if detail.Status != nativecontract.PendingResolved {
+		detail.RunStatus, detail.RunRevision = nativecontract.RunStatus(run.Status), strconv.FormatInt(run.Revision, 10)
+	}
 	return detail, nil
 }
 
@@ -301,7 +304,7 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 			if row.DecisionID != req.DecisionID || row.DecisionHash != hash {
 				return nativePendingFailure(nativecontract.ErrConflict, "decision ID was reused with a different payload")
 			}
-			resolution = nativecontract.PendingResolution{Detail: detail, RunStatus: detail.RunStatus, RunRevision: detail.RunRevision, ResumeState: nativePendingResumeState(detail.ResolvedAction)}
+			resolution = nativecontract.PendingResolution{Detail: detail, RunStatus: detail.RunStatus, RunRevision: detail.RunRevision, ResumeState: nativePendingSavedResumeState(detail)}
 			return nil
 		}
 		if row.Status != string(nativecontract.PendingOpen) {
@@ -316,7 +319,10 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		nextStatus, resume := nativePendingNextRun(req.Action)
+		nextStatus, resume, err := nativePendingNextRun(detail, req.Action)
+		if err != nil {
+			return err
+		}
 		detail.Status, detail.ResolvedDecisionID, detail.ResolvedAction = nativecontract.PendingResolved, req.DecisionID, req.Action
 		now := time.Now().UTC()
 		detail.ResolvedAt = &now
@@ -349,13 +355,30 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 	return resolution, err
 }
 
-func nativePendingNextRun(action nativecontract.DecisionAction) (nativecontract.RunStatus, string) {
+func nativePendingNextRun(detail nativecontract.PendingDecisionDetail, action nativecontract.DecisionAction) (nativecontract.RunStatus, string, error) {
 	if action == nativecontract.DecisionTerminate {
-		return nativecontract.RunCancelled, "terminated"
+		return nativecontract.RunCancelled, "terminated", nil
 	}
-	return nativecontract.RunQueued, "queued"
+	if detail.ExternalActionID != "" || detail.ExternalActionState != "" {
+		return "", "held", nativePendingFailure(nativecontract.ErrStore, "external action authority is unavailable")
+	}
+	switch detail.WaitKind {
+	case nativecontract.WaitApproval, nativecontract.WaitConnector:
+		return nativecontract.RunQueued, "queued", nil
+	case nativecontract.WaitOAuth:
+		return "", "held", nativePendingFailure(nativecontract.ErrStore, "OAuth callback authority is unavailable")
+	case nativecontract.WaitUnknown:
+		return "", "held", nativePendingFailure(nativecontract.ErrUnknownEffect, "unknown external effect remains held")
+	default:
+		return "", "held", nativePendingFailure(nativecontract.ErrConflict, "pending wait kind cannot resume")
+	}
 }
-func nativePendingResumeState(action nativecontract.DecisionAction) string {
-	_, state := nativePendingNextRun(action)
-	return state
+func nativePendingSavedResumeState(detail nativecontract.PendingDecisionDetail) string {
+	if detail.RunStatus == nativecontract.RunCancelled || detail.ResolvedAction == nativecontract.DecisionTerminate {
+		return "terminated"
+	}
+	if detail.RunStatus == nativecontract.RunQueued {
+		return "queued"
+	}
+	return "held"
 }
