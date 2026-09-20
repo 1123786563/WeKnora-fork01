@@ -167,3 +167,12 @@ def test_reason_request_wire_round_trip_preserves_rule_version() -> None:
     scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "reason", "budget")
     value = ReasonRequest(SearchRequest("q", "问题", scope, QueryLimits(2, 10, 20, 3, 100, 1000), "reason"), "rules", "v1")
     assert reason_request_from_wire(reason_request_to_wire(value)) == value
+
+
+def test_apply_request_wire_round_trip_preserves_chunks_and_config() -> None:
+    from semantic_service.contracts import ApplyRequest, ChunkSnapshot, DocumentRevision, IndexConfig, ScopeKey, apply_request_from_wire, apply_request_to_wire
+
+    revision = DocumentRevision(ScopeKey(1, "kb"), "doc", 1, "hash", False)
+    config = IndexConfig("digest", "engine", "profile", "prompt", "rules", "schema")
+    value = ApplyRequest(revision, (ChunkSnapshot("c", "text", "chunk-hash"),), config, "idem", "payload", None)
+    assert apply_request_from_wire(apply_request_to_wire(value)) == value

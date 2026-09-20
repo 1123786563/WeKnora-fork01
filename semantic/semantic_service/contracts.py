@@ -163,6 +163,45 @@ class ReasonRequest:
 
 
 @dataclass(frozen=True)
+class ChunkSnapshot:
+    chunk_id: str
+    text: str
+    content_hash: str
+
+    def __post_init__(self) -> None:
+        if not self.chunk_id or not self.content_hash:
+            raise ValueError("chunk id and content hash are required")
+
+
+@dataclass(frozen=True)
+class IndexConfig:
+    config_digest: str
+    engine_version: str
+    model_profile_ref: str
+    prompt_version: str
+    rule_set_version: str
+    schema_version: str
+
+    def __post_init__(self) -> None:
+        if not all(self.__dict__.values()):
+            raise ValueError("index configuration is incomplete")
+
+
+@dataclass(frozen=True)
+class ApplyRequest:
+    document: DocumentRevision
+    chunks: tuple[ChunkSnapshot, ...]
+    config: IndexConfig
+    idempotency_key: str
+    payload_hash: str
+    manifest_ref: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.document.deleted or not self.idempotency_key or not self.payload_hash:
+            raise ValueError("apply request is invalid")
+
+
+@dataclass(frozen=True)
 class SearchResponse:
     query_id: str
     generation: str
@@ -318,3 +357,20 @@ class ReasonResponse:
     model_version: str | None = None
     prompt_version: str | None = None
     limitations: tuple[str, ...] = ()
+
+
+def apply_request_to_wire(value: ApplyRequest):
+    from semantic_service.proto import semantic_pb2
+    document = semantic_pb2.DocumentRevision(scope=semantic_pb2.ScopeKey(tenant_id=value.document.scope.tenant_id, kb_id=value.document.scope.kb_id), document_id=value.document.document_id, revision=value.document.revision, content_hash=value.document.content_hash, deleted=value.document.deleted)
+    config = semantic_pb2.IndexConfig(config_digest=value.config.config_digest, engine_version=value.config.engine_version, model_profile_ref=value.config.model_profile_ref, prompt_version=value.config.prompt_version, rule_set_version=value.config.rule_set_version, schema_version=value.config.schema_version)
+    wire = semantic_pb2.ApplyRequest(document=document, chunks=[semantic_pb2.ChunkSnapshot(chunk_id=item.chunk_id, text=item.text, content_hash=item.content_hash) for item in value.chunks], config=config, idempotency_key=value.idempotency_key, payload_hash=value.payload_hash)
+    if value.manifest_ref is not None:
+        wire.manifest_ref = value.manifest_ref
+    return wire
+
+
+def apply_request_from_wire(wire) -> ApplyRequest:
+    document = DocumentRevision(ScopeKey(wire.document.scope.tenant_id, wire.document.scope.kb_id), wire.document.document_id, wire.document.revision, wire.document.content_hash, wire.document.deleted)
+    config = IndexConfig(wire.config.config_digest, wire.config.engine_version, wire.config.model_profile_ref, wire.config.prompt_version, wire.config.rule_set_version, wire.config.schema_version)
+    chunks = tuple(ChunkSnapshot(item.chunk_id, item.text, item.content_hash) for item in wire.chunks)
+    return ApplyRequest(document, chunks, config, wire.idempotency_key, wire.payload_hash, wire.manifest_ref if wire.HasField("manifest_ref") else None)
