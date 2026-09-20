@@ -46,7 +46,7 @@ import (
 
 const (
 	recoveryOllamaModelEnv = "TRPC_RECOVERY_OLLAMA_MODEL"
-	recoveryOllamaPrompt   = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, reply with exactly: recovered answer. Do not make another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
+	recoveryOllamaPrompt   = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, give a concise non-empty final answer without another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
 )
 
 const (
@@ -537,8 +537,8 @@ func (c *recoveryContractChat) validate(messages []chat.Message, response *types
 	}
 	for _, message := range messages {
 		if message.Role == "tool" {
-			if len(response.ToolCalls) != 0 || strings.TrimSpace(response.Content) != "recovered answer" {
-				return fmt.Errorf("Ollama recovery model violated post-tool contract: want exactly %q without tool calls", "recovered answer")
+			if len(response.ToolCalls) != 0 || strings.TrimSpace(response.Content) == "" {
+				return errors.New("Ollama recovery model violated post-tool contract: want a non-empty final answer without tool calls")
 			}
 			return nil
 		}

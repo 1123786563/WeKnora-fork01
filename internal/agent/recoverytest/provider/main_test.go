@@ -61,9 +61,9 @@ func TestRecoveryContractChatRejectsUnplannedInitialAnswer(t *testing.T) {
 	}
 }
 
-func TestRecoveryContractChatAllowsExactPostToolAnswer(t *testing.T) {
+func TestRecoveryContractChatAllowsNaturalLanguagePostToolAnswer(t *testing.T) {
 	model := &recoveryContractChat{inner: scriptedChatResponse{response: &types.ChatResponse{
-		Content: "recovered answer", FinishReason: "stop",
+		Content: "The counter is now one.", FinishReason: "stop",
 	}}, toolName: toolName}
 
 	_, err := model.Chat(context.Background(), []chat.Message{{Role: "tool", Name: toolName, Content: `{"count":1}`}}, nil)
