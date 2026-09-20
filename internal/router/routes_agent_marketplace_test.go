@@ -107,7 +107,7 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	call := func(method, path, role, actor string, body any) *httptest.ResponseRecorder {
 		return callTenant(1, method, path, role, actor, body)
 	}
-	assertReviewError := func(response *httptest.ResponseRecorder, status int, code apperrors.ErrorCode) {
+	assertReviewError := func(response *httptest.ResponseRecorder, status int, code apperrors.ErrorCode, message string) {
 		t.Helper()
 		require.Equal(t, status, response.Code, response.Body.String())
 		var envelope struct {
@@ -120,8 +120,7 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
 		require.False(t, envelope.Success)
 		require.Equal(t, int(code), envelope.Error.Code)
-		require.NotEmpty(t, envelope.Error.Message)
-		require.NotEqual(t, "Internal server error", envelope.Error.Message)
+		require.Equal(t, message, envelope.Error.Message)
 	}
 
 	frozen := call(http.MethodPost, "/api/v1/agents/agent-owned/versions", "contributor", "contributor", nil)
@@ -185,13 +184,13 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.Equal(t, submissionBody.Data.ID, queueBody.Data[0].ID)
 	require.Equal(t, submissionBody.Data.BundleDigest, queueBody.Data[0].BundleDigest)
 	staleDigestReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": "0000000000000000000000000000000000000000000000000000000000000000", "decision": "approved"})
-	assertReviewError(staleDigestReview, http.StatusConflict, apperrors.ErrConflict)
+	assertReviewError(staleDigestReview, http.StatusConflict, apperrors.ErrConflict, "release submission changed; reload and review again")
 	invalidDecisionReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "approve"})
-	assertReviewError(invalidDecisionReview, http.StatusBadRequest, apperrors.ErrValidation)
+	assertReviewError(invalidDecisionReview, http.StatusBadRequest, apperrors.ErrValidation, "invalid marketplace release request")
 	missingReasonReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "rejected"})
-	assertReviewError(missingReasonReview, http.StatusBadRequest, apperrors.ErrValidation)
+	assertReviewError(missingReasonReview, http.StatusBadRequest, apperrors.ErrValidation, "invalid marketplace release request")
 	missingSubmissionReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/missing-submission/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "approved"})
-	assertReviewError(missingSubmissionReview, http.StatusNotFound, apperrors.ErrNotFound)
+	assertReviewError(missingSubmissionReview, http.StatusNotFound, apperrors.ErrNotFound, "release submission not found")
 	viewerQueue := call(http.MethodGet, "/api/v1/marketplace/tenant/release-submissions/review-queue", "viewer", "viewer", nil)
 	require.Equal(t, http.StatusForbidden, viewerQueue.Code)
 
@@ -215,7 +214,7 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.NotNil(t, result.Data.Release)
 	require.Equal(t, submissionBody.Data.BundleDigest, result.Data.Release.BundleDigest)
 	competingReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "owner", "owner", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "changes_requested", "reason": "Conflicting decision"})
-	assertReviewError(competingReview, http.StatusConflict, apperrors.ErrConflict)
+	assertReviewError(competingReview, http.StatusConflict, apperrors.ErrConflict, "release submission changed; reload and review again")
 	storedRelease, err := marketRepo.GetRelease(context.Background(), 1, result.Data.Release.ID)
 	require.NoError(t, err)
 	require.NotNil(t, storedRelease)
