@@ -201,3 +201,9 @@ native product composition, and client acceptance are not complete. Commit
 P0 decision document and `interfaces.md` require no product-wiring change:
 this document records the exact P1.0 evidence without falsely elevating it to
 product or release acceptance.
+
+The 2026-09-20 revalidation removes one previously stale blocker: the recovery
+provider matrix now passes with local Ollama `gemma4:latest` on SQLite (10/10)
+and PostgreSQL (9/9), using unique databases and schemas from `2473914c`.
+This is recovery evidence only; it does not approve raw SDK SQL backends or
+enable native Runner product execution.

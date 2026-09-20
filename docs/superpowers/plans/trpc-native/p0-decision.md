@@ -59,3 +59,13 @@ P1/P2 share the scope, typed-error, admission, journal, event and checkpoint coo
 ## Evidence record
 
 This ruling consumes the committed Task 1–4 artifacts: `features.tsv`, `sdk-probes.md`, `recovery-gaps.md`, `sdk-capabilities.tsv`, and `interfaces.md`. It adds no SDK, production, migration, Provider, database, or client behavior evidence. P0 itself is a decision/planning gate; it does not mark the migration, P1/P2, or any release condition as passed.
+
+## 2026-09-20 provider revalidation
+
+The provider gap has since been re-run with the explicit local Ollama path
+(`TRPC_RECOVERY_OLLAMA_MODEL=gemma4:latest`). SQLite recovery passed all 10/10
+SIGKILL cases, and PostgreSQL passed all 9/9 cases after `2473914c` fixed the
+harness's shared-database and repeated-namespace bug. This closes the earlier
+`blocked-env` classification for the recovery matrix. It does not change the
+overall NO-GO: the selected native product composition, remaining P2/P3
+execution wiring, client replay and release acceptance are still incomplete.
