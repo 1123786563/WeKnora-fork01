@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/go-viper/mapstructure/v2"
@@ -334,12 +335,28 @@ type DocReaderConfig struct {
 // SemanticServiceConfig configures the opt-in internal Semantica gRPC client.
 // Service credentials should be injected from environment, not committed YAML.
 type SemanticServiceConfig struct {
-	Enabled      bool   `yaml:"enabled" json:"enabled"`
-	Address      string `yaml:"address" json:"address"`
-	ServerName   string `yaml:"server_name" json:"server_name"`
-	RootCAPath   string `yaml:"root_ca_path" json:"root_ca_path"`
-	ServiceToken string `yaml:"service_token" json:"service_token"`
-	Audience     string `yaml:"audience" json:"audience"`
+	Enabled         bool   `yaml:"enabled" json:"enabled"`
+	Address         string `yaml:"address" json:"address"`
+	ServerName      string `yaml:"server_name" json:"server_name"`
+	RootCAPath      string `yaml:"root_ca_path" json:"root_ca_path"`
+	ServiceToken    string `yaml:"service_token" json:"service_token"`
+	Audience        string `yaml:"audience" json:"audience"`
+	ScopeSigningKey string `yaml:"-" json:"-"`
+}
+
+// HasValidScopeSigningKey validates secret material without ever returning it
+// in a diagnostic. The capability signer must not reuse the service credential.
+func (c *SemanticServiceConfig) HasValidScopeSigningKey() bool {
+	if c == nil || c.ScopeSigningKey == c.ServiceToken {
+		return false
+	}
+	nonWhitespace := strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, c.ScopeSigningKey)
+	return len(nonWhitespace) >= 32
 }
 
 type VectorDatabaseConfig struct {
@@ -917,6 +934,9 @@ func ValidateConfig(cfg *Config) error {
 		if strings.TrimSpace(cfg.Semantic.Address) == "" || strings.TrimSpace(cfg.Semantic.ServerName) == "" || strings.TrimSpace(cfg.Semantic.RootCAPath) == "" || strings.TrimSpace(cfg.Semantic.ServiceToken) == "" || strings.TrimSpace(cfg.Semantic.Audience) == "" {
 			errs = append(errs, "semantic address, server_name, root_ca_path, service_token, and audience are required when semantic is enabled")
 		}
+		if !cfg.Semantic.HasValidScopeSigningKey() {
+			errs = append(errs, "semantic scope signing key must contain at least 32 non-whitespace bytes and differ from service_token")
+		}
 	}
 
 	if cfg.Audit != nil && cfg.Audit.RetentionDays < 0 {
@@ -1332,6 +1352,9 @@ func applyOpenConnectorDefaults(cfg *Config) {
 func applySemanticEnvOverrides(cfg *Config) {
 	if cfg.Semantic == nil {
 		cfg.Semantic = &SemanticServiceConfig{}
+	}
+	if value, present := os.LookupEnv("SEMANTIC_SCOPE_SIGNING_KEY"); present {
+		cfg.Semantic.ScopeSigningKey = value
 	}
 	if value := strings.TrimSpace(os.Getenv("SEMANTIC_ENABLED")); value != "" {
 		if enabled, err := strconv.ParseBool(value); err == nil {

@@ -5,8 +5,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 )
+
+// RegisterSemanticInternalRoutes must run before user JWT/API-key middleware.
+// The handler exclusively authenticates the configured semantic service.
+func RegisterSemanticInternalRoutes(r *gin.Engine, cfg *config.Config, h *handler.SemanticInternalHandler) {
+	if cfg != nil && cfg.Semantic != nil && cfg.Semantic.Enabled && h != nil {
+		r.POST("/api/v1/internal/semantic/scopes/resolve", h.Resolve)
+	}
+}
 
 // Models are tenant-wide infrastructure (LLM credentials, embeddings,
 // rerankers); Viewer+ for reads, Admin+ for any mutation. Credential

@@ -29,6 +29,7 @@ type RouterParams struct {
 	dig.In
 
 	Config                       *config.Config
+	SemanticInternalHandler      *handler.SemanticInternalHandler `optional:"true"`
 	FileService                  interfaces.FileService
 	UserService                  interfaces.UserService
 	KBService                    interfaces.KnowledgeBaseService
@@ -251,6 +252,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 	}
 
 	// 认证中间件
+	RegisterSemanticInternalRoutes(r, params.Config, params.SemanticInternalHandler)
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 
 	// 文件服务：统一代理本地/MinIO/COS/TOS存储后端（需要认证）

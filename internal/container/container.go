@@ -166,6 +166,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantRepository))
 	must(container.Provide(repository.NewTenantAPIKeyRepository))
 	must(container.Provide(repository.NewTenantMemberRepository))
+	must(container.Provide(repository.NewSemanticControlRepository))
+	must(container.Provide(func(r *repository.SemanticControlRepository) interfaces.SemanticScopeInvalidator { return r }))
+	must(container.Provide(service.NewSemanticScopeService))
+	must(container.Provide(func(cfg *config.Config, s *service.SemanticScopeService) *handler.SemanticInternalHandler {
+		return handler.NewSemanticInternalHandler(cfg, s)
+	}))
 	must(container.Provide(repository.NewTenantInvitationRepository))
 	must(container.Provide(repository.NewAuditLogRepository))
 	must(container.Provide(repository.NewKnowledgeBaseRepository))
@@ -307,6 +313,36 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
 	must(container.Provide(service.NewAgentShareService))
 	must(container.Provide(service.NewKnowledgeService))
+	must(container.Decorate(func(s interfaces.TenantMemberService, i interfaces.SemanticScopeInvalidator) interfaces.TenantMemberService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.OrganizationService, i interfaces.SemanticScopeInvalidator) interfaces.OrganizationService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KnowledgeService, i interfaces.SemanticScopeInvalidator) interfaces.KnowledgeService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KBShareService, i interfaces.SemanticScopeInvalidator) interfaces.KBShareService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KnowledgeBaseService, i interfaces.SemanticScopeInvalidator) interfaces.KnowledgeBaseService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
 	must(container.Provide(service.NewKnowledgeTagService))
@@ -315,6 +351,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewDatasetService))
 	must(container.Provide(service.NewEvaluationService))
 	must(container.Provide(service.NewUserService))
+	must(container.Decorate(func(s interfaces.TenantService, i interfaces.SemanticScopeInvalidator) interfaces.TenantService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.UserService, i interfaces.SemanticScopeInvalidator) interfaces.UserService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
 	must(container.Provide(service.NewSystemSettingService))
 	must(container.Provide(func(
 		repo repository.TenantSandboxConfigRepository,

@@ -44,6 +44,7 @@ var (
 // the representative for UI/audit; permission decisions ride on the
 // tenant's role inside the org.
 type organizationService struct {
+	semanticScopeGuard
 	orgRepo        interfaces.OrganizationRepository
 	userRepo       interfaces.UserRepository
 	shareRepo      interfaces.KBShareRepository
@@ -341,6 +342,9 @@ func (s *organizationService) DeleteOrganization(ctx context.Context, id string,
 	if !isOwnerTenant && !isLegacyOwnerUser {
 		return ErrOrgPermissionDenied
 	}
+	if err := s.invalidateSemanticOrganization(ctx, id); err != nil {
+		return err
+	}
 
 	if err := s.shareRepo.DeleteByOrganizationID(ctx, id); err != nil {
 		logger.Warnf(ctx, "Failed to delete KB shares for organization %s: %v", id, err)
@@ -384,6 +388,9 @@ func (s *organizationService) AddTenantMember(ctx context.Context, orgID string,
 		UpdatedAt:            now,
 	}
 
+	if err := s.invalidateSemanticOrganization(ctx, orgID); err != nil {
+		return err
+	}
 	return s.orgRepo.AddTenantMember(ctx, member)
 }
 
@@ -404,6 +411,9 @@ func (s *organizationService) RemoveTenantMember(ctx context.Context, orgID stri
 
 	if operatorTenantID == memberTenantID {
 		// Self-removal: any tenant can leave on their own behalf.
+		if err := s.invalidateSemanticOrganization(ctx, orgID); err != nil {
+			return err
+		}
 		return s.orgRepo.RemoveTenantMember(ctx, orgID, memberTenantID)
 	}
 
@@ -416,6 +426,9 @@ func (s *organizationService) RemoveTenantMember(ctx context.Context, orgID stri
 	}
 	_ = operatorUserID
 
+	if err := s.invalidateSemanticOrganization(ctx, orgID); err != nil {
+		return err
+	}
 	return s.orgRepo.RemoveTenantMember(ctx, orgID, memberTenantID)
 }
 
@@ -442,6 +455,9 @@ func (s *organizationService) UpdateTenantMemberRole(ctx context.Context, orgID 
 	}
 	_ = operatorUserID
 
+	if err := s.invalidateSemanticOrganization(ctx, orgID); err != nil {
+		return err
+	}
 	return s.orgRepo.UpdateTenantMemberRole(ctx, orgID, memberTenantID, role)
 }
 
@@ -528,6 +544,9 @@ func (s *organizationService) joinAsViewerWithChecks(ctx context.Context, org *t
 		UpdatedAt:            now,
 	}
 
+	if err := s.invalidateSemanticOrganization(ctx, org.ID); err != nil {
+		return err
+	}
 	return s.orgRepo.AddTenantMember(ctx, member)
 }
 
@@ -716,6 +735,9 @@ func (s *organizationService) ReviewJoinRequest(ctx context.Context, orgID strin
 		}
 
 		if request.RequestType == types.JoinRequestTypeUpgrade {
+			if err := s.invalidateSemanticOrganization(ctx, request.OrganizationID); err != nil {
+				return err
+			}
 			if err := s.orgRepo.UpdateTenantMemberRole(ctx, request.OrganizationID, request.TenantID, role); err != nil {
 				return err
 			}
@@ -744,6 +766,9 @@ func (s *organizationService) ReviewJoinRequest(ctx context.Context, orgID strin
 				JoinedAt:             &now,
 				CreatedAt:            now,
 				UpdatedAt:            now,
+			}
+			if err := s.invalidateSemanticOrganization(ctx, request.OrganizationID); err != nil {
+				return err
 			}
 			if err := s.orgRepo.AddTenantMember(ctx, member); err != nil {
 				return err

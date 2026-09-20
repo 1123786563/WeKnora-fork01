@@ -17,7 +17,7 @@
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
-| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | in_progress | 2026-09-21：执行计划 `2026-09-21-semantic-a01-access-scope.md`。只读盘点确认 membership/org/share/KB delete/transfer 的影响 scope 与多个私有事务边界；计划采用独立 HMAC scope capability、服务身份解析、最终活 ACL hash/epoch 复核及写前 epoch 失效。session 临时附件明确不进入当前 KB 语义 scope。实现/review 尚未开始。 |
+| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | in_progress | 2026-09-21：按 `2026-09-21-semantic-a01-access-scope.md` 和账户生命周期修正实现 HS256 Go scope、独立 bearer/audience 内部解析、最终活身份/ACL/hash/epoch/expiry 检查，以及 member/user/tenant/org/share/KB delete/move/clone 写前失效。迁移后的临时 SQLite 库覆盖精确 fanout、SQL 写顺序、失败屏障、删除身份、保留旧 revision、篡改/过期和同读集降权。A01 focused gate 五包通过；完整 service/config/container/runtime 通过，repository/handler/router 复现既有 artifact migration 和 execution registration 失败，未扩大修复。精确写入口与排除项见 `acl-write-inventory.md`；SDD `implementation-report.md`/日志记录命令、退出码和测试限制。独立最终 Review 尚待完成，故保持 in_progress；没有 A02/A03/Q04、session 临时附件授权、模型/生产调用或上线验收声明。 |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | pending | 尚未执行 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
@@ -40,6 +40,14 @@
 - 2026-09-20：[README](evidence/2026-09-20/README.md)、[REPORT](evidence/2026-09-20/REPORT.md) 与 [runtime-312.json](evidence/2026-09-20/runtime-312.json) 是有限可复现 probe 证据；不改变 24 个正式任务的 pending 状态，也不构成 V01/V02/V03 验收。
 
 ## 当前边界
+
+### 2026-09-21 A01 实现证据（待独立 Review）
+
+- 环境：本地 Go、真实临时 SQLite、正式 migrations；组织审批 fixture 仅注册连接级 `NOW()` 函数以运行原有 PostgreSQL 风格状态 SQL，未修改生产 SQL。计划修正 cherry-pick：`c52370bd1`、`d9f09d160`。
+- RED→GREEN：scope fanout、签发/解析/交付、内部认证路由、share/KB delete/member/org/transfer/invitation/user/tenant 屏障全部先以缺失行为失败再通过；另有已存在但错误放行的 deleted-org、交付读取期间过期、签名密钥内部空白三个回归测试，均复现失败后修正。
+- 最终 focused：`go test ./internal/application/service ./internal/application/repository ./internal/handler ./internal/router ./internal/config ./internal/container ./internal/runtime -run 'TestSemanticScope|TestSemanticInternalScope|TestSemantic.*Scope' -count=1` 退出 0（后两包无匹配测试但完成编译）。密钥最后修正后 `go test ./internal/application/service ./internal/config -run 'TestSemantic(Scope|Enabled)' -count=1` 退出 0（32.016s / 1.015s）。
+- 完整回归：`go test ./internal/application/service ./internal/application/repository ./internal/handler ./internal/router ./internal/config ./internal/container ./internal/runtime` 退出 1。service（112.118s）、config、container（5.496s）、runtime 通过；artifact 回滚重复列和三个 execution registration 404 失败与基线一致。最终运行另见未修改的 `TestCreateTargetIfTrustedConcurrentCredentialRotation` SQLite `database is locked`，单测 `-count=10` 复跑有 2 次失败；该测试/实现与基线无 diff，未扩大修复。
+- `git diff --check` 通过；C01 DTO/proto、DocReader 与 V03 文件无改动。Review 状态：待主任务独立审查。精确日志在 A01 SDD 目录 `account-final.log`、`signing-final.log`、`regression-final.log`、`unrelated-concurrency.log`。
 
 - 本台账不以正在进行的 probe 代替 V01–V03、实际存储或生产验收；实验输出写入对应证据产物后再按层级判断。
 - V01精确版本、V03数值门槛、真实模型证据须在执行阶段补齐；这些是明确任务产物，不是已经通过的前提。

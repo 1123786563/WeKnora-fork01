@@ -54,6 +54,7 @@ func WithDeletionGuard(g TenantDeletionGuard) TenantServiceOption {
 
 // tenantService implements the TenantService interface
 type tenantService struct {
+	semanticScopeGuard
 	repo          interfaces.TenantRepository // Repository for tenant data operations
 	storageRepo   interfaces.StorageBackendRepository
 	deletionGuard TenantDeletionGuard // optional commercial retention guard (O02)
@@ -242,6 +243,9 @@ func (s *tenantService) DeleteTenant(ctx context.Context, id uint64) error {
 		return err
 	}
 
+	if err := s.invalidateSemanticTenant(ctx, id); err != nil {
+		return err
+	}
 	err = s.repo.DeleteTenant(ctx, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
