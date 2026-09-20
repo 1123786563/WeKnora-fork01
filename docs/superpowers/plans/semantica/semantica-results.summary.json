@@ -1,0 +1,12 @@
+{
+  "actual_total_tokens": 519,
+  "cases": 6,
+  "latency_p50_ms": 4723.903,
+  "latency_p95_ms": 12973.338,
+  "privacy_hardgate_passed": true,
+  "execution_complete": true,
+  "quality_gate_passed": false,
+  "source_precision": 0.1667,
+  "source_recall": 0.4167,
+  "unanswerable_correct": 0
+}

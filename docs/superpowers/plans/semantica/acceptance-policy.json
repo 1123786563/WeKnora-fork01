@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "approved": false,
+  "proposed": {
+    "minimum_source_precision": 0.8,
+    "minimum_source_recall": 0.8,
+    "minimum_unanswerable_correct_rate": 0.9,
+    "privacy_hardgate": "no observed source outside allowed_evidence",
+    "p95_query_latency_ms": 5000,
+    "maximum_actual_tokens_per_case": 1000
+  },
+  "rationale": "The small frozen local run observed 0.1667 source precision and 0.4167 recall, zero correct abstentions, and p95 12973.338ms. These proposed thresholds are deliberately above the observed candidate result and remain unapproved until a same-corpus native comparison plus an explicit user acceptance decision.",
+  "observed_gaps": [
+    "Native graph-reference baseline is negative: source-linked nodes existed but SSE graph references were zero.",
+    "Native and candidate effective configurations differ; native uses its Go graph pipeline while candidate uses Semantica public LLM NER/RE over the Go loopback transport.",
+    "The candidate result preserved live query raw usage; the first V03 transport implementation did not attribute extractor-call raw usage per result row, so it is recorded as unavailable rather than estimated."
+  ]
+}

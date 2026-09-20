@@ -41,7 +41,7 @@ func TestDecodePromptRejectsMissingOrWrongContentType(t *testing.T) {
 
 func TestAppendCappedNeverExceedsLimitAndReportsTruncation(t *testing.T) {
 	var output strings.Builder
-	written, truncated := appendCapped(&output, 0, strings.Repeat("界", maxOutput))
+	written, truncated := appendCapped(&output, 0, strings.Repeat("界", maxOutput), maxOutput)
 	if !truncated || written > maxOutput || len(output.String()) > maxOutput {
 		t.Fatalf("oversized chunk was not safely truncated: written=%d bytes=%d truncated=%t", written, len(output.String()), truncated)
 	}
@@ -62,5 +62,14 @@ func TestRawUsageRequiresNonNegativeExactTotal(t *testing.T) {
 		if validUsage(candidate) {
 			t.Fatalf("invalid usage accepted: %+v", candidate)
 		}
+	}
+}
+
+func TestV03ExtractionProfileRaisesOnlyTheBoundedOutputCap(t *testing.T) {
+	if extractionMaxOutput != 8192 || extractionMaxTokens != 512 {
+		t.Fatalf("unexpected V03 extraction bounds: bytes=%d tokens=%d", extractionMaxOutput, extractionMaxTokens)
+	}
+	if maxOutput != 1200 || defaultMaxTokens != 96 {
+		t.Fatalf("V02 defaults changed: bytes=%d tokens=%d", maxOutput, defaultMaxTokens)
 	}
 }

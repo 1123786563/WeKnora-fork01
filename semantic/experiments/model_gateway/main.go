@@ -20,10 +20,15 @@ import (
 )
 
 const (
-	listenAddress = "127.0.0.1:18092"
-	modelName     = "qwen2.5:0.5b"
-	maxPrompt     = 8000
-	maxOutput     = 1200
+	listenAddress    = "127.0.0.1:18092"
+	modelName        = "qwen2.5:0.5b"
+	maxPrompt        = 8000
+	maxOutput        = 1200
+	defaultMaxTokens = 96
+	// V03 is an explicit extraction-only profile.  V02 keeps its 96-token,
+	// 1200-byte safety envelope unchanged.
+	extractionMaxOutput = 8192
+	extractionMaxTokens = 512
 )
 
 type request struct {
@@ -67,10 +72,10 @@ func decodePrompt(w http.ResponseWriter, r *http.Request) (string, error) {
 	return input.Prompt, nil
 }
 
-func appendCapped(output *strings.Builder, written int, chunk string) (int, bool) {
+func appendCapped(output *strings.Builder, written int, chunk string, limit int) (int, bool) {
 	for _, runeValue := range chunk {
 		runeBytes := len(string(runeValue))
-		if written+runeBytes > maxOutput {
+		if written+runeBytes > limit {
 			return written, true
 		}
 		output.WriteRune(runeValue)
@@ -92,6 +97,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/semantica-v02/generate", generate)
+	mux.HandleFunc("/v1/semantica-v03/extract", generateExtraction)
 	server := &http.Server{Addr: listenAddress, Handler: mux, ReadHeaderTimeout: 2 * time.Second}
 	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
@@ -102,6 +108,14 @@ func main() {
 }
 
 func generate(w http.ResponseWriter, r *http.Request) {
+	generateWithProfile(w, r, maxOutput, defaultMaxTokens, "V02")
+}
+
+func generateExtraction(w http.ResponseWriter, r *http.Request) {
+	generateWithProfile(w, r, extractionMaxOutput, extractionMaxTokens, "V03")
+}
+
+func generateWithProfile(w http.ResponseWriter, r *http.Request, outputLimit int, tokenLimit int, profile string) {
 	prompt, err := decodePrompt(w, r)
 	if err != nil {
 		http.Error(w, "fixed V02 prompt required", http.StatusBadRequest)
@@ -119,7 +133,7 @@ func generate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	stream, err := client.ChatStream(ctx, []chat.Message{{Role: "user", Content: prompt}}, &chat.ChatOptions{Temperature: 0, MaxCompletionTokens: 96})
+	stream, err := client.ChatStream(ctx, []chat.Message{{Role: "user", Content: prompt}}, &chat.ChatOptions{Temperature: 0, MaxCompletionTokens: tokenLimit})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -134,7 +148,7 @@ func generate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !truncated {
-			written, truncated = appendCapped(&output, written, event.Content)
+			written, truncated = appendCapped(&output, written, event.Content, outputLimit)
 			if truncated {
 				cancel()
 			}
@@ -144,7 +158,7 @@ func generate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if truncated {
-		http.Error(w, "V02 model output exceeded fixed cap; result is truncated", http.StatusRequestEntityTooLarge)
+		http.Error(w, profile+" model output exceeded fixed cap; result is truncated", http.StatusRequestEntityTooLarge)
 		return
 	}
 	if raw == nil || !validUsage(usage{PromptTokens: raw.PromptTokens, CompletionTokens: raw.CompletionTokens, TotalTokens: raw.TotalTokens}) {
