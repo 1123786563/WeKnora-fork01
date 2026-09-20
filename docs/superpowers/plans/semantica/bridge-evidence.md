@@ -25,7 +25,8 @@ V02 是预生产能力实验。它不构成 A03 模型网关、授权/预算结�
   V02 使用 streaming 原始计数，未采用已知可疑的非流式 completion subtraction。
 - 组合验收把真实 `probe_roundtrip(...)["result"]` 直接交给 `probe_model`。provider 记录实际
   prompt SHA-256，并验证 D1/D2 的 assertion/revision/quote 被输入，hidden assertion/evidence/quote
-  不在 prompt。完整失败/成功调用和原始总量都保留在 JSON，不能作为商业结算证据。
+  不在 prompt。第二轮针对该实际 prompt 的重放通过，raw usage 为 254 prompt、5 completion、259
+  total；完整失败/成功调用和累计 1496/35/1531 原始总量都保留在 JSON，不能作为商业结算证据。
 
 完整机器可读产物：[bridge-run.json](evidence/2026-09-20/v02/bridge-run.json)。
 

@@ -55,8 +55,12 @@ class _OwnedNeo4j:
         nonce = uuid4().hex[:12]
         name = f"semantica-v02-{nonce}"
         volume = f"{name}-data"
-        subprocess.run(["docker", "volume", "create", volume], check=True, capture_output=True, text=True, timeout=30)
+        container_id: str | None = None
         try:
+            subprocess.run(
+                ["docker", "volume", "create", "--label", "semantica.experiment=v02", "--label", f"semantica.run_nonce={nonce}", volume],
+                check=True, capture_output=True, text=True, timeout=30,
+            )
             created = subprocess.run(
                 [
                     "docker", "run", "-d", "--name", name,
@@ -68,15 +72,17 @@ class _OwnedNeo4j:
                     NEO4J_IMAGE,
                 ], check=True, capture_output=True, text=True, timeout=30,
             )
-        except Exception:
-            subprocess.run(["docker", "volume", "rm", volume], check=False, capture_output=True, text=True, timeout=30)
+            container_id = created.stdout.strip()
+            metadata = _verify_owned_mutation(container_id, nonce)
+            return cls(nonce, container_id, volume, _host_port(metadata))
+        except BaseException as error:
+            issues = _cleanup_owned_resources(container_id, volume, nonce)
+            if issues:
+                raise RuntimeError(f"V02 provisioning failed; cleanup_issues={json.dumps(issues, sort_keys=True)}") from error
             raise
-        container_id = created.stdout.strip()
-        metadata = _inspect_owned_container(container_id, nonce)
-        return cls(nonce, container_id, volume, _host_port(metadata))
 
     def verify(self) -> None:
-        metadata = _inspect_owned_container(self.container_id, self.nonce)
+        metadata = _verify_owned_mutation(self.container_id, self.nonce)
         if _host_port(metadata) != self.host_port:
             raise RuntimeError("owned Neo4j port mapping changed")
 
@@ -87,24 +93,30 @@ class _OwnedNeo4j:
             raise RuntimeError(f"owned Neo4j restart failed: {result.stderr.strip()}")
         self.verify()
 
-    def cleanup(self) -> None:
-        self.verify()
-        subprocess.run(["docker", "rm", "-f", self.container_id], check=True, capture_output=True, text=True, timeout=30)
-        subprocess.run(["docker", "volume", "rm", self.volume], check=True, capture_output=True, text=True, timeout=30)
+    def cleanup(self) -> list[dict[str, str]]:
+        return _cleanup_owned_resources(self.container_id, self.volume, self.nonce)
 
 
-def _inspect_owned_container(container_id: str, nonce: str) -> dict[str, Any]:
+def _inspect_owned_identity(container_id: str, nonce: str) -> dict[str, Any]:
     inspected = subprocess.run(["docker", "inspect", container_id], check=True, capture_output=True, text=True, timeout=30)
     metadata = json.loads(inspected.stdout)[0]
     labels = metadata["Config"].get("Labels") or {}
-    ports = metadata.get("NetworkSettings", {}).get("Ports") or {}
-    mapping = ports.get("7687/tcp")
     if (
         metadata.get("Id") != container_id
         or metadata["Config"].get("Image") != NEO4J_IMAGE
         or labels.get("semantica.experiment") != "v02"
         or labels.get("semantica.run_nonce") != nonce
-        or metadata.get("State", {}).get("Running") is not True
+    ):
+        raise RuntimeError("refusing V02 operation: container identity check failed")
+    return metadata
+
+
+def _verify_owned_mutation(container_id: str, nonce: str) -> dict[str, Any]:
+    metadata = _inspect_owned_identity(container_id, nonce)
+    ports = metadata.get("NetworkSettings", {}).get("Ports") or {}
+    mapping = ports.get("7687/tcp")
+    if (
+        metadata.get("State", {}).get("Running") is not True
         or not isinstance(mapping, list)
         or len(mapping) != 1
         or mapping[0].get("HostIp") != "127.0.0.1"
@@ -112,6 +124,36 @@ def _inspect_owned_container(container_id: str, nonce: str) -> dict[str, Any]:
     ):
         raise RuntimeError("refusing V02 storage mutation: container ownership/isolation check failed")
     return metadata
+
+
+def _inspect_owned_volume(volume: str, nonce: str) -> dict[str, Any]:
+    inspected = subprocess.run(["docker", "volume", "inspect", volume], check=True, capture_output=True, text=True, timeout=30)
+    metadata = json.loads(inspected.stdout)[0]
+    labels = metadata.get("Labels") or {}
+    if (
+        metadata.get("Name") != volume
+        or labels.get("semantica.experiment") != "v02"
+        or labels.get("semantica.run_nonce") != nonce
+    ):
+        raise RuntimeError("refusing V02 cleanup: volume identity check failed")
+    return metadata
+
+
+def _cleanup_owned_resources(container_id: str | None, volume: str, nonce: str) -> list[dict[str, str]]:
+    """Best-effort cleanup uses immutable ownership, never runtime readiness."""
+    issues: list[dict[str, str]] = []
+    if container_id:
+        try:
+            _inspect_owned_identity(container_id, nonce)
+            subprocess.run(["docker", "rm", "-f", container_id], check=True, capture_output=True, text=True, timeout=30)
+        except Exception as exc:
+            issues.append({"resource": "container", "error": str(exc)})
+    try:
+        _inspect_owned_volume(volume, nonce)
+        subprocess.run(["docker", "volume", "rm", volume], check=True, capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        issues.append({"resource": "volume", "error": str(exc)})
+    return issues
 
 
 def _host_port(metadata: dict[str, Any]) -> int:
@@ -207,6 +249,7 @@ def probe_roundtrip(fixture_path: str | Path) -> dict[str, Any]:
     """Persist, close, restart the owned service, reconnect, then authorize-project."""
     fixture = json.loads(Path(fixture_path).read_text())
     owned = _OwnedNeo4j.create()
+    primary_error: BaseException | None = None
     try:
         writer = GraphStore(backend="neo4j", **owned.config)
         try:
@@ -224,8 +267,16 @@ def probe_roundtrip(fixture_path: str | Path) -> dict[str, Any]:
             persistent_rows = _read_fixture_from_neo4j(reader, owned.namespace)
         finally:
             reader.close()
-    finally:
-        owned.cleanup()
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_issues = owned.cleanup()
+    if primary_error is not None:
+        if cleanup_issues:
+            raise RuntimeError(f"V02 roundtrip failed; cleanup_issues={json.dumps(cleanup_issues, sort_keys=True)}") from primary_error
+        raise primary_error
+    if cleanup_issues:
+        raise RuntimeError(f"V02 roundtrip cleanup failed; cleanup_issues={json.dumps(cleanup_issues, sort_keys=True)}")
 
     allowed = set(fixture["allowed_document_ids"])
     allowed_rows = [row for row in persistent_rows if row["document_id"] in allowed]
@@ -349,6 +400,15 @@ def probe_model(graph: dict[str, Any], query: str) -> dict[str, Any]:
         for relation in graph.get("relationships", [])
         for evidence in relation.get("properties", {}).get("evidence_ids", [])
     })
+    properties = [relation.get("properties", {}) for relation in graph.get("relationships", [])]
+    def present_values(key: str) -> list[str]:
+        values = {
+            value
+            for properties_item in properties
+            for value in (properties_item.get(key) if isinstance(properties_item.get(key), list) else [properties_item.get(key)])
+            if value is not None and str(value) in provider.last_prompt
+        }
+        return sorted(values)
     return {
         "availability": "live-local-provider",
         "evidence_ids": evidence_ids,
@@ -356,12 +416,10 @@ def probe_model(graph: dict[str, Any], query: str) -> dict[str, Any]:
         "raw_usage": provider.last_usage,
         "prompt_sha256": sha256(provider.last_prompt.encode()).hexdigest(),
         "prompt_provenance": {
-            "allowed_assertion_ids": sorted({
-                relation["properties"]["assertion_id"] for relation in graph.get("relationships", [])
-            }),
-            "allowed_revisions": sorted({
-                relation["properties"]["revision"] for relation in graph.get("relationships", [])
-            }),
+            "allowed_assertion_ids": present_values("assertion_id"),
+            "allowed_revisions": present_values("revision"),
+            "allowed_evidence_ids": present_values("evidence_ids"),
+            "allowed_quotes": present_values("quote"),
             "hidden_absent": all(hidden not in provider.last_prompt for hidden in ("隐藏组件", "e-hidden", "a-hidden-deploy")),
         },
         "engine_version": version("semantica"),

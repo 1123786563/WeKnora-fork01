@@ -75,6 +75,8 @@ def test_registered_graph_reasoner_receives_persisted_authorized_projection_only
     assert result["prompt_provenance"] == {
         "allowed_assertion_ids": ["a-d1-build-release", "a-d2-release-deploy"],
         "allowed_revisions": ["r1", "r3"],
+        "allowed_evidence_ids": ["e-d1", "e-d2"],
+        "allowed_quotes": ["发布完成后才能部署。", "构建依赖发布。"],
         "hidden_absent": True,
     }
     assert result["prompt_sha256"]

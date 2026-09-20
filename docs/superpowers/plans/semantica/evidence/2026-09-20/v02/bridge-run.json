@@ -53,7 +53,8 @@
       "raw_usage_total": {"prompt_tokens": 762, "completion_tokens": 15, "total_tokens": 777},
       "cumulative_v02_raw_usage_total": {"prompt_tokens": 1242, "completion_tokens": 30, "total_tokens": 1272}
     },
-    "composed_prompt": {"evidence_ids": ["e-d1", "e-d2"], "allowed_assertion_ids": ["a-d1-build-release", "a-d2-release-deploy"], "allowed_revisions": ["r1", "r3"], "hidden_absent": true},
+    "composed_prompt": {"evidence_ids": ["e-d1", "e-d2"], "allowed_assertion_ids": ["a-d1-build-release", "a-d2-release-deploy"], "allowed_revisions": ["r1", "r3"], "allowed_quotes": ["发布完成后才能部署。", "构建依赖发布。"], "hidden_absent": true},
+    "round2_prompt_provenance_replay": {"test_status": "passed", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "cumulative_v02_raw_usage_total": {"prompt_tokens": 1496, "completion_tokens": 35, "total_tokens": 1531}},
     "usage_invariant": "total_tokens == prompt_tokens + completion_tokens",
     "non_stream_usage_not_used": true
   }
