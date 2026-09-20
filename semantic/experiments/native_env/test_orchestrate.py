@@ -24,6 +24,10 @@ class PrepareRuntimeTest(unittest.TestCase):
             values = dict(line.split("=", 1) for line in paths.env.read_text().splitlines())
             self.assertEqual(len(values["NATIVE_SYSTEM_AES_KEY"].encode("utf-8")), 32)
 
+    def test_relative_artifact_directory_becomes_absolute_before_server_changes_working_directory(self) -> None:
+        config = NativeEnvConfig.from_mapping({"run_id": "unit-absolute", "artifact_dir": "semantic/experiments/native_env/artifacts"})
+        self.assertTrue(paths_for(config).root.is_absolute())
+
     def test_rejects_repeated_up_for_a_live_run_without_overwriting_metadata(self) -> None:
         with TemporaryDirectory() as directory:
             config = NativeEnvConfig.from_mapping({"run_id": "unit-live", "artifact_dir": directory})

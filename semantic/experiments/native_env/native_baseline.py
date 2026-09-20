@@ -81,6 +81,82 @@ def _graph_count(config: NativeEnvConfig, document_ids: list[str]) -> int:
     return int(digits[-1])
 
 
+def load_frozen_cases(path: Path) -> list[dict[str, Any]]:
+    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not cases or any(not case.get("case_id") or not case.get("documents") for case in cases):
+        raise ValueError("frozen dataset must contain case_id and visible documents for every case")
+    return cases
+
+
+def _wait_for_deleted(config: NativeEnvConfig, token: str, kb_id: str, document_id: str) -> None:
+    deadline = time.monotonic() + config.task_timeout_seconds
+    while time.monotonic() < deadline:
+        rows = request(config.app_url, "GET", f"/api/v1/knowledge-bases/{kb_id}/knowledge", token=token).get("data", [])
+        if document_id not in {row.get("id") for row in rows}:
+            return
+        time.sleep(1)
+    raise TimeoutError("deleted source remained visible after native delete task")
+
+
+def run_frozen_case(config: NativeEnvConfig, *, token: str, model_id: str, case: dict[str, Any], suffix: str) -> dict[str, Any]:
+    """Run one isolated native transaction; never project an unobserved source."""
+    extract = NativeEnvClient.initialization_payload(model_id)["nodeExtract"]
+    kb = request(config.app_url, "POST", "/api/v1/knowledge-bases", {"name": f"native v03 {case['case_id']} {suffix}", "type": "document", "indexing_strategy": {"vector_enabled": False, "keyword_enabled": False, "wiki_enabled": False, "graph_enabled": True}, "extract_config": extract}, token)["data"]
+    request(config.app_url, "PUT", f"/api/v1/initialization/config/{kb['id']}", NativeEnvClient.initialization_payload(model_id), token)
+    verify_persisted_graph_config(request(config.app_url, "GET", f"/api/v1/initialization/config/{kb['id']}", token=token))
+    client = NativeEnvClient(config.app_url, token, config.query_timeout_seconds, model_version=config.model_name)
+    runtime: dict[str, str] = {}
+    sources = list(case["documents"]) + list(case.get("forbidden_sources", []))
+    indexing_started = time.monotonic()
+    for source in sources:
+        document = request(config.app_url, "POST", f"/api/v1/knowledge-bases/{kb['id']}/knowledge/manual", {"title": source["evidence_id"], "content": source["text"], "status": "publish", "channel": "native-v03"}, token)["data"]
+        runtime[source["evidence_id"]] = document["id"]
+        client.bind_evidence(document["id"], source["evidence_id"])
+    _wait_for_documents(config, token, kb["id"], list(runtime.values()))
+    indexing_ms = round((time.monotonic() - indexing_started) * 1000, 3)
+    allowed_ids = [runtime[evidence_id] for evidence_id in case["allowed_evidence"]]
+    actions: list[dict[str, Any]] = []
+    for source in case.get("forbidden_sources", []):
+        state = source.get("state")
+        document_id = runtime[source["evidence_id"]]
+        source["runtime_id"] = document_id
+        if state == "deleted":
+            request(config.app_url, "POST", "/api/v1/knowledge/batch-delete", {"kb_id": kb["id"], "ids": [document_id]}, token)
+            _wait_for_deleted(config, token, kb["id"], document_id)
+            actions.append({"evidence_id": source["evidence_id"], "state": state, "status": "completed"})
+        elif state == "revoked":
+            # The current public knowledge API has no per-document revoke action.
+            actions.append({"evidence_id": source["evidence_id"], "state": state, "status": "unsupported", "reason": "no native public per-document revocation API"})
+        else:
+            actions.append({"evidence_id": source["evidence_id"], "state": state, "status": "unsupported", "reason": "unknown forbidden-source state"})
+    session = request(config.app_url, "POST", "/api/v1/sessions", {"title": "native v03 " + case["case_id"]}, token)["data"]
+    cold = client.run_case(case, allowed_ids, session_id=session["id"], phase="cold")
+    warm = client.run_case(case, allowed_ids, session_id=session["id"], phase="warm")
+    result = dict(cold)
+    result.update({"indexing_ms": indexing_ms, "query_attempts": [cold, warm], "state_actions": actions, "allowed_runtime_ids": allowed_ids, "forbidden_sources": case.get("forbidden_sources", [])})
+    if any(action["status"] == "unsupported" for action in actions):
+        result["unsupported_stage"] = "revocation"
+    if result.get("status") == "completed" and not result.get("evidence_ids"):
+        result.update({"status": "negative", "failure_stage": "graph_reference", "error": "completed native query had no mapped graph reference"})
+    return result
+
+
+def provision_frozen_cases(config: NativeEnvConfig, dataset: Path) -> dict[str, Any]:
+    suffix = secrets.token_hex(4)
+    email = f"native-{suffix}@example.test"
+    password = "Native-" + secrets.token_urlsafe(12) + "1!"
+    request(config.app_url, "POST", "/api/v1/auth/register", {"username": "native" + suffix, "email": email, "password": password})
+    token = request(config.app_url, "POST", "/api/v1/auth/login", {"email": email, "password": password})["token"]
+    model = request(config.app_url, "POST", "/api/v1/models", {"name": config.model_name, "type": "KnowledgeQA", "source": "remote", "parameters": {"base_url": config.ollama_url + "/v1", "api_key": "experiment-local", "provider": "openai"}}, token)["data"]
+    rows: list[dict[str, Any]] = []
+    for case in load_frozen_cases(dataset):
+        try:
+            rows.append(run_frozen_case(config, token=token, model_id=model["id"], case=case, suffix=suffix))
+        except Exception as error:
+            rows.append({"case_id": case["case_id"], "document_revision": case["document_revision"], "requested_mode": "native", "actual_mode": "native", "status": "failed", "failure_stage": "provision_or_query", "error": _redact(str(error)), "evidence_ids": [], "references": [], "tokens": None, "latency_ms": None, "indexing_ms": None, "query_attempts": [], "state_actions": []})
+    return {"cases": rows, "model_version": config.model_name}
+
+
 def provision_and_query(config: NativeEnvConfig) -> dict[str, Any]:
     suffix = secrets.token_hex(4)
     email = f"native-{suffix}@example.test"
@@ -121,7 +197,7 @@ def _source_commit() -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def run_lifecycle(config: NativeEnvConfig, output: Path, *, up_fn: Callable[[NativeEnvConfig], int] = up, provision_fn: Callable[[NativeEnvConfig], dict[str, Any]] = provision_and_query, teardown_fn: Callable[[NativeEnvConfig], int] = teardown) -> int:
+def run_lifecycle(config: NativeEnvConfig, output: Path, *, dataset: Path | None = None, up_fn: Callable[[NativeEnvConfig], int] = up, provision_fn: Callable[[NativeEnvConfig], dict[str, Any]] = provision_and_query, teardown_fn: Callable[[NativeEnvConfig], int] = teardown) -> int:
     started = time.time()
     source_commit = _source_commit()
     result: dict[str, Any] = {"run_id": config.run_id, "source_commit": source_commit, "engine_version": source_commit, "images": {name: service["image"] for name, service in config.compose_document()["services"].items()}, "started_at": started, "indexing_started_at": None, "command_exits": {}}
@@ -131,7 +207,12 @@ def run_lifecycle(config: NativeEnvConfig, output: Path, *, up_fn: Callable[[Nat
         if result["command_exits"]["up"] != 0:
             raise RuntimeError("isolated startup failed")
         result["indexing_started_at"] = time.time()
-        result.update(provision_fn(config))
+        result.update(provision_frozen_cases(config, dataset) if dataset else provision_fn(config))
+        if dataset:
+            result["status"] = "completed" if all(row.get("status") == "completed" for row in result["cases"]) else "negative"
+            result["failure_stage"] = None if result["status"] == "completed" else "case_results"
+            exit_code = 0 if result["status"] == "completed" else 1
+            return exit_code
         raw_sse = _redact(str(result.pop("raw_sse", "")))
         if raw_sse:
             sse_path = output.with_name(output.stem + "-sse.log")
@@ -166,8 +247,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--dataset", type=Path)
     args = parser.parse_args()
-    return run_lifecycle(NativeEnvConfig.from_file(args.config), args.output)
+    return run_lifecycle(NativeEnvConfig.from_file(args.config), args.output, dataset=args.dataset)
 
 
 if __name__ == "__main__":

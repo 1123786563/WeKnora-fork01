@@ -92,6 +92,30 @@ class NativeEnvClientTest(unittest.TestCase):
         client = NativeEnvClient("http://127.0.0.1:18081", "test-token")
         self.assertEqual(client.evidence_ids_for_references([], ["d-1"]), [])
 
+    def test_go_graph_match_enum_maps_to_observed_evidence(self) -> None:
+        client = NativeEnvClient("http://127.0.0.1:18081", "test-token")
+        client.bind_evidence("k-graph", "e-graph")
+        self.assertEqual(client.evidence_ids_for_references([{"match_type": 6, "knowledge_id": "k-graph"}], ["k-graph"]), ["e-graph"])
+
+    def test_query_records_cold_or_warm_phase_without_changing_actual_mode(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            client = NativeEnvClient(f"http://127.0.0.1:{server.server_port}", "test-token", timeout_seconds=2)
+            result = client.query(
+                {"case_id": "q-warm", "document_revision": "fixture-v1", "question": "甲依赖什么？"},
+                ["d-1"],
+                session_id="s-1",
+                phase="warm",
+            )
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+        self.assertEqual(result["query_phase"], "warm")
+        self.assertEqual(result["actual_mode"], "native")
+
 
 if __name__ == "__main__":
     unittest.main()

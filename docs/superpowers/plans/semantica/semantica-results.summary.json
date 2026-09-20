@@ -1,12 +1,13 @@
 {
-  "actual_total_tokens": 519,
+  "actual_total_tokens": 5160,
   "cases": 6,
-  "latency_p50_ms": 4723.903,
-  "latency_p95_ms": 12973.338,
+  "correct": 2,
+  "execution_complete": false,
+  "latency_p50_ms": 1831.093,
+  "latency_p95_ms": 4033.94,
   "privacy_hardgate_passed": true,
-  "execution_complete": true,
   "quality_gate_passed": false,
-  "source_precision": 0.1667,
-  "source_recall": 0.4167,
+  "source_precision": 0.3333,
+  "source_recall": 0.8333,
   "unanswerable_correct": 0
 }

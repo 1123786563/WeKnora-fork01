@@ -20,6 +20,7 @@ from typing import Any, Iterable, Mapping
 from semantica.semantic_extract import NERExtractor, RelationExtractor
 from semantica.semantic_extract.providers import BaseProvider
 from semantica.semantic_extract.registry import provider_registry
+from semantica.reasoning import GraphReasoner
 
 
 GATEWAY = "http://127.0.0.1:18092"
@@ -36,8 +37,20 @@ class UsageCollector:
             raise ValueError("inconsistent raw usage")
         self.attempts.append({"stage": stage, "raw_usage": dict(usage), **metadata})
 
-    def total(self) -> dict[str, int]:
-        return {key: sum(int(entry["raw_usage"][key]) for entry in self.attempts if entry.get("raw_usage")) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+    def record_failure(self, stage: str, error: str, *, prompt: str) -> None:
+        self.attempts.append({
+            "stage": stage,
+            "status": "failed",
+            "error": error,
+            "raw_usage": None,
+            "prompt_sha256": sha256(prompt.encode()).hexdigest(),
+        })
+
+    def total(self) -> dict[str, int] | None:
+        usages = [entry["raw_usage"] for entry in self.attempts if entry.get("raw_usage")]
+        if not usages:
+            return None
+        return {key: sum(int(usage[key]) for usage in usages) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
 
 
 def score_case(expected_evidence: set[str], actual_evidence: set[str]) -> dict[str, float]:
@@ -54,8 +67,69 @@ def assess_answer(case: Mapping[str, Any], answer: str, actual_evidence: set[str
         abstained = "证据不足" in answer and not actual_evidence
         return {"correct": abstained, "unanswerable_correct": abstained}
     expected_terms = [str(term) for term in case.get("expected_answer_terms", [])]
-    correct = bool(actual_evidence) and bool(expected_terms) and all(term in answer for term in expected_terms)
+    polarity = case.get("expected_polarity")
+    negated = any(marker in answer for marker in ("不依赖", "并非", "不是", "未依赖", "没有依赖"))
+    correct = bool(actual_evidence) and bool(expected_terms) and all(term in answer for term in expected_terms) and (polarity != "positive" or not negated)
     return {"correct": correct, "unanswerable_correct": False}
+
+
+def has_privacy_leak(answer: str, forbidden_sources: Iterable[Mapping[str, Any]]) -> bool:
+    return any(str(item.get("evidence_id", "")) in answer or (item.get("canary") and str(item["canary"]) in answer) for item in forbidden_sources)
+
+
+def observed_privacy_violation(answer: str, references: Iterable[Mapping[str, Any]], forbidden_sources: Iterable[Mapping[str, Any]]) -> bool:
+    """Fail closed when an answer or an observed backend reference reaches forbidden data."""
+    forbidden = list(forbidden_sources)
+    forbidden_runtime_ids = {str(item["runtime_id"]) for item in forbidden if item.get("runtime_id")}
+    return has_privacy_leak(answer, forbidden) or any(
+        str(reference.get("knowledge_id", "")) in forbidden_runtime_ids
+        for reference in references
+    )
+
+
+def build_provenance_graph(relations: Iterable[Any], documents: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Accept only extractor relation contexts that are present in a frozen source."""
+    docs = list(documents); edges = []
+    for relation in relations:
+        value = relation if isinstance(relation, Mapping) else {"subject": getattr(relation.subject, "text", str(relation.subject)), "predicate": relation.predicate, "object": getattr(relation.object, "text", str(relation.object)), "context": relation.context}
+        matching = [doc for doc in docs if value.get("context") and value["context"] in doc.get("text", "")]
+        if matching:
+            edges.append({"source": value["subject"], "target": value["object"], "type": value["predicate"], "properties": {"evidence_ids": [doc["evidence_id"] for doc in matching], "quote": value["context"]}})
+    names = sorted({edge["source"] for edge in edges} | {edge["target"] for edge in edges})
+    return {"entities": [{"id": name, "type": "实体", "properties": {}} for name in names], "relationships": edges}
+
+
+def retrieve_provenance_graph(graph: Mapping[str, Any], question: str) -> dict[str, Any]:
+    """Select the connected source-validated subgraph rooted in named question entities."""
+    edges = list(graph.get("relationships", []))
+    roots = {str(entity["id"]) for entity in graph.get("entities", []) if str(entity.get("id", "")) in question}
+    if not roots:
+        return {"entities": [], "relationships": []}
+    selected: list[Mapping[str, Any]] = []
+    reachable = set(roots)
+    changed = True
+    while changed:
+        changed = False
+        for edge in edges:
+            if edge["source"] in reachable or edge["target"] in reachable:
+                if edge not in selected:
+                    selected.append(edge)
+                before = len(reachable)
+                reachable.update((str(edge["source"]), str(edge["target"])))
+                changed = changed or len(reachable) != before
+    return {
+        "entities": [entity for entity in graph.get("entities", []) if str(entity.get("id", "")) in reachable],
+        "relationships": selected,
+    }
+
+
+def graph_references(graph: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Expose only evidence IDs that survived source validation and retrieval."""
+    return [
+        {"evidence_id": evidence_id, "quote": edge.get("properties", {}).get("quote", ""), "match_type": "graph"}
+        for edge in graph.get("relationships", [])
+        for evidence_id in edge.get("properties", {}).get("evidence_ids", [])
+    ]
 
 
 def _percentile(values: list[float], fraction: float) -> float | None:
@@ -98,6 +172,9 @@ def _load_dataset(path: Path) -> tuple[list[dict[str, Any]], int]:
             missing = sorted(required - set(row))
             if missing:
                 raise ValueError("missing " + ", ".join(missing))
+            forbidden = {item.get("evidence_id") for item in row.get("forbidden_sources", [])}
+            if forbidden & set(row["allowed_evidence"]):
+                raise ValueError("forbidden source may not be in allowed_evidence")
             rows.append(row)
         except (json.JSONDecodeError, ValueError) as exc:
             failures += 1
@@ -115,9 +192,10 @@ def evaluate_rows(value: list[Mapping[str, Any]] | Path) -> Any:
 
 class _V03Provider(BaseProvider):
     """Public Semantica provider registered against the fixed Go transport."""
+    active_collector: UsageCollector | None = None
     def __init__(self, **kwargs: Any) -> None:
+        self.collector: UsageCollector | None = kwargs.pop("usage_collector", None) or self.active_collector
         super().__init__(**kwargs)
-        self.collector: UsageCollector | None = kwargs.pop("usage_collector", None)
         self.calls: list[dict[str, Any]] = []
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -128,6 +206,8 @@ class _V03Provider(BaseProvider):
                 payload = json.loads(response.read())
         except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
             self.calls.append({"stage": kwargs.get("stage", "generate"), "status": "failed", "latency_ms": round((time.monotonic() - started) * 1000, 3), "error": str(exc), "raw_usage": None})
+            if self.collector:
+                self.collector.record_failure(kwargs.get("stage", "generate"), str(exc), prompt=prompt)
             raise RuntimeError(f"V03 Go loopback request failed: {exc}") from exc
         usage = payload.get("raw_usage")
         if payload.get("completed") is not True or payload.get("truncated") is not False or not isinstance(usage, Mapping):
@@ -155,10 +235,11 @@ def _source_valid_evidence(case: Mapping[str, Any], answer: str) -> set[str]:
 def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
     started = time.monotonic()
     row = {"case_id": case["case_id"], "document_revision": case["document_revision"], "requested_mode": "semantica", "actual_mode": "semantica-llm-ner-re", "engine_version": version("semantica"), "model_version": "qwen2.5:0.5b", "expected_evidence": case["expected_evidence"], "allowed_evidence": case["allowed_evidence"], "evidence_ids": [], "attempts": [], "tokens": None, "error": None}
+    collector = UsageCollector()
+    _V03Provider.active_collector = collector
     try:
         _register_provider()
-        collector = UsageCollector()
-        provider = _V03Provider(usage_collector=collector)
+        indexing_started = time.monotonic()
         entities: list[Any] = []
         relations: list[Any] = []
         for document in case["documents"]:
@@ -167,32 +248,58 @@ def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
             entities.extend(extracted)
             re = RelationExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, relation_types=["depends_on", "conflicts_with"], usage_collector=collector)
             relations.extend(re.extract(document["text"], extracted))
-        query_prompt = "只根据以下中文原文回答问题；逐字引用支持答案的原句。若证据不足，回答‘证据不足’。\n问题：" + case["question"] + "\n原文：\n" + "\n".join(document["text"] for document in case["documents"])
-        answer = provider.generate(query_prompt, stage="query")
+        graph = build_provenance_graph(relations, case["documents"])
+        if not graph["relationships"]:
+            raise RuntimeError("automatic extraction produced no source-validated graph relation")
+        retrieved_graph = retrieve_provenance_graph(graph, case["question"])
+        if not retrieved_graph["relationships"]:
+            raise RuntimeError("graph retrieval found no source-validated relation for the question")
+        row["indexing_ms"] = round((time.monotonic() - indexing_started) * 1000, 3)
+        reasoner = GraphReasoner(provider=PROVIDER_NAME, model="qwen2.5:0.5b")
+        query_attempts: list[dict[str, Any]] = []
+        for phase in ("cold", "warm"):
+            query_started = time.monotonic()
+            phase_answer = reasoner.reason(retrieved_graph, case["question"], max_tokens=512, temperature=0, stage=f"query-{phase}")
+            query_attempts.append({"query_phase": phase, "answer": phase_answer, "latency_ms": round((time.monotonic() - query_started) * 1000, 3)})
+        answer = query_attempts[0]["answer"]
         row["answer"] = answer
         row["entities"] = [str(entity) for entity in entities]
         row["relations"] = [str(relation) for relation in relations]
-        row["evidence_ids"] = sorted(_source_valid_evidence(case, answer))
+        row["retrieved_graph"] = retrieved_graph
+        row["query_attempts"] = query_attempts
+        row["references"] = graph_references(retrieved_graph)
+        row["evidence_ids"] = sorted({reference["evidence_id"] for reference in row["references"]})
         row.update(assess_answer(case, answer, set(row["evidence_ids"])))
-        row["privacy_violation"] = bool(set(row["evidence_ids"]) - set(case["allowed_evidence"]))
-        row["attempts"] = collector.attempts
-        row["tokens"] = collector.total() if collector.attempts else None
+        row["privacy_violation"] = bool(set(row["evidence_ids"]) - set(case["allowed_evidence"])) or observed_privacy_violation(answer, row["references"], case.get("forbidden_sources", []))
         row["status"] = "completed"
     except Exception as exc:
         row["status"] = "failed"; row["error"] = str(exc)
+        collector.record_failure("pipeline", str(exc), prompt=case.get("question", ""))
     row["latency_ms"] = round((time.monotonic() - started) * 1000, 3)
+    row["attempts"] = collector.attempts
+    row["tokens"] = collector.total()
+    _V03Provider.active_collector = None
     return row
 
 
 def _run_native(case: Mapping[str, Any], native_artifact: Path | None) -> dict[str, Any]:
-    """Retain the real native run outcome; never turn allowed scope into refs."""
+    """Select only the matching real native transaction; never duplicate a run over cases."""
     row = {"case_id": case["case_id"], "document_revision": case["document_revision"], "requested_mode": "native", "actual_mode": "native", "engine_version": None, "model_version": "qwen2.5:0.5b", "expected_evidence": case["expected_evidence"], "allowed_evidence": case["allowed_evidence"], "evidence_ids": [], "references": [], "tokens": None, "latency_ms": None, "privacy_violation": False, "unanswerable_correct": False}
     if not native_artifact or not native_artifact.is_file():
         row.update({"status": "failed", "error": "explicit V03_NATIVE_RESULT artifact is required; no default backend selected"}); return row
     actual = json.loads(native_artifact.read_text(encoding="utf-8"))
-    row.update({key: actual.get(key) for key in ("engine_version", "model_version", "tokens", "latency_ms", "status", "error")})
-    row["native_run_case_id"] = actual.get("case_id")
-    row["failure_stage"] = actual.get("failure_stage")
+    matches = [item for item in actual.get("cases", []) if item.get("case_id") == case["case_id"]]
+    if len(matches) != 1:
+        row.update({"status": "failed", "error": "native artifact lacks exactly one matching case transaction", "failure_stage": "artifact_contract"})
+        return row
+    measured = matches[0]
+    row.update({key: measured.get(key) for key in ("engine_version", "model_version", "tokens", "latency_ms", "status", "error", "failure_stage", "indexing_ms", "query_attempts", "state_actions", "unsupported_stage")})
+    row["native_run_case_id"] = measured["case_id"]
+    row["references"] = measured.get("references", [])
+    row["answer"] = measured.get("answer", "")
+    row["evidence_ids"] = list(measured.get("evidence_ids", []))
+    row["privacy_violation"] = bool(set(row["evidence_ids"]) - set(case["allowed_evidence"])) or observed_privacy_violation(row["answer"], row["references"], measured.get("forbidden_sources", case.get("forbidden_sources", [])))
+    row.update(assess_answer(case, row["answer"], set(row["evidence_ids"])))
     return row
 
 

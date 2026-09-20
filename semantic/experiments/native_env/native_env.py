@@ -65,7 +65,9 @@ class NativeEnvConfig:
             query_timeout_seconds=int(values.get("query_timeout_seconds", defaults.query_timeout_seconds)),
             ollama_url=_loopback_url(str(values.get("ollama_url", defaults.ollama_url))),
             model_name=str(values.get("model_name", defaults.model_name)),
-            artifact_dir=Path(values.get("artifact_dir", defaults.artifact_dir)),
+            # The Go process deliberately starts from the repository root, so
+            # lifecycle paths must not depend on the caller's working directory.
+            artifact_dir=Path(values.get("artifact_dir", defaults.artifact_dir)).expanduser().resolve(),
         )
         if config.model_name != "qwen2.5:0.5b":
             raise ValueError("only qwen2.5:0.5b is allowed for this bounded experiment")
@@ -182,15 +184,18 @@ class NativeEnvClient:
         return list(dict.fromkeys(
             self._knowledge_evidence[reference["knowledge_id"]]
             for reference in references
-            if reference.get("match_type") == "graph" and reference.get("knowledge_id") in self._knowledge_evidence
+            if reference.get("match_type") in {"graph", 6} and reference.get("knowledge_id") in self._knowledge_evidence
         ))
 
-    def query(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str) -> dict[str, Any]:
+    def query(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str, phase: str = "cold") -> dict[str, Any]:
         if not case.get("case_id") or not case.get("document_revision") or not case.get("question"):
             raise ValueError("case_id, document_revision, and question are required")
+        if phase not in {"cold", "warm"}:
+            raise ValueError("phase must be cold or warm")
         started = time.monotonic()
         events = self._request(f"/api/v1/knowledge-chat/{session_id}", {"query": case["question"], "knowledge_ids": list(allowed_document_ids), "disable_title": True}, stream=True)
         references: list[dict[str, Any]] = []
+        answer_parts: list[str] = []
         complete = False
         usage: Mapping[str, Any] | None = None
         for event in events:
@@ -198,6 +203,8 @@ class NativeEnvClient:
                 raise RuntimeError(str(event.get("content") or "SSE error"))
             if event.get("response_type") == "references":
                 references.extend(item for item in event.get("knowledge_references", []) if isinstance(item, dict))
+            if event.get("response_type") in {"message", "answer"} and isinstance(event.get("content"), str):
+                answer_parts.append(event["content"])
             if isinstance(event.get("usage"), Mapping):
                 usage = event["usage"]
             complete = complete or event.get("response_type") == "complete"
@@ -206,13 +213,15 @@ class NativeEnvClient:
         return {
             "case_id": case["case_id"], "document_revision": case["document_revision"],
             "requested_mode": "native", "actual_mode": "native", "status": "completed",
+            "query_phase": phase,
             "engine_version": self.engine_version, "model_version": self.model_version,
             "evidence_ids": self.evidence_ids_for_references(references, allowed_document_ids), "references": references,
+            "answer": "".join(answer_parts),
             "latency_ms": round((time.monotonic() - started) * 1000, 3), "tokens": usage, "error": None,
         }
 
-    def run_case(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str) -> dict[str, Any]:
+    def run_case(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str, phase: str = "cold") -> dict[str, Any]:
         try:
-            return self.query(case, allowed_document_ids, session_id=session_id)
+            return self.query(case, allowed_document_ids, session_id=session_id, phase=phase)
         except (RuntimeError, ValueError) as error:
-            return {"case_id": case.get("case_id"), "document_revision": case.get("document_revision"), "requested_mode": "native", "actual_mode": "native", "status": "failed", "engine_version": self.engine_version, "model_version": self.model_version, "evidence_ids": [], "references": [], "latency_ms": None, "tokens": None, "error": str(error)}
+            return {"case_id": case.get("case_id"), "document_revision": case.get("document_revision"), "requested_mode": "native", "actual_mode": "native", "query_phase": phase, "status": "failed", "engine_version": self.engine_version, "model_version": self.model_version, "evidence_ids": [], "references": [], "latency_ms": None, "tokens": None, "error": str(error)}

@@ -3,11 +3,11 @@
   "cases": 6,
   "correct": 0,
   "execution_complete": false,
-  "latency_p50_ms": null,
-  "latency_p95_ms": null,
-  "privacy_hardgate_passed": true,
+  "latency_p50_ms": 1635.872,
+  "latency_p95_ms": 3655.792,
+  "privacy_hardgate_passed": false,
   "quality_gate_passed": false,
   "source_precision": 0.0,
-  "source_recall": 0.6667,
+  "source_recall": 0.5,
   "unanswerable_correct": 0
 }

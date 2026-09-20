@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from native_baseline import documents_terminal_with_graph, run_lifecycle, verify_persisted_graph_config
+from native_baseline import documents_terminal_with_graph, load_frozen_cases, run_lifecycle, verify_persisted_graph_config
 from native_env import NativeEnvConfig
 
 
@@ -60,6 +60,17 @@ class NativeBaselineTest(unittest.TestCase):
             self.assertEqual(result["status"], "failed")
             self.assertEqual(result["failure_stage"], "teardown")
             self.assertEqual(result["teardown_failure"], "teardown exited 7")
+
+    def test_frozen_dataset_keeps_deleted_and_revoked_sources_as_runtime_inputs(self) -> None:
+        with TemporaryDirectory() as directory:
+            dataset = Path(directory) / "cases.jsonl"
+            dataset.write_text(
+                '{"case_id":"deleted","document_revision":"v","documents":[{"evidence_id":"public","text":"公开"}],"forbidden_sources":[{"evidence_id":"secret","state":"deleted","text":"CANARY"}]}\n'
+                '{"case_id":"revoked","document_revision":"v","documents":[{"evidence_id":"public","text":"公开"}],"forbidden_sources":[{"evidence_id":"secret2","state":"revoked","text":"CANARY2"}]}\n',
+                encoding="utf-8",
+            )
+            rows = load_frozen_cases(dataset)
+        self.assertEqual([row["forbidden_sources"][0]["state"] for row in rows], ["deleted", "revoked"])
 
 
 if __name__ == "__main__":
