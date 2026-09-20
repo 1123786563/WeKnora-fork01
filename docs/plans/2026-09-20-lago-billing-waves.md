@@ -121,3 +121,12 @@ W4+ 渐进风险（提前登记）：#80/#81 都会触及 `internal/commercial/`
 - 主 Agent：编排、依赖跟踪、集成 merge、冲突解决、wave 级测试、GitHub 状态、migration 编号分配。
 - Worker（子 Agent）：单 ticket 的 TDD 实现、自己 branch 的 commit、自己的 ledger；最小上下文（指向 CONTEXT.md/spec/ADR/ticket/plan，不复制主会话）。
 - 禁止：多写者共享 worktree；worker 直接操作 `lago-integration`。
+
+- **2026-09-21 Wave 2 完成**：四票并行（planning→SDD implement→review→集成）。
+  - #75 关闭：verdict = a1/b/c/d PASS-with-coordination；**a2 十二个月批次到期 BLOCKED**（Lago 钱包级到期 + 每客户 6 活跃钱包硬上限 422 实测）→ 升级设计决策：(1) 产品上限≤5 并发充值批次 (2) 批次到期权威移入协调层+修订 ADR-0012。
+  - #76 关闭：4/4 AC 真实栈证据（64/64 精确核对、422 幂等、acceptance≠rating 负对照、p95 6.9s）；4 处实测契约修正移交 #87/#88。
+  - #77 关闭：seam 三方法接口冻结（byte-level 零漂移）、readiness 切片上线、ADR-0014、旧 OpenMeter gateway 零改动全绿；含 #73 遗留 probe 修复。
+  - #74 保持 open：AC4 决策文档交付（manual payment Community 403 Premium-gated 源码级证据）；AC1-3 运行时证据 blocked-env 待 Stripe TEST key（解锁命令在 issue 评论）→ 升级决策需求 2。
+  - Wave 测试：go test ./... 零 FAIL + 4 个 python 套件全绿。
+  - 事件：GitHub push protection 拦截 #74 测试里 secret 形状 canary（sk_test_51Canary.../rk_live_51BadBadBad...）→ 已 defuse（拼接字面量）+ #74 squash 并入（d1eec16b）后推送成功；lago-74 分支保留完整本地历史。
+- **W3 启动**：#78（Lago Customer 映射）/ #79（Plan Version 发布）planning 中，基于 6a651c30（#77 seam 冻结接口）。
