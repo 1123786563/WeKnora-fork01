@@ -268,6 +268,14 @@ func (s *PlanVersionStore) GetPublication(ctx context.Context, planKey string, v
 	return row, err
 }
 
+// ListPublications returns every publication of one plan key, ordered by
+// version (seam-internal rows; the admin API never projects them).
+func (s *PlanVersionStore) ListPublications(ctx context.Context, planKey string) ([]PublicationRow, error) {
+	var rows []PublicationRow
+	err := s.db.WithContext(ctx).Where("plan_key = ?", planKey).Order("version").Find(&rows).Error
+	return rows, err
+}
+
 const versionViewSelect = `SELECT c.plan_key, c.version, c.state, c.definition_json,
 	COALESCE(p.receipt_json, '') AS receipt_json, p.published_at
 	FROM commercial_plan_catalog c

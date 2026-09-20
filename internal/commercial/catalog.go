@@ -72,11 +72,13 @@ type PlanVersion struct {
 	Monthly  Credits
 	Features map[string]bool
 	Limits   map[string]int64
-	// Currency and Charges are ADDITIVE T07 fields (Lago billing migration,
-	// ticket #79): pre-T07 definition_json decodes with zero values, and the
-	// empty currency is rejected by ValidateForPublishValidated instead of
-	// being silently defaulted.
+	// Currency, Name and Charges are ADDITIVE T07 fields (Lago billing
+	// migration, ticket #79): pre-T07 definition_json decodes with zero
+	// values, and the empty currency is rejected by
+	// ValidateForPublishValidated instead of being silently defaulted. Name
+	// is the display name riding the publish payload.
 	Currency string
+	Name     string
 	Charges  []PlanCharge
 }
 
