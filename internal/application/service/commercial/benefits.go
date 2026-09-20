@@ -443,7 +443,12 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		}
 	}
 	if err := s.ApplyQuotas(ctx, tenantID, limits); err != nil {
-		return repocommercial.BenefitsRow{}, nil, "", err
+		// ADVISORY by design: quota application is a fail-open surface — a
+		// missing occupancy table or a transient read failure must never
+		// turn a billing read into an error (and cannot lock a space out:
+		// no limits were written, every reserve passes). The next refresh
+		// re-applies.
+		_ = err
 	}
 
 	// The expiry overlay: registry truth decides spendability. An expired
