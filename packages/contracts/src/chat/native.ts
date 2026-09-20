@@ -90,10 +90,11 @@ export interface NativeAgentFixture {
   archive: Record<string, unknown>;
 }
 
-const EVENT_KINDS = new Set<NativeEventKind>([
+export const NATIVE_AGENT_EVENT_KINDS = [
   'run.status', 'attempt.started', 'attempt.replaced', 'attempt.finished', 'text.delta', 'reasoning.delta',
   'tool.planned', 'tool.result', 'decision.required', 'usage.observed', 'artifact.available', 'error',
-]);
+] as const satisfies readonly NativeEventKind[];
+const EVENT_KINDS = new Set<NativeEventKind>(NATIVE_AGENT_EVENT_KINDS);
 const EFFECTS = new Set(['not_dispatched', 'confirmed', 'unknown']);
 const WAIT_KINDS = new Set(['tool_approval', 'mcp_oauth', 'connector_approval', 'unknown_result']);
 const RUN_STATUSES = new Set(['queued', 'running', 'waiting_user', 'cancelling', 'succeeded', 'failed', 'cancelled']);

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  NATIVE_AGENT_EVENT_KINDS,
   parseLastEventID,
   parseNativeAgentFixture,
   parseNativeEvent,
@@ -20,7 +21,7 @@ test('parses the canonical v1 fixture without losing decimal counters or public 
   const wire = await fixture();
   const parsed = parseNativeAgentFixture(wire);
 
-  assert.equal(parsed.last_event_id.sequence, 8n);
+  assert.equal(parsed.last_event_id.sequence, 13n);
   assert.equal(parsed.events[0]?.tenant_id, '9007199254740993');
   const usage = parsed.events.find((event): event is Extract<typeof event, { kind: 'usage.observed' }> => event.kind === 'usage.observed');
   assert.equal(usage?.payload.usage.prompt_tokens, '9007199254740993');
@@ -28,6 +29,13 @@ test('parses the canonical v1 fixture without losing decimal counters or public 
   assert.deepEqual(parsed.pending, wire.pending);
   assert.deepEqual(parsed.command_errors, wire.command_errors);
   assert.deepEqual(parsed.archive, wire.archive);
+});
+
+test('fixture contains exactly the authoritative twelve public event kinds', async () => {
+  const wire = await fixture();
+  const kinds = new Set((wire.events as Record<string, unknown>[]).map((event) => event.kind));
+  assert.deepEqual([...kinds].sort(), [...NATIVE_AGENT_EVENT_KINDS].sort());
+  assert.equal(kinds.size, 12);
 });
 
 test('preserves sequences above JavaScript safe integer range', () => {
@@ -57,8 +65,9 @@ test('rejects private and unknown fields from every public event projection', as
   const waiting = (wire.events as Record<string, unknown>[])[0]!;
   assert.throws(() => parseNativeEvent({ ...waiting, payload: { ...(waiting.payload as Record<string, unknown>), status: 'sdk.internal' } }), /payload.status/);
   assert.throws(() => parseNativeEvent({ ...waiting, payload: { ...(waiting.payload as Record<string, unknown>), provider_receipt: 'private' } }), /payload.provider_receipt/);
-  const outcome = (wire.events as Record<string, unknown>[])[3]!;
-  assert.throws(() => parseNativeEvent({ ...outcome, payload: { ...(outcome.payload as Record<string, unknown>), unknown: true } }), /payload.unknown/);
+  for (const event of wire.events as Record<string, unknown>[]) {
+    assert.throws(() => parseNativeEvent({ ...event, payload: { ...(event.payload as Record<string, unknown>), private_field: true } }), /payload.private_field/);
+  }
 });
 
 test('requires a complete public decision reference and a decimal artifact size', () => {

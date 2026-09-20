@@ -66,13 +66,17 @@ func decodeV1BusinessEvent(raw []byte) (BusinessEvent, error) {
 }
 
 func wireEventKind(kind EventKind) bool {
-	switch kind {
-	case EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished, EventTextDelta, EventReasoningDelta,
-		EventToolPlanned, EventToolResult, EventDecisionRequired, EventUsage, EventArtifact, EventFailure:
-		return true
-	default:
-		return false
+	for _, candidate := range wireEventKinds() {
+		if kind == candidate {
+			return true
+		}
 	}
+	return false
+}
+
+func wireEventKinds() []EventKind {
+	return []EventKind{EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished, EventTextDelta, EventReasoningDelta,
+		EventToolPlanned, EventToolResult, EventDecisionRequired, EventUsage, EventArtifact, EventFailure}
 }
 
 func parseV1LastEventID(value string) (runID, sequence string, err error) {
@@ -99,6 +103,7 @@ func TestWireV1FixtureRoundTripsThroughBusinessEventJSONTags(t *testing.T) {
 		t.Fatal("fixture must contain events")
 	}
 
+	seenKinds := map[EventKind]bool{}
 	for index, raw := range fixture.Events {
 		event, err := decodeV1BusinessEvent(raw)
 		if err != nil {
@@ -118,6 +123,15 @@ func TestWireV1FixtureRoundTripsThroughBusinessEventJSONTags(t *testing.T) {
 		if !jsonEqual(want, got) {
 			t.Fatalf("event %d changed public wire shape\nwant: %s\n got: %s", index, raw, encoded)
 		}
+		seenKinds[event.Kind] = true
+	}
+	for _, kind := range wireEventKinds() {
+		if !seenKinds[kind] {
+			t.Fatalf("fixture is missing event kind %q", kind)
+		}
+	}
+	if len(seenKinds) != len(wireEventKinds()) {
+		t.Fatalf("fixture kinds = %v, want exactly %v", seenKinds, wireEventKinds())
 	}
 
 	var detail PendingDecisionDetail
@@ -193,7 +207,7 @@ func TestWireV1LastEventIDIsCanonicalAndScopedToFixtureRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse fixture Last-Event-ID: %v", err)
 	}
-	if runID != "run-9007199254740993" || sequence != "8" {
+	if runID != "run-9007199254740993" || sequence != "13" {
 		t.Fatalf("Last-Event-ID = %q/%q", runID, sequence)
 	}
 	for _, value := range []string{"v2:cnVuLTE:7", "v1:not-base64!:7", "v1:cnVuLTE:0", "v1:cnVuLTE:7:extra"} {

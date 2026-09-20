@@ -1,7 +1,7 @@
 {
   "protocol": "weknora.agent.v1",
   "schema_version": 1,
-  "last_event_id": "v1:cnVuLTkwMDcxOTkyNTQ3NDA5OTM:8",
+  "last_event_id": "v1:cnVuLTkwMDcxOTkyNTQ3NDA5OTM:13",
   "events": [
     {
       "protocol": "weknora.agent.v1",
@@ -99,6 +99,21 @@
       "seq": "8",
       "kind": "artifact.available",
       "payload": { "artifact": { "id": "artifact-1", "media_type": "text/plain", "sha256": "sha256:artifact", "size_bytes": "42" } }
+    },
+    {
+      "protocol": "weknora.agent.v1", "schema_version": 1, "event_id": "event-attempt-started", "tenant_id": "9007199254740993", "session_id": "session-1", "run_id": "run-9007199254740993", "attempt_id": "attempt-3", "seq": "9", "kind": "attempt.started", "payload": {}
+    },
+    {
+      "protocol": "weknora.agent.v1", "schema_version": 1, "event_id": "event-reasoning", "tenant_id": "9007199254740993", "session_id": "session-1", "run_id": "run-9007199254740993", "attempt_id": "attempt-3", "seq": "10", "kind": "reasoning.delta", "payload": { "text": "reasoning", "offset": 0 }
+    },
+    {
+      "protocol": "weknora.agent.v1", "schema_version": 1, "event_id": "event-tool-planned", "tenant_id": "9007199254740993", "session_id": "session-1", "run_id": "run-9007199254740993", "attempt_id": "attempt-3", "seq": "11", "kind": "tool.planned", "payload": { "call_id": "call-2", "plan_version": 1, "tool_name": "search" }
+    },
+    {
+      "protocol": "weknora.agent.v1", "schema_version": 1, "event_id": "event-decision", "tenant_id": "9007199254740993", "session_id": "session-1", "run_id": "run-9007199254740993", "attempt_id": "attempt-3", "seq": "12", "kind": "decision.required", "payload": { "pending": { "pending_id": "pending-1", "detail_path": "/api/v1/native-agent/runs/run-9007199254740993/pending/pending-1", "revision": "3" }, "call_id": "call-2", "plan_version": 1, "args_hash": "sha256:redacted", "expires_at": "2026-09-20T12:00:00Z", "wait_kind": "tool_approval" }
+    },
+    {
+      "protocol": "weknora.agent.v1", "schema_version": 1, "event_id": "event-attempt-finished", "tenant_id": "9007199254740993", "session_id": "session-1", "run_id": "run-9007199254740993", "attempt_id": "attempt-3", "seq": "13", "kind": "attempt.finished", "payload": {}
     }
   ],
   "pending": {
