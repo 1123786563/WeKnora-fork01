@@ -229,8 +229,8 @@ func TestLagoPlanPublishIntegration(t *testing.T) {
 	commandKey := commercial.PublishCommandKey(planKey, 1)
 	submit := func(payload commercial.PublishPlanVersionPayload) (commercial.CommandReceipt, error) {
 		return adapter.SubmitCommand(ctx, commercial.Command{
-			Kind: commercial.CommandKindPublishPlanVersion,
-			Key:  commandKey, // same identity across phases 1/2/4 — replay and conflict
+			Kind:  commercial.CommandKindPublishPlanVersion,
+			Key:   commandKey, // same identity across phases 1/2/4 — replay and conflict
 			Actor: "t07-integration", Reason: "t07 real-stack evidence",
 			Payload: payload,
 		})

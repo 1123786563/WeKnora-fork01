@@ -46,7 +46,6 @@ func TestPayloadValidate(t *testing.T) {
 		{"plan code not deterministic", func(p *PublishPlanVersionPayload) { p.PlanCode = "weknora-pro-v2" }},
 		{"plan code foreign form", func(p *PublishPlanVersionPayload) { p.PlanCode = "pro-v1" }},
 		{"empty name", func(p *PublishPlanVersionPayload) { p.Name = "" }},
-		{"amount zero", func(p *PublishPlanVersionPayload) { p.AmountFen = 0 }},
 		{"amount negative", func(p *PublishPlanVersionPayload) { p.AmountFen = -1 }},
 		{"currency usd", func(p *PublishPlanVersionPayload) { p.Currency = "USD" }},
 		{"currency empty", func(p *PublishPlanVersionPayload) { p.Currency = "" }},
@@ -99,6 +98,10 @@ func TestPayloadValidate(t *testing.T) {
 		name   string
 		mutate func(*PublishPlanVersionPayload)
 	}{
+		// T08 (#80): amount_fen 0 is STRUCTURALLY valid — the zero-clause
+		// moved to the six-axis base_price_tier check, which rejects zero
+		// for every non-base tier (TestBaseTierPublishValidation).
+		{"amount zero is structurally valid (six-axis check gates it)", func(p *PublishPlanVersionPayload) { p.AmountFen = 0 }},
 		{"fully formed without charges", func(p *PublishPlanVersionPayload) {}},
 		{"charges nil", func(p *PublishPlanVersionPayload) { p.Charges = nil }},
 		{"fixed_unit charge", func(p *PublishPlanVersionPayload) { p.Charges = []PlanCharge{charge(ChargeModelFixedUnit)} }},

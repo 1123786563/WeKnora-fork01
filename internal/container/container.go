@@ -798,6 +798,31 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.PlanVersionService) {
 		h.SetPlanVersionService(s)
 	}))
+	// T08 (#80): the lazy Base-Plan benefits chain (seed → account →
+	// subscription → monthly credits → projection) behind the benefits
+	// section of GET /commercial/account, plus the commercial growth gate
+	// (ResourceQuotaGuard) wired into the member and knowledge growth
+	// paths. Registered in the SAME block, away from the pre-craft-Invoke
+	// provider block (the ordering trap documented there). The guard is
+	// fail-open BY CONSTRUCTION: quotas bite only where a projection wrote
+	// a hard_limit — an unprojected dimension (blocked-env, Lago outage,
+	// unconfigured platform) carries NULL limits and every reserve passes;
+	// a pending chain never locks a space out of its own functions.
+	must(container.Provide(commercialsvc.NewBenefitsService))
+	must(container.Invoke(func(
+		h *handler.CommercialHandler,
+		benefits *commercialsvc.BenefitsService,
+		memberHandler *handler.TenantMemberHandler,
+		knowledgeSvc interfaces.KnowledgeService,
+		db *gorm.DB,
+	) {
+		h.SetBenefitsService(benefits)
+		guard := commercialsvc.NewQuotaGuard(db)
+		memberHandler.SetQuotaGuard(guard)
+		if ks, ok := knowledgeSvc.(service.QuotaGuardSetter); ok && ks != nil {
+			ks.SetResourceQuotaGuard(guard)
+		}
+	}))
 	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
 	// handlers (installations, connections incl. OAuth, sync status,
 	// actions), each owning its routes and write gate.

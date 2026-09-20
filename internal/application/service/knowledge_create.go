@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
@@ -123,6 +125,15 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 		return nil, types.NewStorageQuotaExceededError()
 	}
 
+	// T08 (#80): the commercial storage growth gate — admit the upload's
+	// bytes through the counter CAS alongside the local quota check. A
+	// refusal answers the storage-quota error class; the hold releases when
+	// the knowledge row never lands.
+	storageRelease, err := s.reserveStorageGrowth(ctx, tenantID, file.Size)
+	if err != nil {
+		return nil, err
+	}
+
 	// Convert metadata to JSON format if provided
 	var metadataJSON types.JSON
 	if metadata != nil {
@@ -192,6 +203,7 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	filePath, err := fileSvc.SaveFile(ctx, file, knowledge.TenantID, knowledge.ID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to save file, knowledge ID: %s, error: %v", knowledge.ID, err)
+		storageRelease()
 		return nil, err
 	}
 	knowledge.FilePath = filePath
@@ -200,6 +212,7 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	logger.Info(ctx, "Saving knowledge record to database")
 	if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
 		logger.Errorf(ctx, "Failed to create knowledge record, ID: %s, error: %v", knowledge.ID, err)
+		storageRelease()
 		if deleteErr := fileSvc.DeleteFile(ctx, filePath); deleteErr != nil {
 			logger.Errorf(ctx, "Failed to delete saved file after knowledge creation failed, path: %s, error: %v", filePath, deleteErr)
 		}
@@ -374,6 +387,15 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 		return nil, types.NewStorageQuotaExceededError()
 	}
 
+	// T08 (#80): the commercial storage growth gate. URL byte size is
+	// unknown at admission, so the reserve carries the floor — new growth
+	// is refused while the space sits at its hard limit; the counter
+	// re-syncs from observed occupancy at the next projection refresh.
+	storageRelease, err := s.reserveStorageGrowth(ctx, tenantID, storageGuardFloorBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create knowledge record
 	logger.Info(ctx, "Creating knowledge record")
 	knowledge := &types.Knowledge{
@@ -402,6 +424,7 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 
 	if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
 		logger.Errorf(ctx, "Failed to create knowledge record: %v", err)
+		storageRelease()
 		return nil, err
 	}
 	// Set tag relations
@@ -610,6 +633,14 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 		return nil, types.NewStorageQuotaExceededError()
 	}
 
+	// T08 (#80): the commercial storage growth gate (URL byte size unknown
+	// at admission — the floor reserve blocks new growth at the hard limit;
+	// the counter re-syncs from observed occupancy at the next refresh).
+	storageRelease, err := s.reserveStorageGrowth(ctx, tenantID, storageGuardFloorBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create knowledge record
 	knowledge := &types.Knowledge{
 		ID:               uuid.New().String(),
@@ -645,6 +676,7 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 
 	if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
 		logger.Errorf(ctx, "Failed to create knowledge record: %v", err)
+		storageRelease()
 		return nil, err
 	}
 	// Set tag relations
@@ -1334,4 +1366,53 @@ func (s *knowledgeService) triggerManualProcessing(ctx context.Context,
 
 	newCtx := logger.CloneContext(ctx)
 	go s.processChunks(newCtx, kb, knowledge, parsed, opts)
+}
+
+// QuotaGuardSetter is the exported injection surface of the knowledge
+// service's commercial growth gate (the concrete service type is private;
+// the container asserts this interface instead).
+type QuotaGuardSetter interface {
+	SetResourceQuotaGuard(g commercial.ResourceQuotaGuard)
+}
+
+// SetResourceQuotaGuard wires the commercial storage growth gate (injection
+// point for the container, #80). Until it is called the create paths fail
+// OPEN — knowledge creation is never blocked by limits that were never
+// projected. Read/export/clean paths never consult the gate.
+func (s *knowledgeService) SetResourceQuotaGuard(g commercial.ResourceQuotaGuard) {
+	s.quotaGuard = g
+}
+
+// storageGuardFloorBytes is the minimum reservation for URL-based creates
+// whose byte size is unknown at admission: the reserve blocks NEW growth
+// while a space sits at its hard limit (超限状态阻新增), and the counter
+// re-syncs from tenants.storage_used at the next projection refresh.
+const storageGuardFloorBytes = int64(1)
+
+// reserveStorageGrowth admits `bytes` of storage growth through the
+// commercial gate and maps a refusal onto the storage-quota error class the
+// create paths already answer. It returns the release hook (nil-safe).
+func (s *knowledgeService) reserveStorageGrowth(ctx context.Context, tenantID uint64, bytes int64) (func(), error) {
+	if s.quotaGuard == nil || bytes <= 0 {
+		return func() {}, nil
+	}
+	release, err := s.quotaGuard.ReserveGrowth(ctx, tenantID, "storage_gb", bytes)
+	if err != nil {
+		if errors.Is(err, commercial.ErrQuotaGrowthRefused) {
+			return nil, types.NewStorageQuotaExceededError()
+		}
+		return nil, err
+	}
+	return release, nil
+}
+
+// decreaseStorageUsage releases `bytes` of the storage counter after a
+// successful knowledge deletion — best-effort: negative deltas always pass
+// and errors are ignored (the projection refresh re-syncs from observed
+// occupancy; cleanup must never block).
+func (s *knowledgeService) decreaseStorageUsage(ctx context.Context, tenantID uint64, bytes int64) {
+	if s.quotaGuard == nil || bytes <= 0 {
+		return
+	}
+	_, _ = s.quotaGuard.ReserveGrowth(ctx, tenantID, "storage_gb", -bytes)
 }

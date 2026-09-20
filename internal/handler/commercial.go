@@ -64,6 +64,11 @@ type CommercialHandler struct {
 	// until the container wires it — the admin plan endpoints then fail
 	// closed with 503, never a fabricated success.
 	planVersions *commercialsvc.PlanVersionService
+	// benefits is the T08 (#80) lazy Base-Plan chain behind the benefits
+	// section of GET /commercial/account; nil until the container wires it
+	// — the account read then answers the #78 fail-closed envelope WITHOUT
+	// a benefits object (documented, never 500 for a wiring gap).
+	benefits *commercialsvc.BenefitsService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -340,6 +345,13 @@ func (h *CommercialHandler) SetBillingAccountService(s *commercialsvc.BillingAcc
 	h.billingAccounts = s
 }
 
+// SetBenefitsService wires the T08 benefits chain (injection point for the
+// container, #80). Until it is called, GET /commercial/account answers the
+// #78 envelope without a benefits object — never a fabricated plan.
+func (h *CommercialHandler) SetBenefitsService(s *commercialsvc.BenefitsService) {
+	h.benefits = s
+}
+
 // tenantDisplayName reads the space's display name for the ADVISORY
 // metadata of the ensure command. A missing name (or a missing tenants
 // table) degrades to a stable placeholder — never an error.
@@ -355,21 +367,22 @@ func (h *CommercialHandler) tenantDisplayName(tenantID uint64) string {
 }
 
 // AccountStatus serves GET /commercial/account: the caller space's billing
-// account status (T06, #78). This GET is the documented LAZY ENSURE trigger
-// (first billing access): an idempotent, authority-failure-safe establish
-// of the space's Billing Account, then the CLOSED product envelope —
-// state ∈ {linked, pending}, reason ∈ {"", unconfigured, unreachable,
-// invalid_response, unsupported} (empty iff linked), ensured_at RFC3339
-// (omitted when never ensured). No Lago URL, path, external id, provider
-// reference or err.Error() text ever crosses; the tenant comes exclusively
-// from the authenticated context.
+// account status (T06, #78) plus the T08 (#80) additive benefits section
+// (plan/features/limits/credits — absent while pending). This GET is the
+// documented LAZY ENSURE trigger (first billing access): an idempotent,
+// authority-failure-safe run of the whole benefits chain, then the CLOSED
+// product envelope — state ∈ {linked, pending}, reason ∈ {"",
+// unconfigured, unreachable, invalid_response, unsupported} (empty iff
+// linked), ensured_at RFC3339 (omitted when never ensured). No Lago URL,
+// path, external id, provider reference or err.Error() text ever crosses;
+// the tenant comes exclusively from the authenticated context.
 func (h *CommercialHandler) AccountStatus(c *gin.Context) {
 	tenantID, _, ok := commercialTenantScope(c)
 	if !ok {
 		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
 		return
 	}
-	if h.billingAccounts == nil {
+	if h.benefits == nil && h.billingAccounts == nil {
 		// Fail closed, honestly: no service wired means no account answer.
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"state":  "pending",
@@ -377,8 +390,25 @@ func (h *CommercialHandler) AccountStatus(c *gin.Context) {
 		}})
 		return
 	}
-	status, err := h.billingAccounts.EnsureBillingAccount(
-		c.Request.Context(), tenantID, h.tenantDisplayName(tenantID), commercialUserID(c))
+	var status commercialsvc.BenefitsStatus
+	var err error
+	if h.benefits != nil {
+		// T08: the whole lazy chain (seed → account → subscription → grant →
+		// projection) runs behind this GET; the #78 envelope rides inside.
+		status, err = h.benefits.EnsureBenefits(
+			c.Request.Context(), tenantID, h.tenantDisplayName(tenantID), commercialUserID(c))
+	} else {
+		account, accErr := h.billingAccounts.EnsureBillingAccount(
+			c.Request.Context(), tenantID, h.tenantDisplayName(tenantID), commercialUserID(c))
+		if accErr != nil {
+			err = accErr
+		} else {
+			status = commercialsvc.BenefitsStatus{Account: account}
+			if account.State != commercialsvc.BillingAccountLinked {
+				status.Reason = account.Reason
+			}
+		}
+	}
 	if err != nil {
 		// A database failure is the only error class: generic 500 text, no
 		// provider vocabulary ever rides along.
@@ -386,13 +416,52 @@ func (h *CommercialHandler) AccountStatus(c *gin.Context) {
 		return
 	}
 	data := gin.H{
-		"state":  status.State,
+		"state":  status.Account.State,
 		"reason": status.Reason,
 	}
-	if status.EnsuredAt != nil {
-		data["ensured_at"] = status.EnsuredAt.UTC().Format(time.RFC3339)
+	if status.Account.EnsuredAt != nil {
+		data["ensured_at"] = status.Account.EnsuredAt.UTC().Format(time.RFC3339)
+	}
+	if benefits := benefitsWire(status); benefits != nil {
+		data["benefits"] = benefits
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// benefitsWire projects the closed benefits answer onto the wire: the plan
+// (key/version/state), the feature map, the limits and the credits
+// breakdown (amounts as digit strings — the wire-amount convention). nil
+// while the chain is pending: never a fabricated plan.
+func benefitsWire(status commercialsvc.BenefitsStatus) gin.H {
+	if status.Plan == nil {
+		return nil
+	}
+	balance := int64(0)
+	var batches []gin.H
+	if status.Credits != nil {
+		balance = status.Credits.BalanceMicro
+		batches = make([]gin.H, 0, len(status.Credits.Batches))
+		for _, b := range status.Credits.Batches {
+			batches = append(batches, gin.H{
+				"period":        b.Period,
+				"balance_micro": strconv.FormatInt(b.BalanceMicro, 10),
+				"expires_at":    b.ExpiresAt.UTC().Format(time.RFC3339),
+			})
+		}
+	}
+	return gin.H{
+		"plan": gin.H{
+			"key":     status.Plan.Key,
+			"version": status.Plan.Version,
+			"state":   status.Plan.State,
+		},
+		"features": status.Plan.Features,
+		"limits":   status.Plan.Limits,
+		"credits": gin.H{
+			"balance_micro": strconv.FormatInt(balance, 10),
+			"batches":       batches,
+		},
+	}
 }
 
 // PlatformReadiness serves GET /commercial/platform/readiness: the one

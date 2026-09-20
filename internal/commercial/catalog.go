@@ -135,8 +135,11 @@ type PriceLadder []TierPrice
 
 // defaultPriceLadder is the first-slice tier/price constant (values fixed
 // alongside the Task 1 tests; a later ticket may externalize them —
-// validation is already injection-based).
+// validation is already injection-based). T08 (#80) adds the zero-priced
+// bottom rung: every new space enters the free Base Plan before any paid
+// tier.
 var defaultPriceLadder = PriceLadder{
+	{TierKey: BasePlanKey, PriceFen: 0},
 	{TierKey: "lite", PriceFen: 1900},
 	{TierKey: "pro", PriceFen: 9900},
 	{TierKey: "pro-max", PriceFen: 29900},
@@ -149,14 +152,15 @@ func DefaultPriceLadder() PriceLadder {
 }
 
 // Validate enforces the ladder invariant: non-empty, unique tier keys and
-// strictly ascending prices.
+// strictly ascending prices. T08 zero-clause: PriceFen == 0 is a valid price
+// point ONLY at index 0 (the free Base rung); every other rung stays > 0.
 func (l PriceLadder) Validate() error {
 	if len(l) == 0 {
 		return fmt.Errorf("%w: empty tier ladder", ErrPublishBasePriceTier)
 	}
 	seen := make(map[string]bool, len(l))
 	for i, t := range l {
-		if t.TierKey == "" || t.PriceFen <= 0 {
+		if t.TierKey == "" || t.PriceFen < 0 || (t.PriceFen == 0 && i != 0) {
 			return fmt.Errorf("%w: rung %d is malformed", ErrPublishBasePriceTier, i)
 		}
 		if seen[t.TierKey] {
@@ -218,6 +222,12 @@ func (p PlanVersion) ValidateForPublishValidated(ctx PublishValidationContext) e
 // invert the ordering against any currently published neighbor tier. A
 // price change for the version's OWN tier is the legitimate republish case
 // and never counts as a neighbor.
+//
+// T08 zero-clause (#80): price == 0 is a valid price point ONLY for the
+// Base rung (and only at exactly its own rung price — the free tier cannot
+// be priced at a paid rung's point); every other tier keeps the unchanged
+// price > 0 + ladder-point rules. Paid-tier invariants are preserved, never
+// weakened.
 func (p PlanVersion) validateBasePriceTier(ctx PublishValidationContext) error {
 	ladder := ctx.Ladder
 	idx := -1
@@ -231,15 +241,26 @@ func (p PlanVersion) validateBasePriceTier(ctx PublishValidationContext) error {
 		return fmt.Errorf("%w: tier %q is not on the price ladder", ErrPublishBasePriceTier, p.Key)
 	}
 	price := int64(p.Price)
-	onLadder := false
-	for _, t := range ladder {
-		if t.PriceFen == price {
-			onLadder = true
-			break
+	if ladder[idx].TierKey == BasePlanKey {
+		// The free Base rung: zero is legal only here, and only at exactly
+		// the rung's own price.
+		if idx != 0 {
+			return fmt.Errorf("%w: the %q tier must be the lowest ladder rung", ErrPublishBasePriceTier, BasePlanKey)
 		}
-	}
-	if !onLadder || price <= 0 {
-		return fmt.Errorf("%w: price %d is not a ladder price point", ErrPublishBasePriceTier, price)
+		if price != ladder[0].PriceFen {
+			return fmt.Errorf("%w: price %d is not a ladder price point", ErrPublishBasePriceTier, price)
+		}
+	} else {
+		onLadder := false
+		for _, t := range ladder {
+			if t.PriceFen == price {
+				onLadder = true
+				break
+			}
+		}
+		if !onLadder || price <= 0 {
+			return fmt.Errorf("%w: price %d is not a ladder price point", ErrPublishBasePriceTier, price)
+		}
 	}
 	for neighborKey, neighborPrice := range ctx.PublishedPrices {
 		if neighborKey == p.Key {
