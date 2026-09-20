@@ -10,7 +10,7 @@ test -x "$go_bin/protoc-gen-go-grpc"
 test "$(uv run --locked --project "$root/semantic" python -c 'from importlib.metadata import version; print(version("grpcio-tools"))')" = "1.80.0"
 test "$(uv run --locked --project "$root/semantic" python -c 'from importlib.metadata import version; print(version("grpcio"))')" = "1.80.0"
 test "$(uv run --locked --project "$root/semantic" python -c 'from importlib.metadata import version; print(version("protobuf"))')" = "6.33.6"
-test "$(uv run --locked --project "$root/semantic" python -m grpc_tools.protoc --version)" = "libprotoc 6.31.1"
+test "$(uv run --locked --project "$root/semantic" python -m grpc_tools.protoc --version)" = "libprotoc 31.1"
 test "$("$go_bin/protoc-gen-go" --version)" = "protoc-gen-go v1.36.11"
 test "$("$go_bin/protoc-gen-go-grpc" --version)" = "protoc-gen-go-grpc 1.5.1"
 

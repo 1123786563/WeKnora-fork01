@@ -1,7 +1,7 @@
 # C01 protobuf generator versions
 
 - Python: CPython 3.12.12
-- grpcio-tools: 1.80.0 (embedded protoc 6.31.1)
+- grpcio-tools: 1.80.0 (embedded protoc 31.1)
 - grpcio: 1.80.0
 - protobuf: 6.33.6
 - protoc-gen-go: 1.36.11
