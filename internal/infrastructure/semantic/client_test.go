@@ -15,6 +15,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	semanticpb "github.com/Tencent/WeKnora/semantic/proto"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -69,7 +70,7 @@ func testClientConfig(t *testing.T) (SemanticClientConfig, *testSemanticServer, 
 	return config, serverImpl, func() { server.Stop(); _ = listener.Close() }
 }
 
-func TestClientUsesTLSIdentityAndPreservesTraceMetadata(t *testing.T) {
+func TestClientInjectsApplicationTraceAndRequestID(t *testing.T) {
 	config, server, stop := testClientConfig(t)
 	defer stop()
 	client, err := NewClient(config)
@@ -77,7 +78,13 @@ func TestClientUsesTLSIdentityAndPreservesTraceMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("traceparent", "00-abc-def-01"))
+	tracerProvider := sdktrace.NewTracerProvider()
+	defer func() { _ = tracerProvider.Shutdown(context.Background()) }()
+	ctx, span := tracerProvider.Tracer("semantic-client-test").Start(context.Background(), "application-call")
+	defer span.End()
+	expectedTraceparent := "00-" + span.SpanContext().TraceID().String() + "-" + span.SpanContext().SpanID().String() + "-01"
+	ctx = context.WithValue(ctx, types.RequestIDContextKey, "request-123")
+	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-existing", "preserved"))
 	capabilities, err := client.GetCapabilities(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -92,8 +99,14 @@ func TestClientUsesTLSIdentityAndPreservesTraceMetadata(t *testing.T) {
 	if got := md.Get("x-weknora-audience"); len(got) != 1 || got[0] != "weknora-semantic" {
 		t.Fatalf("audience metadata = %v", got)
 	}
-	if got := md.Get("traceparent"); len(got) != 1 || got[0] != "00-abc-def-01" {
+	if got := md.Get("traceparent"); len(got) != 1 || got[0] != expectedTraceparent {
 		t.Fatalf("trace metadata = %v", got)
+	}
+	if got := md.Get("x-request-id"); len(got) != 1 || got[0] != "request-123" {
+		t.Fatalf("request ID metadata = %v", got)
+	}
+	if got := md.Get("x-existing"); len(got) != 1 || got[0] != "preserved" {
+		t.Fatalf("existing outgoing metadata = %v", got)
 	}
 }
 

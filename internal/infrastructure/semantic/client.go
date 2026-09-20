@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	semanticpb "github.com/Tencent/WeKnora/semantic/proto"
+	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -75,10 +76,34 @@ func traceMetadataInterceptor(ctx context.Context, method string, req, reply any
 	} else {
 		outgoing = metadata.MD{}
 	}
+	// Application callers carry trace context in the active OTel span, not in
+	// incoming gRPC metadata. Inject it into the outgoing RPC metadata so an
+	// HTTP/worker trace remains connected across the semantic service boundary.
+	traceCarrier := propagation.MapCarrier{}
+	propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}).Inject(ctx, traceCarrier)
+	for _, key := range []string{"traceparent", "tracestate", "baggage"} {
+		if outgoing.Get(key) == nil && traceCarrier.Get(key) != "" {
+			outgoing.Set(key, traceCarrier.Get(key))
+		}
+	}
+	if outgoing.Get("x-request-id") == nil {
+		if requestID, ok := types.RequestIDFromContext(ctx); ok {
+			outgoing.Set("x-request-id", requestID)
+		}
+	}
+	// Preserve transport metadata for callers that explicitly entered through
+	// gRPC; it is a fallback only when the application context had no value.
 	if incoming, ok := metadata.FromIncomingContext(ctx); ok {
 		for _, key := range []string{"traceparent", "tracestate", "baggage"} {
-			if values := incoming.Get(key); len(values) > 0 {
-				outgoing.Set(key, values...)
+			if outgoing.Get(key) == nil {
+				if values := incoming.Get(key); len(values) > 0 {
+					outgoing.Set(key, values...)
+				}
+			}
+		}
+		if outgoing.Get("x-request-id") == nil {
+			if values := incoming.Get("x-request-id"); len(values) > 0 {
+				outgoing.Set("x-request-id", values...)
 			}
 		}
 	}
