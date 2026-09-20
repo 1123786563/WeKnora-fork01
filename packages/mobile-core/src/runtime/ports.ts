@@ -17,6 +17,7 @@ export interface RuntimeRemote {
   deploymentCapabilities(accessToken: string): Promise<unknown>;
   oidcUrl(redirectUri: string, frontendRedirectUri?: string, codeChallenge?: string): Promise<{ authorizationUrl: string; state: string }>;
   oidcExchange(code: string, state: string, codeVerifier?: string): Promise<StoredCredential>;
+  oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<StoredCredential>;
 }
 
 /** Declared here for Task 4, which owns persistence and one-time callback consumption. */

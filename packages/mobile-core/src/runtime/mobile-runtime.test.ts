@@ -32,6 +32,7 @@ function remote(overrides: Partial<RuntimeRemote> = {}): RuntimeRemote {
     deploymentCapabilities: async () => FULL_CAPABILITIES,
     oidcUrl: async () => ({ authorizationUrl: 'https://idp.example.test/authorize', state: 'state-1' }),
     oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
+    oidcNativeExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     ...overrides,
   };
 }
@@ -145,15 +146,16 @@ test('late responses after sign out are ignored', async () => {
 test('OIDC persists the verifier and server state before browser launch then a fresh Runtime consumes them once', async () => {
   const pending = pendingStore();
   const browserCalls: string[] = [];
-  const exchangeCalls: Array<{ code: string; state: string; verifier?: string }> = [];
+  const exchangeCalls: Array<{ code: string; state: string; redirectUri: string; codeVerifier: string }> = [];
   const oidcRemote = remote({
     oidcUrl: async (_serverRedirect, frontendRedirect, challenge) => {
       assert.equal(frontendRedirect, 'weknora://oidc');
       assert.equal(challenge, '3Ev4DHdHPRMPoN6GukAY_pi7IUAF5qWJHRK6kURvnoE');
       return { authorizationUrl: 'https://idp.example.test/authorize', state: 'server-state' };
     },
-    oidcExchange: async (code, state, verifier) => {
-      exchangeCalls.push({ code, state, verifier });
+    oidcExchange: async () => { throw new Error('provider-code endpoint must not receive native handoff'); },
+    oidcNativeExchange: async (input) => {
+      exchangeCalls.push(input);
       return { token: 'oidc-access', refreshToken: 'oidc-refresh' };
     },
   });
@@ -176,12 +178,34 @@ test('OIDC persists the verifier and server state before browser launch then a f
   const resumed = createMobileRuntime({ ...ports(store, () => oidcRemote), pendingOidcStore: pending });
   await resumed.completeOidc('weknora://oidc?code=code-1&state=server-state');
 
-  assert.deepEqual(exchangeCalls, [{ code: 'code-1', state: 'server-state', verifier: persistedVerifier }]);
+  assert.deepEqual(exchangeCalls, [{ code: 'code-1', state: 'server-state', redirectUri: 'weknora://oidc', codeVerifier: persistedVerifier }]);
   assert.deepEqual(store.calls, [`write:${DEPLOYMENT.origin}`]);
   assert.equal(resumed.snapshot().surface, 'authorized');
   await resumed.completeOidc('weknora://oidc?code=code-1&state=server-state');
   assert.equal(exchangeCalls.length, 1);
   assert.equal(resumed.snapshot().surface, 'upgrade-required');
+});
+
+test('concurrent native callbacks claim one persisted handoff and exchange it once', async () => {
+  const pending = pendingStore();
+  pending.value = { deploymentOrigin: DEPLOYMENT.origin, state: 'state-1', codeVerifier: 'verifier-1', redirectUri: 'weknora://oidc' };
+  let exchanges = 0;
+  const release = deferred<StoredCredential>();
+  const oidcRemote = remote({
+    oidcExchange: async () => { throw new Error('provider-code endpoint must not receive native handoff'); },
+    oidcNativeExchange: async () => { exchanges += 1; return release.promise; },
+  });
+  const runtime = createMobileRuntime({ ...ports(fakeStore(), () => oidcRemote), pendingOidcStore: pending });
+
+  const first = runtime.completeOidc('weknora://oidc?code=code-1&state=state-1');
+  const second = runtime.completeOidc('weknora://oidc?code=code-1&state=state-1');
+  await Promise.resolve();
+  assert.equal(exchanges, 1);
+  release.resolve({ token: 'access-1', refreshToken: 'refresh-1' });
+  await Promise.all([first, second]);
+
+  assert.equal(exchanges, 1);
+  assert.deepEqual(pending.calls, ['consume']);
 });
 
 test('OIDC consumes and rejects a callback outside its exact registered redirect', async () => {

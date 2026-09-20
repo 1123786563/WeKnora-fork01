@@ -68,6 +68,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let activeDeployment: Deployment | undefined;
   let lease: ScopeLease | undefined;
   let revocableLease: RuntimeScopeLease | undefined;
+  let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
   let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -169,6 +170,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     async completeOidc(callbackUrl: string): Promise<RuntimeSnapshot> {
+      if (oidcCompletion) return oidcCompletion;
+      const completion = (async (): Promise<RuntimeSnapshot> => {
       if (!ports.pendingOidcStore) return state;
       const pending = await ports.pendingOidcStore.consumePending();
       if (!pending) {
@@ -183,13 +186,22 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         const callback = validateAuthReturn(pending.state, callbackUrl, pending.redirectUri);
         const code = callback.searchParams.get('code')?.trim();
         if (!code) throw new Error('AUTH_RETURN');
-        const credential = await ports.remoteFor(deployment.origin).oidcExchange(code, pending.state, pending.codeVerifier);
+        const credential = await ports.remoteFor(deployment.origin).oidcNativeExchange({
+          code, state: pending.state, redirectUri: pending.redirectUri, codeVerifier: pending.codeVerifier,
+        });
         if (!current(requestEpoch, deployment)) return state;
         await ports.credentialStore.write(deployment.origin, credential);
         if (!current(requestEpoch, deployment)) return state;
         return await authenticate(requestEpoch, deployment, credential);
       } catch {
         return safe(requestEpoch, deployment, 'authentication-required');
+      }
+      })();
+      oidcCompletion = completion;
+      try {
+        return await completion;
+      } finally {
+        if (oidcCompletion === completion) oidcCompletion = undefined;
       }
     },
     scopeLease: () => lease,

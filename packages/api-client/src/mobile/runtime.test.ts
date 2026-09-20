@@ -102,7 +102,7 @@ test('delegates auth flows to createAuthApi endpoints on the same transport', as
     if (input.path === '/api/v1/auth/me') return { success: true, data: { user: { id: 'u-1' }, tenant: { id: 7 } } };
     if (input.path === '/api/v1/auth/oidc/config') return { success: true, enabled: true, provider_display_name: 'Acme SSO' };
     if (input.path.startsWith('/api/v1/auth/oidc/url')) return { success: true, authorization_url: 'https://idp.test/authorize', state: 'state-1' };
-    if (input.path === '/api/v1/auth/oidc/exchange') return { success: true, token: 'a-2', refresh_token: 'r-2' };
+    if (input.path === '/api/v1/auth/mobile/exchange') return { success: true, token: 'a-2', refresh_token: 'r-2' };
     if (input.path === '/api/v1/auth/refresh') return { success: true, access_token: 'a-3', refresh_token: 'r-3' };
     throw new Error(`unexpected path ${input.path}`);
   });
@@ -118,7 +118,7 @@ test('delegates auth flows to createAuthApi endpoints on the same transport', as
     await remote.oidcUrl('https://app.test/callback', 'https://app.test/finish', 'challenge-1'),
     { authorizationUrl: 'https://idp.test/authorize', state: 'state-1' },
   );
-  assert.deepEqual(await remote.oidcExchange('code-1', 'state-1', 'verifier-1'), { token: 'a-2', refreshToken: 'r-2', user: undefined, tenant: undefined, memberships: undefined });
+  assert.deepEqual(await remote.oidcNativeExchange({ code: 'code-1', state: 'state-1', redirectUri: 'weknora://oidc', codeVerifier: 'verifier-1' }), { token: 'a-2', refreshToken: 'r-2' });
   assert.deepEqual(await remote.refresh('r-1'), { access_token: 'a-3', refresh_token: 'r-3' });
 
   const byPath = (path: string): ClientRequest => {
@@ -133,7 +133,10 @@ test('delegates auth flows to createAuthApi endpoints on the same transport', as
   assert.ok(byPath('/api/v1/auth/oidc/url').path.includes('redirect_uri=https%3A%2F%2Fapp.test%2Fcallback'));
   assert.ok(byPath('/api/v1/auth/oidc/url').path.includes('frontend_redirect_uri=https%3A%2F%2Fapp.test%2Ffinish'));
   assert.ok(byPath('/api/v1/auth/oidc/url').path.includes('code_challenge=challenge-1'));
-  assert.deepEqual(byPath('/api/v1/auth/oidc/exchange').body, { code: 'code-1', state: 'state-1', code_verifier: 'verifier-1' });
+  assert.deepEqual(byPath('/api/v1/auth/mobile/exchange'), {
+    method: 'POST', path: '/api/v1/auth/mobile/exchange',
+    body: { code: 'code-1', state: 'state-1', redirect_uri: 'weknora://oidc', code_verifier: 'verifier-1' },
+  });
   assert.deepEqual(byPath('/api/v1/auth/refresh').body, { refreshToken: 'r-1' });
 });
 

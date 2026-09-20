@@ -1,4 +1,5 @@
 import { createAuthApi, type AuthMe, type AuthSession, type OIDCConfig, type OIDCURL } from '../auth/endpoints.ts';
+import { createOIDCApi } from '../auth/oidc.ts';
 import type { ClientRequest } from '../client.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
@@ -19,6 +20,7 @@ export interface MobileRuntimeRemote {
   oidcConfig(): Promise<OIDCConfig>;
   oidcUrl(redirectURI: string, frontendRedirectURI?: string, codeChallenge?: string): Promise<OIDCURL>;
   oidcExchange(code: string, state: string, codeVerifier?: string): Promise<AuthSession>;
+  oidcNativeExchange(input: { code: string; state: string; redirectUri: string; codeVerifier: string }): Promise<{ token: string; refreshToken: string }>;
   refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }>;
   /**
    * GET /api/v1/system/capabilities（internal/handler/deployment_capabilities.go，
@@ -58,10 +60,18 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function nativeCredential(value: { success: boolean; token?: string; refresh_token?: string; message?: string }): { token: string; refreshToken: string } {
+  if (value.success !== true) throw new Error(value.message || 'native OIDC exchange failed');
+  if (typeof value.token !== 'string' || value.token.trim() === '') throw new Error('native OIDC access token is required');
+  if (typeof value.refresh_token !== 'string' || value.refresh_token.trim() === '') throw new Error('native OIDC refresh token is required');
+  return { token: value.token, refreshToken: value.refresh_token };
+}
+
 export function createMobileRuntimeRemote(options: MobileRuntimeRemoteOptions): MobileRuntimeRemote {
   requireDeploymentOrigin(options.origin);
   const request = options.request;
   const auth = createAuthApi(request);
+  const oidc = createOIDCApi(request);
   return {
     passwordLogin(input) {
       return auth.login(input);
@@ -77,6 +87,11 @@ export function createMobileRuntimeRemote(options: MobileRuntimeRemoteOptions): 
     },
     oidcExchange(code: string, state: string, codeVerifier?: string) {
       return auth.oidcExchange(code, state, codeVerifier);
+    },
+    async oidcNativeExchange(input) {
+      return nativeCredential(await oidc.exchangeNative({
+        code: input.code, state: input.state, redirect_uri: input.redirectUri, code_verifier: input.codeVerifier,
+      }));
     },
     refresh(refreshToken: string) {
       return auth.refresh(refreshToken);
