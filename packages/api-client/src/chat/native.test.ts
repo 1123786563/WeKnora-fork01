@@ -67,6 +67,15 @@ test('keeps missing or malformed version fields as contract errors', async () =>
   );
 });
 
+test('keeps empty or syntactically invalid versions at the contract-validation boundary', async () => {
+  for (const unsupported of [event({ protocol: '' }), event({ protocol: 'weknora.agent.v' }), event({ schema_version: 1.5 }), event({ schema_version: 0 })]) {
+    await assert.rejects(
+      consumeNativeEventStream(async () => `data: ${JSON.stringify(unsupported)}\n\n`, { sessionId: 'session-1', runId: runID }, () => {}),
+      (error: unknown) => error instanceof ContractError,
+    );
+  }
+});
+
 test('keeps malformed and private wire projections at the contract-validation boundary', async () => {
   const privateProjection = event({ payload: { ...event().payload as Record<string, unknown>, provider_receipt: 'secret' } });
   await assert.rejects(
@@ -112,13 +121,19 @@ test('consumes HttpTransport chunks incrementally and retains a non-success stre
   ));
 });
 
-test('reloads the authoritative snapshot after 409 and reconnects with its cursor', async () => {
+test('replaces stale state from a strict authoritative snapshot before reconnecting after 409', async () => {
   const requests: Array<{ path: string; headers?: Record<string, string> }> = [];
   let opens = 0;
   const api = createNativeAgentApi({
     request: async (request) => {
       requests.push({ path: request.path, headers: request.headers });
-      return { success: true, data: { last_event_id: 'v1:cnVuLzE:8' } };
+      return {
+        success: true,
+        data: {
+          last_event_id: 'v1:cnVuLzE:8',
+          events: [event({ event_id: 'snapshot-8', seq: '8', kind: 'run.status', attempt_id: undefined, payload: { status: 'running' } })],
+        },
+      };
     },
     sendStream: async (request) => {
       requests.push({ path: request.path, headers: request.headers });
@@ -129,17 +144,38 @@ test('reloads the authoritative snapshot after 409 and reconnects with its curso
     },
   });
   const received: string[] = [];
-  await api.follow({ sessionId: 'session-1', runId: runID, lastEventId: cursor }, (item) => received.push(item.event_id));
+  let state = ['stale-event'];
+  await api.follow(
+    { sessionId: 'session-1', runId: runID, lastEventId: cursor },
+    (item) => received.push(item.event_id),
+    (snapshot) => { state = snapshot.events.map((item) => item.event_id); },
+  );
   assert.deepEqual(received, ['event-9']);
+  assert.deepEqual(state, ['snapshot-8']);
   assert.equal(requests[1]?.path, '/api/v1/native-agent/sessions/session-1/runs/run%2F1');
   assert.equal(requests[2]?.headers?.['Last-Event-ID'], 'v1:cnVuLzE:8');
+});
+
+test('stops after one unsuccessful 409 recovery instead of reconnecting in a tight loop', async () => {
+  let opens = 0;
+  const api = createNativeAgentApi({
+    request: async () => ({ success: true, data: { last_event_id: cursor, events: [] } }),
+    sendStream: async () => {
+      opens += 1;
+      return { status: 409, headers: {}, chunks: (async function* () {})() };
+    },
+  });
+  await assert.rejects(api.follow({ sessionId: 'session-1', runId: runID, lastEventId: cursor }, () => {}, () => {}), (error: unknown) => (
+    typeof error === 'object' && error !== null && (error as { status?: unknown }).status === 409
+  ));
+  assert.equal(opens, 2);
 });
 
 test('aborts an old scope before it can open a reconnect stream', async () => {
   let opened = 0;
   let captured: AbortSignal | undefined;
   const api = createNativeAgentApi({
-    request: async () => ({ success: true, data: { last_event_id: cursor } }),
+    request: async () => ({ success: true, data: { last_event_id: cursor, events: [] } }),
     sendStream: async (request) => {
       opened += 1;
       captured = request.signal;

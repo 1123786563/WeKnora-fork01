@@ -70,6 +70,7 @@ export class NativeStreamHttpError extends Error {
 
 export interface NativeSnapshot {
   last_event_id: string;
+  events: readonly NativeEvent[];
 }
 
 function required(value: string, name: string): string {
@@ -124,7 +125,10 @@ export function parseNativeStreamEvent(frame: ParsedServerSentEvent): NativeEven
     if (error instanceof NativeProtocolError) throw error;
     const hasWellFormedVersion = typeof value === 'object' && value !== null && !Array.isArray(value)
       && typeof (value as Record<string, unknown>).protocol === 'string'
-      && typeof (value as Record<string, unknown>).schema_version === 'number';
+      && /^weknora\.agent\.v[1-9]\d*$/.test((value as Record<string, unknown>).protocol as string)
+      && typeof (value as Record<string, unknown>).schema_version === 'number'
+      && Number.isSafeInteger((value as Record<string, unknown>).schema_version)
+      && ((value as Record<string, unknown>).schema_version as number) >= 1;
     if (hasWellFormedVersion && error instanceof ContractError && (error.path === 'protocol' || error.path === 'schema_version')) {
       throw new NativeProtocolError(error);
     }
@@ -138,10 +142,18 @@ export function parseNativeSnapshot(value: unknown, runId: string): NativeSnapsh
   if (envelope.success !== true || typeof envelope.data !== 'object' || envelope.data === null || Array.isArray(envelope.data)) {
     throw new Error('native snapshot response must be a success envelope');
   }
-  const lastEventID = (envelope.data as Record<string, unknown>).last_event_id;
+  const data = envelope.data as Record<string, unknown>;
+  for (const key of Object.keys(data)) {
+    if (key !== 'last_event_id' && key !== 'events') throw new ContractError(`snapshot.${key}`, 'is not public snapshot data');
+  }
+  const lastEventID = data.last_event_id;
   const cursor = parseLastEventID(lastEventID);
   if (cursor.run_id !== runId) throw new ContractError('run_id', 'must match the snapshot cursor run');
-  return { last_event_id: lastEventID as string };
+  if (!Array.isArray(data.events)) throw new ContractError('snapshot.events', 'must be an array');
+  const events = data.events.map(parseNativeEvent);
+  if (events.some((event) => event.run_id !== runId)) throw new ContractError('snapshot.events.run_id', 'must match the snapshot run');
+  if (events.some((event) => BigInt(event.seq) > cursor.sequence)) throw new ContractError('snapshot.events.seq', 'must not exceed the snapshot cursor');
+  return { last_event_id: lastEventID as string, events };
 }
 
 export async function consumeNativeEventStream(
@@ -211,8 +223,13 @@ export function createNativeAgentApi(input: Request | NativeAgentApiDeps) {
     return parseNativeSnapshot(await deps.request(buildNativeSnapshotRequest(sessionId, runId, signal)), runId);
   }
 
-  async function follow(options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
+  async function follow(
+    options: NativeEventStreamOptions,
+    onEvent: (event: NativeEvent) => void,
+    onSnapshot: (snapshot: NativeSnapshot) => void | Promise<void> = () => {},
+  ): Promise<void> {
     let lastEventId = options.lastEventId;
+    let recovered = false;
     while (!isAborted(options.signal)) {
       try {
         await stream({ ...options, ...(lastEventId === undefined ? {} : { lastEventId }) }, onEvent);
@@ -220,7 +237,11 @@ export function createNativeAgentApi(input: Request | NativeAgentApiDeps) {
       } catch (error: unknown) {
         if (isAborted(options.signal)) return;
         if (!(error instanceof NativeStreamHttpError) || error.status !== 409) throw error;
+        if (recovered) throw error;
+        recovered = true;
         const authoritative = await snapshot(options.sessionId, options.runId, options.signal);
+        if (isAborted(options.signal)) return;
+        await onSnapshot(authoritative);
         if (isAborted(options.signal)) return;
         lastEventId = authoritative.last_event_id;
       }
@@ -237,7 +258,12 @@ export function createNativeAgentApi(input: Request | NativeAgentApiDeps) {
         controller = new AbortController();
         scopeKey = nextScopeKey;
       },
-      async follow(nextScopeKey: string, options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
+      async follow(
+        nextScopeKey: string,
+        options: NativeEventStreamOptions,
+        onEvent: (event: NativeEvent) => void,
+        onSnapshot: (snapshot: NativeSnapshot) => void | Promise<void> = () => {},
+      ): Promise<void> {
         required(nextScopeKey, 'scopeKey');
         if (scopeKey !== nextScopeKey) this.advanceScope(nextScopeKey);
         const active = controller;
@@ -245,6 +271,8 @@ export function createNativeAgentApi(input: Request | NativeAgentApiDeps) {
         try {
           await follow({ ...options, signal: joined.signal }, (event) => {
             if (controller === active && !joined.signal.aborted) onEvent(event);
+          }, async (snapshot) => {
+            if (controller === active && !joined.signal.aborted) await onSnapshot(snapshot);
           });
         } finally {
           joined.dispose();
