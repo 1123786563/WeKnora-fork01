@@ -28,7 +28,7 @@ export function PaseoScreenTitle({ children, numberOfLines = 1, testID, style }:
       }),
     [theme],
   );
-  const combinedStyle = useMemo(() => [styles.text, style], [style]);
+  const combinedStyle = useMemo(() => [styles.text, style], [styles.text, style]);
 
   return (
     <Text style={combinedStyle} numberOfLines={numberOfLines} testID={testID}>
