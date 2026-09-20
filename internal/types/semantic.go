@@ -86,7 +86,7 @@ func SemanticOperationToWire(value SemanticOperation) (*semanticpb.Operation, er
 }
 
 func SemanticOperationRefFromWire(wire *semanticpb.OperationRef) (SemanticOperationRef, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.OperationId == "" {
+	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.OperationId == "" {
 		return SemanticOperationRef{}, fmt.Errorf("semantic operation reference is incomplete")
 	}
 	return SemanticOperationRef{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, OperationID: wire.OperationId}, nil
@@ -97,7 +97,7 @@ func SemanticOperationRefToWire(value SemanticOperationRef) *semanticpb.Operatio
 }
 
 func SemanticDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (SemanticDocumentRevision, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.DocumentId == "" || wire.Revision == 0 {
+	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.DocumentId == "" || wire.Revision == 0 {
 		return SemanticDocumentRevision{}, fmt.Errorf("semantic document revision is incomplete")
 	}
 	return SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, ContentHash: wire.ContentHash, Deleted: wire.Deleted}, nil
@@ -177,7 +177,7 @@ type SemanticAccessScope struct {
 }
 
 func SemanticAccessScopeFromWire(wire *semanticpb.AccessScope) (SemanticAccessScope, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
+	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope is incomplete")
 	}
 	if _, err := time.Parse(time.RFC3339, wire.ExpiresAt); err != nil {
