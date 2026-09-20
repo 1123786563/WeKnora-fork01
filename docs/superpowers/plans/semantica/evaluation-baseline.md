@@ -18,8 +18,10 @@ calls the bounded ledger is 43 of 80. The V03 extraction profile
 permits 512 output tokens and 8192 bytes; V02's 96-token/1200-byte profile is
 unchanged. No truncation was observed.
 
-The retained result rows are `semantica-results.jsonl`: precision 0.3333,
-recall 0.8333, two correct answers, and zero correct abstentions. Three cases
+The corrected retained result rows are `semantica-results.jsonl`: precision
+0.3333, recall 0.8333, one correct conclusion, and zero correct abstentions.
+It replaces only the earlier candidate artifact because its collector mixed
+case usage; that historical output remains evidence of the defect. Three cases
 are retained as `failed` specifically because their source-validated graph
 retrieval was empty; they are not relabelled as negative results. Evidence IDs
 come only from retrieved graph provenance, never from allowed scope.
@@ -45,6 +47,7 @@ configuration is different from the Semantica candidate: it is the existing Go
 graph pipeline with a remote-loopback local model registration rather than
 Semantica's public NER/RE API.
 
-Every native case has cold and warm query timing plus index timing; native
-usage remains unavailable. The policy is closed (`approved: false`); the
+Candidate cold/warm query and index distributions are separate fields in the
+final summary (three available measurements each); native usage remains
+unavailable. The policy is closed (`approved: false`); the
 proposed numbers are not promotion approval.
