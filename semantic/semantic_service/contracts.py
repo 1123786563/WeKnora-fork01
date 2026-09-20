@@ -46,6 +46,42 @@ class DeleteDocumentRequest:
         return cls(revision=revision)
 
 
+@dataclass(frozen=True)
+class Evidence:
+    evidence_id: str
+    document_id: str
+    revision: int
+    chunk_id: str
+    content_hash: str
+    quote: str
+    start_char: int | None
+    end_char: int | None
+
+    def __post_init__(self) -> None:
+        if not self.quote or not 1 <= self.revision <= UINT64_MAX:
+            raise ValueError("evidence quote and uint64 revision are required")
+        if (self.start_char is None) != (self.end_char is None):
+            raise ValueError("evidence span must be fully absent or present")
+        if self.start_char is not None and (self.start_char < 0 or self.end_char <= self.start_char):
+            raise ValueError("evidence span must be a positive half-open range")
+
+
+@dataclass(frozen=True)
+class AccessScope:
+    scope: ScopeKey
+    subject_id: str
+    scope_ref: str
+    scope_hash: str
+    permission_epoch: int
+    audience: str
+    purpose: str
+    budget_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.audience or not self.purpose or self.permission_epoch < 0:
+            raise ValueError("access scope identity fields are required")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
