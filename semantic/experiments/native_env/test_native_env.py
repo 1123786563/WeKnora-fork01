@@ -69,6 +69,7 @@ class NativeEnvClientTest(unittest.TestCase):
         thread.start()
         try:
             client = NativeEnvClient(f"http://127.0.0.1:{server.server_port}", "test-token", timeout_seconds=2)
+            client.bind_evidence("k-1", "e-graph-1")
             result = client.query(
                 {"case_id": "q-1", "document_revision": "fixture-v1", "question": "甲依赖什么？"},
                 ["d-1", "d-2"],
@@ -82,10 +83,14 @@ class NativeEnvClientTest(unittest.TestCase):
         self.assertEqual(result["actual_mode"], "native")
         self.assertEqual(result["case_id"], "q-1")
         self.assertEqual(result["document_revision"], "fixture-v1")
-        self.assertEqual(result["evidence_ids"], ["d-1", "d-2"])
+        self.assertEqual(result["evidence_ids"], ["e-graph-1"])
         self.assertEqual(result["references"][0]["match_type"], "graph")
         self.assertGreaterEqual(result["latency_ms"], 0)
         self.assertEqual(_Handler.calls[-1][1]["knowledge_ids"], ["d-1", "d-2"])
+
+    def test_query_does_not_report_allowed_scope_without_graph_reference(self) -> None:
+        client = NativeEnvClient("http://127.0.0.1:18081", "test-token")
+        self.assertEqual(client.evidence_ids_for_references([], ["d-1"]), [])
 
 
 if __name__ == "__main__":

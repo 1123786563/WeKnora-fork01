@@ -167,6 +167,22 @@ class NativeEnvClient:
     def bind_graph_model(self, knowledge_base_id: str, model_id: str) -> dict[str, Any]:
         return self._request(f"/api/v1/initialization/config/{knowledge_base_id}", self.initialization_payload(model_id), method="PUT")
 
+    def bind_evidence(self, knowledge_id: str, evidence_id: str) -> None:
+        """Associate a runtime knowledge ID with its frozen dataset evidence ID."""
+        self._knowledge_evidence[knowledge_id] = evidence_id
+
+    def evidence_ids_for_references(self, references: Sequence[Mapping[str, Any]], _allowed_document_ids: Sequence[str]) -> list[str]:
+        """Return only evidence actually cited by graph references.
+
+        The allowed document IDs constrain the request body; they are never
+        result evidence by themselves.
+        """
+        return list(dict.fromkeys(
+            self._knowledge_evidence[reference["knowledge_id"]]
+            for reference in references
+            if reference.get("match_type") == "graph" and reference.get("knowledge_id") in self._knowledge_evidence
+        ))
+
     def query(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str) -> dict[str, Any]:
         if not case.get("case_id") or not case.get("document_revision") or not case.get("question"):
             raise ValueError("case_id, document_revision, and question are required")
@@ -181,7 +197,7 @@ class NativeEnvClient:
             "case_id": case["case_id"], "document_revision": case["document_revision"],
             "requested_mode": "native", "actual_mode": "native", "status": "completed",
             "engine_version": self.engine_version, "model_version": self.model_version,
-            "evidence_ids": list(allowed_document_ids), "references": references,
+            "evidence_ids": self.evidence_ids_for_references(references, allowed_document_ids), "references": references,
             "latency_ms": round((time.monotonic() - started) * 1000, 3), "tokens": None, "error": None,
         }
 
