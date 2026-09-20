@@ -230,6 +230,20 @@ def operation_from_wire(wire) -> Operation:
     return Operation(wire.operation_id, ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, states[wire.state], wire.stage, wire.lease_token, wire.result_generation if wire.HasField("result_generation") else None, wire.error_code if wire.HasField("error_code") else None)
 
 
+def search_response_to_wire(value: SearchResponse):
+    from semantic_service.proto import semantic_pb2
+    modes = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}
+    return semantic_pb2.SearchResponse(query_id=value.query_id, generation=value.generation, requested_mode=modes[value.requested_mode], actual_mode=modes[value.actual_mode], evidence=[evidence_to_wire(item) for item in value.evidence], assertion_ids=list(value.assertion_ids), paths=[semantic_pb2.StringPath(ids=list(path)) for path in value.paths], stale=value.stale, partial=value.partial, truncated=value.truncated)
+
+
+def search_response_from_wire(wire) -> SearchResponse:
+    from semantic_service.proto import semantic_pb2
+    modes = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
+    if wire.requested_mode not in modes or wire.actual_mode not in modes:
+        raise ValueError("unknown retrieval mode")
+    return SearchResponse(wire.query_id, wire.generation, modes[wire.requested_mode], modes[wire.actual_mode], tuple(evidence_from_wire(item) for item in wire.evidence), tuple(wire.assertion_ids), tuple(tuple(path.ids) for path in wire.paths), wire.stale, wire.partial, wire.truncated)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

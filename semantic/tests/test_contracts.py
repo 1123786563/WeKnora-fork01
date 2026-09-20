@@ -137,3 +137,10 @@ def test_operation_wire_round_trip_preserves_state() -> None:
 
     value = Operation("op", ScopeKey(1, "kb"), "doc", 1, "running", "index", 2, "g", None)
     assert operation_from_wire(operation_to_wire(value)) == value
+
+
+def test_search_response_wire_round_trip_preserves_modes() -> None:
+    from semantic_service.contracts import Evidence, SearchResponse, search_response_from_wire, search_response_to_wire
+
+    value = SearchResponse("q", "g", "graph_rag", "graph_rag", (Evidence("e", "d", 1, "c", "h", "文本", None, None),), ("a",))
+    assert search_response_from_wire(search_response_to_wire(value)) == value
