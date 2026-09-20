@@ -1,0 +1,64 @@
+Lago T01 real runtime run narrative (sanitized operator log)
+Ticket: #73 [Lago 01] pinned Lago Community integration environment
+Machine: macOS arm64 (Apple Silicon), Docker 29.4.0, Docker Compose v5.1.2
+All timestamps UTC 2026-09-20. No secret values appear in this file.
+
+16:38:12  ./deploy/lago/lago.sh up  (image pull + create + --wait)
+          Pulls the five images pinned in images.lock.json:
+            getlago/api                v1.53.0   (~1.02 GB, largest)
+            getlago/front              v1.53.0   (~192 MB)
+            getlago/postgres-partman   15.0-alpine
+            redis                      7-alpine
+            getlago/lago-gotenberg     7.8.2     (linux/amd64 only; runs
+                                                   emulated on Apple Silicon)
+16:41:20  up exit 0 after 3m08s. Compose --wait reported, in order:
+            db Healthy -> redis Healthy -> migrate (one-shot) exited 0
+            -> api Healthy, api-worker Healthy, api-clock running,
+               front Healthy, pdf Healthy
+16:41:3x  ./deploy/lago/lago.sh status --json
+          overall: "ready"
+            api healthy | api-worker healthy | db healthy | redis healthy
+            api-clock running_unverified | front running_unverified
+            pdf running_unverified
+          release v1.53.0 and all five digests reported from images.lock.json
+          -> captured verbatim as t01-health.json
+
+16:42:13  First-run operator seeding (api has no REST onboarding in v1.53.0;
+          the official path is the on-premise rake seed executed by the
+          migrate one-shot while LAGO_CREATE_ORG=true):
+            cd deploy/lago && docker compose run --rm migrate
+          output ends:
+            "starting seeding environment"
+            "ending seeding environment"
+16:42:21  seed complete (8s): organization + operator user + API key created
+          from the LAGO_ORG_* values in the local gitignored .env.
+
+16:42:27  ./deploy/lago/lago.sh contract-probe --output .../t01-contract.json
+          with LAGO_API_KEY taken from .env into the caller environment
+          (value never printed, never written to any report or commit).
+          status: "pass" (exit 0)
+            health  GET    /health                -> 200 ok
+            create  POST   /api/v1/customers      -> 200 created
+                    external_id weknora-t01-probe-ccac2d4c-f8ed-4e9b-be02-a22a087dbc3b
+            cleanup DELETE /api/v1/customers/<id> -> 200 deleted
+          -> captured verbatim as t01-contract.json
+
+16:42:4x  Extra manual checks (not part of the probe contract):
+            GET http://127.0.0.1:48890/ (front, loopback) -> HTTP 200
+            GraphQL mutation loginUser(input:{email,password}) for the
+            seeded operator account -> token returned, user
+            ops-t01@weknora.local, organization "WeKnora T01"
+
+16:43:09  ./deploy/lago/lago.sh down   (no -v)
+16:43:15  down exit 0 after 6s. All project containers and the project
+          network removed; docker ps -a shows no lago containers.
+          Named volumes preserved (docker volume ls):
+            weknora-lago_lago_postgres_data
+            weknora-lago_lago_redis_data
+            weknora-lago_lago_storage_data
+          (postgres data, redis data, and the seeded operator account +
+          API key therefore survive a down/up cycle; a later up reuses
+          them without re-seeding.)
+
+Runtime image digests actually pulled match images.lock.json for all
+five services -> captured as t01-images.txt.
