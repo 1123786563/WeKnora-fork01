@@ -167,3 +167,15 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 		t.Fatalf("scope round trip = %#v, %v", roundTrip, err)
 	}
 }
+
+func TestSemanticAccessScopeRejectsMalformedExpiryAndUnknownPurpose(t *testing.T) {
+	base := &semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: 1, KbId: "kb"}, SubjectId: "user", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "not-a-time", Audience: "semantic", Purpose: semanticpb.Purpose_PURPOSE_SEARCH, BudgetRef: "budget"}
+	if _, err := SemanticAccessScopeFromWire(base); err == nil {
+		t.Fatal("expected malformed expiry rejection")
+	}
+	base.ExpiresAt = "2026-09-20T00:00:00Z"
+	base.Purpose = semanticpb.Purpose(99)
+	if _, err := SemanticAccessScopeFromWire(base); err == nil {
+		t.Fatal("expected unknown purpose rejection")
+	}
+}

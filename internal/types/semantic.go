@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"time"
 
 	semanticpb "github.com/Tencent/WeKnora/semantic/proto"
 )
@@ -179,7 +180,14 @@ func SemanticAccessScopeFromWire(wire *semanticpb.AccessScope) (SemanticAccessSc
 	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope is incomplete")
 	}
-	purpose := wire.Purpose.String()
+	if _, err := time.Parse(time.RFC3339, wire.ExpiresAt); err != nil {
+		return SemanticAccessScope{}, fmt.Errorf("semantic access scope expiry is invalid")
+	}
+	purposes := map[semanticpb.Purpose]string{semanticpb.Purpose_PURPOSE_SEARCH: "PURPOSE_SEARCH", semanticpb.Purpose_PURPOSE_REASON: "PURPOSE_REASON", semanticpb.Purpose_PURPOSE_INDEX: "PURPOSE_INDEX"}
+	purpose, ok := purposes[wire.Purpose]
+	if !ok {
+		return SemanticAccessScope{}, fmt.Errorf("semantic access scope purpose is unsupported")
+	}
 	return SemanticAccessScope{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, ExpiresAt: wire.ExpiresAt, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
 }
 
