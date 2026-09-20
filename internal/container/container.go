@@ -126,7 +126,14 @@ func (tenantReleaseDependencyResolver) Resolve(_ context.Context, _ uint64, vers
 		return types.DependencyLock{}, fmt.Errorf("cannot resolve dependencies for an empty agent version")
 	}
 	if len(version.Agent.Config.SelectedSkills) > 0 || len(version.Agent.Config.Subagents) > 0 {
-		return types.DependencyLock{}, fmt.Errorf("release dependencies require immutable redistributable versions; the tenant catalog resolver is not configured")
+		missing := make([]string, 0, len(version.Agent.Config.SelectedSkills)+len(version.Agent.Config.Subagents))
+		for _, id := range version.Agent.Config.SelectedSkills {
+			missing = append(missing, fmt.Sprintf("skill %q", id))
+		}
+		for _, id := range version.Agent.Config.Subagents {
+			missing = append(missing, fmt.Sprintf("subagent %q", id))
+		}
+		return types.DependencyLock{}, fmt.Errorf("missing immutable redistributable dependencies: %s", strings.Join(missing, ", "))
 	}
 	return types.DependencyLock{Dependencies: []types.AgentReleaseDependency{}}, nil
 }

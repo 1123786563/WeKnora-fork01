@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -88,6 +89,10 @@ func (h *AgentVersionHandler) GetAgentVersion(c *gin.Context) {
 		c.Request.Context(), sandboxConfigTenantID(c), c.Param("versionId"))
 	if err != nil {
 		_ = c.Error(err)
+		return
+	}
+	if snapshot.AgentID != c.Param("id") {
+		_ = c.Error(apperrors.NewNotFoundError("agent version not found"))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": snapshot})

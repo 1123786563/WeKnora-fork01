@@ -118,6 +118,8 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.NoError(t, json.Unmarshal(frozen.Body.Bytes(), &frozenBody))
 	require.NotEmpty(t, frozenBody.Data.ID)
 	require.NotEmpty(t, frozenBody.Data.SourceSHA256)
+	wrongAgentVersionPath := call(http.MethodGet, "/api/v1/agents/agent-other/versions/"+frozenBody.Data.ID, "viewer", "viewer", nil)
+	require.Equal(t, http.StatusNotFound, wrongAgentVersionPath.Code, wrongAgentVersionPath.Body.String())
 
 	metadata := map[string]any{"semantic_version": "1.0.0", "display_name": "Release helper", "summary": "A helpful agent", "supported_languages": []string{"en"}, "use_cases": []string{"support"}, "minimum_weknora_capability": "1", "license_id": "MIT"}
 	submitted := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "contributor", "contributor", map[string]any{"agent_version_id": frozenBody.Data.ID, "metadata": metadata})
