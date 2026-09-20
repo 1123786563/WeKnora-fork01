@@ -27,11 +27,10 @@ export interface ReleaseMetadataInput {
   change_notes?: string;
 }
 
-export interface ReviewReleaseInput {
-  expected_digest: string;
-  decision: 'approved' | 'rejected' | 'changes_requested';
-  reason?: string;
-}
+export type ReviewReleaseInput =
+  | { expected_digest: string; decision: 'approved'; reason?: string }
+  | { expected_digest: string; decision: 'rejected'; reason: string }
+  | { expected_digest: string; decision: 'changes_requested'; reason: string };
 
 export interface TenantReleaseReviewResult {
   review: ReleaseReview;
@@ -67,8 +66,13 @@ export function createTenantReleaseApi(request: Request) {
       if (input.decision !== 'approved' && input.decision !== 'rejected' && input.decision !== 'changes_requested') {
         throw new Error('decision must be approved, rejected, or changes_requested');
       }
-      const reason = input.reason;
-      if (reason !== undefined && typeof reason !== 'string') throw new Error('reason must be a string');
+      let reason: string | undefined;
+      if (input.decision === 'approved') {
+        reason = input.reason;
+        if (reason !== undefined && typeof reason !== 'string') throw new Error('reason must be a string');
+      } else {
+        reason = required(input.reason, 'reason');
+      }
       return parseReleaseReviewResponse(await request({
         method: 'POST',
         path: `${base}/release-submissions/${encodeURIComponent(required(submissionID, 'submissionID'))}/review`,
