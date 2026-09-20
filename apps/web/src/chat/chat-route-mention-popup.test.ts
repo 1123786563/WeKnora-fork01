@@ -124,11 +124,13 @@ async function loadBundle(): Promise<void> {
 
 // --- fixtures ----------------------------------------------------------------
 
-/** R489 D12 repro: the parity tenant's KBs, none of which carry model ids. */
+/** R489 D12 repro: the parity tenant's KBs (live shapes, 2026-09-20). FAQ has
+ *  a summary LLM but no embedding model (chunk-indexed → not ready); the
+ *  other two never configured the summary LLM at all. */
 const RAW_PARITY_KBS = [
-  { id: 'kb-faq', name: 'Parity FAQ Fixture', type: 'faq' },
-  { id: 'kb-wiki', name: 'Wiki Parity Fixture', capabilities: { wiki: true } },
-  { id: 'kb-demo', name: 'Parity KB Demo' },
+  { id: 'kb-faq', name: 'Parity FAQ Fixture', type: 'faq', summary_model_id: 'builtin-llm-mock', embedding_model_id: '', indexing_strategy: { vector_enabled: true, keyword_enabled: true, wiki_enabled: false, graph_enabled: false }, capabilities: { faq: true, vector: true, keyword: true } },
+  { id: 'kb-wiki', name: 'Wiki Parity Fixture', summary_model_id: '', embedding_model_id: '', indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true, graph_enabled: false }, capabilities: { wiki: true } },
+  { id: 'kb-demo', name: 'Parity KB Demo', summary_model_id: '', embedding_model_id: '', indexing_strategy: { vector_enabled: true, keyword_enabled: true, wiki_enabled: false, graph_enabled: false }, capabilities: { vector: true, keyword: true } },
 ];
 
 /** A KB that finished model configuration (chatResources.isKbModelReady). */

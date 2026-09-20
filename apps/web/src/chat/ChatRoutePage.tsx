@@ -20,7 +20,7 @@ import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 // R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
-import { deriveKbFilterForAgent, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
+import { deriveKbFilterForAgent, isKbModelReady, mergeSharedKbsForMention, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
 // R490 B3 — Vue botmsg handleAddToKnowledge: prefilled manual-editor dialog.
 import { BookmarkAnswerDialog, buildManualBookmarkContent, formatManualBookmarkTitle } from './BookmarkAnswerDialog.tsx';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip, resolveChatModelOptions } from './model-chip.ts';
@@ -1481,11 +1481,17 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       ? client.configuration.skills.list()
       : Promise.resolve([] as any[]);
     const hasSkillList = typeof client.configuration?.skills?.list === 'function';
+    // R490 B1 — orgStore.sharedKnowledgeBases (Input-field.vue 1278): the
+    // shared rows merge into the @ list; a failure degrades to no shares.
+    const sharedList = client.identity?.organizations?.knowledgeBaseShares?.listShared
+      ? client.identity.organizations.knowledgeBaseShares.listShared().catch(() => [])
+      : Promise.resolve([] as unknown[]);
     void Promise.allSettled([
       client.knowledgeBases.list({ creator: 'all' }),
       documentSearch,
       mcpList,
       skillList,
+      sharedList,
     ]).then(
       async (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
@@ -1499,10 +1505,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           return;
         }
         const kbValues = results[0].status === 'fulfilled' ? results[0].value : [];
+        // R490 B1 — mirror the Vue @ list base (Input-field.vue 1240-1284 +
+        // chatResources.validKnowledgeBases): own KBs must pass the
+        // isKbModelReady initialization filter (summary LLM configured,
+        // embedding model bound for chunk indexing), then writable-shared KBs
+        // merge after them (deduped by id, shares bypass the readiness gate).
+        const sharedValues = results[4] && results[4].status === 'fulfilled' ? results[4].value : [];
+        const mentionBaseKbs = mergeSharedKbsForMention(
+          kbValues.filter((item) => isKbModelReady(item)),
+          Array.isArray(sharedValues) ? sharedValues : [],
+        );
         // R490 B1 — resolveMentionAgentKbScope applies the Vue pass:
         // 'none' empties, 'selected' narrows to the configured ids, 'all'
         // keeps only agent-compatible KBs (mode + tool-derived capabilities).
-        const agentScope = resolveMentionAgentKbScope(mentionAgent?.config as Record<string, unknown> | undefined, kbValues);
+        const agentScope = resolveMentionAgentKbScope(mentionAgent?.config as Record<string, unknown> | undefined, mentionBaseKbs);
         const scopedKbs = agentScope.scopedKbs;
         const kbItems = scopedKbs.map((item) => ({
           id: String(item.id),

@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import {
   deriveKbFilterForAgent,
+  isKbModelReady,
   kbSatisfiesAgentRequirements,
   kbToScopeCaps,
+  mergeSharedKbsForMention,
   resolveMentionAgentKbScope,
   toolsConsumeFiles,
 } from './mention-agent-filter.ts';
@@ -115,4 +117,49 @@ test('wiki-only tools block the file gate and require wiki-capable KBs', () => {
 test('agent supported_file_types ride along for the document search', () => {
   const scope = resolveMentionAgentKbScope({ agent_mode: 'quick-answer', supported_file_types: ['pdf', 'docx'] }, KB_ROWS);
   assert.deepEqual(scope.fileTypes, ['pdf', 'docx']);
+});
+
+// --- isKbModelReady (chatResources.ts 23-29, the D12 initialization filter) ---
+
+test('isKbModelReady drops KBs without a summary LLM', () => {
+  assert.equal(isKbModelReady({ id: 'kb-1', name: 'KB', summary_model_id: '' }), false);
+  assert.equal(isKbModelReady({ id: 'kb-1', name: 'KB' }), false);
+});
+
+test('isKbModelReady requires an embedding model for chunk-indexed KBs', () => {
+  // The live parity tenant FAQ shape: summary LLM set, embedding missing.
+  assert.equal(isKbModelReady({ summary_model_id: 'llm', embedding_model_id: '', indexing_strategy: { vector_enabled: true, keyword_enabled: true } }), false);
+  assert.equal(isKbModelReady({ summary_model_id: 'llm', embedding_model_id: '', indexing_strategy: undefined }), false, 'no strategy defaults to chunk indexing');
+  assert.equal(isKbModelReady({ summary_model_id: 'llm', embedding_model_id: 'emb', indexing_strategy: { vector_enabled: true } }), true);
+});
+
+test('isKbModelReady lets wiki-only KBs through without an embedding model', () => {
+  assert.equal(isKbModelReady({ summary_model_id: 'llm', embedding_model_id: '', indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true } }), true);
+});
+
+// --- mergeSharedKbsForMention (Input-field.vue 1262-1284) ----------------------
+
+test('mergeSharedKbsForMention appends shares after own rows, dedup by id, skips null', () => {
+  const own = [
+    { id: 'own-1', name: 'Own 1', summary_model_id: 'llm', embedding_model_id: 'emb' },
+    { id: 'shared-dupe', name: 'Own Dup', summary_model_id: 'llm' },
+  ];
+  const merged = mergeSharedKbsForMention(own, [
+    { knowledge_base: { id: 'shared-1', name: 'Shared 1', capabilities: { vector: true } }, permission: 'viewer', org_name: 'Org A' },
+    { knowledge_base: { id: 'shared-dupe', name: 'Own Dup (shared)' }, permission: 'admin', org_name: 'Org A' },
+    { knowledge_base: null, permission: 'viewer' },
+    {},
+  ]);
+  assert.deepEqual(merged.map((kb) => String(kb.id)), ['own-1', 'shared-dupe', 'shared-1']);
+  const shared = merged[2]!;
+  assert.equal(shared.name, 'Shared 1');
+  assert.equal(shared.org_name, 'Org A');
+  assert.equal(shared.type, 'document', 'missing type defaults to document like Vue');
+  assert.deepEqual(shared.capabilities, { vector: true }, 'capability payload rides along for the agent pass');
+});
+
+test('mergeSharedKbsForMention keeps shares even without readiness fields (Vue shares bypass the filter)', () => {
+  const merged = mergeSharedKbsForMention([], [{ knowledge_base: { id: 'shared-1', name: 'Shared 1' }, permission: 'viewer' }]);
+  assert.equal(merged.length, 1);
+  assert.equal(isKbModelReady(merged[0]!), false, 'the share has no model ids — it survives via the merge path, not readiness');
 });

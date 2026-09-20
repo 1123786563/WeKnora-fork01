@@ -1,31 +1,7 @@
-
-
 # WeKnora 领域词汇
 
 该文件主要通过 Matt 的 `domain-modeling` / `grill-with-docs` 持续维护。
 它是本仓库中 Agent 使用的**统一领域术语事实源**。
-
-## 统一语言（Ubiquitous Language）
-
-| 术语 | 定义                   | 避免使用 / 别名 |
-| ---- | ---------------------- | --------------- |
-| 示例 | 替换为项目真实领域术语 | —              |
-
-## 核心实体（Core Entities）
-
-记录稳定的领域实体、身份、所有权和关系。
-
-## 不变量（Invariants）
-
-记录无论实现方式如何变化都必须始终成立的业务规则。
-
-## 边界（Boundaries）
-
-记录 Bounded Context / Module 以及所有权边界，避免 Agent 在实现过程中模糊职责。
-
-## 重要工作流（Important Workflows）
-
-简洁描述关键的端到端领域流程。
 
 ## 参考资料
 
