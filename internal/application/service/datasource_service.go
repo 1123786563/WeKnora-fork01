@@ -895,9 +895,28 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 	// Auto-tag: find or create a tag for this data source so synced items are easily identifiable
 	autoTagIDs := s.resolveAutoTagIDs(ctx, ds)
 
-	for _, item := range items {
+	// Heartbeat throttle state for the batch loop; the first item writes
+	// immediately and later beats are spaced by syncHeartbeatInterval.
+	var lastBeat time.Time
+	for i, item := range items {
 		item := item
 		s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, &item, autoTagIDs, result)
+		maybeHeartbeat(ctx, s.syncLogRepo, syncLog.ID, &lastBeat)
+		// Every batchProgressInterval items, mirror the running counts into the
+		// sync log (same six fields as a streaming checkpoint) so a long batch
+		// sync shows mid-flight progress instead of jumping from 0 to done.
+		// Best-effort, like Checkpoint's progress write.
+		if (i+1)%batchProgressInterval == 0 {
+			syncLog.ItemsTotal = result.Total
+			syncLog.ItemsCreated = result.Created
+			syncLog.ItemsUpdated = result.Updated
+			syncLog.ItemsDeleted = result.Deleted
+			syncLog.ItemsSkipped = result.Skipped
+			syncLog.ItemsFailed = result.Failed
+			if err := s.syncLogRepo.UpdateResult(ctx, syncLog); err != nil {
+				logger.Warnf(ctx, "failed to persist sync log progress at batch boundary: %v", err)
+			}
+		}
 	}
 
 	resultJSON, _ := result.ToJSON()
@@ -967,6 +986,12 @@ func (s *DataSourceService) resolveAutoTagIDs(ctx context.Context, ds *types.Dat
 // lives in SyncResult.Failed (a bounded int); this list only keeps a sample for
 // display (Tencent/WeKnora#2136 / #1262).
 const maxSyncResultErrors = 100
+
+// batchProgressInterval is how often the batch (non-streaming) sync loop
+// persists its running counts to the sync log: often enough for live progress
+// on large batches, rare enough not to matter as write load. Streaming
+// connectors checkpoint at page boundaries instead.
+const batchProgressInterval = 20
 
 // recordSyncError appends an error sample to result.Errors, capped at
 // maxSyncResultErrors. Callers still increment result.Failed for the exact count.
@@ -1222,7 +1247,41 @@ func (h *streamSyncHandler) Checkpoint(ctx context.Context, cursor *types.SyncCu
 	if err := h.svc.syncLogRepo.UpdateResult(ctx, h.syncLog); err != nil {
 		logger.Warnf(ctx, "failed to persist sync log progress at checkpoint: %v", err)
 	}
+	// SP2-a §3.2: stamp the heartbeat alongside progress so stall detection
+	// (COALESCE(heartbeat_at, started_at) against the stall window) sees the
+	// run alive at every page boundary. Best-effort, like the progress write.
+	if err := h.svc.syncLogRepo.UpdateHeartbeat(ctx, h.syncLog.ID, time.Now().UTC()); err != nil {
+		logger.Warnf(ctx, "failed to persist sync heartbeat at checkpoint: %v", err)
+	}
 	return nil
+}
+
+// syncHeartbeatInterval is the minimum spacing between heartbeat writes on the
+// batch path: a per-item write would hammer the sync_logs row once per
+// document, while a 30s cadence stays far inside the stall window (task
+// timeout + buffer) yet keeps liveness views current.
+const syncHeartbeatInterval = 30 * time.Second
+
+// maybeHeartbeat refreshes the sync-log heartbeat at most once per
+// syncHeartbeatInterval, writing immediately on the first call. lastBeat is the
+// caller-owned in-memory throttle state (zero value = never beaten); it is
+// advanced on every out-of-window attempt, including failed ones, so a
+// struggling database does not turn the batch loop into one write per item.
+// Failures are logged and swallowed — a heartbeat is advisory liveness and must
+// never abort a sync. Task 4's cooperative-cancel check reuses this same
+// throttling point on both sync paths.
+func maybeHeartbeat(ctx context.Context, syncLogRepo interfaces.SyncLogRepository, logID string, lastBeat *time.Time) {
+	if lastBeat == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if !lastBeat.IsZero() && now.Sub(*lastBeat) < syncHeartbeatInterval {
+		return
+	}
+	*lastBeat = now
+	if err := syncLogRepo.UpdateHeartbeat(ctx, logID, now); err != nil {
+		logger.Warnf(ctx, "failed to persist sync heartbeat for log %s: %v", logID, err)
+	}
 }
 
 // processSyncStreaming runs a sync through a StreamingConnector, ingesting each
