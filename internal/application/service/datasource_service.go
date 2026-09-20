@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/appconnector"
 	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/datasource"
+	"github.com/Tencent/WeKnora/internal/datasource/connector/ima"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -869,6 +870,137 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string, forceFu
 	return syncLog, nil
 }
 
+// syncTriggerManualReindex marks a scoped reindex run's payload (SP2-b §5.3).
+const syncTriggerManualReindex = "manual_reindex"
+
+// Per-item failure codes recorded by the scoped reindex path. The frontend
+// localises them via datasource.syncError.<code> (Task 7).
+const (
+	// syncErrTargetedUnsupported: the connector cannot refetch a single item
+	// (no TargetedFetcher implementation, or a connector-specific degradation
+	// like IMA's hashed external id). Remedy: a normal sync.
+	syncErrTargetedUnsupported = "targeted_unsupported"
+	// syncErrNotFound: the item no longer exists at the source.
+	syncErrNotFound = "not_found"
+	// syncErrFetchFailed: the refetch errored; Message carries the raw cause so
+	// later consumers can tell transient from permanent failures.
+	syncErrFetchFailed = "fetch_failed"
+)
+
+// ErrReindexDuplicateRequest is returned by ReindexItems when a reindex with
+// the same non-empty request_id is already enqueued: the deterministic asynq
+// TaskID collides (ErrTaskIDConflict), so the duplicate request is rejected
+// instead of queueing a second run of the same items.
+var ErrReindexDuplicateRequest = errors.New(
+	"a reindex request with this request_id is already enqueued")
+
+// reindexTaskID builds the deterministic asynq task id for a scoped reindex.
+// The manual-sync and scheduler ids share the "dssync:" prefix but never this
+// suffix, so reindex runs are recognizable in the queue and a repeated
+// request_id collides in Redis (idempotency) rather than double-running.
+func reindexTaskID(tenantID uint64, dsID, requestID string) string {
+	return fmt.Sprintf("dssync:%d:%s:reindex:%s", tenantID, dsID, requestID)
+}
+
+// ReindexItems schedules a scoped (targeted) reindex run (SP2-b §5.3): only
+// the listed external ids are refetched, converging into the run's own SyncLog
+// with Trigger=manual_reindex. Unlike ManualSync it never mutates data source
+// state on failure (Ruling P-4) — the whole-source runs own ds.Status and
+// LastSyncResult. A non-empty requestID makes the enqueue idempotent: a repeat
+// with the same id while the task is still enqueued returns
+// ErrReindexDuplicateRequest.
+func (s *DataSourceService) ReindexItems(
+	ctx context.Context, dsID string, externalIDs []string, requestID string,
+) (string, error) {
+	ds, err := s.GetDataSource(ctx, dsID)
+	if err != nil {
+		return "", err
+	}
+
+	// Same pre-dispatch gate as every other team sync (A07): a pause here is
+	// recorded with its machine-readable reason and no run is queued.
+	if err := s.AuthorizeSyncExecution(ctx, ds); err != nil {
+		logger.Warnf(ctx, "scoped reindex for ds=%s paused before scheduling: %v", dsID, err)
+		var paused *appconnector.SyncPausedError
+		reason := ""
+		if errors.As(err, &paused) {
+			reason = paused.Reason
+		}
+		recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncFailed,
+			"data_source", ds.ID, types.AuditOutcomeFailed,
+			map[string]any{"name": ds.Name, "type": ds.Type, "pause_reason": reason,
+				"trigger": syncTriggerManualReindex})
+		return "", err
+	}
+
+	syncLog := &types.SyncLog{
+		DataSourceID: dsID,
+		TenantID:     ds.TenantID,
+		Status:       types.SyncLogStatusRunning,
+		StartedAt:    time.Now().UTC(),
+	}
+	if err := s.syncLogRepo.Create(ctx, syncLog); err != nil {
+		logger.Errorf(ctx, "failed to create scoped reindex sync log: %v", err)
+		return "", err
+	}
+
+	payload := &types.DataSourceSyncPayload{
+		DataSourceID: dsID,
+		TenantID:     ds.TenantID,
+		SyncLogID:    syncLog.ID,
+		Initiator:    types.TaskInitiatorFromContext(ctx),
+		Trigger:      syncTriggerManualReindex,
+		// The scoped item list is itself the run's item bound; MaxItems mirrors
+		// it so queue introspection sees the true size.
+		MaxItems: len(externalIDs),
+		Scope:    &types.SyncScope{ExternalIDs: externalIDs},
+	}
+	langfuse.InjectTracing(ctx, payload)
+
+	payloadJSON, _ := json.Marshal(payload)
+	opts := []asynq.Option{
+		asynq.Queue(types.QueueSync), asynq.MaxRetry(5), asynq.Timeout(2 * time.Hour),
+	}
+	if requestID != "" {
+		opts = append(opts, asynq.TaskID(reindexTaskID(ds.TenantID, dsID, requestID)))
+	}
+	task := asynq.NewTask(types.TypeDataSourceSync, payloadJSON, opts...)
+
+	info, err := s.taskEnqueuer.Enqueue(task)
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			// Idempotent rejection: the first request with this request_id owns
+			// the queue slot. Cancel the log row just created for this attempt
+			// so no orphaned "running" row is left behind.
+			syncLog.Status = types.SyncLogStatusCanceled
+			syncLog.FinishedAt = timePtr(time.Now().UTC())
+			syncLog.ErrorMessage = "duplicate reindex request: this request_id is already enqueued"
+			_ = s.syncLogRepo.Update(ctx, syncLog)
+			logger.Warnf(ctx, "scoped reindex rejected as duplicate: ds=%s requestID=%s", dsID, requestID)
+			return "", ErrReindexDuplicateRequest
+		}
+		logger.Errorf(ctx, "failed to enqueue scoped reindex task: %v", err)
+		syncLog.Status = types.SyncLogStatusFailed
+		syncLog.FinishedAt = timePtr(time.Now().UTC())
+		syncLog.ErrorMessage = err.Error()
+		_ = s.syncLogRepo.Update(ctx, syncLog)
+		// Ruling P-4: a scoped run's failure never touches ds state — unlike
+		// ManualSync's enqueue failure, no ds.Status flip happens here.
+		return "", err
+	}
+
+	// Correlate the log row with its queue record (best-effort, as ManualSync).
+	if err := s.syncLogRepo.UpdateAsynqTaskID(ctx, syncLog.ID, info.ID); err != nil {
+		logger.Warnf(ctx, "failed to record asynq task id for scoped reindex log=%s: %v", syncLog.ID, err)
+	} else {
+		syncLog.AsynqTaskID = info.ID
+	}
+
+	logger.Infof(ctx, "scoped reindex task enqueued: ds=%s syncLog=%s taskID=%s items=%d requestID=%q",
+		dsID, syncLog.ID, info.ID, len(externalIDs), requestID)
+	return syncLog.ID, nil
+}
+
 // PauseDataSource pauses a data source's scheduled syncs
 func (s *DataSourceService) PauseDataSource(ctx context.Context, id string) error {
 	ds, err := s.GetDataSource(ctx, id)
@@ -1095,6 +1227,14 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 	// embedded images for OCR when the KB can actually ingest them (never persisted).
 	config.MultimodalEnabled = kb.IsMultimodalEnabled()
 
+	// Scoped reindex run (SP2-b §5.3): a payload naming specific items takes a
+	// dedicated per-item refetch path. It must branch before the streaming and
+	// batch paths — neither walks individual external ids — and it converges
+	// into its own SyncLog without touching whole-source state.
+	if payload.Scope != nil && len(payload.Scope.ExternalIDs) > 0 {
+		return s.runScopedReindex(ctx, connector, ds, syncLog, config, &payload)
+	}
+
 	// Streaming path: connectors that support it interleave fetch→ingest→
 	// checkpoint so a large sync bounds memory and resumes after a timeout
 	// instead of restarting (Tencent/WeKnora#2136). Others fall back below.
@@ -1261,6 +1401,149 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 		payload.DataSourceID, syncLog.ItemsCreated, syncLog.ItemsUpdated, syncLog.ItemsDeleted)
 
 	return nil
+}
+
+// runScopedReindex executes a scoped reindex run (SP2-b §5.3): each external id
+// in payload.Scope is refetched through the connector's TargetedFetcher
+// implementation and ingested via the shared applyFetchedItem core (same
+// delete-before-create and SubtreeKeep semantics as a whole-source sync).
+// Connectors without the interface degrade per item with a "run a normal sync"
+// hint instead of failing the run.
+//
+// Convergence is deliberately isolated from whole-source syncs (Ruling P-4):
+// only this run's SyncLog is finalized — DataSource.LastSyncResult, Status,
+// ErrorMessage and the persisted cursor are never touched, so a retry round
+// can neither mask nor reset the last full sync's outcome. Per the status
+// ruling, per-item failures live in the result (Failed count + error samples),
+// never in the run's status or in ds state.
+func (s *DataSourceService) runScopedReindex(
+	ctx context.Context, connector datasource.Connector,
+	ds *types.DataSource, syncLog *types.SyncLog,
+	config *types.DataSourceConfig, payload *types.DataSourceSyncPayload,
+) error {
+	externalIDs := payload.Scope.ExternalIDs
+	result := &types.SyncResult{Total: len(externalIDs)}
+
+	// Tenant + auto-tag setup precedes ingestion, same as both whole-source
+	// paths (KnowledgeService resolves tenant info from the context).
+	ctx = context.WithValue(ctx, types.TenantIDContextKey, ds.TenantID)
+	tenant, err := s.tenantRepo.GetTenantByID(ctx, ds.TenantID)
+	if err != nil {
+		logger.Errorf(ctx, "scoped reindex: failed to get tenant info: %v", err)
+		s.finishScopedReindex(ctx, ds, syncLog, result,
+			types.SyncLogStatusFailed, fmt.Sprintf("Failed to get tenant info: %v", err))
+		return err
+	}
+	ctx = context.WithValue(ctx, types.TenantInfoContextKey, tenant)
+	autoTagIDs := s.resolveAutoTagIDs(ctx, ds)
+
+	fetcher, supported := connector.(datasource.TargetedFetcher)
+
+	// Heartbeat/cancel pulse between items, same contract as the batch loop.
+	var lastBeat time.Time
+	for _, externalID := range externalIDs {
+		if syncPulse(ctx, s.syncLogRepo, syncLog.ID, &lastBeat) {
+			s.cancelSyncRun(ctx, syncLog, result)
+			logger.Infof(ctx, "scoped reindex canceled by user: ds=%s processed=%d/%d item(s)",
+				payload.DataSourceID, result.Created+result.Updated+result.Deleted+result.Skipped+result.Failed, len(externalIDs))
+			return nil
+		}
+
+		if !supported {
+			result.Failed++
+			recordSyncError(result, types.SyncItemError{
+				ExternalID: externalID,
+				Code:       syncErrTargetedUnsupported,
+				Message: fmt.Sprintf("connector %q does not support targeted reindex; "+
+					"run a normal sync so the item is re-listed", ds.Type),
+			})
+			continue
+		}
+
+		item, err := fetcher.FetchByExternalID(ctx, config, externalID)
+		if err != nil {
+			recordScopedFetchFailure(ctx, result, externalID, err)
+			continue
+		}
+		if item == nil {
+			// Defensive: the contract says not-found must be an error, but a
+			// nil item must never panic the run.
+			recordScopedFetchFailure(ctx, result, externalID,
+				fmt.Errorf("%w: connector returned no item for %q", datasource.ErrItemNotFound, externalID))
+			continue
+		}
+		s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, item, autoTagIDs, result)
+	}
+
+	s.finishScopedReindex(ctx, ds, syncLog, result, types.SyncLogStatusSuccess, "")
+	logger.Infof(ctx, "scoped reindex completed: ds=%s total=%d created=%d updated=%d failed=%d",
+		payload.DataSourceID, result.Total, result.Created, result.Updated, result.Failed)
+	return nil
+}
+
+// recordScopedFetchFailure maps a FetchByExternalID error onto the scoped
+// run's per-item failure sample. The Message keeps the raw cause text so
+// downstream consumers (frontend, Task 2 of the retry loop) can distinguish
+// transient fetch failures from permanent ones.
+func recordScopedFetchFailure(ctx context.Context, result *types.SyncResult, externalID string, err error) {
+	code := syncErrFetchFailed
+	switch {
+	case errors.Is(err, datasource.ErrItemNotFound):
+		code = syncErrNotFound
+	case errors.Is(err, ima.ErrTargetedRefetchUnsupported):
+		// IMA's external id is a one-way hash; its error text carries the
+		// actionable remedy, so surface it verbatim under the shared code.
+		code = syncErrTargetedUnsupported
+	default:
+		logger.Warnf(ctx, "scoped reindex: refetch of %q failed: %v", externalID, err)
+	}
+	result.Failed++
+	recordSyncError(result, types.SyncItemError{
+		ExternalID: externalID,
+		Code:       code,
+		Message:    err.Error(),
+	})
+}
+
+// finishScopedReindex is the scoped run's isolated convergence (Ruling P-4):
+// it finalizes ONLY this run's SyncLog — never DataSource.LastSyncResult,
+// Status, ErrorMessage or the cursor, i.e. none of updateSyncRunResult's
+// ds-side effects — and writes the single manual_reindex audit entry with the
+// per-item summary.
+func (s *DataSourceService) finishScopedReindex(
+	ctx context.Context, ds *types.DataSource, syncLog *types.SyncLog,
+	result *types.SyncResult, status, errorMessage string,
+) {
+	resultJSON, _ := result.ToJSON()
+	syncLog.ItemsTotal = result.Total
+	syncLog.ItemsCreated = result.Created
+	syncLog.ItemsUpdated = result.Updated
+	syncLog.ItemsDeleted = result.Deleted
+	syncLog.ItemsSkipped = result.Skipped
+	syncLog.ItemsFailed = result.Failed
+	syncLog.Status = status
+	syncLog.ErrorMessage = errorMessage
+	syncLog.Result = resultJSON
+	syncLog.FinishedAt = timePtr(time.Now().UTC())
+	if err := s.syncLogRepo.UpdateResult(ctx, syncLog); err != nil {
+		logger.Errorf(ctx, "failed to update scoped reindex sync log: %v", err)
+	}
+
+	outcome := types.AuditOutcomeSuccess
+	if status == types.SyncLogStatusFailed {
+		outcome = types.AuditOutcomeFailed
+	} else if result.Failed > 0 {
+		outcome = types.AuditOutcomePartial
+	}
+	recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncCompleted,
+		"data_source", ds.ID, outcome,
+		map[string]any{
+			"name": ds.Name, "type": ds.Type,
+			"trigger":     syncTriggerManualReindex,
+			"sync_log_id": syncLog.ID,
+			"total":       result.Total, "created": result.Created, "updated": result.Updated,
+			"deleted": result.Deleted, "skipped": result.Skipped, "failed": result.Failed,
+		})
 }
 
 // resolveAutoTagIDs finds or creates the per-data-source tag applied to every
