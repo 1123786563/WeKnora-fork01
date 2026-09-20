@@ -3,6 +3,7 @@ package commercialplatform
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -99,6 +100,14 @@ func TestFakeAdapterContract(t *testing.T) {
 		Reason:    "unconfigured",
 	})
 	runPlatformContract(t, "fake-unavailable", unavailable, func() bool { return false })
+}
+
+// TestLagoAdapterContract registers the stub-backed Lago leg of the SAME
+// contract table — acceptance criterion: fake and Lago adapter pass the
+// identical interface contract.
+func TestLagoAdapterContract(t *testing.T) {
+	stub := newHealthStub(t, http.StatusOK)
+	runPlatformContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), func() bool { return true })
 }
 
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no
