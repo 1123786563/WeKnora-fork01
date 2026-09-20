@@ -158,6 +158,9 @@ class SearchRequest:
     def __post_init__(self) -> None:
         if not self.query_id or not self.query or self.requested_mode not in {"graph_rag", "reason"}:
             raise ValueError("search request is invalid")
+        expected_purpose = "search" if self.requested_mode == "graph_rag" else "reason"
+        if self.access_scope.purpose != expected_purpose:
+            raise ValueError("search request purpose is incompatible with requested mode")
 
 
 @dataclass(frozen=True)

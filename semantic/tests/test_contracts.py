@@ -95,6 +95,17 @@ def test_search_request_preserves_requested_mode_and_limits() -> None:
     assert request.requested_mode == "graph_rag" and request.limits.max_hops == 2
 
 
+def test_search_request_rejects_incompatible_scope_purpose() -> None:
+    from semantic_service.contracts import AccessScope, QueryLimits, ScopeKey, SearchRequest
+    scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "reason", "budget")
+    try:
+        SearchRequest("q", "question", scope, QueryLimits(1, 1, 1, 1, 1, 1), "graph_rag")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected incompatible scope purpose rejection")
+
+
 def test_reason_request_embeds_search_and_limits_reasoning_mode() -> None:
     from semantic_service.contracts import AccessScope, QueryLimits, ReasonRequest, ScopeKey, SearchRequest
 
