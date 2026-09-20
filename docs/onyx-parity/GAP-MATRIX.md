@@ -118,7 +118,7 @@
 | K-8 | 手动触发 run-once | `/admin/connector/run-once` | POST /datasource/:id/sync（ForceFull/max_items）`internal/handler/datasource.go:427` | ✅对齐 | |
 | K-9 | 增量 checkpoint | FileStore 存 checkpoint JSON | DB 存 SyncCursor+流式分页持久化+fence 校验+失败保留 cursor+attempt>0 续传 `internal/application/service/datasource_service.go:1183-1205,847-857,1144` | ✅对齐 | 机制不同语义等价 |
 | K-10 | 两阶段管道 | docfetching→docprocessing 批次协议+FileStore 暂存 | sync worker 抓取→asynq document process 异步索引（单文档粒度）`datasource_service.go:1455-1542`、`knowledge_create.go:252` | 🟡部分 | 实为两阶段但无 batch/attempt 协议、无跨 attempt 批次重放 |
-| K-11 | IndexAttempt 状态机 | 状态+total/completed_batches+heartbeat+stall+取消标记 `db/models.py:2555-2649` | SyncLog（running/success/partial/failed/canceled）+计数+流式实时回写进度 `internal/types/datasource.go:145-180` | 🟡部分 | 无 batch 级进度/心跳/stall 检测/取消标记（有 Pause+删源取消排队） |
+| K-11 | IndexAttempt 状态机 | 状态+total/completed_batches+heartbeat+stall+取消标记 `db/models.py:2555-2649` | SyncLog（running/success/partial/failed/canceled）+流式实时回写进度+heartbeat_at（流式+批式双路径）+SyncStallWindow 2h15m 失活窗口（超窗不再阻塞再调度）+cancel_requested 协作取消标记（checkpoint 退出、cursor 保留断点续传）+取消 API `POST /:id/logs/:log_id/cancel`（202 cancel_requested）+React/Vue 运行中取消入口 `internal/types/datasource.go:60-65,197-203`、`internal/handler/datasource.go:661` | ✅对齐（SP2-a） | batch 级 completed_batches 以 items_* 流式计数等价呈现（有意不同）；交付物 `ee3a6ed0`/`13ea321b`/`86070810`/`cc424e71`/`cd56a458`/`14d56739`/`d8bac0d3`+Vue 收尾；测试各任务报告 |
 | K-12 | 失败处理与修复 | ConnectorFailure+错误分页 API+targeted reindex（Resolver 重抓） | 逐项失败不中断+稳定 i18n 错误码+partial 状态 `internal/types/datasource.go:452`、`datasource_service.go:927-940`；**无 targeted reindex** | 🟡部分 | 修复手段缺：只能等下次增量或 ForceFull |
 | K-13 | pruning/deletion_sync | SlimConnector 独立 prune 周期任务 | IsDeleted+SyncDeletions 随每次同步（增量事件+全量对账双路）+子树清扫 `datasource_service.go:1003-1070,1611` | ✅对齐 | WeKnora 有独有附件子树清扫协议 |
 | K-14 | 层级浏览 HierarchyNode | 持久化源结构镜像+周期抓取+前端浏览器 | 选择期 ListResources/ResolveResourceAncestors `connector.go:28,40`；**索引后文档树浏览无**（文档平铺进 KB） | 🟡部分 | 层级只用于建源时资源选择 |
@@ -156,7 +156,7 @@
 
 | # | 能力 | Onyx | WeKnora | 定性 | 备注 |
 |---|------|------|---------|------|------|
-| K-29 | 级联删除 | fence 撤销+文档清理任务集+监督 `connector_deletion/tasks.py:147` | 软删 ds+摘 cron+取消排队；**已同步文档不级联删除（残留）** `datasource_service.go:423` | ❌缺失 | metadata datasource_id 仍在，可手动清 |
+| K-29 | 级联删除 | fence 撤销+文档清理任务集+监督 `connector_deletion/tasks.py:147` | 软删 ds+摘 cron+取消排队+硬取消 asynq 排队任务；**可选级联 purge**：DELETE `?purge_documents=true`（严格匹配）触发异步分批 drain（文档/向量/标签全清，batch 间可取消、审计 `data_source_deleted` 带 purge_documents 结果）+documents-count 端点（Viewer+，count 与 purge 同 (tenant,kb,ds) 三元组）+React/Vue 双选删除面板（默认不勾=保留文档承诺，勾选红色不可恢复警示）`internal/application/service/datasource_service.go:577-669`、`internal/handler/datasource.go:287` | ✅对齐（SP2-a） | 默认保留文档（与 Onyx 删即级联不同，双选显式承诺）；交付物 `5369211d`/`aa63b3b0`+React `d8bac0d3`（收入 `161adf69`）+Vue 收尾 |
 | K-30 | 能力体检 | capability_checks runner+报表+回流 `connectors/capability_checks/` | 无（仅创建时一次性 Validate） | ❌缺失 | |
 
 ## 2.7 连接器逐源清单
@@ -236,7 +236,7 @@
 ## 4.1 总体定性
 
 - **Craft**：WeKnora 已有强治理形态（不可变版本/恢复程序/usage 账本/发布门控，反向领先 15 项）；相对 Onyx 的缺口集中在**生态面**：定时任务、User Library、craft 内 MCP、AGENTS.md 模板、外部应用桥、admin 管理页、onboarding。另有**两处"已实现未接线"**（模型网关、Stop 路由）。
-- **Connectors**：WeKnora 强在治理与写操作（审批/预授权/open-connector），弱在**广度**（11 vs 57，西文 SaaS 几乎全空）与**文档级权限**（EE 三件套全缺）。框架层 6 项中 4 项对齐/有意不同，管道层缺 attempt 级进度/心跳/定向重索引/级联删除。
+- **Connectors**：WeKnora 强在治理与写操作（审批/预授权/open-connector），弱在**广度**（11 vs 57，西文 SaaS 几乎全空）与**文档级权限**（EE 三件套全缺）。框架层 6 项中 4 项对齐/有意不同；管道层 attempt 心跳/stall/取消与删源级联清理已由 SP2-a 补齐（K-11/K-29 ✅），定向重索引（K-12）留 SP2-b。
 - **平台运营面**：套餐后端与 API key 已是等价物（甚至更贴合国内支付）；真正缺口是**分析（全新）**、**用量聚合层（新建）**、**查询历史 admin 审计+分享（补齐）**三块，已排 SP11–SP14。
 - **共同注意**：两个"有意不同"大项（webapp 实时预览反代、cc_pair 模型重构）改造成本高且与 WeKnora 现有形态冲突，建议默认**不追随**，除非有明确产品诉求。
 
@@ -256,10 +256,10 @@
 - C-16 craft 内 MCP（与 appconnector MCP 适配层打通）
 
 **P1 · Connectors 治理补强**（框架层补洞）
-- K-11 attempt 级进度/心跳/stall/取消
-- K-12 targeted reindex（单点重索引）
-- K-29 删源级联文档清理
-- K-3 凭据动态续期
+- ~~K-11 attempt 级进度/心跳/stall/取消~~ ✅ SP2-a（2026-09-20，见 2.2 表）
+- K-12 targeted reindex（单点重索引）——SP2-b
+- ~~K-29 删源级联文档清理~~ ✅ SP2-a（2026-09-20，见 2.6 表；双选 purge）
+- K-3 凭据动态续期——SP2-b
 
 **P2 · Connectors 广度扩展**（按需求逐个立项）
 - GitHub（已有声明+元数据）、Web 爬虫、IMAP/邮件、Google Drive、Slack…

@@ -13,7 +13,7 @@
 | SP | 主题 | 覆盖矩阵条目 | 状态 |
 |----|------|--------------|------|
 | SP1 | 清债接线：模型网关生产挂载、Stop 路由、前端 confluence/dingtalk 入口、幽灵声明清理 | C-25、C-3、K-26、K-5 | ✅（验证证据：各任务测试命令绿——go test 目标包 / pnpm test:craft:shared 113 pass / test:web 新用例绿 / frontend type-check+check-i18n 11/11；端到端冒烟为源码栈动作，留待合并后由用户环境执行） |
-| SP2 | Connectors 治理补洞：attempt 级进度/心跳/取消、targeted reindex、删源级联清理、凭据动态续期 | K-11、K-12、K-29、K-3 | ⬜ |
+| SP2 | Connectors 治理补洞：attempt 级进度/心跳/取消、targeted reindex、删源级联清理、凭据动态续期 | K-11、K-12、K-29、K-3 | 🔄（**SP2-a 完成 2026-09-20**：K-11 心跳/stall/协作取消 + K-29 删源级联清理全链交付——sync_logs 生命周期列（heartbeat/asynq task id/cancel 标记）、双路径心跳、stall 窗口（超窗不阻塞再调度）、协作取消 API+React/Vue 双端 UI、删源 purge 级联（异步分批 drain 文档/向量/标签+审计）、documents-count 端点、双选删除面板（React Sheet / Vue TDesign Dialog 等价交互）。验证证据：各任务报告 go test 目标包绿（`.superpowers/sdd/2026-09-19-sp2a-connectors-governance/task-*-report.md`）；pnpm test:web data-sources/api-client/i18n 绿；Task 11 收尾 frontend `type-check`+`check-i18n` 11/11 双绿。提交：`ee3a6ed0`/`13ea321b`/`86070810`/`cc424e71`/`cd56a458`/`14d56739`/`5369211d`/`aa63b3b0`/`d8bac0d3`（Task 10 收入 `161adf69`）+ Vue 收尾本笔。端到端冒烟 5 项（删源勾/不勾、运行中取消断点续、排队任务取消、stall 不阻塞调度）留待合并后源码栈执行。**K-12 targeted reindex 与 K-3 凭据动态续期属 SP2-b，未动**） |
 | SP3 | Craft 定时任务：ScheduledTask CRUD+执行器+预授权目标 | C-23 | ⬜ |
 | SP4 | User Library + 沙箱文件树 API/预览 | C-18、C-12 | ⬜ |
 | SP5 | AGENTS.md 指令模板 + craft 内 MCP（桥接 appconnector 适配层） | C-15、C-16 | ⬜ |
@@ -54,3 +54,4 @@
 - 2026-09-19：SP1 合并 main（merge 9c21612b）；合并时与并行 lane 迁移撞号（PG 000158 / sqlite 000079 双份 message_feedback），SP1 让号重排为 **PG 000161 / sqlite 000082**（修复 5c4d990e，测试引用同步）。合并后待办：端到端冒烟 4 项（无 secret 404 / 真 PG 网关链路 / 双前端测试连接 / 真 OC 栈停止收敛）回填证据。
 - 2026-09-20：SP13 八任务完成（`c2e2bb04`…`e22b1a65`），回归+冒烟+证据收尾（[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md)）。
 - 2026-09-20：SP14 四实现任务+收尾完成（`6a8c8f1a`/`eb49392f`/`c14c4501`/`f8ca453c`，净效果含并行 `e72acff9` 收编；收尾补 vite 别名一行修复），回归+冒烟+证据收尾（[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp14-lightweight.md)）。**六域对齐线（SP11–SP14，P-1~P-11）就此收官**；冒烟另登记预存欠账：commercial summary 前后端形状错配（`de023ac9` 起，BillingPage 数据区/general 卡片/SP12 预算卡真实数据不可用）。
+- 2026-09-20：**SP2-a（connectors 治理上半）收官**：Task 1-11 全部完成。K-11 ✅（sync_logs 生命周期列+心跳+stall 窗口+协作取消，cancel API/UI 双端）；K-29 ✅（删源可选级联 purge——异步分批 drain 文档/向量/标签+审计记录，DELETE `purge_documents=true` 严格匹配，双选面板默认不勾=保留文档承诺）。矩阵 K-11/K-29 行已更新；K-12（targeted reindex）/K-3（凭据动态续期）留 SP2-b。端到端冒烟 5 项留待合并后源码栈执行（计划 `.superpowers/sdd/2026-09-19-sp2a-connectors-governance/` brief 尾节）。

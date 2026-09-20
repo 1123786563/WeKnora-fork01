@@ -5,6 +5,8 @@ import { useI18n } from 'vue-i18n'
 import {
   listDataSources,
   deleteDataSource,
+  getDataSourceDocumentsCount,
+  cancelSyncLog,
   triggerSync,
   pauseDataSource,
   resumeDataSource,
@@ -34,6 +36,33 @@ const logsVisible = ref(false)
 const logsDsId = ref('')
 const logsDsName = ref('')
 const pollTimer = ref<number | null>(null)
+
+// 双选删除面板（SP2-a §4.3，与 React Task 10 语义等价）：进面板拉取该源
+// 已同步文档数，默认不勾选 = 保留文档（既有承诺）；勾选后正文切换为红色
+// 不可恢复警示，确认按钮变为"删除数据源及文档"，DELETE 携带
+// purge_documents=true。串号守卫防止慢返回的 count 落进另一个源的面板。
+const deleteVisible = ref(false)
+const deleteTarget = ref<DataSource | null>(null)
+const deletePurge = ref(false)
+const deleteCount = ref<number | null>(null)
+const deleteCountLoading = ref(false)
+const deleteSubmitting = ref(false)
+let deleteCountRequest = 0
+
+// 运行中同步的协作取消（SP2-a §3.3，Task 6 cancel API 的 Vue 入口）：
+// 仅 running 态显示入口；请求成功不翻转行，靠既有 3s 轮询收敛为已取消。
+const cancelBusyId = ref('')
+
+const deletePurgeLabelText = computed(() =>
+  deleteCount.value !== null
+    ? t('datasource.deletePanelPurgeLabel', { count: deleteCount.value })
+    : t('datasource.deletePanelPurgeLabelUnknown'),
+)
+const deletePurgeWarningText = computed(() =>
+  deleteCount.value !== null
+    ? t('datasource.deletePanelPurgeWarning', { count: deleteCount.value })
+    : t('datasource.deletePanelPurgeWarningUnknown'),
+)
 
 function stopPolling() {
   if (pollTimer.value !== null) {
@@ -85,13 +114,56 @@ function openLogs(ds: DataSource) {
   logsVisible.value = true
 }
 
-async function removeDataSource(ds: DataSource) {
+// 打开双选面板：复选框复位为不勾（保留文档承诺），文档数在面板背后
+// 拉取；拉取失败时面板退化为无数字文案，绝不显示误导性的 0。
+async function openDeletePanel(ds: DataSource) {
+  deleteTarget.value = ds
+  deletePurge.value = false
+  deleteCount.value = null
+  deleteCountLoading.value = true
+  deleteVisible.value = true
+  const request = ++deleteCountRequest
   try {
-    await deleteDataSource(ds.id)
-    MessagePlugin.success(t('datasource.deleteSuccess'))
+    const count = await getDataSourceDocumentsCount(ds.id)
+    if (deleteCountRequest === request) deleteCount.value = count
+  } catch {
+    // count 不可用 —— 面板继续使用无数字的兜底文案
+  } finally {
+    if (deleteCountRequest === request) deleteCountLoading.value = false
+  }
+}
+
+// 确认执行双选删除：勾选状态决定 DELETE 是否携带 purge_documents=true；
+// 成功提示区分"已删除"与"连文档一起已删除"。
+async function confirmDelete() {
+  const ds = deleteTarget.value
+  if (!ds || deleteSubmitting.value) return
+  const purge = deletePurge.value
+  deleteSubmitting.value = true
+  try {
+    await deleteDataSource(ds.id, purge)
+    deleteVisible.value = false
+    MessagePlugin.success(purge ? t('datasource.deleteSuccessPurged') : t('datasource.deleteSuccess'))
     await loadList()
   } catch (e: any) {
     MessagePlugin.error(e?.message || e?.error || t('datasource.deleteFailed'))
+  } finally {
+    deleteSubmitting.value = false
+  }
+}
+
+// 协作取消运行中的同步：POST 返回 202 cancel_requested，同步循环在下一个
+// 检查点退出（cursor 保留，下次同步断点续传）。此处不翻转行状态。
+async function handleCancelSync(ds: DataSource) {
+  const log = ds.latest_sync_log
+  if (!log || log.status !== 'running' || cancelBusyId.value) return
+  cancelBusyId.value = ds.id
+  try {
+    await cancelSyncLog(ds.id, log.id)
+  } catch (e: any) {
+    MessagePlugin.error(e?.message || e?.error || String(e))
+  } finally {
+    cancelBusyId.value = ''
   }
 }
 
@@ -251,23 +323,22 @@ onBeforeUnmount(stopPolling)
                         <t-icon name="play-circle" /> {{ t('datasource.resume') }}
                       </t-dropdown-item>
                       <t-dropdown-item
+                        v-if="canManageDataSource && isSyncRunning(ds)"
+                        :disabled="cancelBusyId === ds.id"
+                        @click="handleCancelSync(ds)"
+                      >
+                        <t-icon name="stop-circle" :class="{ 'ds-icon-spin': cancelBusyId === ds.id }" />
+                        {{ t('datasource.cancelSync') }}
+                      </t-dropdown-item>
+                      <t-dropdown-item
                         v-if="canManageDataSource"
                         theme="error"
                         class="ds-dropdown-delete-item"
                       >
-                        <t-popconfirm
-                          :content="t('datasource.deleteConfirm')"
-                          :confirm-btn="{ content: t('datasource.delete'), theme: 'danger' }"
-                          :cancel-btn="{ content: t('common.cancel') }"
-                          placement="left"
-                          attach="body"
-                          @confirm="removeDataSource(ds)"
-                        >
-                          <span class="ds-dropdown-delete-trigger" @click.stop>
-                            <t-icon name="delete" />
-                            <span>{{ t('datasource.delete') }}</span>
-                          </span>
-                        </t-popconfirm>
+                        <span class="ds-dropdown-delete-trigger" @click.stop="openDeletePanel(ds)">
+                          <t-icon name="delete" />
+                          <span>{{ t('datasource.delete') }}</span>
+                        </span>
                       </t-dropdown-item>
                     </t-dropdown-menu>
                   </template>
@@ -336,6 +407,40 @@ onBeforeUnmount(stopPolling)
       :data-source-id="logsDsId"
       :data-source-name="logsDsName"
     />
+
+    <!-- 双选删除面板：默认不勾选=保留已同步文档；勾选后正文切换为红色
+         不可恢复警示，确认携带 purge_documents=true（SP2-a §4.3）。 -->
+    <t-dialog
+      v-model:visible="deleteVisible"
+      :header="t('datasource.deletePanelTitle', { name: deleteTarget?.name ?? '' })"
+      :confirm-btn="{
+        content: deletePurge ? t('datasource.deleteAndPurge') : t('datasource.delete'),
+        theme: 'danger',
+        loading: deleteSubmitting,
+      }"
+      :cancel-btn="{ content: t('common.cancel'), disabled: deleteSubmitting }"
+      :close-on-overlay-click="false"
+      :width="440"
+      @confirm="confirmDelete"
+    >
+      <div class="ds-delete-panel">
+        <p
+          class="ds-delete-panel__body"
+          :class="{ 'ds-delete-panel__body--danger': deletePurge }"
+        >
+          {{ deletePurge ? deletePurgeWarningText : t('datasource.deletePanelKeep') }}
+        </p>
+        <p v-if="deleteCountLoading" class="ds-delete-panel__count">
+          {{ t('common.loading') }}
+        </p>
+        <p v-else-if="deleteCount !== null" class="ds-delete-panel__count">
+          {{ t('datasource.deletePanelCount', { count: deleteCount }) }}
+        </p>
+        <t-checkbox v-model="deletePurge" :disabled="deleteSubmitting">
+          {{ deletePurgeLabelText }}
+        </t-checkbox>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -647,5 +752,27 @@ onBeforeUnmount(stopPolling)
   width: 100%;
   cursor: pointer;
   line-height: 22px;
+}
+
+.ds-delete-panel {
+  display: grid;
+  gap: 12px;
+  font-size: 13px;
+
+  &__body {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--td-text-color-primary);
+
+    &--danger {
+      font-weight: 500;
+      color: var(--td-error-color);
+    }
+  }
+
+  &__count {
+    margin: 0;
+    color: var(--td-text-color-secondary);
+  }
 }
 </style>

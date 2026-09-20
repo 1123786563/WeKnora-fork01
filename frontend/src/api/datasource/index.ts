@@ -106,8 +106,31 @@ export function updateDataSource(id: string, data: Partial<DataSource>) {
   return put(`/api/v1/datasource/${id}`, data)
 }
 
-export function deleteDataSource(id: string) {
-  return del(`/api/v1/datasource/${id}`)
+// Dual-choice delete (SP2-a §4.2): absent/false keeps the synced documents
+// (the legacy keep-documents promise); purge=true sends ?purge_documents=true
+// and the backend cascades the async batched purge of everything the source
+// synced (documents, vectors, tags). The backend honors only the exact
+// "true", so no other value can trip the destructive path.
+export function deleteDataSource(id: string, purge?: boolean) {
+  const query = purge ? '?purge_documents=true' : ''
+  return del(`/api/v1/datasource/${id}${query}`)
+}
+
+// Synced-documents count for the delete-source dual-choice panel (SP2-a
+// §4.1). Counted over the same (tenant, kb, datasource) triple the purge
+// drains, so the panel's N matches exactly what "also delete" removes.
+export async function getDataSourceDocumentsCount(id: string): Promise<number> {
+  const response: any = await get(`/api/v1/datasource/${id}/documents-count`)
+  const body = response?.data ?? response
+  return Number(body?.count ?? 0)
+}
+
+// Cooperative cancel of a running sync (SP2-a §3.3): 202
+// {"status":"cancel_requested"} — the sync loop observes the flag at its next
+// checkpoint/batch boundary and exits canceled with the cursor kept for the
+// next resume. Callers deliberately do not flip the row; polling converges it.
+export function cancelSyncLog(id: string, logId: string) {
+  return post(`/api/v1/datasource/${id}/logs/${encodeURIComponent(logId)}/cancel`, {})
 }
 
 export function validateConnection(id: string) {
