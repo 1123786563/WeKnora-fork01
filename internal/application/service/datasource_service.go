@@ -917,6 +917,15 @@ func (s *DataSourceService) ReindexItems(
 		return "", err
 	}
 
+	// Same lifecycle gate as ManualSync: active/error/paused sources can be
+	// repaired by a retry round (failed samples typically live on an errored
+	// source), a deleted one cannot.
+	if ds.Status != types.DataSourceStatusActive &&
+		ds.Status != types.DataSourceStatusError &&
+		ds.Status != types.DataSourceStatusPaused {
+		return "", datasource.ErrDataSourceNotActive
+	}
+
 	// Same pre-dispatch gate as every other team sync (A07): a pause here is
 	// recorded with its machine-readable reason and no run is queued.
 	if err := s.AuthorizeSyncExecution(ctx, ds); err != nil {
@@ -958,15 +967,15 @@ func (s *DataSourceService) ReindexItems(
 	langfuse.InjectTracing(ctx, payload)
 
 	payloadJSON, _ := json.Marshal(payload)
+	task := asynq.NewTask(types.TypeDataSourceSync, payloadJSON)
 	opts := []asynq.Option{
 		asynq.Queue(types.QueueSync), asynq.MaxRetry(5), asynq.Timeout(2 * time.Hour),
 	}
 	if requestID != "" {
 		opts = append(opts, asynq.TaskID(reindexTaskID(ds.TenantID, dsID, requestID)))
 	}
-	task := asynq.NewTask(types.TypeDataSourceSync, payloadJSON, opts...)
 
-	info, err := s.taskEnqueuer.Enqueue(task)
+	info, err := s.taskEnqueuer.Enqueue(task, opts...)
 	if err != nil {
 		if errors.Is(err, asynq.ErrTaskIDConflict) {
 			// Idempotent rejection: the first request with this request_id owns

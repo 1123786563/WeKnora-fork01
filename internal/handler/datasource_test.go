@@ -22,6 +22,7 @@ type stubDataSourceService struct {
 	deleteDataSource         func(ctx context.Context, id string, purgeDocuments bool) error
 	countDataSourceDocuments func(ctx context.Context, tenantID uint64, dsID string) (int64, error)
 	manualSync               func(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error)
+	reindexItems             func(ctx context.Context, dsID string, externalIDs []string, requestID string) (string, error)
 }
 
 func (s *stubDataSourceService) GetSyncLogs(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error) {
@@ -66,6 +67,13 @@ func (s *stubDataSourceService) ManualSync(ctx context.Context, dsID string, for
 	return nil, nil
 }
 
+func (s *stubDataSourceService) ReindexItems(ctx context.Context, dsID string, externalIDs []string, requestID string) (string, error) {
+	if s.reindexItems != nil {
+		return s.reindexItems(ctx, dsID, externalIDs, requestID)
+	}
+	return "", nil
+}
+
 type stubKBServiceForDS struct {
 	interfaces.KnowledgeBaseService
 	getByID func(ctx context.Context, id string) (*types.KnowledgeBase, error)
@@ -93,6 +101,7 @@ func newDataSourceTestRouter(h *DataSourceHandler) *gin.Engine {
 	r.GET("/datasource/:id/documents-count", h.CountDocuments)
 	r.DELETE("/datasource/:id", h.DeleteDataSource)
 	r.POST("/datasource/:id/sync", h.ManualSync)
+	r.POST("/datasource/:id/reindex", h.ReindexItems)
 	return r
 }
 

@@ -67,6 +67,13 @@ type DataSourceService interface {
 	// the persisted cursor so the worker reconciles the whole source.
 	ManualSync(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error)
 
+	// ReindexItems schedules a scoped reindex run that refetches only the given
+	// external ids (SP2-b §5.3) and returns the new sync log id. The run
+	// converges into its own SyncLog (Trigger=manual_reindex) and never touches
+	// data-source state. A non-empty requestID makes the enqueue idempotent: a
+	// duplicate while still queued returns ErrReindexDuplicateRequest.
+	ReindexItems(ctx context.Context, dsID string, externalIDs []string, requestID string) (syncLogID string, err error)
+
 	// PauseDataSource pauses a data source's scheduled syncs
 	PauseDataSource(ctx context.Context, id string) error
 

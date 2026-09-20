@@ -330,6 +330,10 @@ func RegisterDataSourceRoutes(
 
 		// Sync management — Admin+
 		ds.POST("/:id/sync", g.Admin(), handler.ManualSync)
+		// Scoped reindex of specific failed items (SP2-b §5.3) — Admin+.
+		// Accepted (202): the run completes asynchronously like a manual sync;
+		// a repeated request_id while still queued answers 409.
+		ds.POST("/:id/reindex", g.Admin(), handler.ReindexItems)
 		ds.POST("/:id/pause", g.Admin(), handler.PauseDataSource)
 		ds.POST("/:id/resume", g.Admin(), handler.ResumeDataSource)
 

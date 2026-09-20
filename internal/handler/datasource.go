@@ -471,6 +471,72 @@ type manualSyncRequest struct {
 	ForceFull bool `json:"force_full"`
 }
 
+// reindexRequest is the body of ReindexItems (SP2-b §5.3).
+type reindexRequest struct {
+	// ExternalIDs lists the source items to refetch; a non-empty list is
+	// required (an empty list is a client mistake, answered 400).
+	ExternalIDs []string `json:"external_ids"`
+	// RequestID makes the enqueue idempotent when non-empty: a repeat with the
+	// same id while the run is still queued is rejected as a duplicate (409)
+	// instead of queueing the items twice.
+	RequestID string `json:"request_id"`
+}
+
+// ReindexItems godoc
+// @Summary Retry specific items (scoped reindex)
+// @Description Schedule a targeted reindex run that refetches only the listed external ids. A repeated request_id is rejected as a duplicate while the first run is still queued.
+// @Tags DataSource
+// @Accept json
+// @Param id path string true "Data source ID"
+// @Param request body reindexRequest true "{\"external_ids\": [\"...\"], \"request_id\": \"...\"}"
+// @Success 202 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Router /datasource/{id}/reindex [post]
+func (h *DataSourceHandler) ReindexItems(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	id := c.Param("id")
+
+	if _, status, msg := h.getOwnedDataSource(ctx, tenantID, id); status != http.StatusOK {
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	var req reindexRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if len(req.ExternalIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "external_ids must be a non-empty list"})
+		return
+	}
+
+	syncLogID, err := h.service.ReindexItems(ctx, id, req.ExternalIDs, req.RequestID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrReindexDuplicateRequest):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case errors.Is(err, datasource.ErrDataSourceNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "data source not found"})
+		default:
+			// Mirrors ManualSync: pause/authorization rejections and queue
+			// outages surface as their message on a 400.
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"sync_log_id": syncLogID})
+}
+
 // ManualSync godoc
 // @Summary Trigger immediate sync
 // @Description Trigger an immediate sync for a data source
