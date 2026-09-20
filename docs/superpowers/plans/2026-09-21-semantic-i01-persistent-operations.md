@@ -43,13 +43,13 @@
 - Create: `semantic/tests/test_operations.py`
 
 **Interfaces:**
-- `PostgresOperationStore(dsn: str, schema: str = "semantic_service")` owns a connection per call and the service schema; validate schema identifiers before interpolating them.
+- `PostgresOperationStore(dsn: str, schema: str = "semantic_service")` owns a connection per call and the service schema; `migrate()` is safe on every startup and serializes concurrent migration attempts by advisory lock plus a service `schema_migrations` version row.
 - `accept(request: ApplyRequest) -> Operation` deduplicates by both `(scope, idempotency_key)` and `(scope, document_id, revision, config_digest)`; a matching payload hash returns the existing operation, mismatched hash/identity raises `OperationPayloadConflict`.
 - `get(scope: ScopeKey, operation_id: str) -> Operation` is scope-bound; missing/wrong-scope IDs raise the same `OperationNotFound` result. `cancel` has the same scope-bound not-found behavior.
 - Internal `OperationPhase` contains the eight persisted phases from Global Constraints; C01 DTO conversion applies the projection described above.
 - `LeasedOperation` contains `operation: Operation`, the decoded durable `request: ApplyRequest`, `worker_id`, and `lease_token`.
 - `claim(worker_id: str, lease_seconds: int) -> LeasedOperation | None` atomically selects one accepted or expired nonterminal row with `FOR UPDATE SKIP LOCKED`, updates owner/deadline, and increments the fence before returning.
-- `renew(operation_id: str, worker_id: str, lease_token: int, lease_seconds: int) -> bool` and `transition(operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase) -> bool` require a current unexpired lease and an allowed state edge.
+- `renew(operation_id: str, worker_id: str, lease_token: int, lease_seconds: int) -> bool` and `transition(operation_id: str, worker_id: str, lease_token: int, expected: OperationPhase, next: OperationPhase, stage: str, error_code: str | None = None, result_generation: str | None = None) -> bool` require a current unexpired lease and allowed state edge; transition persists stage, error, and result metadata.
 - `cancel(scope: ScopeKey, operation_id: str) -> Operation` is compare-and-set against current nonterminal state, releases/invalidate the lease, clears request bytes, and rejects succeeded operations with `OperationFailedPrecondition`.
 - `OperationWorker(store: PostgresOperationStore)` exposes `claim_next`, `renew`, and `transition` for a later I03 processor; it does not invent an indexing handler in I01.
 - Allowed internal transitions are `accepted→running`, `running→staged`, `staged→publishing`, `publishing→succeeded`; `accepted/running/staged/publishing` may transition to `failed/cancelled/superseded`; no transition leaves a terminal phase. Reclaim renews a lease without changing the phase.
@@ -84,6 +84,13 @@ def test_same_document_revision_and_config_deduplicates_across_request_retry_key
     second = operation_store.accept(retry)
     assert second.operation_id == first.operation_id
 
+def test_document_identity_unique_key_with_different_payload_hash_conflicts(operation_store, apply_request):
+    first = dataclasses.replace(apply_request, idempotency_key="identity-a", payload_hash="hash-a")
+    operation_store.accept(first)
+    changed = dataclasses.replace(first, idempotency_key="identity-b", payload_hash="hash-b")
+    with pytest.raises(OperationPayloadConflict):
+        operation_store.accept(changed)
+
 def test_get_and_cancel_do_not_cross_scope(operation_store, apply_request):
     operation = operation_store.accept(apply_request)
     wrong_scopes = (
@@ -110,17 +117,24 @@ def test_expired_claim_gets_new_fence_and_old_worker_cannot_transition(operation
     expire_lease_at_database_clock(operation_store, first.operation.operation_id)
     second = operation_store.claim("worker-new", 30)
     assert second is not None and second.lease_token == first.lease_token + 1
+    assert not operation_store.renew(first.operation.operation_id, "worker-old", first.lease_token, 30)
     assert not operation_store.transition(first.operation.operation_id, "worker-old", first.lease_token,
-                                          OperationPhase.RUNNING, OperationPhase.STAGED)
+                                          OperationPhase.RUNNING, OperationPhase.STAGED, "staged")
+    assert not operation_store.renew(second.operation.operation_id, "wrong-worker", second.lease_token, 30)
+    assert not operation_store.renew(second.operation.operation_id, "worker-new", second.lease_token - 1, 30)
+    assert not operation_store.transition(second.operation.operation_id, "wrong-worker", second.lease_token,
+                                          OperationPhase.RUNNING, OperationPhase.STAGED, "staged")
+    assert not operation_store.transition(second.operation.operation_id, "worker-new", second.lease_token - 1,
+                                          OperationPhase.RUNNING, OperationPhase.STAGED, "staged")
 
 def test_cancel_and_publish_race_has_one_terminal_winner(operation_store, apply_request):
     operation_store.accept(apply_request)
     claim = operation_store.claim("worker", 30)
     assert claim is not None
-    operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
-                               OperationPhase.RUNNING, OperationPhase.STAGED)
-    operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
-                               OperationPhase.STAGED, OperationPhase.PUBLISHING)
+    assert operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.RUNNING, OperationPhase.STAGED, "staged")
+    assert operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.STAGED, OperationPhase.PUBLISHING, "publishing")
     barrier = threading.Barrier(2)
     def cancel():
         barrier.wait()
@@ -132,7 +146,8 @@ def test_cancel_and_publish_race_has_one_terminal_winner(operation_store, apply_
     def publish():
         barrier.wait()
         won = operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
-                                        OperationPhase.PUBLISHING, OperationPhase.SUCCEEDED)
+                                        OperationPhase.PUBLISHING, OperationPhase.SUCCEEDED, "succeeded",
+                                        result_generation="gen-1")
         return "succeeded" if won else "lost"
     with ThreadPoolExecutor(max_workers=2) as pool:
         cancel_future = pool.submit(cancel)
@@ -141,6 +156,10 @@ def test_cancel_and_publish_race_has_one_terminal_winner(operation_store, apply_
     final = operation_store.get(apply_request.document.scope, claim.operation.operation_id)
     assert final.state in {"succeeded", "cancelled"}
     assert len(outcomes & {"cancelled", "succeeded"}) == 1
+    if final.state == "cancelled":
+        assert not operation_store.renew(claim.operation.operation_id, "worker", claim.lease_token, 30)
+        assert not operation_store.transition(claim.operation.operation_id, "worker", claim.lease_token,
+                                              OperationPhase.PUBLISHING, OperationPhase.SUCCEEDED, "succeeded")
 
 def test_accept_survives_store_recreation(operation_store_factory, apply_request):
     first_store = operation_store_factory()
@@ -153,24 +172,85 @@ def test_succeeded_operation_cannot_be_cancelled(operation_store, apply_request)
     operation = operation_store.accept(apply_request)
     claim = operation_store.claim("worker", 30)
     assert claim is not None
-    operation_store.transition(operation.operation_id, "worker", claim.lease_token,
-                               OperationPhase.RUNNING, OperationPhase.STAGED)
-    operation_store.transition(operation.operation_id, "worker", claim.lease_token,
-                               OperationPhase.STAGED, OperationPhase.PUBLISHING)
-    operation_store.transition(operation.operation_id, "worker", claim.lease_token,
-                               OperationPhase.PUBLISHING, OperationPhase.SUCCEEDED)
+    assert claim.request == apply_request
+    assert request_bytes_for_test(operation_store, operation.operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
+    assert operation_store.transition(operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.RUNNING, OperationPhase.STAGED, "staged")
+    assert operation_store.transition(operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.STAGED, OperationPhase.PUBLISHING, "publishing")
+    assert operation_store.transition(operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.PUBLISHING, OperationPhase.SUCCEEDED, "succeeded",
+                                      result_generation="generation-1")
     with pytest.raises(OperationFailedPrecondition):
         operation_store.cancel(apply_request.document.scope, operation.operation_id)
+    operation = operation_store.get(apply_request.document.scope, operation.operation_id)
+    assert operation.result_generation == "generation-1"
+    assert operation.error_code is None
+    assert request_bytes_for_test(operation_store, operation.operation_id) is None
 
-def test_accept_survives_store_recreation(operation_store_factory, apply_request):
+@pytest.mark.parametrize("terminal_phase", (OperationPhase.FAILED, OperationPhase.SUPERSEDED, OperationPhase.CANCELLED))
+def test_terminal_operation_clears_durable_request_bytes(operation_store, apply_request, terminal_phase):
+    operation = operation_store.accept(apply_request)
+    claim = operation_store.claim("worker", 30)
+    assert claim is not None
+    assert request_bytes_for_test(operation_store, operation.operation_id) is not None
+    if terminal_phase == OperationPhase.CANCELLED:
+        operation_store.cancel(apply_request.document.scope, operation.operation_id)
+    else:
+        assert operation_store.transition(operation.operation_id, "worker", claim.lease_token,
+                                          OperationPhase.RUNNING, terminal_phase, terminal_phase.value,
+                                          error_code="build-failed" if terminal_phase == OperationPhase.FAILED else None)
+    assert request_bytes_for_test(operation_store, operation.operation_id) is None
+
+def test_failed_transition_persists_error_and_stage(operation_store, apply_request):
+    operation = operation_store.accept(apply_request)
+    claim = operation_store.claim("worker", 30)
+    assert claim is not None
+    assert operation_store.transition(operation.operation_id, "worker", claim.lease_token,
+                                      OperationPhase.RUNNING, OperationPhase.FAILED, "build", error_code="provider-unavailable")
+    failed = operation_store.get(apply_request.document.scope, operation.operation_id)
+    assert failed.state == "failed" and failed.stage == "build"
+    assert failed.error_code == "provider-unavailable"
+
+def test_store_migration_is_idempotent_across_restarts(operation_store_factory):
     first_store = operation_store_factory()
-    first = first_store.accept(apply_request)
-    second_store = operation_store_factory()  # new store object and connections, same PostgreSQL schema
-    second = second_store.accept(apply_request)
-    assert second.operation_id == first.operation_id
+    first_store.migrate()
+    operation_store_factory().migrate()
+
+def test_exhausted_lease_fence_fails_without_exceeding_uint64(operation_store_factory, apply_request):
+    store = operation_store_factory()
+    store.accept(apply_request)
+    set_lease_token_for_test(store, apply_request, UINT64_MAX)
+    with pytest.raises(OperationFailedPrecondition):
+        store.claim("worker", 30)
 ```
 
-The test module imports `dataclasses`, `threading`, `ThreadPoolExecutor`, `pytest`, `psycopg`, `psycopg.sql`, C01 `ApplyRequest`/`ScopeKey`, and I01 store/phase/error types. `expire_lease_at_database_clock(store, operation_id)` is a test-only helper that opens a new psycopg connection, sets the fixture's isolated schema via `psycopg.sql.Identifier`, and updates `lease_until` to `clock_timestamp() - interval '1 second'`; production code has no test-only expiry method. `operation_store_factory` creates a new store object using the same test DSN/schema. The store fixture opens real PostgreSQL, creates a unique schema, applies the production I01 migration, and drops only that schema in cleanup. It fails with a clear `SEMANTIC_TEST_POSTGRES_DSN is required` message if the DSN is absent.
+The test module imports `dataclasses`, `threading`, `ThreadPoolExecutor`, `pytest`, `psycopg`, `psycopg.sql`, C01 `ApplyRequest`/`ScopeKey`/`apply_request_to_wire`/`UINT64_MAX`, and I01 store/phase/error types. `expire_lease_at_database_clock`, `request_bytes_for_test`, and `set_lease_token_for_test` are test-only helpers using a new psycopg connection plus `psycopg.sql.Identifier(store.schema)`; they never add test-only production APIs. `operation_store_factory` creates a new store object using the same test DSN/schema. The store fixture opens real PostgreSQL, creates a unique schema, applies the production I01 migration, and drops only that schema in cleanup. It fails with a clear `SEMANTIC_TEST_POSTGRES_DSN is required` message if the DSN is absent.
+
+```python
+def request_bytes_for_test(store, operation_id):
+    with psycopg.connect(store.dsn) as connection:
+        row = connection.execute(
+            sql.SQL("SELECT request_bytes FROM {}.operations WHERE operation_id = %s").format(sql.Identifier(store.schema)),
+            (operation_id,),
+        ).fetchone()
+    return row[0]
+
+def expire_lease_at_database_clock(store, operation_id):
+    with psycopg.connect(store.dsn) as connection:
+        connection.execute(
+            sql.SQL("UPDATE {}.operations SET lease_until = clock_timestamp() - interval '1 second' WHERE operation_id = %s").format(sql.Identifier(store.schema)),
+            (operation_id,),
+        )
+
+def set_lease_token_for_test(store, request, lease_token):
+    operation = store.accept(request)
+    with psycopg.connect(store.dsn) as connection:
+        connection.execute(
+            sql.SQL("UPDATE {}.operations SET lease_token = %s WHERE operation_id = %s").format(sql.Identifier(store.schema)),
+            (lease_token, operation.operation_id),
+        )
+```
 
 - [ ] **Step 2: Run RED**
 
@@ -180,7 +260,7 @@ Expected: fail because `semantic_service.operations` and the store fixture do no
 
 - [ ] **Step 3: Implement migration, store, and C01 projection**
 
-Use one transaction per accept/claim/renew/transition/cancel; create the service schema under the migration account; keep the database row's internal phase separate from C01 `Operation.state`; store exact deterministic protobuf request bytes only while nonterminal. Use `NUMERIC(20,0)` for `tenant_id`, revision, and lease token so PostgreSQL can represent the full uint64 contract.
+Use one transaction per accept/claim/renew/transition/cancel; create the service schema under the migration account; record migration version 1; keep the database row's internal `phase` and mutable `stage` separate from C01 `Operation.state`; store exact deterministic protobuf request bytes only while nonterminal. Use `NUMERIC(20,0)` for `tenant_id`, revision, and lease token with an upper-bound check at `18446744073709551615` so PostgreSQL can represent but never exceed the full uint64 contract.
 
 - [ ] **Step 4: Run GREEN and all service tests against the disposable PostgreSQL DSN**
 

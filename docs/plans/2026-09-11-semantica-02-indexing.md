@@ -35,7 +35,7 @@
 - `semantic/tests/conftest.py`：operation_store真实PG fixture
 - `semantic/tests/test_operations.py`：重复投递/失联worker/取消竞争
 
-**接口：** OperationStore.accept(req:ApplyRequest)->Operation、get(scope,operation_id)->Operation、claim(worker_id,lease_seconds)->LeasedOperation|None、renew(operation_id,worker_id,lease_token,lease_seconds)->bool、transition(operation_id,worker_id,lease_token,expected:OperationPhase,next:OperationPhase)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key和scope/document/revision/config digest去重，payload_hash冲突报错。C01 OperationState保持冻结；内部accepted/staged/publishing映射到pending/running及stage，superseded映射为failed + error_code，详见I01执行计划。
+**接口：** OperationStore.accept(req:ApplyRequest)->Operation、get(scope,operation_id)->Operation、claim(worker_id,lease_seconds)->LeasedOperation|None、renew(operation_id,worker_id,lease_token,lease_seconds)->bool、transition(operation_id,worker_id,lease_token,expected:OperationPhase,next:OperationPhase,stage:str,error_code:str?,result_generation:str?)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key和scope/document/revision/config digest去重，payload_hash冲突报错。C01 OperationState保持冻结；内部accepted/staged/publishing映射到pending/running，stage单独持久化，superseded映射为failed + error_code，详见I01执行计划。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -53,7 +53,7 @@ def test_stale_lease_cannot_publish(operation_store, claimed_operation):
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立service专属schema与迁移器；operation表保存deterministic C01 ApplyRequest bytes、payload hash、阶段、租约到期、递增lease_token、错误码、重试时间；非终态需可恢复，终态清除请求正文；唯一键冲突查回原操作并校验payload**
+- [ ] **3. 建立service专属schema与幂等迁移器；operation表保存内部phase/stage、deterministic C01 ApplyRequest bytes、payload hash、租约到期、递增lease_token、错误码、result_generation；非终态需可恢复，终态清除请求正文；唯一键冲突查回原操作并校验payload**
 
 - [ ] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
 
