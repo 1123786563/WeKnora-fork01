@@ -23,6 +23,8 @@
 ## Review Focus
 
 - Unsupported or forbidden evidence appears: report a permission leak independently and fail the hard gate even when other scores are high.
+- An observation labels a different requested mode than its immutable case: treat the case request as authoritative and fail the mode hard gate even if observation-reported requested and actual modes match each other.
+- Empty case or observation files: reject them; never emit a vacuously successful synthetic-only or hard-gate-passing report.
 - Empty expected evidence: unanswerable cases score recall as 1 only when no evidence/conclusion is returned; empty predictions for answerable cases must not receive perfect precision.
 - Duplicate/missing case observations: reject ambiguous or incomplete input rather than silently dropping cases.
 - Requested mode differs from actual mode: record the downgrade/escalation and mark the mode gate false; GraphRAG cannot silently become Reason.
@@ -49,15 +51,17 @@ The test imports `Path`, `json`, `pytest`, and `score_case`/`aggregate_cases` fr
 
 ```python
 def test_score_case_penalizes_unsupported_evidence():
-    case = {"expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": []}
+    case = {"requested_mode": "reason", "expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": []}
     observation = {"actual_evidence_ids": ["e1", "e-hidden"], "actual_conclusion_ids": ["c1"], "actual_status": "answered", "requested_mode": "reason", "actual_mode": "reason"}
     score = score_case(case, observation)
     assert score["source_precision"] == 0.5
     assert score["source_recall"] == 1.0
-    assert score["correct"] is True
+    assert score["permission_leak"] is True
+    assert score["hard_gate_pass"] is False
+    assert score["correct"] is False
 
 def test_empty_prediction_does_not_score_as_perfect_for_answerable_case():
-    case = {"expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": []}
+    case = {"requested_mode": "reason", "expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": []}
     observation = {"actual_evidence_ids": [], "actual_conclusion_ids": [], "actual_status": "insufficient_evidence", "requested_mode": "reason", "actual_mode": "reason"}
     score = score_case(case, observation)
     assert score["source_precision"] == 0.0
@@ -65,7 +69,7 @@ def test_empty_prediction_does_not_score_as_perfect_for_answerable_case():
     assert score["correct"] is False
 
 def test_unanswerable_requires_no_claim_and_no_evidence():
-    case = {"expected_evidence_ids": [], "expected_conclusion_ids": [], "answerable": False, "forbidden_evidence_ids": []}
+    case = {"requested_mode": "reason", "expected_evidence_ids": [], "expected_conclusion_ids": [], "answerable": False, "forbidden_evidence_ids": []}
     observation = {"actual_evidence_ids": [], "actual_conclusion_ids": [], "actual_status": "insufficient_evidence", "requested_mode": "reason", "actual_mode": "reason"}
     assert score_case(case, observation)["unanswerable_correct"] is True
 ```
@@ -86,7 +90,7 @@ Expected: collection fails because `evaluate.score_case` is not implemented; thi
 
 ```python
 def test_permission_leak_is_hard_gate():
-    case = {"expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": ["e-forbidden"]}
+    case = {"requested_mode": "graph_rag", "expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": ["e-forbidden"]}
     observation = {"actual_evidence_ids": ["e1", "e-forbidden"], "actual_conclusion_ids": ["c1"], "actual_status": "answered", "requested_mode": "graph_rag", "actual_mode": "reason"}
     score = score_case(case, observation)
     assert score["permission_leak"] is True
@@ -105,7 +109,7 @@ Run the same pytest command as Task 1. Expected: the named gate tests fail becau
 
 - [ ] **Step 3: Implement the scorer and aggregation**
 
-Use set intersections over evidence IDs. `source_precision` is intersection/predicted when predictions exist; if no predictions, it is `1.0` only when the case expects none, otherwise `0.0`. `source_recall` is intersection/expected when expected evidence exists; if no expected evidence, it is `1.0`. `correct` compares conclusion-ID sets and requires no permission leak plus exact requested/actual mode match. `unanswerable_correct` is true only for `answerable == false`, status `insufficient_evidence`, and empty evidence/conclusion sets. `permission_leak` is true if returned evidence intersects `forbidden_evidence_ids` or `access_violations` is nonempty. Percentiles use nearest-rank (`rank=max(1, ceil(p*n))` over sorted observed values); no measurements yields null.
+Use set intersections over evidence IDs. `source_precision` is intersection/predicted when predictions exist; if no predictions, it is `1.0` only when the case expects none, otherwise `0.0`. `source_recall` is intersection/expected when expected evidence exists; if no expected evidence, it is `1.0`. `permission_leak` is true if returned evidence intersects `forbidden_evidence_ids`, includes any ID outside the immutable case's `expected_evidence_ids`, or `access_violations` is nonempty. `mode_match` is true only when observation-requested mode equals case-requested mode and actual mode equals case-requested mode. `correct` requires exact conclusion IDs, complete expected evidence recall, no permission leak, correct mode, and the required status for answerability. `unanswerable_correct` is true only for `answerable == false`, status `insufficient_evidence`, and empty evidence/conclusion sets. Percentiles use nearest-rank (`rank=max(1, ceil(p*n))` over sorted observed values); no measurements yields null.
 
 - [ ] **Step 4: Run GREEN for scorer and aggregate tests**
 
@@ -140,7 +144,7 @@ Expected: test fails because `questions.jsonl` and/or `load_cases` is absent.
 
 - [ ] **Step 3: Implement strict JSONL loading and synthetic dataset**
 
-Reject malformed JSON, duplicate `case_id`, a missing required field, a case without `synthetic: true`, or a forbidden evidence ID duplicated in expected evidence. Preserve Chinese strings byte-for-byte; do not normalize text or Unicode in the evaluator.
+Reject an empty file, malformed JSON, duplicate `case_id`, a missing required field, a case without `synthetic: true`, or a forbidden evidence ID duplicated in expected evidence. Preserve Chinese strings byte-for-byte; do not normalize text or Unicode in the evaluator.
 
 - [ ] **Step 4: Run GREEN for dataset tests**
 
@@ -163,6 +167,25 @@ def test_evaluate_run_requires_one_observation_for_every_case():
     case = {"case_id": "case-1", "expected_evidence_ids": [], "expected_conclusion_ids": [], "answerable": False, "forbidden_evidence_ids": []}
     with pytest.raises(ValueError):
         evaluate_run([case], [])
+
+def test_case_mode_is_authoritative_over_observation_claim():
+    case = {"case_id": "graph-case", "requested_mode": "graph_rag", "expected_evidence_ids": ["e1"], "expected_conclusion_ids": ["c1"], "answerable": True, "forbidden_evidence_ids": []}
+    observation = {"case_id": "graph-case", "requested_mode": "reason", "actual_mode": "reason", "actual_status": "answered", "actual_evidence_ids": ["e1"], "actual_conclusion_ids": ["c1"], "access_violations": [], "evidence_layer": "synthetic"}
+    score = score_case(case, observation)
+    assert score["mode_match"] is False
+    assert score["hard_gate_pass"] is False
+
+def test_empty_case_or_observation_set_is_rejected(tmp_path):
+    empty_cases = tmp_path / "empty-cases.jsonl"
+    empty_observations = tmp_path / "empty-observations.jsonl"
+    empty_cases.write_text("")
+    empty_observations.write_text("")
+    with pytest.raises(ValueError):
+        load_cases(empty_cases)
+    with pytest.raises(ValueError):
+        load_observations(empty_observations)
+    with pytest.raises(ValueError):
+        evaluate_run([], [])
 
 def test_example_report_is_synthetic_and_never_approves_policy():
     cases = load_cases(FIXTURES / "questions.jsonl")
