@@ -86,8 +86,8 @@ func TestSemanticPayloadHashAndOutboxLeaseFence(t *testing.T) {
 	second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
 	require.NoError(t, err)
 	require.Nil(t, second)
-	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, event.LeaseToken-1), ErrSemanticOutboxLeaseLost)
-	require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, event.LeaseToken))
+	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken-1), ErrSemanticOutboxLeaseLost)
+	require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken))
 }
 
 func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
@@ -114,7 +114,7 @@ func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
 }
 
 func mutationFixture(expected uint64, deleted bool, payload []byte) types.SemanticMutation {
-	return types.SemanticMutation{TenantID: 1, KBID: "kb-1", DocumentID: "doc-1", ExpectedRevision: expected, ContentHash: "opaque-content-hash", Deleted: deleted, Payload: append([]byte(nil), payload...)}
+	return types.SemanticMutation{TenantID: 1, KBID: "kb-1", DocumentID: "doc-1", ExpectedRevision: expected, ContentHash: "opaque-content-hash", ConfigDigest: "config-v1", Deleted: deleted, Payload: append([]byte(nil), payload...)}
 }
 func sha256Hex(payload []byte) string {
 	sum := sha256.Sum256(payload)
