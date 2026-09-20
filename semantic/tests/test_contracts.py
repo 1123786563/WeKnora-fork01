@@ -224,6 +224,12 @@ def test_operation_wire_round_trip_preserves_state() -> None:
     assert operation_from_wire(operation_to_wire(value)) == value
 
 
+def test_operation_wire_round_trip_preserves_error_code() -> None:
+    from semantic_service.contracts import Operation, ScopeKey, operation_from_wire, operation_to_wire
+    value = Operation("op", ScopeKey(1, "kb"), "doc", 1, "failed", "index", 2, "g", "ERR")
+    assert operation_from_wire(operation_to_wire(value)) == value
+
+
 def test_operation_ref_wire_round_trip_preserves_scope() -> None:
     from semantic_service.contracts import OperationRef, ScopeKey, operation_ref_from_wire, operation_ref_to_wire
 
@@ -242,6 +248,13 @@ def test_reason_response_wire_round_trip_preserves_absent_conclusion() -> None:
     from semantic_service.contracts import ReasonResponse, ReasonStatus, reason_response_from_wire, reason_response_to_wire
 
     value = ReasonResponse(ReasonStatus.INSUFFICIENT_EVIDENCE, None, None, None, (), (), None, None, ("missing",))
+    assert reason_response_from_wire(reason_response_to_wire(value)) == value
+
+
+def test_reason_response_wire_round_trip_preserves_present_optionals() -> None:
+    from semantic_service.contracts import Evidence, ReasonResponse, ReasonStatus, SearchResponse, reason_response_from_wire, reason_response_to_wire
+    retrieval = SearchResponse("q", "g", "reason", "reason", (Evidence("e", "d", 1, "c", "h", "文本", 0, 2),), ("a1", "a2"))
+    value = ReasonResponse(ReasonStatus.DERIVED, "A→C", retrieval, "rule", ("a1", "a2"), ("r1",), "model-v1", "prompt-v1", ("bounded",))
     assert reason_response_from_wire(reason_response_to_wire(value)) == value
 
 
@@ -274,4 +287,10 @@ def test_capabilities_wire_round_trip_preserves_availability() -> None:
     from semantic_service.contracts import Capabilities, QueryLimits, capabilities_from_wire, capabilities_to_wire
 
     value = Capabilities("v1", "engine", ("graph_rag",), ("rules",), QueryLimits(1, 2, 3, 4, 5, 6), ("limit",), None)
+    assert capabilities_from_wire(capabilities_to_wire(value)) == value
+
+
+def test_capabilities_wire_round_trip_preserves_unavailable_reason() -> None:
+    from semantic_service.contracts import Capabilities, QueryLimits, capabilities_from_wire, capabilities_to_wire
+    value = Capabilities("v1", "engine", ("graph_rag", "reason"), ("rules", "model"), QueryLimits(1, 2, 3, 4, 5, 6), ("bounded",), "reasoning disabled")
     assert capabilities_from_wire(capabilities_to_wire(value)) == value

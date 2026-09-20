@@ -54,7 +54,8 @@ func TestSemanticOperationRefWireRoundTrip(t *testing.T) {
 
 func TestSemanticOperationWireRoundTrip(t *testing.T) {
 	resultGeneration := "g"
-	original := SemanticOperation{OperationID: "op", Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, State: SemanticOperationStateRunning, Stage: "index", LeaseToken: 2, ResultGeneration: &resultGeneration}
+	errorCode := "ERR"
+	original := SemanticOperation{OperationID: "op", Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, State: SemanticOperationStateRunning, Stage: "index", LeaseToken: 2, ResultGeneration: &resultGeneration, ErrorCode: &errorCode}
 	wire, err := SemanticOperationToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
@@ -101,6 +102,20 @@ func TestSemanticReasonResponseWireRoundTripPreservesAbsentConclusion(t *testing
 	}
 	result, err := SemanticReasonResponseFromWire(wire)
 	if err != nil || !reflect.DeepEqual(result, original) || result.Conclusion != nil {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
+func TestSemanticReasonResponseWireRoundTripPreservesPresentOptionals(t *testing.T) {
+	conclusion, kind, model, prompt := "A→C", "rule", "model-v1", "prompt-v1"
+	retrieval := SemanticSearchResponse{QueryID: "q", Generation: "g", RequestedMode: SemanticRetrievalModeReason, ActualMode: SemanticRetrievalModeReason, AssertionIDs: []string{"a1", "a2"}}
+	original := SemanticReasonResponse{Status: SemanticReasonStatusDerived, Conclusion: &conclusion, Retrieval: &retrieval, ConclusionKind: &kind, PremiseIDs: []string{"a1", "a2"}, RuleIDs: []string{"r1"}, ModelVersion: &model, PromptVersion: &prompt, Limitations: []string{"bounded"}}
+	wire, err := SemanticReasonResponseToWire(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := SemanticReasonResponseFromWire(wire)
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
@@ -158,6 +173,19 @@ func TestSemanticCapabilitiesWireRoundTrip(t *testing.T) {
 	wire, err := SemanticCapabilitiesToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticCapabilitiesFromWire(wire)
+	if err != nil || !reflect.DeepEqual(result, original) {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
+func TestSemanticCapabilitiesWireRoundTripPreservesUnavailableReason(t *testing.T) {
+	unavailable := "reasoning disabled"
+	original := SemanticCapabilities{ProtocolVersion: "v1", EngineVersion: "engine", RetrievalModes: []SemanticRetrievalMode{SemanticRetrievalModeGraphRAG, SemanticRetrievalModeReason}, ReasoningModes: []SemanticReasoningMode{SemanticReasoningModeRules, SemanticReasoningModeModel}, Limits: SemanticQueryLimits{MaxHops: 2, MaxNodes: 10, MaxEdges: 20, TopK: 3, MaxTokens: 100, DeadlineMS: 1000}, Limitations: []string{"bounded"}, UnavailableReason: &unavailable}
+	wire, err := SemanticCapabilitiesToWire(original)
+	if err != nil {
+		t.Fatal(err)
 	}
 	result, err := SemanticCapabilitiesFromWire(wire)
 	if err != nil || !reflect.DeepEqual(result, original) {
