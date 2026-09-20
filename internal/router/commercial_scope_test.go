@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -198,6 +199,128 @@ func TestCommercialScopeQueriesNeverCrossSpaces(t *testing.T) {
 	w, body = serveWith(t, db, authAs(202, "shared-user", "viewer"), http.MethodGet, "/api/v1/commercial/orders")
 	if w.Code != http.StatusOK || strings.TrimSpace(body) == "" || strings.Contains(body, "null") {
 		t.Fatalf("orders B status=%d body=%s", w.Code, body)
+	}
+}
+
+// TestCommercialSummaryUsageEnvelope locks the repo-wide response envelope on
+// the two read endpoints the web billing surfaces consume: GET
+// /commercial/summary and GET /commercial/usage answer
+// {success:true,data:...}. A bare object/array broke every api-client unwrap
+// (envelopes without success/data throw INVALID_RESPONSE), silently killing
+// BillingPage, the SP14 general card and the SP12 budget card since 09-11.
+// An EMPTY usage answer must carry data:[] (never null) per the SP11 lesson.
+func TestCommercialSummaryUsageEnvelope(t *testing.T) {
+	_, _, db := newCommercialScopeEngine(t, nil)
+	if err := db.Exec(`INSERT INTO commercial_subscriptions (id, tenant_id, plan_key, plan_version, paid_until, version)
+		VALUES ('sub-a', 101, 'pro', 3, '2027-01-01 00:00:00', 7)`).Error; err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO commercial_resource_counters (tenant_id, resource, used, hard_limit)
+		VALUES (101, 'storage_files', 7, 10)`).Error; err != nil {
+		t.Fatalf("seed counter: %v", err)
+	}
+
+	type subRow struct {
+		ID          string `json:"id"`
+		PlanKey     string `json:"plan_key"`
+		PlanVersion int64  `json:"plan_version"`
+		PaidUntil   string `json:"paid_until"`
+		Version     int64  `json:"version"`
+	}
+	type summaryRow struct {
+		TenantID        uint64  `json:"tenant_id"`
+		Subscription    *subRow `json:"subscription"`
+		BaseTier        bool    `json:"base_tier"`
+		BaseTierKey     string  `json:"base_tier_key"`
+		CanManageBilling bool    `json:"can_manage_billing"`
+	}
+	type usageRow struct {
+		Resource string `json:"resource"`
+		Used     int64  `json:"used"`
+		Limit    *int64 `json:"limit"`
+	}
+	decode := func(body string) (bool, json.RawMessage) {
+		t.Helper()
+		var env struct {
+			Success bool            `json:"success"`
+			Data    json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(body), &env); err != nil {
+			t.Fatalf("decode envelope: %v body=%s", err, body)
+		}
+		return env.Success, env.Data
+	}
+
+	// Subscribed space: envelope + the purchased projection inside data.
+	w, body := serveWith(t, db, authAs(101, "user", "owner"), http.MethodGet, "/api/v1/commercial/summary")
+	if w.Code != http.StatusOK {
+		t.Fatalf("subscribed summary status = %d body=%s", w.Code, body)
+	}
+	success, data := decode(body)
+	if !success {
+		t.Fatalf("summary must answer success:true, got %s", body)
+	}
+	var subscribed summaryRow
+	if err := json.Unmarshal(data, &subscribed); err != nil {
+		t.Fatalf("decode summary data: %v body=%s", err, body)
+	}
+	if subscribed.TenantID != 101 || subscribed.BaseTier || subscribed.Subscription == nil ||
+		subscribed.Subscription.PlanKey != "pro" || subscribed.Subscription.PaidUntil == "" || subscribed.Subscription.Version != 7 {
+		t.Fatalf("subscribed summary data mismatch: %+v", subscribed)
+	}
+	if !subscribed.CanManageBilling {
+		t.Fatalf("owner must be able to manage billing: %+v", subscribed)
+	}
+
+	// Fresh space: base-tier fallback inside the same envelope.
+	w, body = serveWith(t, db, authAs(303, "fresh", "owner"), http.MethodGet, "/api/v1/commercial/summary")
+	if w.Code != http.StatusOK {
+		t.Fatalf("base-tier summary status = %d body=%s", w.Code, body)
+	}
+	success, data = decode(body)
+	if !success {
+		t.Fatalf("base-tier summary must answer success:true, got %s", body)
+	}
+	var base summaryRow
+	if err := json.Unmarshal(data, &base); err != nil {
+		t.Fatalf("decode base-tier data: %v body=%s", err, body)
+	}
+	if base.TenantID != 303 || !base.BaseTier || base.Subscription != nil || base.BaseTierKey == "" {
+		t.Fatalf("base-tier summary data mismatch: %+v", base)
+	}
+
+	// Usage with counters: data is a JSON array of {resource,used,limit}.
+	w, body = serveWith(t, db, authAs(101, "user", "owner"), http.MethodGet, "/api/v1/commercial/usage")
+	if w.Code != http.StatusOK {
+		t.Fatalf("usage status = %d body=%s", w.Code, body)
+	}
+	success, data = decode(body)
+	if !success {
+		t.Fatalf("usage must answer success:true, got %s", body)
+	}
+	var rows []usageRow
+	if err := json.Unmarshal(data, &rows); err != nil {
+		t.Fatalf("usage data must be an array: %v body=%s", err, body)
+	}
+	if len(rows) != 1 || rows[0].Resource != "storage_files" || rows[0].Used != 7 || rows[0].Limit == nil || *rows[0].Limit != 10 {
+		t.Fatalf("usage data mismatch: %+v", rows)
+	}
+
+	// Usage with NO counters: data is [] — never null (SP11 lesson).
+	w, body = serveWith(t, db, authAs(303, "fresh", "owner"), http.MethodGet, "/api/v1/commercial/usage")
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty usage status = %d body=%s", w.Code, body)
+	}
+	success, data = decode(body)
+	if !success {
+		t.Fatalf("empty usage must answer success:true, got %s", body)
+	}
+	if strings.TrimSpace(string(data)) == "null" || !strings.HasPrefix(strings.TrimSpace(string(data)), "[") {
+		t.Fatalf("empty usage data must serialize as [], got %s", data)
+	}
+	var empty []usageRow
+	if err := json.Unmarshal(data, &empty); err != nil || len(empty) != 0 {
+		t.Fatalf("empty usage data must decode to a zero-length array: %v (%s)", err, data)
 	}
 }
 

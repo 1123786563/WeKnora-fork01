@@ -1,9 +1,11 @@
 import {
   parseCommercialSummary,
+  parseCommercialUsageList,
   parseOrderView,
   parseQuoteView,
   parseRefundView,
   type CommercialSummary,
+  type CommercialUsageRow,
   type CreateOrderInput,
   type OrderView,
   type QuoteInput,
@@ -46,6 +48,9 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
     },
     async summary(signal?: AbortSignal): Promise<CommercialSummary> {
       return parseCommercialSummary(unwrap(await request({ method: 'GET', path: '/api/v1/commercial/summary', signal })));
+    },
+    async usage(signal?: AbortSignal): Promise<CommercialUsageRow[]> {
+      return parseCommercialUsageList(unwrap(await request({ method: 'GET', path: '/api/v1/commercial/usage', signal })));
     },
     async quote(input: QuoteInput, signal?: AbortSignal): Promise<QuoteView> {
       return parseQuoteView(unwrap(await request({ method: 'POST', path: '/api/v1/commercial/quotes', body: input, signal })));

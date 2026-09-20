@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCommercialSummary, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
+import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
 
 const order = { id: 'o1', payment: 'paid', fulfillment: 'pending', amount_fen: '100', currency: 'CNY' };
 
@@ -44,45 +44,125 @@ test('rejects malformed orders', () => {
   for (const value of malformed) assert.throws(() => parseOrderView(value), /invalid order/);
 });
 
-const summary = {
-  plan_name: 'Team',
-  paid_until: null as string | null,
-  available: '1000',
-  held: '50',
-  refund_locked: '25',
-  as_of: '2026-09-11T00:00:00Z',
-  stale: false,
+// The summary wire shape is the handler's real projection
+// (internal/handler/commercial.go Summary): tenant_id + subscription|null +
+// base_tier flags — NOT a ledger (available/held/refund_locked are served by
+// no endpoint and were a fabrication the parser rejected the real payload on).
+const subscribedSummary = {
+  tenant_id: 101,
+  subscription: {
+    id: 'sub-a',
+    plan_key: 'pro',
+    plan_version: 3,
+    paid_until: '2027-01-01T00:00:00Z',
+    version: 7,
+    downgrade_reason: '',
+  },
+  base_tier: false,
+  can_manage_billing: true,
 };
 
-test('parses commercial summaries field by field', () => {
-  const value = parseCommercialSummary(summary);
-  assert.equal(value.plan_name, 'Team');
-  assert.equal(value.paid_until, null);
-  assert.equal(value.available, '1000');
-  assert.equal(value.held, '50');
-  assert.equal(value.refund_locked, '25');
-  assert.equal(value.as_of, '2026-09-11T00:00:00Z');
-  assert.equal(value.stale, false);
-  const renewed = parseCommercialSummary({ ...summary, paid_until: '2026-12-31', stale: true });
-  assert.equal(renewed.paid_until, '2026-12-31');
-  assert.equal(renewed.stale, true);
+const baseTierSummary = {
+  tenant_id: 303,
+  subscription: null,
+  base_tier: true,
+  base_tier_key: 'free',
+  can_manage_billing: false,
+};
+
+test('parses a subscribed commercial summary field by field', () => {
+  const value = parseCommercialSummary(subscribedSummary);
+  assert.equal(value.tenant_id, 101);
+  assert.equal(value.base_tier, false);
+  assert.equal(value.can_manage_billing, true);
+  assert.equal(value.subscription?.id, 'sub-a');
+  assert.equal(value.subscription?.plan_key, 'pro');
+  assert.equal(value.subscription?.plan_version, 3);
+  assert.equal(value.subscription?.paid_until, '2027-01-01T00:00:00Z');
+  assert.equal(value.subscription?.version, 7);
+  assert.equal(value.subscription?.downgrade_reason, '');
+  // Optional downgrade_reason may be absent entirely (base branch fields
+  // like base_tier_key likewise: unknown fields pass through verbatim).
+  const minimal = { tenant_id: 1, subscription: { id: 's', plan_key: 'pro', plan_version: 1, paid_until: null, version: 1 }, base_tier: false, can_manage_billing: true };
+  const parsed = parseCommercialSummary(minimal);
+  assert.equal(parsed.subscription?.paid_until, null);
+  assert.equal(parsed.subscription?.downgrade_reason, undefined);
+});
+
+test('parses a base-tier summary with a null subscription', () => {
+  const value = parseCommercialSummary(baseTierSummary);
+  assert.equal(value.tenant_id, 303);
+  assert.equal(value.subscription, null);
+  assert.equal(value.base_tier, true);
+  assert.equal(value.base_tier_key, 'free');
+  assert.equal(value.can_manage_billing, false);
 });
 
 test('rejects malformed commercial summaries', () => {
   const malformed: unknown[] = [
     null,
     'summary',
-    { ...summary, plan_name: 42 },
-    { ...summary, paid_until: 20261231 },
-    { ...summary, available: 1000 },
-    { ...summary, available: '-1' },
-    { ...summary, held: '1.5' },
-    { ...summary, refund_locked: 'abc' },
-    { ...summary, as_of: null },
-    { ...summary, stale: 'no' },
-    { available: '1000', held: '0', refund_locked: '0', as_of: 't', stale: false },
+    42,
+    [subscribedSummary],
+    { ...subscribedSummary, tenant_id: '101' },
+    { ...subscribedSummary, base_tier: 'no' },
+    { ...subscribedSummary, can_manage_billing: 1 },
+    { ...subscribedSummary, subscription: 'pro' },
+    { ...subscribedSummary, subscription: [] },
+    // subscription branch field violations
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, id: 42 } },
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, plan_key: '' } },
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, plan_version: '3' } },
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, version: 7.5 } },
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, paid_until: 20270101 } },
+    { ...subscribedSummary, subscription: { ...subscribedSummary.subscription, downgrade_reason: 42 } },
+    // base branch field violations
+    { ...baseTierSummary, base_tier_key: 42 },
+    // missing core fields
+    { subscription: null, base_tier: true, can_manage_billing: true },
+    { tenant_id: 1, base_tier: true, can_manage_billing: true },
+    { tenant_id: 1, subscription: null, can_manage_billing: true },
+    { tenant_id: 1, subscription: null, base_tier: true },
   ];
   for (const value of malformed) assert.throws(() => parseCommercialSummary(value), /invalid commercial summary/);
+});
+
+test('passes unknown summary fields through verbatim (contract convention)', () => {
+  const value = parseCommercialSummary({ ...subscribedSummary, future_field: 'x' }) as Record<string, unknown>;
+  assert.equal(value.future_field, 'x');
+});
+
+// Usage rows mirror GET /api/v1/commercial/usage data: {resource, used,
+// limit} with limit null for an unlimited dimension.
+const usageRows = [
+  { resource: 'storage_files', used: 7, limit: 10 },
+  { resource: 'wiki_pages', used: 3, limit: null },
+];
+
+test('parses commercial usage rows including null limits', () => {
+  const value = parseCommercialUsageList(usageRows);
+  assert.equal(value.length, 2);
+  assert.deepEqual(value[0], { resource: 'storage_files', used: 7, limit: 10 });
+  assert.deepEqual(value[1], { resource: 'wiki_pages', used: 3, limit: null });
+  assert.deepEqual(parseCommercialUsageList([]), []);
+});
+
+test('rejects malformed commercial usage lists', () => {
+  const malformed: unknown[] = [
+    null,
+    'usage',
+    {},
+    { data: usageRows },
+    [['storage_files', 7, 10]],
+    [{ ...usageRows[0], resource: '' }],
+    [{ ...usageRows[0], resource: 42 }],
+    [{ ...usageRows[0], used: '7' }],
+    [{ ...usageRows[0], limit: '10' }],
+    [{ ...usageRows[0], limit: undefined }],
+    [{ resource: 'r' }],
+    [{ used: 1, limit: null }],
+  ];
+  for (const value of malformed) assert.throws(() => parseCommercialUsageList(value), /invalid commercial usage/);
 });
 
 const quote = { id: 'q1', amount_fen: '9900', credit_delta: '500', expires_at: '2026-09-12T00:00:00Z' };

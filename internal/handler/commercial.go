@@ -168,7 +168,8 @@ type commercialSubscriptionRow struct {
 
 // Summary returns the caller space commercial projection: the purchased
 // subscription or the base tier, plus whether this caller may manage
-// billing.
+// billing. The answer carries the repo-wide {success:true,data:...}
+// envelope — a bare object broke the api-client unwrap on every consumer.
 func (h *CommercialHandler) Summary(c *gin.Context) {
 	tenantID, role, ok := commercialTenantScope(c)
 	if !ok {
@@ -183,21 +184,21 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 		FROM commercial_subscriptions WHERE tenant_id = ? ORDER BY version DESC LIMIT 1`, tenantID).Scan(&row)
 	switch {
 	case res.Error == nil && res.RowsAffected > 0:
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       row,
 			"base_tier":          false,
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
-		})
+		}})
 	case res.Error == nil:
 		// No purchased subscription: the space is on the base tier (B05).
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       nil,
 			"base_tier":          true,
 			"base_tier_key":      commercial.BaseTier.Key,
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
-		})
+		}})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error.Error()})
 	}
@@ -226,7 +227,9 @@ func (h *CommercialHandler) Plans(c *gin.Context) {
 }
 
 // Usage returns the caller space resource counters. limit is null for an
-// unlimited dimension and a real number (possibly zero) otherwise.
+// unlimited dimension and a real number (possibly zero) otherwise. The
+// answer carries the repo-wide {success:true,data:[...]} envelope; an empty
+// counter table serialises data as [] (never null — SP11 lesson).
 func (h *CommercialHandler) Usage(c *gin.Context) {
 	tenantID, _, ok := commercialTenantScope(c)
 	if !ok {
@@ -236,7 +239,10 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 	type usageRow struct {
 		Resource string `json:"resource"`
 		Used     int64  `json:"used"`
-		Limit    *int64 `json:"limit"`
+		// gorm maps fields to snake_case column names by default, so the
+		// hard_limit column needs the explicit tag — without it every row
+		// silently reported limit:null (all dimensions "unlimited").
+		Limit *int64 `json:"limit" gorm:"column:hard_limit"`
 	}
 	usage := make([]usageRow, 0)
 	if err := h.db.Raw(`SELECT resource, used, hard_limit FROM commercial_resource_counters
@@ -244,7 +250,7 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, usage)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": usage})
 }
 
 // SetOrderService wires the order pipeline (injection point for the
