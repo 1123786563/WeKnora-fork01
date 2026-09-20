@@ -98,7 +98,7 @@ type PublishPlanVersionPayload struct {
 	PlanCode             string
 	Name                 string
 	Interval             string // closed token "monthly" in T07
-	AmountFen            int64  // base subscription price, CNY fen, > 0
+	AmountFen            int64  // base subscription price, CNY fen, >= 0 (zero only for the base rung — the six-axis check decides)
 	Currency             string // closed token "CNY"
 	PayInAdvance         bool   // always true in T07 (initial subscriptions pay in advance)
 	IncludedCreditsMicro int64  // monthly included credits, > 0
@@ -134,8 +134,8 @@ func (p PublishPlanVersionPayload) Validate() error {
 	if p.Interval != IntervalMonthly {
 		return fmt.Errorf("invalid publish payload: interval %q is outside the closed token monthly", p.Interval)
 	}
-	if p.AmountFen <= 0 {
-		return errors.New("invalid publish payload: amount_fen must be positive")
+	if p.AmountFen < 0 {
+		return errors.New("invalid publish payload: amount_fen must not be negative")
 	}
 	if p.Currency != CurrencyCNY {
 		return fmt.Errorf("invalid publish payload: currency %q is outside the closed token CNY", p.Currency)
