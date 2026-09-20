@@ -42,7 +42,7 @@
 - `validate_span(text: str, start: int, end: int, quote: str) -> None` requires `quote` to be a string and exact extracted quote equality.
 - `validate_evidence(chunk: ChunkSnapshot, evidence: Evidence) -> None` requires string chunk text/quote, matching chunk id and opaque content-hash value; an anchored quote must exactly match its span, and an unanchored quote must be an exact substring of chunk text.
 
-- [ ] **Step 1: Write failing behavior tests**
+- [x] **Step 1: Write failing behavior tests**
 
 ```python
 def test_span_uses_unicode_codepoints():
@@ -82,23 +82,23 @@ def test_unanchored_evidence_rejects_non_string_text_and_quote():
         validate_evidence(ChunkSnapshot("c1", "text", "h"), Evidence("e2", "d1", 1, "c1", "h", 1, None, None))
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `uv run --locked --project semantic python -m pytest semantic/tests/test_evidence.py -q`
 
 Expected: fail because `semantic_service.evidence` does not exist.
 
-- [ ] **Step 3: Implement the minimal validators**
+- [x] **Step 3: Implement the minimal validators**
 
 Implement the three functions as specified. Do not normalize text; compare hash strings only; do not import the Semantica upstream package.
 
-- [ ] **Step 4: Run GREEN and the existing semantic contract suite**
+- [x] **Step 4: Run GREEN and the existing semantic contract suite**
 
 Run: `uv run --locked --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_contracts.py -q`
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 Commit `feat(semantic): validate source evidence spans` with only these files.
 
@@ -121,7 +121,7 @@ Commit `feat(semantic): validate source evidence spans` with only these files.
 - `Derivation` explicitly carries a required `ScopeKey` `scope`, `conclusion_id`, non-empty unique `premise_ids`, optional `rule_id`/`rule_version`, and optional `model_version`/`prompt_version`. Exactly one complete version pair is required; the pair and scope must match the parent assertion.
 - `validate_assertion(assertion, evidence_by_id: Mapping[str, ScopedEvidence], premises_by_id: Mapping[str, Assertion]) -> None` first requires the expected public record/mapping types and valid `ScopeKey` values; it then validates subject/object ref scopes, all reachable evidence/premise references, exact scope equality, map-key identity, version/kind consistency, and the complete reachable support DAG's acyclicity. It does not claim referential existence for entity IDs because C03's approved signature has no entity lookup map. Missing evidence/premise references and scope mismatches raise `ValueError`.
 
-- [ ] **Step 1: Write failing model and validation tests**
+- [x] **Step 1: Write failing model and validation tests**
 
 ```python
 def test_new_entity_id_is_uuid_and_entity_has_no_name_identity():
@@ -256,23 +256,23 @@ def evidence_map(evidence_id, scope=SCOPE):
     return {evidence_id: ScopedEvidence(scope=scope, evidence=evidence)}
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `uv run --locked --project semantic python -m pytest semantic/tests/test_facts.py -q`
 
 Expected: fail because `semantic_service.facts` does not exist.
 
-- [ ] **Step 3: Implement frozen domain records and validation**
+- [x] **Step 3: Implement frozen domain records and validation**
 
 Use immutable dataclasses and enums. Validate canonical UUID entity/entity-ref IDs, non-empty assertion identity/predicate/type, reference scopes, optional timezone-aware time-range ordering, exact object/value cardinality, fact-kind/derivation metadata, evidence and premise closure, and cycles. Do not merge conflicting source assertions or persist anything.
 
-- [ ] **Step 4: Run GREEN and the full C03 tests**
+- [x] **Step 4: Run GREEN and the full C03 tests**
 
 Run: `uv run --locked --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py semantic/tests/test_contracts.py -q`
 
 Expected: all tests pass, including Chinese/emoji and invalid spans, bad hash/quote, cross-tenant and cross-KB references for subject/object/evidence/premises, missing source evidence, missing premises, mismatched derivation version pairs, naive or reversed validity windows, cyclic DAG, and coexistence of conflict.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 Commit `feat(semantic): model scoped semantic facts and derivations` with only Task 2 files.
 
@@ -280,7 +280,7 @@ Commit `feat(semantic): model scoped semantic facts and derivations` with only T
 
 ## Final C03 Gate
 
-- [ ] Run: `uv run --locked --project semantic python -m pytest semantic/tests -q` — expected to pass all C02+C03 semantic service tests.
-- [ ] Run: `git diff --check` — expected exit 0.
+- [x] Run: `uv run --locked --project semantic python -m pytest semantic/tests -q` — expected to pass all C02+C03 semantic service tests.
+- [x] Run: `git diff --check` — expected exit 0.
 - [ ] Request one fresh read-only review of the complete C03 range; fix Critical/Important findings with RED→GREEN tests and rerun the suite.
 - [ ] Record exact base/head SHA, RED/GREEN commands, environment, review result, and limitations in `docs/plans/semantica/progress.md`; mark C03 `verified` only after review and tests pass.
