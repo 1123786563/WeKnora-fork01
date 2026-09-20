@@ -44,6 +44,75 @@ func TestNativeUsageDuplicateCallbacksRecordOneDelta(t *testing.T) {
 	require.EqualValues(t, 1, count)
 }
 
+func TestNativeToolDispatchReservationConsumesOneDecisionAndPreservesLargeIntegers(t *testing.T) {
+	fence := nativeUsageReservationFence(1)
+	root := fence.Run
+	root.RunID = "root-1"
+	const unsafeJavaScriptInteger = int64(9_007_199_254_740_993)
+	coordinator := NewInMemoryNativeToolDispatchReservation(NativeToolDispatchBudget{Root: root, Available: unsafeJavaScriptInteger + 11})
+	coordinator.SetLiveFence(fence)
+
+	req := nativeUsageReservationRequest(fence, root, unsafeJavaScriptInteger)
+	require.NoError(t, coordinator.ReserveAndConsume(context.Background(), req))
+	require.NoError(t, coordinator.ReserveAndConsume(context.Background(), req), "an exact replay must not reserve again")
+
+	remaining, ok := coordinator.Remaining(root)
+	require.True(t, ok)
+	require.Equal(t, int64(11), remaining)
+}
+
+func TestNativeToolDispatchReservationRejectsStaleFenceWithoutConsumingDecision(t *testing.T) {
+	fence := nativeUsageReservationFence(1)
+	root := fence.Run
+	root.RunID = "root-1"
+	coordinator := NewInMemoryNativeToolDispatchReservation(NativeToolDispatchBudget{Root: root, Available: 10})
+	coordinator.SetLiveFence(nativeUsageReservationFence(2))
+
+	req := nativeUsageReservationRequest(fence, root, 7)
+	require.Equal(t, nativecontract.ErrLeaseLost, nativeUsageCode(t, coordinator.ReserveAndConsume(context.Background(), req)))
+	remaining, ok := coordinator.Remaining(root)
+	require.True(t, ok)
+	require.Equal(t, int64(10), remaining)
+
+	fresh := nativeUsageReservationFence(2)
+	coordinator.SetLiveFence(fresh)
+	req.Fence, req.Plan.Run, req.Attempt.Run = fresh, fresh.Run, fresh.Run
+	require.NoError(t, coordinator.ReserveAndConsume(context.Background(), req), "a stale fence must leave the decision reusable")
+}
+
+func TestNativeToolDispatchReservationRejectsInsufficientBudgetWithoutConsumingDecision(t *testing.T) {
+	fence := nativeUsageReservationFence(1)
+	root := fence.Run
+	root.RunID = "root-1"
+	coordinator := NewInMemoryNativeToolDispatchReservation(NativeToolDispatchBudget{Root: root, Available: 6})
+	coordinator.SetLiveFence(fence)
+	req := nativeUsageReservationRequest(fence, root, 7)
+
+	require.Equal(t, nativecontract.ErrBudget, nativeUsageCode(t, coordinator.ReserveAndConsume(context.Background(), req)))
+	remaining, ok := coordinator.Remaining(root)
+	require.True(t, ok)
+	require.Equal(t, int64(6), remaining)
+
+	coordinator.SetBudget(root, 7)
+	require.NoError(t, coordinator.ReserveAndConsume(context.Background(), req), "failed reservation must leave the decision unconsumed")
+}
+
+func nativeUsageReservationFence(epoch int64) nativecontract.Fence {
+	return nativecontract.Fence{Run: nativecontract.RunIdentity{TenantID: 1, SessionID: "session-1", RunID: "child-1", BudgetRootRunID: "root-1"}, Owner: "worker", Epoch: epoch}
+}
+
+func nativeUsageReservationRequest(fence nativecontract.Fence, root nativecontract.RunIdentity, units int64) nativecontract.ToolDispatchRequest {
+	return nativecontract.ToolDispatchRequest{
+		Scope:             nativecontract.Scope{TenantID: fence.Run.TenantID, SessionOwnerID: "owner-1"},
+		Fence:             fence,
+		Plan:              nativecontract.ToolPlan{Version: 1, Run: fence.Run, CallID: "call-1", ModelAttemptID: "model-1", Tool: nativecontract.ToolIdentity{Name: "write", SchemaHash: "schema-1", ConfigVersion: "config-1"}, Args: []byte(`{}`), ArgsHash: "args-1", Policy: nativecontract.RecoveryIdempotent, IdempotencyKey: "provider-key-1", IdempotencyExpiresAt: time.Now().UTC().Add(time.Hour)},
+		Attempt:           nativecontract.Attempt{ID: "tool-attempt-1", Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: "call-1", Number: 1, Epoch: fence.Epoch, StartedAt: time.Now().UTC()},
+		DecisionReference: "pending-1",
+		Funding:           nativecontract.FundingBinding{BudgetRootRunID: root.RunID},
+		ReservationUnits:  units,
+	}
+}
+
 func TestNativeUsageHigherRevisionSettlesOnlyCumulativeDelta(t *testing.T) {
 	ledger, fence, observation := nativeUsageFixture(t)
 	first, err := ledger.ObserveDelta(context.Background(), fence, observation)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
@@ -312,4 +313,173 @@ func nativeUsageFence(tx *gorm.DB, f nativecontract.Fence) error {
 }
 func nativeUsageFailure(code nativecontract.ErrorCode, message string) error {
 	return &nativecontract.Failure{Code: code, Message: message, Effect: nativecontract.EffectNotDispatched}
+}
+
+// NativeToolDispatchBudget configures one root budget in the deterministic
+// storage-only coordinator below. It is deliberately an int64 unit boundary:
+// callers must have already produced a server-owned quote, rather than pass a
+// floating-point amount through tool metadata or a wire callback.
+type NativeToolDispatchBudget struct {
+	Root      nativecontract.RunIdentity
+	Available int64
+}
+
+type nativeToolDispatchRunKey struct {
+	TenantID uint64
+	RunID    string
+}
+
+type nativeToolDispatchFence struct {
+	Owner string
+	Epoch int64
+}
+
+type nativeToolDispatchReservation struct {
+	Root        nativeToolDispatchRunKey
+	Units       int64
+	CallID      string
+	AttemptID   string
+	ArgsHash    string
+	ProviderKey string
+}
+
+// InMemoryNativeToolDispatchReservation is a deterministic, storage-only
+// implementation of ToolDispatchReservation. It exists as the P2.5 seam: a
+// future durable transactional adapter may replace it, but must preserve its
+// fail-closed, one-decision/one-reservation behavior. It deliberately makes
+// no provider, OAuth, Runner, connector, or commercial-billing call.
+//
+// The lock linearizes a live-fence verification, budget decrement, and
+// decision consumption. Therefore a stale or insufficient request leaves no
+// partially-consumed decision that could suppress a later valid dispatch.
+type InMemoryNativeToolDispatchReservation struct {
+	mu        sync.Mutex
+	budgets   map[nativeToolDispatchRunKey]int64
+	liveFence map[nativeToolDispatchRunKey]nativeToolDispatchFence
+	consumed  map[nativeToolDispatchRunKey]map[string]nativeToolDispatchReservation
+}
+
+var _ nativecontract.ToolDispatchReservation = (*InMemoryNativeToolDispatchReservation)(nil)
+
+func NewInMemoryNativeToolDispatchReservation(budgets ...NativeToolDispatchBudget) *InMemoryNativeToolDispatchReservation {
+	c := &InMemoryNativeToolDispatchReservation{
+		budgets:   make(map[nativeToolDispatchRunKey]int64, len(budgets)),
+		liveFence: make(map[nativeToolDispatchRunKey]nativeToolDispatchFence),
+		consumed:  make(map[nativeToolDispatchRunKey]map[string]nativeToolDispatchReservation),
+	}
+	for _, budget := range budgets {
+		if key, ok := nativeToolDispatchRootKey(budget.Root); ok && budget.Available >= 0 {
+			c.budgets[key] = budget.Available
+		}
+	}
+	return c
+}
+
+// SetLiveFence installs the one fence that may mutate a run in this seam.
+// Tests and a future durable adapter use it to model lease acquisition; it is
+// not an authorization or dispatch operation.
+func (c *InMemoryNativeToolDispatchReservation) SetLiveFence(fence nativecontract.Fence) {
+	if c == nil {
+		return
+	}
+	key, ok := nativeToolDispatchRootKey(fence.Run)
+	if !ok || fence.Owner == "" || fence.Epoch <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.liveFence[key] = nativeToolDispatchFence{Owner: fence.Owner, Epoch: fence.Epoch}
+}
+
+// SetBudget replaces the available balance for an unconsumed deterministic
+// fake budget. Production callers must use a durable budget authority instead
+// of mutating an in-memory balance.
+func (c *InMemoryNativeToolDispatchReservation) SetBudget(root nativecontract.RunIdentity, available int64) {
+	if c == nil || available < 0 {
+		return
+	}
+	key, ok := nativeToolDispatchRootKey(root)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.budgets[key] = available
+}
+
+func (c *InMemoryNativeToolDispatchReservation) Remaining(root nativecontract.RunIdentity) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	key, ok := nativeToolDispatchRootKey(root)
+	if !ok {
+		return 0, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	available, found := c.budgets[key]
+	return available, found
+}
+
+// ReserveAndConsume reserves exactly the integer quote and consumes its
+// resolved pending decision only after the active fence and remaining budget
+// have both been accepted. An exact replay returns success without another
+// decrement; a changed request for the same pending decision is a conflict.
+func (c *InMemoryNativeToolDispatchReservation) ReserveAndConsume(_ context.Context, req nativecontract.ToolDispatchRequest) error {
+	if c == nil {
+		return nativeUsageFailure(nativecontract.ErrStore, "tool dispatch reservation store is unavailable")
+	}
+	run, root, err := validateNativeToolDispatchReservation(req)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	live, ok := c.liveFence[run]
+	if !ok || live.Owner != req.Fence.Owner || live.Epoch != req.Fence.Epoch {
+		return nativeUsageFailure(nativecontract.ErrLeaseLost, "tool dispatch reservation fence is stale")
+	}
+	reservation := nativeToolDispatchReservation{
+		Root: root, Units: req.ReservationUnits, CallID: req.Plan.CallID,
+		AttemptID: req.Attempt.ID, ArgsHash: req.Plan.ArgsHash, ProviderKey: req.Plan.IdempotencyKey,
+	}
+	byPending := c.consumed[run]
+	if prior, exists := byPending[req.DecisionReference]; exists {
+		if prior != reservation {
+			return nativeUsageFailure(nativecontract.ErrConflict, "tool dispatch reservation changed")
+		}
+		return nil
+	}
+	available, exists := c.budgets[root]
+	if !exists || available < req.ReservationUnits {
+		return nativeUsageFailure(nativecontract.ErrBudget, "tool dispatch budget is insufficient")
+	}
+	c.budgets[root] = available - req.ReservationUnits
+	if byPending == nil {
+		byPending = make(map[string]nativeToolDispatchReservation)
+		c.consumed[run] = byPending
+	}
+	byPending[req.DecisionReference] = reservation
+	return nil
+}
+
+func nativeToolDispatchRootKey(run nativecontract.RunIdentity) (nativeToolDispatchRunKey, bool) {
+	if run.TenantID == 0 || run.RunID == "" {
+		return nativeToolDispatchRunKey{}, false
+	}
+	return nativeToolDispatchRunKey{TenantID: run.TenantID, RunID: run.RunID}, true
+}
+
+func validateNativeToolDispatchReservation(req nativecontract.ToolDispatchRequest) (nativeToolDispatchRunKey, nativeToolDispatchRunKey, error) {
+	run, runOK := nativeToolDispatchRootKey(req.Fence.Run)
+	if !runOK || req.Fence.Owner == "" || req.Fence.Epoch <= 0 || req.Scope.TenantID != req.Fence.Run.TenantID || req.Scope.SessionOwnerID == "" || req.DecisionReference == "" || req.ReservationUnits <= 0 || req.Plan.Version <= 0 || req.Plan.CallID == "" || req.Plan.ArgsHash == "" || req.Plan.Run != req.Fence.Run || req.Attempt.ID == "" || req.Attempt.Run != req.Fence.Run || req.Attempt.Kind != nativecontract.ToolAttempt || req.Funding.BudgetRootRunID == "" {
+		return nativeToolDispatchRunKey{}, nativeToolDispatchRunKey{}, nativeUsageFailure(nativecontract.ErrInvalid, "tool dispatch reservation is incomplete")
+	}
+	root := req.Fence.Run
+	root.RunID = req.Funding.BudgetRootRunID
+	rootKey, rootOK := nativeToolDispatchRootKey(root)
+	if !rootOK {
+		return nativeToolDispatchRunKey{}, nativeToolDispatchRunKey{}, nativeUsageFailure(nativecontract.ErrInvalid, "tool dispatch budget root is incomplete")
+	}
+	return run, rootKey, nil
 }
