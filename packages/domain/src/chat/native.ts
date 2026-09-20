@@ -28,6 +28,14 @@ export interface NativeToolState {
   outcome?: NativeOutcome;
 }
 
+export interface NativePendingState extends NativePendingReference {
+  call_id: string;
+  plan_version: number;
+  args_hash: string;
+  expires_at: string;
+  wait_kind: string;
+}
+
 export interface NativeTerminalState {
   status: 'succeeded' | 'failed' | 'cancelled';
 }
@@ -42,7 +50,7 @@ export interface NativeRunState {
   text: string;
   reasoning: string;
   tools: Readonly<Record<string, NativeToolState>>;
-  pending: Readonly<Record<string, NativePendingReference>>;
+  pending: Readonly<Record<string, NativePendingState>>;
   usage: Readonly<Record<string, NativePublicUsage>>;
   artifacts: Readonly<Record<string, NativePublicArtifact>>;
   error?: NativeFailure;
@@ -135,7 +143,20 @@ export function reduceNativeEvent(state: NativeRunState, event: NativeEvent): Na
       return { ...next, tools: { ...state.tools, [event.payload.call_id]: { ...previous, outcome: event.payload.outcome } } };
     }
     case 'decision.required':
-      return { ...next, pending: { ...state.pending, [event.payload.pending.pending_id]: event.payload.pending } };
+      return {
+        ...next,
+        pending: {
+          ...state.pending,
+          [event.payload.pending.pending_id]: {
+            ...event.payload.pending,
+            call_id: event.payload.call_id,
+            plan_version: event.payload.plan_version,
+            args_hash: event.payload.args_hash,
+            expires_at: event.payload.expires_at,
+            wait_kind: event.payload.wait_kind,
+          },
+        },
+      };
     case 'usage.observed':
       return { ...next, usage: { ...state.usage, [event.payload.usage.observation_id]: event.payload.usage } };
     case 'artifact.available':

@@ -5,9 +5,15 @@ import {
   type NativeEvent,
 } from '@weknora/contracts/chat/native';
 import type { ClientRequest } from '../client.ts';
+import type { HttpStreamResult } from '../ports.ts';
 import { createServerSentEventParser, type ParsedServerSentEvent } from './stream.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
+
+export interface NativeAgentApiDeps {
+  request: Request;
+  sendStream?: (input: ClientRequest) => Promise<HttpStreamResult>;
+}
 
 export interface NativeEventStreamOptions {
   sessionId: string;
@@ -50,6 +56,22 @@ export class NativeProtocolError extends Error {
   }
 }
 
+export class NativeStreamHttpError extends Error {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+
+  constructor(result: Pick<HttpStreamResult, 'status' | 'headers'>) {
+    super(`Native event stream failed with HTTP ${result.status}`);
+    this.name = 'NativeStreamHttpError';
+    this.status = result.status;
+    this.headers = result.headers;
+  }
+}
+
+export interface NativeSnapshot {
+  last_event_id: string;
+}
+
 function required(value: string, name: string): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error(`${name} must not be empty`);
   return value;
@@ -82,20 +104,44 @@ export function buildNativeEventsRequest(sessionId: string, runId: string, lastE
   };
 }
 
+export function buildNativeSnapshotRequest(sessionId: string, runId: string, signal?: AbortSignal): ClientRequest {
+  return {
+    method: 'GET', path: runPath(sessionId, runId), headers: { accept: 'application/json' },
+    ...(signal === undefined ? {} : { signal }),
+  };
+}
+
 export function parseNativeStreamEvent(frame: ParsedServerSentEvent): NativeEvent {
+  let value: unknown;
   try {
-    const parsed = parseNativeEvent(JSON.parse(frame.data) as unknown);
+    value = JSON.parse(frame.data) as unknown;
+    const parsed = parseNativeEvent(value);
     if (frame.id !== undefined && frame.id !== parsed.event_id) {
       throw new ContractError('event_id', 'must match the SSE id');
     }
     return parsed;
   } catch (error: unknown) {
     if (error instanceof NativeProtocolError) throw error;
-    if (error instanceof ContractError && (error.path === 'protocol' || error.path === 'schema_version')) {
+    const hasWellFormedVersion = typeof value === 'object' && value !== null && !Array.isArray(value)
+      && typeof (value as Record<string, unknown>).protocol === 'string'
+      && typeof (value as Record<string, unknown>).schema_version === 'number';
+    if (hasWellFormedVersion && error instanceof ContractError && (error.path === 'protocol' || error.path === 'schema_version')) {
       throw new NativeProtocolError(error);
     }
     throw error;
   }
+}
+
+export function parseNativeSnapshot(value: unknown, runId: string): NativeSnapshot {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('native snapshot response must be an envelope');
+  const envelope = value as Record<string, unknown>;
+  if (envelope.success !== true || typeof envelope.data !== 'object' || envelope.data === null || Array.isArray(envelope.data)) {
+    throw new Error('native snapshot response must be a success envelope');
+  }
+  const lastEventID = (envelope.data as Record<string, unknown>).last_event_id;
+  const cursor = parseLastEventID(lastEventID);
+  if (cursor.run_id !== runId) throw new ContractError('run_id', 'must match the snapshot cursor run');
+  return { last_event_id: lastEventID as string };
 }
 
 export async function consumeNativeEventStream(
@@ -108,6 +154,33 @@ export async function consumeNativeEventStream(
   const parser = createServerSentEventParser((frame) => onEvent(parseNativeStreamEvent(frame)));
   parser.push(body);
   parser.finish();
+}
+
+async function consumeNativeStreamResult(result: HttpStreamResult, onEvent: (event: NativeEvent) => void): Promise<void> {
+  if (result.status < 200 || result.status >= 300) throw new NativeStreamHttpError(result);
+  const parser = createServerSentEventParser((frame) => onEvent(parseNativeStreamEvent(frame)));
+  for await (const chunk of result.chunks) parser.push(chunk);
+  parser.finish();
+}
+
+function normalizeDeps(input: Request | NativeAgentApiDeps): NativeAgentApiDeps {
+  return typeof input === 'function' ? { request: input } : input;
+}
+
+function joinedSignal(first: AbortSignal | undefined, second: AbortSignal): { signal: AbortSignal; dispose: () => void } {
+  if (first === undefined) return { signal: second, dispose: () => {} };
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (first.aborted || second.aborted) controller.abort();
+  else {
+    first.addEventListener('abort', abort, { once: true });
+    second.addEventListener('abort', abort, { once: true });
+  }
+  return { signal: controller.signal, dispose: () => { first.removeEventListener('abort', abort); second.removeEventListener('abort', abort); } };
+}
+
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
 }
 
 function parseCommandResult(value: unknown): NativeCommandResult {
@@ -126,14 +199,69 @@ function validateCommand(input: NativeCommandInput): void {
   decimal(input.expected_revision, 'expected_revision');
 }
 
-export function createNativeAgentApi(request: Request) {
+export function createNativeAgentApi(input: Request | NativeAgentApiDeps) {
+  const deps = normalizeDeps(input);
+  async function stream(options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
+    const request = buildNativeEventsRequest(options.sessionId, options.runId, options.lastEventId, options.signal);
+    if (deps.sendStream) return consumeNativeStreamResult(await deps.sendStream(request), onEvent);
+    return consumeNativeEventStream(deps.request, options, onEvent);
+  }
+
+  async function snapshot(sessionId: string, runId: string, signal?: AbortSignal): Promise<NativeSnapshot> {
+    return parseNativeSnapshot(await deps.request(buildNativeSnapshotRequest(sessionId, runId, signal)), runId);
+  }
+
+  async function follow(options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
+    let lastEventId = options.lastEventId;
+    while (!isAborted(options.signal)) {
+      try {
+        await stream({ ...options, ...(lastEventId === undefined ? {} : { lastEventId }) }, onEvent);
+        return;
+      } catch (error: unknown) {
+        if (isAborted(options.signal)) return;
+        if (!(error instanceof NativeStreamHttpError) || error.status !== 409) throw error;
+        const authoritative = await snapshot(options.sessionId, options.runId, options.signal);
+        if (isAborted(options.signal)) return;
+        lastEventId = authoritative.last_event_id;
+      }
+    }
+  }
+
+  function createLifecycle() {
+    let scopeKey: string | undefined;
+    let controller = new AbortController();
+    return {
+      advanceScope(nextScopeKey: string): void {
+        required(nextScopeKey, 'scopeKey');
+        controller.abort();
+        controller = new AbortController();
+        scopeKey = nextScopeKey;
+      },
+      async follow(nextScopeKey: string, options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
+        required(nextScopeKey, 'scopeKey');
+        if (scopeKey !== nextScopeKey) this.advanceScope(nextScopeKey);
+        const active = controller;
+        const joined = joinedSignal(options.signal, active.signal);
+        try {
+          await follow({ ...options, signal: joined.signal }, (event) => {
+            if (controller === active && !joined.signal.aborted) onEvent(event);
+          });
+        } finally {
+          joined.dispose();
+        }
+      },
+      dispose(): void { controller.abort(); },
+    };
+  }
+
   return {
-    stream(options: NativeEventStreamOptions, onEvent: (event: NativeEvent) => void): Promise<void> {
-      return consumeNativeEventStream(request, options, onEvent);
-    },
+    stream,
+    snapshot,
+    follow,
+    createLifecycle,
     async cancel(sessionId: string, runId: string, input: NativeCommandInput, signal?: AbortSignal): Promise<NativeCommandResult> {
       validateCommand(input);
-      return parseCommandResult(await request({
+      return parseCommandResult(await deps.request({
         method: 'POST', path: `${runPath(sessionId, runId)}/cancel`, body: input,
         ...(signal === undefined ? {} : { signal }),
       }));
@@ -143,7 +271,7 @@ export function createNativeAgentApi(request: Request) {
       required(input.input_id, 'input_id');
       if (input.mode !== 'inject' && input.mode !== 'after') throw new Error('mode must be inject or after');
       required(input.message, 'message');
-      return parseCommandResult(await request({
+      return parseCommandResult(await deps.request({
         method: 'POST', path: `${runPath(sessionId, runId)}/steer`, body: input,
         ...(signal === undefined ? {} : { signal }),
       }));
@@ -160,7 +288,7 @@ export function createNativeAgentApi(request: Request) {
         throw new Error('provide_result requires a result object');
       }
       if (input.action !== 'provide_result' && input.result !== undefined) throw new Error('result is only valid for provide_result');
-      return parseCommandResult(await request({
+      return parseCommandResult(await deps.request({
         method: 'POST', path: `${runPath(sessionId, runId)}/pending/${encoded(pendingId, 'pendingId')}/resolve`, body: input,
         ...(signal === undefined ? {} : { signal }),
       }));

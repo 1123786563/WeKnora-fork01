@@ -72,7 +72,10 @@ test('records decisions, tool results, artifacts, errors, and a terminal status 
   state = reduceNativeEvent(state, event({ event_id: 'artifact', seq: '4', attempt_id: undefined, kind: 'artifact.available', payload: { artifact: { id: 'artifact-1', media_type: 'text/plain', sha256: 'sha256:a', size_bytes: '9007199254740993' } } }));
   state = reduceNativeEvent(state, event({ event_id: 'error', seq: '5', attempt_id: undefined, kind: 'error', payload: { failure: { code: 'provider_error', message: 'retry later', retryable: true, effect: 'unknown' } } }));
   state = reduceNativeEvent(state, event({ event_id: 'finished', seq: '6', attempt_id: undefined, kind: 'run.status', payload: { status: 'succeeded' } }));
-  assert.deepEqual(state.pending['pending-1'], { pending_id: 'pending-1', detail_path: '/detail', revision: '4' });
+  assert.deepEqual(state.pending['pending-1'], {
+    pending_id: 'pending-1', detail_path: '/detail', revision: '4', call_id: 'call-1', plan_version: 1,
+    args_hash: 'sha256:args', expires_at: '2026-09-20T12:00:00Z', wait_kind: 'tool_approval',
+  });
   assert.equal(state.tools['call-1']?.outcome?.result_hash, 'sha256:result');
   assert.equal(state.artifacts['artifact-1']?.size_bytes, '9007199254740993');
   assert.equal(state.error?.code, 'provider_error');
