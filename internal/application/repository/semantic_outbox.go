@@ -123,27 +123,28 @@ func (r *SemanticControlRepository) BumpSemanticEpoch(tx *gorm.DB, scope types.S
 	if err := tx.Exec("INSERT INTO semantic_access_epochs(tenant_id,kb_id,epoch) VALUES(?,?,?) ON CONFLICT(tenant_id,kb_id) DO NOTHING", tenant, scope.KBID, "0").Error; err != nil {
 		return 0, err
 	}
-	var text string
-	err := tx.Raw("SELECT epoch FROM semantic_access_epochs WHERE tenant_id=? AND kb_id=?", tenant, scope.KBID).Row().Scan(&text)
-	if err != nil {
-		return 0, err
+	for attempt := 0; attempt < 8; attempt++ {
+		var text string
+		if err := tx.Raw("SELECT epoch FROM semantic_access_epochs WHERE tenant_id=? AND kb_id=?", tenant, scope.KBID).Row().Scan(&text); err != nil {
+			return 0, err
+		}
+		current, e := strconv.ParseUint(text, 10, 64)
+		if e != nil {
+			return 0, e
+		}
+		if current == math.MaxUint64 {
+			return 0, ErrSemanticEpochOverflow
+		}
+		next := current + 1
+		res := tx.Exec("UPDATE semantic_access_epochs SET epoch=? WHERE tenant_id=? AND kb_id=? AND epoch=?", semanticUint(next), tenant, scope.KBID, text)
+		if res.Error != nil {
+			return 0, res.Error
+		}
+		if res.RowsAffected == 1 {
+			return next, nil
+		}
 	}
-	current, e := strconv.ParseUint(text, 10, 64)
-	if e != nil {
-		return 0, e
-	}
-	if current == math.MaxUint64 {
-		return 0, ErrSemanticEpochOverflow
-	}
-	next := current + 1
-	res := tx.Exec("UPDATE semantic_access_epochs SET epoch=? WHERE tenant_id=? AND kb_id=? AND epoch=?", semanticUint(next), tenant, scope.KBID, text)
-	if res.Error != nil {
-		return 0, res.Error
-	}
-	if res.RowsAffected != 1 {
-		return 0, ErrSemanticRevisionConflict
-	}
-	return next, nil
+	return 0, ErrSemanticRevisionConflict
 }
 func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, worker string, seconds int) (*types.SemanticOutboxEvent, error) {
 	if worker == "" || seconds <= 0 {
