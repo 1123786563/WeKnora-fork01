@@ -279,6 +279,14 @@ func (s *PlanVersionService) GetPublication(ctx context.Context, planKey string,
 	return s.versions.GetPublication(ctx, planKey, version)
 }
 
+// FindPublicationByCode resolves an external plan code back to its
+// published (plan_key, version) — the benefits projection's reverse
+// mapping (the authority answers plan codes; the publications table is the
+// only map back to product vocabulary).
+func (s *PlanVersionService) FindPublicationByCode(ctx context.Context, planCode string) (repocommercial.PublicationRow, error) {
+	return s.versions.FindPublicationByCode(ctx, planCode)
+}
+
 // ListPublications returns the publications of one plan key.
 func (s *PlanVersionService) ListPublications(ctx context.Context, planKey string) ([]repocommercial.PublicationRow, error) {
 	pubs, err := s.versions.ListPublications(ctx, planKey)

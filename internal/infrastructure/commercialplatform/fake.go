@@ -96,9 +96,11 @@ type FakeAdapter struct {
 	// time. baseFeatures primes the benefits feature map. walletSettleLag
 	// models the a1 after-commit settlement lag (default 0 — the fake's
 	// authority is idealized; tests advance the clock to expose the lag).
-	now             func() time.Time
-	baseFeatures    map[string]bool
-	walletSettleLag time.Duration
+	// rejectWalletCreates models a wallet_limit_reached window.
+	now                func() time.Time
+	baseFeatures       map[string]bool
+	walletSettleLag    time.Duration
+	rejectWalletCreates error
 }
 
 // fakeCommand is one recorded publish command: its exact payload and the
@@ -152,6 +154,16 @@ func (f *FakeAdapter) SetWalletSettleLag(d time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.walletSettleLag = d
+}
+
+// RejectWalletCreatesWith models a wallet_limit_reached window: while set,
+// the grant for an ABSENT wallet answers the injected error WITHOUT
+// creating anything (a refused create — nothing persisted); a replay for an
+// EXISTING wallet still answers the receipt. nil clears the knob.
+func (f *FakeAdapter) RejectWalletCreatesWith(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rejectWalletCreates = err
 }
 
 // Wallets returns the observable wallet state (VISIBLE balance — settled
@@ -499,6 +511,11 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 				GrantedCents: wantCents, ExpiresAt: payload.ExpiresAt, CreatedAt: f.nowUTC(),
 			})
 			return commercial.CommandReceipt{}, f.failSubmits
+		}
+		if f.rejectWalletCreates != nil {
+			// A refused create (wallet_limit_reached): nothing persisted —
+			// the caller replays by identity later.
+			return commercial.CommandReceipt{}, f.rejectWalletCreates
 		}
 		f.wallets = append(f.wallets, fakeWallet{
 			Name: walletName, Customer: payload.ExternalCustomerID,

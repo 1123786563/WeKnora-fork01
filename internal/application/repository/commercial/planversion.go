@@ -268,6 +268,19 @@ func (s *PlanVersionStore) GetPublication(ctx context.Context, planKey string, v
 	return row, err
 }
 
+// FindPublicationByCode resolves an external plan code back to its
+// published (plan_key, version) — the benefits projection's reverse
+// mapping (the authority snapshot answers plan codes; the local
+// publications table is the only map back to product vocabulary).
+func (s *PlanVersionStore) FindPublicationByCode(ctx context.Context, planCode string) (PublicationRow, error) {
+	var row PublicationRow
+	err := s.db.WithContext(ctx).Where("plan_code = ?", planCode).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return PublicationRow{}, ErrPublicationNotFound
+	}
+	return row, err
+}
+
 // ListPublications returns every publication of one plan key, ordered by
 // version (seam-internal rows; the admin API never projects them).
 func (s *PlanVersionStore) ListPublications(ctx context.Context, planKey string) ([]PublicationRow, error) {
