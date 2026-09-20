@@ -229,3 +229,11 @@
 @keyframes wk-chat-session-spin {
   to { transform: rotate(360deg); }
 }
+
+/* R492 chat D-fix: the Tailwind `flex` utility on .wk-chat-header-menu-list
+   outranks the UA rule that hides non-summary children of a closed
+   <details>, so the ⋯ menu rendered permanently open. Restore the native
+   collapse (Vue ChatHeader toggles visibility via its popup v-model). */
+details.wk-chat-header-menu:not([open]) .wk-chat-header-menu-list {
+  display: none !important;
+}

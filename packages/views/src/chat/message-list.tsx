@@ -397,8 +397,12 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     const previous = previousLayout.current;
     const firstId = messages[0]?.id;
     const prepended = previous.length > 0 && messages.length > previous.length && firstId !== previous.firstId;
+    // R492 chat parity: Vue loads history and keeps the scroll at the top
+    // (first message visible); only live-stream growth scrolls to the bottom.
+    // The initial 0 → N history fill must therefore not trigger stick-to-bottom.
+    const firstHistoryFill = previous.length === 0 && messages.length > 0;
     if (prepended) container.scrollTop = scrollTopAfterPrepend(previous.top, previous.height, container.scrollHeight);
-    else if (stickToBottom.current) container.scrollTop = container.scrollHeight;
+    else if (stickToBottom.current && !firstHistoryFill) container.scrollTop = container.scrollHeight;
     previousLayout.current = { firstId, length: messages.length, height: container.scrollHeight, top: container.scrollTop };
   }, [messages.length, messages[0]?.id, messages.at(-1)?.content, pending?.content, pending?.status]);
 

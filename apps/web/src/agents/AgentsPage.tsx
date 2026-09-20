@@ -218,13 +218,13 @@ export interface AgentRailItem {
 
 export function AgentRail({ t, items, onSelect }: { t: Translate; items: AgentRailItem[]; onSelect: (key: string) => void }) {
   return (
-    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto box-border border-r border-[rgba(127,127,127,0.14)] px-1.5 py-2" aria-label={t('agent.title')}>
+    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-stretch gap-1 overflow-y-auto box-border border-r border-[rgba(127,127,127,0.14)] px-[5px] pt-3 pb-[6px]" aria-label={t('agent.title')}>
       {items.map((item) => (
         <button
           key={item.key}
           type="button"
           data-space-key={item.key}
-          className={`flex cursor-pointer flex-col items-center gap-[3px] rounded-lg border-none bg-transparent px-[2px] py-2 text-inherit transition-[background] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.1)]${item.active ? ' bg-[rgba(7,192,95,0.12)] text-[#06b04d]' : ''}`}
+          className={`flex cursor-pointer flex-col items-center gap-[2px] rounded-lg border-none bg-transparent px-[2px] pt-[5px] pb-[2px] text-inherit transition-[background] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.1)]${item.active ? ' bg-[rgba(7,192,95,0.12)] text-[#06b04d]' : ''}`}
           aria-current={item.active ? 'true' : undefined}
           title={`${item.label}${item.count === undefined ? '' : ` (${item.count})`}`}
           onClick={() => onSelect(item.key)}

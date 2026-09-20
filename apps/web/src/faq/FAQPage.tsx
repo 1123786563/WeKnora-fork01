@@ -980,7 +980,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   });
 
   return (
-    <main className="m-0 box-border max-w-none px-10 pt-6 pb-12 max-md:p-4">
+    <main className="m-0 box-border max-w-none ml-[4px] mr-[16px] px-8 pt-6 pb-12 max-md:p-4">
       <header className="faq-header mb-1 flex flex-wrap items-start justify-between gap-3">
         <div className="faq-header-title flex w-full flex-col gap-1">
           <FAQBreadcrumb t={t} knowledgeBaseId={knowledgeBaseId} kbName={kbName} kbList={kbList} kbMeta={kbMeta} onNavigate={onNavigate} />

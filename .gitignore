@@ -92,3 +92,4 @@ ios/
 !apps/mobile/**
 .mimosa/
 parity-audit/
+migrations/

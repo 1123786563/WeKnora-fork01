@@ -455,6 +455,27 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     const initialDocumentId = query.get('knowledge_id')?.trim() || undefined;
     if (tab === 'wiki') return <WikiEntry knowledgeBaseId={props.knowledgeBaseId} initialSlug={slug} initialDocumentId={initialDocumentId} />;
     if (tab === 'graph') return <KnowledgeGraphPage client={client} knowledgeBaseId={props.knowledgeBaseId} slug={slug} />;
+    // Vue KnowledgeBase.vue 在同一 URL 下按 kbInfo.type 就地切换 FAQ 管理视图，
+    // 不重写地址栏；React 之前的做法是把 platform 路由跳去 /knowledgeBase/:id/faq，
+    // 导致两端 URL 与浏览器历史行为不一致（R492 D3）。这里改为分流前先取类型，
+    // FAQ KB 就地渲染 FAQPage。
+    const [kbType, setKbType] = useState<string | null | undefined>(undefined);
+    useEffect(() => {
+      let active = true;
+      setKbType(undefined);
+      void client.knowledgeBases.settings.get(props.knowledgeBaseId)
+        .then((kb) => {
+          if (!active) return;
+          const type = (kb as { type?: unknown }).type;
+          setKbType(typeof type === 'string' ? type : null);
+        })
+        .catch(() => { if (active) setKbType(null); });
+      return () => { active = false; };
+    }, [client, props.knowledgeBaseId]);
+    if (kbType === undefined) return <p role="status">加载中…</p>;
+    if (kbType !== null && kbType.toLowerCase() === 'faq') {
+      return <FAQPage client={client} knowledgeBaseId={props.knowledgeBaseId} />;
+    }
     return (
       <KnowledgeDocumentsPage
         client={client}
