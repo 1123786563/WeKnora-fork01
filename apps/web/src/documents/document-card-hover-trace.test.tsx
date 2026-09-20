@@ -75,7 +75,7 @@ test('document card hover popover renders the Vue trace summary block (总耗时
     current.render(React.createElement(DocumentCardGrid, {
       items: [failedDocument],
       folders: [],
-      selected: new Set(),
+      selected: new Set<string>(),
       batchMode: false,
       canContribute: false,
       canDownload: false,

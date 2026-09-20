@@ -168,7 +168,12 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
 
   return (
     <>
-    <Card>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <>
+    <Card>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
+    the 配置知识库搜索和消息搜索的全局检索参数 description under it. */}
+    {section === 'retrieval' ? <div className="section-header mb-2 grid gap-1">
+      <h2 className="m-0 text-base font-semibold text-ink">{t('retrievalSettings.title')}</h2>
+      <p className="section-description m-0 text-xs leading-5 text-muted">{t('retrievalSettings.description')}</p>
+    </div> : null}<form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <>
       {modelOptions.length > 0 ? <label className="grid gap-1 border-b border-line-soft py-4"><span className="text-sm font-medium text-ink">{t('retrievalSettings.rerankModelLabel')} <span className="text-danger">*</span></span><span className="text-xs font-normal leading-5 text-muted">{t('retrievalSettings.rerankModelDescription')}</span>{!values.rerank_model_id ? <span className="text-xs font-normal text-warning-text">{t('retrievalSettings.rerankModelRequired')}</span> : null}{modelSelect('rerank_model_id', busy)}</label> : null}
       {slider('embedding_top_k', 1, 100, 1, t('retrievalSettings.embeddingTopKLabel'))}
       {slider('vector_threshold', 0, 1, 0.05, t('retrievalSettings.vectorThresholdLabel'), (value) => value.toFixed(2))}
@@ -219,7 +224,11 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
         <label>Access Token<Input type="password" autoComplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(event) => setValue('paddleocr_vl_cloud_token', event.target.value)} /></label>
         <label>Model<Select data-testid="paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} onChange={(event) => setValue('paddleocr_vl_cloud_model', event.target.value)}><option value="PaddleOCR-VL-1.6">PaddleOCR-VL-1.6</option><option value="PaddleOCR-VL-1.5">PaddleOCR-VL-1.5</option></Select></label>
         <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_cloud_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_cloud_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
-      </section><p className="wk-muted text-muted">{parserCopy}</p></>}<div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">{/* Vue ChatHistorySettings saves debounced without a button. */}{section !== 'chathistory' ? <Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button> : null}{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Card>
+      </section><p className="wk-muted text-muted">{parserCopy}</p></>}<div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
+          ChatHistorySettings (RetrievalSettings.vue handleParamChange →
+          debouncedSave), so neither surface renders a save button; only the
+          parser section keeps its explicit 保存 + test-connection footer. */}
+          {section === 'parser' ? <Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button> : null}{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Card>
     {section === 'chathistory' ? (
       <div className="stats-section mt-5" data-testid="chat-history-stats">
         <h3 className="stats-title m-0 mb-3 text-[15px] font-semibold">{t('chatHistorySettings.statsTitle')}</h3>

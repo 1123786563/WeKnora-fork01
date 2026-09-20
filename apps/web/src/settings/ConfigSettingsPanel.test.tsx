@@ -127,3 +127,31 @@ test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async
     assert.ok(container.querySelector(`[data-testid="${field}"]`), `${field} should be configurable like ParserEngineSettings.vue`);
   }
 });
+
+// R490 B6 (R489 D18) — the retrieval surface mirrors Vue RetrievalSettings.vue:
+// the section-header carries the 搜索设置 title plus the
+// 配置知识库搜索和消息搜索的全局检索参数 description, and like the debounced
+// save flow it renders no 保存 button (only the parser section keeps one).
+test('retrieval renders the Vue section header and hides the save button', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{ embedding_top_k: 50 }} models={[]} />));
+
+  const header = container.querySelector('.section-header');
+  assert.ok(header, 'Vue section-header block rendered');
+  assert.ok(header.textContent?.includes('搜索设置'), 'h2 title (retrievalSettings.title)');
+  assert.ok(container.textContent?.includes('配置知识库搜索和消息搜索的全局检索参数'), 'description under the section title (retrievalSettings.description)');
+  assert.equal(container.querySelector('[data-testid="config-save"]'), null, 'Vue saves debounced without a button');
+});
+
+test('parser keeps its explicit save button', async () => {
+  const client = { settings: { parser: { config: { update: async (body: Record<string, unknown>) => body }, check: async () => ({ connected: true }) } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
+
+  assert.ok(container.querySelector('[data-testid="config-save"]'), 'parser section still saves explicitly');
+});

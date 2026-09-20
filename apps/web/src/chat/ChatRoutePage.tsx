@@ -1505,12 +1505,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         const agentScope = resolveMentionAgentKbScope(mentionAgent?.config as Record<string, unknown> | undefined, kbValues);
         const scopedKbs = agentScope.scopedKbs;
         const kbItems = scopedKbs.map((item) => ({
-          id: item.id,
-          name: item.name,
+          id: String(item.id),
+          name: String(item.name),
           type: 'kb' as const,
           kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
         }));
-        const tagResults = await Promise.allSettled(scopedKbs.map((item) => client.knowledge.documents.tags(item.id, { page_size: 200 })));
+        const tagResults = await Promise.allSettled(scopedKbs.map((item) => client.knowledge.documents.tags(String(item.id), { page_size: 200 })));
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         const tagItems = tagResults.flatMap((result, index) => {
           if (result.status !== 'fulfilled') return [];
@@ -1519,8 +1519,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
             id: String(tag.id),
             name: String(tag.name ?? tag.label ?? tag.id),
             type: 'tag' as const,
-            kbId: kb?.id,
-            kbName: kb?.name,
+            kbId: kb ? String(kb.id) : undefined,
+            kbName: kb ? String(kb.name) : undefined,
           }));
         });
         // R490 B1 — Vue filters searched files to the same agent KB scope

@@ -112,6 +112,9 @@ export interface ChatPageProps {
   mentionedItems?: readonly ChatMentionView[];
   mentionLoading?: boolean;
   mentionError?: string;
+  /** R490 B1 — Vue mentionEmptyHint: agent-compatibility empty state of the
+   *  @ popup, shown instead of the generic empty label. */
+  mentionEmptyHint?: string;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -796,6 +799,7 @@ export function ChatPage(props: ChatPageProps) {
           mentionedItems={props.mentionedItems}
           mentionLoading={props.mentionLoading}
           mentionError={props.mentionError}
+          mentionEmptyHint={props.mentionEmptyHint}
           onMentionOpen={props.onMentionOpen}
           onMentionSelect={props.onMentionSelect}
           onMentionRemove={props.onMentionRemove}
