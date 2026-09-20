@@ -82,6 +82,16 @@ class AccessScope:
             raise ValueError("access scope identity fields are required")
 
 
+@dataclass(frozen=True)
+class OperationRef:
+    scope: ScopeKey
+    operation_id: str
+
+    def __post_init__(self) -> None:
+        if not self.operation_id:
+            raise ValueError("operation_id is required with scope")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

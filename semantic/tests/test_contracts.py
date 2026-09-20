@@ -57,3 +57,9 @@ def test_evidence_preserves_absent_span_and_access_scope_identity() -> None:
 
     assert evidence.start_char is None and evidence.end_char is None
     assert scope.scope.tenant_id == 1 and scope.permission_epoch == 2
+
+
+def test_operation_ref_requires_scope_and_operation_id() -> None:
+    from semantic_service.contracts import OperationRef, ScopeKey
+
+    assert OperationRef(scope=ScopeKey(tenant_id=1, kb_id="kb"), operation_id="op").operation_id == "op"
