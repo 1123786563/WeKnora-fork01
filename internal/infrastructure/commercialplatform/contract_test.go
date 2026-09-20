@@ -10,6 +10,10 @@ import (
 	commercial "github.com/Tencent/WeKnora/internal/commercial"
 )
 
+// contractGrantPeriod is a safely-future calendar period for the grant legs
+// (payload validation requires the exclusive period end to be ahead).
+const contractGrantPeriod = "2099-01"
+
 // runPlatformContract is the ONE shared contract suite every adapter behind
 // the frozen CommercialPlatform seam must satisfy — the fake and the Lago
 // adapter run the exact same table (acceptance criterion: "fake adapter 与
@@ -237,6 +241,184 @@ func TestFakeAdapterContract(t *testing.T) {
 	runPublishContract(t, "fake", publishFake, func() int { return len(publishFake.Commands()) })
 }
 
+// contractGrantCommand builds the shared grant command for (tenant, period).
+func contractGrantCommand(tenant uint64, period string, credits int64) commercial.Command {
+	end := time.Date(2099, 2, 1, 0, 0, 0, 0, time.UTC)
+	if period != contractGrantPeriod {
+		var err error
+		end, err = commercial.PeriodEnd(period)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return commercial.Command{
+		Kind:  commercial.CommandKindGrantIncludedCredits,
+		Key:   commercial.GrantCreditsCommandKey(commercial.ExternalCustomerID(tenant), period),
+		Actor: "contract", Reason: "monthly_included_credits",
+		Payload: commercial.GrantIncludedCreditsPayload{
+			TenantID:           tenant,
+			ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			Period:             period,
+			CreditsMicro:       credits,
+			ExpiresAt:          end,
+		},
+	}
+}
+
+// contractEnsureSubCommand builds the shared ensure_subscription command.
+func contractEnsureSubCommand(tenant uint64, planCode string) commercial.Command {
+	return commercial.Command{
+		Kind:  commercial.CommandKindEnsureSubscription,
+		Key:   commercial.EnsureSubscriptionCommandKey(commercial.ExternalSubscriptionID(tenant)),
+		Actor: "contract", Reason: "first_billing_access",
+		Payload: commercial.EnsureSubscriptionPayload{
+			TenantID:               tenant,
+			ExternalCustomerID:     commercial.ExternalCustomerID(tenant),
+			ExternalSubscriptionID: commercial.ExternalSubscriptionID(tenant),
+			PlanCode:               planCode,
+		},
+	}
+}
+
+// runSubscriptionContract is the shared ensure_subscription leg every
+// adapter must satisfy identically (#80): the ensure is idempotent BY
+// IDENTITY — a replay answers the same receipt and the authority holds
+// exactly one subscription; a held subscription on a DIFFERENT plan code is
+// a definitive conflict, never a parallel subscription.
+// subscriptionCount() reports the authority-side count for the tenant.
+func runSubscriptionContract(t *testing.T, name string, p commercial.CommercialPlatform, tenant uint64, planCode string, subscriptionCount func() int) {
+	t.Helper()
+	cmd := contractEnsureSubCommand(tenant, planCode)
+	t.Run(name+"/ensure_subscription is idempotent by identity", func(t *testing.T) {
+		first, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("first ensure_subscription: %v", err)
+		}
+		if first.ExternalID != commercial.ExternalSubscriptionID(tenant) {
+			t.Fatalf("receipt must carry the deterministic identity, got %q", first.ExternalID)
+		}
+		second, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("replay ensure_subscription: %v", err)
+		}
+		if second.ExternalID != first.ExternalID {
+			t.Fatalf("replay must answer the same identity, %q vs %q", second.ExternalID, first.ExternalID)
+		}
+		if got := subscriptionCount(); got != 1 {
+			t.Fatalf("the authority must hold exactly ONE subscription, got %d", got)
+		}
+	})
+	t.Run(name+"/different plan code is a definitive conflict", func(t *testing.T) {
+		_, err := p.SubmitCommand(context.Background(), contractEnsureSubCommand(tenant, "weknora-pro-v1"))
+		if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+			t.Fatalf("a held subscription on another plan must conflict with ErrPlatformInvalidResponse, got %v", err)
+		}
+		if got := subscriptionCount(); got != 1 {
+			t.Fatalf("a conflict must never mint a parallel subscription, got %d", got)
+		}
+	})
+}
+
+// runGrantContract is the shared grant_included_credits leg every adapter
+// must satisfy identically (#80, the T03 E3 highest-severity hole): a grant
+// replay NEVER doubles the balance — walletCount/balanceMicro observe the
+// authority state on both adapters — and the same Key with different content
+// is a definitive conflict.
+func runGrantContract(t *testing.T, name string, p commercial.CommercialPlatform, tenant uint64, walletCount func() int, balanceMicro func() (int64, error)) {
+	t.Helper()
+	const credits = 1_000_000
+	cmd := contractGrantCommand(tenant, contractGrantPeriod, credits)
+	t.Run(name+"/grant issues one batch with one month's balance", func(t *testing.T) {
+		receipt, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("grant: %v", err)
+		}
+		if receipt.ExternalID != commercial.MonthlyWalletName(tenant, contractGrantPeriod) {
+			t.Fatalf("receipt must carry the deterministic wallet name, got %q", receipt.ExternalID)
+		}
+		if got := walletCount(); got != 1 {
+			t.Fatalf("exactly one wallet expected, got %d", got)
+		}
+	})
+	t.Run(name+"/grant replay never doubles the balance", func(t *testing.T) {
+		before, err := balanceMicro()
+		if err != nil {
+			t.Fatalf("observe balance: %v", err)
+		}
+		if before != credits {
+			t.Fatalf("balance after one grant = %d, want %d", before, credits)
+		}
+		if _, err := p.SubmitCommand(context.Background(), cmd); err != nil {
+			t.Fatalf("replay: %v", err)
+		}
+		after, err := balanceMicro()
+		if err != nil {
+			t.Fatalf("observe balance: %v", err)
+		}
+		if after != before {
+			t.Fatalf("a replayed grant DOUBLED the balance (E3 anti-pattern): %d -> %d", before, after)
+		}
+		if got := walletCount(); got != 1 {
+			t.Fatalf("a replay must not create a second wallet, got %d", got)
+		}
+	})
+	t.Run(name+"/same key different content is a conflict", func(t *testing.T) {
+		_, err := p.SubmitCommand(context.Background(), contractGrantCommand(tenant, contractGrantPeriod, 2_000_000))
+		if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+			t.Fatalf("same key with different credits must be ErrPlatformInvalidResponse, got %v", err)
+		}
+		if got := walletCount(); got != 1 {
+			t.Fatalf("the conflict must not create anything, got %d wallets", got)
+		}
+	})
+}
+
+// runBenefitsContract is the shared benefits snapshot leg: the ensured
+// tenant answers the closed truth (active subscription, plan code, feature
+// map, one month's balance); an untouched tenant answers honest absence
+// (pending state, zero balance) — never a fabricated answer.
+func runBenefitsContract(t *testing.T, name string, p commercial.CommercialPlatform, tenant, untouched uint64, planCode string) {
+	t.Helper()
+	t.Run(name+"/benefits snapshot answers the closed truth", func(t *testing.T) {
+		snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindBenefits, TenantID: tenant,
+		})
+		if err != nil {
+			t.Fatalf("benefits snapshot: %v", err)
+		}
+		if snap.Benefits == nil {
+			t.Fatalf("benefits snapshot must carry the Benefits section")
+		}
+		if snap.Benefits.SubscriptionState != commercial.SubscriptionStateActive {
+			t.Fatalf("ensured tenant must answer active, got %q", snap.Benefits.SubscriptionState)
+		}
+		if snap.Benefits.PlanCode != planCode {
+			t.Fatalf("plan code = %q, want %q", snap.Benefits.PlanCode, planCode)
+		}
+		if !snap.Benefits.Features["api_access"] {
+			t.Fatalf("features must carry the primed entitlement, got %+v", snap.Benefits.Features)
+		}
+		if snap.Benefits.BalanceMicro != 1_000_000 {
+			t.Fatalf("balance = %d micro, want one month's 1000000", snap.Benefits.BalanceMicro)
+		}
+		if len(snap.Benefits.Batches) != 1 {
+			t.Fatalf("one batch expected, got %+v", snap.Benefits.Batches)
+		}
+	})
+	t.Run(name+"/untouched tenant answers honest absence", func(t *testing.T) {
+		snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindBenefits, TenantID: untouched,
+		})
+		if err != nil {
+			t.Fatalf("benefits snapshot: %v", err)
+		}
+		if snap.Benefits == nil || snap.Benefits.SubscriptionState != commercial.SubscriptionStatePending ||
+			snap.Benefits.BalanceMicro != 0 || len(snap.Benefits.Batches) != 0 || snap.Benefits.PlanCode != "" {
+			t.Fatalf("untouched tenant must answer pending/zero/absent honestly, got %+v", snap.Benefits)
+		}
+	})
+}
+
 // TestLagoAdapterContract registers the stub-backed Lago leg of the SAME
 // contract table — acceptance criterion: fake and Lago adapter pass the
 // identical interface contract. The customers stub answers absent on the
@@ -255,6 +437,52 @@ func TestLagoAdapterPublishContract(t *testing.T) {
 	stub.readbackAmountCen = 9900
 	stub.createStatuses = []int{http.StatusCreated, http.StatusUnprocessableEntity}
 	runPublishContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), stub.countCreatePosts)
+}
+
+// TestFakeAdapterSubscriptionContract registers the fake legs of the T08
+// shared contract table (#80): ensure_subscription, grant_included_credits
+// and the benefits snapshot, observed through the fake's state hooks.
+func TestFakeAdapterSubscriptionContract(t *testing.T) {
+	fake := NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	runSubscriptionContract(t, "fake", fake, 111, "weknora-base-v1", func() int {
+		return len(fake.Subscriptions())
+	})
+	runGrantContract(t, "fake", fake, 111,
+		func() int { return len(fake.Wallets()) },
+		func() (int64, error) {
+			var cents int64
+			for _, w := range fake.Wallets() {
+				cents += w.BalanceCents
+			}
+			return commercial.CentsToMicro(cents), nil
+		})
+	runBenefitsContract(t, "fake", fake, 111, 112, "weknora-base-v1")
+}
+
+// TestLagoAdapterSubscriptionContract registers the stub-backed Lago legs
+// of the SAME T08 contract table — identical legs for both adapters. The
+// wallet balance is observed through the stub wallet GET (the settle-poll
+// path), the way the runtime observes it.
+func TestLagoAdapterSubscriptionContract(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(113)
+	p := NewLagoAdapter(lagoTestConfig(stub.url()))
+	runSubscriptionContract(t, "lago", p, 113, "weknora-base-v1", func() int {
+		return stub.subs.countCreates()
+	})
+	runGrantContract(t, "lago", p, 113,
+		func() int { return stub.wallets.countCreates() },
+		func() (int64, error) {
+			snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+				Kind: commercial.SnapshotKindBenefits, TenantID: 113,
+			})
+			if err != nil {
+				return 0, err
+			}
+			return snap.Benefits.BalanceMicro, nil
+		})
+	runBenefitsContract(t, "lago", p, 113, 114, "weknora-base-v1")
 }
 
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no
