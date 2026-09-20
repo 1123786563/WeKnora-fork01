@@ -152,6 +152,9 @@ importers:
       '@weknora/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@weknora/mobile-core':
         specifier: workspace:*
         version: link:../../packages/mobile-core

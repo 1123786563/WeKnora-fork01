@@ -97,3 +97,50 @@ listener at `127.0.0.1:8080`, and no running Compose service reported by
 authorized staging credential available to exercise the live path. This report
 does not claim live authorization. Running the documented command with an
 authorized test deployment remains required to produce `outcome: "authorized"`.
+
+## Review fix round 1
+
+Addressed the review findings without changing the pre-existing production
+composition protocol literal, which remains deferred for the final branch
+review. The Task 6 runner now imports `CLIENT_PROTOCOL_VERSION` from the
+domain package, so its evidence and Runtime use the domain protocol generation.
+The mobile app declares that direct workspace dependency explicitly.
+
+`WEKNORA_MOBILE_TEST_DEPLOYMENT_URL` now rejects any non-root path before
+normalization; `https://deployment.example/api/v1` cannot be shortened into an
+accepted origin. The test emits its already-redacted JSON evidence immediately
+after the runner returns and before it asserts authorization. Therefore a live
+`not-authorized`, incompatible, or missing-identity outcome is available in
+test diagnostics without exposing credentials.
+
+### RED
+
+```text
+pnpm exec tsx --test packages/api-client/src/mobile/runtime.integration.test.ts
+# SyntaxError: ... does not provide an export named
+# 'emitMobileRuntimeIntegrationEvidence'
+```
+
+The new tests were written first: one rejected a path-bearing deployment URL;
+the other required a deterministic `not-authorized` JSON record that omitted
+credential-shaped fields.
+
+### GREEN
+
+```text
+pnpm exec tsx --test packages/api-client/src/mobile/runtime.integration.test.ts \
+  packages/api-client/src/mobile/runtime.test.ts \
+  packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 23 / pass 22 / fail 0 / skipped 1
+# the single skip remains MOBILE_RUNTIME_HTTP_SKIPPED because no test
+# deployment credentials are configured
+
+pnpm --filter @weknora/mobile typecheck
+# exit 0
+
+git diff --check
+# exit 0
+```
+
+The local fixture and protected-environment limitation above is unchanged; no
+live authorization was performed or claimed in this fix round.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mobileRuntimeIntegrationConfig, runMobileRuntimeIntegration } from '../../../../apps/mobile/src/runtime-integration-smoke.ts';
+import { emitMobileRuntimeIntegrationEvidence, mobileRuntimeIntegrationConfig, runMobileRuntimeIntegration } from '../../../../apps/mobile/src/runtime-integration-smoke.ts';
 
 /**
  * Opt-in real HTTP check.  It never supplies fallback credentials or a mock:
@@ -23,9 +23,45 @@ test('real HTTP login reaches identity, capabilities, and an authorized Runtime 
   }
 
   const evidence = await runMobileRuntimeIntegration(config);
+  emitMobileRuntimeIntegrationEvidence(evidence, (record) => t.diagnostic(record));
 
   assert.equal(evidence.outcome, 'authorized');
   assert.equal(evidence.capabilityMode, 'compatible');
   assert.equal(evidence.identity, 'present', 'real /auth/me must produce stable user and tenant identities');
-  t.diagnostic(JSON.stringify(evidence));
+});
+
+test('integration config rejects a path-bearing deployment URL', () => {
+  const config = mobileRuntimeIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://deployment.example/api/v1',
+    WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
+    WEKNORA_MOBILE_TEST_PASSWORD: 'short-lived-secret',
+  });
+
+  assert.deepEqual(config, {
+    enabled: false,
+    reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin',
+  });
+});
+
+test('non-authorized evidence is emitted before assertions without credential fields', () => {
+  const emitted: string[] = [];
+  emitMobileRuntimeIntegrationEvidence({
+    deploymentOrigin: 'https://deployment.example',
+    clientProtocol: 3,
+    capabilityMode: 'incompatible',
+    identity: 'absent',
+    outcome: 'not-authorized',
+    commandTimestamp: '2026-09-21T00:00:00.000Z',
+  }, (record) => emitted.push(record));
+
+  assert.equal(emitted.length, 1);
+  assert.deepEqual(JSON.parse(emitted[0]!), {
+    deploymentOrigin: 'https://deployment.example',
+    clientProtocol: 3,
+    capabilityMode: 'incompatible',
+    identity: 'absent',
+    outcome: 'not-authorized',
+    commandTimestamp: '2026-09-21T00:00:00.000Z',
+  });
+  assert.doesNotMatch(emitted[0]!, /short-lived-secret|password|token|email/i);
 });

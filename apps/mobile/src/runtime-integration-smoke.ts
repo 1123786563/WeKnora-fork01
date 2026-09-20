@@ -1,9 +1,10 @@
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
+import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createInMemoryCredentialStore, createMobileRuntime } from '@weknora/mobile-core';
 
-const CLIENT_PROTOCOL = 3;
+const CLIENT_PROTOCOL = CLIENT_PROTOCOL_VERSION;
 
 export type MobileRuntimeIntegrationConfig =
   | { enabled: true; deploymentOrigin: string; email: string; password: string }
@@ -46,7 +47,7 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
   } catch {
     return { enabled: false, reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL is not an absolute URL' };
   }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) {
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
     return { enabled: false, reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
   }
   return { enabled: true, deploymentOrigin: parsed.origin, email, password };
@@ -91,4 +92,9 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
     outcome: snapshot.surface === 'authorized' && identityPresent ? 'authorized' : 'not-authorized',
     commandTimestamp: new Date().toISOString(),
   };
+}
+
+/** Emits only the redacted evidence contract, including failed live outcomes. */
+export function emitMobileRuntimeIntegrationEvidence(evidence: MobileRuntimeIntegrationEvidence, emit: (record: string) => void): void {
+  emit(JSON.stringify(evidence));
 }
