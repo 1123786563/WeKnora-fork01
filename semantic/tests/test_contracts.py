@@ -200,3 +200,10 @@ def test_apply_request_wire_round_trip_preserves_chunks_and_config() -> None:
     config = IndexConfig("digest", "engine", "profile", "prompt", "rules", "schema")
     value = ApplyRequest(revision, (ChunkSnapshot("c", "text", "chunk-hash"),), config, "idem", "payload", None)
     assert apply_request_from_wire(apply_request_to_wire(value)) == value
+
+
+def test_capabilities_wire_round_trip_preserves_availability() -> None:
+    from semantic_service.contracts import Capabilities, QueryLimits, capabilities_from_wire, capabilities_to_wire
+
+    value = Capabilities("v1", "engine", ("graph_rag",), ("rules",), QueryLimits(1, 2, 3, 4, 5, 6), ("limit",), None)
+    assert capabilities_from_wire(capabilities_to_wire(value)) == value

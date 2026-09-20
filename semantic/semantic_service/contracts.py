@@ -211,6 +211,21 @@ class ApplyRequest:
 
 
 @dataclass(frozen=True)
+class Capabilities:
+    protocol_version: str
+    engine_version: str
+    retrieval_modes: tuple[str, ...]
+    reasoning_modes: tuple[str, ...]
+    limits: QueryLimits
+    limitations: tuple[str, ...]
+    unavailable_reason: str | None
+
+    def __post_init__(self) -> None:
+        if not self.protocol_version or not self.engine_version:
+            raise ValueError("capabilities are incomplete")
+
+
+@dataclass(frozen=True)
 class SearchResponse:
     query_id: str
     generation: str
@@ -394,3 +409,20 @@ def apply_request_from_wire(wire) -> ApplyRequest:
     config = IndexConfig(wire.config.config_digest, wire.config.engine_version, wire.config.model_profile_ref, wire.config.prompt_version, wire.config.rule_set_version, wire.config.schema_version)
     chunks = tuple(ChunkSnapshot(item.chunk_id, item.text, item.content_hash) for item in wire.chunks)
     return ApplyRequest(document, chunks, config, wire.idempotency_key, wire.payload_hash, wire.manifest_ref if wire.HasField("manifest_ref") else None)
+
+
+def capabilities_to_wire(value: Capabilities):
+    from semantic_service.proto import semantic_pb2
+    retrieval = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}
+    reasoning = {"rules": semantic_pb2.REASONING_MODE_RULES, "model": semantic_pb2.REASONING_MODE_MODEL}
+    wire = semantic_pb2.Capabilities(protocol_version=value.protocol_version, engine_version=value.engine_version, retrieval_modes=[retrieval[item] for item in value.retrieval_modes], reasoning_modes=[reasoning[item] for item in value.reasoning_modes], limits=_limits_to_wire(value.limits), limitations=list(value.limitations))
+    if value.unavailable_reason is not None: wire.unavailable_reason = value.unavailable_reason
+    return wire
+
+
+def capabilities_from_wire(wire) -> Capabilities:
+    from semantic_service.proto import semantic_pb2
+    retrieval = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
+    reasoning = {semantic_pb2.REASONING_MODE_RULES: "rules", semantic_pb2.REASONING_MODE_MODEL: "model"}
+    if any(item not in retrieval for item in wire.retrieval_modes) or any(item not in reasoning for item in wire.reasoning_modes): raise ValueError("unknown capability mode")
+    return Capabilities(wire.protocol_version, wire.engine_version, tuple(retrieval[item] for item in wire.retrieval_modes), tuple(reasoning[item] for item in wire.reasoning_modes), _limits_from_wire(wire.limits), tuple(wire.limitations), wire.unavailable_reason if wire.HasField("unavailable_reason") else None)
