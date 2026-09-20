@@ -827,10 +827,14 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   }));
   // Vue KBParserSettings watches props.parserEngineRules (the loaded KB row)
   // and replaces its local rules; mirror that so a late KB load seeds the
-  // per-group selects.
+  // per-group selects. Guard on the loaded row only — the pre-load fallback
+  // placeholder is a fresh object each render, and keying the effect on it
+  // loops setState (the graph page opens this surface with knowledgeBaseId
+  // alone, so the pre-load window is real).
   useEffect(() => {
-    setParserEngineRules(parserRulesAsEngineRules(currentKnowledgeBase));
-  }, [currentKnowledgeBase]);
+    if (!knowledgeBase) return;
+    setParserEngineRules(parserRulesAsEngineRules(knowledgeBase));
+  }, [knowledgeBase]);
   // Vue ensureCompleteRules: once the engine catalogue lands, materialise a
   // rule per file-type group (defaults filled in) so a save persists the
   // complete set like buildCompleteRules().

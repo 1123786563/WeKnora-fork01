@@ -58,7 +58,9 @@ export function KnowledgeBaseActivityPanel({ client, knowledgeBaseId, embedded =
       });
       if (!isCurrentActivityGeneration(requestGeneration, generationRef.current)) return;
       setEntries((current) => reset ? (result.data ?? []) : [...current, ...(result.data ?? [])]);
-      setNextCursor(result.next_cursor);
+      // Vue KnowledgeBaseActivitySettings.vue:651 gates on !!next_cursor — a
+      // zero cursor means exhaustion, not a valid cursor.
+      setNextCursor(result.next_cursor || undefined);
       setLoaded(true);
     } catch (cause) {
       if (isCurrentActivityGeneration(requestGeneration, generationRef.current)) setError(cause instanceof Error ? cause.message : t('knowledgeEditor.activity.loadFailed'));
