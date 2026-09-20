@@ -147,6 +147,26 @@ class ReasonRequest:
             raise ValueError("reason request is invalid")
 
 
+@dataclass(frozen=True)
+class SearchResponse:
+    query_id: str
+    generation: str
+    requested_mode: str
+    actual_mode: str
+    evidence: tuple[Evidence, ...]
+    assertion_ids: tuple[str, ...]
+    paths: tuple[tuple[str, ...], ...] = ()
+    stale: bool = False
+    partial: bool = False
+    truncated: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.query_id or not self.generation or self.requested_mode not in {"graph_rag", "reason"} or self.actual_mode not in {"graph_rag", "reason"}:
+            raise ValueError("search response is invalid")
+        if self.requested_mode == "graph_rag" and self.actual_mode == "reason":
+            raise ValueError("search cannot implicitly upgrade graph_rag to reason")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

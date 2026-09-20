@@ -90,3 +90,12 @@ def test_reason_request_embeds_search_and_limits_reasoning_mode() -> None:
     request = ReasonRequest(search=search, reasoning_mode="rules", rule_set_version="v1")
 
     assert request.search is search and request.reasoning_mode == "rules"
+
+
+def test_search_response_echoes_modes_and_evidence() -> None:
+    from semantic_service.contracts import Evidence, SearchResponse
+
+    evidence = Evidence("e", "d", 1, "c", "h", "文本", None, None)
+    response = SearchResponse(query_id="q", generation="g", requested_mode="graph_rag", actual_mode="graph_rag", evidence=(evidence,), assertion_ids=("a",))
+
+    assert response.actual_mode == "graph_rag" and response.evidence[0].evidence_id == "e"
