@@ -12,3 +12,7 @@ Authoritative evidence artifact: [v02-dedicated-reverified.json](evidence/2026-0
 - Commands: `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q` exited 0 with 7 tests; `docker compose --env-file docker/.env.semantic-v02.local -f docker/compose.semantic-v02.yml restart neo4j` exited 0; dedicated capture commands exited 0.
 
 This is not a production topology selection, shared-isolated comparison, provider/model result, Go authorization result, deletion/revocation result, or quality/performance acceptance.
+
+## Shared-isolated operator handoff
+
+Copy [v02-shared-isolated-topology.example.json](../../../semantic/experiments/fixtures/v02-shared-isolated-topology.example.json) to an ignored local manifest and replace its endpoint alias, account identity, and database/schema/collection/prefix boundary with an operator-provisioned shared boundary. Provide the credential only through the local ignored environment variable `SEMANTICA_V02_NEO4J_PASSWORD`; never add it to the manifest, repository, evidence, or chat. The subsequent matrix must prove the dedicated identity cannot read/write a foreign boundary and must use a fresh writer/reader pair plus reader-only recovery after backend restart.
