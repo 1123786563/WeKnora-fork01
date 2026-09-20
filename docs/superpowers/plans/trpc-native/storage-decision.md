@@ -17,7 +17,7 @@ review, and integration evidence; P7 remains the integrated acceptance gate.
 
 | Candidate | Decision | Evidence and consequence |
 | --- | --- | --- |
-| Root `trpc-agent-go v1.11.0` | retained SDK API candidate; **not** an approved product composition | The independent probes compile against it and their default suites pass, but the root only has a bounded repeated Runner race green.  Direct-consumer budget notification remains failing and the storage contract is not met. |
+| Root `trpc-agent-go v1.11.0` | retained SDK API candidate; **not** an approved product composition | The independent probes compile against it and their default suites pass, and commit `86e522fd` makes the focused direct-consumer budget-notification command pass. The root still has only a bounded repeated Runner race green, and the storage contract is not met. |
 | `session/sqlite v1.11.0` | rejected as a raw product backend | Replaying a stable `event.Event.ID` with changed payload returned nil in the forced contract test.  Duplicate stable IDs are stored; an append can mutate the caller object before persistence fails. |
 | `session/postgres v1.11.0` | rejected as a raw product backend | Historical isolated-DSN characterization has the same stable-ID conflict failure and default schema initialization fails its unique-index check.  This run had no DSN, so PostgreSQL re-verification is `blocked-env`. |
 | `memory/sqlite v1.11.0` | rejected as a raw product backend | A clear followed by old-generation extraction output returns nil in the forced contract test; no generation/tombstone/CAS input exists on raw `AddMemory`. |
@@ -94,7 +94,7 @@ contract cases.
 | `tools/trpc-native-p1/identityprobe` | `GOWORK=off go test ./... -count=1` | 0 | local key/cursor encoding contract passed. |
 | same | `GOWORK=off go test -race ./... -count=20` | 0 | no race reported. |
 | same | `GOWORK=off go vet ./...` | 0 | no findings. |
-| repository root | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` | 1 | Only `run_started` and `run_failed` persisted; required `budget_exhausted` event was absent. |
+| repository root | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` | 0 | Commit `86e522fd` preserves the structured budget-exhaustion code across the Graph SDK event boundary; the required durable notification is persisted. Historical `75523c9c9` remains the exit-1 baseline where only `run_started` and `run_failed` persisted. |
 | repository root | `GOWORK=off go test ./internal/agent/recoverytest -run 'TestCrashMatrixPostgreSQL|TestTwoWorkerContentionPostgreSQL|TestCrashAfterToolResult' -count=1 -v` | 0 | all three required cases skipped: `TRPC_RECOVERY_PG_DSN` and `TRPC_RECOVERY_GRAPH_PROVIDER` are unset; classify `blocked-env`, never pass. |
 
 The Session forced RED uses a response event with exactly the same
@@ -179,9 +179,10 @@ assigned rather than made a self-blocking P1.2 precondition:
    authorization recheck and generation/tombstone CAS, including reopened
    empty-memory and retained business-metadata assertions.
 3. P1.5 proves CommitIntent, barrier, reconcile, outbox/event ordering and
-   the corresponding persistence failures.  P2 adds approval, budget and
-   side-effect policy; the currently failing `budget_exhausted` notification
-   test is a separate repair and regression obligation.
+   the corresponding persistence failures. P2 adds approval, budget and
+   side-effect policy; commit `86e522fd` repaired the `budget_exhausted`
+   notification regression, whose focused command now passes and remains a
+   required regression check.
 4. P7 runs the six-gap process-kill/two-worker acceptance matrix on SQLite and
    PostgreSQL, plus real-provider/connector and client replay evidence.  It
    requires `TRPC_RECOVERY_PG_DSN` and an authorized
@@ -194,7 +195,9 @@ from `NO-GO` to `GO`.
 ## P0 ruling retained
 
 P0's `NO-GO` is unchanged because its required persistence composition,
-append-failure barrier, budget-notification consumer, PostgreSQL recovery and
-real-provider evidence are not complete.  The P0 decision document and
-`interfaces.md` require no edit: this document records the exact new P1.0
-evidence without falsely elevating it to product or release acceptance.
+append-failure barrier, PostgreSQL recovery, real-provider evidence, complete
+native product composition, and client acceptance are not complete. Commit
+`86e522fd` closes the focused budget-notification consumer failure only. The
+P0 decision document and `interfaces.md` require no product-wiring change:
+this document records the exact P1.0 evidence without falsely elevating it to
+product or release acceptance.
