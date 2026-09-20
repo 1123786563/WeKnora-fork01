@@ -368,16 +368,17 @@ class TestGraphqlLogin(unittest.TestCase):
 
 class TestSanitize(unittest.TestCase):
     def test_strips_known_secret_shapes(self):
+        live_key = "rk_live_" + "51BadBadBad0000000000000000"
         raw = {
             "authorization": f"Bearer {JWT_CANARY}",
             "stripe_key": STRIPE_TEST_KEY,
-            "live_key": "rk_live_" + "51BadBadBad0000000000000000",
+            "live_key": live_key,
             "nested": {"jwt": JWT_CANARY, "note": "plain text stays"},
             "list": [f"Bearer {API_KEY}"],
         }
         clean = clients.sanitize(raw)
         text = json.dumps(clean)
-        for secret in (JWT_CANARY, STRIPE_TEST_KEY, "rk_live_" + "51BadBadBad0000000000000000", API_KEY):
+        for secret in (JWT_CANARY, STRIPE_TEST_KEY, live_key, API_KEY):
             self.assertNotIn(secret, text)
         self.assertIn("plain text stays", text)
 
