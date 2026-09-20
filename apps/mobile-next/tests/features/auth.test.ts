@@ -22,7 +22,7 @@ const noCreds: CredentialStore = {
   async clear() {},
 };
 
-const mkController = (route: Route, initialCreds: SecureCredentials | null = null) => {
+const mkController = (route: Route, initialCreds: SecureCredentials | null = null, wireAuthExpiry = false) => {
   let credsValue = initialCreds;
   const events: string[] = [];
   const trustedScopes: Array<CloudWorkspaceScope | null> = [];
@@ -46,13 +46,19 @@ const mkController = (route: Route, initialCreds: SecureCredentials | null = nul
   };
   const scope = new ScopeCoordinator();
   const stages: AuthStage[] = [];
+  let ctrl!: AuthController;
   const http = new HttpClient({
     getOrigin: () => initialCreds?.origin ?? "https://weknora.example",
     getTenantId: () => scope.scope?.tenantId ?? null,
     credentials: { read: () => credentials.read() ?? null, write: (v) => credentials.write(v as never), clear: () => credentials.clear() },
     fetchImpl: mkFetch(route),
+    onAuthExpired: wireAuthExpiry
+      ? () => {
+          void ctrl.expireLocalAuth();
+        }
+      : undefined,
   });
-  const ctrl = new AuthController({
+  ctrl = new AuthController({
     api: new WeKnoraApi(http),
     scope,
     store,
@@ -265,5 +271,30 @@ describe("RW-009 switchSpace 顺序语义", () => {
     expect(c.trustedScopes).toEqual([null]);
     expect(c.scope.scope).toBeNull();
     expect(await c.credentials.read()).toBeNull();
+  });
+
+  it("logout 的 401 刷新失败与本地失效只执行一次清理", async () => {
+    const c = mkController(
+      (url) =>
+        url.endsWith("/auth/me")
+          ? jsonRes(200, userBody)
+          : url.endsWith("/tenants")
+            ? jsonRes(200, tenantBody)
+            : url.endsWith("/auth/logout") || url.endsWith("/auth/refresh")
+              ? jsonRes(401, { error: "Unauthorized" })
+              : jsonRes(200, {}),
+      { origin: "https://weknora.example", access: "tok", refresh: "ref", userId: "u1", tenantId: "t1" },
+      true,
+    );
+    await c.ctrl.bootstrap();
+    c.events.length = 0;
+    c.trustedScopes.length = 0;
+
+    await expect(c.ctrl.logout()).resolves.toBeUndefined();
+
+    expect(c.events).toEqual(["scope:null", "scope-data:clear", "credentials:clear", "stage:login"]);
+    expect(c.trustedScopes).toEqual([null]);
+    expect(c.scope.scope).toBeNull();
+    expect(c.stages.filter((stage) => stage.kind === "login")).toHaveLength(1);
   });
 });

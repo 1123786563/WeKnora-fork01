@@ -42,6 +42,7 @@ export class AuthController {
   private identity: AppIdentity | null = null;
   private previousScopeKey: string | null = null;
   private localExpiry: Promise<void> | null = null;
+  private trustedScopeVisible = false;
 
   constructor(private d: AuthDeps) {}
 
@@ -49,11 +50,30 @@ export class AuthController {
     return this.identity;
   }
 
+  private publishTrustedScope(scope: CloudWorkspaceScope): void {
+    this.trustedScopeVisible = true;
+    this.d.onTrustedScope(scope);
+  }
+
+  private invalidateTrustedScope(): void {
+    if (!this.trustedScopeVisible) return;
+    this.trustedScopeVisible = false;
+    this.d.onTrustedScope(null);
+  }
+
   /** Refresh exhaustion must invalidate every local auth-dependent capability before login is visible. */
   expireLocalAuth(): Promise<void> {
+    this.invalidateTrustedScope();
+    return this.startLocalExpiry();
+  }
+
+  private startLocalExpiry(beforeCleanup?: () => Promise<void>): Promise<void> {
     if (this.localExpiry) return this.localExpiry;
 
-    const expiry = this.clearLocalAuth(true);
+    const expiry = (async () => {
+      await beforeCleanup?.();
+      await this.clearLocalAuth();
+    })();
     this.localExpiry = expiry;
     void expiry.then(
       () => {
@@ -66,8 +86,7 @@ export class AuthController {
     return expiry;
   }
 
-  private async clearLocalAuth(publishTrustedScope: boolean): Promise<void> {
-    if (publishTrustedScope) this.d.onTrustedScope(null);
+  private async clearLocalAuth(): Promise<void> {
     if (this.previousScopeKey) {
       await this.d.store.clearScopeData(this.previousScopeKey);
     }
@@ -181,7 +200,7 @@ export class AuthController {
       this.identity = { ...this.identity, selectedTenantId: tenantId };
       this.d.onIdentity(this.identity);
     }
-    this.d.onTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
+    this.publishTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
     this.d.onStage({ kind: "ready", scope: g.scope });
   }
 
@@ -197,7 +216,7 @@ export class AuthController {
     // 1) 禁写 2) generation+1 3) abort 旧订阅 —— ScopeCoordinator.switchTenant 内执行
     const g = this.d.scope.switchTenant(tenantId);
     // Requested tenants are never a trusted scope before server confirmation.
-    this.d.onTrustedScope(null);
+    this.invalidateTrustedScope();
     // 4) 清旧空间敏感可见数据（按旧 scope 缓存键）
     await this.d.store.clearScopeData(previousScopeKey);
     const newKey = scopeCacheKey(g.scope);
@@ -214,7 +233,7 @@ export class AuthController {
       }
       const restored = this.d.scope.enter(previousScope);
       this.previousScopeKey = previousScopeKey;
-      this.d.onTrustedScope(toCloudWorkspaceScope(restored.scope, restored.value));
+      this.publishTrustedScope(toCloudWorkspaceScope(restored.scope, restored.value));
       throw e;
     }
     // 6) 恢复写入并更新持久凭证
@@ -223,7 +242,7 @@ export class AuthController {
     if (creds) await this.d.credentials.write({ ...creds, tenantId });
     this.identity = { ...this.identity, selectedTenantId: tenantId };
     this.d.onIdentity(this.identity);
-    this.d.onTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
+    this.publishTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
     this.d.onStage({ kind: "ready", scope: g.scope });
   }
 
@@ -245,12 +264,13 @@ export class AuthController {
 
   /** 退出：清凭证、清可见数据、撤销本地绑定；服务端任务不取消 */
   async logout(): Promise<void> {
-    this.d.onTrustedScope(null);
-    try {
-      await this.d.api.logout();
-    } catch {
-      // 服务端登出失败不阻塞本地清理；token 24h 过期兜底
-    }
-    await this.clearLocalAuth(false);
+    this.invalidateTrustedScope();
+    await this.startLocalExpiry(async () => {
+      try {
+        await this.d.api.logout();
+      } catch {
+        // 服务端登出失败不阻塞本地清理；token 24h 过期兜底
+      }
+    });
   }
 }
