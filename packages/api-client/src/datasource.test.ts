@@ -70,6 +70,30 @@ test('rejects malformed data source responses', async () => {
   await assert.rejects(api.list('kb-1'), /Invalid data source field: id/);
 });
 
+// Task 4's cooperative cancel: POST /datasource/:id/logs/:log_id/cancel answers
+// 202 {"status":"cancel_requested"} (internal/handler/datasource.go
+// CancelSyncLog, Admin-gated at routes_infra.go). The request layer folds every
+// 2xx — 202 included — into the parsed body (client.ts treats
+// status < 200 || >= 300 as the only failure), so cancelSyncLog just POSTs and
+// checks the envelope; transport failures propagate to the caller.
+test('cancelSyncLog POSTs the log cancel route and validates the 202 envelope', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createDataSourcesApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return { status: 'cancel_requested' };
+  });
+  await api.cancelSyncLog('ds/a', 'log/9');
+  assert.deepEqual(requests, [{ method: 'POST', path: '/api/v1/datasource/ds%2Fa/logs/log%2F9/cancel', body: {} }]);
+});
+
+test('cancelSyncLog propagates transport failures and rejects broken envelopes', async () => {
+  const failing = createDataSourcesApi(async () => { throw new Error('404: sync log not found'); });
+  await assert.rejects(failing.cancelSyncLog('ds-1', 'log-9'), /404/);
+
+  const malformed = createDataSourcesApi(async () => ({ status: 'nope' }));
+  await assert.rejects(malformed.cancelSyncLog('ds-1', 'log-9'), /Invalid data source sync cancel/);
+});
+
 test('exposes connector types, credential writes, and sync logs as separate routes', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createDataSourcesApi(async (request) => {

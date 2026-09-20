@@ -71,6 +71,8 @@ const EDITOR_KEYS = [
   'dataSource.resumeFailed',
   'dataSource.syncLogsLoadFailed',
   'dataSource.syncLogsLoadMoreFailed',
+  // SP2-a Task 6: cooperative cancel button for running syncs.
+  'dataSource.cancelSync',
   'dataSource.noDeclaredCapabilities',
   'dataSource.connectorTypePlaceholder',
   'dataSource.cronSchedulePlaceholder',
@@ -134,8 +136,9 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  // 224 Vue-ported keys + 13 confluence/dingtalk connector/desc/field keys.
-  assert.equal(keys.length, 237);
+  // 224 Vue-ported keys + 13 confluence/dingtalk connector/desc/field keys
+  // + 1 cancelSync (SP2-a Task 6).
+  assert.equal(keys.length, 238);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -209,6 +212,16 @@ test('data-source editor copy is byte-exact against the Vue en-US baseline', () 
 test('relative-time templates interpolate the datasource counters', () => {
   assert.equal(formatMessage('zh-CN', 'dataSource.minutesAgo', { n: 5 }), '5 分钟前');
   assert.equal(formatMessage('en-US', 'dataSource.hoursAgo', { n: 2 }), '2h ago');
+});
+
+// SP2-a Task 6: cancel button copy for running syncs. ja/ko/ru ship the
+// English copy (this key has no Vue baseline to port).
+test('cancelSync copy is byte-exact in every locale', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.cancelSync'), '取消同步');
+  assert.equal(formatMessage('en-US', 'dataSource.cancelSync'), 'Cancel sync');
+  assert.equal(formatMessage('ja-JP', 'dataSource.cancelSync'), 'Cancel sync');
+  assert.equal(formatMessage('ko-KR', 'dataSource.cancelSync'), 'Cancel sync');
+  assert.equal(formatMessage('ru-RU', 'dataSource.cancelSync'), 'Cancel sync');
 });
 
 // R453 A1: Vue DataSourceEditorDialog prereq setup-guide + doc-hint copy,

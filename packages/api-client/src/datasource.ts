@@ -35,6 +35,11 @@ export interface DataSourceSyncLog {
   status: string;
   started_at?: string | null;
   finished_at?: string | null;
+  // SP2-a cooperative-cancel wire fields: heartbeat_at is the liveness stamp
+  // the sync loop refreshes while running; cancel_requested flips to true once
+  // a cancel POST lands and the loop exits at its next checkpoint.
+  heartbeat_at?: string | null;
+  cancel_requested?: boolean;
   items_total?: number;
   items_created?: number;
   items_updated?: number;
@@ -133,5 +138,16 @@ export function createDataSourcesApi(request: (input: ClientRequest) => Promise<
     async sync(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/sync'), body: {} }); },
     async pause(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/pause'), body: {} }); },
     async resume(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/resume'), body: {} }); },
+    // Cooperative cancel of a running sync (internal/handler/datasource.go
+    // CancelSyncLog, Admin-gated at routes_infra.go): answers
+    // 202 {"status":"cancel_requested"} — the loop observes the flag at its
+    // next checkpoint and exits gracefully. The request layer folds every 2xx
+    // (202 included) into the parsed body (client.ts), so only the envelope
+    // needs validating here; transport failures propagate to the caller.
+    async cancelSyncLog(id: string, logId: string): Promise<void> {
+      const value = await request({ method: 'POST', path: path(id, `/logs/${encodeURIComponent(logId)}/cancel`), body: {} });
+      const envelope = row(value, 'data source sync cancel');
+      if (envelope.status !== 'cancel_requested') throw new Error('Invalid data source sync cancel response');
+    },
   };
 }

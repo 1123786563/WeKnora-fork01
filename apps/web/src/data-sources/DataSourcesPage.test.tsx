@@ -103,6 +103,23 @@ test('keeps the test-connection button and stops action click bubbling in the ca
   assert.match(page, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
 });
 
+// SP2-a Task 6: a running latest sync log (isSyncRunning) swaps the card's
+// sync action for a cancel button that POSTs cancelSyncLog on the running
+// log's id. The cancel is cooperative (backend answers 202 cancel_requested;
+// the sync loop exits at its next checkpoint), so the page performs no
+// optimistic update — the existing 3s polling converges the row to canceled.
+// The route is Admin-gated (routes_infra.go), matching the canManage prop the
+// page already gates every mutation action on.
+test('running syncs render a cancel button that requests cooperative cancel without optimistic update', () => {
+  assert.match(page, /async function cancelSync\(source: DataSource\)/);
+  assert.match(page, /const log = source\.latest_sync_log;[\s\S]*?if \(!log \|\| log\.status !== 'running'\) return;/);
+  assert.match(page, /await dataSources\.cancelSyncLog\(source\.id, log\.id\);/);
+  assert.match(page, /isSyncRunning\(source\) \? <Button type="button" disabled=\{action !== null\} onClick=\{\(\) => void cancelSync\(source\)\}>\{t\('dataSource\.cancelSync'\)\}<\/Button> : null/);
+  // No optimistic flip: cancel success keeps the running pill and leans on the
+  // 3s poll; only a toast communicates the request was accepted.
+  assert.doesNotMatch(page, /setSources\(\(current\)[\s\S]*?cancel_requested/);
+});
+
 // Vue appends the dashed add card to the grid for managers, even when sources exist.
 test('appends the dashed add card to the grid for managers alongside sources', () => {
   const grid = page.slice(page.indexOf('wk-data-source-grid'));
