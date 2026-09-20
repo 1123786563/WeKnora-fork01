@@ -4,8 +4,8 @@ import type { KnowledgeBase } from '@weknora/contracts';
 import type { ChunkingPreviewResult, WeKnoraClient } from '@weknora/api-client';
 import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
-import { KnowledgeBaseShareDialog } from '../knowledge-bases/KnowledgeBaseShareDialog.tsx';
 import { KnowledgeBaseActivityPanel } from '../knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { KBShareSettingsSection } from './KBShareSettingsSection.tsx';
 import {
   CHILD_CHUNK_SIZE_RANGE,
   CHUNKING_LANGUAGE_LABEL_KEYS,
@@ -35,14 +35,18 @@ export type { KnowledgeSettingsModelOption } from './editorSections.ts';
 
 export interface KnowledgeEditorOptions {
   parserEngines: Array<{ Name: string; Description: string; FileTypes?: string[]; Available?: boolean }>;
-  storageBackends: Array<{ id: string; name: string; provider: string; status: string }>;
+  // R485: the storage rows echo the backend config (endpoint/bucket/path
+  // hint) and mark the default instance — Vue KBStorageSettings reads both
+  // off listStorageBackends().
+  storageBackends: Array<{ id: string; name: string; provider: string; status: string; config?: Record<string, unknown> }>;
+  defaultStorageBackendId: string;
   vectorStores: Array<{ id: string; name: string; engine_type: string; source: string; readonly: boolean }>;
   models: KnowledgeSettingsModelOption[];
   loading: boolean;
   error: string | null;
 }
 
-const idleEditorOptions: KnowledgeEditorOptions = { parserEngines: [], storageBackends: [], vectorStores: [], models: [], loading: false, error: null };
+const idleEditorOptions: KnowledgeEditorOptions = { parserEngines: [], storageBackends: [], defaultStorageBackendId: '', vectorStores: [], models: [], loading: false, error: null };
 
 // Loads the live parser/vector/storage/model catalogues through the
 // authenticated settings/configuration APIs when the settings surface opens
@@ -60,7 +64,8 @@ export async function loadKnowledgeSettingsOptions(client: WeKnoraClient): Promi
   const text = (value: unknown): string => (typeof value === 'string' ? value : '');
   return {
     parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.FileTypes === undefined ? {} : { FileTypes: item.FileTypes }), ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
-    storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
+    storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status, config: item.config })) : [],
+    defaultStorageBackendId: storage.status === 'fulfilled' ? (storage.value.default_storage_backend_id ?? '') : '',
     vectorStores: vector.status === 'fulfilled' ? vector.value.data.map((item) => ({ id: item.id, name: item.name, engine_type: item.engine_type, source: item.source, readonly: item.readonly })) : [],
     models: models.status === 'fulfilled' ? models.value.map((item) => ({ id: item.id, name: item.name, displayName: text(item.display_name), type: text(item.type), source: text(item.source), ...(item.status === undefined ? {} : { status: text(item.status) }) })) : [],
     error: failures.length > 0 ? (failures[0]!.reason instanceof Error ? failures[0]!.reason.message : 'Unable to load settings options') : null,
@@ -486,8 +491,11 @@ interface GraphExtractInput {
 export interface KnowledgeSettingsEditorOverrides {
   llmModelId?: string;
   embeddingModelId?: string;
-  documentSplitting?: Partial<Pick<KnowledgeSettingsSavePayload['documentSplitting'], 'chunkSize' | 'chunkOverlap' | 'separators' | 'enableParentChild' | 'parentChunkSize' | 'childChunkSize' | 'strategy' | 'tokenLimit' | 'languages'>>;
+  documentSplitting?: Partial<Pick<KnowledgeSettingsSavePayload['documentSplitting'], 'chunkSize' | 'chunkOverlap' | 'separators' | 'enableParentChild' | 'parentChunkSize' | 'childChunkSize' | 'strategy' | 'tokenLimit' | 'languages' | 'tableMetadataInstructions'>>;
   questionGeneration?: Partial<Pick<KnowledgeSettingsSavePayload['questionGeneration'], 'enabled' | 'questionCount' | 'customInstructions'>>;
+  // R485 advanced tab (Vue KBAdvancedSettings autoTagConfig draft): persists
+  // through the base update's auto_tag_config block.
+  autoTag?: { enabled?: boolean; modelId?: string; maxTags?: number; skipIfTagged?: boolean };
   // R440 multimodal/asr sections (Vue multimodalConfig / asrConfig drafts).
   multimodal?: { enabled?: boolean; vllmModelId?: string; descriptionLanguage?: string; customInstructions?: string };
   asr?: { enabled?: boolean; modelId?: string };
@@ -698,11 +706,15 @@ export function buildKnowledgeSettingsBaseUpdate(
       extraction_instructions: wiki.extractionInstructions ?? raw(kbWiki.extraction_instructions),
     };
     const autoTag = knowledgeBase.auto_tag_config ?? {};
+    // R485: the advanced-tab autoTag draft layers on top of the loaded row
+    // (Vue KBAdvancedSettings update:autoTag), persisting through the base
+    // update exactly like the wiki/indexing blocks.
+    const autoTagDraft = overrides?.autoTag ?? {};
     config.auto_tag_config = {
-      enabled: autoTag.enabled === true,
-      model_id: raw(autoTag.model_id),
-      max_tags: typeof autoTag.max_tags === 'number' && autoTag.max_tags > 0 ? autoTag.max_tags : 3,
-      skip_if_tagged: typeof autoTag.skip_if_tagged === 'boolean' ? autoTag.skip_if_tagged : true,
+      enabled: autoTagDraft.enabled ?? autoTag.enabled === true,
+      model_id: autoTagDraft.modelId ?? raw(autoTag.model_id),
+      max_tags: autoTagDraft.maxTags ?? (typeof autoTag.max_tags === 'number' && autoTag.max_tags > 0 ? autoTag.max_tags : 3),
+      skip_if_tagged: autoTagDraft.skipIfTagged ?? (typeof autoTag.skip_if_tagged === 'boolean' ? autoTag.skip_if_tagged : true),
     };
     const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, overrides);
     config.indexing_strategy = {
@@ -1085,7 +1097,7 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <ChunkingSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} client={client} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'advanced' ? (
-        <AdvancedSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
+        <AdvancedSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} knowledgeBase={knowledgeBase} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'multimodal' ? (
         <MultimodalSettingsSection editorPayload={editorPayload} editorDraft={editorDraft} models={editorOptions.models} t={t} onDraftChange={onDraftChange} />
@@ -1097,16 +1109,45 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         <FaqSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} t={t} onDraftChange={onDraftChange} />
       ) : null}
       {section === 'vectorStore' ? (
-        <div style={{ display: 'grid', gap: '0.4rem' }}>
-          <label style={{ display: 'grid', gap: '0.25rem' }}>
-            {t('kbSettings.vectorStore.engineLabel')}
-            <select value={summaryLabel} disabled aria-label={t('kbSettings.vectorStore.engineLabel')}>
-              <option value={summaryLabel}>{summaryLabel}</option>
-              {editorOptions.vectorStores.filter((store) => store.id && store.id !== '').map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}
-            </select>
-          </label>
-          <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.vectorStore.immutableHint')}</p>          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
-        </div>
+        // R485 (Vue KBVectorStoreSettings edit mode): a read-only bound-store
+        // badge card — the binding is immutable after creation, so no select
+        // renders at all (VectorStoreBadge + immutableEdit + unavailable hint).
+        (() => {
+          const boundSource = text(knowledgeBase.vector_store_source);
+          const boundName = text(knowledgeBase.vector_store_name);
+          const boundEngineType = text(knowledgeBase.vector_store_engine_type);
+          const boundStatus = text(knowledgeBase.vector_store_status);
+          const effectiveSource = boundSource || 'env';
+          const unavailable = boundStatus === 'unavailable' || effectiveSource === 'unavailable';
+          const displayName = effectiveSource === 'env'
+            ? t('vectorStoreBadge.systemDefault')
+            : effectiveSource === 'shared'
+              ? t('vectorStoreBadge.sharedFromOrg')
+              : boundName || t('vectorStoreBadge.unknownStore');
+          return (
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              <EditorSettingRow
+                label={t('kbSettings.vectorStore.boundLabel')}
+                description={t('kbSettings.vectorStore.immutableEdit')}
+                control={(
+                  <div style={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }}>
+                    <span
+                      data-vector-store-badge=""
+                      data-vector-store-source={effectiveSource}
+                      className={effectiveSource === 'user' ? 'wk-vs-badge wk-vs-badge-user' : effectiveSource === 'shared' ? 'wk-vs-badge wk-vs-badge-shared' : 'wk-vs-badge wk-vs-badge-env'}
+                    >
+                      {displayName}
+                      {boundEngineType && (effectiveSource === 'user' || effectiveSource === 'env') ? <span> ({boundEngineType})</span> : null}
+                      {unavailable ? <span data-vector-store-unavailable="" style={{ marginLeft: '0.4rem', color: '#b42318', fontWeight: 600 }}>{t('vectorStoreBadge.unavailable')}</span> : null}
+                    </span>
+                    {unavailable ? <p data-vector-store-unavailable-hint="" className="wk-muted" style={{ margin: 0, color: '#b54708' }}>{t('kbSettings.vectorStore.unavailableHint')}</p> : null}
+                  </div>
+                )}
+              />
+              {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
+            </div>
+          );
+        })()
       ) : null}
       {section === 'parser' ? (
         <ParserSettingsSection
@@ -1119,32 +1160,52 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
         />
       ) : null}
       {section === 'storage' ? (
-        <div style={{ display: 'grid', gap: '0.4rem' }}>
-          <label style={{ display: 'grid', gap: '0.25rem' }}>
-            {t('kbSettings.storage.instanceLabel')}
-            {/* Vue KBStorageSettings: the select binds :disabled="!!hasFiles"
-                and handleChange emits the backend id + provider (both persist
-                through the config PUT). The committed value stays selectable
-                even when the loaded backends list no longer contains it. */}
-            <select
-              value={editorDraft.storageBackendId ?? editorPayload.storageBackendId}
-              disabled={indexingLocked}
-              aria-label={t('kbSettings.storage.instanceLabel')}
-              onChange={(event) => {
-                const backendId = event.target.value;
-                const backend = editorOptions.storageBackends.find((candidate) => candidate.id === backendId);
-                onDraftChange({ ...editorDraft, storageBackendId: backendId, storageProvider: backend?.provider ?? editorDraft.storageProvider });
-              }}
-            >
-              {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}
-              {editorOptions.storageBackends.every((backend) => backend.id !== editorPayload.storageBackendId) ? <option value={editorPayload.storageBackendId}>{summaryLabel || editorPayload.storageBackendId}</option> : null}
-            </select>
-          </label>
-          {/* Vue KBStorageSettings renders the migrate hint only while the
-              edit-mode KB has files (v-if="props.hasFiles"). */}
-          {indexingLocked ? <p className="wk-muted" data-storage-migrate-hint="" style={{ margin: 0 }}>{t('kbSettings.storage.migrateHint')}</p> : null}
-          {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
-        </div>
+        // R485 (Vue KBStorageSettings): the instanceDesc row, the option tags
+        // (uppercased provider + 默认 on the default backend), the selected
+        // instance endpoint/bucket hint and the 管理存储实例 entry.
+        (() => {
+          const currentBackendId = editorDraft.storageBackendId ?? editorPayload.storageBackendId;
+          const selectedBackend = editorOptions.storageBackends.find((candidate) => candidate.id === currentBackendId);
+          const selectedHint = selectedBackend
+            ? text((selectedBackend.config ?? {}).endpoint) || text((selectedBackend.config ?? {}).bucket_name) || text((selectedBackend.config ?? {}).path_prefix) || t('kbSettings.storage.localStorage')
+            : '';
+          return (
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              <EditorSettingRow
+                label={t('kbSettings.storage.instanceLabel')}
+                description={t('kbSettings.storage.instanceDesc')}
+                control={(
+                  <div style={{ display: 'grid', gap: '0.4rem', justifyItems: 'stretch' }}>
+                    {/* Vue KBStorageSettings: the select binds :disabled="!!hasFiles"
+                        and handleChange emits the backend id + provider (both persist
+                        through the config PUT). The committed value stays selectable
+                        even when the loaded backends list no longer contains it. */}
+                    <select
+                      value={currentBackendId}
+                      disabled={indexingLocked}
+                      aria-label={t('kbSettings.storage.instanceLabel')}
+                      onChange={(event) => {
+                        const backendId = event.target.value;
+                        const backend = editorOptions.storageBackends.find((candidate) => candidate.id === backendId);
+                        onDraftChange({ ...editorDraft, storageBackendId: backendId, storageProvider: backend?.provider ?? editorDraft.storageProvider });
+                      }}
+                    >
+                      {editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider.toUpperCase()}{backend.id === editorOptions.defaultStorageBackendId ? ` (${t('kbSettings.storage.defaultTag')})` : ''}</option>)}
+                      {editorOptions.storageBackends.every((backend) => backend.id !== editorPayload.storageBackendId) ? <option value={editorPayload.storageBackendId}>{summaryLabel || editorPayload.storageBackendId}</option> : null}
+                    </select>
+                    {/* Vue KBStorageSettings renders the migrate hint only while the
+                        edit-mode KB has files (v-if="props.hasFiles"), otherwise the
+                        selected instance endpoint/bucket hint. */}
+                    {indexingLocked ? <p className="wk-muted" data-storage-migrate-hint="" style={{ margin: 0 }}>{t('kbSettings.storage.migrateHint')}</p> : null}
+                    {!indexingLocked && selectedHint ? <p className="wk-muted" data-storage-instance-hint="" style={{ margin: 0 }}>{selectedHint}</p> : null}
+                    <a data-storage-manage-instances="" href="/settings?section=storage" style={{ fontSize: '0.85rem' }}>{t('kbSettings.storage.manageInstances')}</a>
+                  </div>
+                )}
+              />
+              {editorOptions.error ? <StatusComponent tone="error">{editorOptions.error}</StatusComponent> : null}
+            </div>
+          );
+        })()
       ) : null}
       {section === 'activity' ? (
         client && knowledgeBaseId
@@ -1157,8 +1218,11 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
           : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.datasource.sectionEmpty')}</p>
       ) : null}
       {section === 'share' ? (
+        // R485 (Vue KBShareSettings): the shared-to list form — count badge,
+        // search, add-share popup, per-row permission select and unshare
+        // confirm — replaces the React ShareDialog form.
         client && knowledgeBaseId
-          ? <KnowledgeBaseShareDialog client={client} knowledgeBaseId={knowledgeBaseId} knowledgeBaseName={knowledgeBaseName} open inline onClose={() => undefined} onChanged={() => undefined} />
+          ? <KBShareSettingsSection client={client} knowledgeBaseId={knowledgeBaseId} canShare={canManage} />
           : <p className="wk-muted" style={{ margin: 0 }}>{t('kbSettings.summary.share.sectionEmpty')}</p>
       ) : null}
       {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
@@ -1866,58 +1930,165 @@ function ChunkingDebugDrawer({ splitting, client, t }: { splitting: KnowledgeSet
   );
 }
 
-// Vue KBAdvancedSettings (question-generation block): the auto-tag and
-// table-metadata rows are not part of this round.
-function AdvancedSettingsSection({ editorPayload, editorDraft, t, onDraftChange }: EditorSectionProps) {
+// Vue KBAdvancedSettings: the question-generation block only renders while
+// RAG indexing (vector|keyword) is enabled (v-if="ragEnabled !== false"); the
+// auto-tag block and the table-metadata instructions row always render and
+// persist through the base update (auto_tag_config) / config PUT
+// (documentSplitting.tableMetadataInstructions) respectively.
+const AUTO_TAG_MAX_TAGS_RANGE = { min: 1, max: 10 } as const;
+function clampAutoTagMaxTags(value: number): number {
+  return Math.min(AUTO_TAG_MAX_TAGS_RANGE.max, Math.max(AUTO_TAG_MAX_TAGS_RANGE.min, Math.trunc(value) || 3));
+}
+
+function AdvancedSettingsSection({ editorPayload, editorDraft, knowledgeBase, models, t, onDraftChange }: EditorSectionProps & { knowledgeBase: KnowledgeSettingsInput; models: KnowledgeSettingsModelOption[] }) {
   const questionGeneration = editorPayload.questionGeneration;
   const set = (patch: NonNullable<KnowledgeSettingsEditorOverrides['questionGeneration']>) => {
     onDraftChange({ ...editorDraft, questionGeneration: { ...editorDraft.questionGeneration, ...patch } });
   };
+  // Vue loadKBData defaults for a KB row without auto_tag_config.
+  const committedAutoTag = knowledgeBase.auto_tag_config ?? {};
+  const autoTag = {
+    enabled: editorDraft.autoTag?.enabled ?? committedAutoTag.enabled === true,
+    modelId: editorDraft.autoTag?.modelId ?? (typeof committedAutoTag.model_id === 'string' ? committedAutoTag.model_id : ''),
+    maxTags: editorDraft.autoTag?.maxTags ?? (typeof committedAutoTag.max_tags === 'number' && committedAutoTag.max_tags > 0 ? committedAutoTag.max_tags : 3),
+    skipIfTagged: editorDraft.autoTag?.skipIfTagged ?? (typeof committedAutoTag.skip_if_tagged === 'boolean' ? committedAutoTag.skip_if_tagged : true),
+  };
+  const setAutoTag = (patch: NonNullable<KnowledgeSettingsEditorOverrides['autoTag']>) => {
+    onDraftChange({ ...editorDraft, autoTag: { ...editorDraft.autoTag, ...patch } });
+  };
+  const tableMetadataInstructions = editorDraft.documentSplitting?.tableMetadataInstructions ?? editorPayload.documentSplitting.tableMetadataInstructions;
+  const setTableMetadataInstructions = (value: string) => {
+    onDraftChange({ ...editorDraft, documentSplitting: { ...editorDraft.documentSplitting, tableMetadataInstructions: value } });
+  };
+  // Vue ragEnabled prop: formData.indexingStrategy vector|keyword; a document
+  // base without an explicit strategy defaults to vector+keyword (RAG on).
+  const indexing = resolveKnowledgeSettingsIndexing(knowledgeBase, editorDraft);
+  const ragEnabled = indexing.vectorEnabled || indexing.keywordEnabled;
+  const classificationModels = filterKnowledgeSettingsModels(models, 'KnowledgeQA');
   return (
     <div>
+      {ragEnabled ? (
+        <>
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.questionGeneration.label')}
+            description={t('knowledgeEditor.advanced.questionGeneration.description')}
+            control={(
+              <input
+                type="checkbox"
+                aria-label={t('knowledgeEditor.advanced.questionGeneration.label')}
+                checked={questionGeneration.enabled}
+                onChange={(event) => set({ enabled: event.target.checked })}
+              />
+            )}
+          />
+          {questionGeneration.enabled ? (
+            <>
+              <EditorSettingRow
+                label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
+                control={(
+                  <input
+                    type="number"
+                    aria-label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
+                    min={QUESTION_COUNT_RANGE.min}
+                    max={QUESTION_COUNT_RANGE.max}
+                    step={QUESTION_COUNT_RANGE.step}
+                    value={clampQuestionCount(questionGeneration.questionCount)}
+                    onChange={(event) => set({ questionCount: clampQuestionCount(Number(event.target.value)) })}
+                  />
+                )}
+              />
+              <EditorSettingRow
+                label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+                control={(
+                  <textarea
+                    aria-label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+                    maxLength={4000}
+                    rows={3}
+                    placeholder={t('knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder')}
+                    value={questionGeneration.customInstructions}
+                    onChange={(event) => set({ customInstructions: event.target.value })}
+                  />
+                )}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
       <EditorSettingRow
-        label={t('knowledgeEditor.advanced.questionGeneration.label')}
-        description={t('knowledgeEditor.advanced.questionGeneration.description')}
+        label={t('knowledgeEditor.advanced.autoTag.label')}
+        description={t('knowledgeEditor.advanced.autoTag.description')}
         control={(
           <input
             type="checkbox"
-            aria-label={t('knowledgeEditor.advanced.questionGeneration.label')}
-            checked={questionGeneration.enabled}
-            onChange={(event) => set({ enabled: event.target.checked })}
+            aria-label={t('knowledgeEditor.advanced.autoTag.label')}
+            checked={autoTag.enabled}
+            onChange={(event) => setAutoTag({ enabled: event.target.checked })}
           />
         )}
       />
-      {questionGeneration.enabled ? (
-        <>
+      {autoTag.enabled ? (
+        <div style={{ display: 'grid', gap: '0.4rem', padding: '0.75rem 1rem', marginTop: '0.5rem', background: '#f7f9fc', borderLeft: '3px solid var(--accent, #0052d9)', borderRadius: '6px' }}>
           <EditorSettingRow
-            label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
+            label={t('knowledgeEditor.advanced.autoTag.modelLabel')}
+            description={t('knowledgeEditor.advanced.autoTag.modelDescription')}
+            control={(
+              <select
+                data-autotag-model=""
+                aria-label={t('knowledgeEditor.advanced.autoTag.modelLabel')}
+                value={autoTag.modelId}
+                onChange={(event) => setAutoTag({ modelId: event.target.value })}
+              >
+                {/* Vue ModelSelector clearable: the empty option maps to "use
+                    the KB summary model" (modelDescription). */}
+                <option value="">{t('knowledgeEditor.advanced.autoTag.modelPlaceholder')}</option>
+                {classificationModels.map((model) => <option key={model.id} value={model.id}>{model.displayName || model.name}</option>)}
+              </select>
+            )}
+          />
+          <EditorSettingRow
+            label={t('knowledgeEditor.advanced.autoTag.maxTagsLabel')}
+            description={t('knowledgeEditor.advanced.autoTag.maxTagsDescription')}
             control={(
               <input
                 type="number"
-                aria-label={t('knowledgeEditor.advanced.questionGeneration.countLabel')}
-                min={QUESTION_COUNT_RANGE.min}
-                max={QUESTION_COUNT_RANGE.max}
-                step={QUESTION_COUNT_RANGE.step}
-                value={clampQuestionCount(questionGeneration.questionCount)}
-                onChange={(event) => set({ questionCount: clampQuestionCount(Number(event.target.value)) })}
+                data-autotag-max-tags=""
+                aria-label={t('knowledgeEditor.advanced.autoTag.maxTagsLabel')}
+                min={AUTO_TAG_MAX_TAGS_RANGE.min}
+                max={AUTO_TAG_MAX_TAGS_RANGE.max}
+                step={1}
+                value={clampAutoTagMaxTags(autoTag.maxTags)}
+                onChange={(event) => setAutoTag({ maxTags: clampAutoTagMaxTags(Number(event.target.value)) })}
               />
             )}
           />
           <EditorSettingRow
-            label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+            label={t('knowledgeEditor.advanced.autoTag.skipIfTaggedLabel')}
+            description={t('knowledgeEditor.advanced.autoTag.skipIfTaggedDescription')}
             control={(
-              <textarea
-                aria-label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
-                maxLength={4000}
-                rows={3}
-                placeholder={t('knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder')}
-                value={questionGeneration.customInstructions}
-                onChange={(event) => set({ customInstructions: event.target.value })}
+              <input
+                type="checkbox"
+                aria-label={t('knowledgeEditor.advanced.autoTag.skipIfTaggedLabel')}
+                checked={autoTag.skipIfTagged}
+                onChange={(event) => setAutoTag({ skipIfTagged: event.target.checked })}
               />
             )}
           />
-        </>
+        </div>
       ) : null}
+      <EditorSettingRow
+        label={t('knowledgeEditor.advanced.tableMetadataInstructions.label')}
+        description={t('knowledgeEditor.advanced.tableMetadataInstructions.description')}
+        control={(
+          <textarea
+            aria-label={t('knowledgeEditor.advanced.tableMetadataInstructions.label')}
+            maxLength={4000}
+            rows={3}
+            placeholder={t('knowledgeEditor.advanced.tableMetadataInstructions.placeholder')}
+            value={tableMetadataInstructions}
+            onChange={(event) => setTableMetadataInstructions(event.target.value)}
+          />
+        )}
+      />
     </div>
   );
 }
