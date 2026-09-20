@@ -94,6 +94,25 @@ func (b GraphBindings) emitRunEvent(ctx context.Context, evt agentruntime.RunEve
 
 type GraphRunner struct{ bindings GraphBindings }
 
+// graphExecutionError retains the structured code carried by the SDK event so
+// callers can continue using errors.Is after graph execution has ended.
+type graphExecutionError struct{ response *model.ResponseError }
+
+func (e graphExecutionError) Error() string {
+	if e.response == nil {
+		return "graph execution failed"
+	}
+	return "graph execution: " + e.response.Message
+}
+
+func (e graphExecutionError) Is(target error) bool {
+	if e.response == nil || e.response.Code == nil || *e.response.Code == "" {
+		return false
+	}
+	targetWithCode, ok := target.(interface{ ErrorCode() string })
+	return ok && *e.response.Code == targetWithCode.ErrorCode()
+}
+
 func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	if b.Model == nil {
 		return nil, fmt.Errorf("model is required")
@@ -162,7 +181,7 @@ func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
 			continue
 		}
 		if evt.Error != nil {
-			return fmt.Errorf("graph execution: %s", evt.Error.Message)
+			return graphExecutionError{response: evt.Error}
 		}
 	}
 	return nil

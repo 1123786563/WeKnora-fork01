@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,7 @@ type stubDataSourceService struct {
 	interfaces.DataSourceService
 	getSyncLogs   func(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error)
 	getDataSource func(ctx context.Context, id string) (*types.DataSource, error)
+	cancelSyncLog func(ctx context.Context, tenantID uint64, dsID, logID string) error
 }
 
 func (s *stubDataSourceService) GetSyncLogs(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error) {
@@ -30,6 +32,13 @@ func (s *stubDataSourceService) GetDataSource(ctx context.Context, id string) (*
 		return s.getDataSource(ctx, id)
 	}
 	return nil, nil
+}
+
+func (s *stubDataSourceService) CancelSyncLog(ctx context.Context, tenantID uint64, dsID, logID string) error {
+	if s.cancelSyncLog != nil {
+		return s.cancelSyncLog(ctx, tenantID, dsID, logID)
+	}
+	return nil
 }
 
 type stubKBServiceForDS struct {
@@ -55,6 +64,7 @@ func newDataSourceTestRouter(h *DataSourceHandler) *gin.Engine {
 		c.Next()
 	})
 	r.GET("/datasource/:id/logs", h.GetSyncLogs)
+	r.POST("/datasource/:id/logs/:log_id/cancel", h.CancelSyncLog)
 	return r
 }
 
@@ -252,5 +262,83 @@ func TestDataSource_GetSyncLogs_NegativeLimitRejected(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for negative limit, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestDataSource_CancelSyncLog_Accepted covers the happy path end to end at the
+// HTTP layer: path params and tenant reach the service, and the response is
+// 202 {"status":"cancel_requested"} — the cancel is only a request; the sync
+// loop observes it at its next checkpoint/batch boundary.
+func TestDataSource_CancelSyncLog_Accepted(t *testing.T) {
+	var gotTenantID uint64
+	var gotDSID, gotLogID string
+	dsSvc := &stubDataSourceService{
+		getDataSource: func(_ context.Context, id string) (*types.DataSource, error) {
+			return &types.DataSource{ID: id, KnowledgeBaseID: "kb1"}, nil
+		},
+		cancelSyncLog: func(_ context.Context, tenantID uint64, dsID, logID string) error {
+			gotTenantID, gotDSID, gotLogID = tenantID, dsID, logID
+			return nil
+		},
+	}
+	kbSvc := &stubKBServiceForDS{
+		getByID: func(_ context.Context, _ string) (*types.KnowledgeBase, error) {
+			return &types.KnowledgeBase{ID: "kb1", TenantID: 1}, nil
+		},
+	}
+	h := NewDataSourceHandler(dsSvc, kbSvc)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/datasource/ds1/logs/log-9/cancel", nil)
+	req = withDSCtx(req, 1)
+	newDataSourceTestRouter(h).ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["status"] != "cancel_requested" {
+		t.Fatalf("expected status=cancel_requested, got %q", resp["status"])
+	}
+	if gotTenantID != 1 || gotDSID != "ds1" || gotLogID != "log-9" {
+		t.Fatalf("service called with tenant=%d ds=%q log=%q", gotTenantID, gotDSID, gotLogID)
+	}
+}
+
+// TestDataSource_CancelSyncLog_NotFound verifies a service-level ownership or
+// state rejection (wrong ds/tenant, missing id, non-running log) maps to 404.
+func TestDataSource_CancelSyncLog_NotFound(t *testing.T) {
+	dsSvc := &stubDataSourceService{
+		getDataSource: func(_ context.Context, id string) (*types.DataSource, error) {
+			return &types.DataSource{ID: id, KnowledgeBaseID: "kb1"}, nil
+		},
+		cancelSyncLog: func(_ context.Context, _ uint64, _, _ string) error {
+			return service.ErrSyncLogNotFound
+		},
+	}
+	kbSvc := &stubKBServiceForDS{
+		getByID: func(_ context.Context, _ string) (*types.KnowledgeBase, error) {
+			return &types.KnowledgeBase{ID: "kb1", TenantID: 1}, nil
+		},
+	}
+	h := NewDataSourceHandler(dsSvc, kbSvc)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/datasource/ds1/logs/log-9/cancel", nil)
+	req = withDSCtx(req, 1)
+	newDataSourceTestRouter(h).ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["error"] == "" {
+		t.Fatal("expected an error message in the 404 body")
 	}
 }

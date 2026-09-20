@@ -302,7 +302,12 @@ func (r *SyncLogRepository) FindLatest(ctx context.Context, dsID string) (*types
 	return &log, nil
 }
 
-// HasRunningSync checks if a data source has any sync currently in "running" status.
+// HasRunningSync checks if a data source has any sync currently running, used
+// to prevent overlapping sync executions. Liveness is judged by the latest
+// heartbeat (heartbeat_at, falling back to started_at for runs that have not
+// checkpointed yet): a "running" row with no liveness signal inside
+// types.SyncStallWindow belongs to a dead run and does not count — otherwise
+// one stalled row would block the data source's scheduled syncs forever.
 func (r *SyncLogRepository) HasRunningSync(ctx context.Context, dsID string) (bool, error) {
 	if dsID == "" {
 		return false, errors.New("data source id is empty")
@@ -312,6 +317,7 @@ func (r *SyncLogRepository) HasRunningSync(ctx context.Context, dsID string) (bo
 		Model(&types.SyncLog{}).
 		Where("data_source_id = ?", dsID).
 		Where("status = ?", types.SyncLogStatusRunning).
+		Where("COALESCE(heartbeat_at, started_at) > ?", time.Now().UTC().Add(-types.SyncStallWindow)).
 		Count(&count).Error; err != nil {
 		return false, err
 	}
@@ -364,6 +370,47 @@ func (r *SyncLogRepository) UpdateResult(ctx context.Context, log *types.SyncLog
 	return nil
 }
 
+// UpdateHeartbeat records a liveness heartbeat for a sync run and refreshes
+// updated_at so stall detection can distinguish live runs from stalled ones.
+func (r *SyncLogRepository) UpdateHeartbeat(ctx context.Context, id string, at time.Time) error {
+	if id == "" {
+		return errors.New("sync log id is empty")
+	}
+	return r.db.WithContext(ctx).
+		Model(&types.SyncLog{}).
+		Where("id = ?", id).
+		Update("heartbeat_at", at).Error
+}
+
+// UpdateAsynqTaskID records the asynq task id backing a sync run so queued
+// tasks can be traced back to their sync log for inspection or hard cancel.
+func (r *SyncLogRepository) UpdateAsynqTaskID(ctx context.Context, id string, taskID string) error {
+	if id == "" {
+		return errors.New("sync log id is empty")
+	}
+	return r.db.WithContext(ctx).
+		Model(&types.SyncLog{}).
+		Where("id = ?", id).
+		Update("asynq_task_id", taskID).Error
+}
+
+// RequestCancel flags a running sync log for cooperative cancellation. Only
+// rows currently in "running" status accept the flag; terminal or pending
+// rows are a no-op (left untouched, nil returned).
+func (r *SyncLogRepository) RequestCancel(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("sync log id is empty")
+	}
+	// Single-column Update keeps the write narrow: the flag is only ever set
+	// to true here (never cleared through this method), and the status
+	// predicate makes non-running rows a no-op — zero rows affected, no error.
+	return r.db.WithContext(ctx).
+		Model(&types.SyncLog{}).
+		Where("id = ?", id).
+		Where("status = ?", types.SyncLogStatusRunning).
+		Update("cancel_requested", true).Error
+}
+
 // CancelPendingByDataSource marks all non-terminal sync logs for a data source as canceled.
 func (r *SyncLogRepository) CancelPendingByDataSource(ctx context.Context, dsID string) error {
 	if dsID == "" {
@@ -373,7 +420,7 @@ func (r *SyncLogRepository) CancelPendingByDataSource(ctx context.Context, dsID 
 	return r.db.WithContext(ctx).
 		Model(&types.SyncLog{}).
 		Where("data_source_id = ?", dsID).
-		Where("status IN ?", []string{types.SyncLogStatusRunning, "pending"}).
+		Where("status IN ?", []string{types.SyncLogStatusRunning, types.SyncLogStatusPending}).
 		Updates(map[string]interface{}{
 			"status":        types.SyncLogStatusCanceled,
 			"finished_at":   &now,

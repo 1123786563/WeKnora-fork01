@@ -93,6 +93,11 @@ require (
 )
 
 require (
+	github.com/openai/openai-go v1.12.0 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
+)
+
+require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb // indirect

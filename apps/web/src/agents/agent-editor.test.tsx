@@ -50,7 +50,21 @@ const SANDBOXES = [
 
 const CATALOG = [
   { id: 'cat-1', name: 'PDF skill', description: 'Read PDFs', installations: [{ skillId: 'x', sandboxConfigId: 'sb-1', status: 'ready', enabled: true }] },
-  { id: 'cat-2', name: 'Pending skill', installations: [] },
+  { id: 'cat-2', name: 'Pending skill', description: '', installations: [] },
+];
+
+// R486 — GET /system/parser-engines fixture mirroring ParserEngineInfo
+// (capitalized Go field names): builtin covers every chat-attachment family,
+// anydoc covers the office families, mineru is registered but unavailable.
+const PARSER_ENGINES = [
+  {
+    Name: 'builtin',
+    Description: 'DocReader 内置解析引擎',
+    FileTypes: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'epub', 'mhtml', 'csv', 'md', 'markdown', 'txt', 'json', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'],
+    Available: true,
+  },
+  { Name: 'anydoc', Description: '进程内 Office 文档解析', FileTypes: ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'epub', 'mhtml'], Available: true },
+  { Name: 'mineru', Description: 'MinerU 自部署服务', FileTypes: ['pdf'], Available: false },
 ];
 
 const EDIT_AGENT = {
@@ -118,7 +132,7 @@ const SUBAGENT_CATALOG = {
 
 interface SubagentCall { kind: 'install' | 'remove'; agentId: string; slug: string; locale?: string }
 
-function makeClient(options: { createReject?: Error; initialSubagents?: string[] } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
+function makeClient(options: { createReject?: Error; initialSubagents?: string[]; retrievalConfig?: Record<string, unknown> | null; parserEngines?: Array<Record<string, unknown>> | null } = {}): { client: WeKnoraClient; requests: RoutedRequest[]; mbtiSubmits: Array<Record<string, 'A' | 'B'>>; subagentCalls: SubagentCall[] } {
   const requests: RoutedRequest[] = [];
   const mbtiSubmits: Array<Record<string, 'A' | 'B'>> = [];
   const subagentCalls: SubagentCall[] = [];
@@ -171,10 +185,38 @@ function makeClient(options: { createReject?: Error; initialSubagents?: string[]
           install: async () => ({ installs: {} }),
         },
       },
+      mcp: {
+        list: async () => [
+          { id: 'mcp-a', name: '服务A', enabled: true },
+          { id: 'mcp-b', name: '服务B', enabled: false },
+        ],
+      },
     },
-    knowledgeBases: { list: async () => KBS },
+    knowledgeBases: {
+      list: async () => KBS,
+      settings: {
+        // R486 parser-rules editor dep (GET /system/parser-engines); null
+        // simulates the endpoint being absent so the block degrades to the
+        // no-engine hint instead of blanking the section.
+        parserEngines: async () =>
+          options.parserEngines === null
+            ? Promise.reject(new Error('no engines'))
+            : { data: options.parserEngines ?? PARSER_ENGINES },
+      },
+    },
     sandboxConfigurations: { list: async () => ({ items: SANDBOXES, workspaceScriptsDisabled: false }) },
-    settings: { webSearch: { providers: { list: async () => [] } } },
+    settings: {
+      webSearch: { providers: { list: async () => [] } },
+      storage: { legacy: { status: async () => ({ storage_engine_status: [{ name: 'local', available: true }, { name: 'minio', available: false }] }) } },
+      // R486 D9 tenant retrieval-config (GET /tenants/kv/retrieval-config);
+      // undefined = endpoint absent -> built-in defaults stay in place.
+      retrieval: {
+        get: async () =>
+          options.retrievalConfig === undefined
+            ? Promise.reject(new Error('no retrieval config'))
+            : options.retrievalConfig,
+      },
+    },
   };
   return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls };
 }
@@ -561,6 +603,14 @@ test('editor close control uses the Vue close accessible name', async () => {
 test('empty submit shows per-field required errors, jumps sections and fires no request', async () => {
   const { client, requests } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
+  // R485 D3/D5: the create form opens with the rag-qa preset + default models
+  // prefilled — clear the seeded fields to drive the required-field path
+  await setValue(root, '[data-field="name"]', '');
+  await goto(root, 'prompts');
+  await setValue(root, '[data-field="system_prompt"]', '');
+  await goto(root, 'model');
+  await setValue(root, '[data-field="model_id"]', '');
+  await goto(root, 'basic');
   await click(root, '[data-editor-save]');
   const nameError = $('[data-field-error="name"]', root);
   assert.ok(nameError, 'name error rendered under the field');
@@ -721,7 +771,7 @@ test('double-clicking save only submits once while the request is in flight', as
 
 // --- R484 D8: knowledge section offers the supported file types picker -------------------
 
-test('knowledge section renders the supported-file-types picker with the 7 Vue options (D8)', async () => {
+test('knowledge section renders the supported-file-types dropdown with the 7 Vue options (D8/P3-2)', async () => {
   const { client, requests } = makeClient();
   const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config } };
   const root = await mountModal({ client, mode: 'edit', agent });
@@ -732,12 +782,15 @@ test('knowledge section renders the supported-file-types picker with the 7 Vue o
   // Vue AgentEditorModal.vue:1523-1536 — row only when a KB scope is configured
   assert.ok(section!.textContent!.includes('支持的文件类型'), 'supported file types label missing');
   assert.ok(section!.textContent!.includes('限制可选择的文件类型，留空表示支持所有类型'), 'file types desc missing');
-  const boxes = $$('[data-file-type]', section) as HTMLInputElement[];
+  // P3-2: dropdown form — the options live behind the trigger
+  await click(section, '[data-file-types-trigger]');
+  const panel = $('[data-file-types-panel]', root)!;
+  const boxes = $$('[data-file-type]', panel) as HTMLInputElement[];
   assert.deepEqual(boxes.map((box) => box.getAttribute('data-file-type')), ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg']);
 
   // toggling writes through to config.supported_file_types on save
-  await checkCheckbox(section, 'input[data-file-type="pdf"]');
-  await checkCheckbox(section, 'input[data-file-type="csv"]');
+  await checkCheckbox(panel, 'input[data-file-type="pdf"]');
+  await checkCheckbox(panel, 'input[data-file-type="csv"]');
   await click(root, '[data-editor-save]');
   const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
   assert.deepEqual(payload.supported_file_types, ['pdf', 'csv']);
@@ -750,7 +803,8 @@ test('knowledge section hides the file-types picker when the KB scope is none (D
   await goto(root, 'knowledge');
   const section = $('[data-editor-section="knowledge"]', root);
   assert.ok(section);
-  assert.equal($('[data-file-type]', section), null, 'picker must be hidden without a KB scope');
+  assert.equal($('[data-file-types-trigger]', section), null, 'picker must be hidden without a KB scope');
+  assert.equal($('[data-file-type]', section), null, 'no stray options without a KB scope');
 });
 
 // --- R484 D11: skills section carries the manage-sandboxes link --------------------------
@@ -769,4 +823,464 @@ test('skills section renders the manage-sandboxes link navigating to settings?sa
     link!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
   assert.equal(window.location.pathname + window.location.search, '/platform/settings?section=sandbox');
+});
+
+// --- R485 D1: the three Vue sections the React rail omitted ------------------------------
+
+test('create rail registers suggestions/multimodal/mcp and the capability group (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const keys = $$(document.body, '[data-section-key]').map((el) => el.getAttribute('data-section-key'));
+  assert.ok(keys.includes('suggestions'), '问题推荐 nav item missing');
+  assert.ok(keys.includes('multimodal'), '附件上传 nav item missing');
+  assert.ok(keys.includes('mcp'), 'MCP 服务 nav item missing');
+  const bodyText = document.body.textContent ?? '';
+  assert.match(bodyText, /问题推荐/);
+  assert.match(bodyText, /附件上传/);
+  assert.match(bodyText, /MCP 服务/);
+});
+
+test('suggestions section renders starters + follow-ups tabs with the Vue rows (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'suggestions');
+  const section = $('[data-editor-section="suggestions"]', root);
+  assert.ok(section, 'suggestions section missing');
+  const text = section!.textContent ?? '';
+  assert.match(text, /对话问题推荐/);
+  assert.match(text, /开场推荐/);
+  assert.match(text, /回答后推荐/);
+  assert.match(text, /展示开场问题/);
+  assert.match(text, /内容来源/);
+  // starters enabled by default -> mode select + count visible
+  const modeSelect = $('[data-field="question_suggestions.starters.mode"]', section) as HTMLSelectElement;
+  assert.ok(modeSelect, 'starters mode select missing');
+  assert.equal(modeSelect.value, 'hybrid');
+  // switch to the follow-ups tab (follow-ups disabled by default -> switch row only)
+  await click(section, '[data-suggestion-tab="followUps"]');
+  const followSection = $('[data-editor-section="suggestions"]', root)!;
+  const followText = followSection.textContent ?? '';
+  assert.match(followText, /生成回答后推荐/);
+  assert.equal(followText.includes('高级生成设置'), false, 'advanced rows hidden while follow-ups are off');
+  // enabling follow-ups reveals the model row + advanced generation block
+  await click(followSection, '[data-switch="question_suggestions.follow_ups.enabled"]');
+  const enabledText = $('[data-editor-section="suggestions"]', root)!.textContent ?? '';
+  assert.match(enabledText, /高级生成设置/);
+  assert.match(enabledText, /附加生成要求/);
+  assert.match(enabledText, /展示与兜底规则/);
+});
+
+test('multimodal section renders image/audio/timeout rows and gates on image_upload_enabled (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'multimodal');
+  const section = $('[data-editor-section="multimodal"]', root);
+  assert.ok(section, 'multimodal section missing');
+  let text = section!.textContent ?? '';
+  assert.match(text, /附件上传/);
+  assert.match(text, /配置对话中图片、文档、音频等附件的上传、解析及对应模型/);
+  assert.match(text, /图片上传/);
+  assert.match(text, /语音上传/);
+  assert.match(text, /附件解析等待超时（秒）/);
+  // VLM row only after enabling image upload
+  assert.equal($('[data-field="vlm_model_id"]', section), null);
+  await click(section, '[data-switch="image_upload_enabled"]');
+  text = $('[data-editor-section="multimodal"]', root)!.textContent ?? '';
+  assert.match(text, /VLM 模型/);
+  assert.match(text, /附件图片理解 \/ 扫描件 OCR/);
+});
+
+test('mcp section renders scope radios, service checklist and auth timeout (D1)', async () => {
+  const { client } = makeClient();
+  const agent = {
+    ...EDIT_AGENT,
+    config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, mcp_services: ['mcp-b'] },
+  };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'mcp');
+  const section = $('[data-editor-section="mcp"]', root);
+  assert.ok(section, 'mcp section missing');
+  const text = section!.textContent ?? '';
+  assert.match(text, /选择 Agent 可以调用的 MCP 服务/);
+  assert.match(text, /全部/);
+  // scope=none by default -> auth timeout row hidden (Vue v-if mcpSelectionMode !== 'none')
+  assert.equal($('[data-field="mcp_auth_wait_timeout"]', section), null);
+  await checkRadio(section, 'input[name="mcp-mode"][value="selected"]');
+  const after = $('[data-editor-section="mcp"]', root)!;
+  assert.match(after.textContent ?? '', /授权等待超时（秒）/);
+  assert.ok($('[data-field="mcp_auth_wait_timeout"]', after), 'auth timeout visible once a scope is chosen');
+  const checklist = $('[data-field="mcp_services"]', after);
+  assert.ok(checklist, 'service checklist missing');
+  // enabled service + disabled ghost entries flow through mcpOptionRows
+  assert.match(checklist!.textContent ?? '', /服务A/);
+  assert.match(checklist!.textContent ?? '', /服务B \(已禁用\)/);
+});
+
+// --- R485 D3+D10: create opens with the rag-qa preset applied ---------------------------
+
+test('create mode prefills name/description/system prompt from the rag-qa preset (D3)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
+  assert.equal(nameInput.value, '我的RAG 问答');
+  const descInput = $('[data-field="description"]', root) as HTMLTextAreaElement;
+  assert.equal(descInput.value, '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
+  await goto(root, 'prompts');
+  const prompt = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
+  assert.ok(prompt.value.startsWith('You are WeKnora'), 'system prompt body prefilled');
+});
+
+test('create mode seeds the four RAG tools into the effective-tools preview (D10)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'tools');
+  const section = $('[data-editor-section="tools"]', root)!;
+  assert.match(section.textContent!, /允许的工具/);
+  assert.match(section.textContent!, /选择 Agent 可以使用的工具/);
+  assert.match(section.textContent!, /最终启用的工具/);
+  // the four preset RAG tools are enabled (audit D10: React used to show the
+  // "degraded to plain model Q&A" empty state)
+  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  assert.deepEqual(checked.sort(), ['get_document_info', 'grep_chunks', 'knowledge_search', 'list_knowledge_chunks']);
+  assert.equal(section.textContent!.includes('当前没有可用工具'), false, 'empty state must not show');
+});
+
+// --- R485 D2: agent type dropdown on the basic section ----------------------------------
+
+test('basic section offers the agent type dropdown in agent mode (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const section = $('[data-editor-section="basic"]', root)!;
+  assert.match(section.textContent!, /智能体类型/);
+  assert.match(section.textContent!, /选择一个预设会自动填充系统提示词、工具列表和推荐的知识库范围。/);
+  assert.match(section.textContent!, /基于文档分块的检索式问答/);
+  const select = $('[data-field="agent_type"]', section) as HTMLSelectElement;
+  assert.ok(select, 'agent type select missing');
+  assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
+  assert.equal(select.value, 'rag-qa');
+});
+
+test('switching agent type applies the preset and refreshes system-generated fields (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
+  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
+  assert.equal(nameInput.value, '我的Wiki 问答');
+  await goto(root, 'tools');
+  const section = $('[data-editor-section="tools"]', root)!;
+  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  assert.deepEqual(checked.sort(), ['wiki_flag_issue', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_search']);
+  // user-edited names survive a type switch
+  await goto(root, 'basic');
+  await setValue(root, '[data-field="name"]', '我自己的名字');
+  await setValue(root, '[data-field="agent_type"]', 'rag-qa');
+  assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我自己的名字');
+});
+
+test('quick-answer mode hides the agent type dropdown (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await checkRadio(root, 'input[name="agent-mode"][value="quick-answer"]');
+  assert.equal($('[data-field="agent_type"]', root), null, 'type dropdown is agent-mode only (Vue isAgentMode gate)');
+});
+
+// --- R485 D5+D6: creation-time model prefill + rerank required derivation ----------------
+
+test('create mode prefills chat/rerank models and rerank is required with a RAG KB (D5+D6)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'model');
+  const model = $('[data-field="model_id"]', root) as HTMLSelectElement;
+  assert.equal(model.value, 'm-chat', 'chat model prefilled (Vue applyDefaultModelsIfEmpty)');
+  const rerank = $('[data-field="rerank_model_id"]', root) as HTMLSelectElement;
+  assert.equal(rerank.value, 'm-rerank', 'rerank model prefilled');
+  // kb=all with kb-1 RAG -> required star on the rerank label, optional hint hidden
+  const section = $('[data-editor-section="model"]', root)!;
+  const rerankLabel = Array.from(section.querySelectorAll('label')).find((label) => label.textContent?.includes('ReRank 模型') ?? label.textContent?.includes('重排'));
+  assert.ok(rerankLabel, 'rerank label rendered');
+  assert.ok((rerankLabel?.textContent ?? '').includes('*'), 'required star rendered while a RAG KB is in scope');
+  assert.equal((section.textContent ?? '').includes('可不填'), false, 'optional hint hidden while required');
+});
+
+test('rerank stays optional when no RAG kb is in scope (D6)', async () => {
+  const { client } = makeClient();
+  // a wiki-only KB (no vector/keyword) keeps the section visible but rag-free
+  const wikiOnly = { id: 'kb-w', name: 'Wiki 库', type: 'document', knowledge_count: 3, indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true } };
+  const richClient = client as unknown as { knowledgeBases: { list: () => Promise<unknown[]> } };
+  richClient.knowledgeBases = { list: async () => [wikiOnly] };
+  const agent = {
+    ...EDIT_AGENT,
+    config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-w'] },
+  };
+  const root = await mountModal({ client: richClient as unknown as WeKnoraClient, mode: 'edit', agent });
+  await goto(root, 'model');
+  const section = $('[data-editor-section="model"]', root)!;
+  const rerankLabel = Array.from(section.querySelectorAll('label')).find((label) => (label.textContent ?? '').includes('ReRank') || (label.textContent ?? '').includes('重排'));
+  assert.ok(rerankLabel, 'rerank label rendered');
+  assert.equal((rerankLabel?.textContent ?? '').includes('*'), false, 'no required star without a RAG KB');
+  assert.ok((section.textContent ?? '').length > 0);
+});
+
+// --- R486 D4: prompt placeholder tags + reset-default / use-template (Vue 220-270, 4689-4712) ---
+
+test('prompts section lists the agent-mode placeholders and inserts on tag click (D4)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'prompts');
+  const section = $('[data-editor-section="prompts"]', root)!;
+  const tagNodes = $$('[data-placeholder-tags="system"] [data-placeholder-tag]', section);
+  assert.deepEqual(
+    tagNodes.map((node) => node.getAttribute('data-placeholder-tag')),
+    ['knowledge_bases', 'web_search_status', 'current_time', 'language'],
+    'agent-mode system prompt placeholder set',
+  );
+  assert.match($('[data-placeholder-tags="system"]', section)!.textContent ?? '', /可用变量：/);
+  // clicking a tag splices {{name}} at the caret (caret 0 in jsdom -> prefix)
+  await click(section, '[data-placeholder-tag="knowledge_bases"]');
+  const textarea = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
+  assert.ok(textarea.value.startsWith('{{knowledge_bases}}'), 'placeholder inserted at the caret');
+});
+
+test('quick-answer prompts carry the system + context placeholder sets (D4)', async () => {
+  const { client } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'prompts');
+  const section = $('[data-editor-section="prompts"]', root)!;
+  assert.deepEqual(
+    $$('[data-placeholder-tags="system"] [data-placeholder-tag]', section).map((node) => node.getAttribute('data-placeholder-tag')),
+    ['query', 'contexts', 'current_time', 'current_week', 'language'],
+    'normal-mode system prompt placeholder set',
+  );
+  assert.deepEqual(
+    $$('[data-placeholder-tags="context"] [data-placeholder-tag]', section).map((node) => node.getAttribute('data-placeholder-tag')),
+    ['query', 'contexts', 'current_time', 'current_week', 'language'],
+    'context template placeholder set',
+  );
+  // context tag click inserts into context_template at the caret
+  await click(section, '[data-placeholder-tags="context"] [data-placeholder-tag="contexts"]');
+  const contextArea = $('[data-field="context_template"]', root) as HTMLTextAreaElement;
+  assert.ok(contextArea.value.startsWith('{{contexts}}'), 'context placeholder inserted at the caret');
+});
+
+test('agent-mode system prompt exposes 恢复默认 + 使用模板 with all 7 yaml templates (D4 + R486 verify DIFF-A)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'prompts');
+  const section = $('[data-editor-section="prompts"]', root)!;
+  assert.ok($('[data-prompt-reset-default]', section), 'reset-default button missing');
+  const toggle = $('[data-prompt-template-toggle]', section);
+  assert.ok(toggle, 'use-template trigger missing');
+  assert.match(toggle!.textContent ?? '', /使用模板/);
+  // panel opens on demand and lists the vendored builtin entries
+  assert.equal($('[data-prompt-template-panel]', section), null, 'panel closed before opening');
+  await click(section, '[data-prompt-template-toggle]');
+  const panel = $('[data-prompt-template-panel]', root)!;
+  const items = $$('[data-prompt-template]', panel);
+  assert.deepEqual(
+    items.map((item) => item.getAttribute('data-prompt-template')),
+    ['pure_agent', 'progressive_rag_agent', 'data_analyst', 'wiki_researcher', 'wiki_fixer', 'hybrid_rag_wiki_agent', 'skill_installer'],
+  );
+  assert.match(panel.textContent ?? '', /渐进式 RAG 智能体/, 'zh template name rendered');
+  assert.ok($('[data-template-default]', panel), 'default tag on the global default entry');
+  // selecting a template writes the body into the textarea (Vue handleSystemPromptTemplateSelect)
+  await click(panel, '[data-prompt-template="wiki_researcher"]');
+  const textarea = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
+  assert.ok(textarea.value.startsWith('<role>'), 'wiki template body applied');
+  // reset-default resolves the preset-bound template: create form is rag-qa
+  await click(section, '[data-prompt-reset-default]');
+  const afterReset = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
+  assert.ok(afterReset.value.startsWith('You are WeKnora'), 'reset restores the preset-bound body');
+});
+
+test('quick-answer system prompt keeps the bare textarea (template selector is agent-mode only)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'edit', agent: { ...EDIT_AGENT } });
+  await goto(root, 'prompts');
+  const section = $('[data-editor-section="prompts"]', root)!;
+  assert.equal($('[data-prompt-template-toggle]', section), null, 'no agent templates under quick-answer');
+  assert.equal($('[data-prompt-reset-default]', section), null, 'no reset-default under quick-answer');
+});
+
+// --- R486: embedded KBParserSettings rows in the multimodal section (Vue 869-878) ---------
+
+test('multimodal embeds the per-file-type parser rows and persists engine changes', async () => {
+  const { client, requests } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'multimodal');
+  const section = $('[data-editor-section="multimodal"]', root)!;
+  const block = $('[data-parser-policy-block]', section)!;
+  assert.match(block.textContent ?? '', /聊天附件解析策略/);
+  // one row per chat-relevant family (pdf first, audio families filtered out)
+  const rows = $$('[data-parser-row]', block);
+  const rowKeys = rows.map((row) => row.getAttribute('data-parser-row'));
+  assert.ok(rowKeys.includes('pdf'), 'pdf family row missing');
+  assert.ok(rowKeys.includes('excel'), 'excel family row missing');
+  assert.ok(!rowKeys.includes('audiovisual'), 'audio families are not chat-attachment relevant');
+  assert.ok(rows.length >= 8, 'expected the chat-relevant families to render');
+  // each row shows its extension tags and an engine select with available engines
+  const pdfRow = rows.find((row) => row.getAttribute('data-parser-row') === 'pdf')!;
+  assert.match(pdfRow.textContent ?? '', /\.pdf/);
+  const pdfSelect = $('[data-parser-engine="pdf"]', block) as HTMLSelectElement;
+  assert.ok(pdfSelect, 'pdf engine select missing');
+  const pdfOptions = Array.from(pdfSelect.options).map((option) => option.value);
+  assert.ok(pdfOptions.includes('builtin'), 'builtin engine option missing');
+  assert.ok(!pdfOptions.includes('mineru'), 'unavailable engines are hidden');
+  // the office family additionally offers anydoc (its only other supporter)
+  const officeSelect = $('[data-parser-engine="office"]', block) as HTMLSelectElement;
+  const officeOptions = Array.from(officeSelect.options).map((option) => option.value);
+  assert.ok(officeOptions.includes('builtin') && officeOptions.includes('anydoc'), 'office engines missing');
+  // pick builtin for pdf -> the save payload carries a per-group rule
+  await setValue(block, '[data-parser-engine="pdf"]', 'builtin');
+  await click(root, '[data-editor-save]');
+  const payload = (requests[0]!.body as { config: { chat_parser_engine_rules?: Array<{ file_types: string[]; engine: string }> } }).config;
+  const pdfRule = payload.chat_parser_engine_rules?.find((rule) => rule.file_types.includes('pdf'));
+  assert.ok(pdfRule, 'pdf rule missing from payload');
+  assert.equal(pdfRule!.engine, 'builtin');
+});
+
+test('parser block degrades to the no-engine hint when the registry is empty', async () => {
+  const { client } = makeClient({ parserEngines: null });
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'multimodal');
+  const block = $('[data-parser-policy-block]', $('[data-editor-section="multimodal"]', root)!)!;
+  assert.ok($('[data-parser-empty]', block), 'no-engine hint element missing');
+  assert.match(block.textContent ?? '', /暂无可用解析引擎/, 'no-engine-available hint rendered');
+  assert.equal($('[data-parser-row]', block), null, 'no rows without engines');
+});
+
+// --- R486 P3-2: supported file types as a dropdown multi-select (Vue 1529-1536) ----------
+
+test('supported file types render as a dropdown multi-select writing the same set (P3-2)', async () => {
+  const { client, requests } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'knowledge');
+  const section = $('[data-editor-section="knowledge"]', root)!;
+  // closed state: a single trigger showing the placeholder, no loose checkboxes
+  const trigger = $('[data-file-types-trigger]', section) as HTMLElement;
+  assert.ok(trigger, 'multi-select trigger missing');
+  assert.match(trigger.textContent ?? '', /全部类型/, 'empty selection shows the all-types placeholder');
+  assert.equal($('[data-file-type]', section), null, 'options hidden until the dropdown opens');
+  // open -> the 7 Vue options, selection writes back the same set semantics
+  await click(section, '[data-file-types-trigger]');
+  const panel = $('[data-file-types-panel]', root)!;
+  assert.deepEqual(
+    $$('[data-file-type]', panel).map((node) => node.getAttribute('data-file-type')),
+    ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg'],
+  );
+  await checkCheckbox(panel, 'input[data-file-type="pdf"]');
+  await checkCheckbox(panel, 'input[data-file-type="csv"]');
+  const triggerAfter = $('[data-file-types-trigger]', section)!;
+  assert.match(triggerAfter.textContent ?? '', /PDF/, 'selected labels surface on the trigger');
+  await click(root, '[data-editor-save]');
+  const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.deepEqual(payload.supported_file_types, ['pdf', 'csv']);
+});
+
+test('file-types dropdown closes on outside click and hydrates stored selections (P3-2)', async () => {
+  const { client } = makeClient();
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, supported_file_types: ['md', 'xlsx'] } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'knowledge');
+  const section = $('[data-editor-section="knowledge"]', root)!;
+  const trigger = $('[data-file-types-trigger]', section)!;
+  assert.match(trigger.textContent ?? '', /Markdown/, 'hydrated selection rendered on the trigger');
+  await click(section, '[data-file-types-trigger]');
+  assert.ok($('[data-file-types-panel]', root), 'panel opens');
+  await act(async () => {
+    document.body.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  assert.equal($('[data-file-types-panel]', document.body), null, 'panel closes on outside click');
+});
+
+// --- R486: agent-type switch KB-conflict warning (Vue 3342-3347) --------------------------
+
+test('switching to an incompatible preset keeps the selected scope and warns (KB warn)', async () => {
+  const { client } = makeClient();
+  // tenant-style preset without kb_selection_mode: the selected KB list must
+  // survive the switch, and its RAG tools derive a filter the wiki-only KB
+  // cannot satisfy — the shipped-catalog path to the Vue warning
+  const injected = { id: 'test-rag-strict', i18n: { default: { label: 'Strict RAG', description: 'test preset' } }, config: { system_prompt_id: 'progressive_rag_agent', allowed_tools: ['knowledge_search'] } };
+  const presets = (await import('./agent-type-presets.ts')).AGENT_TYPE_PRESETS;
+  presets.splice(presets.length - 1, 0, injected); // before 'custom'
+  try {
+    const wikiOnly = { id: 'kb-w', name: 'Wiki 库', type: 'document', knowledge_count: 3, indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true } };
+    const base = client as unknown as { knowledgeBases: { list: () => Promise<unknown[]>; settings: unknown } };
+    const kbSettings = base.knowledgeBases.settings;
+    base.knowledgeBases = { list: async () => [wikiOnly], settings: kbSettings };
+    const agent = {
+      ...EDIT_AGENT,
+      config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-w'] },
+    };
+    const root = await mountModal({ client, mode: 'edit', agent });
+    // switch the type dropdown to the injected strict-RAG preset
+    await setValue(root, '[data-field="agent_type"]', 'test-rag-strict');
+    const warn = $('[data-agent-type-warn]', root);
+    assert.ok(warn, 'kb-incompatible warning rendered');
+    assert.match(warn!.textContent ?? '', /已选的 1 个知识库不适用于当前类型/);
+    // switching back to a compatible preset clears the warning
+    await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
+    assert.equal($('[data-agent-type-warn]', root), null, 'warning cleared on the next compatible switch');
+  } finally {
+    const index = presets.indexOf(injected);
+    if (index >= 0) presets.splice(index, 1);
+  }
+});
+
+test('shipped presets reset the KB radio to all and clear the explicit list (Vue watch 3639-3650)', async () => {
+  const { client, requests } = makeClient();
+  const agent = {
+    ...EDIT_AGENT,
+    config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-1'] },
+  };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await setValue(root, '[data-field="agent_type"]', 'rag-qa');
+  // the preset writes kb_selection_mode 'all' -> the radio mirrors it and the
+  // explicit selection clears (so no stale-KB warning is owed)
+  await goto(root, 'knowledge');
+  const allRadio = $('input[name="kb-mode"][value="all"]', root) as HTMLInputElement;
+  assert.ok(allRadio?.checked, 'kb radio reset to 全部知识库');
+  await click(root, '[data-editor-save]');
+  const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
+  assert.deepEqual(payload.knowledge_bases, [], 'explicit list cleared with the all-mode reset');
+  assert.equal(payload.kb_selection_mode, 'all');
+});
+
+// --- R486 D9: create-form retrieval defaults read the tenant retrieval-config --------------
+
+test('create form seeds retrieval thresholds from the tenant retrieval-config (D9)', async () => {
+  const { client } = makeClient({ retrievalConfig: { embedding_top_k: 50, keyword_threshold: 0, vector_threshold: 0.2, rerank_top_k: 8, rerank_threshold: 0.6 } });
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'retrieval');
+  const section = $('[data-editor-section="retrieval"]', root)!;
+  const topK = $('[data-field="embedding_top_k"]', section) as HTMLInputElement;
+  assert.equal(topK.value, '50', 'tenant embedding_top_k applied');
+  // the keyword/vector thresholds ride on Range inputs carrying the numeric value
+  const keyword = $('input[type="range"][aria-label*="关键词"], input[type="range"]', section) as HTMLInputElement;
+  assert.ok(keyword, 'threshold slider rendered');
+  assert.equal(keyword.value, '0', 'tenant keyword_threshold 0 overrides the 0.3 default (Vue !== undefined rule)');
+  const vector = $$('input[type="range"]', section)[1] as HTMLInputElement;
+  assert.equal(vector.value, '0.2', 'tenant vector_threshold applied');
+});
+
+test('create form keeps the built-in retrieval defaults when the tenant config is unreachable (D9)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'retrieval');
+  const section = $('[data-editor-section="retrieval"]', root)!;
+  const topK = $('[data-field="embedding_top_k"]', section) as HTMLInputElement;
+  assert.equal(topK.value, '10', 'built-in default kept');
+  const keyword = $$('input[type="range"]', section)[0] as HTMLInputElement;
+  assert.equal(keyword.value, '0.3', 'built-in keyword default kept');
+});
+
+test('edit form keeps the stored retrieval values over tenant defaults (D9)', async () => {
+  const { client } = makeClient({ retrievalConfig: { embedding_top_k: 50, keyword_threshold: 0, vector_threshold: 0.2 } });
+  const agent = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, embedding_top_k: 7, keyword_threshold: 0.4, vector_threshold: 0.9 } };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'retrieval');
+  const section = $('[data-editor-section="retrieval"]', root)!;
+  assert.equal(($('[data-field="embedding_top_k"]', section) as HTMLInputElement).value, '7', 'stored value survives hydration');
+  assert.equal(($$('input[type="range"]', section)[0] as HTMLInputElement).value, '0.4');
 });

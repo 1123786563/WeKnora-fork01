@@ -31,6 +31,7 @@
     "./integrations/page": "./src/integrations/page.tsx",
     "./integrations/registry": "./src/integrations/registry.ts",
     "./integrations/settings-route": "./src/integrations/settings-route.ts",
+    "./integrations/swagger": "./src/integrations/swagger.ts",
     "./settings/registry": "./src/settings/registry.ts"
   },
   "dependencies": {

@@ -6,6 +6,35 @@
  */
 import { formatMessage, type Locale, type MessageValues } from '@weknora/i18n';
 import { agentEditorFallback } from './agent-editor-fallback.ts';
+import {
+  applyAgentTypePreset,
+  findAgentTypePreset,
+  presetDefaultDescription,
+  presetDefaultName,
+  type AgentTypePreset,
+} from './agent-type-presets.ts';
+
+// Re-exported as the module surface for the modal + tests (the preset catalog
+// is a static port of config/agent_type_presets.yaml, see the source file).
+export {
+  AGENT_TYPE_PRESETS,
+  agentTypePresetDescription,
+  agentTypePresetLabel,
+  applyAgentTypePreset,
+  findAgentTypePreset,
+  isDescriptionSystemGenerated,
+  isNameSystemGenerated,
+  presetDefaultDescription,
+  presetDefaultName,
+  type AgentTypePreset,
+  type AgentTypePresetConfig,
+} from './agent-type-presets.ts';
+// R486 D4 — 使用模板/恢复默认 selector surface (vendored agent_system_prompt.yaml)
+export {
+  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
+  resolveAgentSystemPromptResetTemplate,
+  type AgentSystemPromptTemplateOption,
+} from './agent-type-presets.ts';
 
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
 
@@ -103,6 +132,16 @@ export interface AgentConfigForm {
   rerank_top_k: number;
   rerank_threshold: number;
   question_suggestions: QuestionSuggestionsForm;
+  // 附件上传（multimodal 分区，AgentEditorModal.vue:2758-2771 defaultFormData）
+  image_upload_enabled: boolean;
+  vlm_model_id: string;
+  image_storage_provider: string;
+  attachment_image_understanding: boolean;
+  attachment_ocr_max_pages: number;
+  attachment_parse_wait_timeout_sec: number;
+  audio_upload_enabled: boolean;
+  asr_model_id: string;
+  chat_parser_engine_rules: unknown[];
   welcome_message: string;
   // Octop M1 persona (no Vue baseline); optional so legacy payloads stay valid
   persona_mbti?: string;
@@ -197,6 +236,16 @@ export function defaultAgentConfig(): AgentConfigForm {
         knowledge_fallback: true, allow_regenerate: false,
       },
     },
+    // 附件上传默认值（Vue defaultFormData 2758-2771：全部关闭/空/0）
+    image_upload_enabled: false,
+    vlm_model_id: '',
+    image_storage_provider: '',
+    attachment_image_understanding: false,
+    attachment_ocr_max_pages: 0,
+    attachment_parse_wait_timeout_sec: 0,
+    audio_upload_enabled: false,
+    asr_model_id: '',
+    chat_parser_engine_rules: [],
     welcome_message: '',
     // must exist in defaults or hydrateAgentForm drops them (trap at :199)
     persona_mbti: '',
@@ -238,6 +287,16 @@ export function hydrateAgentForm(agent: Record<string, unknown>): AgentEditorFor
   config.supported_file_types = asStringArray(stored.supported_file_types);
   // M3 delegation slugs — string-array like the tool/skill lists above
   config.subagents = asStringArray(stored.subagents);
+  // multimodal block (Vue:2758-2771 defaults; rules kept verbatim when present)
+  config.image_upload_enabled = asBool(stored.image_upload_enabled, false);
+  config.vlm_model_id = typeof stored.vlm_model_id === 'string' ? stored.vlm_model_id : '';
+  config.image_storage_provider = typeof stored.image_storage_provider === 'string' ? stored.image_storage_provider : '';
+  config.attachment_image_understanding = asBool(stored.attachment_image_understanding, false);
+  config.attachment_ocr_max_pages = asNumber(stored.attachment_ocr_max_pages, 0);
+  config.attachment_parse_wait_timeout_sec = asNumber(stored.attachment_parse_wait_timeout_sec, 0);
+  config.audio_upload_enabled = asBool(stored.audio_upload_enabled, false);
+  config.asr_model_id = typeof stored.asr_model_id === 'string' ? stored.asr_model_id : '';
+  config.chat_parser_engine_rules = Array.isArray(stored.chat_parser_engine_rules) ? stored.chat_parser_engine_rules : [];
   const waitTimeout = asNumber(stored.mcp_auth_wait_timeout, 0);
   config.mcp_auth_wait_timeout = waitTimeout <= 0 ? 600 : waitTimeout;
   config.max_completion_tokens = asNumber(stored.max_completion_tokens, 0);
@@ -320,8 +379,8 @@ export const agentModeOf = (config: Record<string, unknown> | undefined): AgentM
 // --- validation (AgentEditorModal.vue handleSave 4736-4799) ------------------------
 
 export type AgentSectionKey =
-  | 'basic' | 'prompts' | 'model' | 'conversation' | 'knowledge' | 'retrieval'
-  | 'websearch' | 'tools' | 'skills' | 'personalization' | 'subagents';
+  | 'basic' | 'prompts' | 'model' | 'conversation' | 'suggestions' | 'knowledge' | 'retrieval'
+  | 'websearch' | 'multimodal' | 'tools' | 'mcp' | 'skills' | 'personalization' | 'subagents';
 
 export type AgentFieldError =
   | 'name' | 'system_prompt' | 'context_template' | 'model_id'
@@ -399,6 +458,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     { key: 'basic', icon: 'info-circle', labelKey: 'agent.editor.basicInfo' },
     { key: 'prompts', icon: 'file-paste', labelKey: 'agent.editor.promptsConfig' },
     { key: 'model', icon: 'control-platform', labelKey: 'agent.editor.modelConfig' },
+    // R485 D1 — Vue navItems 2657-2684: suggestions rides the basic group
+    { key: 'suggestions', icon: 'help-circle', labelKey: 'agentEditor.questionSuggestions.navLabel' },
     { key: 'conversation', icon: 'chat', labelKey: 'agent.editor.conversationSettings' },
     { key: 'knowledge', icon: 'folder', labelKey: 'agent.editor.knowledgeConfig' },
   ];
@@ -406,6 +467,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     items.push({ key: 'retrieval', icon: 'search', labelKey: 'agent.editor.retrievalStrategy' });
   }
   items.push({ key: 'websearch', icon: 'internet', labelKey: 'agent.editor.webSearchConfig' });
+  // R485 D1 — multimodal is NOT agent-mode gated in Vue (navItems push is unconditional)
+  items.push({ key: 'multimodal', icon: 'attach', labelKey: 'agentEditor.imageUpload.navLabel' });
   if (options.isAgentMode) {
     // Octop M1 persona section (no Vue baseline). Persona renders only in the
     // smart-reasoning pipeline (capability assembly); quick-answer runs never
@@ -413,6 +476,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     // instead of offering a control that silently does nothing.
     items.push({ key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' });
     items.push({ key: 'tools', icon: 'tools', labelKey: 'agent.editor.toolsConfig' });
+    // R485 D1 — Vue places mcp between tools and skills in agent mode
+    items.push({ key: 'mcp', icon: 'server', labelKey: 'agentEditor.mcp.label' });
     items.push({ key: 'skills', icon: 'skills', labelKey: 'agent.editor.skillsConfig' });
     // Octop M3 delegation (no Vue baseline): sub-agent roles only register the
     // delegate tool in the smart-reasoning pipeline, so the same agent-mode
@@ -423,9 +488,11 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
     keys.map((key) => byKey.get(key)).filter((item): item is AgentNavItem => item !== undefined);
   return [
-    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'personalization']) },
+    // Vue navGroups 2687-2713: basic group picks suggestions after conversation
+    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']) },
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
-    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['tools', 'skills', 'subagents']) },
+    // Vue capability order: multimodal, tools, mcp, skills (subagents rides last)
+    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['multimodal', 'tools', 'mcp', 'skills', 'subagents']) },
   ].filter((group) => group.items.length > 0);
 }
 
@@ -620,3 +687,250 @@ export function catalogSkillRows(catalog: SkillCatalogLike[], sandboxConfigId: s
 }
 
 export const isNamedSandboxBackend = (type: string): boolean => ['docker', 'e2b', 'cube'].includes(type);
+
+// --- create prefill (AgentEditorModal.vue 3514-3536 + D3/D10) ------------------------
+
+/** frontend/src/utils/modelDefaults.ts ModelDefaultCandidate (type optional to accept api-client rows). */
+export interface ModelDefaultCandidate { id?: string; type?: string; status?: string; is_default?: boolean }
+
+/**
+ * Pick a creation-time model: prefer the declared default, fall back to the
+ * first active model (frontend/src/utils/modelDefaults.ts selectInitialModelId).
+ */
+export function selectInitialModelId(models: readonly ModelDefaultCandidate[], modelType: string): string | null {
+  const active = models.filter((model) =>
+    Boolean(model.id?.trim()) && model.type === modelType && (!model.status || model.status === 'active'));
+  return active.find((model) => model.is_default)?.id?.trim() ?? active[0]?.id?.trim() ?? null;
+}
+
+/**
+ * The create form opens with the default agent_type preset applied so the
+ * visible defaults match the type dropdown from the first paint (Vue 3514-3536
+ * "否则用户在 modal 打开瞬间看到的默认表单和类型下拉显示的类型不一致").
+ * Smart-reasoning is the default agent_mode, so the default type 'rag-qa'
+ * seeds the system prompt, the 4 RAG tools, kb mode and the 我的<label> name.
+ * Models are prefilled when empty (Vue applyDefaultModelsIfEmpty 2854-2862, D5).
+ */
+export function seedCreateAgentForm(t: Translate, locale: Locale = 'zh-CN', models: readonly ModelDefaultCandidate[] = []): AgentEditorForm {
+  const form = defaultAgentForm();
+  if (form.config.agent_mode === 'smart-reasoning') {
+    const defaultTypeId = form.config.agent_type;
+    const preset = findAgentTypePreset(defaultTypeId);
+    if (defaultTypeId && defaultTypeId !== 'custom') {
+      applyAgentTypePreset(form, preset);
+    }
+    if (!form.name) form.name = presetDefaultName(preset, t, locale);
+    if (!form.description) form.description = presetDefaultDescription(preset, locale);
+  }
+  const chatModelId = selectInitialModelId(models, 'KnowledgeQA');
+  const rerankModelId = selectInitialModelId(models, 'Rerank');
+  if (!form.config.model_id && chatModelId) form.config.model_id = chatModelId;
+  if (!form.config.rerank_model_id && rerankModelId) form.config.rerank_model_id = rerankModelId;
+  return form;
+}
+
+/**
+ * Rerank is required only when a RAG-capable KB is reachable: under "all" any
+ * ragEnabled KB counts, under "selected" only the picked ones (Vue
+ * needsRerankModel computed 3373-3388, audit D6).
+ */
+export function needsRerankModel(kbMode: ScopeSelectionMode, kbOptions: readonly KbOption[], selectedIds: readonly string[]): boolean {
+  if (kbMode === 'none') return false;
+  if (kbMode === 'all') return kbOptions.some((kb) => kb.ragEnabled);
+  return kbOptions.some((kb) => selectedIds.includes(kb.value) && kb.ragEnabled);
+}
+
+// --- R486 D4: prompt placeholder catalogue (internal/types/placeholder.go) ----------------
+//
+// The Vue editor fetches these definitions from GET /api/v1/agents/placeholders
+// (editorResources.ensurePlaceholders); the React api-client has no endpoint,
+// so the backend's static PlaceholdersByField table is vendored here the same
+// way agent-type-presets.ts vendors the YAML catalogs.
+
+export interface PromptPlaceholderDef { name: string; label: string; description: string }
+
+const PLACEHOLDER_DEFINITIONS: Record<string, PromptPlaceholderDef> = {
+  query: { name: 'query', label: '用户问题', description: '用户当前的问题或查询内容' },
+  contexts: { name: 'contexts', label: '检索内容', description: '从知识库检索到的相关内容列表' },
+  current_time: { name: 'current_time', label: '当前时间', description: '当前日期（ISO 格式：2006-01-02）。只用日期、不用时钟，避免秒级变化打断 provider 前缀缓存。' },
+  current_week: { name: 'current_week', label: '当前星期', description: '当前星期几（如：星期一、Monday）' },
+  knowledge_bases: { name: 'knowledge_bases', label: '知识库列表', description: '自动格式化的知识库列表，包含名称、描述、文档数量等信息' },
+  web_search_status: { name: 'web_search_status', label: '网络搜索状态', description: '网络搜索工具是否启用的状态（Enabled 或 Disabled）' },
+  language: { name: 'language', label: '用户语言', description: '用户界面的语言偏好，如 Chinese (Simplified)、English、Korean 等，用于控制 LLM 回答语言' },
+};
+
+/** internal/types/placeholder.go PlaceholdersByField — order preserved per field. */
+export function promptPlaceholdersFor(field: 'agent_system_prompt' | 'system_prompt' | 'context_template'): PromptPlaceholderDef[] {
+  if (field === 'agent_system_prompt') {
+    return [PLACEHOLDER_DEFINITIONS.knowledge_bases!, PLACEHOLDER_DEFINITIONS.web_search_status!, PLACEHOLDER_DEFINITIONS.current_time!, PLACEHOLDER_DEFINITIONS.language!];
+  }
+  // system_prompt and context_template share the normal-mode set (Go switch)
+  return [PLACEHOLDER_DEFINITIONS.query!, PLACEHOLDER_DEFINITIONS.contexts!, PLACEHOLDER_DEFINITIONS.current_time!, PLACEHOLDER_DEFINITIONS.current_week!, PLACEHOLDER_DEFINITIONS.language!];
+}
+
+/**
+ * Vue insertPlaceholder tag-click tail (AgentEditorModal.vue:4140-4146): splice
+ * the full {{name}} token at the caret and return the caret position that lands
+ * right after the inserted token.
+ */
+export function insertPlaceholderAtCursor(value: string, cursorPos: number, name: string): { value: string; cursorPos: number } {
+  const clamped = Math.max(0, Math.min(cursorPos, value.length));
+  const token = `{{${name}}}`;
+  return {
+    value: value.slice(0, clamped) + token + value.slice(clamped),
+    cursorPos: clamped + token.length,
+  };
+}
+
+// --- R486 D9: tenant retrieval-config defaults (Vue 2340-2344 + 3912-3917) ---------------
+
+export interface TenantRetrievalDefaults {
+  embeddingTopK: number;
+  keywordThreshold: number;
+  vectorThreshold: number;
+  rerankTopK: number;
+  rerankThreshold: number;
+}
+
+/**
+ * Vue defaultEmbeddingTopK & friends start at 10/0.3/0.5/5/0.5 and the
+ * tenant retrieval-config overrides them on load. The override semantics differ
+ * per field exactly as the Vue writes read (AgentEditorModal.vue:3912-3917):
+ * top-k fields are truthiness-gated (`if (rc?.embedding_top_k)`) so a 0 keeps
+ * the default, thresholds use `!== undefined` so an explicit 0 wins.
+ */
+export function tenantRetrievalDefaultsFromConfig(config: Record<string, unknown> | null | undefined): TenantRetrievalDefaults {
+  const defaults: TenantRetrievalDefaults = { embeddingTopK: 10, keywordThreshold: 0.3, vectorThreshold: 0.5, rerankTopK: 5, rerankThreshold: 0.5 };
+  if (!config) return defaults;
+  if (typeof config.embedding_top_k === 'number' && config.embedding_top_k) defaults.embeddingTopK = config.embedding_top_k;
+  if (typeof config.rerank_top_k === 'number' && config.rerank_top_k) defaults.rerankTopK = config.rerank_top_k;
+  if (typeof config.keyword_threshold === 'number') defaults.keywordThreshold = config.keyword_threshold;
+  if (typeof config.vector_threshold === 'number') defaults.vectorThreshold = config.vector_threshold;
+  if (typeof config.rerank_threshold === 'number') defaults.rerankThreshold = config.rerank_threshold;
+  return defaults;
+}
+
+/**
+ * Create-mode only (Vue watch(visible) 3474-3481): the fresh form's retrieval
+ * knobs open at the tenant-configured defaults; edit mode keeps stored values.
+ */
+export function applyCreateRetrievalDefaults(form: AgentEditorForm, defaults: TenantRetrievalDefaults): void {
+  form.config.embedding_top_k = defaults.embeddingTopK;
+  form.config.keyword_threshold = defaults.keywordThreshold;
+  form.config.vector_threshold = defaults.vectorThreshold;
+  form.config.rerank_top_k = defaults.rerankTopK;
+  form.config.rerank_threshold = defaults.rerankThreshold;
+}
+
+// --- R486 KB warn: preset KB filter + incompatible selected count (Vue 3190-3288) --------
+
+export interface PresetKbFilter { any_of: string[]; all_of: string[]; none_of: string[] }
+
+/**
+ * Vue effectiveKbFilter (AgentEditorModal.vue:3190-3208 + frontend/src/utils/
+ * tool-capabilities.ts deriveKbFilterFromTools): the any_of set is derived
+ * from the preset's tool requirements (union of anyOf+allOf capabilities,
+ * resolved through TOOL_CATALOG), a yaml any_of overrides the derivation, and
+ * all_of/none_of ride along from the yaml. Empty everywhere → null (no filter).
+ */
+export function effectivePresetKbFilter(preset: AgentTypePreset | null): PresetKbFilter | null {
+  if (!preset) return null;
+  const derived = new Set<string>();
+  for (const toolId of preset.config?.allowed_tools ?? []) {
+    const tool = TOOL_CATALOG.find((tool) => tool.value === toolId);
+    for (const capability of tool?.anyOf ?? []) derived.add(capability);
+    for (const capability of tool?.allOf ?? []) derived.add(capability);
+  }
+  const yamlAnyOf = preset.kb_filter?.any_of ?? [];
+  const anyOf = yamlAnyOf.length > 0 ? yamlAnyOf : [...derived];
+  const allOf = preset.kb_filter?.all_of ?? [];
+  const noneOf = preset.kb_filter?.none_of ?? [];
+  if (anyOf.length === 0 && allOf.length === 0 && noneOf.length === 0) return null;
+  return { any_of: anyOf, all_of: allOf, none_of: noneOf };
+}
+
+const kbCapabilitiesOf = (kb: KbOption): Partial<ToolCapabilityScope> => kb.capabilities ?? {
+  vector: kb.ragEnabled,
+  keyword: kb.ragEnabled,
+  wiki: kb.wikiEnabled,
+  graph: false,
+  faq: kb.type === 'faq',
+};
+
+/**
+ * Vue kbSatisfiesPresetFilter (3211-3243): evaluate a KB option against the
+ * effective filter. The `reason` string comes from presetKbMismatchReason and
+ * is only used for option tooltips; the count logic reads `ok`.
+ */
+export function kbSatisfiesPresetFilter(kb: KbOption, preset: AgentTypePreset | null): { ok: boolean; reason: string } {
+  const filter = effectivePresetKbFilter(preset);
+  if (!preset || !filter) return { ok: true, reason: '' };
+  const caps = kbCapabilitiesOf(kb);
+  const has = (name: string): boolean => (caps as Record<string, boolean | undefined>)[name] === true;
+  if (filter.all_of.length > 0 && !filter.all_of.every(has)) return { ok: false, reason: 'mismatch' };
+  if (filter.any_of.length > 0 && !filter.any_of.some(has)) return { ok: false, reason: 'mismatch' };
+  if (filter.none_of.length > 0 && filter.none_of.some(has)) return { ok: false, reason: 'mismatch' };
+  return { ok: true, reason: '' };
+}
+
+/**
+ * Vue kbSatisfiesQuickAnswerMode (3250-3258): quick-answer retrieval needs a
+ * vector or keyword index; wiki-only KBs would come back empty, so they count
+ * as incompatible even though quick-answer has no agent_type preset.
+ */
+export function kbSatisfiesQuickAnswerMode(agentMode: AgentMode, kb: KbOption): boolean {
+  if (agentMode !== 'quick-answer') return true;
+  const caps = kb.capabilities;
+  return caps ? caps.vector === true || caps.keyword === true : kb.ragEnabled;
+}
+
+/**
+ * Vue incompatibleSelectedKbCount (3276-3281): how many of the explicitly
+ * selected KBs the post-switch preset / mode would disable. Zero outside the
+ * "selected" scope — an all/none preset switch clears the list before this
+ * can count (Vue watch 3639-3650), so the warning only fires for presets that
+ * keep the selected scope.
+ */
+export function incompatibleSelectedKbCount(
+  kbMode: ScopeSelectionMode,
+  selectedIds: readonly string[],
+  kbOptions: readonly KbOption[],
+  preset: AgentTypePreset | null,
+  agentMode: AgentMode,
+): number {
+  if (kbMode !== 'selected') return 0;
+  const selected = new Set(selectedIds);
+  return kbOptions.filter((kb) => {
+    if (!selected.has(kb.value)) return false;
+    return !kbSatisfiesPresetFilter(kb, preset).ok || !kbSatisfiesQuickAnswerMode(agentMode, kb);
+  }).length;
+}
+
+// --- MCP service options (AgentEditorModal.vue mcpOptions 2039-2068) ------------------
+
+export interface McpServiceLike { id: string; name: string; enabled?: boolean }
+export interface McpOptionRow { label: string; value: string; disabled?: boolean }
+
+/**
+ * MCP select options: enabled services first, then selected-but-disabled ones
+ * flagged "(已禁用)", then ghost ids (selected service deleted elsewhere) shown
+ * as unavailable. Mirrors the Vue computed that keeps stale selections visible
+ * instead of silently dropping them.
+ */
+export function mcpOptionRows(services: McpServiceLike[], selectedIds: string[], t: Translate): McpOptionRow[] {
+  const serviceById = new Map(services.map((mcp) => [mcp.id, mcp]));
+  const selected = new Set(selectedIds);
+  const rows: McpOptionRow[] = [];
+  for (const mcp of services) {
+    if (mcp.enabled !== false) rows.push({ label: mcp.name, value: mcp.id });
+  }
+  for (const id of selected) {
+    const mcp = serviceById.get(id);
+    if (mcp && mcp.enabled === false) {
+      rows.push({ label: `${mcp.name} (${t('mcpSettings.disabled')})`, value: id, disabled: true });
+    } else if (!mcp) {
+      rows.push({ label: t('agentEditor.mcp.unavailableService'), value: id, disabled: true });
+    }
+  }
+  return rows;
+}

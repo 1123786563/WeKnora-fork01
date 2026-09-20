@@ -4,7 +4,7 @@ Decision date: 2026-09-19. Evidence baseline: `950716d62f0a7ff1b06865dcf1f025bc4
 
 ## Decision
 
-**NO-GO for native Runner product execution.** The historical v1.10.0 baseline fails the repeated SDK Session race gate; the current exact v1.11.0 root candidate passes the bounded native Runner normal probe and `-race -count=20` gate. This only resolves that candidate's reproduced race. Current `internal/application/service` fails `TestExecuteDurableRunPersistsBudgetExhaustionForNotification`, and the exact `75523c9c9` v1.10.0 baseline fails the same test with the same missing notification event, so it is an existing direct-consumer blocker rather than a v1.11.0 regression. No Session/Memory persistence configuration has been selected. Product code must therefore not construct or dispatch a native Runner, including through MCP, Skills, child Agents, or a feature flag.
+**NO-GO for native Runner product execution.** The historical v1.10.0 baseline fails the repeated SDK Session race gate; the current exact v1.11.0 root candidate passes the bounded native Runner normal probe and `-race -count=20` gate. This only resolves that candidate's reproduced race. Commit `86e522fd` repaired the direct consumer: `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` exits 0 and persists the required budget-exhaustion notification. The exact `75523c9c9` baseline still records the prior missing event, confirming it was an existing failure rather than a v1.11.0 regression. No Session/Memory persistence configuration has been selected. Product code must therefore not construct or dispatch a native Runner, including through MCP, Skills, child Agents, or a feature flag.
 
 This does not erase the independent P1/P2 work still required by the confirmed specification. It prevents those work packages from using a draft `nativecontract` or an unapproved SDK/storage composition as though it were an executable product interface. No reduction of recovery, authorization, tenant isolation, archive retention, or existing functionality is approved.
 
@@ -15,7 +15,7 @@ This does not erase the independent P1/P2 work still required by the confirmed s
 | Measured | Task 2's deterministic `LLMAgent`/Runner/function-tool round trip completed exactly one tool call and a final `finished` message. Its in-memory Session key test kept two distinct `AppName` values apart. Task 3's SQLite checkpoint/pending-write and recovery-policy suites passed. | These bounded probes do not prove authorization, production persistence, real Provider behavior, cross-process recovery, or release readiness. |
 | Source-only | Historical v1.10.0 source and current v1.11.0 candidate compilation define Runner, callbacks, Session/Memory APIs, Graph checkpoints and the interfaces captured in `interfaces.md`. The capability matrix has 79 source-only rows. | Source reading and bounded compilation fix neither persistence behavior nor an implementation selection. |
 | Blocked environment | `TestCrashMatrixPostgreSQL` and `TestTwoWorkerContentionPostgreSQL` require `TRPC_RECOVERY_PG_DSN`; `TestCrashAfterToolResult` requires `TRPC_RECOVERY_GRAPH_PROVIDER`. All three were explicitly skipped. | PostgreSQL and real-Provider recovery remain `blocked-env`, never passed by SQLite or deterministic models. |
-| Behavior incompatible | Historical `RUN-02` records the v1.10.0 `Session.Clone` / `UpdateUserSession` race; current v1.11.0 repeated race evidence is green. `SESSION-05` does not make an append failure a durable barrier. `EVENT-01` preserves the old warning-only append gap. `SKILL-02` can fall back to a local executor. `MODEL-06` shows the old bridge rejects required fields. | The current candidate's race green is necessary only. The consumer budget-notification failure and all remaining rows retain required P1/P2/P3/P4/P5/P7 remediation and acceptance. None is an authorization to bypass the affected boundary. |
+| Behavior incompatible | Historical `RUN-02` records the v1.10.0 `Session.Clone` / `UpdateUserSession` race; current v1.11.0 repeated race evidence is green. `SESSION-05` does not make an append failure a durable barrier. `EVENT-01` preserves the old warning-only append gap. `SKILL-02` can fall back to a local executor. `MODEL-06` shows the old bridge rejects required fields. | The current candidate's race green and the repaired budget-notification consumer are necessary only. The remaining rows retain required P1/P2/P3/P4/P5/P7 remediation and acceptance. None is an authorization to bypass the affected boundary. |
 
 The matrix totals at this baseline are 4 `verified`, 79 `source-only`, 2 `blocked-env`, and 5 `incompatible` rows. The root now pins `trpc-agent-go v1.11.0`; Task 1's bounded candidate evidence is recorded in `sdk-probes.md`, but it is **not** an approved product target. No Session backend, Memory backend, or complete root/submodule compatibility set has been selected.
 
@@ -27,7 +27,7 @@ Before any native Runner product execution, a separate reviewed task must approv
 GOWORK=off go test -race ./internal/agent/nativeprobe -count=20 -v
 ```
 
-All twenty executions exited zero for the current v1.11.0 candidate with no race report. That result is necessary but not sufficient. The selected composition must first repair the existing budget-exhaustion notification consumer failure, then establish the Session append-failure barrier, durable event/outbox behavior, six recovery transitions, tenant/principal isolation, SQLite and PostgreSQL persistence, and the required real-Provider matrix. Historical v1.10.0 remains a rejected RED baseline because the repeated gate reported the SDK race; the current candidate's green evidence does not turn it or the product path into an approved execution composition.
+All twenty executions exited zero for the current v1.11.0 candidate with no race report. Commit `86e522fd` separately repaired the budget-exhaustion notification consumer and its focused command exits 0. These results are necessary but not sufficient. The selected composition must still establish the Session append-failure barrier, durable event/outbox behavior, six recovery transitions, tenant/principal isolation, SQLite and PostgreSQL persistence, and the required real-Provider matrix. Historical v1.10.0 remains a rejected RED baseline because the repeated gate reported the SDK race; the current candidate's green evidence does not turn it or the product path into an approved execution composition.
 
 | Downstream work | Ruling now | Unlock evidence |
 | --- | --- | --- |
@@ -59,3 +59,13 @@ P1/P2 share the scope, typed-error, admission, journal, event and checkpoint coo
 ## Evidence record
 
 This ruling consumes the committed Task 1–4 artifacts: `features.tsv`, `sdk-probes.md`, `recovery-gaps.md`, `sdk-capabilities.tsv`, and `interfaces.md`. It adds no SDK, production, migration, Provider, database, or client behavior evidence. P0 itself is a decision/planning gate; it does not mark the migration, P1/P2, or any release condition as passed.
+
+## 2026-09-20 provider revalidation
+
+The provider gap has since been re-run with the explicit local Ollama path
+(`TRPC_RECOVERY_OLLAMA_MODEL=gemma4:latest`). SQLite recovery passed all 10/10
+SIGKILL cases, and PostgreSQL passed all 9/9 cases after `2473914c` fixed the
+harness's shared-database and repeated-namespace bug. This closes the earlier
+`blocked-env` classification for the recovery matrix. It does not change the
+overall NO-GO: the selected native product composition, remaining P2/P3
+execution wiring, client replay and release acceptance are still incomplete.

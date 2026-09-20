@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sync_logs (
     status          VARCHAR(32) NOT NULL,
     started_at      DATETIME,
     finished_at     DATETIME,
+    heartbeat_at    DATETIME,
     error_message   TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -238,7 +239,12 @@ func TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks(t *testing.T) {
 
 func TestResetPendingTasks_SyncLogStaleRunning(t *testing.T) {
 	db := setupResetPendingDB(t)
-	stale := time.Now().Add(-2 * time.Hour)
+	// No heartbeat at all: liveness falls back to started_at, so the row must
+	// be older than the 2h15m stall window (types.SyncStallWindow) to count
+	// as dead. Seeded in UTC to match the staleCutoff's zone — the sqlite
+	// driver keeps zone offsets in timestrings, so a local-zone seed would
+	// order incorrectly against a UTC cutoff on a non-UTC host.
+	stale := time.Now().UTC().Add(-3 * time.Hour)
 	require.NoError(t, db.Exec(
 		`INSERT INTO sync_logs (id, status, started_at) VALUES (?, ?, ?)`,
 		"sync-1", types.SyncLogStatusRunning, stale,
@@ -271,6 +277,50 @@ func TestResetPendingTasks_SyncLogLiteMode(t *testing.T) {
 		`SELECT status FROM sync_logs WHERE id = ?`, "sync-lite",
 	).Row().Scan(&status))
 	assert.Equal(t, types.SyncLogStatusFailed, status)
+}
+
+// TestResetPendingTasks_DistributedSyncLivenessFromHeartbeat is the bug-1
+// regression: in distributed mode the startup hook must judge a running sync
+// log by its latest liveness signal — COALESCE(heartbeat_at, started_at)
+// against the 2h15m stall window — instead of started_at against 30 minutes.
+// A long task another replica is still executing stays running; only rows
+// whose heartbeat is past the window are reset to failed.
+func TestResetPendingTasks_DistributedSyncLivenessFromHeartbeat(t *testing.T) {
+	db := setupResetPendingDB(t)
+	// UTC seeds match the UTC staleCutoff (see the SyncLogStaleRunning test).
+	now := time.Now().UTC()
+	// Active long task: started 40 minutes ago (past the old 30-minute
+	// startup window) but heartbeated one minute ago.
+	require.NoError(t, db.Exec(
+		`INSERT INTO sync_logs (id, status, started_at, heartbeat_at) VALUES (?, ?, ?, ?)`,
+		"sync-live-long", types.SyncLogStatusRunning,
+		now.Add(-40*time.Minute), now.Add(-1*time.Minute),
+	).Error)
+	// Stalled task: last heartbeat three hours ago, beyond the stall window.
+	require.NoError(t, db.Exec(
+		`INSERT INTO sync_logs (id, status, started_at, heartbeat_at) VALUES (?, ?, ?, ?)`,
+		"sync-stalled", types.SyncLogStatusRunning,
+		now.Add(-4*time.Hour), now.Add(-3*time.Hour),
+	).Error)
+
+	t.Setenv("REDIS_ADDR", "redis:6379")
+	resetPendingTasks(db)
+
+	var liveStatus string
+	require.NoError(t, db.Raw(
+		`SELECT status FROM sync_logs WHERE id = ?`, "sync-live-long",
+	).Row().Scan(&liveStatus))
+	assert.Equal(t, types.SyncLogStatusRunning, liveStatus,
+		"a heartbeating long task on another replica must survive this restart")
+
+	var stalledStatus string
+	var stalledFinishedAt *time.Time
+	require.NoError(t, db.Raw(
+		`SELECT status, finished_at FROM sync_logs WHERE id = ?`, "sync-stalled",
+	).Row().Scan(&stalledStatus, &stalledFinishedAt))
+	assert.Equal(t, types.SyncLogStatusFailed, stalledStatus,
+		"a running row with no heartbeat inside the stall window is dead")
+	require.NotNil(t, stalledFinishedAt)
 }
 
 func TestStuckKnowledgeParseQuery_ReuseAfterFindDoesNotBreakUpdate(t *testing.T) {

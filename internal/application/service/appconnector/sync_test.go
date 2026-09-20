@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/appconnector"
 	service "github.com/Tencent/WeKnora/internal/application/service"
@@ -62,6 +63,13 @@ func (f *fakeSyncLogRepo) CancelPendingByDataSource(ctx context.Context, dsID st
 	return nil
 }
 func (f *fakeSyncLogRepo) CleanupOldLogs(ctx context.Context, retentionDays int) error { return nil }
+func (f *fakeSyncLogRepo) UpdateHeartbeat(ctx context.Context, id string, at time.Time) error {
+	return nil
+}
+func (f *fakeSyncLogRepo) UpdateAsynqTaskID(ctx context.Context, id, taskID string) error {
+	return nil
+}
+func (f *fakeSyncLogRepo) RequestCancel(ctx context.Context, id string) error { return nil }
 
 type fakeEnqueuer struct{ enqueued int }
 

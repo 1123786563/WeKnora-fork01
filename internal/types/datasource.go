@@ -50,11 +50,19 @@ const (
 	DataSourceStatusDeleted = "deleted"
 
 	// Sync log status
+	SyncLogStatusPending  = "pending"
 	SyncLogStatusRunning  = "running"
 	SyncLogStatusSuccess  = "success"
 	SyncLogStatusPartial  = "partial"
 	SyncLogStatusFailed   = "failed"
 	SyncLogStatusCanceled = "canceled"
+
+	// SyncStallWindow is how long a "running" sync log stays credible without
+	// a heartbeat: the sync task timeout (2h) plus a 15-minute buffer. Both
+	// liveness checks — the startup reset hook and HasRunningSync — judge a
+	// running row by COALESCE(heartbeat_at, started_at) against this window,
+	// so live long tasks are spared while stalled runs stop blocking.
+	SyncStallWindow = 2*time.Hour + 15*time.Minute
 
 	// Conflict resolution strategies
 	ConflictStrategyOverwrite = "overwrite"
@@ -184,6 +192,15 @@ type SyncLog struct {
 
 	// Detailed sync result (JSON-encoded)
 	Result JSON `json:"result" gorm:"type:jsonb"`
+
+	// Last liveness heartbeat from the running sync loop (NULL = no heartbeat yet)
+	HeartbeatAt *time.Time `json:"heartbeat_at"`
+
+	// Asynq task id backing this run (queue-level inspection and hard cancel)
+	AsynqTaskID string `json:"asynq_task_id" gorm:"type:varchar(64)"`
+
+	// Cooperative cancel flag: set via API, observed at sync checkpoints
+	CancelRequested bool `json:"cancel_requested"`
 
 	// Creation timestamp (usually same as StartedAt)
 	CreatedAt time.Time `json:"created_at"`

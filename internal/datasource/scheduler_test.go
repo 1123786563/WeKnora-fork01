@@ -144,6 +144,34 @@ func (r *fakeSyncLogRepo) HasRunningSync(_ context.Context, dsID string) (bool, 
 	return false, nil
 }
 
+func (r *fakeSyncLogRepo) UpdateHeartbeat(_ context.Context, id string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if log, ok := r.logs[id]; ok {
+		hb := at
+		log.HeartbeatAt = &hb
+	}
+	return nil
+}
+
+func (r *fakeSyncLogRepo) UpdateAsynqTaskID(_ context.Context, id string, taskID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if log, ok := r.logs[id]; ok {
+		log.AsynqTaskID = taskID
+	}
+	return nil
+}
+
+func (r *fakeSyncLogRepo) RequestCancel(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if log, ok := r.logs[id]; ok && log.Status == types.SyncLogStatusRunning {
+		log.CancelRequested = true
+	}
+	return nil
+}
+
 // fakeTaskEnqueuer counts how many tasks are enqueued.
 type fakeTaskEnqueuer struct {
 	count     atomic.Int64

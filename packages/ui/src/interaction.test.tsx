@@ -146,3 +146,28 @@ test('sheet keeps a fixed drawer from exceeding the viewport on narrow desktop w
   assert.match(markup, /max-w-full/);
   assert.match(markup, /style="width:640px/);
 });
+
+// R486 J2 — optional headerIcon slot mirroring the Vue SettingDrawer
+// #headerIcon template: a brand badge rendered beside the title, inside the
+// header, while the h2-labelledby relationship stays intact.
+test('sheet renders an optional headerIcon beside the title without breaking the labelled relationship', () => {
+  const markup = renderToStaticMarkup(React.createElement(Sheet, {
+    open: true,
+    title: 'Sheet',
+    onClose: () => undefined,
+    portal: false,
+    headerIcon: React.createElement('span', { 'data-testid': 'brand-badge' }, 'Z'),
+  }, 'Body'));
+  assert.match(markup, /data-testid="brand-badge"/);
+  assert.match(markup, /aria-labelledby="[^"]+"/);
+  const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)![1]!;
+  const heading = markup.match(new RegExp(`<h2[^>]*id="${labelledBy}"`));
+  assert.ok(heading, 'the labelled-by target is still the title heading');
+  // The badge sits inside the header, before the title heading.
+  const badgeIndex = markup.indexOf('data-testid="brand-badge"');
+  const headingIndex = markup.indexOf(`<h2`);
+  assert.ok(badgeIndex > -1 && headingIndex > -1 && badgeIndex < headingIndex);
+  // Without the prop the header keeps its plain structure.
+  const plain = renderToStaticMarkup(React.createElement(Sheet, { open: true, title: 'Sheet', onClose: () => undefined, portal: false }, 'Body'));
+  assert.doesNotMatch(plain, /data-testid="brand-badge"/);
+});

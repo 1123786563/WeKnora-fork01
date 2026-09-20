@@ -1,0 +1,25 @@
+{
+  "facts": [
+    ["A", "DependsOn", "B"],
+    ["B", "DependsOn", "C"]
+  ],
+  "rule": {
+    "name": "depends-on-transitive",
+    "premises": [
+      ["?source", "DependsOn", "?middle"],
+      ["?middle", "DependsOn", "?target"]
+    ],
+    "conclusion": ["?source", "IndirectDependsOn", "?target"]
+  },
+  "authorized_subgraph": {
+    "nodes": [
+      {"id": "A", "document_id": "doc-a", "chunk_id": "chunk-a", "authorized": true},
+      {"id": "B", "document_id": "doc-b", "chunk_id": "chunk-b", "authorized": true},
+      {"id": "C", "document_id": "doc-c", "chunk_id": "chunk-c", "authorized": true}
+    ],
+    "edges": [
+      ["A", "B", {"predicate": "DependsOn", "document_id": "doc-a", "chunk_id": "chunk-a"}],
+      ["B", "C", {"predicate": "DependsOn", "document_id": "doc-b", "chunk_id": "chunk-b"}]
+    ]
+  }
+}

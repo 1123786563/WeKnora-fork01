@@ -8,6 +8,16 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
+func TestOllamaBuildChatRequestIncludesNonZeroSeed(t *testing.T) {
+	chat := &OllamaChat{modelName: "test-model"}
+
+	request := chat.buildChatRequest(nil, &ChatOptions{Seed: 42}, false)
+
+	if got, ok := request.Options["seed"]; !ok || got != 42 {
+		t.Fatalf("seed option = %v, %t; want 42, true", got, ok)
+	}
+}
+
 func TestResolveImageForOllamaRejectsInternalURL(t *testing.T) {
 	t.Setenv("SSRF_WHITELIST", "")
 	secutils.ResetSSRFWhitelistForTest()

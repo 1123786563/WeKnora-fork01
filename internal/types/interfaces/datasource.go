@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/hibiken/asynq"
@@ -68,6 +69,12 @@ type DataSourceService interface {
 	// GetSyncLog retrieves a specific sync log entry
 	GetSyncLog(ctx context.Context, syncLogID string) (*types.SyncLog, error)
 
+	// CancelSyncLog flags a running sync for cooperative cancellation. The log
+	// must belong to dsID within tenantID and still be running, otherwise
+	// service.ErrSyncLogNotFound. The sync loop observes the flag at its next
+	// checkpoint/batch boundary and exits gracefully with the cursor kept.
+	CancelSyncLog(ctx context.Context, tenantID uint64, dsID, logID string) error
+
 	// ProcessSync handles the actual sync operation (called by asynq task)
 	ProcessSync(ctx context.Context, task *asynq.Task) error
 }
@@ -110,8 +117,10 @@ type SyncLogRepository interface {
 	// FindLatest retrieves the most recent sync log for a data source
 	FindLatest(ctx context.Context, dsID string) (*types.SyncLog, error)
 
-	// HasRunningSync checks if a data source has any sync currently in "running" status.
-	// Used to prevent overlapping sync executions.
+	// HasRunningSync checks if a data source has any sync currently running,
+	// used to prevent overlapping sync executions. A "running" row whose
+	// latest liveness signal (COALESCE(heartbeat_at, started_at)) is older
+	// than types.SyncStallWindow is treated as dead and does not count.
 	HasRunningSync(ctx context.Context, dsID string) (bool, error)
 
 	// Update updates an existing sync log entry
@@ -119,6 +128,16 @@ type SyncLogRepository interface {
 
 	// UpdateResult updates only fields produced by a sync run.
 	UpdateResult(ctx context.Context, log *types.SyncLog) error
+
+	// UpdateHeartbeat records a liveness heartbeat for a sync run.
+	UpdateHeartbeat(ctx context.Context, id string, at time.Time) error
+
+	// UpdateAsynqTaskID records the asynq task id backing a sync run.
+	UpdateAsynqTaskID(ctx context.Context, id string, taskID string) error
+
+	// RequestCancel flags a running sync log for cooperative cancellation.
+	// Non-running rows are a no-op: the row is left untouched and nil is returned.
+	RequestCancel(ctx context.Context, id string) error
 
 	// CancelPendingByDataSource marks all non-terminal sync logs for a data source as canceled.
 	CancelPendingByDataSource(ctx context.Context, dsID string) error

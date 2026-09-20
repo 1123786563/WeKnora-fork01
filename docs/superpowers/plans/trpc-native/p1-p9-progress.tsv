@@ -9,7 +9,7 @@ P2.1	P1.1	passed	codex/trpc-native-p2-admission	204ca14a	edf84ac3	/root/p2_1_adm
 P2.2	P2.1,P1.2	passed	main	204ca14a	661ee7d1,0cef1d3c	/root	GOWORK=off go test -race ./internal/application/repository ./internal/application/service -run 'NativeLease|NativeRecovery' -count=1; vet		0	SQLite focused/race PASS; PostgreSQL 17 isolated-schema lease repository PASS; recovery qualification service PASS	PASS	PASS	integrated
 P2.3	P2.2,P1.5	blocked-design									pending	pending	pending
 P2.4	P2.3	blocked-design									pending	pending	pending
-P2.5	P2.2,P1.5	blocked-design									pending	pending	pending
+P2.5	P2.2,P1.5	review-failed	codex/trpc-native-p2-5-usage	c3eef414	f72d2150,5d64f901,b9d99260,932d4815,d4240b01,88d49912	/root/track_a_p2_5	GOWORK=off go test -race ./internal/application/service ./internal/application/repository -run NativeUsage|NativeBudget|BudgetExhaustionForNotification -count=1; go vet service; diff-check	internal/application/service+repository	0 focused race; repository vet blocked by unrelated datasource_repo_synclog_test.go undefined running	real-ledger revision recovery passes; partial usage not settled; production budget wiring/idempotency absent; revision schema and large-integer evidence missing	FAIL	FAIL	not a valid completion gate
 P2.6	P2.4,P2.5	blocked-design									pending	pending	pending
 P3.1	P1.5,P2.5	blocked-design									pending	pending	pending
 P3.2	P3.1,P2.6	blocked-design									pending	pending	pending
@@ -21,14 +21,14 @@ P4.3	P3.4,P2.3	blocked-design									pending	pending	pending
 P4.4	P3.4,P2.4	blocked-design									pending	pending	pending
 P4.5	P3.4,P2.6	blocked-design									pending	pending	pending
 P4.6	P4.1,P4.2,P4.3,P4.4,P4.5	blocked-design									pending	pending	pending
-P5.1	P1.1,P1.5	blocked-design									pending	pending	pending
+P5.1	P1.1,P1.5	passed	codex/trpc-native-p5-1-wire	c3eef414	a3bc198d,ce22dab9,d3221abf	/root/track_b_p5_1	GOWORK=off go test -race ./internal/agent/nativecontract; go vet; pnpm --filter @weknora/contracts run test:native-agent	internal/agent/nativecontract; packages/contracts	0; 9/9 TS	12-kind fixture, strict public projection, TS/Go parity	PASS	PASS	integrated
 P5.2	P5.1,P3.4,P2.6	blocked-design									pending	pending	pending
-P5.3	P5.1	blocked-design									pending	pending	pending
+P5.3	P5.1	passed	codex/trpc-native-p5-3-client-reducer	d3221abf	62068f38,444637ac,ecab7025	/root/track_c_p5_3	pnpm exec tsx --test packages/api-client/src/chat/native.test.ts packages/domain/src/chat/native.test.ts; pnpm test:shared; strict tsc; diff-check	packages/api-client; packages/domain	0 focused; 940/940 shared in isolated worktree	incremental transport; authoritative snapshot callback; bounded 409; full decision fields; malformed version classification	PASS	PASS	integrated
 P5.4	P5.2,P5.3	blocked-design									pending	pending	pending
 P5.5	P5.4	blocked-design									pending	pending	pending
 P5.6	P5.2,P5.3	blocked-design									pending	pending	pending
 P5.7	P5.2,P5.3	blocked-design									pending	pending	pending
-P6.1	P1.5,P5.1	blocked-design									pending	pending	pending
+P6.1	P1.5,P5.1	review-failed	codex/trpc-native-p6-1-readonly-api	d3221abf	9e0f077a	/root/track_d_p6_1	GOWORK=off go test -race ./internal/application/service ./internal/handler/session -run NativeArchive; go vet; diff-check	internal/application/service; internal/handler/session; internal/router	0 focused; full router has unrelated fixture failure	review found production route unregistered, scope/artifact binding gaps, missing read-only mutation, redaction/kind/pagination gaps	FAIL	FAIL	not integrated
 P6.2	P6.1	blocked-design									pending	pending	pending
 P6.3	P6.2,P5.4	blocked-design									pending	pending	pending
 P7.1	P3.4,P4.6,P5.7,P5.6,P5.5,P6.3	blocked-design									pending	pending	pending

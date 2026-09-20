@@ -1,14 +1,15 @@
 // SP12 Task 7 — settings 用量分区面板（section=usage，用户级）。
-// 数据来自 client.usage.my（GET /api/v1/usage/me，Viewer+）；预算余量卡片来自
-// client.commercial.summary（已有 API），summary 不可用时 catch 静默隐藏整卡，
-// 分区其余内容照常。日期窗口复用 analytics-range.ts 的 UTC 日界契约
-// （defaultAnalyticsRange/clampAnalyticsRange），应用按钮提交后才发请求。
+// 数据来自 client.usage.my（GET /api/v1/usage/me，Viewer+）；套餐信息卡片来自
+// client.commercial.summary（真实形状：subscription|base_tier），summary 不可用时
+// catch 静默隐藏整卡，分区其余内容照常。日期窗口复用 analytics-range.ts 的
+// UTC 日界契约（defaultAnalyticsRange/clampAnalyticsRange），应用按钮提交后才发请求。
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialSummary, UsageRow } from '@weknora/contracts';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { Button, Card, Status } from '@weknora/ui';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from '../analytics/analytics-range.ts';
+import { formatBillingSummary } from './GeneralPreferencesPanel.tsx';
 
 /** 按模型聚合后的一行：cache = cache_read + cache_write，cost 单位为微积分。 */
 export interface UsageModelAggregate {
@@ -88,7 +89,7 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
     /* eslint-disable-line react-hooks/exhaustive-deps */
   }, [client, range]);
 
-  // 预算余量与日期窗口无关，仅在挂载时拉取一次；commercial summary 不可用
+  // 当前套餐信息与日期窗口无关，仅在挂载时拉取一次；commercial summary 不可用
   // （未部署 / 无权限）时静默隐藏整卡，不影响分区其余内容。
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +109,9 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
   const modelRows = useMemo(() => aggregateByModel(items), [items]);
   const totals = useMemo(() => usageTotals(modelRows), [modelRows]);
   const number = (value: number): string => value.toLocaleString(locale);
+  // 套餐卡片文案复用 SP14 general 卡片的 formatBillingSummary（真实形状：
+  // plan_key / base_tier_key 回退 + paid_until 或 noExpiry）。
+  const budgetCopy = budget ? formatBillingSummary(locale, budget) : null;
 
   return (
     <div data-testid="usage-panel" className="flex flex-col gap-4">
@@ -123,12 +127,11 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
         <Button type="button" onClick={applyRange}>{t('settings.usage.apply')}</Button>
       </div>
 
-      {budget ? (
+      {budget && budgetCopy ? (
         <Card data-testid="usage-budget-card" className="flex flex-wrap gap-x-[24px] gap-y-[6px]">
           <h3 className="w-full m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('settings.usage.budgetTitle')}</h3>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.planLabel')}：</span>{budget.plan_name}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.availableLabel')}：</span>{number(Number(budget.available))}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.heldLabel')}：</span>{number(Number(budget.held))}</span>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.planLabel')}：</span>{budgetCopy.plan}</span>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('settings.usage.paidUntilLabel')}：</span>{budgetCopy.paidUntil}</span>
         </Card>
       ) : null}
 

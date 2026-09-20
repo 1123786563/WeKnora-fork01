@@ -23,6 +23,23 @@ test('reads and writes tenant KV settings without exposing secret fields', async
   ]);
 });
 
+test('redaction keeps type-metadata flags like requires_api_key while dropping credential values (R486 verify DIFF-B)', async () => {
+  const api = createSettingsApi(async () => ({
+    success: true,
+    data: [
+      { name: 'brave', requires_api_key: true, supports_optional_api_key: false, supports_proxy: true, tavily_api_key: 'sk-secret' },
+    ],
+  }));
+  // Any settings read that unwraps .data applies redact(); web-search types
+  // is the live consumer whose requires_api_key flag drove the missing
+  // credential card.
+  const rows = (await (api as unknown as { webSearch: { providers: { types: () => Promise<unknown[]> } } }).webSearch.providers.types()) as Array<Record<string, unknown>>;
+  assert.equal(rows[0]!.requires_api_key, true, 'requires_api_key metadata flag survives redaction');
+  assert.equal(rows[0]!.supports_optional_api_key, false, 'supports_optional_api_key survives');
+  assert.equal(rows[0]!.supports_proxy, true, 'non-secret metadata untouched');
+  assert.equal('tavily_api_key' in rows[0]!, false, 'credential-shaped value fields stay redacted');
+});
+
 test('preserves raw code envelopes for parser and system probes', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createSettingsApi(async (request) => {

@@ -28,7 +28,7 @@ GOWORK=off go test ./internal/agent/trpc -count=1 -v
 GOWORK=off go list -deps -f '{{with .Module}}{{if eq .Path "github.com/Tencent/WeKnora"}}{{$.ImportPath}} {{join $.Imports " "}}{{end}}{{end}}' ./... | rg 'trpc\\.group/trpc-go/trpc-agent-go'
 ```
 
-它还列出 `internal/application/service` 与 `internal/agent/recoverytest/provider`。当前候选的 `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` 以退出码 1 失败：持久事件只有 `run_started` 和 `run_failed`，没有预算耗尽通知所需记录。在临时 detached worktree 的精确 `75523c9c9` 基线运行同一命令，同样以退出码 1 和相同事件缺口失败。因此这是阻断完整直接消费者验收的**既有失败**，不是 v1.11.0 回归；在它被单独修复并回归验证前，不得将完整 consumer 验收记为通过。PostgreSQL、真实 Provider、持久 Session/Memory、append-failure barrier、恢复和客户端门禁同样保持 **NO-GO**。
+它还列出 `internal/application/service` 与 `internal/agent/recoverytest/provider`。提交 `86e522fd` 已修复预算耗尽错误跨 Graph SDK event 边界后丢失结构化 code 的问题；`GOWORK=off go test ./internal/application/service -run TestExecuteDurableRunPersistsBudgetExhaustionForNotification -count=1 -v` 现以退出码 0 通过，并持久化所需预算耗尽通知。临时 detached worktree 的精确 `75523c9c9` 基线运行同一命令仍以退出码 1 和相同事件缺口失败（只有 `run_started` 和 `run_failed`），因此该历史失败是既有问题而非 v1.11.0 回归，且已由当前修复回归验证。这个直接 consumer 通过不解除 PostgreSQL、真实 Provider、持久 Session/Memory、append-failure barrier、恢复和客户端门禁；产品执行仍为 **NO-GO**。
 
 ## 历史 v1.10.0 基线：确定性 SDK 往返
 
@@ -68,7 +68,7 @@ GraphAgent 走 `GraphAgent.Run` → `graph.Executor.Execute`，在节点前后�
 
 当前版本证据为根 `go.mod` 和 `go.sum`：`v1.11.0` 模块校验和 `h1:LwMxQwT2l6hqWUVARfVA/ef2tq8gJCzbImSHurpaPIo=`，go.mod 校验和 `h1:bIZcN4N9sGpA42sWfE98XCPl9ZgMi6fMDLGYOaXNe9A=`。当前源码根为 `$(go env GOMODCACHE)/trpc.group/trpc-go/trpc-agent-go@v1.11.0`；历史 v1.10.0 checksum/source 只服务于上述 RED 记录。
 
-**选择结论：当前根 v1.11.0 是已验证 repeated-race green 的候选，不是已批准的产品目标。** 历史 `RUN-02` v1.10.0 race 已有明确 RED，当前候选已通过相同 20 次 gate；但 `SESSION-04` 的 PostgreSQL/SQLite Session 实现与 Memory 持久化实现尚未固定版本/配置，且预算耗尽通知的直接 consumer 在 v1.10.0 基线和当前候选均失败。P0-5 继续记录 no-go；后续必须修复既有 consumer 失败，并完成存储、失败、恢复、Provider、PostgreSQL 与客户端验收。
+**选择结论：当前根 v1.11.0 是已验证 repeated-race green 的候选，不是已批准的产品目标。** 历史 `RUN-02` v1.10.0 race 已有明确 RED，当前候选已通过相同 20 次 gate；`86e522fd` 已使预算耗尽通知的直接 consumer 在当前根通过，而 `75523c9c9` 保留其既有失败基线。`SESSION-04` 的 PostgreSQL/SQLite Session 实现与 Memory 持久化实现仍未固定版本/配置。P0-5 继续记录 no-go；后续必须完成存储、失败、恢复、Provider、PostgreSQL 与客户端验收。
 
 ### 固定源码新增发现（尚未行为验收）
 

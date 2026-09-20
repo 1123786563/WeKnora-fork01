@@ -678,6 +678,17 @@ func (s *userService) UpdateUserPreferences(
 			merged.LastActiveTenantID = &v
 		}
 	}
+	if patch.DefaultModel != nil {
+		// Mirror of the *0 sentinel above for strings: an empty string
+		// means "clear my preference, fall back to the platform default
+		// model"; any non-empty value = set/replace.
+		if *patch.DefaultModel == "" {
+			merged.DefaultModel = nil
+		} else {
+			v := *patch.DefaultModel
+			merged.DefaultModel = &v
+		}
+	}
 
 	user.Preferences = merged
 	user.UpdatedAt = time.Now()

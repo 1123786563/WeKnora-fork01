@@ -25,7 +25,9 @@
 | SP11 | 平台运营面 · 反馈+分析：message_feedback 表+反馈 API、四组聚合端点、/platform/analytics 图表页（recharts）、消息气泡反馈按钮 | P-4、P-5 | ✅（[验收证据](../migrations/react/evidence/onyx-parity/2026-09-19-sp11-feedback-analytics.md)） |
 | SP12 | 平台运营面 · 用量聚合：user_usage 日桶表+chat/craft 双写入点+commercial 计价、三个用量 API、用户 settings 分区+admin 用量 tab | P-1、P-2 | ✅（[验收证据](../migrations/react/evidence/onyx-parity/2026-09-19-sp12-usage-aggregation.md)） |
 | SP13 | 平台运营面 · 查询历史：admin 审计列表+快照+asynq CSV 导出+隐私三档、会话分享（租户内登录分享 token） | P-6~P-9 | ✅（[验收证据](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md)） |
-| SP14 | 平台运营面 · 轻项收割：commercial 四页挂路由+套餐入口、API key 面板 API 文档入口、per-user 默认模型偏好+解析链 | P-3、P-10、P-11 | 🔄 设计定稿 |
+| SP14 | 平台运营面 · 轻项收割：commercial 四页挂路由+套餐入口、API key 面板 API 文档入口、per-user 默认模型偏好+解析链 | P-3、P-10、P-11 | ✅（[验收证据](../migrations/react/evidence/onyx-parity/2026-09-20-sp14-lightweight.md)） |
+
+> **六域线收官（2026-09-20）**：SP11–SP14 四个子项目全部 ✅，GAP-MATRIX 第三部分 P-1~P-11 十一项全绿——平台运营面六域（用量/套餐/分析/查询历史/OpenAPI/对话偏好）对齐线收官。收尾登记见 SP14 验收证据 §5。
 
 > 平台运营面四 SP 的设计定稿：`docs/superpowers/specs/2026-09-19-onyx-platform-parity-design.md`（关键决策：语义对齐+基建复用、分享=租户内登录态、聚合=用量日桶+分析读时聚合）。实施顺序 SP11 → SP12 → SP13，SP14 可穿插；SP13 依赖 SP11 的 feedback 表。
 
@@ -51,3 +53,4 @@
 - 2026-09-19：SP1 四项接线完成（commit 见 git log）。
 - 2026-09-19：SP1 合并 main（merge 9c21612b）；合并时与并行 lane 迁移撞号（PG 000158 / sqlite 000079 双份 message_feedback），SP1 让号重排为 **PG 000161 / sqlite 000082**（修复 5c4d990e，测试引用同步）。合并后待办：端到端冒烟 4 项（无 secret 404 / 真 PG 网关链路 / 双前端测试连接 / 真 OC 栈停止收敛）回填证据。
 - 2026-09-20：SP13 八任务完成（`c2e2bb04`…`e22b1a65`），回归+冒烟+证据收尾（[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp13-query-history.md)）。
+- 2026-09-20：SP14 四实现任务+收尾完成（`6a8c8f1a`/`eb49392f`/`c14c4501`/`f8ca453c`，净效果含并行 `e72acff9` 收编；收尾补 vite 别名一行修复），回归+冒烟+证据收尾（[evidence](../migrations/react/evidence/onyx-parity/2026-09-20-sp14-lightweight.md)）。**六域对齐线（SP11–SP14，P-1~P-11）就此收官**；冒烟另登记预存欠账：commercial summary 前后端形状错配（`de023ac9` 起，BillingPage 数据区/general 卡片/SP12 预算卡真实数据不可用）。

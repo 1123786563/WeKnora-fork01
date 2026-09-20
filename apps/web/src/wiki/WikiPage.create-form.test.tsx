@@ -86,9 +86,13 @@ async function mountCreateForm(client: WeKnoraClient) {
   assert.ok(newPageBtn, '新建页面 entry button present for contributors');
   await act(async () => newPageBtn.click());
   await act(async () => {});
-  const form = document.body.querySelector('form.wk-wiki-editor');
-  assert.ok(form, 'create form visible in edit mode');
-  return { container, form: form as HTMLFormElement };
+  // R486 P3-1: Vue renders creation as a t-dialog (WikiBrowser.vue L734), not
+  // an inline editor — the React port must open a modal dialog instead.
+  const dialog = document.body.querySelector('[role="dialog"]');
+  assert.ok(dialog, 'create form opens as a modal dialog (Vue t-dialog shape)');
+  const form = dialog.querySelector('form');
+  assert.ok(form, 'create form inside the dialog');
+  return { container, dialog: dialog as HTMLElement, form: form as HTMLFormElement };
 }
 
 function fieldInput(form: HTMLFormElement, labelText: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
@@ -105,6 +109,26 @@ function fieldInput(form: HTMLFormElement, labelText: string): HTMLInputElement 
 // (concept|entity|synthesis|comparison, default concept) / 正文（可选）with
 // cancel + confirm buttons; the payload posts { slug, title, page_type,
 // content } — no summary field (that one belongs to the edit form).
+
+// ─── R486 P3-1: the create flow renders as a Dialog, mirroring the Vue
+// t-dialog「新建 Wiki 页面」(WikiBrowser.vue L733-765) instead of the inline
+// wk-wiki-editor form (which belongs to page EDIT mode only). ───
+
+test('新建页面 opens a modal dialog titled 新建 Wiki 页面, leaving the inline editor to edit mode', async () => {
+  const { dialog, form } = await mountCreateForm(wikiClient());
+  assert.equal(dialog.getAttribute('aria-modal'), 'true', 'dialog is modal like t-dialog');
+  assert.equal(dialog.querySelector('h2')?.textContent, '新建 Wiki 页面', 'dialog header uses wikiBrowser.newPageTitle');
+  // The create form lives in the dialog, not in the inline wk-wiki-editor.
+  assert.equal(form.className.includes('wk-wiki-editor'), false, 'create form is not the inline editor');
+  const inlineEditor = document.body.querySelector('form.wk-wiki-editor');
+  assert.ok(
+    !inlineEditor || (inlineEditor.getAttribute('style') ?? '').includes('display: none'),
+    'inline wk-wiki-editor stays hidden while the create dialog is open',
+  );
+  // Vue t-dialog close affordance: the header × closes without posting.
+  const closeBtn = dialog.querySelector<HTMLButtonElement>('button.wk-dialog-close');
+  assert.ok(closeBtn, 'dialog header close (×) present');
+});
 
 test('create form mirrors the Vue dialog field set: 标题/Slug+hint/页面类型/正文（可选）, no summary', async () => {
   const { form } = await mountCreateForm(wikiClient());
@@ -188,6 +212,9 @@ test('create submit posts the Vue payload {slug,title,page_type,content} without
   assert.equal(client.created[0]!.slug, 'concept/adr');
   assert.equal(client.created[0]!.title, '架构决策');
   assert.equal(client.created[0]!.content, '# 正文内容');
+
+  // Vue submitCreatePage closes the dialog on success (WikiBrowser.vue L3052).
+  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'dialog closes after a successful create');
 });
 
 test('create form allows an empty 正文 (Vue optional content) and blocks empty title/slug', async () => {
@@ -200,7 +227,9 @@ test('create form allows an empty 正文 (Vue optional content) and blocks empty
   await act(async () => confirm.click());
   await act(async () => {});
   assert.equal(client.created.length, 0, 'nothing posted with empty title/slug');
-  assert.match(form.textContent ?? '', /请填写标题和 Slug/, 'Vue newPageMissingFields warning shown');
+  const dialogAfterInvalid = document.body.querySelector('[role="dialog"]');
+  assert.ok(dialogAfterInvalid, 'dialog stays open on validation failure so the user can fix the fields');
+  assert.match(dialogAfterInvalid.textContent ?? '', /请填写标题和 Slug/, 'Vue newPageMissingFields warning shown');
 
   // Title+slug with EMPTY content still creates (正文 is optional).
   await act(async () => setInputValue(fieldInput(form, '标题') as HTMLInputElement, '空正文页'));
@@ -209,9 +238,10 @@ test('create form allows an empty 正文 (Vue optional content) and blocks empty
   await act(async () => {});
   assert.equal(client.created.length, 1, 'empty content is submittable like Vue');
   assert.equal(client.created[0]!.content, '');
+  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'dialog closes after the successful create');
 });
 
-test('create form pairs 确认 with a 取消 cancel that exits edit mode', async () => {
+test('create form pairs 确认 with a 取消 cancel that closes the dialog without posting', async () => {
   const client = wikiClient();
   const { form } = await mountCreateForm(client);
   const cancel = [...form.querySelectorAll('button')].find((button) => button.textContent?.trim() === '取消');
@@ -220,5 +250,21 @@ test('create form pairs 确认 with a 取消 cancel that exits edit mode', async
   await act(async () => cancel.click());
   await act(async () => {});
   assert.equal(client.created.length, 0, 'cancel never posts');
-  assert.equal(document.body.querySelector('form.wk-wiki-editor')?.getAttribute('style') ?? '', 'display: none;', 'cancel exits edit mode and hides the form');
+  // Vue t-dialog cancel just sets visible=false: the dialog disappears and
+  // the draft is dropped (the form is re-seeded on the next open).
+  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'cancel closes the create dialog');
+  const inlineEditor = document.body.querySelector('form.wk-wiki-editor');
+  assert.ok(!inlineEditor || (inlineEditor.getAttribute('style') ?? '').includes('display: none'), 'cancel does not fall back into the inline editor');
+});
+
+test('dialog × close drops the draft like the Vue t-dialog cancel', async () => {
+  const client = wikiClient();
+  const { dialog } = await mountCreateForm(client);
+  await act(async () => setInputValue(dialog.querySelector('form input') as HTMLInputElement, '草稿'));
+  const closeBtn = dialog.querySelector<HTMLButtonElement>('button.wk-dialog-close');
+  assert.ok(closeBtn);
+  await act(async () => closeBtn.click());
+  await act(async () => {});
+  assert.equal(client.created.length, 0, 'header close never posts');
+  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'header close closes the create dialog');
 });

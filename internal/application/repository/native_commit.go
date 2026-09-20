@@ -12,7 +12,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
-	"trpc.group/trpc-go/trpc-agent-go/event"
 )
 
 // NativeCommitCoordinator persists the authoritative commit intent before it
@@ -237,15 +236,11 @@ func appendStableInCommit(tx *gorm.DB, tenant uint64, append nativecontract.Sess
 	if err != nil || keyTenant != tenant {
 		return typedFailure(nativecontract.ErrInvalid, "session append has another tenant")
 	}
-	payload, err := json.Marshal(struct {
-		Version int          `json:"version"`
-		Event   *event.Event `json:"event"`
-	}{Version: 1, Event: append.Event})
+	canonicalHash, err := CanonicalNativeSessionEventHash(append.Event)
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256(payload)
-	append.PayloadHash = "sha256:" + hex.EncodeToString(sum[:])
+	append.PayloadHash = canonicalHash
 	eventPayload, err := json.Marshal(append.Event)
 	if err != nil {
 		return err

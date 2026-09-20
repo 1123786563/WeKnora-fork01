@@ -169,6 +169,20 @@ func (r *processSyncSyncLogRepo) CancelPendingByDataSource(context.Context, stri
 	return nil
 }
 func (r *processSyncSyncLogRepo) CleanupOldLogs(context.Context, int) error { return nil }
+func (r *processSyncSyncLogRepo) UpdateHeartbeat(context.Context, string, time.Time) error {
+	return nil
+}
+func (r *processSyncSyncLogRepo) UpdateAsynqTaskID(context.Context, string, string) error {
+	return nil
+}
+func (r *processSyncSyncLogRepo) RequestCancel(_ context.Context, id string) error {
+	// Mirrors the real repository: only a running row accepts the flag, any
+	// other row is a silent no-op.
+	if log, ok := r.logs[id]; ok && log.Status == types.SyncLogStatusRunning {
+		log.CancelRequested = true
+	}
+	return nil
+}
 
 func TestAllFetchedItemsFailedError(t *testing.T) {
 	err := allFetchedItemsFailedError(&types.SyncResult{

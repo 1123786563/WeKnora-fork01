@@ -8,10 +8,10 @@ import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
-import { Input, Select, Textarea } from '@weknora/ui';
+import { Input, NumberInput, Select, Switch, Textarea } from '@weknora/ui';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
-import { buildInviteLink, copyText, sharedResourceRow } from './settings-actions.ts';
-import { organizationRoleLabel, organizationSettingsSections } from './summary.ts';
+import { copyText, sharedResourceRow } from './settings-actions.ts';
+import { organizationRoleLabel, organizationSettingsNavGroups, organizationSettingsSections } from './summary.ts';
 import './organizations.css';
 import emptyIllustration from './empty-organizations.svg';
 
@@ -43,6 +43,20 @@ const ORG_PERMISSION_ITEMS: Record<'admin' | 'editor' | 'viewer', Array<[string,
   editor: [['organization.editor.editorPerm1', true], ['organization.editor.editorPerm2', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', true], ['organization.editor.editorPerm3', false]],
   viewer: [['organization.editor.viewerPerm1', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', false], ['organization.editor.viewerPerm2', false], ['organization.editor.viewerPerm3', false]],
 };
+/* R487 K1 — compact role matrix behind the members-section info trigger,
+ * ported from Vue OrganizationSettingsModal orgRoleMatrix (L1089-1111). */
+const ORG_ROLE_MATRIX: Array<{ role: 'admin' | 'editor' | 'viewer'; perms: Array<[string, boolean]> }> = [
+  { role: 'admin', perms: [['organization.editor.viewerPerm1', true], ['organization.editor.editorPerm1', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', true], ['organization.editor.adminPerm1', true]] },
+  { role: 'editor', perms: [['organization.editor.viewerPerm1', true], ['organization.editor.editorPerm1', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', true], ['organization.editor.adminPerm1', false]] },
+  { role: 'viewer', perms: [['organization.editor.viewerPerm1', true], ['organization.editor.editorPerm1', false], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', false], ['organization.editor.adminPerm1', false]] },
+];
+/* Invite-code validity options, Vue inviteValidityOptions (L1279-1284). */
+const ORG_INVITE_VALIDITY_OPTIONS: Array<[number, string]> = [
+  [1, 'organization.settings.validity1Day'],
+  [7, 'organization.settings.validity7Days'],
+  [30, 'organization.settings.validity30Days'],
+  [0, 'organization.settings.validityNever'],
+];
 const ORG_MODAL_OVERLAY = 'fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-[20px] backdrop-blur-[4px]';
 const ORG_CLOSE_BTN = 'absolute right-[16px] top-[16px] z-[10] flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-[rgba(23,26,29,0.92)]';
 const FEATURE_BADGE_BASE = 'box-border inline-flex h-[20px] cursor-default items-center justify-center gap-[3px] rounded-[5px] px-[5px] text-[11px] font-medium [transition:background_.2s_ease]';
@@ -65,6 +79,16 @@ const ORG_TAG_TONES: Record<string, string> = {
 
 function t(locale: string, key: string, values?: Record<string, string | number>): string {
   return formatMessage(isLocale(locale) ? locale : 'en-US', key, values);
+}
+
+/* Invite-code remaining-validity note, Vue remainingValidityText (L1286-1294):
+ * no expiry → 永不过期, past expiry → 已过期, otherwise 剩余 {n} 天. */
+function remainingValidityText(locale: string, expiresAt: string | null): string {
+  if (!expiresAt) return t(locale, 'organization.settings.remainingValidityNever');
+  const exp = new Date(expiresAt).getTime();
+  if (Number.isNaN(exp) || exp <= Date.now()) return t(locale, 'organization.settings.remainingValidityExpired');
+  const days = Math.ceil((exp - Date.now()) / (24 * 60 * 60 * 1000));
+  return t(locale, 'organization.settings.remainingValidity', { n: days });
 }
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
@@ -294,7 +318,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [memberInviteRole, setMemberInviteRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
   const [memberInviteLoading, setMemberInviteLoading] = useState(false);
   const [memberInviteSaving, setMemberInviteSaving] = useState<string | null>(null);
-  const [inviteLink, setInviteLink] = useState('');
+  // R487 K1 — Vue invite-member card state (OrganizationSettingsModal):
+  // invite code + expiry, the two org switches, validity and member limit.
+  const [settingsInviteCode, setSettingsInviteCode] = useState('');
+  const [inviteCodeExpiresAt, setInviteCodeExpiresAt] = useState<string | null>(null);
+  const [refreshingCode, setRefreshingCode] = useState(false);
+  const [formRequireApproval, setFormRequireApproval] = useState(false);
+  const [formSearchable, setFormSearchable] = useState(false);
+  const [formValidityDays, setFormValidityDays] = useState(7);
+  const [formMemberLimit, setFormMemberLimit] = useState<number | ''>(50);
+  const [permissionsPopupOpen, setPermissionsPopupOpen] = useState(false);
   const [upgradeRole, setUpgradeRole] = useState<'admin' | 'editor' | 'viewer'>('editor');
   const [upgradeNote, setUpgradeNote] = useState('');
 
@@ -445,17 +478,35 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   function openSettingsModal(org: Organization) {
     setSettingsMode('edit'); setSettingsOrg(org); setSettingsSection('basic');
-    setFormName(org.name); setFormDescription(strOf(org.description));
-    setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]); setSharedAgents([]); setDetailFeeds(idleDetailFeeds);
+    setFormName(org.name); setFormDescription(strOf(org.description)); setFormAvatar(strOf(org.avatar));
+    setMembers([]); setRequests([]); setSharedResources([]); setSharedAgents([]); setDetailFeeds(idleDetailFeeds);
     setMemberSearchQuery(''); setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
+    setPermissionsPopupOpen(false);
+    // Vue formData defaults (L901-909) until the org detail lands.
+    setSettingsInviteCode(''); setInviteCodeExpiresAt(null); setRefreshingCode(false);
+    setFormRequireApproval(false); setFormSearchable(false); setFormValidityDays(7); setFormMemberLimit(50);
     setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
     // Vue OrganizationSettingsModal fetchOrgDetail: the org detail endpoint
     // (GET /organizations/:id) carries has_pending_upgrade and the
     // authoritative my_role; the list row alone cannot gate the upgrade form.
+    // It also seeds the whole 邀请成员 card (invite code + expiry, switches,
+    // validity, member limit — Vue L1312-1324).
     settingsRequestId.current = org.id;
     void organizationsApi.get(org.id).then((detail) => {
-      if (settingsRequestId.current === org.id) setSettingsOrg(detail);
+      if (settingsRequestId.current !== org.id) return;
+      setSettingsOrg(detail);
+      const record = detail as Record<string, unknown>;
+      setFormAvatar(strOf(record.avatar));
+      setFormRequireApproval(boolOf(record.require_approval));
+      setFormSearchable(boolOf(record.searchable));
+      const validity = record.invite_code_validity_days;
+      setFormValidityDays(typeof validity === 'number' ? validity : 7);
+      const limit = record.member_limit;
+      setFormMemberLimit(typeof limit === 'number' && limit >= 0 ? limit : 50);
+      setSettingsInviteCode(strOf(record.invite_code));
+      const expiresAt = record.invite_code_expires_at;
+      setInviteCodeExpiresAt(typeof expiresAt === 'string' ? expiresAt : null);
     }).catch(() => { /* keep the list row, like Vue's caught fetchOrgDetail */ });
   }
 
@@ -543,7 +594,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     } as unknown as Organization;
     setSettingsMode('edit'); setSettingsOrg(org); setSettingsSection('basic');
     setFormName(org.name); setFormDescription(strOf(org.description)); setFormAvatar(strOf(org.avatar));
-    setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]); setSettingsOpen(true);
+    setSettingsInviteCode(''); setInviteCodeExpiresAt(null); setMembers([]); setRequests([]); setSharedResources([]); setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
   }
 
@@ -566,8 +617,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     finally { setSaving(false); }
   }
 
-  async function submitBasic(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitBasic(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!settingsOrg || !settingsCanManage) return;
     if (!formName.trim()) {
       setSettingsSection('basic');
@@ -576,9 +627,19 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     }
     setSaving(true);
     try {
-      await organizationsApi.update(settingsOrg.id, { name: formName.trim(), description: formDescription.trim() });
+      // Vue handleSave (L1520-1528) submits the whole basic form: name,
+      // description, avatar plus the invite-card fields.
+      await organizationsApi.update(settingsOrg.id, {
+        name: formName.trim(),
+        description: formDescription.trim(),
+        ...(formAvatar ? { avatar: formAvatar } : {}),
+        require_approval: formRequireApproval,
+        searchable: formSearchable,
+        invite_code_validity_days: formValidityDays,
+        member_limit: formMemberLimit === '' ? 0 : formMemberLimit,
+      });
       await load();
-      showToast('success', t(locale, 'organization.roleUpdated'));
+      showToast('success', t(locale, 'common.saveSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.roleUpdateFailed'))); }
     finally { setSaving(false); }
   }
@@ -632,15 +693,62 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     }
   }
 
-  async function generateInviteLink() {
+  // R487 K1 — Vue invite-card handlers. The switches and the validity select
+  // save IMMEDIATELY (handleValidityChange L1701 / handleApprovalToggle L1720 /
+  // handleSearchableToggle L1741), rolling the optimistic UI change back when
+  // the server rejects the patch.
+  async function saveInvitePatch(patch: Record<string, unknown>): Promise<boolean> {
+    if (!settingsOrg || !settingsCanManage) return false;
+    try {
+      await organizationsApi.update(settingsOrg.id, patch);
+      showToast('success', t(locale, 'common.saveSuccess'));
+      return true;
+    } catch (reason) {
+      showToast('error', errorText(reason, t(locale, 'organization.roleUpdateFailed')));
+      return false;
+    }
+  }
+
+  async function handleValidityChange(value: number) {
+    const previous = formValidityDays;
+    setFormValidityDays(value);
+    if (!await saveInvitePatch({ invite_code_validity_days: value })) setFormValidityDays(previous);
+  }
+
+  async function handleApprovalToggle(value: boolean) {
+    const previous = formRequireApproval;
+    setFormRequireApproval(value);
+    if (!await saveInvitePatch({ require_approval: value })) setFormRequireApproval(previous);
+  }
+
+  async function handleSearchableToggle(value: boolean) {
+    const previous = formSearchable;
+    setFormSearchable(value);
+    if (!await saveInvitePatch({ searchable: value })) setFormSearchable(previous);
+  }
+
+  // Vue refreshInviteCode (L1682-1699): regenerate through the invite-code
+  // endpoint, then refetch the org detail so the expiry note tracks the new
+  // code (only the expiry is taken from the refetch — the generated code is
+  // always the freshest value).
+  async function refreshInviteCode() {
     if (!settingsOrg || !settingsCanManage) return;
+    setRefreshingCode(true);
     try {
       const { inviteCode: code } = await organizationsApi.generateInviteCode(settingsOrg.id);
-      const link = buildInviteLink(code, { origin: window.location.origin, pathname: window.location.pathname, search: window.location.search });
-      setInviteLink(link);
-      const copied = await copyText(link);
-      if (copied) showToast('success', t(locale, 'common.copied'));
-    } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.invite.previewFailed'))); }
+      setSettingsInviteCode(code);
+      showToast('success', t(locale, 'organization.inviteCodeRefreshed'));
+      const detail = await organizationsApi.get(settingsOrg.id);
+      if (settingsRequestId.current === settingsOrg.id) {
+        setSettingsOrg(detail);
+        const expiresAt = (detail as Record<string, unknown>).invite_code_expires_at;
+        setInviteCodeExpiresAt(typeof expiresAt === 'string' ? expiresAt : null);
+      }
+    } catch (reason) {
+      showToast('error', errorText(reason, t(locale, 'organization.inviteCodeRefreshFailed')));
+    } finally {
+      setRefreshingCode(false);
+    }
   }
 
   async function unshareKnowledgeBase(row: ReturnType<typeof sharedResourceRow>) {
@@ -854,20 +962,33 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // falling back to viewer like Vue's `orgInfo?.my_role || 'viewer'`).
   const upgradeCurrentRole = strOf(settingsOrg?.my_role) || 'viewer';
   const hasPendingUpgrade = boolOf(settingsOrg?.has_pending_upgrade);
+  // R487 K1 — nav labels follow the Vue navItems keys (L993-1026): members
+  // reads organization.manageMembers (成员管理), shared KB/agents read the same
+  // keys the Vue modal uses; the standalone invite entry is gone.
   const settingsNavLabels: Record<string, string> = {
     basic: 'organization.editor.navBasic',
     permissions: 'organization.editor.navPermissions',
-    members: 'organization.members.listTitle',
+    members: 'organization.manageMembers',
     // Vue OrganizationSettingsModal.vue:1008 labels the nav entry with
     // t('organization.settings.joinRequests') (加入申请); 待审核申请 stays
     // reserved for the inner list title (Vue :513).
     requests: 'organization.settings.joinRequests',
-    shares: 'organization.sharedResources.kbListTitle',
-    agents: 'organization.sharedResources.agentListTitle',
-    invite: 'organization.settings.inviteLink',
+    shares: 'organization.share.sharedKnowledgeBase',
+    agents: 'organization.settings.sharedAgents',
   };
   const settingsNavItems: Array<[string, string]> = organizationSettingsSections(settingsMode, settingsCanManage)
     .map((key) => [key, settingsNavLabels[key]] as [string, string]);
+  // Vue nav badges (L30-33): join requests badge only while pending > 0;
+  // shared KB/agent totals always badge (nav-badge-count variant).
+  const pendingJoinRequestCount = requests.filter((request) => request.status === 'pending').length;
+  const settingsNavBadgeAlways = new Set(['shares', 'agents']);
+  const settingsNavBadges: Record<string, number> = {
+    requests: pendingJoinRequestCount,
+    shares: sharedResources.length,
+    agents: sharedAgents.length,
+  };
+  // Vue inviteLink computed (L1274-1277): origin + /join?code=.
+  const settingsInviteLink = settingsInviteCode ? window.location.origin + '/join?code=' + settingsInviteCode : '';
   const normalizedMemberSearchQuery = memberSearchQuery.trim().toLocaleLowerCase();
   const filteredMembers = normalizedMemberSearchQuery
     ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
@@ -959,13 +1080,24 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
                 <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2 max-[720px]:hidden">
                   <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
-                  {/* R484 G4 D6 — Vue create mode groups both nav items under
-                      the 「基础」 title (OrganizationSettingsModal.vue
-                      navGroups lines 1028-1040, organization.navGroups.basic). */}
-                  {settingsMode === 'create' ? <div className="px-[10px] pb-[2px] pt-[6px] text-[12px] font-semibold tracking-[0.02em] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.navGroups.basic')}</div> : null}
-                  {settingsNavItems.map(([key, labelKey]) => (
-                    <button key={key} type="button" className={'flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] border-0 px-[10px] py-[9px] text-left font-[inherit] text-[13px] ' + (settingsSection === key ? 'bg-accent-wash font-medium text-accent' : 'bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5]')} onClick={() => setSettingsSection(key)}>{t(locale, labelKey)}</button>
-                  ))}
+                  {/* R487 K1 — Vue navGroups (L1028-1058): the navigation
+                      renders as TITLED groups (基础 / 成员与协作 / 共享资源),
+                      create mode keeps the single 基础 group; group titles and
+                      items flatten into the nav as siblings (Vue v-for) and
+                      badges mirror Vue L30-33. */}
+                  {organizationSettingsNavGroups(settingsMode, settingsCanManage).flatMap((group) => [
+                    <div key={group.key + '-title'} className="px-[10px] pb-[2px] pt-[6px] text-[12px] font-semibold tracking-[0.02em] text-[rgba(23,26,29,0.4)]">{t(locale, group.titleKey)}</div>,
+                    ...group.items.filter((key) => settingsNavLabels[key]).map((key) => {
+                      const badge = settingsNavBadges[key];
+                      const showBadge = badge !== undefined && (settingsNavBadgeAlways.has(key) || badge > 0);
+                      return (
+                        <button key={key} type="button" className={'flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] border-0 px-[10px] py-[9px] text-left font-[inherit] text-[13px] ' + (settingsSection === key ? 'bg-accent-wash font-medium text-accent' : 'bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5]')} onClick={() => setSettingsSection(key)}>
+                          <span className="min-w-0 flex-1 truncate">{t(locale, settingsNavLabels[key])}</span>
+                          {showBadge ? <span data-nav-badge className={'inline-flex h-[16px] min-w-[16px] shrink-0 items-center justify-center rounded-[8px] px-[4px] text-[11px] font-medium leading-none ' + (key === 'requests' ? 'bg-[rgba(250,173,20,0.14)] text-[#faad14]' : 'bg-accent-wash text-accent')}>{badge}</span> : null}
+                        </button>
+                      );
+                    }),
+                  ])}
                 </nav>
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col">
@@ -1015,16 +1147,157 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <form onSubmit={submitBasic}>
                         <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.editor.basicTitle')}</h2>
                         <p className={ORG_SECTION_DESC}>{t(locale, 'organization.editor.basicDesc')}</p>
+                        {/* Vue name-input-wrapper (L62-89): the avatar emoji
+                            picker sits on the name row in edit mode too. */}
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
-                          <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="relative flex shrink-0 flex-col items-center gap-1">
+                              <button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button>
+                              {settingsCanManage ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span> : null}
+                              {avatarPickerOpen && settingsCanManage ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}
+                            </div>
+                            <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
+                          </div>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
-                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
+                          {/* Vue t-textarea :maxlength="500" (L102) — the edit
+                              mode shows the same 0/500 counter as create. */}
+                          <div className="min-w-0">
+                            <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
+                            <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
+                          </div>
                         </div>
-                        {settingsCanManage ? <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'common.save')}</button> : null}
                       </form>
+                      {/* 邀请成员 card — Vue v-if="isAdmin && orgId" (L107-220):
+                          all six invite control groups live INSIDE basic, not
+                          behind a standalone nav item. */}
+                      {settingsCanManage && settingsOrg ? (
+                        <div className="mt-[8px] border-t border-dashed border-[#e7e7ea] pt-[16px]">
+                          <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.inviteMembers')}</h3>
+                          <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.inviteMembersDesc')}</p>
+                          <div className="flex flex-col rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9]">
+                            {/* ① 邀请码：值 + 复制 + 刷新 + 剩余有效期 */}
+                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
+                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.inviteCode')}</strong>
+                              <div className="flex min-w-0 items-center gap-[8px]">
+                                <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)]">{settingsInviteCode || '—'}</code>
+                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] px-[10px] text-[12px]'} aria-label={t(locale, 'common.copy')} disabled={!settingsInviteCode} onClick={() => { void copyText(settingsInviteCode).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>{t(locale, 'common.copy')}</button>
+                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] px-[10px] text-[12px]'} aria-label={t(locale, 'organization.refreshInviteCode')} title={t(locale, 'organization.refreshInviteCode')} disabled={refreshingCode} onClick={() => void refreshInviteCode()}>{t(locale, 'organization.refreshInviteCode')}</button>
+                              </div>
+                              {settingsInviteCode ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{remainingValidityText(locale, inviteCodeExpiresAt)}</p> : null}
+                            </div>
+                            {/* ② 邀请链接有效期：立即保存 */}
+                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
+                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLinkValidity')}</strong>
+                              <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.inviteLinkValidityDesc')}</p>
+                              <Select aria-label={t(locale, 'organization.settings.inviteLinkValidity')} className={ORG_FIELD + ' min-h-[30px] max-w-[220px]'} value={String(formValidityDays)} onChange={(event) => void handleValidityChange(Number(event.target.value))}>
+                                {ORG_INVITE_VALIDITY_OPTIONS.map(([value, labelKey]) => <option key={value} value={String(value)}>{t(locale, labelKey)}</option>)}
+                              </Select>
+                            </div>
+                            {/* ③ 邀请链接：/join?code= + 复制 */}
+                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
+                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLink')}</strong>
+                              <div className="flex min-w-0 items-center gap-[8px]">
+                                <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)] [overflow-wrap:anywhere]">{settingsInviteLink || '—'}</code>
+                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] shrink-0 px-[10px] text-[12px]'} aria-label={t(locale, 'common.copy')} disabled={!settingsInviteLink} onClick={() => { void copyText(settingsInviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>{t(locale, 'common.copy')}</button>
+                              </div>
+                            </div>
+                            {/* ④ 需要审核：立即保存 */}
+                            <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
+                              <div className="flex min-w-0 flex-col gap-[2px]">
+                                <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.requireApproval')}</strong>
+                                <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.requireApprovalDesc')}</span>
+                              </div>
+                              <Switch aria-label={t(locale, 'organization.settings.requireApproval')} checked={formRequireApproval} onCheckedChange={(value) => void handleApprovalToggle(value)} />
+                            </div>
+                            {/* ⑤ 开放可被搜索：立即保存 */}
+                            <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
+                              <div className="flex min-w-0 flex-col gap-[2px]">
+                                <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.searchable')}</strong>
+                                <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.searchableDesc')}</span>
+                              </div>
+                              <Switch aria-label={t(locale, 'organization.settings.searchable')} checked={formSearchable} onCheckedChange={(value) => void handleSearchableToggle(value)} />
+                            </div>
+                            {/* ⑥ 成员数量上限：0-10000 + 当前成员数 hint */}
+                            <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
+                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.memberLimit')}</strong>
+                              <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitDesc')}</p>
+                              <div className="flex items-center gap-[10px]">
+                                <NumberInput aria-label={t(locale, 'organization.settings.memberLimit')} className="w-[140px]" min={0} max={10000} value={formMemberLimit} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onValueChange={setFormMemberLimit} />
+                                <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : settingsSection === 'members' ? (
+                    <>
+                      {/* Vue members section header (L299-340): h2 reads
+                          organization.manageMembers (成员管理) with the
+                          permission-matrix info trigger beside it; the shared
+                          共享空间成员 wording stays on the INNER list title. */}
+                      <div className="mb-[16px] flex flex-wrap items-start justify-between gap-[12px]">
+                        <div>
+                          <div className="flex items-center gap-[8px]">
+                            <h2 className={ORG_SECTION_TITLE + ' mb-0'}>{t(locale, 'organization.manageMembers')}</h2>
+                            <span className="relative inline-flex">
+                              <button type="button" className="flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[rgba(23,26,29,0.45)] hover:bg-[#f3f3f5] hover:text-accent" aria-label={t(locale, 'organization.editor.permissionsTitle')} title={t(locale, 'organization.settings.permissionsIconHint')} aria-expanded={permissionsPopupOpen} onClick={() => setPermissionsPopupOpen((open) => !open)}><IconInfoCircle size={16} /></button>
+                              {permissionsPopupOpen ? (
+                                <div className="absolute left-[26px] top-0 z-30 w-[min(520px,calc(100vw-24px))] overflow-hidden rounded-[8px] border border-[#e7e7ea] bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                                  <div className="border-b border-[#e7e7ea] px-[14px] py-[10px]">
+                                    <div className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.permissionsTitle')}</div>
+                                    <div className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.editor.permissionsDesc')}</div>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-[8px] p-[10px] min-[560px]:grid-cols-3">
+                                    {ORG_ROLE_MATRIX.map(({ role, perms }) => (
+                                      <div key={role} className={'rounded-[8px] border px-[10px] py-[8px] ' + (strOf(settingsOrg?.my_role) === role ? 'border-accent bg-accent-wash' : 'border-[#e7e7ea] bg-[#f9f9f9]')}>
+                                        <div className="mb-[6px] flex items-center gap-[4px] text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.role.' + role)}{strOf(settingsOrg?.my_role) === role ? <span className="rounded-[4px] bg-accent-soft px-[4px] text-[11px] font-medium text-accent">{t(locale, 'common.me')}</span> : null}</div>
+                                        <div className="flex flex-col gap-[3px]">
+                                          {perms.map(([permKey, allowed]) => (
+                                            <span key={permKey} className={'text-[12px] leading-[1.45] ' + (allowed ? 'text-[rgba(23,26,29,0.82)]' : 'text-[rgba(23,26,29,0.4)]')}><span className="mr-[4px]" aria-hidden="true">{allowed ? '✓' : '✗'}</span>{t(locale, permKey)}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </span>
+                          </div>
+                          <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
+                        </div>
+                        {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[34px] w-[min(100%,240px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                      </div>
+                      {settingsCanManage ? <div className="mb-[16px] rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9] p-[12px]"><div className="mb-[8px] flex items-center justify-between gap-[12px]"><strong className="text-[14px]">{t(locale, 'organization.addMember.button')}</strong><Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>{roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}</Select></div><Input className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />{memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => <div key={String(candidate.tenant_id)} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[13px]">{strOf(candidate.tenant_name)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span></div><button type="button" className={ORG_BTN_OUTLINE} disabled={memberInviteSaving === String(candidate.tenant_id)} onClick={() => void inviteMember(candidate)}>{t(locale, 'organization.addMember.confirmBtn')}</button></div>)}</div> : null}
+                      {/* Vue members-list-titlewrap (L343-347): the INNER list
+                          keeps the 共享空间成员 wording plus a live count badge. */}
+                      <div className="mb-[8px] flex items-center gap-[8px]">
+                        <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.members.listTitle')}</span>
+                        <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
+                      </div>
+                      {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
+                      {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
+                      {detailFeeds.members.status === 'ready' && members.length > 0 && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim())}</p> : null}
+                      {detailFeeds.members.status === 'ready' ? filteredMembers.map((member) => (
+                        <div key={member.id} className={ORG_MEMBER_ROW}>
+                          <div className={ORG_MEMBER_COPY}>
+                            <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{member.tenant_name ?? member.username}</strong>
+                            <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
+                          </div>
+                          <div className={ORG_ROW_ACTIONS}>
+                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage || member.tenant_id === settingsOrg?.owner_tenant_id || member.user_id === settingsOrg?.owner_id} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                              {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
+                            </Select>
+                            {settingsCanManage && member.tenant_id !== settingsOrg?.owner_tenant_id && member.user_id !== settingsOrg?.owner_id ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
+                          </div>
+                        </div>
+                      )) : null}
+                      {/* R487 K1 — the upgrade entry lives in the members
+                          section (Vue :357-390 popup on the members header),
+                          not in basic. */}
                       {canRequestUpgrade ? <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
                         <div className="mb-[16px] flex items-center gap-[8px]">
@@ -1043,34 +1316,6 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                         <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form> : null}
-                    </>
-                  ) : settingsSection === 'members' ? (
-                    <>
-                      <div className="mb-[16px] flex flex-wrap items-start justify-between gap-[12px]">
-                        <div>
-                          <div className="flex items-center gap-[8px]"><h2 className={ORG_SECTION_TITLE + ' mb-0'}>{t(locale, 'organization.members.listTitle')}</h2><span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span></div>
-                          <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
-                        </div>
-                        {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[34px] w-[min(100%,240px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
-                      </div>
-                      {settingsCanManage ? <div className="mb-[16px] rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9] p-[12px]"><div className="mb-[8px] flex items-center justify-between gap-[12px]"><strong className="text-[14px]">{t(locale, 'organization.addMember.button')}</strong><Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>{roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}</Select></div><Input className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />{memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => <div key={String(candidate.tenant_id)} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[13px]">{strOf(candidate.tenant_name)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span></div><button type="button" className={ORG_BTN_OUTLINE} disabled={memberInviteSaving === String(candidate.tenant_id)} onClick={() => void inviteMember(candidate)}>{t(locale, 'organization.addMember.confirmBtn')}</button></div>)}</div> : null}
-                      {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
-                      {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
-                      {detailFeeds.members.status === 'ready' && members.length > 0 && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim())}</p> : null}
-                      {detailFeeds.members.status === 'ready' ? filteredMembers.map((member) => (
-                        <div key={member.id} className={ORG_MEMBER_ROW}>
-                          <div className={ORG_MEMBER_COPY}>
-                            <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{member.tenant_name ?? member.username}</strong>
-                            <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
-                          </div>
-                          <div className={ORG_ROW_ACTIONS}>
-                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage || member.tenant_id === settingsOrg?.owner_tenant_id || member.user_id === settingsOrg?.owner_id} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
-                              {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                            </Select>
-                            {settingsCanManage && member.tenant_id !== settingsOrg?.owner_tenant_id && member.user_id !== settingsOrg?.owner_id ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
-                          </div>
-                        </div>
-                      )) : null}
                     </>
                   ) : settingsSection === 'requests' ? (
                     <>
@@ -1099,7 +1344,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : settingsSection === 'shares' ? (
                     <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.sharedResources.kbListTitle')}</h2>
+                      {/* Vue shares header (J3 #7): h2 reads
+                          organization.share.sharedKnowledgeBase with the
+                          organization.settings.sharedDesc description. */}
+                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.share.sharedKnowledgeBase')}</h2>
+                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.sharedDesc')}</p>
                       {feedStatus('shares', t(locale, 'organization.settings.removeShareFailed'))}
                       {detailFeeds.shares.status === 'ready' && sharedResources.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedKB')}</p> : null}
                       {detailFeeds.shares.status === 'ready' ? sharedResources.map((resource, index) => {
@@ -1127,21 +1376,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       {detailFeeds.agents.status === 'ready' && sharedAgents.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedAgents')}</p> : null}
                       {detailFeeds.agents.status === 'ready' ? sharedAgents.map((agent, index) => <div key={strOf(agent.id) || index} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(agent.permission) || t(locale, 'organization.sharedResources.columns.permission')}</span></div>{settingsCanManage && strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareAgent(agent)}>{t(locale, 'organization.share.unshareAction')}</button> : null}</div>) : null}
                     </>
-                  ) : (
-                    <>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.inviteLink')}</h2>
-                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.inviteMembersDesc')}</p>
-                      <div className={ORG_ROW_ACTIONS} style={{ marginBottom: '12px' }}>
-                        {settingsCanManage ? <button type="button" className={ORG_BTN_PRIMARY} onClick={() => void generateInviteLink()}>{t(locale, 'organization.settings.inviteMembers')}</button> : null}
-                      </div>
-                      {inviteLink ? (
-                        <div className="flex flex-col items-start gap-[8px] rounded-[8px] border border-[#e7e7ea] bg-[#f3f3f5] p-[12px]">
-                          <code className="text-[13px] text-[rgba(23,26,29,0.92)] [overflow-wrap:anywhere]">{inviteLink}</code>
-                          <button type="button" className={ORG_BTN_OUTLINE} onClick={() => { void copyText(inviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>{t(locale, 'common.copy')}</button>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[16px]">
                   <button type="button" className={ORG_BTN_NEUTRAL} onClick={closeSettings}>{t(locale, 'common.cancel')}</button>
@@ -1149,6 +1384,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       (OrganizationSettingsModal.vue line 809), not the modal
                       title createOrg. */}
                   {settingsMode === 'create' ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitCreate()}>{t(locale, 'common.create')}</button> : null}
+                  {/* R487 K1 — Vue settings-footer (L806-811): the edit-mode
+                      save lives in the global footer (admin only), not inside
+                      the basic form. */}
+                  {settingsMode === 'edit' && settingsCanManage ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitBasic()}>{t(locale, 'common.save')}</button> : null}
                 </div>
               </div>
             </div>

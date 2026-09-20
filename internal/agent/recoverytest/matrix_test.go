@@ -24,6 +24,12 @@ type counterServer struct {
 
 func newCounterServer() *counterServer { return &counterServer{seen: map[string]bool{}} }
 
+func (c *counterServer) value() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
+}
+
 func (c *counterServer) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/incr", func(w http.ResponseWriter, r *http.Request) {

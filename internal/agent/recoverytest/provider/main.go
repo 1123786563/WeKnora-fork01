@@ -29,6 +29,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
 	pgmigrate "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -41,6 +42,13 @@ import (
 	"gorm.io/gorm/logger"
 	sdklog "trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+)
+
+const (
+	recoveryOllamaModelEnv  = "TRPC_RECOVERY_OLLAMA_MODEL"
+	recoveryOllamaPrompt    = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, give a concise non-empty final answer without another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
+	recoveryOllamaSeed      = 1
+	recoveryOllamaMaxTokens = 128
 )
 
 const (
@@ -65,11 +73,17 @@ const (
 )
 
 type crashReport struct {
-	ExternalCalls int    `json:"external_calls"`
-	FinalStatus   string `json:"final_status"`
-	AssistantRows int    `json:"assistant_rows"`
-	LostEvents    int    `json:"lost_events"`
-	Parked        bool   `json:"parked"`
+	ExternalCalls int      `json:"external_calls"`
+	FinalStatus   string   `json:"final_status"`
+	AssistantRows int      `json:"assistant_rows"`
+	LostEvents    int      `json:"lost_events"`
+	Parked        bool     `json:"parked"`
+	ToolStatuses  []string `json:"tool_statuses,omitempty"`
+	ToolResults   []string `json:"tool_results,omitempty"`
+	EventTypes    []string `json:"event_types,omitempty"`
+	FinalAnswer   string   `json:"final_answer,omitempty"`
+	Diagnostics   []string `json:"diagnostics,omitempty"`
+	CounterURL    string   `json:"counter_url,omitempty"`
 }
 
 func main() {
@@ -158,10 +172,8 @@ func main() {
 			key := agentruntime.RunKey{TenantID: 1, RunID: runID}
 			if run, getErr := store.Get(ctx, key); getErr == nil &&
 				run.Status == "succeeded" && rejected > 0 {
-				out := crashReport{
-					ExternalCalls: counterCount(counterURL),
-					FinalStatus:   "stale-rejected",
-				}
+				calls, _ := counterCount(counterURL)
+				out := crashReport{ExternalCalls: calls, FinalStatus: "stale-rejected"}
 				raw, _ := json.Marshal(out)
 				_ = os.WriteFile(*report, append(raw, '\n'), 0o644)
 				fmt.Println(string(raw))
@@ -446,6 +458,137 @@ func (m *scriptedModel) respond(messages []chat.Message) *types.ChatResponse {
 	}
 }
 
+// recoveryContractChat makes a configured local model fail visibly when it
+// does not meet the matrix's deliberately narrow tool protocol. The default
+// scripted model remains the deterministic acceptance provider.
+type recoveryContractChat struct {
+	inner    chat.Chat
+	toolName string
+}
+
+func newRecoveryChat(toolName string) (chat.Chat, string, error) {
+	modelName := strings.TrimSpace(os.Getenv(recoveryOllamaModelEnv))
+	if modelName == "" {
+		return &scriptedModel{toolName: toolName}, "", nil
+	}
+	service, err := ollama.GetOllamaService()
+	if err != nil {
+		return nil, "", fmt.Errorf("configure Ollama recovery model: %w", err)
+	}
+	ollamaChat, err := chat.NewOllamaChat(&chat.ChatConfig{
+		Source:    types.ModelSourceLocal,
+		ModelName: modelName,
+		ModelID:   "recovery-ollama:" + modelName,
+	}, service)
+	if err != nil {
+		return nil, "", fmt.Errorf("create Ollama recovery chat: %w", err)
+	}
+	return &recoveryContractChat{inner: ollamaChat, toolName: toolName}, recoveryOllamaPrompt, nil
+}
+
+func (c *recoveryContractChat) Chat(
+	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
+) (*types.ChatResponse, error) {
+	response, err := c.inner.Chat(ctx, messages, c.deterministicOptions(messages, opts))
+	if err != nil {
+		return nil, err
+	}
+	if err := c.validate(messages, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *recoveryContractChat) ChatStream(
+	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
+) (<-chan types.StreamResponse, error) {
+	stream, err := c.inner.ChatStream(ctx, messages, c.deterministicOptions(messages, opts))
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan types.StreamResponse)
+	go func() {
+		defer close(out)
+		var chunks []types.StreamResponse
+		response := &types.ChatResponse{}
+		for chunk := range stream {
+			chunks = append(chunks, chunk)
+			response.Content += chunk.Content
+			response.ToolCalls = append(response.ToolCalls, chunk.ToolCalls...)
+			if chunk.Done {
+				response.FinishReason = chunk.FinishReason
+				if chunk.Usage != nil {
+					response.Usage = *chunk.Usage
+				}
+			}
+		}
+		if err := c.validate(messages, response); err != nil {
+			out <- types.StreamResponse{ResponseType: types.ResponseTypeError, Content: err.Error(), Done: true}
+			return
+		}
+		for _, chunk := range chunks {
+			out <- chunk
+		}
+	}()
+	return out, nil
+}
+
+func (c *recoveryContractChat) GetModelName() string { return c.inner.GetModelName() }
+
+func (c *recoveryContractChat) GetModelID() string { return c.inner.GetModelID() }
+
+func (c *recoveryContractChat) deterministicOptions(messages []chat.Message, opts *chat.ChatOptions) *chat.ChatOptions {
+	normalized := chat.ChatOptions{}
+	if opts != nil {
+		normalized = *opts
+		normalized.Tools = append([]chat.Tool(nil), opts.Tools...)
+	}
+	thinking := false
+	normalized.Temperature = 0
+	normalized.TopP = 1
+	normalized.Seed = recoveryOllamaSeed
+	normalized.MaxTokens = recoveryOllamaMaxTokens
+	normalized.MaxCompletionTokens = 0
+	normalized.Thinking = &thinking
+	normalized.ToolChoice = "required"
+	for _, message := range messages {
+		if message.Role == "tool" {
+			normalized.ToolChoice = "none"
+			normalized.Tools = nil
+			break
+		}
+	}
+	return &normalized
+}
+
+func (c *recoveryContractChat) validate(messages []chat.Message, response *types.ChatResponse) error {
+	if response == nil {
+		return errors.New("Ollama recovery model returned no response")
+	}
+	for _, message := range messages {
+		if message.Role == "tool" {
+			if len(response.ToolCalls) != 0 || strings.TrimSpace(response.Content) == "" {
+				return errors.New("Ollama recovery model violated post-tool contract: want a non-empty final answer without tool calls")
+			}
+			return nil
+		}
+	}
+	if len(response.ToolCalls) != 1 {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want one %q call, got %d", c.toolName, len(response.ToolCalls))
+	}
+	call := response.ToolCalls[0]
+	if call.Function.Name != c.toolName {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want %q, got %q", c.toolName, call.Function.Name)
+	}
+	var args struct {
+		Tick *float64 `json:"tick"`
+	}
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil || args.Tick == nil || *args.Tick != 1 {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want %s({\"tick\":1})", c.toolName)
+	}
+	return nil
+}
+
 // ---- counting tool (external side effect via HTTP) ----
 
 type countingTool struct {
@@ -491,17 +634,22 @@ func (t *countingTool) Execute(ctx context.Context, _ json.RawMessage) (*types.T
 	return &types.ToolResult{Success: true, Output: string(payload)}, nil
 }
 
-func counterCount(counterURL string) int {
+func counterCount(counterURL string) (int, error) {
 	resp, err := http.Get(counterURL + "/count")
 	if err != nil {
-		return -1
+		return -1, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return -1, fmt.Errorf("counter response status %s", resp.Status)
+	}
 	var out struct {
 		Count int `json:"count"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return out.Count
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return -1, fmt.Errorf("decode counter response: %w", err)
+	}
+	return out.Count, nil
 }
 
 // ---- barrier-aware journal ----
@@ -658,9 +806,14 @@ func newMatrixExecutor(
 		fatal(fmt.Sprintf("declarations: %v", err))
 	}
 
+	chatModel, systemPrompt, err := newRecoveryChat(modelToolName)
+	if err != nil {
+		fatal(err.Error())
+	}
+
 	build := func() *trpcagent.GraphRunner {
 		bindings := trpcagent.GraphBindings{
-			Model: trpcagent.NewModel(&scriptedModel{toolName: modelToolName}),
+			Model: trpcagent.NewModel(chatModel),
 			Store: store,
 			Tools: agentruntime.NewToolExecutor(store, journal, toolBridge),
 			WaitForDecision: func(ctx context.Context, fence agentruntime.Fence, pending string) error {
@@ -687,6 +840,7 @@ func newMatrixExecutor(
 			Capabilities: trpcagent.CapabilitySnapshot{
 				ToolIdentities: []string{capabilityToolName},
 				DeferredNames:  []string{capabilityToolName},
+				SystemPrompt:   systemPrompt,
 			},
 			Events:     store,
 			ModelTools: modelTools,
@@ -795,26 +949,61 @@ func buildReport(
 	ctx context.Context, db *gorm.DB, store *repository.AgentRunStore,
 	counterURL string, final agentruntime.Run, parked bool,
 ) crashReport {
+	calls, countErr := counterCount(counterURL)
 	report := crashReport{
-		ExternalCalls: counterCount(counterURL),
+		ExternalCalls: calls,
 		FinalStatus:   final.Status,
 		Parked:        parked,
+		CounterURL:    counterURL,
+	}
+	if countErr != nil {
+		report.Diagnostics = append(report.Diagnostics, "counter: "+countErr.Error())
 	}
 	var rows int64
-	completed := "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'assistant' AND is_completed = 1"
-	_ = db.Raw(completed, "matrix-session").Scan(&rows).Error
+	completed := completedAssistantRowsSQL(db.Name())
+	if err := db.Raw(completed, "matrix-session").Scan(&rows).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "assistant rows: "+err.Error())
+	}
 	report.AssistantRows = int(rows)
+	if err := db.Raw("SELECT content FROM messages WHERE id = ?", assistantID).Scan(&report.FinalAnswer).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "assistant answer: "+err.Error())
+	}
 	events, err := store.ReadEvents(ctx, agentruntime.RunKey{TenantID: 1, RunID: runID}, 0, 1000)
-	if err == nil {
+	if err != nil {
+		report.Diagnostics = append(report.Diagnostics, "events: "+err.Error())
+	} else {
 		var last int64
 		for i, evt := range events {
+			report.EventTypes = append(report.EventTypes, evt.Type)
 			if i > 0 && evt.Seq != last+1 {
 				report.LostEvents++
 			}
 			last = evt.Seq
 		}
 	}
+	var tools []struct {
+		Status string
+		Result *string
+	}
+	if err := db.Raw("SELECT status, result FROM agent_tool_calls WHERE tenant_id = 1 AND run_id = ? ORDER BY call_seq", runID).Scan(&tools).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "tool calls: "+err.Error())
+	} else {
+		for _, tool := range tools {
+			report.ToolStatuses = append(report.ToolStatuses, tool.Status)
+			if tool.Result != nil {
+				report.ToolResults = append(report.ToolResults, *tool.Result)
+			}
+		}
+	}
 	return report
+}
+
+func completedAssistantRowsSQL(dialect string) string {
+	completed := "1"
+	if dialect == "postgres" {
+		completed = "true"
+	}
+	return "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'assistant' AND is_completed = " + completed
 }
 
 func touchBarrier(path string) {

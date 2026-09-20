@@ -49,6 +49,13 @@ type UserPreferences struct {
 
 	// BrowserSearchInstructions customizes browser search for this user. Nil/empty uses the platform default.
 	BrowserSearchInstructions *string `json:"browser_search_instructions,omitempty"`
+
+	// DefaultModel is the user's preferred chat model id, overriding the
+	// platform default for new conversations. Nil/empty = no per-user
+	// preference (the system default model applies). The partial-update
+	// endpoint treats an empty string as "clear": UpdateUserPreferences
+	// turns *"" into nil.
+	DefaultModel *string `json:"default_model,omitempty"`
 }
 
 // Value implements driver.Valuer so GORM persists UserPreferences as

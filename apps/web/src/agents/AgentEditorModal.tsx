@@ -1,30 +1,54 @@
 /**
  * React port of frontend/src/views/agent/AgentEditorModal.vue (Vue baseline).
  * Behaviour parity notes cite the Vue source per block; the pure logic lives
- * in agent-editor.ts. Stage scope: create/edit shell + grouped rail, basic
- * info, prompts, model config, conversation, personalization (MBTI persona),
- * knowledge, retrieval, web search, tools and skills. Out of scope (recorded
- * gaps): intent prompts, question suggestions, multimodal/attachments, MCP
- * services, agent type presets, share settings and the placeholder
- * autocomplete popup.
+ * in agent-editor.ts and agent-type-presets.ts. Stage scope: create/edit
+ * shell + grouped rail, basic info (incl. agent type presets), prompts (with
+ * the R486 placeholder tag strip + builtin template controls), model config,
+ * conversation, question suggestions, personalization (MBTI persona),
+ * knowledge (file-types dropdown multi-select), retrieval (tenant-configured
+ * create defaults), web search, attachment upload (with the embedded chat
+ * parser rules editor), tools, MCP services and skills. Out of scope
+ * (recorded gaps): intent prompts, the `{{` caret autocomplete popup,
+ * share settings and tenant-customized prompt templates (api-client lacks
+ * the prompt-templates / agents/placeholders endpoints; the shipped builtin
+ * catalog is vendored instead).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
 import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
 import {
   AGENT_FILE_TYPE_OPTIONS,
+  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
+  AGENT_TYPE_PRESETS,
+  agentTypePresetDescription,
+  agentTypePresetLabel,
   applyAgentModeSwitch,
+  applyCreateRetrievalDefaults,
   applyKbSelectionMode,
+  applyAgentTypePreset,
   applyScopeSelectionMode,
   buildAgentPayload,
   buildNavGroups,
   catalogSkillRows,
   defaultAgentForm,
+  findAgentTypePreset,
   hydrateAgentForm,
+  incompatibleSelectedKbCount,
   initKbSelectionMode,
   initScopeSelectionMode,
+  insertPlaceholderAtCursor,
+  isDescriptionSystemGenerated,
+  isNameSystemGenerated,
   isNamedSandboxBackend,
   kbOptionFromRecord,
+  mcpOptionRows,
+  needsRerankModel,
+  presetDefaultDescription,
+  presetDefaultName,
+  promptPlaceholdersFor,
+  resolveAgentSystemPromptResetTemplate,
+  seedCreateAgentForm,
+  tenantRetrievalDefaultsFromConfig,
   TOOL_CATALOG,
   TOOL_GROUPS,
   validateAgentForm,
@@ -33,13 +57,18 @@ import {
   type AgentFormIssue,
   type AgentSectionKey,
   type KbOption,
+  type McpServiceLike,
+  type QuestionSuggestionsForm,
   type ScopeSelectionMode,
   type ToolCapabilityScope,
   type Translate,
 } from './agent-editor.ts';
+import { AgentParserRules, chatParserGroups, ensureCompleteParserRules } from './AgentParserRules.tsx';
+import type { ParserEngineInfo, ParserEngineRule } from '../knowledge-settings/parserSettings.tsx';
 import { PersonaSection } from './PersonaSection.tsx';
 import { SubagentsSection } from './SubagentsSection.tsx';
 import { navigate } from '../platform/navigation.ts';
+import { usePreferredLocale } from '../locale.ts';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -60,9 +89,14 @@ interface EditorDeps {
   providers: Array<{ id: string; name: string; is_default?: boolean }>;
   sandboxConfigs: SandboxConfigRecord[];
   catalog: SkillCatalog[];
+  mcpServices: McpServiceLike[];
+  storageStatus: Record<string, boolean>;
+  // R486 — GET /system/parser-engines registry feeding the embedded chat
+  // attachment parser rules editor (Vue editorResources.ensureParserEngines).
+  parserEngines: ParserEngineInfo[];
 }
 
-const EMPTY_DEPS: EditorDeps = { models: [], kbOptions: [], providers: [], sandboxConfigs: [], catalog: [] };
+const EMPTY_DEPS: EditorDeps = { models: [], kbOptions: [], providers: [], sandboxConfigs: [], catalog: [], mcpServices: [], storageStatus: {}, parserEngines: [] };
 const EMPTY_SCOPE: ToolCapabilityScope = { vector: false, keyword: false, wiki: false, graph: false, faq: false };
 
 const missReasonKey = (missKind: string): string =>
@@ -85,9 +119,9 @@ const FIELD_TALL = 'min-h-[200px]';
 const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
 const AE_BTN = 'cursor-pointer rounded-md px-4 py-1.5 text-[14px]';
 
-function Row({ label, required = false, desc, hint, htmlFor, error, children }: {
+function Row({ label, required = false, desc, hint, htmlFor, error, extra, children }: {
   label: string; required?: boolean; desc?: string; hint?: string; htmlFor?: string;
-  error?: string; children: React.ReactNode;
+  error?: string; extra?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
     <div className={`flex items-start gap-6${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}>
@@ -98,11 +132,73 @@ function Row({ label, required = false, desc, hint, htmlFor, error, children }: 
         </label>
         {desc ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
         {hint ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
+        {extra}
       </div>
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         {children}
         {error ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * R486 P3-2 — the supported-file-types control as a dropdown multi-select,
+ * mirroring the Vue t-select multiple (AgentEditorModal.vue:1529-1536): a
+ * single trigger showing the joined labels (placeholder 全部类型 when empty)
+ * that opens a checkbox panel; the selected set semantics are unchanged and
+ * write straight back to config.supported_file_types.
+ */
+function FileTypeMultiSelect({ selected, options, onChange, placeholderLabel, t }: {
+  selected: string[];
+  options: typeof AGENT_FILE_TYPE_OPTIONS;
+  onChange: (next: string[]) => void;
+  placeholderLabel: string;
+  t: Translate;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [open]);
+  const optionLabel = (option: typeof options[number]) => (option.labelKey ? t(option.labelKey) : option.label);
+  const selectedLabels = options.filter((option) => selected.includes(option.value)).map(optionLabel);
+  return (
+    <div className="relative w-full max-w-[460px]" ref={rootRef} data-field-group="supported_file_types">
+      <button
+        type="button"
+        data-file-types-trigger
+        aria-haspopup="listbox"
+        aria-expanded={open ? 'true' : 'false'}
+        className={`flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2.5 text-left text-[14px] ${selected.length === 0 ? 'text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]' : ''}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join('、') : placeholderLabel}</span>
+        <span aria-hidden="true" className="text-[10px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute top-[calc(100%+4px)] left-0 z-30 w-full rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-file-types-panel>
+          {options.map((option) => (
+            <label key={option.value} title={t(option.descriptionKey)} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
+              <Checkbox
+                data-file-type={option.value}
+                checked={selected.includes(option.value)}
+                onChange={(event) => {
+                  const set = new Set(selected);
+                  if (event.target.checked) set.add(option.value); else set.delete(option.value);
+                  onChange([...set]);
+                }}
+              />
+              <span>{optionLabel(option)}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -162,6 +258,7 @@ function Slider({ value, min, max, step, ariaLabel, onChange }: {
 const VALID_INITIAL_HIGHLIGHTS = new Set(['summary_model', 'rerank_model', 'allowed_tools']);
 
 export function AgentEditorModal({ open, mode, agent, initialSection, initialHighlightField, readOnly = false, client, t, onClose, onSaved }: AgentEditorModalProps) {
+  const locale = usePreferredLocale();
   const [initializing, setInitializing] = useState(false);
   const [deps, setDeps] = useState<EditorDeps>(EMPTY_DEPS);
   const [form, setForm] = useState<AgentEditorForm>(defaultAgentForm);
@@ -177,8 +274,21 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const [maxIterationsMode, setMaxIterationsMode] = useState<'limit' | 'unlimited'>('limit');
   const [maxTokensMode, setMaxTokensMode] = useState<'default' | 'custom'>('default');
   const [installingId, setInstallingId] = useState('');
+  // R485 D1 — question suggestions tab (Vue suggestionTab, starters default)
+  const [suggestionTab, setSuggestionTab] = useState<'starters' | 'followUps'>('starters');
+  // R486 D4 — 使用模板 popup (Vue PromptTemplateSelector popupVisible)
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
+  // R486 KB warn — agent-type switch KB-conflict toast (Vue MessagePlugin.warning
+  // with a 4000ms duration; React renders it in-modal as a status region)
+  const [kbWarn, setKbWarn] = useState<string | null>(null);
+  const kbWarnTimer = useRef<number | null>(null);
+  // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef)
+  const systemPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const contextTemplateRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
+
+  useEffect(() => () => { if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current); }, []);
 
   const patch = useCallback((mutate: (draft: AgentEditorForm) => void) => {
     setForm((current) => {
@@ -202,18 +312,29 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setInitializing(true);
     setSaveError(null);
     setIssues([]);
-    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'personalization', 'knowledge', 'retrieval', 'websearch', 'tools', 'skills', 'subagents'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
+    setSection(initialSection === 'sandbox' ? 'skills' : (initialSection && ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization', 'knowledge', 'retrieval', 'websearch', 'multimodal', 'tools', 'mcp', 'skills', 'subagents'].includes(initialSection) ? initialSection as AgentSectionKey : 'basic'));
     const highlight = initialHighlightField && VALID_INITIAL_HIGHLIGHTS.has(initialHighlightField) ? initialHighlightField : null;
     setHighlightedField(highlight);
     setPostCreate(false);
+    setSuggestionTab('starters');
+    setTemplatePanelOpen(false);
+    setKbWarn(null);
     void (async () => {
       const next: EditorDeps = { ...EMPTY_DEPS };
-      const [models, kbs, sandboxes, catalog, providers] = await Promise.allSettled([
+      const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus, parserEngines, retrievalConfig] = await Promise.allSettled([
         client.configuration.models.list(),
         client.knowledgeBases.list(),
         client.sandboxConfigurations.list(),
         client.configuration.skills.catalog.list(),
         client.settings.webSearch.providers.list(),
+        client.configuration.mcp.list(),
+        client.settings.storage.legacy.status(),
+        // R486 — parser registry + tenant retrieval-config (Vue prefetchAgent-
+        // EditorDeps ensureParserEngines / ensureTenantRetrievalConfig); the
+        // Promise.resolve wrapper also catches a synchronously missing client
+        // method so one absent endpoint cannot take the whole load down.
+        Promise.resolve().then(() => client.knowledgeBases.settings.parserEngines()),
+        Promise.resolve().then(() => client.settings.retrieval.get()),
       ]);
       if (!active) return;
       if (models.status === 'fulfilled') next.models = Array.isArray(models.value) ? models.value as ModelConfiguration[] : [];
@@ -223,6 +344,40 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       if (sandboxes.status === 'fulfilled') next.sandboxConfigs = sandboxes.value.items ?? [];
       if (catalog.status === 'fulfilled') next.catalog = Array.isArray(catalog.value) ? catalog.value : [];
       if (providers.status === 'fulfilled') next.providers = Array.isArray(providers.value) ? providers.value as EditorDeps['providers'] : [];
+      if (mcpServices.status === 'fulfilled') {
+        next.mcpServices = (Array.isArray(mcpServices.value) ? mcpServices.value : []).map((row) => {
+          const record = row as Record<string, unknown>;
+          return { id: String(record.id ?? ''), name: String(record.name ?? record.id ?? ''), enabled: record.enabled !== false };
+        });
+      }
+      if (storageStatus.status === 'fulfilled') {
+        // GET /system/storage-engine-status -> { storage_engine_status: [{name, available}] }
+        const rows = (storageStatus.value as Record<string, unknown>)?.storage_engine_status;
+        if (Array.isArray(rows)) {
+          const map: Record<string, boolean> = {};
+          for (const row of rows) {
+            if (row !== null && typeof row === 'object') {
+              const record = row as Record<string, unknown>;
+              if (typeof record.name === 'string') map[record.name] = record.available === true;
+            }
+          }
+          next.storageStatus = map;
+        }
+      }
+      if (parserEngines.status === 'fulfilled') {
+        // GET /system/parser-engines -> { data: [{Name, Description, FileTypes, Available}] }
+        const rows = (parserEngines.value as unknown as Record<string, unknown> | undefined)?.data;
+        if (Array.isArray(rows)) {
+          next.parserEngines = rows
+            .filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object')
+            .map((row) => ({
+              Name: String(row.Name ?? ''),
+              ...(typeof row.Description === 'string' ? { Description: row.Description } : {}),
+              ...(Array.isArray(row.FileTypes) ? { FileTypes: row.FileTypes.filter((ext): ext is string => typeof ext === 'string') } : {}),
+              ...(row.Available === undefined ? {} : { Available: row.Available === true }),
+            }));
+        }
+      }
       setDeps(next);
 
       if (mode === 'edit' && agent) {
@@ -234,8 +389,18 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         setMaxIterationsMode(hydrated.config.max_iterations === -1 ? 'unlimited' : 'limit');
         setMaxTokensMode(hydrated.config.max_completion_tokens > 0 ? 'custom' : 'default');
       } else {
-        // Vue:3474-3536 create defaults; KB scope starts at 全部, MCP/Skills off
-        setForm(defaultAgentForm());
+        // Vue:3474-3536 create defaults; KB scope starts at 全部, MCP/Skills off.
+        // R485 D3: the default agent_type preset ('rag-qa') is applied on open
+        // so name/description/system prompt/tools match the type dropdown.
+        // R485 D5: chat/rerank models prefilled when empty.
+        const seeded = seedCreateAgentForm(t, locale, next.models);
+        // R486 D9 — create-mode retrieval knobs open at the tenant-configured
+        // values (Vue 3477-3481 newFormData defaults + 3912-3917 tenant reads;
+        // the `|| / !== undefined` semantics live in tenantRetrievalDefaultsFromConfig)
+        if (retrievalConfig.status === 'fulfilled') {
+          applyCreateRetrievalDefaults(seeded, tenantRetrievalDefaultsFromConfig(retrievalConfig.value as Record<string, unknown>));
+        }
+        setForm(seeded);
         setKbMode('all');
         setMcpMode('none');
         setSkillsMode('none');
@@ -245,7 +410,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       setInitializing(false);
     })();
     return () => { active = false; };
-  }, [open, mode, agent, client, initialHighlightField, initialSection]);
+  }, [open, mode, agent, client, initialHighlightField, initialSection, t, locale]);
 
   useEffect(() => {
     if (!open) return;
@@ -258,9 +423,38 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  // R486 — Vue KBParserSettings ensureCompleteRules (onMounted → loadEngines):
+  // once the parser registry is loaded, materialise a rule per chat-relevant
+  // family so the stored config covers defaults too, not only touched rows.
+  useEffect(() => {
+    if (!open || deps.parserEngines.length === 0) return;
+    const current = Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : [];
+    const complete = ensureCompleteParserRules(current, chatParserGroups(t, deps.parserEngines), deps.parserEngines);
+    if (complete.length > current.length) patchConfig('chat_parser_engine_rules', complete);
+  }, [open, deps.parserEngines, form.config.chat_parser_engine_rules, t, patchConfig]);
+
+  // R486 D4 — Vue handlePlaceholderClick('system'|'context') → insertPlaceholder:
+  // splice the full {{name}} token at the textarea caret and park the caret
+  // after it.
+  const insertPromptPlaceholder = useCallback((field: 'system_prompt' | 'context_template', name: string) => {
+    const textarea = field === 'system_prompt' ? systemPromptRef.current : contextTemplateRef.current;
+    const value = field === 'system_prompt' ? formRef.current.config.system_prompt : formRef.current.config.context_template;
+    const caret = textarea ? textarea.selectionStart : value.length;
+    const next = insertPlaceholderAtCursor(value, caret, name);
+    patchConfig(field, next.value);
+    if (textarea) {
+      textarea.setSelectionRange(next.cursorPos, next.cursorPos);
+      textarea.focus();
+    }
+  }, [patchConfig]);
+
   const isAgentMode = form.config.agent_mode === 'smart-reasoning';
   const hasKnowledgeBase = kbMode !== 'none';
   const quickAnswer = !isAgentMode;
+  // R485 D2 — Vue activeAgentTypePreset 3118-3123 (agent-mode gated)
+  const activeAgentTypePreset = isAgentMode && form.config.agent_type && form.config.agent_type !== 'custom'
+    ? findAgentTypePreset(form.config.agent_type)
+    : null;
 
   const scope = useMemo<ToolCapabilityScope>(() => {
     if (!hasKnowledgeBase) return EMPTY_SCOPE;
@@ -290,6 +484,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     if (kbMode === 'all') return deps.kbOptions.some((kb) => kb.type === 'faq');
     return deps.kbOptions.some((kb) => form.config.knowledge_bases.includes(kb.value) && kb.type === 'faq');
   }, [deps.kbOptions, form.config.knowledge_bases, hasKnowledgeBase, kbMode]);
+
+  // R485 D6 — Vue needsRerankModel 3373-3388: required while a RAG KB is reachable
+  const rerankRequired = useMemo(
+    () => needsRerankModel(kbMode, deps.kbOptions, form.config.knowledge_bases),
+    [deps.kbOptions, form.config.knowledge_bases, kbMode],
+  );
 
   const navGroups = useMemo(
     () => buildNavGroups({ isAgentMode, hasKnowledgeBase }),
@@ -338,6 +538,60 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       return draft;
     });
   }, []);
+
+  // R485 D2 + R486 KB warn — Vue onAgentTypeChange 3334-3361: system-generated
+  // name/description refresh (user-edited values survive), preset application,
+  // KB-mode sync (the Vue watch clears the explicit list on all/none), and a
+  // soft warning when the post-switch preset/mode disables selected KBs
+  // (MessagePlugin.warning kbIncompatibleWarn, 4000ms — rendered in-modal).
+  const onAgentTypeChange = useCallback((value: string) => {
+    const current = formRef.current;
+    const canOverrideName = isNameSystemGenerated(current.name, t, locale);
+    const canOverrideDesc = isDescriptionSystemGenerated(current.description, locale);
+    const preset = findAgentTypePreset(value);
+    const draft: AgentEditorForm = {
+      ...current,
+      config: {
+        ...current.config,
+        allowed_tools: [...current.config.allowed_tools],
+        supported_file_types: [...current.config.supported_file_types],
+      },
+    };
+    draft.config.agent_type = value;
+    if (value !== 'custom') applyAgentTypePreset(draft, preset);
+    if (canOverrideName) draft.name = presetDefaultName(preset, t, locale);
+    if (canOverrideDesc) draft.description = presetDefaultDescription(preset, locale);
+    const presetKbMode = preset?.config?.kb_selection_mode;
+    if (presetKbMode === 'all' || presetKbMode === 'selected' || presetKbMode === 'none') {
+      // Vue applyAgentTypePreset 3316-3318 writes both the config and the UI
+      // radio; the kbSelectionMode watch (3639-3650) clears the explicit list
+      // for all/none so residue never leaks into the payload.
+      draft.config.kb_selection_mode = presetKbMode;
+      if (presetKbMode !== 'selected') draft.config.knowledge_bases = [];
+      setKbMode(presetKbMode);
+    }
+    setForm(draft);
+    // Vue 3342-3347 — soft warning on incompatible selections (no forced removal)
+    const nextMode = draft.config.kb_selection_mode;
+    const count = incompatibleSelectedKbCount(nextMode, draft.config.knowledge_bases, deps.kbOptions, value === 'custom' ? null : preset, draft.config.agent_mode);
+    if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current);
+    if (count > 0) {
+      setKbWarn(t('agentEditor.agentType.kbIncompatibleWarn', { count }));
+      kbWarnTimer.current = window.setTimeout(() => setKbWarn(null), 4000);
+    } else {
+      setKbWarn(null);
+    }
+  }, [t, locale, deps.kbOptions]);
+
+  // Deep-patch helper for the nested question_suggestions block (Vue v-model
+  // binds straight into the nested objects; React needs a fresh copy).
+  const patchQs = useCallback((mutate: (qs: QuestionSuggestionsForm) => void) => {
+    patch((draft) => {
+      const qs = structuredClone(draft.config.question_suggestions);
+      mutate(qs);
+      draft.config.question_suggestions = qs;
+    });
+  }, [patch]);
 
   const skillRows = useMemo(
     () => catalogSkillRows(deps.catalog, form.config.sandbox_config_id),
@@ -465,6 +719,28 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               onChange={(value) => onAgentModeChange(value as 'quick-answer' | 'smart-reasoning')}
             />
           </Row>
+          {isAgentMode && AGENT_TYPE_PRESETS.length > 0 ? (
+            // R485 D2 — Vue 118-135: agent type dropdown (smart-reasoning only),
+            // preset description echoed under the label
+            <Row label={t('agentEditor.agentType.label')} desc={t('agentEditor.agentType.desc')}>
+              <Select
+                data-field="agent_type"
+                className={`wk-ae-select ${FIELD_SELECT}`}
+                value={form.config.agent_type || 'custom'}
+                disabled={form.is_builtin}
+                onChange={(event) => onAgentTypeChange(event.target.value)}
+              >
+                {AGENT_TYPE_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>{agentTypePresetLabel(preset, locale)}</option>
+                ))}
+              </Select>
+              {activeAgentTypePreset ? (
+                <p className="m-0 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
+                  {agentTypePresetDescription(activeAgentTypePreset, locale)}
+                </p>
+              ) : null}
+            </Row>
+          ) : null}
           <Row label={t('agent.editor.name')} required={!form.is_builtin} desc={t('agentEditor.desc.name')} htmlFor="wk-ae-name" error={errorMessage('name')}>
             <Input
               id="wk-ae-name"
@@ -497,6 +773,92 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     );
   }
 
+  // R486 D4 — the placeholder tag strip Vue renders under each prompt desc
+  // (AgentEditorModal.vue:221-231): 可用变量 label, one {{name}} chip per
+  // definition (tooltip = description + click-to-insert) and the hint.
+  const renderPlaceholderTags = (field: 'agent_system_prompt' | 'system_prompt' | 'context_template', target: 'system_prompt' | 'context_template', tagBlock: string) => (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1" data-placeholder-tags={tagBlock}>
+      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.available')}</span>
+      {promptPlaceholdersFor(field).map((def) => (
+        <button
+          key={def.name}
+          type="button"
+          data-placeholder-tag={def.name}
+          title={`${def.description}${t('agentEditor.placeholders.clickToInsert')}`}
+          className="cursor-pointer rounded border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-1.5 py-[1px] font-[family-name:monospace] text-[11px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
+          onClick={() => insertPromptPlaceholder(target, def.name)}
+        >{`{{${def.name}}}`}</button>
+      ))}
+      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.hint')}</span>
+    </div>
+  );
+
+  // R486 D4 — PromptTemplateSelector corner controls (frontend/src/components/
+  // PromptTemplateSelector.vue): 恢复默认 + 使用模板 popup over the vendored
+  // builtin agent_system_prompt templates. Vue renders these for both prompt
+  // modes; the normal-mode system/context template bodies are not vendored and
+  // the tenant prompt-templates endpoint is missing from the api-client, so
+  // the controls stay agent-mode only (gap recorded in the R486 report).
+  const renderTemplateControls = () => (
+    <div className="relative flex items-center gap-1.5 self-end">
+      <button
+        type="button"
+        data-prompt-reset-default
+        className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-transparent px-1.5 py-[3px] text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] hover:text-[var(--td-brand-color,#0052d9)]"
+        onClick={() => {
+          const template = resolveAgentSystemPromptResetTemplate(form.config.agent_type);
+          if (!template) return;
+          patch((draft) => {
+            draft.config.system_prompt = template.content;
+            draft.config.system_prompt_id = template.id;
+          });
+        }}
+      >⟲ {t('promptTemplate.resetDefault')}</button>
+      <div className="relative">
+        <button
+          type="button"
+          data-prompt-template-toggle
+          aria-haspopup="listbox"
+          aria-expanded={templatePanelOpen ? 'true' : 'false'}
+          className="flex cursor-pointer items-center gap-1 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 py-[3px] text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
+          onClick={() => setTemplatePanelOpen((current) => !current)}
+        >▦ {t('promptTemplate.useTemplate')}</button>
+        {templatePanelOpen ? (
+          <div className="absolute right-0 bottom-[calc(100%+4px)] z-30 w-[420px] rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-prompt-template-panel>
+            <p className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3 py-2 text-[13px] font-medium">{t('promptTemplate.selectTemplate')}</p>
+            <div className="max-h-[320px] overflow-y-auto p-1">
+              {AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.length === 0 ? (
+                <p className="m-0 px-3 py-6 text-center text-[13px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('promptTemplate.noTemplates')}</p>
+              ) : AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  data-prompt-template={template.id}
+                  className="mb-1 flex w-full cursor-pointer flex-col items-start gap-1 rounded-md border-none bg-transparent px-3 py-2.5 text-left last:mb-0 hover:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]"
+                  onClick={() => {
+                    // Vue handleSystemPromptTemplateSelect (4683-4686): the
+                    // selection replaces the body only; system_prompt_id is
+                    // written by 恢复默认, not by a manual pick.
+                    patchConfig('system_prompt', template.content);
+                    setTemplatePanelOpen(false);
+                  }}
+                >
+                  <span className="flex items-center gap-2 text-[13px] font-medium">
+                    {locale.startsWith('zh') ? template.name.zh : template.name.en}
+                    {template.default ? (
+                      <span className="rounded bg-[var(--td-warning-color-light,#fdf1e3)] px-1.5 py-[1px] text-[11px] font-medium text-[var(--td-warning-color,#e37318)]" data-template-default>{t('promptTemplate.default')}</span>
+                    ) : null}
+                  </span>
+                  <span className="text-left text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{locale.startsWith('zh') ? template.description.zh : template.description.en}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
   function renderPrompts() {
     return (
       <section className="wk-ae-section" data-editor-section="prompts">
@@ -511,7 +873,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             desc={t('agentEditor.desc.systemPrompt')}
             htmlFor="wk-ae-system-prompt"
             error={errorMessage('system_prompt')}
+            extra={renderPlaceholderTags(isAgentMode ? 'agent_system_prompt' : 'system_prompt', 'system_prompt', 'system')}
           >
+            {isAgentMode ? renderTemplateControls() : null}
             <Textarea
               id="wk-ae-system-prompt"
               data-field="system_prompt"
@@ -519,6 +883,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               rows={10}
               value={form.config.system_prompt}
               disabled={form.is_builtin}
+              ref={systemPromptRef}
               onChange={(event) => patchConfig('system_prompt', event.target.value)}
             />
           </Row>
@@ -529,6 +894,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               desc={t('agentEditor.desc.contextTemplate')}
               htmlFor="wk-ae-context-template"
               error={errorMessage('context_template')}
+              extra={renderPlaceholderTags('context_template', 'context_template', 'context')}
             >
               <Textarea
                 id="wk-ae-context-template"
@@ -537,6 +903,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 rows={8}
                 value={form.config.context_template}
                 disabled={form.is_builtin}
+                ref={contextTemplateRef}
                 onChange={(event) => patchConfig('context_template', event.target.value)}
               />
             </Row>
@@ -648,14 +1015,23 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               onChange={(next) => patchConfig('citation_enabled', next)} />
           </Row>
           {hasKnowledgeBase ? (
-            <Row label={t('agent.editor.rerankModel')} desc={t('agent.editor.rerankModelDesc')} hint={t('agent.editor.rerankModelOptionalHint')}>
+            // R485 D6 — Vue 671-684: the rerank row is required (star, no
+            // optional hint, no clear option) while a RAG KB is in scope.
+            <Row
+              label={t('agent.editor.rerankModel')}
+              desc={t('agent.editor.rerankModelDesc')}
+              required={rerankRequired}
+              hint={rerankRequired ? undefined : t('agent.editor.rerankModelOptionalHint')}
+              htmlFor="wk-ae-rerank-id"
+            >
               <Select
+                id="wk-ae-rerank-id"
                 data-field="rerank_model_id"
                 className={`wk-ae-select ${FIELD_SELECT}`}
                 value={form.config.rerank_model_id}
                 onChange={(event) => patchConfig('rerank_model_id', event.target.value)}
               >
-                <option value="">{t('agent.editor.rerankModelPlaceholder')}</option>
+                {rerankRequired ? null : <option value="">{t('agent.editor.rerankModelPlaceholder')}</option>}
                 {rerankModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
               </Select>
             </Row>
@@ -778,36 +1154,18 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             </Row>
           ) : null}
           {hasKnowledgeBase ? (
-            // R484 D8 — Vue AgentEditorModal.vue:1523-1536: 支持的文件类型
-            // multi-select limits the file types users can @ mention; empty =
-            // all types (the t-select placeholder, shown as a trailing hint).
+            // R486 P3-2 — Vue AgentEditorModal.vue:1529-1536: 支持的文件类型 is
+            // a t-select multiple (placeholder 全部类型, min-collapsed-num 3);
+            // the dropdown multi-select keeps the selected-set semantics and
+            // writes back config.supported_file_types unchanged.
             <Row label={t('agentEditor.fileTypes.label')} desc={t('agentEditor.fileTypes.desc')}>
-              <div className="flex w-full max-w-[460px] flex-wrap items-center gap-1" data-field-group="supported_file_types">
-                {AGENT_FILE_TYPE_OPTIONS.map((option) => {
-                  const checked = form.config.supported_file_types.includes(option.value);
-                  return (
-                    <label key={option.value} title={t(option.descriptionKey)}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
-                      <Checkbox
-                        data-file-type={option.value}
-                        checked={checked}
-                        onChange={(event) => {
-                          const next = event.target.checked;
-                          patch((draft) => {
-                            const set = new Set(draft.config.supported_file_types);
-                            if (next) set.add(option.value); else set.delete(option.value);
-                            draft.config.supported_file_types = [...set];
-                          });
-                        }}
-                      />
-                      <span>{option.labelKey ? t(option.labelKey) : option.label}</span>
-                    </label>
-                  );
-                })}
-                {form.config.supported_file_types.length === 0 ? (
-                  <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.fileTypes.allTypes')}</span>
-                ) : null}
-              </div>
+              <FileTypeMultiSelect
+                selected={form.config.supported_file_types}
+                options={AGENT_FILE_TYPE_OPTIONS}
+                placeholderLabel={t('agentEditor.fileTypes.allTypes')}
+                t={t}
+                onChange={(next) => patchConfig('supported_file_types', next)}
+              />
             </Row>
           ) : null}
           {hasKnowledgeBase ? (
@@ -954,41 +1312,53 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           {inactiveToolCount > 0 ? ' · ' + t('agentEditor.tools.statusInactive', { count: inactiveToolCount }) : ''}
         </p>
         <div className="flex flex-col gap-[18px]">
-          {TOOL_GROUPS.map((group) => {
-            const tools = TOOL_CATALOG.filter((tool) => tool.group === group.key);
-            if (tools.length === 0) return null;
-            return (
-              <div key={group.key} className="wk-ae-tool-group">
-                <p className="mb-1.5 mt-1 text-[13px] font-semibold">{t(group.labelKey)}</p>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
-                  {tools.map((tool) => {
-                    const evaluation = evaluateTool(tool);
-                    const checked = form.config.allowed_tools.includes(tool.value);
-                    return (
-                      <label key={tool.value} className={`flex cursor-pointer flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-[13px] ${evaluation.ok ? '' : 'cursor-not-allowed opacity-55'} ${tool.danger ? 'border-[var(--td-warning-color,#e37318)]' : 'border-[var(--td-component-stroke,#e7e7e7)]'}`}>
-                        <Checkbox
-                          data-tool={tool.value}
-                          checked={checked}
-                          disabled={!evaluation.ok}
-                          onChange={(event) => {
-                            const next = event.target.checked;
-                            patch((draft) => {
-                              const set = new Set(draft.config.allowed_tools);
-                              if (next) set.add(tool.value); else set.delete(tool.value);
-                              draft.config.allowed_tools = [...set];
-                            });
-                          }}
-                        />
-                        <span className="font-medium">{t(tool.labelKey)}{tool.danger ? ' · ' + t('agentEditor.tools.dangerTag') : ''}</span>
-                        <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t(tool.descriptionKey)}</span>
-                        {!evaluation.ok ? <span className="text-[12px] text-[var(--td-warning-color,#e37318)]">{t(missReasonKey(evaluation.missKind))}</span> : null}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {/* R485 D10 — Vue 1163-1167: the allowed-tools block carries the
+              「允许的工具」label + 「选择 Agent 可以使用的工具」desc and per-group
+              counts, which the React port omitted. */}
+          <Row label={t('agent.editor.allowedTools')} desc={t('agentEditor.desc.selectTools')}>
+            <div className="flex w-full flex-col gap-3" data-agent-field="allowed_tools">
+              {TOOL_GROUPS.map((group) => {
+                const tools = TOOL_CATALOG.filter((tool) => tool.group === group.key);
+                if (tools.length === 0) return null;
+                return (
+                  <div key={group.key} className="wk-ae-tool-group">
+                    <p className="mb-1.5 mt-1 flex items-center gap-1.5 text-[13px] font-semibold">
+                      <span className="inline-block h-3 w-[3px] rounded bg-[var(--td-brand-color,#0052d9)]" aria-hidden="true" />
+                      <span>{t(group.labelKey)}</span>
+                      <span className="text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{tools.length}</span>
+                      {group.key === 'wiki_edit' ? <span className="font-normal text-[var(--td-warning-color,#e37318)]">{t('agentEditor.tools.writeWarning')}</span> : null}
+                    </p>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
+                      {tools.map((tool) => {
+                        const evaluation = evaluateTool(tool);
+                        const checked = form.config.allowed_tools.includes(tool.value);
+                        return (
+                          <label key={tool.value} className={`flex cursor-pointer flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-[13px] ${evaluation.ok ? '' : 'cursor-not-allowed opacity-55'} ${tool.danger ? 'border-[var(--td-warning-color,#e37318)]' : 'border-[var(--td-component-stroke,#e7e7e7)]'}`}>
+                            <Checkbox
+                              data-tool={tool.value}
+                              checked={checked}
+                              disabled={!evaluation.ok}
+                              onChange={(event) => {
+                                const next = event.target.checked;
+                                patch((draft) => {
+                                  const set = new Set(draft.config.allowed_tools);
+                                  if (next) set.add(tool.value); else set.delete(tool.value);
+                                  draft.config.allowed_tools = [...set];
+                                });
+                              }}
+                            />
+                            <span className="font-medium">{t(tool.labelKey)}{tool.danger ? ' · ' + t('agentEditor.tools.dangerTag') : ''}</span>
+                            <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t(tool.descriptionKey)}</span>
+                            {!evaluation.ok ? <span className="text-[12px] text-[var(--td-warning-color,#e37318)]">{t(missReasonKey(evaluation.missKind))}</span> : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Row>
           <Row label={t('agentEditor.tools.effectiveLabel')} desc={t('agentEditor.tools.effectiveDesc')}>
             <div className="flex flex-wrap gap-1.5">
               {evaluations.length === 0 && !form.config.web_search_enabled ? <span className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.tools.effectiveEmpty')}</span> : null}
@@ -1003,6 +1373,336 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               ) : null}
             </div>
           </Row>
+        </div>
+      </section>
+    );
+  }
+
+  function renderSuggestions() {
+    const qs = form.config.question_suggestions;
+    const starters = qs.starters;
+    const followUps = qs.follow_ups;
+    return (
+      <section className="wk-ae-section" data-editor-section="suggestions">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+          <h2>{t('agentEditor.questionSuggestions.title')}</h2>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.questionSuggestions.description')}</p>
+        </header>
+        <div className="mb-3 flex gap-1" role="tablist" aria-label={t('agentEditor.questionSuggestions.title')}>
+          {(['starters', 'followUps'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              data-suggestion-tab={tab}
+              aria-selected={suggestionTab === tab ? 'true' : 'false'}
+              className={`cursor-pointer rounded-t-md border-b-2 px-4 py-1.5 text-[14px] ${suggestionTab === tab ? 'border-[var(--td-brand-color,#0052d9)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'border-transparent text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]'}`}
+              onClick={() => setSuggestionTab(tab)}
+            >
+              {t(tab === 'starters' ? 'agentEditor.questionSuggestions.startersTitle' : 'agentEditor.questionSuggestions.followUpsTitle')}
+            </button>
+          ))}
+        </div>
+        {suggestionTab === 'starters' ? (
+          <div className="flex flex-col gap-[18px]">
+            <Row label={t('agentEditor.questionSuggestions.enableStarters')} desc={t('agentEditor.questionSuggestions.enableStartersDesc')}>
+              <Switch field="question_suggestions.starters.enabled" label={t('agentEditor.questionSuggestions.enableStarters')}
+                checked={starters.enabled}
+                onChange={(next) => patchQs((draft) => { draft.starters.enabled = next; })} />
+            </Row>
+            {starters.enabled ? (
+              <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
+                <Select data-field="question_suggestions.starters.mode" className={`wk-ae-select ${FIELD_SELECT}`} value={starters.mode}
+                  onChange={(event) => patchQs((draft) => { draft.starters.mode = event.target.value as typeof draft.starters.mode; })}>
+                  <option value="curated">{t('agentEditor.questionSuggestions.modeCurated')}</option>
+                  <option value="knowledge">{t('agentEditor.questionSuggestions.modeKnowledge')}</option>
+                  <option value="hybrid">{t('agentEditor.questionSuggestions.modeHybrid')}</option>
+                </Select>
+              </Row>
+            ) : null}
+            {starters.enabled ? (
+              <Row label={t('agentEditor.questionSuggestions.count')}>
+                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={8}
+                  data-field="question_suggestions.starters.count"
+                  value={starters.count}
+                  onChange={(event) => patchQs((draft) => { draft.starters.count = Number(event.target.value) || 1; })} />
+              </Row>
+            ) : null}
+            {starters.enabled && (starters.mode === 'curated' || starters.mode === 'hybrid') ? (
+              <Row
+                label={t('agentEditor.questionSuggestions.curatedItems') + ` ${starters.items.length}/8`}
+                desc={t('agentEditor.questionSuggestions.curatedItemsDesc')}
+              >
+                <div className="flex w-full max-w-[560px] flex-col gap-1.5" data-field-group="question_suggestions.starters.items">
+                  {starters.items.map((item, index) => (
+                    <div key={index} className="flex items-center gap-1.5">
+                      <Input className={`wk-ae-input w-full`} maxLength={200} value={item}
+                        data-starter-index={index}
+                        onChange={(event) => patchQs((draft) => { draft.starters.items[index] = event.target.value; })} />
+                      <button type="button" aria-label={t('common.delete')} className="cursor-pointer border-0 bg-transparent p-1 text-[var(--td-error-color,#d54941)]"
+                        data-remove-starter={index}
+                        onClick={() => patchQs((draft) => { draft.starters.items.splice(index, 1); })}>×</button>
+                    </div>
+                  ))}
+                  <button type="button" disabled={starters.items.length >= 8}
+                    className="w-fit cursor-pointer rounded-md border border-dashed border-[var(--td-component-stroke,#dcdcdc)] px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+                    data-add-starter
+                    onClick={() => patchQs((draft) => { if (draft.starters.items.length < 8) draft.starters.items.push(''); })}>
+                    {t('agentEditor.questionSuggestions.addItem')}
+                  </button>
+                </div>
+              </Row>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-[18px]">
+            <Row label={t('agentEditor.questionSuggestions.enableFollowUps')} desc={t('agentEditor.questionSuggestions.enableFollowUpsDesc')}>
+              <Switch field="question_suggestions.follow_ups.enabled" label={t('agentEditor.questionSuggestions.enableFollowUps')}
+                checked={followUps.enabled}
+                onChange={(next) => patchQs((draft) => { draft.follow_ups.enabled = next; })} />
+            </Row>
+            {followUps.enabled ? (
+              <>
+                <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
+                  <Select data-field="question_suggestions.follow_ups.mode" className={`wk-ae-select ${FIELD_SELECT}`} value={followUps.mode}
+                    onChange={(event) => patchQs((draft) => { draft.follow_ups.mode = event.target.value as typeof draft.follow_ups.mode; })}>
+                    <option value="generated">{t('agentEditor.questionSuggestions.modeGenerated')}</option>
+                    <option value="knowledge">{t('agentEditor.questionSuggestions.modeKnowledge')}</option>
+                    <option value="hybrid">{t('agentEditor.questionSuggestions.modeHybrid')}</option>
+                  </Select>
+                </Row>
+                <Row label={t('agentEditor.questionSuggestions.count')}>
+                  <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={5}
+                    data-field="question_suggestions.follow_ups.count"
+                    value={followUps.count}
+                    onChange={(event) => patchQs((draft) => { draft.follow_ups.count = Number(event.target.value) || 1; })} />
+                </Row>
+                {followUps.mode !== 'knowledge' ? (
+                  <Row label={t('agentEditor.questionSuggestions.model')} desc={t('agentEditor.questionSuggestions.modelDesc')}>
+                    <Select data-field="question_suggestions.follow_ups.model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={followUps.model_id}
+                      onChange={(event) => patchQs((draft) => { draft.follow_ups.model_id = event.target.value; })}>
+                      <option value="">{t('agentEditor.modelPlaceholder')}</option>
+                      {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                    </Select>
+                  </Row>
+                ) : null}
+                <div className="my-1 flex items-center gap-2 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">
+                  <span className="h-px flex-1 bg-[var(--td-component-stroke,#e7e7e7)]" />
+                  <span>{t('agentEditor.questionSuggestions.advancedSettings')}</span>
+                  <span className="h-px flex-1 bg-[var(--td-component-stroke,#e7e7e7)]" />
+                </div>
+                <Row label={t('agentEditor.questionSuggestions.contextTurns')}>
+                  <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={5}
+                    data-field="question_suggestions.follow_ups.max_context_turns"
+                    value={followUps.max_context_turns}
+                    onChange={(event) => patchQs((draft) => { draft.follow_ups.max_context_turns = Number(event.target.value) || 1; })} />
+                </Row>
+                <Row label={t('agentEditor.questionSuggestions.categories')}>
+                  <div className="flex flex-wrap gap-3" data-field-group="question_suggestions.follow_ups.categories">
+                    {(['clarify', 'deepen', 'action'] as const).map((category) => (
+                      <label key={category} className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)]">
+                        <Checkbox
+                          data-category={category}
+                          checked={followUps.categories.includes(category)}
+                          onChange={(event) => patchQs((draft) => {
+                            const set = new Set(draft.follow_ups.categories);
+                            if (event.target.checked) set.add(category); else set.delete(category);
+                            draft.follow_ups.categories = [...set];
+                          })}
+                        />
+                        <span>{t(`agentEditor.questionSuggestions.category${category === 'clarify' ? 'Clarify' : category === 'deepen' ? 'Deepen' : 'Action'}`)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </Row>
+                <Row label={t('agentEditor.questionSuggestions.instruction')}>
+                  <Textarea className={`wk-ae-textarea ${FIELD_TEXTAREA}`} rows={3} maxLength={2000}
+                    data-field="question_suggestions.follow_ups.additional_instruction"
+                    value={followUps.additional_instruction}
+                    placeholder={t('agentEditor.questionSuggestions.instructionPlaceholder')}
+                    onChange={(event) => patchQs((draft) => { draft.follow_ups.additional_instruction = event.target.value; })} />
+                </Row>
+                <Row label={t('agentEditor.questionSuggestions.displayRules')}>
+                  <div className="flex w-full max-w-[560px] flex-col gap-1.5">
+                    {([
+                      ['suppress_on_fallback', 'suppressFallback'],
+                      ['suppress_when_answer_asks_question', 'suppressQuestion'],
+                      ['knowledge_fallback', 'knowledgeFallback'],
+                      ['allow_regenerate', 'allowRegenerate'],
+                    ] as const).map(([field, labelKey]) => (
+                      <label key={field} className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)]">
+                        <Checkbox
+                          data-display-rule={field}
+                          checked={followUps[field] === true}
+                          onChange={(event) => patchQs((draft) => { (draft.follow_ups[field] as boolean) = event.target.checked; })}
+                        />
+                        <span>{t(`agentEditor.questionSuggestions.${labelKey}`)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </Row>
+              </>
+            ) : null}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderMultimodal() {
+    const vlmModels = deps.models.filter((model) => String(model.type ?? '') === 'VLLM');
+    const asrModels = deps.models.filter((model) => String(model.type ?? '') === 'ASR');
+    const storageOptions: Array<{ value: string; label: string; disabled?: boolean }> = [
+      { value: 'local', label: t('agentEditor.imageUpload.engineLocal') },
+      { value: 'minio', label: 'MinIO', ...(deps.storageStatus.minio === false ? { disabled: true } : {}) },
+      { value: 'cos', label: t('agentEditor.imageUpload.engineCos'), ...(deps.storageStatus.cos === false ? { disabled: true } : {}) },
+      { value: 'tos', label: t('agentEditor.imageUpload.engineTos'), ...(deps.storageStatus.tos === false ? { disabled: true } : {}) },
+      { value: 's3', label: 'Amazon S3', ...(deps.storageStatus.s3 === false ? { disabled: true } : {}) },
+      { value: 'oss', label: t('agentEditor.imageUpload.engineOss'), ...(deps.storageStatus.oss === false ? { disabled: true } : {}) },
+    ];
+    return (
+      <section className="wk-ae-section" data-editor-section="multimodal">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+          <h2>{t('agentEditor.imageUpload.sectionTitle')}</h2>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.imageUpload.sectionDesc')}</p>
+        </header>
+        <div className="flex flex-col gap-[18px]">
+          <Row label={t('agentEditor.imageUpload.label')} desc={t('agentEditor.imageUpload.desc')}>
+            <Switch field="image_upload_enabled" label={t('agentEditor.imageUpload.label')} checked={form.config.image_upload_enabled}
+              onChange={(next) => patchConfig('image_upload_enabled', next)} />
+          </Row>
+          {form.config.image_upload_enabled ? (
+            <Row label={t('agentEditor.imageUpload.vlmModel')} required desc={t('agentEditor.imageUpload.vlmModelDesc')}>
+              <Select data-field="vlm_model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.vlm_model_id}
+                onChange={(event) => patchConfig('vlm_model_id', event.target.value)}>
+                <option value="">{t('agentEditor.imageUpload.vlmModelPlaceholder')}</option>
+                {vlmModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              </Select>
+            </Row>
+          ) : null}
+          {form.config.image_upload_enabled ? (
+            <Row label={t('agentEditor.imageUpload.imageUnderstandingLabel')} desc={t('agentEditor.imageUpload.imageUnderstandingDesc')}>
+              <Switch field="attachment_image_understanding" label={t('agentEditor.imageUpload.imageUnderstandingLabel')} checked={form.config.attachment_image_understanding}
+                onChange={(next) => patchConfig('attachment_image_understanding', next)} />
+            </Row>
+          ) : null}
+          {form.config.image_upload_enabled && form.config.attachment_image_understanding ? (
+            <Row label={t('agentEditor.imageUpload.ocrMaxPagesLabel')} desc={t('agentEditor.imageUpload.ocrMaxPagesDesc') + '（' + t('agentEditor.imageUpload.useGlobalDefault') + '）'}>
+              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={64} step={1}
+                data-field="attachment_ocr_max_pages"
+                value={form.config.attachment_ocr_max_pages}
+                onChange={(event) => patchConfig('attachment_ocr_max_pages', Number(event.target.value) || 0)} />
+            </Row>
+          ) : null}
+          {form.config.image_upload_enabled ? (
+            <Row label={t('agentEditor.imageUpload.storageProvider')} desc={t('agentEditor.imageUpload.storageProviderDesc')}>
+              <Select data-field="image_storage_provider" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.image_storage_provider}
+                onChange={(event) => patchConfig('image_storage_provider', event.target.value)}>
+                <option value="">{t('agentEditor.imageUpload.storageDefault')}</option>
+                {storageOptions.map((option) => (
+                  <option key={option.value} value={option.value} disabled={option.disabled}>
+                    {option.label}{option.disabled ? ' · ' + t('agentEditor.imageUpload.notConfigured') : ''}
+                  </option>
+                ))}
+              </Select>
+              <button type="button" data-go-storage-settings
+                className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[var(--td-brand-color,#0052d9)] hover:underline"
+                onClick={() => navigate('/platform/settings?section=storage')}>
+                {t('agentEditor.imageUpload.goStorageSettings')}
+              </button>
+            </Row>
+          ) : null}
+          <Row label={t('agentEditor.audioUpload.label')} desc={t('agentEditor.audioUpload.desc')}>
+            <Switch field="audio_upload_enabled" label={t('agentEditor.audioUpload.label')} checked={form.config.audio_upload_enabled}
+              onChange={(next) => patchConfig('audio_upload_enabled', next)} />
+          </Row>
+          {form.config.audio_upload_enabled ? (
+            <Row label={t('agentEditor.audioUpload.asrModel')} desc={t('agentEditor.audioUpload.asrModelDesc')}>
+              <Select data-field="asr_model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.asr_model_id}
+                onChange={(event) => patchConfig('asr_model_id', event.target.value)}>
+                <option value="">{t('agentEditor.audioUpload.asrModelPlaceholder')}</option>
+                {asrModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              </Select>
+            </Row>
+          ) : null}
+          <Row label={t('agentEditor.chatParser.waitTimeoutLabel')} desc={t('agentEditor.chatParser.waitTimeoutDesc')}>
+            <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={600} step={10}
+              data-field="attachment_parse_wait_timeout_sec"
+              value={form.config.attachment_parse_wait_timeout_sec}
+              onChange={(event) => patchConfig('attachment_parse_wait_timeout_sec', Number(event.target.value) || 0)} />
+          </Row>
+          {/* R486 — Vue 869-878 <KBParserSettings embedded>: per-file-type
+              parser engine rows for chat attachments (CHAT_PARSER_EXTENSIONS
+              families only), reusing the knowledge-settings rule math. */}
+          <div className="rounded-lg border border-[var(--td-component-stroke,#e7e7e7)] p-3" data-parser-policy-block>
+            <p className="m-0 text-[13px] font-medium">{t('agentEditor.chatParser.label')}</p>
+            <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.chatParser.desc')}</p>
+            <div className="mt-2">
+              <AgentParserRules
+                engines={deps.parserEngines}
+                rules={Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : []}
+                onChange={(rules) => patchConfig('chat_parser_engine_rules', rules)}
+                t={t}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderMcp() {
+    const serviceRows = mcpOptionRows(deps.mcpServices, form.config.mcp_services, t);
+    const showServiceSelect = serviceRows.length > 0 || form.config.mcp_services.length > 0;
+    return (
+      <section className="wk-ae-section" data-editor-section="mcp">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+          <h2>{t('agentEditor.mcp.label')}</h2>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.mcp.desc')}</p>
+        </header>
+        <div className="flex flex-col gap-[18px]">
+          <Row label={t('agentEditor.mcp.label')} desc={t('agentEditor.mcp.desc')}>
+            <RadioGroup
+              name="mcp-mode"
+              value={mcpMode}
+              options={[
+                { value: 'all', label: t('agentEditor.selection.all') },
+                { value: 'selected', label: t('agentEditor.selection.selected') },
+                { value: 'none', label: t('agentEditor.selection.disabled') },
+              ]}
+              onChange={(value) => onScopeModeChange('mcp', value as ScopeSelectionMode)}
+            />
+          </Row>
+          {mcpMode === 'selected' && showServiceSelect ? (
+            <Row label={t('agentEditor.mcp.selectLabel')} desc={t('agentEditor.mcp.selectDesc')}>
+              <div className="flex w-full max-w-[460px] flex-col gap-1" data-field="mcp_services">
+                {serviceRows.map((row) => (
+                  <label key={row.value} className={`flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px] ${row.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                    <Checkbox
+                      data-mcp-service={row.value}
+                      checked={form.config.mcp_services.includes(row.value)}
+                      disabled={row.disabled}
+                      onChange={(event) => patch((draft) => {
+                        const set = new Set(draft.config.mcp_services);
+                        if (event.target.checked) set.add(row.value); else set.delete(row.value);
+                        draft.config.mcp_services = [...set];
+                      })}
+                    />
+                    <span>{row.label}</span>
+                  </label>
+                ))}
+              </div>
+            </Row>
+          ) : null}
+          {mcpMode !== 'none' ? (
+            <Row label={t('agentEditor.mcp.authWaitTimeout')} desc={t('agentEditor.mcp.authWaitTimeoutDesc')}>
+              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={5} max={3600}
+                data-field="mcp_auth_wait_timeout"
+                value={form.config.mcp_auth_wait_timeout}
+                placeholder={t('agentEditor.mcp.authWaitTimeoutPlaceholder')}
+                onChange={(event) => patchConfig('mcp_auth_wait_timeout', Number(event.target.value) || 0)} />
+            </Row>
+          ) : null}
         </div>
       </section>
     );
@@ -1120,10 +1820,13 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       case 'prompts': return renderPrompts();
       case 'model': return renderModel();
       case 'conversation': return renderConversation();
+      case 'suggestions': return renderSuggestions();
       case 'knowledge': return renderKnowledge();
       case 'retrieval': return renderRetrieval();
       case 'websearch': return renderWebSearch();
+      case 'multimodal': return renderMultimodal();
       case 'tools': return renderTools();
+      case 'mcp': return renderMcp();
       case 'skills': return renderSkills();
       case 'personalization': return renderPersonalization();
       case 'subagents': return renderSubagents();
@@ -1163,6 +1866,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex-1 overflow-y-auto px-6 py-5">{renderSection()}</div>
             <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-6 py-2.5">
+              {/* R486 KB warn — Vue MessagePlugin.warning(kbIncompatibleWarn, 4000);
+                  React has no global toast host here, so the warning rides the
+                  modal footer as a polite status region (shell share-toast form). */}
+              {kbWarn ? (
+                <p className="m-0 text-[12px] text-[var(--td-warning-color,#e37318)]" role="status" data-agent-type-warn>{kbWarn}</p>
+              ) : null}
               {postCreate ? (
                 <p className="m-0 text-[12px] text-[var(--td-success-color,#2ba471)]" data-post-create>
                   <strong>{t('agent.editor.postCreateHint.title')}</strong>

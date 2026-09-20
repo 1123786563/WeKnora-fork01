@@ -7,24 +7,23 @@ import { Button, Card, Select, Status, Switch } from '@weknora/ui';
 import { navigate } from '../platform/navigation.ts';
 
 /**
- * SP14 Task 1 — 套餐卡片文案组装（纯函数）：plan_name 原样透传，paid_until
- * 为 null 时落到 billing.noExpiry 本地化文案，available/held 按微积分整数
- * 本地化（UsagePanel 预算卡的 Number().toLocaleString(locale) 同款）。
+ * SP14 Task 1 — 套餐卡片文案组装（纯函数）。合同修复后的真实形状：
+ * 套餐行显示 subscription.plan_key，base_tier 空间回退 base_tier_key 或
+ * 本地化 billing.baseTier；到期行 subscription.paid_until 透传，空/null
+ * 落 billing.noExpiry。额度三元组（available/held/refund_locked）后端无
+ * 端点提供，已从卡片删除（用量见 GET /commercial/usage）。
  */
 export interface BillingSummaryCardCopy {
   readonly plan: string;
   readonly paidUntil: string;
-  readonly available: string;
-  readonly held: string;
 }
 
 export function formatBillingSummary(locale: Locale, summary: CommercialSummary): BillingSummaryCardCopy {
-  const number = (value: string): string => Number(value).toLocaleString(locale);
   return {
-    plan: summary.plan_name,
-    paidUntil: summary.paid_until ?? formatMessage(locale, 'billing.noExpiry'),
-    available: number(summary.available),
-    held: number(summary.held),
+    plan: summary.subscription
+      ? summary.subscription.plan_key
+      : (summary.base_tier_key ?? formatMessage(locale, 'billing.baseTier')),
+    paidUntil: summary.subscription?.paid_until || formatMessage(locale, 'billing.noExpiry'),
   };
 }
 
@@ -251,8 +250,6 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
           <h3 className="w-full m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('billing.cardTitle')}</h3>
           <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.plan')}：</span>{billingCopy.plan}</span>
           <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.paidUntil')}：</span>{billingCopy.paidUntil}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.available')}：</span>{billingCopy.available}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.held')}：</span>{billingCopy.held}</span>
           {/* orderId 空串 = checkout 页自建 quote+order（升级/续费新订单）。 */}
           <Button type="button" onClick={() => navigate('/platform/billing/checkout')}>{t('billing.upgrade')}</Button>
         </Card>

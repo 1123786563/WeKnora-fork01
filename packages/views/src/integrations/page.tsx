@@ -19,6 +19,7 @@ import {
 import { buildCLIConnectCommand } from './cli.ts';
 import { integrationsLocale, integrationsT } from './messages.ts';
 import { imPlatformLabel, imPlatformOrder, integrationSectionCopy } from './view.ts';
+import { shouldShowSwaggerDocs, swaggerDocsUrl } from './swagger.ts';
 import {
   IM_WIZARD_STEPS,
   applyImPlatformChange,
@@ -139,6 +140,12 @@ export interface IntegrationsPageProps {
   knowledgeBases?: readonly IntegrationKnowledgeBaseOption[];
   /** Vue IM/Embed panels expose mutation controls only to tenant admins. */
   canEdit?: boolean;
+  /**
+   * GET /system/info `swagger_enabled`. The API tab's docs row renders only
+   * when this is explicitly true — undefined (older backend / fetch failure)
+   * and false (release build) both hide the entry (SP14 Task 2 dangling-link fix).
+   */
+  swaggerEnabled?: boolean;
 }
 
 function initialLocale(): Locale {
@@ -150,7 +157,7 @@ function initialLocale(): Locale {
   }
 }
 
-export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [], canEdit = true }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [], canEdit = true, swaggerEnabled }: IntegrationsPageProps) {
   const [locale, setLocale] = useState<Locale>(localeProp ?? initialLocale());
   useEffect(() => { if (localeProp) setLocale(localeProp); }, [localeProp]);
   const t = (key: string, values?: Record<string, string | number>) => integrationsT(locale, key, values);
@@ -586,7 +593,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             onCancel={closeEmbedWizard}
           /> : null}
         /> : null}
-        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} knowledgeBases={knowledgeBases} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
+        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} knowledgeBases={knowledgeBases} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
         {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} onOpenApiSettings={() => setTab('api')} t={t} /> : null}
       </section>
     </main>
@@ -1344,8 +1351,9 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
 }
 
 
-function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, knowledgeBases, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
+function ApiIntegrationPanel({ apiBaseUrl, swaggerEnabled, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, knowledgeBases, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
   apiBaseUrl: string;
+  swaggerEnabled?: boolean;
   actions: IntegrationActions;
   principalMode: APIPrincipalConfig['mode'];
   setPrincipalMode: (value: APIPrincipalConfig['mode']) => void;
@@ -1395,12 +1403,16 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
+      {shouldShowSwaggerDocs(swaggerEnabled) ? <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
         <div>
           <label className="block font-semibold text-ink">OpenAPI /docs</label>
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong"><a href={apiBaseUrl.replace(/\/+$/, '') + '/docs'} target="_blank" rel="noreferrer">{apiBaseUrl.replace(/\/+$/, '') + '/docs'}</a></p>
+          {/* SP14 Task 2: the historical {apiBaseUrl}/docs link was dangling —
+              the backend serves gin-swagger at /swagger/index.html and only
+              outside release mode; the row renders solely when the
+              system-info swagger_enabled flag confirms the route exists. */}
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong"><a href={swaggerDocsUrl(apiBaseUrl)} target="_blank" rel="noreferrer">{swaggerDocsUrl(apiBaseUrl)}</a></p>
         </div>
-      </div>
+      </div> : null}
     </section>
 
     <section className="rounded-[10px] border border-[#eef1f5] p-4">

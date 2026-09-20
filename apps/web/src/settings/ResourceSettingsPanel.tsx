@@ -1,14 +1,39 @@
-import { useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Input, Sheet, Status, Textarea } from '@weknora/ui';
-import { settingsResourceInput, settingsResourceRows } from './surface.ts';
+import { Button, Input, Select, Sheet, Status, Switch } from '@weknora/ui';
+import { settingsResourceRows } from './surface.ts';
 import { providerLogo } from './providerLogos.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import {
+  isReplicaField,
+  parseStorageProviders,
+  parseVectorStoreTypes,
+  parseWebSearchTypes,
+  storageBackendPayload,
+  storageBlankConfig,
+  storageNeedsCredentials,
+  storageNeedsEndpoint,
+  storageNeedsRegion,
+  vectorStoreCanTest,
+  vectorStoreCreatePayload,
+  vectorStoreFieldLabel,
+  vectorStoreUpdatePayload,
+  webSearchCanTest,
+  webSearchConfigText,
+  webSearchCreatePayload,
+  webSearchParamsOut,
+  webSearchUpdatePayload,
+  type StorageBackendConfig,
+  type VectorFieldSchema,
+  type VectorStoreTypeInfo,
+  type WebSearchTypeInfo,
+} from './resource-forms.ts';
 
 type ResourceSection = 'storage' | 'vectorstore' | 'websearch';
 type ResourceRow = Record<string, unknown>;
+type ResourceTestResult = { success: boolean; message?: string; error?: string };
 type ResourceApi = {
   list: () => Promise<readonly ResourceRow[]>;
   listEnvelope?: () => Promise<{ rows: readonly ResourceRow[]; defaultId?: string }>;
@@ -16,16 +41,19 @@ type ResourceApi = {
   create: (input: Record<string, unknown>) => Promise<ResourceRow>;
   update: (id: string, input: Record<string, unknown>) => Promise<ResourceRow>;
   remove: (id: string) => Promise<unknown>;
-  testById: (id: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  testById: (id: string) => Promise<ResourceTestResult>;
+  testRaw?: (input: Record<string, unknown>) => Promise<ResourceTestResult>;
   setDefault?: (id: string) => Promise<unknown>;
+  putCredentials?: (id: string, input: Record<string, unknown>) => Promise<unknown>;
+  deleteCredential?: (id: string, field: string) => Promise<unknown>;
 };
 
-const RESOURCE_COPY: Record<Locale, { type: string; typePlaceholder: string; safeConfig: string; securityHint: string; unnamed: string; typeUnavailable: string; defaultLabel: string; loadFailed: string; setDefaultFailed: string; localLabel: string }> = {
-  'zh-CN': { type: '类型', typePlaceholder: '提供方类型', safeConfig: '安全配置 JSON', securityHint: '凭证不会从服务端回填；测试和删除操作均等待服务端确认。', unnamed: '未命名资源', typeUnavailable: '类型未知', defaultLabel: '默认', loadFailed: '资源列表加载失败', setDefaultFailed: '设置默认资源失败', localLabel: '本地存储' },
-  'en-US': { type: 'Type', typePlaceholder: 'Provider type', safeConfig: 'Safe configuration JSON', securityHint: 'Secrets are never prefilled from server responses. Test and delete operations wait for server confirmation.', unnamed: 'Unnamed resource', typeUnavailable: 'Type unavailable', defaultLabel: 'default', loadFailed: 'Failed to load resources', setDefaultFailed: 'Failed to set the default resource', localLabel: 'Local storage' },
-  'ja-JP': { type: 'タイプ', typePlaceholder: 'プロバイダーの種類', safeConfig: '安全な設定 JSON', securityHint: 'シークレットはサーバーの応答から再表示しません。テストと削除はサーバーの確認を待ちます。', unnamed: '名前なしのリソース', typeUnavailable: '種類不明', defaultLabel: 'デフォルト', loadFailed: 'リソース一覧の読み込みに失敗しました', setDefaultFailed: 'デフォルトリソースの設定に失敗しました', localLabel: 'ローカルストレージ' },
-  'ko-KR': { type: '유형', typePlaceholder: '공급자 유형', safeConfig: '안전 구성 JSON', securityHint: '서버 응답의 비밀 값은 다시 표시하지 않습니다. 테스트와 삭제는 서버 확인 후 완료됩니다.', unnamed: '이름 없는 리소스', typeUnavailable: '유형 없음', defaultLabel: '기본값', loadFailed: '리소스 목록을 불러오지 못했습니다', setDefaultFailed: '기본 리소스를 설정하지 못했습니다', localLabel: '로컬 스토리지' },
-  'ru-RU': { type: 'Тип', typePlaceholder: 'Тип провайдера', safeConfig: 'Безопасный JSON конфигурации', securityHint: 'Секреты не подставляются из ответов сервера. Тестирование и удаление ждут подтверждения сервера.', unnamed: 'Ресурс без имени', typeUnavailable: 'Тип неизвестен', defaultLabel: 'по умолчанию', loadFailed: 'Не удалось загрузить список ресурсов', setDefaultFailed: 'Не удалось назначить ресурсом по умолчанию', localLabel: 'Локальное хранилище' },
+const RESOURCE_COPY: Record<Locale, { unnamed: string; typeUnavailable: string; defaultLabel: string; loadFailed: string; setDefaultFailed: string; localLabel: string; expand: string; collapse: string }> = {
+  'zh-CN': { unnamed: '未命名资源', typeUnavailable: '类型未知', defaultLabel: '默认', loadFailed: '资源列表加载失败', setDefaultFailed: '设置默认资源失败', localLabel: '本地存储', expand: '展开', collapse: '收起' },
+  'en-US': { unnamed: 'Unnamed resource', typeUnavailable: 'Type unavailable', defaultLabel: 'default', loadFailed: 'Failed to load resources', setDefaultFailed: 'Failed to set the default resource', localLabel: 'Local storage', expand: 'Expand', collapse: 'Collapse' },
+  'ja-JP': { unnamed: '名前なしのリソース', typeUnavailable: '種類不明', defaultLabel: 'デフォルト', loadFailed: 'リソース一覧の読み込みに失敗しました', setDefaultFailed: 'デフォルトリソースの設定に失敗しました', localLabel: 'ローカルストレージ', expand: '展開', collapse: '折りたたむ' },
+  'ko-KR': { unnamed: '이름 없는 리소스', typeUnavailable: '유형 없음', defaultLabel: '기본값', loadFailed: '리소스 목록을 불러오지 못했습니다', setDefaultFailed: '기본 리소스를 설정하지 못했습니다', localLabel: '로컬 스토리지', expand: '펼치기', collapse: '접기' },
+  'ru-RU': { unnamed: 'Ресурс без имени', typeUnavailable: 'Тип неизвестен', defaultLabel: 'по умолчанию', loadFailed: 'Не удалось загрузить список ресурсов', setDefaultFailed: 'Не удалось назначить ресурсом по умолчанию', localLabel: 'Локальное хранилище', expand: 'Развернуть', collapse: 'Свернуть' },
 };
 
 function rowId(row: ResourceRow): string {
@@ -35,13 +63,49 @@ function rowId(row: ResourceRow): string {
 
 function rowText(row: ResourceRow, key: string): string { return typeof row[key] === 'string' ? row[key] as string : ''; }
 
-function nestedText(row: ResourceRow, objectKey: string, key: string): string {
-  const value = row[objectKey];
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
-  return typeof (value as Record<string, unknown>)[key] === 'string' ? (value as Record<string, string>)[key] : '';
+function rowRecord(row: ResourceRow, key: string): Record<string, unknown> {
+  const value = row[key];
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function providerInitial(provider: string): string { return (provider.trim().charAt(0) || '?').toUpperCase(); }
+
+/** Mono brand logo rendered as a currentColor mask (Vue .header-icon__mono /
+ *  .provider-card__badge--mono::before share the same recipe). */
+function monoLogoMask(url: string): CSSProperties {
+  return {
+    width: '22px',
+    height: '22px',
+    backgroundColor: 'currentColor',
+    WebkitMaskImage: `url("${url}")`,
+    WebkitMaskPosition: 'center',
+    WebkitMaskRepeat: 'no-repeat',
+    WebkitMaskSize: 'contain',
+    maskImage: `url("${url}")`,
+    maskPosition: 'center',
+    maskRepeat: 'no-repeat',
+    maskSize: 'contain',
+  };
+}
+
+/** Brand badge for the drawer header — the Vue SettingDrawer #headerIcon
+ *  slot: same logo/mono/monogram ladder as the list cards at the header's
+ *  32px size, tinted by the per-provider brand table. */
+function drawerHeaderBadge(section: ResourceSection, id: string, initial: string): ReactNode {
+  const logo = providerLogo(section, id);
+  const brand = PROVIDER_BRAND[section][id.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
+  if (logo?.mode === 'color') {
+    return <div className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" aria-hidden="true">
+      <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
+    </div>;
+  }
+  if (logo?.mode === 'mono') {
+    return <div className="flex h-8 w-8 items-center justify-center rounded-[9px]" style={{ backgroundColor: brand.bg, color: brand.color }} role="img" aria-label={id}>
+      <span style={monoLogoMask(logo.url)} aria-hidden="true" />
+    </div>;
+  }
+  return <div className="flex h-8 w-8 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }}>{initial || '?'}</div>;
+}
 
 // Per-provider brand colors (Vue .backend-card--<id>/.store-card--<id> badge
 // rules: StorageBackendSettings.vue:524-531, VectorStoreSettings.vue:949-987).
@@ -71,22 +135,27 @@ const PROVIDER_BRAND: Record<ResourceSection, Record<string, { bg: string; color
     doris: { bg: 'rgba(255, 90, 0, 0.12)', color: '#E55A00' },
     sqlite: { bg: 'rgba(70, 70, 70, 0.1)', color: '#464646' },
   },
-  websearch: {},
+  websearch: {
+    // Vue WebSearchSettings.vue provider-card--{id} badge colors (L884-921);
+    // the drawer header badge (non-scoped drawer block L1168-1203) mirrors them.
+    duckduckgo: { bg: 'rgba(222, 88, 51, 0.12)', color: '#DE5833' },
+    bing: { bg: 'rgba(0, 137, 255, 0.12)', color: '#0089FF' },
+    google: { bg: 'rgba(66, 133, 244, 0.12)', color: '#4285F4' },
+    tavily: { bg: 'rgba(98, 53, 187, 0.12)', color: '#6235BB' },
+    baidu: { bg: 'rgba(41, 50, 225, 0.12)', color: '#2932E1' },
+    searxng: { bg: 'rgba(33, 86, 137, 0.12)', color: '#215689' },
+    ollama: { bg: 'rgba(70, 70, 70, 0.12)', color: '#464646' },
+    keenable: { bg: 'rgba(20, 158, 130, 0.12)', color: '#149E82' },
+    zhipu: { bg: 'rgba(37, 99, 235, 0.12)', color: '#2563EB' },
+  },
 };
-
-function safeConfig(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => {
-    const normalized = key.toLowerCase();
-    return !normalized.includes('secret') && !normalized.includes('password') && !normalized.includes('token') && !normalized.includes('api_key') && !normalized.includes('access_key');
-  }).map(([key, item]) => [key, item && typeof item === 'object' && !Array.isArray(item) ? safeConfig(item) : item]));
-}
 
 function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
   if (section === 'storage') {
     const backends = client.settings.storage.backends;
     return {
       ...backends,
+      ...(backends.test ? { testRaw: backends.test.bind(backends) } : {}),
       // Vue StorageBackendSettings compares backend.id against the list
       // envelope's default_storage_backend_id, so the default id travels with
       // the rows.
@@ -96,8 +165,96 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
       },
     };
   }
-  if (section === 'vectorstore') return client.settings.vectorStores;
-  return client.settings.webSearch.providers;
+  if (section === 'vectorstore') {
+    const stores = client.settings.vectorStores;
+    return { ...stores, ...(stores.test ? { testRaw: stores.test.bind(stores) } : {}) };
+  }
+  const providers = client.settings.webSearch.providers;
+  return { ...providers, ...(providers.test ? { testRaw: providers.test.bind(providers) } : {}) };
+}
+
+// ---------------------------------------------------------------------------
+// Drawer form atoms — the shared .form-item/.form-label anatomy from the Vue
+// SettingDrawer forms (label-align top, red * for required fields).
+// ---------------------------------------------------------------------------
+
+function FormItem({ label, required, children, desc, warn }: { label: ReactNode; required?: boolean; children: ReactNode; desc?: ReactNode; warn?: boolean }) {
+  return <div className="grid gap-[6px]">
+    <label className="grid gap-[6px] text-[13px] font-medium leading-[1.4] text-[#101828]">
+      {required ? <span className="mr-[4px] text-danger">*</span> : null}{label}
+      {children}
+    </label>
+    {desc ? <p className={`m-0 text-[12px] leading-[1.5] ${warn ? 'text-danger' : 'text-muted'}`}>{desc}</p> : null}
+  </div>;
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h4 className="m-0 text-[13px] font-semibold text-[#101828]">{children}</h4>;
+}
+
+function DrawerSection({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return <section className="grid gap-[14px] border-t border-[#eef0f3] pt-[14px] first:border-t-0 first:pt-0">
+    <SectionTitle>{title}</SectionTitle>
+    {children}
+  </section>;
+}
+
+/** Vue number-text proxy semantics: empty input deletes the key, numbers coerce. */
+function setBagValue(setter: React.Dispatch<React.SetStateAction<Record<string, unknown>>>, name: string, value: unknown) {
+  setter((current) => {
+    if (value === undefined) {
+      if (!(name in current)) return current;
+      const next = { ...current };
+      delete next[name];
+      return next;
+    }
+    return { ...current, [name]: value };
+  });
+}
+
+// A connection/index field renderer shared by the vector store create form —
+// mirrors VectorStoreSettings.vue L243-343 (boolean → switch + TLS warning,
+// sensitive → password, number → number input, enum → select, string → input).
+function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { field: VectorFieldSchema; value: unknown; label: string; onChange: (value: unknown) => void; tlsWarning?: string }) {
+  if (field.type === 'boolean') {
+    return <FormItem label={label} required={field.required} desc={field.name === 'insecure_skip_verify' && value === true ? tlsWarning : undefined} warn>
+      <Switch checked={value === true} onCheckedChange={onChange} />
+    </FormItem>;
+  }
+  if (field.type === 'number') {
+    const raw = value == null || value === '' ? '' : String(value);
+    return <FormItem label={label} required={field.required}>
+      <Input
+        type="number"
+        value={raw}
+        min={field.min ?? 1}
+        max={field.max ?? (isReplicaField(field.name) ? 10 : 64)}
+        placeholder={field.default != null ? String(field.default) : ''}
+        onChange={(event) => {
+          const text = event.target.value.trim();
+          if (!text) { onChange(undefined); return; }
+          const parsed = Number(text);
+          onChange(Number.isFinite(parsed) ? parsed : text);
+        }}
+      />
+    </FormItem>;
+  }
+  if (field.enum && field.enum.length > 0) {
+    return <FormItem label={label} required={field.required}>
+      <Select value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)}>
+        {field.enum.map((option) => <option key={option} value={option}>{option}</option>)}
+      </Select>
+    </FormItem>;
+  }
+  return <FormItem label={label} required={field.required}>
+    <Input
+      type={field.sensitive ? 'password' : 'text'}
+      value={typeof value === 'string' ? value : ''}
+      placeholder={field.sensitive ? '********' : (field.default?.toString() || '')}
+      maxLength={128}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  </FormItem>;
 }
 
 export function ResourceSettingsPanel({ client, section, initialValue, role = 'owner' }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown; role?: string }) {
@@ -133,36 +290,81 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   };
   const [rows, setRows] = useState<ResourceRow[]>(() => settingsResourceRows(initialValue, section));
   const [defaultId, setDefaultId] = useState<string | undefined>(undefined);
+  // Engine type metadata — one per section shape (vector: field schemas,
+  // storage: provider ids, websearch: capability flags).
+  const [vectorTypes, setVectorTypes] = useState<VectorStoreTypeInfo[]>([]);
+  const [storageProviders, setStorageProviders] = useState<string[]>([]);
+  const [webTypes, setWebTypes] = useState<WebSearchTypeInfo[]>([]);
   const [providerTypes, setProviderTypes] = useState<Array<{ id: string; name: string }>>([]);
+  // Drawer state — the structured fields of the Vue drawers (R482 B3-D1).
   const [name, setName] = useState('');
   const [type, setType] = useState('');
-  const [configText, setConfigText] = useState('{}');
+  const [connectionConfig, setConnectionConfig] = useState<Record<string, unknown>>({});
+  const [indexConfig, setIndexConfig] = useState<Record<string, unknown>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [storageConfig, setStorageConfig] = useState<StorageBackendConfig>(storageBlankConfig);
+  const [description, setDescription] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [engineId, setEngineId] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [extraConfig, setExtraConfig] = useState<Record<string, string>>({});
+  const [isDefault, setIsDefault] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRow, setEditingRow] = useState<ResourceRow | null>(null);
+  // Websearch edit-mode credential card (Vue CredentialResource): the api_key
+  // is an independent /credentials subresource with its own committed state —
+  // configured / unconfigured / editing / inline confirm-remove.
+  const [credentialConfigured, setCredentialConfigured] = useState(false);
+  const [credentialStep, setCredentialStep] = useState<'idle' | 'editing' | 'confirm-remove'>('idle');
+  const [credentialDraft, setCredentialDraft] = useState('');
+  const [credentialBusy, setCredentialBusy] = useState<'save' | 'remove' | null>(null);
+  const [credentialFlashRemoved, setCredentialFlashRemoved] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [lastTestOk, setLastTestOk] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => { setRows(settingsResourceRows(initialValue, section)); }, [initialValue, section]);
 
+  // Clear the credential card's removed-flash timer on unmount so it never
+  // writes into a torn-down component (Vue onBeforeUnmount equivalent).
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
+
   // The 默认 tag needs the list envelope's default id (storage section), which
   // the parent's prefetched initialValue does not carry — refetch on mount.
   useEffect(() => { void loadRows().catch(() => undefined); }, []);
 
-  // Websearch cards show the provider type's display name (Vue
-  // providerTypeLabel) sourced from /web-search-providers/types.
+  // Engine type metadata drives the structured drawer forms (Vue loads it in
+  // onMounted for every section; websearch cards also read display names).
   useEffect(() => {
-    if (section !== 'websearch' || !api.types) return;
+    if (!api.types) return;
     let active = true;
     void api.types().then((entries) => {
       if (!active) return;
+      const list = entries.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry));
       setProviderTypes(entries
         .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry))
         .map((entry) => ({ id: String(entry.id ?? ''), name: String(entry.name ?? '') }))
         .filter((entry) => entry.id));
+      if (section === 'vectorstore') setVectorTypes(parseVectorStoreTypes(entries));
+      else if (section === 'storage') setStorageProviders(parseStorageProviders(entries));
+      else setWebTypes(parseWebSearchTypes(entries));
     }).catch(() => undefined);
     return () => { active = false; };
   }, [section]);
+
+  // Vue openAddDialog preselects the first engine; types may land after the
+  // drawer opens, so backfill the empty selection once they arrive.
+  useEffect(() => {
+    if (!drawerOpen || editingId || type) return;
+    if (section === 'vectorstore' && vectorTypes.length > 0) setType(vectorTypes[0]!.type);
+    else if (section === 'storage' && storageProviders.length > 0) setType(storageProviders[0]!);
+    else if (section === 'websearch' && webTypes.length > 0) setType(webTypes[0]!.id);
+  }, [drawerOpen, editingId, type, section, vectorTypes, storageProviders, webTypes]);
 
   async function loadRows() {
     if (api.listEnvelope) {
@@ -174,17 +376,62 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     setRows([...await api.list()]);
   }
 
+  function resetConnectionHint() { setLastTestOk(null); }
+
   function clearForm() {
-    setEditingId(null); setName(''); setType(''); setConfigText('{}');
+    setEditingId(null); setEditingRow(null); setName(''); setType('');
+    setConnectionConfig({}); setIndexConfig({}); setShowAdvanced(false);
+    setStorageConfig(storageBlankConfig());
+    setDescription(''); setApiKey(''); setEngineId(''); setBaseUrl(''); setProxyUrl(''); setExtraConfig({});
+    setIsDefault(false); setLastTestOk(null);
+    setCredentialConfigured(false); setCredentialStep('idle'); setCredentialDraft('');
+    setCredentialBusy(null); setCredentialFlashRemoved(false);
+    if (flashTimerRef.current) { clearTimeout(flashTimerRef.current); flashTimerRef.current = null; }
   }
 
   function openCreate() {
-    clearForm(); setDrawerOpen(true);
+    clearForm();
+    if (section === 'vectorstore') setType(vectorTypes[0]?.type || '');
+    else if (section === 'storage') setType(storageProviders[0] || 'local');
+    else if (section === 'websearch') {
+      const first = webTypes[0]?.id || 'duckduckgo';
+      setType(first);
+      setIsDefault(rows.length === 0);
+    }
+    setError(null); setNotice(null); setDrawerOpen(true);
   }
 
   function edit(row: ResourceRow) {
-    setEditingId(rowId(row)); setName(rowText(row, 'name')); setType(rowText(row, 'provider') || rowText(row, 'type'));
-    setConfigText(JSON.stringify(safeConfig(row.config), null, 2)); setError(null); setNotice(null); setDrawerOpen(true);
+    const id = rowId(row);
+    setEditingId(id); setEditingRow(row);
+    setName(rowText(row, 'name'));
+    setError(null); setNotice(null); setLastTestOk(null);
+    if (section === 'vectorstore') {
+      setType(rowText(row, 'engine_type'));
+      setConnectionConfig({ ...rowRecord(row, 'connection_config') });
+      setIndexConfig({ ...rowRecord(row, 'index_config') });
+      setShowAdvanced(false);
+    } else if (section === 'storage') {
+      setType(rowText(row, 'provider') || 'local');
+      setStorageConfig({ ...storageBlankConfig(), ...rowRecord(row, 'config') } as StorageBackendConfig);
+    } else {
+      setType(rowText(row, 'provider'));
+      setDescription(rowText(row, 'description'));
+      const parameters = rowRecord(row, 'parameters');
+      // Never prefill the api_key — "non-empty means the user typed it" (Vue).
+      setApiKey('');
+      setEngineId(typeof parameters.engine_id === 'string' ? parameters.engine_id : '');
+      setBaseUrl(typeof parameters.base_url === 'string' ? parameters.base_url : '');
+      setProxyUrl(typeof parameters.proxy_url === 'string' ? parameters.proxy_url : '');
+      const storedExtra = rowRecord(parameters, 'extra_config');
+      setExtraConfig(Object.fromEntries(Object.entries(storedExtra).filter((entry): entry is [string, string] => typeof entry[1] === 'string')));
+      setIsDefault(row.is_default === true);
+      // Credential card seed: configured? rides on the main row payload
+      // (row.credentials.api_key.configured — Vue credentialMeta L421).
+      setCredentialConfigured(rowRecord(rowRecord(row, 'credentials'), 'api_key').configured === true);
+      setCredentialStep('idle'); setCredentialDraft(''); setCredentialBusy(null); setCredentialFlashRemoved(false);
+    }
+    setDrawerOpen(true);
   }
 
   function closeDrawer() {
@@ -198,22 +445,112 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     finally { setBusy(false); }
   }
 
+  // Vue onEngineTypeChange / resetConfig / onProviderTypeChange — switching the
+  // engine wipes the connection fields it parameterizes.
+  function onTypeChange(next: string) {
+    setType(next); resetConnectionHint();
+    if (section === 'vectorstore') { setConnectionConfig({}); setIndexConfig({}); setShowAdvanced(false); }
+    else if (section === 'storage') setStorageConfig(storageBlankConfig());
+    else {
+      const defaults = Object.fromEntries(
+        (webTypes.find((entry) => entry.id === next)?.config_fields || [])
+          .filter((field) => field.default !== undefined)
+          .map((field) => [field.key, field.default as string]),
+      );
+      setExtraConfig(defaults);
+    }
+  }
+
+  const selectedVectorType = vectorTypes.find((entry) => entry.type === type) ?? null;
+  const selectedWebType = webTypes.find((entry) => entry.id === type) ?? null;
+
+  function validateDrawer(): string | null {
+    if (!name.trim()) {
+      if (section !== 'websearch') return t(section === 'storage' ? 'settings.storageBackend.nameRequired' : 'vectorStoreSettings.validation.nameRequired');
+    }
+    if (!type.trim()) return t('vectorStoreSettings.validation.engineTypeRequired');
+    if (section === 'vectorstore' && !editingId) {
+      for (const field of selectedVectorType?.connection_fields || []) {
+        if (!field.required) continue;
+        const value = connectionConfig[field.name];
+        if (value == null || value === '' || (typeof value === 'string' && value.trim() === '')) {
+          return t('vectorStoreSettings.validation.fieldRequired', { field: vectorStoreFieldLabel(t, field.name) });
+        }
+      }
+    }
+    return null;
+  }
+
   async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(null); setNotice(null);
+    event.preventDefault();
+    const validation = validateDrawer();
+    if (validation) { setError(validation); return; }
+    setBusy(true); setError(null); setNotice(null);
     try {
-      const input = settingsResourceInput(name, type, configText);
-      const saved = editingId ? await api.update(editingId, input) : await api.create(input);
+      let saved: ResourceRow;
+      if (section === 'vectorstore') {
+        saved = editingId
+          ? await api.update(editingId, vectorStoreUpdatePayload(name))
+          : await api.create(vectorStoreCreatePayload({ name, engineType: type, connectionConfig, indexConfig, includeIndex: showAdvanced }));
+      } else if (section === 'storage') {
+        const input = storageBackendPayload(name, type, storageConfig);
+        saved = editingId ? await api.update(editingId, input) : await api.create(input);
+      } else {
+        const fields = { name, provider: type, providerDisplayName: selectedWebType?.name || '', description, apiKey, engineId, baseUrl, proxyUrl, extraConfig, isDefault };
+        // Edit mode commits credentials only through the /credentials card
+        // (Vue CredentialResource) — the update body never carries api_key,
+        // and no PUT /credentials runs on the main save.
+        saved = editingId
+          ? await api.update(editingId, webSearchUpdatePayload(fields))
+          : await api.create(webSearchCreatePayload(fields));
+      }
       setRows((current) => editingId ? current.map((row) => rowId(row) === editingId ? saved : row) : [...current, saved]);
       clearForm(); setDrawerOpen(false); setNotice(t(editingId ? keys.updated : keys.created));
     } catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.saveFailed)); }
     finally { setBusy(false); }
   }
 
-  async function test(id: string) {
-    setBusy(true); setError(null); setNotice(null);
-    try { const result = await api.testById(id); if (!result.success) throw new Error(result.error || t(keys.testFailed)); setNotice(result.message || t(keys.testSuccess)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.testFailed)); }
-    finally { setBusy(false); }
+  // Test connection mirrors each Vue drawer: vectorstore tests the live form
+  // (create only — engine is immutable in edit mode), storage tests the form
+  // on create and the stored backend on edit, websearch tests the live form
+  // whenever a fresh key is present and falls back to the stored credentials.
+  const canTestConnection = section === 'vectorstore'
+    ? (!editingId && vectorStoreCanTest(selectedVectorType, connectionConfig))
+    : section === 'websearch'
+      ? (Boolean(editingId) || webSearchCanTest(selectedWebType, { apiKey, engineId, baseUrl, extraConfig }))
+      : true;
+
+  async function testConnection() {
+    if (!canTestConnection) return;
+    setTesting(true); setError(null); setNotice(null);
+    try {
+      let result: ResourceTestResult;
+      if (section === 'vectorstore') {
+        result = await api.testRaw!({ engine_type: type, connection_config: { ...connectionConfig } });
+      } else if (section === 'storage') {
+        result = editingId
+          ? await api.testById(editingId)
+          : await api.testRaw!(storageBackendPayload(name, type, storageConfig));
+      } else {
+        const useStored = Boolean(editingId) && !apiKey;
+        if (useStored) {
+          result = await api.testById(editingId!);
+        } else {
+          const parameters: Record<string, unknown> = {
+            engine_id: engineId,
+            base_url: baseUrl,
+            proxy_url: proxyUrl,
+            extra_config: { ...extraConfig },
+            ...(apiKey ? { api_key: apiKey } : {}),
+          };
+          result = await api.testRaw!({ provider: type, parameters });
+        }
+      }
+      setLastTestOk(result.success);
+      if (!result.success) throw new Error(result.error || t(keys.testFailed));
+      setNotice(result.message || t(keys.testSuccess));
+    } catch (reason) { setLastTestOk(false); setError(reason instanceof Error ? reason.message : t(keys.testFailed)); }
+    finally { setTesting(false); }
   }
 
   async function remove(id: string) {
@@ -229,6 +566,45 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     setBusy(true); setError(null); setNotice(null);
     try { await api.setDefault(id); setNotice(t('settings.storageBackend.defaultUpdated')); await refresh(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : copy.setDefaultFailed); setBusy(false); }
+  }
+
+  // Vue CredentialResource actions (frontend/src/components/credentials/
+  // CredentialResource.vue). Every commit is an explicit call to the
+  // /credentials subresource — never piggybacked on the main drawer save.
+  function enterCredentialEdit() {
+    setCredentialDraft(''); setCredentialStep('editing');
+  }
+
+  function cancelCredentialEdit() {
+    setCredentialDraft(''); setCredentialStep('idle');
+  }
+
+  async function saveCredential() {
+    if (!editingId || !credentialDraft.trim() || !api.putCredentials) return;
+    setCredentialBusy('save'); setError(null);
+    try {
+      const result = await api.putCredentials(editingId, { api_key: credentialDraft });
+      const fields = rowRecord(result && typeof result === 'object' ? result as ResourceRow : {}, 'fields');
+      setCredentialConfigured(rowRecord(fields, 'api_key').configured === true);
+      setCredentialDraft(''); setCredentialStep('idle');
+      setNotice(t('common.saveSuccess'));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('dataSource.credential.saveFailed')); }
+    finally { setCredentialBusy(null); }
+  }
+
+  async function removeCredential() {
+    if (!editingId || !api.deleteCredential) return;
+    setCredentialBusy('remove'); setError(null);
+    try {
+      await api.deleteCredential(editingId, 'api_key');
+      setCredentialConfigured(false); setCredentialStep('idle');
+      // Anchored inline flash (Vue flashInlineToast ~2.4s) instead of a
+      // global toast — the row is where the user just clicked.
+      setCredentialFlashRemoved(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => { flashTimerRef.current = null; setCredentialFlashRemoved(false); }, 2400);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('dataSource.credential.removeFailed')); }
+    finally { setCredentialBusy(null); }
   }
 
   // Per-section card meta, mirroring the Vue surfaces: storage cards show
@@ -269,6 +645,263 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     </div>
   );
 
+  // -------------------------------------------------------------------------
+  // Structured drawer forms (R482 B3-D1 / R485 H2). Each mirrors the matching
+  // Vue drawer field-for-field; no fields are invented.
+  // -------------------------------------------------------------------------
+
+  const vectorCreateFields = selectedVectorType?.connection_fields ?? [];
+  const vectorIndexFields = selectedVectorType?.index_fields ?? [];
+
+  const vectorDrawerBody = editingId ? (
+    <>
+      <DrawerSection title={t('vectorStoreSettings.basicSection')}>
+        <p className="m-0 rounded-[8px] bg-[#f6f8fa] px-[12px] py-[10px] text-[13px] leading-[1.5] text-[#101828]">{t('vectorStoreSettings.immutableNotice')}</p>
+        <FormItem label={t('vectorStoreSettings.nameLabel')} required>
+          <Input value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(event) => setName(event.target.value)} />
+        </FormItem>
+        <div className="grid gap-0 rounded-[8px] bg-[#f6f8fa] px-[12px] py-[10px]">
+          <div className="flex items-baseline gap-2 border-b border-[#eef0f3] py-[4px] text-[12px] last:border-b-0">
+            <span className="w-[80px] shrink-0 text-[11px] text-muted">{t('vectorStoreSettings.engineTypeLabel')}</span>
+            <span className="min-w-0 break-all font-mono text-[12px] text-[#101828]">{selectedVectorType?.display_name || type}</span>
+          </div>
+          {(selectedVectorType?.connection_fields ?? []).map((field) => {
+            const value = connectionConfig[field.name];
+            if (!field.sensitive && (value == null || value === '')) return null;
+            return <div key={field.name} className="flex items-baseline gap-2 border-b border-[#eef0f3] py-[4px] text-[12px] last:border-b-0">
+              <span className="w-[80px] shrink-0 text-[11px] text-muted">{vectorStoreFieldLabel(t, field.name)}</span>
+              <span className="min-w-0 break-all font-mono text-[12px] text-[#101828]">{field.sensitive ? '********' : String(value)}</span>
+            </div>;
+          })}
+          {(selectedVectorType?.index_fields ?? []).map((field) => {
+            const value = indexConfig[field.name];
+            if (value == null || value === '') return null;
+            return <div key={field.name} className="flex items-baseline gap-2 border-b border-[#eef0f3] py-[4px] text-[12px] last:border-b-0">
+              <span className="w-[80px] shrink-0 text-[11px] text-muted">{vectorStoreFieldLabel(t, field.name)}</span>
+              <span className="min-w-0 break-all font-mono text-[12px] text-[#101828]">{String(value)}</span>
+            </div>;
+          })}
+        </div>
+      </DrawerSection>
+    </>
+  ) : (
+    <>
+      <DrawerSection title={t('vectorStoreSettings.basicSection')}>
+        <FormItem label={t('vectorStoreSettings.engineTypeLabel')} required>
+          <Select value={type} onChange={(event) => onTypeChange(event.target.value)}>
+            {vectorTypes.map((entry) => <option key={entry.type} value={entry.type}>{entry.display_name}</option>)}
+          </Select>
+        </FormItem>
+        <FormItem label={t('vectorStoreSettings.nameLabel')} required>
+          <Input value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(event) => { setName(event.target.value); resetConnectionHint(); }} />
+        </FormItem>
+      </DrawerSection>
+      {selectedVectorType ? <DrawerSection title={t('vectorStoreSettings.connectionInfo')}>
+        {vectorCreateFields.map((field) => (
+          <VectorSchemaField
+            key={field.name}
+            field={field}
+            value={connectionConfig[field.name]}
+            label={vectorStoreFieldLabel(t, field.name)}
+            tlsWarning={t('vectorStoreSettings.insecureSkipVerifyWarning')}
+            onChange={(next) => { setBagValue(setConnectionConfig, field.name, next); resetConnectionHint(); }}
+          />
+        ))}
+      </DrawerSection> : null}
+      {vectorIndexFields.length > 0 ? <DrawerSection title={t('vectorStoreSettings.advancedIndexConfig')}>
+        <button type="button" className="justify-self-start border-0 bg-transparent p-0 text-[13px] text-muted hover:text-accent" onClick={() => setShowAdvanced(!showAdvanced)}>
+          {showAdvanced ? copy.collapse : copy.expand}
+        </button>
+        {showAdvanced ? vectorIndexFields.map((field) => (
+          <VectorSchemaField
+            key={field.name}
+            field={field}
+            value={indexConfig[field.name]}
+            label={vectorStoreFieldLabel(t, field.name)}
+            onChange={(next) => setBagValue(setIndexConfig, field.name, next)}
+          />
+        )) : null}
+      </DrawerSection> : null}
+    </>
+  );
+
+  const needsEndpoint = storageNeedsEndpoint(type, storageConfig.mode);
+  const needsRegion = storageNeedsRegion(type);
+  const needsCredentials = storageNeedsCredentials(type, storageConfig.mode);
+  const storageDisabled = Boolean(editingId); // Vue locks every connection field in edit mode
+  const storageDrawerBody = (
+    <>
+      <DrawerSection title={t('settings.storageBackend.basicSection')}>
+        <FormItem label={t('settings.storageBackend.nameLabel')} required>
+          <Input value={name} placeholder={t('settings.storageBackend.namePlaceholder')} onChange={(event) => setName(event.target.value)} />
+        </FormItem>
+        <FormItem label={t('settings.storageBackend.providerLabel')} required>
+          <Select value={type} disabled={storageDisabled} onChange={(event) => onTypeChange(event.target.value)}>
+            {storageProviders.map((provider) => <option key={provider} value={provider}>{provider.toUpperCase()}</option>)}
+          </Select>
+        </FormItem>
+        {type === 'minio' ? <FormItem label={t('settings.storageBackend.modeLabel')}>
+          <div className="inline-flex gap-[4px] rounded-[8px] border border-[#e4e7ec] bg-surface p-[3px]">
+            <button type="button" disabled={storageDisabled} className={`inline-flex items-center gap-[6px] rounded-[6px] border-0 px-[12px] py-[5px] text-[13px] ${storageConfig.mode !== 'docker' ? 'bg-[#e8f8f2] text-[#0a7f43]' : 'bg-transparent text-muted'}`} onClick={() => setStorageConfig({ ...storageConfig, mode: 'remote' })}>{t('settings.storageBackend.modeRemote')}</button>
+            <button type="button" disabled={storageDisabled} className={`inline-flex items-center gap-[6px] rounded-[6px] border-0 px-[12px] py-[5px] text-[13px] ${storageConfig.mode === 'docker' ? 'bg-[#e8f8f2] text-[#0a7f43]' : 'bg-transparent text-muted'}`} onClick={() => setStorageConfig({ ...storageConfig, mode: 'docker' })}>{t('settings.storageBackend.modeEnv')}</button>
+          </div>
+        </FormItem> : null}
+      </DrawerSection>
+      <DrawerSection title={t('settings.storageBackend.connectionSection')}>
+        {needsEndpoint ? <FormItem label="Endpoint" required>
+          <Input value={storageConfig.endpoint} disabled={storageDisabled} placeholder={type === 'minio' ? 'storage.example.com:9000' : 'https://storage.example.com'} onChange={(event) => setStorageConfig({ ...storageConfig, endpoint: event.target.value })} />
+        </FormItem> : null}
+        {needsRegion ? <FormItem label="Region" required>
+          <Input value={storageConfig.region} disabled={storageDisabled} onChange={(event) => setStorageConfig({ ...storageConfig, region: event.target.value })} />
+        </FormItem> : null}
+        {needsCredentials ? <>
+          <FormItem label="Access Key / Secret ID" required>
+            <Input value={storageConfig.access_key_id} disabled={storageDisabled} placeholder="***" onChange={(event) => setStorageConfig({ ...storageConfig, access_key_id: event.target.value })} />
+          </FormItem>
+          <FormItem label="Secret Key" required>
+            <Input type="password" value={storageConfig.secret_access_key} disabled={storageDisabled} placeholder="***" onChange={(event) => setStorageConfig({ ...storageConfig, secret_access_key: event.target.value })} />
+          </FormItem>
+        </> : null}
+        {type !== 'local' ? <FormItem label="Bucket" required>
+          <Input value={storageConfig.bucket_name} disabled={storageDisabled} onChange={(event) => setStorageConfig({ ...storageConfig, bucket_name: event.target.value })} />
+        </FormItem> : null}
+        {type === 'cos' ? <FormItem label="App ID">
+          <Input value={storageConfig.app_id || ''} disabled={storageDisabled} placeholder={t('settings.storageBackend.optionalPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, app_id: event.target.value })} />
+        </FormItem> : null}
+      </DrawerSection>
+      <DrawerSection title={t('settings.storageBackend.advancedSection')}>
+        <FormItem label={t('settings.storageBackend.pathPrefixLabel')}>
+          <Input value={storageConfig.path_prefix} disabled={storageDisabled} placeholder="weknora/" onChange={(event) => setStorageConfig({ ...storageConfig, path_prefix: event.target.value })} />
+        </FormItem>
+        {type === 'minio' ? <div className="flex items-center gap-2">
+          <Switch checked={storageConfig.use_ssl} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, use_ssl: checked })} />
+          <span className="text-[12px] text-muted">{t('settings.storageBackend.useSslDesc')}</span>
+        </div> : null}
+        {type === 's3' ? <div className="flex items-center gap-2">
+          <Switch checked={storageConfig.force_path_style === true} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, force_path_style: checked })} />
+          <span className="text-[12px] text-muted">{t('settings.storageBackend.forcePathStyleDesc')}</span>
+        </div> : null}
+        {type === 'oss' ? <div className="flex items-center gap-2">
+          <Switch checked={storageConfig.use_temp_bucket === true} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, use_temp_bucket: checked })} />
+          <span className="text-[12px] text-muted">{t('settings.storageBackend.useTempBucketDesc')}</span>
+        </div> : null}
+        {['cos', 'tos'].includes(type) || (type === 'oss' && storageConfig.use_temp_bucket) ? <>
+          <FormItem label={t('settings.storageBackend.tempBucketLabel')}>
+            <Input value={storageConfig.temp_bucket_name || ''} placeholder={t('settings.storageBackend.tempBucketPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, temp_bucket_name: event.target.value })} />
+          </FormItem>
+          <FormItem label={t('settings.storageBackend.tempRegionLabel')}>
+            <Input value={storageConfig.temp_region || ''} placeholder={t('settings.storageBackend.tempRegionPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, temp_region: event.target.value })} />
+          </FormItem>
+        </> : null}
+      </DrawerSection>
+    </>
+  );
+
+  const webCredentialFields = selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key || selectedWebType?.requires_engine_id || selectedWebType?.requires_base_url || (selectedWebType?.config_fields?.length ?? 0) > 0;
+  const webDrawerBody = (
+    <>
+      {selectedWebType ? <p className="m-0 flex items-center gap-[8px] text-[13px] text-muted">
+        <span>{selectedWebType.name}</span>
+        {selectedWebType.docs_url ? <a className="text-accent" href={selectedWebType.docs_url} target="_blank" rel="noopener noreferrer">{t('webSearchSettings.viewDocs')}</a> : null}
+      </p> : null}
+      <DrawerSection title={t('webSearchSettings.basicSection')}>
+        <FormItem label={t('webSearchSettings.providerTypeLabel')} required>
+          <Select value={type} disabled={Boolean(editingId)} onChange={(event) => onTypeChange(event.target.value)}>
+            {webTypes.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+          </Select>
+        </FormItem>
+        <FormItem label={t('webSearchSettings.providerNameLabel')}>
+          <Input value={name} placeholder={selectedWebType?.name || t('webSearchSettings.providerNamePlaceholder')} onChange={(event) => { setName(event.target.value); resetConnectionHint(); }} />
+        </FormItem>
+        <FormItem label={t('webSearchSettings.providerDescLabel')}>
+          <Input value={description} placeholder={t('webSearchSettings.providerDescPlaceholder')} onChange={(event) => setDescription(event.target.value)} />
+        </FormItem>
+      </DrawerSection>
+      {webCredentialFields ? <DrawerSection title={t('webSearchSettings.credentialsSection')}>
+        {selectedWebType?.requires_base_url ? <FormItem label={t('webSearchSettings.baseUrlLabel')} required>
+          <Input value={baseUrl} placeholder={t('webSearchSettings.baseUrlPlaceholder')} onChange={(event) => { setBaseUrl(event.target.value); resetConnectionHint(); }} />
+        </FormItem> : null}
+        {selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key ? (
+          <FormItem label={selectedWebType?.supports_optional_api_key && !selectedWebType?.requires_api_key ? t('webSearchSettings.apiKeyOptionalLabel') : t('webSearchSettings.apiKeyLabel')} required={selectedWebType?.requires_api_key}>
+            {editingId ? (
+              // Edit mode — Vue CredentialResource: the api_key is a per-field
+              // credential card committed straight to PUT/DELETE /credentials,
+              // decoupled from this form's submit.
+              credentialStep === 'editing' ? (
+                <div className="grid gap-[6px]">
+                  <Input
+                    type="password"
+                    value={credentialDraft}
+                    placeholder={t('dataSource.credential.inputPlaceholder')}
+                    onChange={(event) => setCredentialDraft(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCredential(); } }}
+                  />
+                  <div className="flex items-center justify-end gap-[4px]">
+                    <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</Button>
+                    <Button type="button" variant="primary" size="small" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</Button>
+                  </div>
+                </div>
+              ) : credentialConfigured ? (
+                credentialStep === 'confirm-remove' ? (
+                  <div data-kind="confirm-remove" className="flex h-[32px] items-center gap-[8px] rounded-[6px] border border-danger/40 bg-danger/5 px-[12px] text-[13px]">
+                    <span className="flex-none text-danger" aria-hidden="true">⚠</span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-danger">{t('dataSource.credential.confirmRemovePrompt')}</span>
+                    <div className="flex flex-none items-center gap-[2px]">
+                      <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</Button>
+                      <span className="h-[14px] w-px bg-line" />
+                      <Button type="button" variant="danger" size="small" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div data-kind="configured" className="flex h-[32px] items-center gap-[8px] rounded-[6px] border border-line-soft bg-surface px-[12px] text-[13px]" title={t('dataSource.credential.configured')}>
+                    <span className="flex-none text-success-text" aria-hidden="true">✓</span>
+                    <span className="min-w-0 flex-1 truncate">{t('dataSource.credential.configured')}</span>
+                    <div className="flex flex-none items-center gap-[2px]">
+                      <Button type="button" variant="text" size="small" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</Button>
+                      <span className="h-[14px] w-px bg-line" />
+                      <Button type="button" variant="danger" size="small" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</Button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div data-kind="unconfigured" className={`flex h-[32px] items-center gap-[8px] rounded-[6px] border px-[12px] text-[13px] ${credentialFlashRemoved ? 'border-[#9edec0] bg-[#e8f8f2]' : 'border-line-soft bg-surface'}`}>
+                  {credentialFlashRemoved ? <span className="flex-none text-[#0a7f43]" aria-hidden="true">✓</span> : null}
+                  <span className={`min-w-0 flex-1 truncate ${credentialFlashRemoved ? 'text-[#0a7f43]' : 'text-muted'}`}>{credentialFlashRemoved ? t('dataSource.credential.removedToast') : t('dataSource.credential.unconfigured')}</span>
+                  {credentialFlashRemoved ? null : <Button type="button" variant="text" size="small" className="flex-none" onClick={enterCredentialEdit}>{t('dataSource.credential.configure')}</Button>}
+                </div>
+              )
+            ) : (
+              // Create mode keeps the plain password input (Vue L239-246) —
+              // the key rides the initial POST only.
+              <Input type="password" value={apiKey} placeholder={t('webSearchSettings.apiKeyPlaceholder')} onChange={(event) => { setApiKey(event.target.value); resetConnectionHint(); }} />
+            )}
+          </FormItem>
+        ) : null}
+        {selectedWebType?.requires_engine_id ? <FormItem label={t('webSearchSettings.engineIdLabel')} required>
+          <Input value={engineId} placeholder={t('webSearchSettings.engineIdLabel')} onChange={(event) => { setEngineId(event.target.value); resetConnectionHint(); }} />
+        </FormItem> : null}
+        {(selectedWebType?.config_fields ?? []).map((field) => (
+          <FormItem key={field.key} label={webSearchConfigText(t, field.label_key, field.label)} required={field.required} desc={field.description ? webSearchConfigText(t, field.description_key, field.description) : undefined}>
+            <Select value={extraConfig[field.key] ?? field.default ?? ''} onChange={(event) => setExtraConfig({ ...extraConfig, [field.key]: event.target.value })}>
+              {(field.options.length > 0 ? field.options : [{ label: field.default || '', value: field.default || '' }]).map((option) => <option key={option.value} value={option.value}>{webSearchConfigText(t, option.label_key, option.label)}</option>)}
+            </Select>
+          </FormItem>
+        ))}
+      </DrawerSection> : null}
+      <DrawerSection title={t('webSearchSettings.optionsSection')}>
+        {selectedWebType?.supports_proxy ? <FormItem label={t('webSearchSettings.proxyUrlLabel')} desc={t('webSearchSettings.proxyUrlHelp')}>
+          <Input value={proxyUrl} placeholder={t('webSearchSettings.proxyUrlPlaceholder')} onChange={(event) => setProxyUrl(event.target.value)} />
+        </FormItem> : null}
+        <FormItem label={t('webSearchSettings.setAsDefault')}>
+          <div className="flex items-center gap-2">
+            <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+            <span className="text-[12px] text-muted">{t('webSearchSettings.setAsDefaultDesc')}</span>
+          </div>
+        </FormItem>
+      </DrawerSection>
+    </>
+  );
+
   return <div className="wk-settings-resource">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
@@ -282,19 +915,6 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         const meta = resourceMeta(row);
         const logo = providerLogo(section, provider);
         const brand = PROVIDER_BRAND[section][provider.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
-        const monoMaskStyle = logo?.mode === 'mono' ? {
-          width: '22px',
-          height: '22px',
-          backgroundColor: 'currentColor',
-          WebkitMaskImage: `url("${logo.url}")`,
-          WebkitMaskPosition: 'center',
-          WebkitMaskRepeat: 'no-repeat',
-          WebkitMaskSize: 'contain',
-          maskImage: `url("${logo.url}")`,
-          maskPosition: 'center',
-          maskRepeat: 'no-repeat',
-          maskSize: 'contain',
-        } as CSSProperties : undefined;
         return <article
           key={id || index}
           role="button"
@@ -307,10 +927,10 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
             <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" style={{ color: brand.color }} aria-label={provider}>
               {logo.mode === 'color'
                 ? <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
-                : <span style={monoMaskStyle} aria-hidden="true" />}
+                : <span style={monoLogoMask(logo.url)} aria-hidden="true" />}
             </div>
           ) : (
-            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
+            <div className="backend-card__badge inline-flex h-10 w-10 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
           )}
           <div className="min-w-0 flex-1">
             <div className="backend-card__header flex items-center gap-2">
@@ -337,27 +957,30 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     {/* Vue WebSearchSettings L13: the empty-state hint only renders for
         non-admin viewers; admins get the bare grid, no desc line. */}
     {rows.length === 0 && !(section === 'websearch' && (role === 'owner' || role === 'admin')) ? <Status>{t(keys.empty)}</Status> : null}
+    {/* Drawer header brand badge — Vue renders #headerIcon for every section:
+        vectorstore v-if="form.engine_type", storage always, websearch
+        v-if="selectedProviderType". The websearch initial comes from the type
+        display name (Vue providerInitial), the other two from the raw id. */}
     <Sheet
       open={drawerOpen}
       title={editingId ? t(keys.edit) : t(keys.add)}
+      headerIcon={type ? drawerHeaderBadge(section, type, section === 'websearch' ? (providerTypes.find((entry) => entry.id === type)?.name || type).trim().charAt(0).toUpperCase() : providerInitial(type)) : undefined}
       onClose={closeDrawer}
       width="460px"
     >
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      <form className="my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}>
-        <label>{t(keys.name)}<Input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <label>{copy.type}<Input required value={type} onChange={(event) => setType(event.target.value)} placeholder={copy.typePlaceholder} /></label>
-        <label>{copy.safeConfig}<Textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label>
-        <div className="wk-list-actions mb-[0.75rem] flex flex-wrap items-center justify-end gap-[0.5rem]">
-          {editingId ? <Button type="button" disabled={!editingId || busy} onClick={() => void test(editingId)}>{t(keys.test)}</Button> : null}
-          {editingId && api.setDefault ? <Button type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</Button> : null}
+      <form className="my-4 grid gap-[16px]" onSubmit={(event) => void save(event)}>
+        {section === 'vectorstore' ? vectorDrawerBody : section === 'storage' ? storageDrawerBody : webDrawerBody}
+        <div className="wk-list-actions mt-[4px] flex flex-wrap items-center gap-[0.5rem]">
+          <Button type="button" loading={testing} disabled={!canTestConnection || busy} onClick={() => void testConnection()}>{testing ? t('vectorStoreSettings.testing') : t(keys.test)}</Button>
+          {editingId && api.setDefault && section === 'storage' ? <Button type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</Button> : null}
           {editingId ? <Button type="button" disabled={busy} onClick={() => void remove(editingId)}>{t('common.delete')}</Button> : null}
+          <span className="flex-1" />
           <Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>
           <Button type="button" disabled={busy} onClick={closeDrawer}>{t('common.cancel')}</Button>
         </div>
       </form>
-      <p className="m-0 text-[12px] text-muted">{copy.securityHint}</p>
     </Sheet>
   </div>;
 }

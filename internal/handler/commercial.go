@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
@@ -168,7 +170,8 @@ type commercialSubscriptionRow struct {
 
 // Summary returns the caller space commercial projection: the purchased
 // subscription or the base tier, plus whether this caller may manage
-// billing.
+// billing. The answer carries the repo-wide {success:true,data:...}
+// envelope — a bare object broke the api-client unwrap on every consumer.
 func (h *CommercialHandler) Summary(c *gin.Context) {
 	tenantID, role, ok := commercialTenantScope(c)
 	if !ok {
@@ -183,28 +186,79 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 		FROM commercial_subscriptions WHERE tenant_id = ? ORDER BY version DESC LIMIT 1`, tenantID).Scan(&row)
 	switch {
 	case res.Error == nil && res.RowsAffected > 0:
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       row,
 			"base_tier":          false,
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
-		})
+		}})
 	case res.Error == nil:
 		// No purchased subscription: the space is on the base tier (B05).
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       nil,
 			"base_tier":          true,
 			"base_tier_key":      commercial.BaseTier.Key,
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
-		})
+		}})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error.Error()})
 	}
 }
 
+// quoteWire projects the service quote onto the wire contract the web
+// parsers expect (packages/contracts parseQuoteView): fen amounts are DIGIT
+// STRINGS, and the granted credits appear under the contract name
+// credit_delta alongside the backend's numeric credits_micro. The backend
+// fields stay in the same object (information superset; unknown fields pass
+// through the parsers by convention).
+func quoteWire(q commercialsvc.QuoteView) gin.H {
+	return gin.H{
+		"id":            q.ID,
+		"plan_key":      q.PlanKey,
+		"plan_version":  q.PlanVersion,
+		"amount_fen":    strconv.FormatInt(q.AmountFen, 10),
+		"credit_delta":  strconv.FormatInt(q.CreditsMicro, 10),
+		"credits_micro": q.CreditsMicro,
+		"expires_at":    q.ExpiresAt,
+	}
+}
+
+// orderWire projects the service order onto the wire contract the web
+// parsers expect (packages/contracts parseOrderView): a digit-string
+// amount_fen plus the payment/fulfillment axes the checkout page polls.
+// The backend keeps ONE lifecycle state (pending → paid → fulfilled); the
+// projection onto the two axes is mechanical — pending waits for payment,
+// paid has settled with fulfillment still processing, fulfilled has the
+// benefits live. The backend fields (state, quote_id, provider,
+// checkout_url, checkout_error, version) stay in the same object.
+func orderWire(o commercialsvc.OrderView) gin.H {
+	payment, fulfillment := "pending", "pending"
+	switch o.State {
+	case commercial.OrderStatePaid:
+		payment, fulfillment = "paid", "processing"
+	case commercial.OrderStateFulfilled:
+		payment, fulfillment = "paid", "fulfilled"
+	}
+	return gin.H{
+		"id":             o.ID,
+		"quote_id":       o.QuoteID,
+		"state":          o.State,
+		"amount_fen":     strconv.FormatInt(o.AmountFen, 10),
+		"currency":       o.Currency,
+		"payment":        payment,
+		"fulfillment":    fulfillment,
+		"provider":       o.Provider,
+		"checkout_url":   o.CheckoutURL,
+		"checkout_error": o.CheckoutError,
+		"version":        o.Version,
+	}
+}
+
 // Plans lists published catalog rows only; drafts and archived
-// definitions are never offered.
+// definitions are never offered. The answer carries the repo-wide
+// {success:true,data:[...]} envelope; an empty catalog serialises data as
+// [] (never null — SP11 lesson).
 func (h *CommercialHandler) Plans(c *gin.Context) {
 	_, _, ok := commercialTenantScope(c)
 	if !ok {
@@ -222,11 +276,13 @@ func (h *CommercialHandler) Plans(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, plans)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": plans})
 }
 
 // Usage returns the caller space resource counters. limit is null for an
-// unlimited dimension and a real number (possibly zero) otherwise.
+// unlimited dimension and a real number (possibly zero) otherwise. The
+// answer carries the repo-wide {success:true,data:[...]} envelope; an empty
+// counter table serialises data as [] (never null — SP11 lesson).
 func (h *CommercialHandler) Usage(c *gin.Context) {
 	tenantID, _, ok := commercialTenantScope(c)
 	if !ok {
@@ -236,7 +292,10 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 	type usageRow struct {
 		Resource string `json:"resource"`
 		Used     int64  `json:"used"`
-		Limit    *int64 `json:"limit"`
+		// gorm maps fields to snake_case column names by default, so the
+		// hard_limit column needs the explicit tag — without it every row
+		// silently reported limit:null (all dimensions "unlimited").
+		Limit *int64 `json:"limit" gorm:"column:hard_limit"`
 	}
 	usage := make([]usageRow, 0)
 	if err := h.db.Raw(`SELECT resource, used, hard_limit FROM commercial_resource_counters
@@ -244,7 +303,7 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, usage)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": usage})
 }
 
 // SetOrderService wires the order pipeline (injection point for the
@@ -252,7 +311,8 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 // with 501 — the edge never fabricates a checkout.
 func (h *CommercialHandler) SetOrderService(s *commercialsvc.OrderService) { h.orders = s }
 
-// Orders lists the caller space orders.
+// Orders lists the caller space orders inside the shared envelope; every
+// element carries the same wire projection as GetOrder.
 func (h *CommercialHandler) Orders(c *gin.Context) {
 	tenantID, _, ok := commercialTenantScope(c)
 	if !ok {
@@ -268,7 +328,13 @@ func (h *CommercialHandler) Orders(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, list)
+	// make(...) guards the SP11 nil-array lesson: an empty space answers
+	// data:[], never data:null.
+	data := make([]gin.H, 0, len(list))
+	for _, o := range list {
+		data = append(data, orderWire(o))
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
 // CreateQuote serves POST /commercial/quotes: cut an exact-price offer for
@@ -293,7 +359,7 @@ func (h *CommercialHandler) CreateQuote(c *gin.Context) {
 	q, err := h.orders.CreateQuote(c.Request.Context(), tenantID, req.PlanKey)
 	switch {
 	case err == nil:
-		c.JSON(http.StatusCreated, q)
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": quoteWire(q)})
 	case errors.Is(err, repocommercial.ErrPlanNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "no published plan with this key"})
 	default:
@@ -328,9 +394,9 @@ func (h *CommercialHandler) CreateOrder(c *gin.Context) {
 		// answer still carries the operation ID and state (product contract:
 		// writes return an operation ID), and the client recovers through
 		// GET /commercial/orders/:id instead of retrying the consumed quote.
-		c.JSON(http.StatusAccepted, order)
+		c.JSON(http.StatusAccepted, gin.H{"success": true, "data": orderWire(order)})
 	case err == nil:
-		c.JSON(http.StatusCreated, order)
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": orderWire(order)})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
@@ -363,7 +429,7 @@ func (h *CommercialHandler) GetOrder(c *gin.Context) {
 	order, err := h.orders.RecoverOrderStatus(c.Request.Context(), tenantID, c.Param("id"))
 	switch {
 	case err == nil:
-		c.JSON(http.StatusOK, order)
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": orderWire(order)})
 	case errors.Is(err, repocommercial.ErrOrderNotFound) || errors.Is(err, commercialsvc.ErrOrderTenantMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
@@ -402,10 +468,10 @@ func (h *CommercialHandler) ChangePlan(c *gin.Context) {
 	switch {
 	case err == nil:
 		if view.Order != nil && view.Order.CheckoutError != "" {
-			c.JSON(http.StatusAccepted, view)
+			c.JSON(http.StatusAccepted, gin.H{"success": true, "data": view})
 			return
 		}
-		c.JSON(http.StatusCreated, view)
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": view})
 	case errors.Is(err, commercialsvc.ErrNoSubscriptionToChange):
 		c.JSON(http.StatusConflict, gin.H{"error": "no subscription to change; purchase a plan through POST /commercial/orders first"})
 	case errors.Is(err, repocommercial.ErrSubscriptionVersionConflict):
@@ -486,25 +552,51 @@ func (h *CommercialHandler) CreateRefund(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "refund service unavailable"})
 		return
 	}
+	// json.Number accepts BOTH the JSON number (server callers) and the
+	// digit string the web api-client sends (RefundInput.amount_fen is a
+	// string by contract): binding to int64 would 400 on the string form.
 	var req struct {
-		OrderID      string `json:"order_id"`
-		OrderLineID  string `json:"order_line_id"`
-		AmountFen    int64  `json:"amount_fen"`
-		CreditsMicro int64  `json:"credits_micro"`
-		Reason       string `json:"reason"`
+		OrderID      string      `json:"order_id"`
+		OrderLineID  string      `json:"order_line_id"`
+		AmountFen    json.Number `json:"amount_fen"`
+		CreditsMicro json.Number `json:"credits_micro"`
+		Reason       string      `json:"reason"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.OrderID == "" || req.AmountFen <= 0 {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "order_id and a positive amount_fen are required"})
 		return
 	}
-	state, err := h.refunds.CreateRequest(c.Request.Context(), tenantID, req.OrderID, req.OrderLineID,
-		commercial.CNYFen(req.AmountFen), commercial.Credits(req.CreditsMicro))
+	amount, amountErr := req.AmountFen.Int64()
+	if req.OrderID == "" || amountErr != nil || amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order_id and a positive amount_fen are required"})
+		return
+	}
+	creditsMicro := int64(0)
+	if req.CreditsMicro.String() != "" {
+		if creditsMicro, amountErr = req.CreditsMicro.Int64(); amountErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "credits_micro must be an integer"})
+			return
+		}
+	}
+	// The web RefundInput carries no order_line_id, and the store requires
+	// the fulfillment lot identity. The current pricing policy (TopUpOrderLines)
+	// gives a purchase order exactly one line, "credits" (the same lot the
+	// refund tests pin) — an omitted line id refunds that line.
+	orderLineID := req.OrderLineID
+	if orderLineID == "" {
+		orderLineID = "credits"
+	}
+	state, err := h.refunds.CreateRequest(c.Request.Context(), tenantID, req.OrderID, orderLineID,
+		commercial.CNYFen(amount), commercial.Credits(creditsMicro))
 	switch {
 	case err == nil:
-		c.JSON(http.StatusCreated, gin.H{
+		// amount_fen answers as a digit string on the same convention as
+		// the quote/order wire (RefundView parses strings).
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{
 			"id": state.ID, "order_id": state.OrderID, "state": state.State,
-			"amount_fen": int64(state.Amount), "credits_micro": int64(state.CreditAmount),
-		})
+			"amount_fen": strconv.FormatInt(int64(state.Amount), 10),
+			"credits_micro": int64(state.CreditAmount),
+		}})
 	case errors.Is(err, commercialsvc.ErrRefundOrderMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "order not found for this tenant"})
 	case errors.Is(err, commercialsvc.ErrInvalidRefundOrderState):
@@ -605,7 +697,8 @@ func (h *CommercialHandler) AdminReviewRefund(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"id": id, "state": commercial.RefundStatePending})
+		c.JSON(http.StatusOK, gin.H{"success": true,
+			"data": gin.H{"id": id, "state": commercial.RefundStatePending}})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported review action"})
 	}

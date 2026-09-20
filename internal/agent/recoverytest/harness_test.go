@@ -17,10 +17,16 @@ import (
 )
 
 type CrashReport struct {
-	ExternalCalls int    `json:"external_calls"`
-	FinalStatus   string `json:"final_status"`
-	AssistantRows int    `json:"assistant_rows"`
-	LostEvents    int    `json:"lost_events"`
+	ExternalCalls int      `json:"external_calls"`
+	FinalStatus   string   `json:"final_status"`
+	AssistantRows int      `json:"assistant_rows"`
+	LostEvents    int      `json:"lost_events"`
+	ToolStatuses  []string `json:"tool_statuses,omitempty"`
+	ToolResults   []string `json:"tool_results,omitempty"`
+	EventTypes    []string `json:"event_types,omitempty"`
+	FinalAnswer   string   `json:"final_answer,omitempty"`
+	Diagnostics   []string `json:"diagnostics,omitempty"`
+	CounterURL    string   `json:"counter_url,omitempty"`
 }
 
 // runCrashCase starts the configured real graph provider, kills it at the
@@ -47,7 +53,7 @@ func runCrashCase(t *testing.T, point string) CrashReport {
 	// for every case, and the PostgreSQL provider derives its schema from
 	// this value - a shared namespace would make later cases resume the
 	// first case's terminal run instead of starting their own.
-	ns := "recoverytest-" + point + "-" + filepath.Base(dir)
+	ns := fmt.Sprintf("recoverytest-%d-%s", time.Now().UnixNano(), point)
 	args := []string{"--recovery-case", point, "--recovery-db", dbPath, "--recovery-barrier", barrierPath, "--recovery-report", reportPath}
 	env := append(os.Environ(), "TRPC_RECOVERY_TEST_NAMESPACE="+ns)
 

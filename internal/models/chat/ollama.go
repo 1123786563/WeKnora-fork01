@@ -104,6 +104,9 @@ func (c *OllamaChat) buildChatRequest(messages []Message, opts *ChatOptions, isS
 		if opts.TopP > 0 {
 			chatReq.Options["top_p"] = opts.TopP
 		}
+		if opts.Seed != 0 {
+			chatReq.Options["seed"] = opts.Seed
+		}
 		if budget := opts.CompletionBudget(); budget > 0 {
 			chatReq.Options["num_predict"] = budget
 		}
