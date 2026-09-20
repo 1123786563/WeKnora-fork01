@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type nativeUsageStoreFake struct {
@@ -18,11 +21,15 @@ type nativeUsageStoreFake struct {
 	seen      map[string]nativecontract.UsageObservation
 	confirmed map[string]bool
 	claimed   map[string]bool
+	deltas    map[string]NativeUsageDelta
 }
 
 func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.Fence, o nativecontract.UsageObservation) (NativeUsageDelta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.deltas == nil {
+		s.deltas = map[string]NativeUsageDelta{}
+	}
 	k := o.AttemptID + ":" + o.ObservationID
 	old, ok := s.seen[k]
 	intent := "usage-settlement:" + k + ":" + fmt.Sprint(o.Revision)
@@ -33,13 +40,15 @@ func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.
 		if s.confirmed[intent] {
 			return NativeUsageDelta{}, nil
 		}
-		return NativeUsageDelta{TotalTokens: o.TotalTokens, PromptTokens: o.PromptTokens, CompletionTokens: o.CompletionTokens, IntentID: intent, Pending: true}, nil
+		return s.deltas[intent], nil
 	}
 	if ok && old.Revision > o.Revision {
 		return NativeUsageDelta{}, &nativecontract.Failure{Code: nativecontract.ErrConflict}
 	}
 	s.seen[k] = o
-	return NativeUsageDelta{TotalTokens: o.TotalTokens - old.TotalTokens, PromptTokens: o.PromptTokens - old.PromptTokens, CompletionTokens: o.CompletionTokens - old.CompletionTokens, IntentID: intent, Pending: true}, nil
+	delta := NativeUsageDelta{TotalTokens: o.TotalTokens - old.TotalTokens, PromptTokens: o.PromptTokens - old.PromptTokens, CompletionTokens: o.CompletionTokens - old.CompletionTokens, IntentID: intent, Pending: true}
+	s.deltas[intent] = delta
+	return delta, nil
 }
 func (s *nativeUsageStoreFake) ConfirmSettlement(_ context.Context, _ nativecontract.Fence, intent string) error {
 	s.mu.Lock()
@@ -77,6 +86,7 @@ type nativeUsageBudgetFake struct {
 	settleErr                   error
 	unknownErr                  error
 	remaining                   int64
+	settledDeltas               []NativeUsageDelta
 }
 
 func (b *nativeUsageBudgetFake) Reserve(_ context.Context, root nativecontract.RunIdentity, _ string, units int64) error {
@@ -98,6 +108,7 @@ func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.Ru
 		return b.settleErr
 	}
 	b.settles++
+	b.settledDeltas = append(b.settledDeltas, delta)
 	return nil
 }
 func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontract.RunIdentity, _ string) error {
@@ -246,6 +257,41 @@ func TestNativeUsageServicePartialUsageIsReconciled(t *testing.T) {
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.unknowns)
 	require.Zero(t, budget.settles)
+}
+
+func nativeUsageRealLedgerService(t *testing.T, budget *nativeUsageBudgetFake, funding nativecontract.FundingBinding) (*NativeUsageService, nativecontract.Fence) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file:native-usage-service?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	for _, statement := range []string{
+		`CREATE TABLE native_agent_runs (tenant_id INTEGER, run_id TEXT, lease_owner TEXT, lease_epoch INTEGER, lease_expires_at DATETIME, updated_at DATETIME, PRIMARY KEY (tenant_id,run_id))`,
+		`CREATE TABLE native_agent_attempts (tenant_id INTEGER, run_id TEXT, attempt_id TEXT, lease_epoch INTEGER, PRIMARY KEY (tenant_id,run_id,attempt_id))`,
+		`CREATE TABLE native_agent_usage_observations (tenant_id INTEGER, run_id TEXT, attempt_id TEXT, observation_id TEXT, revision INTEGER, provider TEXT, model TEXT, provider_request_id TEXT, funding_ref TEXT, budget_root_run_id TEXT, input_tokens INTEGER, output_tokens INTEGER, cached_tokens INTEGER, cache_read_tokens INTEGER, cache_create_tokens INTEGER, accounting_status TEXT, dimensions TEXT, occurred_at DATETIME, payload_hash TEXT, PRIMARY KEY (tenant_id,run_id,attempt_id,observation_id))`,
+		`CREATE TABLE native_agent_commit_intents (tenant_id INTEGER, run_id TEXT, intent_id TEXT, payload_hash TEXT, lease_epoch INTEGER, state TEXT, version INTEGER, payload TEXT, terminal_status TEXT, applied_at DATETIME, PRIMARY KEY (tenant_id,run_id,intent_id))`,
+	} {
+		require.NoError(t, db.Exec(statement).Error)
+	}
+	now := time.Now().UTC()
+	require.NoError(t, db.Exec(`INSERT INTO native_agent_runs VALUES (?,?,?,?,?,?)`, 1, "child", "worker", 1, now.Add(time.Hour), now).Error)
+	require.NoError(t, db.Exec(`INSERT INTO native_agent_attempts VALUES (?,?,?,?)`, 1, "child", "a", 1).Error)
+	fence := nativeUsageServiceFence()
+	return NewNativeUsageService(repository.NewNativeUsageLedger(db), nativeUsageFundingFake{funding: funding}, budget), fence
+}
+
+func TestNativeUsageServiceRealLedgerFailedRevisionBlocksThenSettlesDelta(t *testing.T) {
+	first := nativeUsageServiceObservation()
+	budget := &nativeUsageBudgetFake{remaining: 100, settleErr: errors.New("settlement unavailable")}
+	svc, fence := nativeUsageRealLedgerService(t, budget, first.Funding)
+	require.Error(t, svc.Observe(context.Background(), fence, first))
+	later := first
+	later.Revision, later.PromptTokens, later.CompletionTokens, later.TotalTokens = 2, 17, 9, 26
+	require.Equal(t, nativecontract.ErrConflict, nativeUsageFailureCode(t, svc.Observe(context.Background(), fence, later)))
+	budget.settleErr = nil
+	require.NoError(t, svc.Observe(context.Background(), fence, first))
+	require.NoError(t, svc.Observe(context.Background(), fence, later))
+	require.Len(t, budget.settledDeltas, 2)
+	require.EqualValues(t, 15, budget.settledDeltas[0].TotalTokens)
+	require.EqualValues(t, 11, budget.settledDeltas[1].TotalTokens)
 }
 
 func nativeUsageFailureCode(t *testing.T, err error) nativecontract.ErrorCode {
