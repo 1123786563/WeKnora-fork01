@@ -79,6 +79,7 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
     const store = config.__testOverrides?.store ?? new SqliteStore();
     const credentials = config.__testOverrides?.credentials ?? secureCreds;
     const scope = new ScopeCoordinator();
+    let auth: AuthController;
     // token 缓存：ChatService/上传等同步 headers 场景使用；每次凭证写入后刷新
     let cachedToken = "";
     const http = new HttpClient({
@@ -106,7 +107,9 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
           return credentials.clear();
         },
       },
-      onAuthExpired: () => setStage({ kind: "login" }),
+      onAuthExpired: () => {
+        void auth.expireLocalAuth();
+      },
     });
     const api = new WeKnoraApi(http);
     const onTrustedScope = createTrustedScopePublisher(api);
@@ -114,7 +117,7 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
       const s = scope.scope;
       return s ? scopeCacheKey(s) : "__no_scope__";
     };
-    const auth = new AuthController({
+    auth = new AuthController({
       api,
       scope,
       store,

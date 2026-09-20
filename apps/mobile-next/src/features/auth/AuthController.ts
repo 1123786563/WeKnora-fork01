@@ -34,18 +34,49 @@ export interface AuthDeps {
   /** 校验 origin 可信（http client 层同规则） */
   validateOrigin(origin: string): void;
   onStage(stage: AuthStage): void;
-  onIdentity(identity: AppIdentity): void;
+  onIdentity(identity: AppIdentity | null): void;
   onTrustedScope(scope: CloudWorkspaceScope | null): void;
 }
 
 export class AuthController {
   private identity: AppIdentity | null = null;
   private previousScopeKey: string | null = null;
+  private localExpiry: Promise<void> | null = null;
 
   constructor(private d: AuthDeps) {}
 
   get currentIdentity(): AppIdentity | null {
     return this.identity;
+  }
+
+  /** Refresh exhaustion must invalidate every local auth-dependent capability before login is visible. */
+  expireLocalAuth(): Promise<void> {
+    if (this.localExpiry) return this.localExpiry;
+
+    const expiry = this.clearLocalAuth(true);
+    this.localExpiry = expiry;
+    void expiry.then(
+      () => {
+        if (this.localExpiry === expiry) this.localExpiry = null;
+      },
+      () => {
+        if (this.localExpiry === expiry) this.localExpiry = null;
+      },
+    );
+    return expiry;
+  }
+
+  private async clearLocalAuth(publishTrustedScope: boolean): Promise<void> {
+    if (publishTrustedScope) this.d.onTrustedScope(null);
+    if (this.previousScopeKey) {
+      await this.d.store.clearScopeData(this.previousScopeKey);
+    }
+    await this.d.credentials.clear();
+    this.identity = null;
+    this.d.onIdentity(null);
+    this.previousScopeKey = null;
+    this.d.scope.reset();
+    this.d.onStage({ kind: "login" });
   }
 
   /** 冷启动：SecureStore → me → memberships → 恢复空间或选空间 */
@@ -220,13 +251,6 @@ export class AuthController {
     } catch {
       // 服务端登出失败不阻塞本地清理；token 24h 过期兜底
     }
-    if (this.previousScopeKey) {
-      await this.d.store.clearScopeData(this.previousScopeKey);
-    }
-    await this.d.credentials.clear();
-    this.identity = null;
-    this.previousScopeKey = null;
-    this.d.scope.reset();
-    this.d.onStage({ kind: "login" });
+    await this.clearLocalAuth(false);
   }
 }

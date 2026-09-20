@@ -39,6 +39,11 @@ const mkController = (route: Route, initialCreds: SecureCredentials | null = nul
     },
   };
   const store = new InMemoryStore();
+  const clearScopeData = store.clearScopeData.bind(store);
+  store.clearScopeData = async (scopeKey) => {
+    events.push("scope-data:clear");
+    await clearScopeData(scopeKey);
+  };
   const scope = new ScopeCoordinator();
   const stages: AuthStage[] = [];
   const http = new HttpClient({
@@ -243,9 +248,22 @@ describe("RW-009 switchSpace 顺序语义", () => {
     const c = await boot();
     c.events.length = 0;
     await c.ctrl.logout();
-    expect(c.events).toEqual(["scope:null", "credentials:clear", "stage:login"]);
+    expect(c.events).toEqual(["scope:null", "scope-data:clear", "credentials:clear", "stage:login"]);
     expect(c.stages.at(-1)).toEqual({ kind: "login" });
     expect(await c.credentials.read()).toBeNull();
     expect(c.scope.scope).toBeNull();
+  });
+
+  it("刷新失效：先撤销可信 scope，再单飞清理本地认证状态", async () => {
+    const c = await boot();
+    c.events.length = 0;
+    c.trustedScopes.length = 0;
+
+    await Promise.all([c.ctrl.expireLocalAuth(), c.ctrl.expireLocalAuth()]);
+
+    expect(c.events).toEqual(["scope:null", "scope-data:clear", "credentials:clear", "stage:login"]);
+    expect(c.trustedScopes).toEqual([null]);
+    expect(c.scope.scope).toBeNull();
+    expect(await c.credentials.read()).toBeNull();
   });
 });
