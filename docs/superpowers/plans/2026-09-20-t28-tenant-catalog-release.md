@@ -177,7 +177,7 @@ Agent version freeze/read routes live under `/api/v1/agents/:id/versions`; Marke
 
 **Files:**
 - Create: `internal/handler/agent_marketplace.go`, `internal/router/routes_agent_marketplace.go`, `internal/router/routes_agent_marketplace_test.go`
-- Modify: `internal/router/router.go`, `internal/container/container.go`
+- Modify: `internal/router/router.go`, `internal/router/routes_agent_versions.go`, `internal/container/container.go`
 - Test: `internal/router/routes_agent_marketplace_test.go`
 
 **Interfaces:**
@@ -187,7 +187,7 @@ Agent version freeze/read routes live under `/api/v1/agents/:id/versions`; Marke
 - [ ] **Step 1: Write a failing `httptest` API lifecycle test** using real SQLite migration/repositories/service and a temporary bundle directory. The sequence must freeze version → submit → inspect review queue → review exact digest with approval → list and assert 201/200 responses, immutable Release receipt and updated Listing pointer.
 - [ ] **Step 2: Write failing authorization tests** proving a different Tenant returns not-found/forbidden, Viewer cannot submit/review, Contributor can submit only an Agent they may edit, and Tenant Admin/Owner can inspect the review queue and approve/reject.
 - [ ] **Step 3: Run `go test ./internal/router -run TestTenantAgentMarketplace -count=1`**; expect unregistered route and handler failures.
-- [ ] **Step 4: Add strict request DTO decoding and route registration**. Use existing `g.OwnedAgentOrAdmin()` for version-freeze/submission, `g.Admin()` for review queue/review (approval is publication)/listing management, and `g.Viewer()` for catalog reads. Add full-access API-key policy to reads and the existing manage-agent policy to mutations. Wire repository/service/handler via container without modifying legacy market routes.
+- [ ] **Step 4: Add strict request DTO decoding and register both Agent Version and Marketplace routes**. Use existing `g.OwnedAgentOrAdmin()` for version-freeze/submission, `g.Admin()` for review queue/review (approval is publication)/listing management, and `g.Viewer()` for catalog reads. Add full-access API-key policy to reads and the existing manage-agent policy to mutations. Wire both handlers through the container without modifying legacy market routes.
 - [ ] **Step 5: Run the API lifecycle/authorization test and `go test ./internal/handler ./internal/router ./internal/container`**; expect the full real SQLite-backed request flow and guard matrix to pass.
 - [ ] **Step 6: Commit** as `feat(api): expose tenant agent release workflow`.
 
@@ -216,7 +216,7 @@ Agent version freeze/read routes live under `/api/v1/agents/:id/versions`; Marke
 - Test: new feature component and API adapter tests using the repository's existing `node --import tsx --test` runner.
 
 **Interfaces:**
-- Consumes: `createTenantReleaseApi` from Task 6 and authenticated Web user's Tenant role.
+- Consumes: `createAgentVersionsApi` and `createTenantReleaseApi` from Task 6 and authenticated Web user's Tenant role.
 - Produces: Agent Author can freeze/select a version and submit a Release; Tenant Admin/Owner can inspect fixed Manifest/Dependency Lock/license/digest and approve or reject with a reason. Approval immediately returns the created immutable Release.
 
 - [ ] **Step 1: Write failing component/API tests** for version freeze and submit, role-gated review controls, required review decision, digest shown unchanged from review detail through approval, and rejection reason.
