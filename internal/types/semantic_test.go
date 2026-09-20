@@ -93,6 +93,18 @@ func TestSemanticReasonRequestWireRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSemanticApplyRequestWireRoundTrip(t *testing.T) {
+	original := SemanticApplyRequest{Document: SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, ContentHash: "h"}, Chunks: []SemanticChunkSnapshot{{ChunkID: "c", Text: "text", ContentHash: "ch"}}, Config: SemanticIndexConfig{ConfigDigest: "d", EngineVersion: "e", ModelProfileRef: "m", PromptVersion: "p", RuleSetVersion: "r", SchemaVersion: "s"}, IdempotencyKey: "idem", PayloadHash: "payload"}
+	wire, err := SemanticApplyRequestToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticApplyRequestFromWire(wire)
+	if err != nil || result.IdempotencyKey != original.IdempotencyKey || len(result.Chunks) != 1 || result.Document.Deleted {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,

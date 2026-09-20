@@ -248,6 +248,66 @@ type SemanticReasonResponse struct {
 	Limitations    []string
 }
 
+type SemanticChunkSnapshot struct{ ChunkID, Text, ContentHash string }
+type SemanticIndexConfig struct{ ConfigDigest, EngineVersion, ModelProfileRef, PromptVersion, RuleSetVersion, SchemaVersion string }
+type SemanticApplyRequest struct {
+	Document                    SemanticDocumentRevision
+	Chunks                      []SemanticChunkSnapshot
+	Config                      SemanticIndexConfig
+	IdempotencyKey, PayloadHash string
+	ManifestRef                 *string
+}
+
+func SemanticApplyRequestFromWire(wire *semanticpb.ApplyRequest) (SemanticApplyRequest, error) {
+	if wire == nil || wire.Document == nil || wire.Config == nil || wire.IdempotencyKey == "" || wire.PayloadHash == "" {
+		return SemanticApplyRequest{}, fmt.Errorf("semantic apply request is incomplete")
+	}
+	document, err := SemanticDocumentRevisionFromWire(wire.Document)
+	if err != nil {
+		return SemanticApplyRequest{}, err
+	}
+	if document.Deleted {
+		return SemanticApplyRequest{}, fmt.Errorf("semantic apply cannot use deleted revision")
+	}
+	config := SemanticIndexConfig{ConfigDigest: wire.Config.ConfigDigest, EngineVersion: wire.Config.EngineVersion, ModelProfileRef: wire.Config.ModelProfileRef, PromptVersion: wire.Config.PromptVersion, RuleSetVersion: wire.Config.RuleSetVersion, SchemaVersion: wire.Config.SchemaVersion}
+	if config.ConfigDigest == "" || config.EngineVersion == "" || config.ModelProfileRef == "" || config.PromptVersion == "" || config.RuleSetVersion == "" || config.SchemaVersion == "" {
+		return SemanticApplyRequest{}, fmt.Errorf("semantic index config is incomplete")
+	}
+	chunks := make([]SemanticChunkSnapshot, 0, len(wire.Chunks))
+	for _, chunk := range wire.Chunks {
+		if chunk == nil || chunk.ChunkId == "" || chunk.ContentHash == "" {
+			return SemanticApplyRequest{}, fmt.Errorf("semantic chunk is incomplete")
+		}
+		chunks = append(chunks, SemanticChunkSnapshot{ChunkID: chunk.ChunkId, Text: chunk.Text, ContentHash: chunk.ContentHash})
+	}
+	result := SemanticApplyRequest{Document: document, Chunks: chunks, Config: config, IdempotencyKey: wire.IdempotencyKey, PayloadHash: wire.PayloadHash}
+	if wire.ManifestRef != nil {
+		result.ManifestRef = wire.ManifestRef
+	}
+	return result, nil
+}
+
+func SemanticApplyRequestToWire(value SemanticApplyRequest) (*semanticpb.ApplyRequest, error) {
+	if value.Document.Deleted || value.IdempotencyKey == "" || value.PayloadHash == "" {
+		return nil, fmt.Errorf("semantic apply request is invalid")
+	}
+	if value.Config.ConfigDigest == "" || value.Config.EngineVersion == "" || value.Config.ModelProfileRef == "" || value.Config.PromptVersion == "" || value.Config.RuleSetVersion == "" || value.Config.SchemaVersion == "" {
+		return nil, fmt.Errorf("semantic index config is incomplete")
+	}
+	chunks := make([]*semanticpb.ChunkSnapshot, 0, len(value.Chunks))
+	for _, chunk := range value.Chunks {
+		if chunk.ChunkID == "" || chunk.ContentHash == "" {
+			return nil, fmt.Errorf("semantic chunk is incomplete")
+		}
+		chunks = append(chunks, &semanticpb.ChunkSnapshot{ChunkId: chunk.ChunkID, Text: chunk.Text, ContentHash: chunk.ContentHash})
+	}
+	wire := &semanticpb.ApplyRequest{Document: SemanticDocumentRevisionToWire(value.Document), Chunks: chunks, Config: &semanticpb.IndexConfig{ConfigDigest: value.Config.ConfigDigest, EngineVersion: value.Config.EngineVersion, ModelProfileRef: value.Config.ModelProfileRef, PromptVersion: value.Config.PromptVersion, RuleSetVersion: value.Config.RuleSetVersion, SchemaVersion: value.Config.SchemaVersion}, IdempotencyKey: value.IdempotencyKey, PayloadHash: value.PayloadHash}
+	if value.ManifestRef != nil {
+		wire.ManifestRef = value.ManifestRef
+	}
+	return wire, nil
+}
+
 type SemanticQueryLimits struct{ MaxHops, MaxNodes, MaxEdges, TopK, MaxTokens, DeadlineMS uint32 }
 type SemanticSearchRequest struct {
 	QueryID, Query string
