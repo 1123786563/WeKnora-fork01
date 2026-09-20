@@ -3,7 +3,8 @@
 // 有 Token ≠ 身份恢复完成；切空间按禁写→generation→abort→清数据→校验→加载执行。
 import { ApiError } from "@/api/http";
 import type { WeKnoraApi } from "@/api/weknora";
-import { ScopeCoordinator, scopeCacheKey, type ScopeKey } from "@/domain/scope";
+import { ScopeCoordinator, scopeCacheKey, toCloudWorkspaceScope, type ScopeKey } from "@/domain/scope";
+import type { CloudWorkspaceScope } from "@/cloud-workspace/CloudWorkspaceClient";
 import type { MobileStore } from "@/platform/store";
 import { secureCreds, type SecureCredentials } from "@/platform/native";
 
@@ -34,6 +35,7 @@ export interface AuthDeps {
   validateOrigin(origin: string): void;
   onStage(stage: AuthStage): void;
   onIdentity(identity: AppIdentity): void;
+  onTrustedScope(scope: CloudWorkspaceScope | null): void;
 }
 
 export class AuthController {
@@ -148,6 +150,7 @@ export class AuthController {
       this.identity = { ...this.identity, selectedTenantId: tenantId };
       this.d.onIdentity(this.identity);
     }
+    this.d.onTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
     this.d.onStage({ kind: "ready", scope: g.scope });
   }
 
@@ -158,12 +161,14 @@ export class AuthController {
     if (!this.identity.memberships.some((m) => m.tenantId === tenantId)) {
       throw new ApiError("forbidden", "你不是该空间成员");
     }
+    const previousScope = current;
+    const previousScopeKey = this.previousScopeKey ?? scopeCacheKey(previousScope);
     // 1) 禁写 2) generation+1 3) abort 旧订阅 —— ScopeCoordinator.switchTenant 内执行
     const g = this.d.scope.switchTenant(tenantId);
+    // Requested tenants are never a trusted scope before server confirmation.
+    this.d.onTrustedScope(null);
     // 4) 清旧空间敏感可见数据（按旧 scope 缓存键）
-    if (this.previousScopeKey) {
-      await this.d.store.clearScopeData(this.previousScopeKey);
-    }
+    await this.d.store.clearScopeData(previousScopeKey);
     const newKey = scopeCacheKey(g.scope);
     this.previousScopeKey = newKey;
     // 5) 校验新空间：服务端确认成员关系仍有效
@@ -176,6 +181,9 @@ export class AuthController {
         this.d.onStage({ kind: "pick_space" });
         return;
       }
+      const restored = this.d.scope.enter(previousScope);
+      this.previousScopeKey = previousScopeKey;
+      this.d.onTrustedScope(toCloudWorkspaceScope(restored.scope, restored.value));
       throw e;
     }
     // 6) 恢复写入并更新持久凭证
@@ -184,6 +192,7 @@ export class AuthController {
     if (creds) await this.d.credentials.write({ ...creds, tenantId });
     this.identity = { ...this.identity, selectedTenantId: tenantId };
     this.d.onIdentity(this.identity);
+    this.d.onTrustedScope(toCloudWorkspaceScope(g.scope, g.value));
     this.d.onStage({ kind: "ready", scope: g.scope });
   }
 
@@ -205,6 +214,7 @@ export class AuthController {
 
   /** 退出：清凭证、清可见数据、撤销本地绑定；服务端任务不取消 */
   async logout(): Promise<void> {
+    this.d.onTrustedScope(null);
     try {
       await this.d.api.logout();
     } catch {

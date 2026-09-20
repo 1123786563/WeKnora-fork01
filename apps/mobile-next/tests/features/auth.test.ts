@@ -3,6 +3,7 @@ import { ScopeCoordinator, scopeCacheKey } from "@/domain/scope";
 import { InMemoryStore } from "@/platform/store";
 import { WeKnoraApi } from "@/api/weknora";
 import { HttpClient, ApiError, type CredentialStore } from "@/api/http";
+import type { CloudWorkspaceScope } from "@/cloud-workspace/CloudWorkspaceClient";
 import type { SecureCredentials } from "@/platform/native";
 
 // ---- fetch 桩 ----
@@ -23,6 +24,8 @@ const noCreds: CredentialStore = {
 
 const mkController = (route: Route, initialCreds: SecureCredentials | null = null) => {
   let credsValue = initialCreds;
+  const events: string[] = [];
+  const trustedScopes: Array<CloudWorkspaceScope | null> = [];
   const credentials = {
     async read() {
       return credsValue;
@@ -31,6 +34,7 @@ const mkController = (route: Route, initialCreds: SecureCredentials | null = nul
       credsValue = c;
     },
     async clear() {
+      events.push("credentials:clear");
       credsValue = null;
     },
   };
@@ -52,10 +56,17 @@ const mkController = (route: Route, initialCreds: SecureCredentials | null = nul
     validateOrigin: (o) => {
       if (!o.startsWith("https://")) throw new ApiError("validation", "服务器不可信");
     },
-    onStage: (s) => stages.push(s),
+    onStage: (s) => {
+      stages.push(s);
+      events.push(`stage:${s.kind}`);
+    },
     onIdentity: () => {},
+    onTrustedScope: (scope) => {
+      trustedScopes.push(scope);
+      events.push(scope ? `scope:${scope.tenantId}` : "scope:null");
+    },
   });
-  return { ctrl, stages, scope, store, credentials };
+  return { ctrl, stages, scope, store, credentials, trustedScopes, events };
 };
 
 const userBody = { id: "u1", email: "a@b.c", name: "阿尧" };
@@ -76,14 +87,16 @@ describe("RW-008 冷启动 bootstrap", () => {
     expect(stages.at(-1)).toEqual({ kind: "login" });
   });
 
-  it("有凭证 → me+tenants → 恢复上次空间 ready", async () => {
-    const { ctrl, stages, scope } = mkController(
+  it("有凭证 → me+tenants → 在 ready 前发布恢复空间", async () => {
+    const { ctrl, stages, scope, trustedScopes, events } = mkController(
       (url) => (url.endsWith("/auth/me") ? jsonRes(200, userBody) : url.endsWith("/tenants") ? jsonRes(200, tenantBody) : jsonRes(200, {})),
       { origin: "https://weknora.example", access: "tok", refresh: "ref", userId: "u1", tenantId: "t1" },
     );
     await ctrl.bootstrap();
     expect(stages.at(-1)).toMatchObject({ kind: "ready", scope: { tenantId: "t1" } });
     expect(scope.scope?.tenantId).toBe("t1");
+    expect(trustedScopes).toEqual([{ backend: "https://weknora.example", accountId: "u1", tenantId: "t1", generation: 1 }]);
+    expect(events.indexOf("scope:t1")).toBeLessThan(events.lastIndexOf("stage:ready"));
   });
 
   it("凭证 401 → 清凭证回 login（token 有效≠身份恢复）", async () => {
@@ -124,13 +137,15 @@ describe("RW-008 冷启动 bootstrap", () => {
 });
 
 describe("RW-008 loginWithPassword", () => {
-  it("登录成功 → 凭证落 SecureStore → ready", async () => {
-    const { ctrl, stages, credentials } = mkController((url) =>
+  it("登录成功 → 凭证落 SecureStore → 在 ready 前发布 t1", async () => {
+    const { ctrl, stages, credentials, trustedScopes, events } = mkController((url) =>
       url.endsWith("/auth/login") ? jsonRes(200, loginBody) : url.endsWith("/auth/switch-tenant") ? jsonRes(200, {}) : jsonRes(200, {}),
     );
     await ctrl.loginWithPassword("https://weknora.example", "a@b.c", "pw");
     expect(stages.at(-1)).toMatchObject({ kind: "ready" });
     expect((await credentials.read())?.access).toBe("tok-1");
+    expect(trustedScopes).toEqual([{ backend: "https://weknora.example", accountId: "u1", tenantId: "t1", generation: 1 }]);
+    expect(events.indexOf("scope:t1")).toBeLessThan(events.lastIndexOf("stage:ready"));
   });
 
   it("401 通用失败信息，不暴露账号是否存在", async () => {
@@ -156,14 +171,17 @@ describe("RW-009 switchSpace 顺序语义", () => {
     return c;
   };
 
-  it("切换：旧 scope 数据被清除、新 ready、凭证更新", async () => {
+  it("切换：先撤销 t1，再发布 generation 更高的 t2", async () => {
     const c = await boot();
+    const initialScope = c.trustedScopes.at(-1)!;
     const oldKey = scopeCacheKey({ origin: "https://weknora.example", userId: "u1", tenantId: "t1" });
     await c.store.saveDraft(oldKey, "new-task", "旧空间草稿");
     await c.ctrl.switchSpace("t2");
     expect(c.scope.scope?.tenantId).toBe("t2");
     expect(await c.store.readDraft(oldKey, "new-task")).toBeNull(); // 敏感可见数据清除
     expect(c.stages.at(-1)).toMatchObject({ kind: "ready", scope: { tenantId: "t2" } });
+    expect(c.trustedScopes.map((scope) => scope?.tenantId ?? null)).toEqual(["t1", null, "t2"]);
+    expect(c.trustedScopes[2]!.generation).toBeGreaterThan(initialScope.generation);
   });
 
   it("非成员空间 → forbidden 拒绝切换", async () => {
@@ -171,7 +189,30 @@ describe("RW-009 switchSpace 顺序语义", () => {
     await expect(c.ctrl.switchSpace("t-unknown")).rejects.toMatchObject({ kind: "forbidden" });
   });
 
-  it("服务端确认成员失效 → 回空间选择（pick_space）", async () => {
+  it("重试性服务器失败会以新 generation 恢复 t1，且不发布 t2", async () => {
+    const c = mkController(
+      (url) =>
+        url.endsWith("/auth/me")
+          ? jsonRes(200, userBody)
+          : url.endsWith("/tenants")
+            ? jsonRes(200, tenantBody)
+            : url.endsWith("/auth/switch-tenant")
+              ? jsonRes(500, { error: "temporary outage" })
+              : jsonRes(200, {}),
+      { origin: "https://weknora.example", access: "tok", refresh: "ref", userId: "u1", tenantId: "t1" },
+    );
+    await c.ctrl.bootstrap();
+    const initialScope = c.trustedScopes.at(-1)!;
+    c.trustedScopes.length = 0;
+
+    await expect(c.ctrl.switchSpace("t2")).rejects.toMatchObject({ kind: "server" });
+
+    expect(c.trustedScopes.map((scope) => scope?.tenantId ?? null)).toEqual([null, "t1"]);
+    expect(c.trustedScopes[1]!.generation).toBeGreaterThan(initialScope.generation);
+    expect(c.scope.scope?.tenantId).toBe("t1");
+  });
+
+  it("服务端确认成员失效 → 保持失效并回空间选择，不发布 t2", async () => {
     const c = mkController(
       (url) =>
         url.endsWith("/auth/me")
@@ -184,8 +225,11 @@ describe("RW-009 switchSpace 顺序语义", () => {
       { origin: "https://weknora.example", access: "tok", refresh: "ref", userId: "u1", tenantId: "t1" },
     );
     await c.ctrl.bootstrap();
+    c.trustedScopes.length = 0;
     await c.ctrl.switchSpace("t2");
     expect(c.stages.at(-1)).toEqual({ kind: "pick_space" });
+    expect(c.scope.canWrite).toBe(false);
+    expect(c.trustedScopes).toEqual([null]);
   });
 
   it("切换后旧 generation 的迟到响应被拒收", async () => {
@@ -195,11 +239,11 @@ describe("RW-009 switchSpace 顺序语义", () => {
     expect(c.scope.accepts(g1)).toBe(false);
   });
 
-  it("logout：清凭证与 scope 数据，服务端错误不阻塞", async () => {
+  it("logout：先发布 null，再清凭证与 scope 数据，服务端错误不阻塞", async () => {
     const c = await boot();
-    let logoutCalled = 0;
+    c.events.length = 0;
     await c.ctrl.logout();
-    expect(logoutCalled).toBe(0);
+    expect(c.events).toEqual(["scope:null", "credentials:clear", "stage:login"]);
     expect(c.stages.at(-1)).toEqual({ kind: "login" });
     expect(await c.credentials.read()).toBeNull();
     expect(c.scope.scope).toBeNull();

@@ -9,6 +9,7 @@ import { ScopeCoordinator, scopeCacheKey, type ScopeKey } from "@/domain/scope";
 import { InMemoryStore, type MobileStore } from "@/platform/store";
 import { SqliteStore, secureCreds } from "@/platform/native";
 import { AuthController, type AppIdentity, type AuthStage } from "@/features/auth/AuthController";
+import { CloudWorkspaceProvider, createTrustedScopePublisher } from "@/cloud-workspace/CloudWorkspaceProvider";
 import { SubmissionService } from "@/features/workbench/submit/SubmissionService";
 import { ChatService } from "@/features/conversations/chat/ChatService";
 import { AttachmentUploader } from "@/features/workbench/attachments/AttachmentUploader";
@@ -108,6 +109,7 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
       onAuthExpired: () => setStage({ kind: "login" }),
     });
     const api = new WeKnoraApi(http);
+    const onTrustedScope = createTrustedScopePublisher(api);
     const scopeKey = () => {
       const s = scope.scope;
       return s ? scopeCacheKey(s) : "__no_scope__";
@@ -124,6 +126,7 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
       },
       onStage: (s) => setStage(s),
       onIdentity: (i) => setIdentity(i),
+      onTrustedScope,
     });
     const submissions = new SubmissionService({
       api,
@@ -263,7 +266,11 @@ export function AppProvider({ children, config }: { children: React.ReactNode; c
   }, [stage.kind, reloadKey]);
 
   const value = useMemo<AppHost>(() => ({ ...host }), [host, stage, identity, origin, visualFixture]);
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <CloudWorkspaceProvider>
+      <AppContext.Provider value={value}>{children}</AppContext.Provider>
+    </CloudWorkspaceProvider>
+  );
 }
 
 export function useApp(): AppHost {
