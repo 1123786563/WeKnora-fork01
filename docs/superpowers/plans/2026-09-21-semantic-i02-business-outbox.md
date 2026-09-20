@@ -16,7 +16,7 @@
 - Business mutation callback, semantic revision, outbox event, denial barrier, and required epoch change use the exact same transaction; no hidden second transaction.
 - Revision compare-and-set is scoped to `(tenant_id, kb_id, document_id)`; outbox delivery is at-least-once and consumers deduplicate by stable event ID.
 - The new PostgreSQL migration is `000178_semantic_control`; the paired SQLite migration is `000099_semantic_control`, based on verified existing heads PG 177 and SQLite 98. Re-check both heads immediately before creating files; never edit an applied migration.
-- Persist `uint64` tenant/revision/epoch values without signed overflow: PostgreSQL uses `NUMERIC(20,0)`; SQLite uses canonical base-10 TEXT and the repository converts with `strconv.FormatUint`/`ParseUint`.
+- Persist `uint64` tenant/revision/epoch/outbox-attempt/fencing values without signed overflow: PostgreSQL uses bounded `NUMERIC(20,0)`; SQLite uses canonical base-10 TEXT with digit/range constraints and the repository converts with `strconv.FormatUint`/`ParseUint`.
 - Existing `KnowledgeRepository`/`ChunkRepository` write methods cannot be called inside the callback because they start their own transactions. I02 exposes a tx-taking boundary; I05 performs the real business call-site integration.
 - When a caller represents a persisted knowledge document, its semantic `DocumentID` maps to `types.Knowledge.ID`; I02 does not add a competing revision field to `Knowledge` or use per-chunk `ContentRevision` as a document revision.
 - I02 creates only `semantic_document_revisions`, `semantic_outbox`, `semantic_access_epochs`, and `semantic_denials`. `semantic_backend_states` belongs to W03; `semantic_completion_receipts` belongs to I04; neither is frozen early here.
@@ -26,7 +26,7 @@
 ## Review Focus
 
 - Callback fails after mutating a business row: rollback leaves no document revision, outbox event, deny barrier, or epoch change.
-- Concurrent/stale expected revisions: exactly one CAS succeeds; revision never decreases or wraps uint64.
+- Concurrent/stale expected revisions: exactly one CAS succeeds; revision never decreases or wraps uint64; simultaneous documents in one KB both update the shared authorization epoch successfully.
 - Delete tombstone: same commit writes deny and increments epoch; restore requires the current tombstone revision, clears denial, and increments epoch.
 - Outbox redelivery: retry presents the same stable event identity and payload hash; stale lease owner cannot acknowledge or overwrite a newer attempt.
 - PG/SQLite equivalence: table constraints, indexes, up/down/up, payload bytes, and maximum uint64 strings remain exact across both dialects.
@@ -46,12 +46,12 @@
 - Create: `internal/database/semantic_migration_test.go`
 
 **Interfaces:**
-- `types.SemanticMutation` contains `TenantID uint64`, `KBID string`, `DocumentID string`, `ExpectedRevision uint64`, Go-authoritative opaque `ContentHash string`, `Deleted bool`, and immutable `Payload []byte` supplied by the caller. For active revisions, payload is the serialized C01 apply request; a delete event uses the tombstone metadata and may have an empty payload.
-- `SemanticControlRepository.WithSemanticMutation(ctx, mutation, func(tx *gorm.DB) error) (uint64, error)` requires nonzero tenant, nonempty KB/document/content hash, nonnil callback, nonempty active payload (delete payload may be empty), creates/locks the scoped revision row, requires stored revision to equal `ExpectedRevision`, increments without uint64 overflow, calls the business callback with that same `tx`, stores Go's supplied content hash unchanged, inserts one semantic outbox event with stable UUID and `sha256:<hex>` hash of the exact payload bytes, and returns the new revision. Any callback/SQL error rolls back every write.
+- `types.SemanticMutation` contains `TenantID uint64`, `KBID string`, `DocumentID string`, `ExpectedRevision uint64`, Go-authoritative opaque `ContentHash string`, nonempty Go-authoritative `ConfigDigest string`, `Deleted bool`, and immutable `Payload []byte` supplied by the caller. For active revisions, payload is the serialized C01 apply request; a delete event uses the tombstone metadata and may have an empty payload.
+- `SemanticControlRepository.WithSemanticMutation(ctx, mutation, func(tx *gorm.DB) error) (uint64, error)` requires nonzero tenant, nonempty KB/document/content hash/config digest, nonnil callback, nonempty active payload (delete payload may be empty), creates/locks the scoped revision row, requires stored revision to equal `ExpectedRevision`, increments without uint64 overflow, calls the business callback with that same `tx`, stores Go's supplied content hash and config digest unchanged, inserts one semantic outbox event with stable UUID and `sha256:<hex>` hash of the exact payload bytes, and returns the new revision. Any callback/SQL error rolls back every write.
 - First document mutation expects revision 0 and creates revision 1. A later mutation must provide the exact current revision. Deletion writes/advances a scoped deny row and bumps KB epoch in the same transaction. A non-delete mutation whose expected revision is the current tombstone explicitly restores that document, clears its deny row, and bumps KB epoch.
-- `BumpSemanticEpoch(tx *gorm.DB, scope types.SemanticScopeKey) (uint64, error)` is callable by A01 inside its already-open transaction; it never starts a nested transaction.
-- `types.SemanticOutboxEvent` carries stable `EventID`, scope, document, revision, content hash, tombstone flag, payload bytes, SHA-256 payload hash, attempt count, lease token, lease expiry, and retry time; the payload hash is `sha256:` plus lowercase hex of exact stored bytes.
-- `ClaimSemanticOutbox(ctx, workerID, leaseSeconds) (*types.SemanticOutboxEvent, error)`, `AckSemanticOutbox(ctx,eventID,leaseToken) error`, and `FailSemanticOutbox(ctx,eventID,leaseToken,retryAt,errorCode) error` use fenced claims; PostgreSQL uses `FOR UPDATE SKIP LOCKED`; SQLite uses transaction + conditional update.
+- `BumpSemanticEpoch(tx *gorm.DB, scope types.SemanticScopeKey) (uint64, error)` is callable by A01 inside its already-open transaction; it never starts a nested transaction. It conflict-safely creates epoch zero, locks/re-reads, and retries conditional increments so concurrent first inserts or concurrent document tombstones in one KB do not spuriously roll back.
+- `types.SemanticOutboxEvent` carries stable `EventID`, scope, document, revision, content hash, config digest, tombstone flag, payload bytes, SHA-256 payload hash, attempt count, lease owner, lease token, lease expiry, retry time, and last error code; the payload hash is `sha256:` plus lowercase hex of exact stored bytes.
+- `ClaimSemanticOutbox(ctx, workerID, leaseSeconds) (*types.SemanticOutboxEvent, error)`, `AckSemanticOutbox(ctx,eventID,workerID,leaseToken) error`, and `FailSemanticOutbox(ctx,eventID,workerID,leaseToken,retryAt,errorCode) error` use owner+fence checks; failure persists its nonempty code and retry time and clears owner/lease so the event can be reclaimed. Claims are due only when `retry_at <= database time` and the prior lease is absent/expired. PostgreSQL uses `FOR UPDATE SKIP LOCKED`; SQLite uses transaction + conditional update. Every string→uint64 conversion failure returns an error; no malformed/out-of-range durable ID may become zero.
 - Migration rows are private GORM models with canonical decimal-string IDs in queries; do not let GORM or SQLite coerce uint64 values through float64.
 
 - [ ] **Step 1: Write failing SQLite transaction/revision/outbox tests**
@@ -131,11 +131,32 @@ func TestSemanticPayloadHashAndOutboxLeaseFence(t *testing.T) {
     event, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
     require.NoError(t, err)
     require.Equal(t, sha256Hex([]byte("apply-payload")), event.PayloadHash)
+    require.Equal(t, "config-v1", event.ConfigDigest)
     second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
     require.NoError(t, err) // no second unexpired delivery claim
     require.Nil(t, second)
-    require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, event.LeaseToken-1), ErrSemanticOutboxLeaseLost)
-    require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, event.LeaseToken))
+    require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken-1), ErrSemanticOutboxLeaseLost)
+    require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, "wrong-worker", event.LeaseToken), ErrSemanticOutboxLeaseLost)
+    require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken))
+}
+
+func TestOutboxFailurePreservesEventConfigHashAndErrorForRetry(t *testing.T) {
+    ctx, db := context.Background(), newSemanticSQLiteTestDB(t)
+    repo := NewSemanticControlRepository(db)
+    mutation := mutationFixture(0, false, []byte("serialized-apply"))
+    mutation.ConfigDigest = "config-v1"
+    _, err := repo.WithSemanticMutation(ctx, mutation, noBusinessWrite)
+    require.NoError(t, err)
+    first, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
+    require.NoError(t, err)
+    require.NoError(t, repo.FailSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken, time.Now().Add(-time.Second), "semantic-unavailable"))
+    second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
+    require.NoError(t, err)
+    require.Equal(t, first.EventID, second.EventID)
+    require.Equal(t, first.PayloadHash, second.PayloadHash)
+    require.Equal(t, "config-v1", second.ConfigDigest)
+    require.Equal(t, "semantic-unavailable", second.ErrorCode)
+    require.ErrorIs(t, repo.AckSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken), ErrSemanticOutboxLeaseLost)
 }
 
 func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
@@ -150,6 +171,12 @@ func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
     require.NoError(t, err)
     revision := loadSemanticRevisionAsUint64(t, db, scope, "doc-1")
     require.Equal(t, maximum, revision)
+    event, err := repo.ClaimSemanticOutbox(ctx, "uint64-worker", 30)
+    require.NoError(t, err)
+    require.Equal(t, maximum, event.Scope.TenantID)
+    require.Equal(t, maximum, event.Revision)
+    require.Equal(t, uint64(1), event.AttemptCount)
+    require.Equal(t, uint64(1), event.LeaseToken)
     overflow := mutationFixture(maximum, false, []byte("overflow"))
     overflow.TenantID = maximum
     _, err = repo.WithSemanticMutation(ctx, overflow, noBusinessWrite)
@@ -191,12 +218,50 @@ func TestSemanticMutationPostgresConcurrentExpectedRevisionHasOneWinner(t *testi
 }
 ```
 
-The test imports `context`, `crypto/sha256`, `encoding/hex`, `errors`, `math`, `strconv`, `testing`, GORM, and `require/assert`. Define `fixtureScope = types.SemanticScopeKey{TenantID: 1, KBID: "kb-1"}`, `noBusinessWrite = func(*gorm.DB) error { return nil }`, and `mutationFixture(expected uint64, deleted bool, payload []byte) types.SemanticMutation` which fills tenant 1, KB `kb-1`, document `doc-1`, content hash `opaque-content-hash`, and copies payload. `sha256Hex` returns `"sha256:" + hex.EncodeToString(sum[:])` for a local `sha256.Sum256(payload)` variable; `assertRowCount`, `assertDenyRevision`, `assertSemanticEpoch`, `assertNoDeny`, `loadSemanticRevisionAsUint64`, `assertSQLiteSemanticTables`, and `sqliteTableExists` query the real migrated DB. `newSemanticSQLiteTestDB`/`newSemanticSQLiteMigrator` create a `t.TempDir()` DB, resolve the repo root from `runtime.Caller`, and use golang-migrate with an absolute `file://<repoRoot>/migrations/sqlite` source. PostgreSQL migration/outbox integration tests live in `*_pg_test.go` files built with `-tags=semantic_integration`; they require `TRPC_TEST_POSTGRES_DSN` and fail if absent, use a UUID schema/search_path, apply the formal migration stream, verify up/down/up, and drop only that schema. The tests also cover `math.MaxUint64` tenant/revision/epoch persistence and reject increment beyond max.
+The test imports `context`, `crypto/sha256`, `encoding/hex`, `errors`, `math`, `strconv`, `testing`, `time`, GORM, and `require/assert`. Define `fixtureScope = types.SemanticScopeKey{TenantID: 1, KBID: "kb-1"}`, `noBusinessWrite = func(*gorm.DB) error { return nil }`, and `mutationFixture(expected uint64, deleted bool, payload []byte) types.SemanticMutation` which fills tenant 1, KB `kb-1`, document `doc-1`, content hash `opaque-content-hash`, config digest `config-v1`, and copies payload. `sha256Hex` returns `"sha256:" + hex.EncodeToString(sum[:])` for a local `sha256.Sum256(payload)` variable; `assertRowCount`, `assertDenyRevision`, `assertSemanticEpoch`, `assertNoDeny`, `loadSemanticRevisionAsUint64`, `assertSQLiteSemanticTables`, and `sqliteTableExists` query the real migrated DB. `newSemanticSQLiteTestDB`/`newSemanticSQLiteMigrator` create a `t.TempDir()` DB, resolve the repo root from `runtime.Caller`, and use golang-migrate with an absolute `file://<repoRoot>/migrations/sqlite` source. PostgreSQL migration/outbox integration tests live in `*_pg_test.go` files built with `-tags=semantic_integration`; they require `TRPC_TEST_POSTGRES_DSN` and fail if absent, use a UUID schema/search_path, apply the formal migration stream, verify up/down/up, and drop only that schema. The tests cover maximum uint64 tenant/revision/epoch/outbox values and reject increment beyond max.
 
 ```go
 func sha256Hex(payload []byte) string {
     sum := sha256.Sum256(payload)
     return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func TestSemanticMutationPostgresConcurrentExpectedRevisionHasOneWinner(t *testing.T) {
+    db1, db2 := newSemanticPostgresTestDBPair(t) // separate DB connections, same test schema
+    repo1, repo2 := NewSemanticControlRepository(db1), NewSemanticControlRepository(db2)
+    start := make(chan struct{})
+    results := make(chan error, 2)
+    for _, repo := range []*SemanticControlRepository{repo1, repo2} {
+        go func(repo *SemanticControlRepository) {
+            <-start
+            mutation := mutationFixture(0, false, []byte("same-revision"))
+            results <- func() error { _, err := repo.WithSemanticMutation(context.Background(), mutation, noBusinessWrite); return err }()
+        }(repo)
+    }
+    close(start)
+    first, second := <-results, <-results
+    require.NotEqual(t, first == nil, second == nil)
+    assertPostgresOutboxCount(t, db1, fixtureScope, "doc-1", 1)
+}
+
+func TestSemanticMutationPostgresConcurrentDifferentDocumentDenialsBothCommit(t *testing.T) {
+    db1, db2 := newSemanticPostgresTestDBPair(t)
+    repo1, repo2 := NewSemanticControlRepository(db1), NewSemanticControlRepository(db2)
+    first, second := mutationFixture(0, true, nil), mutationFixture(0, true, nil)
+    first.DocumentID, second.DocumentID = "doc-a", "doc-b"
+    start := make(chan struct{})
+    results := make(chan error, 2)
+    for _, pair := range []struct{ repo *SemanticControlRepository; mutation types.SemanticMutation }{{repo1, first}, {repo2, second}} {
+        go func(repo *SemanticControlRepository, mutation types.SemanticMutation) {
+            <-start
+            _, err := repo.WithSemanticMutation(context.Background(), mutation, noBusinessWrite)
+            results <- err
+        }(pair.repo, pair.mutation)
+    }
+    close(start)
+    require.NoError(t, <-results)
+    require.NoError(t, <-results)
+    assertPostgresSemanticEpoch(t, db1, fixtureScope, 2)
 }
 ```
 

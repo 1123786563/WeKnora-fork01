@@ -29,6 +29,7 @@
 **文件与职责：**
 
 - `semantic/migrations/001_operations.sql`：operations唯一键、持久ApplyRequest和租约schema
+- `semantic/migrations/002_operation_stage.sql`：从初始operations schema升级stage与fencing uint64约束
 - `semantic/semantic_service/operations.py`：操作状态机与仓库
 - `semantic/semantic_service/worker.py`：领取、续租、恢复
 - `semantic/pyproject.toml`、`semantic/uv.lock`：锁定同步PostgreSQL driver
@@ -53,7 +54,7 @@ def test_stale_lease_cannot_publish(operation_store, claimed_operation):
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立service专属schema与幂等迁移器；operation表保存内部phase/stage、deterministic C01 ApplyRequest bytes、payload hash、租约到期、递增lease_token、错误码、result_generation；非终态需可恢复，终态清除请求正文；唯一键冲突查回原操作并校验payload**
+- [ ] **3. 建立service专属schema与versioned幂等迁移器；operation表保存内部phase/stage、deterministic C01 ApplyRequest bytes、payload hash、租约到期、递增lease_token、错误码、result_generation；兼容version-1旧schema升级stage/fence约束；非终态需可恢复，终态清除请求正文；唯一键冲突查回原操作并校验payload**
 
 - [ ] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
 
