@@ -136,6 +136,17 @@ class SearchRequest:
             raise ValueError("search request is invalid")
 
 
+@dataclass(frozen=True)
+class ReasonRequest:
+    search: SearchRequest
+    reasoning_mode: str
+    rule_set_version: str
+
+    def __post_init__(self) -> None:
+        if self.reasoning_mode not in {"rules", "model"} or not self.rule_set_version:
+            raise ValueError("reason request is invalid")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
