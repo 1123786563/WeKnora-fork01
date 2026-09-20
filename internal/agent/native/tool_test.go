@@ -5,11 +5,19 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+func nativeFailureCode(t *testing.T, err error) nativecontract.ErrorCode {
+	t.Helper()
+	var failure *nativecontract.Failure
+	require.ErrorAs(t, err, &failure)
+	return failure.Code
+}
 
 type nativeTestTool struct{ calls atomic.Int64 }
 
@@ -24,6 +32,41 @@ func (t *nativeTestStreamTool) Declaration() *tool.Declaration {
 func (t *nativeTestStreamTool) StreamableCall(context.Context, []byte) (*tool.StreamReader, error) {
 	t.calls.Add(1)
 	return tool.NewStream(1).Reader, nil
+}
+
+type nativeTestScopeResolver struct {
+	result nativecontract.Scope
+	err    error
+	calls  atomic.Int64
+}
+
+func (r *nativeTestScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
+	return r.result, r.err
+}
+func (r *nativeTestScopeResolver) Recheck(context.Context, nativecontract.Scope, []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
+	r.calls.Add(1)
+	return r.result, r.err
+}
+
+type nativeTestReservation struct {
+	err   error
+	calls atomic.Int64
+}
+
+func (r *nativeTestReservation) ReserveAndConsume(context.Context, nativecontract.ToolDispatchRequest) error {
+	r.calls.Add(1)
+	return r.err
+}
+
+func nativeTestDispatchRequest() nativecontract.ToolDispatchRequest {
+	run := nativecontract.RunIdentity{TenantID: 1, SessionID: "session-1", RunID: "run-1"}
+	return nativecontract.ToolDispatchRequest{
+		Scope:             nativecontract.Scope{TenantID: 1},
+		Fence:             nativecontract.Fence{Run: run, Owner: "worker-1", Epoch: 1},
+		Plan:              nativecontract.ToolPlan{Version: 1, Run: run, CallID: "call-1", ModelAttemptID: "model-1", Tool: nativecontract.ToolIdentity{Name: "write", SchemaHash: "schema", ConfigVersion: "config"}, Args: []byte(`{}`), ArgsHash: "hash", RequiredGrants: []nativecontract.ResourceGrant{{ResourceType: "connector", ResourceID: "install-1", Action: "write"}}},
+		Attempt:           nativecontract.Attempt{ID: "tool-1", Run: run, Kind: nativecontract.ToolAttempt, LogicalCallID: "call-1", Number: 1, Epoch: 1},
+		DecisionReference: "decision-1",
+	}
 }
 
 func TestNativeToolRecoveryActionUsesOnlyConfirmedOrExplicitCapabilities(t *testing.T) {
@@ -45,4 +88,44 @@ func TestNativeToolWrappersRejectRevokedCallableAndStreamableToolsBeforeDispatch
 	_, err = WrapStreamableTool(streamable, denied).StreamableCall(context.Background(), []byte(`{}`))
 	require.Error(t, err)
 	require.Zero(t, streamable.calls.Load())
+}
+
+func TestServerToolDispatchPreflightRejectsRevokedGrantBeforeReservation(t *testing.T) {
+	request := nativeTestDispatchRequest()
+	resolver := &nativeTestScopeResolver{result: nativecontract.Scope{TenantID: 1}}
+	reservation := &nativeTestReservation{}
+	preflight := ServerToolDispatchPreflight{Scopes: resolver, Reservations: reservation}
+
+	err := preflight.Authorize(context.Background(), request)
+
+	require.Equal(t, nativecontract.ErrForbidden, nativeFailureCode(t, err))
+	require.Equal(t, int64(1), resolver.calls.Load())
+	require.Zero(t, reservation.calls.Load())
+}
+
+func TestServerToolDispatchPreflightReturnsBudgetAndFenceFailuresBeforeDelegate(t *testing.T) {
+	request := nativeTestDispatchRequest()
+	granted := nativecontract.Scope{TenantID: 1, Grants: request.Plan.RequiredGrants}
+	for _, want := range []nativecontract.ErrorCode{nativecontract.ErrBudget, nativecontract.ErrLeaseLost} {
+		t.Run(string(want), func(t *testing.T) {
+			delegate := &nativeTestTool{}
+			preflight := ServerToolDispatchPreflight{
+				Scopes:       &nativeTestScopeResolver{result: granted},
+				Reservations: &nativeTestReservation{err: &nativecontract.Failure{Code: want}},
+			}
+			_, err := WrapCallableTool(delegate, func(ctx context.Context, _ []byte) error {
+				return preflight.Authorize(ctx, request)
+			}).Call(context.Background(), request.Plan.Args)
+			require.Equal(t, want, nativeFailureCode(t, err))
+			require.Zero(t, delegate.calls.Load())
+		})
+	}
+}
+
+func TestRecoveryActionForPlanHoldsExpiredIdempotencyKey(t *testing.T) {
+	plan := nativeTestDispatchRequest().Plan
+	plan.Policy = nativecontract.RecoveryIdempotent
+	plan.IdempotencyKey = "provider-key"
+	plan.IdempotencyExpiresAt = time.Now().Add(-time.Second)
+	require.Equal(t, "hold", RecoveryActionForPlan(plan, false, time.Now()))
 }

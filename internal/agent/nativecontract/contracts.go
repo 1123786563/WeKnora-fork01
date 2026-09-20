@@ -177,6 +177,33 @@ type ToolPlan struct {
 	IdempotencyKey                             string
 	IdempotencyExpiresAt                       time.Time
 }
+
+// ToolDispatchRequest is the server-assembled, immutable input to the final
+// preflight immediately before a delegate may cause an external effect. It is
+// deliberately not derived from SDK tool metadata or client input.
+type ToolDispatchRequest struct {
+	Scope             Scope
+	Fence             Fence
+	Plan              ToolPlan
+	Attempt           Attempt
+	DecisionReference string
+}
+
+// ToolDispatchPreflight owns the last authorization boundary before a tool
+// delegate is invoked. Implementations fail closed. In particular, they must
+// recheck the live scope/grants and arrange a durable, atomic reservation and
+// decision-reference consumption before returning nil.
+type ToolDispatchPreflight interface {
+	Authorize(context.Context, ToolDispatchRequest) error
+}
+
+// ToolDispatchReservation is the durable part of ToolDispatchPreflight.
+// ReserveAndConsume must atomically recheck the fence, reserve budget, and
+// consume DecisionReference exactly once. P2.4 owns the decision store and
+// P2.5 owns budget persistence; this contract intentionally owns neither.
+type ToolDispatchReservation interface {
+	ReserveAndConsume(context.Context, ToolDispatchRequest) error
+}
 type UserDecision struct {
 	Reason, ResourceRef           string
 	Version                       int
