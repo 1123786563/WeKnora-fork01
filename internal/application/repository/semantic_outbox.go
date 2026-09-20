@@ -157,11 +157,11 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 		if tx.Dialector.Name() == "postgres" {
 			lock = " FOR UPDATE SKIP LOCKED"
 		}
-		row := tx.Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at FROM semantic_outbox WHERE retry_at<=? AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY retry_at,event_id LIMIT 1"+lock, now, now).Row()
+		row := tx.Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at,error_code FROM semantic_outbox WHERE retry_at<=? AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY retry_at,event_id LIMIT 1"+lock, now, now).Row()
 		var tenant, rev string
 		var attempt, token uint64
 		var deleted bool
-		err := row.Scan(&event.EventID, &tenant, &event.Scope.KBID, &event.DocumentID, &rev, &event.ContentHash, &event.ConfigDigest, &deleted, &event.Payload, &event.PayloadHash, &attempt, &token, &event.RetryAt)
+		err := row.Scan(&event.EventID, &tenant, &event.Scope.KBID, &event.DocumentID, &rev, &event.ContentHash, &event.ConfigDigest, &deleted, &event.Payload, &event.PayloadHash, &attempt, &token, &event.RetryAt, &event.ErrorCode)
 		if err != nil {
 			if err.Error() == "sql: no rows in result set" {
 				return nil

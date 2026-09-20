@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
@@ -83,11 +84,31 @@ func TestSemanticPayloadHashAndOutboxLeaseFence(t *testing.T) {
 	event, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
 	require.NoError(t, err)
 	require.Equal(t, sha256Hex([]byte("apply-payload")), event.PayloadHash)
+	require.Equal(t, "config-v1", event.ConfigDigest)
 	second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
 	require.NoError(t, err)
 	require.Nil(t, second)
 	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken-1), ErrSemanticOutboxLeaseLost)
+	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, event.EventID, "wrong-worker", event.LeaseToken), ErrSemanticOutboxLeaseLost)
 	require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken))
+}
+
+func TestSemanticOutboxFailureReclaimsStableEvent(t *testing.T) {
+	ctx, db := context.Background(), newSemanticSQLiteTestDB(t)
+	repo := NewSemanticControlRepository(db)
+	_, err := repo.WithSemanticMutation(ctx, mutationFixture(0, false, []byte("payload")), noBusinessWrite)
+	require.NoError(t, err)
+	first, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
+	require.NoError(t, err)
+	require.NoError(t, repo.FailSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken, time.Unix(1, 0), "unavailable"))
+	second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.Equal(t, first.EventID, second.EventID)
+	require.Equal(t, first.PayloadHash, second.PayloadHash)
+	require.Equal(t, "config-v1", second.ConfigDigest)
+	require.Equal(t, "unavailable", second.ErrorCode)
+	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken), ErrSemanticOutboxLeaseLost)
 }
 
 func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
