@@ -25,3 +25,13 @@ func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 		t.Fatalf("mode echo = %#v", response)
 	}
 }
+
+func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
+	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
+		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,
+		ActualMode:    semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON,
+	})
+	if err == nil {
+		t.Fatal("expected implicit reason upgrade rejection")
+	}
+}

@@ -64,5 +64,8 @@ func SemanticSearchResponseFromWire(wire *semanticpb.SearchResponse) (SemanticSe
 	if err != nil {
 		return SemanticSearchResponse{}, err
 	}
+	if requested == SemanticRetrievalModeGraphRAG && actual == SemanticRetrievalModeReason {
+		return SemanticSearchResponse{}, fmt.Errorf("semantic search cannot implicitly upgrade graph_rag to reason")
+	}
 	return SemanticSearchResponse{RequestedMode: requested, ActualMode: actual}, nil
 }
