@@ -1,0 +1,16 @@
+{
+  "name": "@weknora/mobile-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@weknora/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@weknora/api-client": "workspace:*",
+    "@types/node": "22.14.0"
+  }
+}
