@@ -38,7 +38,9 @@ function metadata(value: unknown): UnknownRecord {
 
 function cleanPreview(value: unknown, maxLength = 220): string {
   const normalized = text(value)
-    .replace(/^(.{3}|…+)\s*/, '')
+    // Strip only leading ellipsis runs left over from streamed previews; the
+    // original opening text must survive (Vue docInfo renders from char 0).
+    .replace(/^…+\s*/, '')
     .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')

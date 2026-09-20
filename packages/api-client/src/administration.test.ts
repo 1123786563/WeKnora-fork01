@@ -34,6 +34,17 @@ test('maps system admin, API key scope, settings, and runtime cursor routes', as
   ]);
 });
 
+// R491: untouched platform settings come back with an empty last_modified_by;
+// the strict non-empty string guard rejected the whole page.
+test('settings list accepts an empty last_modified_by', async () => {
+  const api = createAdministrationApi(async () => [
+    { id: 0, key: 'asynq.core_concurrency', value: 8, value_type: 'int', category: 'worker', description: 'd', is_secret: false, requires_restart: true, last_modified_by: '', created_at: '0001-01-01T00:00:00Z', updated_at: '0001-01-01T00:00:00Z' },
+  ]);
+  const settings = await api.settings.list();
+  assert.equal(settings[0]?.key, 'asynq.core_concurrency');
+  assert.equal(settings[0]?.last_modified_by, '');
+});
+
 test('keeps system-admin authorization errors observable', async () => {
   const api = createAdministrationApi(async () => {
     throw new ApiError({ status: 403, code: 'forbidden', message: 'system admin required' });

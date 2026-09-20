@@ -43,6 +43,22 @@ test('groups duplicate document chunks and keeps web and tool references separat
   assert.equal(groups[2]?.items[0]?.source, 'query_database');
 });
 
+// R491: Vue docInfo renders chunk content from the first character (no
+// head-stripping); a leading-3-chars heuristic ate "WeK" from "WeKnora...".
+test('document reference snippets keep the original opening text', () => {
+  const groups = groupChatReferences([
+    {
+      id: 'chunk-1',
+      knowledge_id: 'document-1',
+      knowledge_title: 'Architecture',
+      knowledge_base_id: 'kb-1',
+      content: 'WeKnora is a knowledge framework. It chunks documents.',
+    },
+  ]);
+  assert.match(groups[0]?.items[0]?.snippet ?? '', /^WeKnora is a knowledge framework/);
+  assert.doesNotMatch(groups[0]?.items[0]?.snippet ?? '', /^…/);
+});
+
 test('drops unsafe web destinations instead of turning them into clickable references', () => {
   const groups = groupChatReferences([
     {
