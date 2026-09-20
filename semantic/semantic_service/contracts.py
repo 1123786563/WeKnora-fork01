@@ -214,6 +214,22 @@ def access_scope_from_wire(wire) -> AccessScope:
     return AccessScope(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.subject_id, wire.scope_ref, wire.scope_hash, wire.permission_epoch, wire.expires_at, wire.audience, purposes[wire.purpose], wire.budget_ref)
 
 
+def operation_to_wire(value: Operation):
+    from semantic_service.proto import semantic_pb2
+    states = {"pending": semantic_pb2.OPERATION_STATE_PENDING, "running": semantic_pb2.OPERATION_STATE_RUNNING, "succeeded": semantic_pb2.OPERATION_STATE_SUCCEEDED, "failed": semantic_pb2.OPERATION_STATE_FAILED, "cancelled": semantic_pb2.OPERATION_STATE_CANCELLED}
+    wire = semantic_pb2.Operation(operation_id=value.operation_id, scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), document_id=value.document_id, revision=value.revision, state=states[value.state], stage=value.stage, lease_token=value.lease_token)
+    if value.result_generation is not None: wire.result_generation = value.result_generation
+    if value.error_code is not None: wire.error_code = value.error_code
+    return wire
+
+
+def operation_from_wire(wire) -> Operation:
+    from semantic_service.proto import semantic_pb2
+    states = {semantic_pb2.OPERATION_STATE_PENDING: "pending", semantic_pb2.OPERATION_STATE_RUNNING: "running", semantic_pb2.OPERATION_STATE_SUCCEEDED: "succeeded", semantic_pb2.OPERATION_STATE_FAILED: "failed", semantic_pb2.OPERATION_STATE_CANCELLED: "cancelled"}
+    if wire.state not in states: raise ValueError("unknown operation state")
+    return Operation(wire.operation_id, ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, states[wire.state], wire.stage, wire.lease_token, wire.result_generation if wire.HasField("result_generation") else None, wire.error_code if wire.HasField("error_code") else None)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

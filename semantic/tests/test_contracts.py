@@ -130,3 +130,10 @@ def test_access_scope_wire_round_trip_preserves_expiry() -> None:
 
     scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
     assert access_scope_from_wire(access_scope_to_wire(scope)) == scope
+
+
+def test_operation_wire_round_trip_preserves_state() -> None:
+    from semantic_service.contracts import Operation, ScopeKey, operation_from_wire, operation_to_wire
+
+    value = Operation("op", ScopeKey(1, "kb"), "doc", 1, "running", "index", 2, "g", None)
+    assert operation_from_wire(operation_to_wire(value)) == value
