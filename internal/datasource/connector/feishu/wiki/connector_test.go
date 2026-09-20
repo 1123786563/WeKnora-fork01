@@ -773,6 +773,14 @@ func TestFetchAll_MixedTypes(t *testing.T) {
 }
 
 func TestFetchAll_LogsSummaryWithSkipBreakdown(t *testing.T) {
+	// This test inspects the human-readable summary. LOG_FORMAT is a literal
+	// template, so reset it independently of the process environment first.
+	// Register the logger cleanup before t.Setenv: cleanup is LIFO, which makes
+	// ConfigureFromEnv run after t.Setenv restores the caller's configuration.
+	t.Cleanup(logger.ConfigureFromEnv)
+	t.Setenv("LOG_FORMAT", "")
+	logger.ConfigureFromEnv()
+
 	nodes := []core.WikiNode{
 		{NodeToken: "nt1", ObjToken: "obj1", ObjType: "docx", Title: "Doc", NodeEditTime: "1711468800"},
 		{NodeToken: "nt4", ObjToken: "obj4", ObjType: "mindnote", Title: "Mind", NodeEditTime: "1711468800"},
@@ -783,7 +791,6 @@ func TestFetchAll_LogsSummaryWithSkipBreakdown(t *testing.T) {
 
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	defer logger.SetOutput(os.Stderr)
 
 	c := NewConnector(core.RegionFeishu)
 	if _, err := c.FetchAll(context.Background(), makeConfig(cfg, []string{"space1"}), []string{"space1"}); err != nil {
