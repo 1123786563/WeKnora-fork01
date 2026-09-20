@@ -18,12 +18,18 @@ def extract_quote(text: str, start: int, end: int) -> str:
 
 def validate_span(text: str, start: int, end: int, quote: str) -> None:
     """Require the supplied quote to equal the exact source span."""
+    if not isinstance(quote, str):
+        raise ValueError("quote must be a string")
     if extract_quote(text, start, end) != quote:
         raise ValueError("quote does not match source span")
 
 
 def validate_evidence(chunk: ChunkSnapshot, evidence: Evidence) -> None:
     """Validate chunk identity, opaque hash equality, and quote provenance."""
+    if not isinstance(chunk.text, str):
+        raise ValueError("chunk text must be a string")
+    if not isinstance(evidence.quote, str):
+        raise ValueError("evidence quote must be a string")
     if evidence.chunk_id != chunk.chunk_id:
         raise ValueError("evidence references a different chunk")
     if evidence.content_hash != chunk.content_hash:

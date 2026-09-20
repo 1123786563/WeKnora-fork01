@@ -32,3 +32,14 @@ def test_unanchored_evidence_must_be_an_exact_substring():
     validate_evidence(chunk, Evidence("e1", "d1", 1, "c1", "h", "😀", None, None))
     with pytest.raises(ValueError):
         validate_evidence(chunk, Evidence("e2", "d1", 1, "c1", "h", "缺失", None, None))
+    decomposed = ChunkSnapshot("c2", "e\u0301", "h2")
+    validate_evidence(decomposed, Evidence("e3", "d1", 1, "c2", "h2", "e\u0301", None, None))
+    with pytest.raises(ValueError):
+        validate_evidence(decomposed, Evidence("e4", "d1", 1, "c2", "h2", "\u00e9", None, None))
+
+
+def test_unanchored_evidence_rejects_non_string_text_and_quote():
+    with pytest.raises(ValueError):
+        validate_evidence(ChunkSnapshot("c1", 1, "h"), Evidence("e1", "d1", 1, "c1", "h", "q", None, None))
+    with pytest.raises(ValueError):
+        validate_evidence(ChunkSnapshot("c1", "text", "h"), Evidence("e2", "d1", 1, "c1", "h", 1, None, None))
