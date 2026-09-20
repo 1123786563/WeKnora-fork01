@@ -566,7 +566,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
           {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <>
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[26px] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <>
             <MentionedItemsTags message={message} />
             <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>
           </>}

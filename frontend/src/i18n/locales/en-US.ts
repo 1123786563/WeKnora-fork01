@@ -6576,7 +6576,27 @@ export default {
     syncError: {
       deletion_lookup_failed: 'Failed to look up the item before deletion; see server logs',
       deletion_failed: 'Deletion failed; see server logs',
-      ingest_failed: 'Ingest failed; see server logs'
+      ingest_failed: 'Ingest failed; see server logs',
+      // SP2-b Task 8: per-item connector failure codes + the three targeted
+      // reindex codes, copied from the React bundle (dataSource.syncError.*).
+      sync_failed: 'Sync failed; will retry on the next sync',
+      feishu_rate_limited: 'Feishu API rate limited; will retry on the next sync',
+      feishu_auth_or_permission: 'Authentication or permission error; check credentials and app scopes',
+      feishu_api_error: 'Feishu API error (code={code}); will retry on the next sync',
+      feishu_api_error_generic: 'Feishu API error; will retry on the next sync',
+      feishu_server_unavailable: 'Feishu service temporarily unavailable; will retry on the next sync',
+      feishu_timeout: 'Export or request timed out; will retry on the next sync',
+      confluence_api_error: 'Confluence API error; see server logs',
+      confluence_auth_or_permission: 'Authentication or permission error; check credentials and space permissions',
+      confluence_not_found: 'Confluence page was not found; will retry on the next sync',
+      confluence_rate_limited: 'Confluence API rate limited; will retry on the next sync',
+      confluence_server_unavailable: 'Confluence service temporarily unavailable; will retry on the next sync',
+      confluence_sync_failed: 'Confluence page could not be synced; see server logs',
+      dingtalk_document_failed: 'DingTalk document could not be read; retry on the next sync',
+      dingtalk_resource_failed: 'DingTalk resource is unavailable; check access and the saved selection, then retry',
+      targeted_unsupported: 'This connector does not support retrying a single item; run a normal sync',
+      not_found: 'The item no longer exists at the source',
+      fetch_failed: 'Refetch failed'
     }
   },
   integrations: {

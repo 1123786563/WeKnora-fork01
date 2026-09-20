@@ -104,6 +104,7 @@ type TargetedFetcher interface {
 - 生成一次 scoped run：`DataSourceSyncPayload.Scope.ExternalIDs` + Trigger=`manual_reindex` → 每项 `FetchByExternalID → ingestItem`
 - **SubtreeKeep 契约**：ingestItem 的先删后建必须遵守子树协议（`types/datasource.go:349-381` PRECONDITIONS），单文档重抓不误删附件子树；返回值含 per-item 成功/失败结果
 - **双写收敛**：scoped run 写自己的 SyncLog（Trigger 区分）；`DataSource.LastSyncResult` 只在整源 run 刷新——scoped run 不污染
+- **触发器位置补注**（Task 6 实现确认）：`ProcessSync` 中 scoped 分支（`payload.Scope` 命中即 `runScopedReindex` 提前返回）位于凭据续期检查**之前**——凭据轮换（§6.3）只在整源 run 发生，scoped run 不做凭据续期（OAuth refresh 单次性 + scoped ds 零写的双向隔离）
 - `ManualSync` API 放开 `force_full` 参数（payload 字段已有，补 handler 入口），供"整源强制全量对账"
 
 ### 5.4 前端
@@ -128,8 +129,14 @@ type TargetedFetcher interface {
 ```
 RefreshDataSourceCredential(ctx, dsID, key, value):
   1. 读 ds + ParseConfig（解密）
-  2. HasConfiguredCredentials == false → 拒绝回写（防密钥轮换后空值永久覆盖真实凭据——调研坑）
-  3. 单 key 更新（非整体替换）→ ToJSON 加密 → 保存
+  2. 防覆盖守卫（三子句，任一命中即拒绝）：
+     a. ParseConfig 解析结果为 nil（无可读配置）
+     b. HasConfiguredCredentials == false（防密钥轮换后空值永久覆盖真实凭据——调研坑）
+     c. storedCredentialDecryptFailed——存量的某凭据密文在当前 SYSTEM_AES_KEY 下解不开
+        （ParseConfig 宽松加载会把它读成空串；此时回写会把密文整体替换为空值，等于销毁
+        原凭据——密钥轮换后密文不可读 → 拒写，Task 5 实现确认）
+  3. 单 key 更新（非整体替换）：写入集为 {key, last_refreshed_at}（目标 key + 刷新时间戳），
+     其余 key 保留解密原值 → ToJSON 加密 → 保存
   4. 审计动作 credential_auto_refreshed（独立于用户 PUT 的 changed_fields 审计）
   5. 不触发用户级 live validate（续期结果由下一次同步自然验证）
 ```

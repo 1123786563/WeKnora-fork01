@@ -958,7 +958,28 @@ export default {
     syncError: {
       deletion_lookup_failed: '删除前查找文档失败，请查看服务器日志',
       deletion_failed: '删除失败，请查看服务器日志',
-      ingest_failed: '导入失败，请查看服务器日志'
+      ingest_failed: '导入失败，请查看服务器日志',
+      // SP2-b Task 8: 连接器逐项失败码 + targeted reindex 三码，值照 React 侧
+      // packages/i18n/src/generated/dataSource.ts 同码抄写（feishu/confluence/dingtalk/targeted_*）。
+      // sync_failed 为 feishu 分类兜底码，一并补齐。
+      sync_failed: '同步失败，将在下次同步时重试',
+      feishu_rate_limited: '飞书 API 限流，将在下次同步时重试',
+      feishu_auth_or_permission: '认证或权限错误，请检查凭证与应用权限',
+      feishu_api_error: '飞书 API 错误（code={code}），将在下次同步时重试',
+      feishu_api_error_generic: '飞书 API 错误，将在下次同步时重试',
+      feishu_server_unavailable: '飞书服务暂时不可用，将在下次同步时重试',
+      feishu_timeout: '导出或请求超时，将在下次同步时重试',
+      confluence_api_error: 'Confluence API 错误，请查看服务器日志',
+      confluence_auth_or_permission: '认证或权限错误，请检查凭证与空间权限',
+      confluence_not_found: 'Confluence 页面不存在，将在下次同步时重试',
+      confluence_rate_limited: 'Confluence API 限流，将在下次同步时重试',
+      confluence_server_unavailable: 'Confluence 服务暂时不可用，将在下次同步时重试',
+      confluence_sync_failed: 'Confluence 页面无法同步，请查看服务器日志',
+      dingtalk_document_failed: '钉钉文档无法读取，将在下次同步时重试',
+      dingtalk_resource_failed: '钉钉资源不可用，请检查访问权限与所选范围后重试',
+      targeted_unsupported: '该连接器暂不支持单条重试，请执行普通同步',
+      not_found: '源端已不存在该文档',
+      fetch_failed: '重新抓取失败'
     },
   },
   ollama: {
