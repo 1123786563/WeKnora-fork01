@@ -35,3 +35,14 @@ func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 		t.Fatal("expected implicit reason upgrade rejection")
 	}
 }
+
+func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
+	evidence, err := SemanticEvidenceFromWire(&semanticpb.Evidence{EvidenceId: "e", DocumentId: "d", Revision: 1, ChunkId: "c", ContentHash: "h", Quote: "text"})
+	if err != nil || evidence.StartChar != nil || evidence.EndChar != nil {
+		t.Fatalf("evidence = %#v, %v", evidence, err)
+	}
+	scope, err := SemanticAccessScopeFromWire(&semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: 1, KbId: "kb"}, SubjectId: "user", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, Audience: "semantic", Purpose: semanticpb.Purpose_PURPOSE_SEARCH, BudgetRef: "budget"})
+	if err != nil || scope.PermissionEpoch != 2 {
+		t.Fatalf("scope = %#v, %v", scope, err)
+	}
+}
