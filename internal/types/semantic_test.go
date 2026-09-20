@@ -14,6 +14,13 @@ func TestSemanticDeleteRequiresDeletedRevision(t *testing.T) {
 	}
 }
 
+func TestSemanticDeleteToWireRequiresTombstone(t *testing.T) {
+	_, err := SemanticDeleteDocumentRevisionToWire(SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, Deleted: false})
+	if err == nil {
+		t.Fatal("expected outbound delete tombstone validation")
+	}
+}
+
 func TestSemanticApplyAllowsNonDeletedRevision(t *testing.T) {
 	revision, err := SemanticDocumentRevisionFromWire(&semanticpb.DocumentRevision{Scope: &semanticpb.ScopeKey{TenantId: 1, KbId: "kb"}, DocumentId: "doc", Revision: 1, ContentHash: "hash", Deleted: false})
 	if err != nil || revision.Deleted {
@@ -173,7 +180,11 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 	if err != nil || evidence.StartChar != nil || evidence.EndChar != nil {
 		t.Fatalf("evidence = %#v, %v", evidence, err)
 	}
-	roundTripEvidence, err := SemanticEvidenceFromWire(SemanticEvidenceToWire(evidence))
+	evidenceWire, err := SemanticEvidenceToWire(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripEvidence, err := SemanticEvidenceFromWire(evidenceWire)
 	if err != nil || roundTripEvidence != evidence {
 		t.Fatalf("evidence round trip = %#v, %v", roundTripEvidence, err)
 	}
@@ -188,6 +199,12 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 	roundTrip, err := SemanticAccessScopeFromWire(accessWire)
 	if err != nil || roundTrip != scope {
 		t.Fatalf("scope round trip = %#v, %v", roundTrip, err)
+	}
+}
+
+func TestSemanticEvidenceToWireRejectsMalformed(t *testing.T) {
+	if _, err := SemanticEvidenceToWire(SemanticEvidence{Revision: 1}); err == nil {
+		t.Fatal("expected outbound evidence validation")
 	}
 }
 

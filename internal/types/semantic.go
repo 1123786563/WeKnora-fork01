@@ -159,6 +159,13 @@ func SemanticDeleteDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (
 	return revision, nil
 }
 
+func SemanticDeleteDocumentRevisionToWire(value SemanticDocumentRevision) (*semanticpb.DocumentRevision, error) {
+	if !value.Deleted {
+		return nil, fmt.Errorf("semantic delete requires deleted=true")
+	}
+	return SemanticDocumentRevisionToWire(value)
+}
+
 func SemanticDocumentRevisionToWire(value SemanticDocumentRevision) (*semanticpb.DocumentRevision, error) {
 	if value.DocumentID == "" || value.Revision == 0 {
 		return nil, fmt.Errorf("semantic document revision is incomplete")
@@ -212,13 +219,19 @@ func SemanticEvidenceFromWire(wire *semanticpb.Evidence) (SemanticEvidence, erro
 	return SemanticEvidence{EvidenceID: wire.EvidenceId, DocumentID: wire.DocumentId, Revision: wire.Revision, ChunkID: wire.ChunkId, ContentHash: wire.ContentHash, Quote: wire.Quote, StartChar: wire.StartChar, EndChar: wire.EndChar}, nil
 }
 
-func SemanticEvidenceToWire(value SemanticEvidence) *semanticpb.Evidence {
+func SemanticEvidenceToWire(value SemanticEvidence) (*semanticpb.Evidence, error) {
+	if value.EvidenceID == "" || value.DocumentID == "" || value.ChunkID == "" || value.ContentHash == "" || value.Quote == "" || value.Revision == 0 {
+		return nil, fmt.Errorf("semantic evidence is incomplete")
+	}
+	if (value.StartChar == nil) != (value.EndChar == nil) || (value.StartChar != nil && *value.EndChar <= *value.StartChar) {
+		return nil, fmt.Errorf("semantic evidence span is invalid")
+	}
 	wire := &semanticpb.Evidence{EvidenceId: value.EvidenceID, DocumentId: value.DocumentID, Revision: value.Revision, ChunkId: value.ChunkID, ContentHash: value.ContentHash, Quote: value.Quote}
 	if value.StartChar != nil {
 		wire.StartChar = value.StartChar
 		wire.EndChar = value.EndChar
 	}
-	return wire
+	return wire, nil
 }
 
 type SemanticAccessScope struct {
@@ -326,7 +339,11 @@ func SemanticSearchResponseToWire(value SemanticSearchResponse) (*semanticpb.Sea
 	}
 	evidence := make([]*semanticpb.Evidence, 0, len(value.Evidence))
 	for _, item := range value.Evidence {
-		evidence = append(evidence, SemanticEvidenceToWire(item))
+		mapped, err := SemanticEvidenceToWire(item)
+		if err != nil {
+			return nil, err
+		}
+		evidence = append(evidence, mapped)
 	}
 	paths := make([]*semanticpb.StringPath, 0, len(value.Paths))
 	for _, path := range value.Paths {

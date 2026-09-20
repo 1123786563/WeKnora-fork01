@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
+import re
 
 
 UINT64_MAX = 2**64 - 1
@@ -122,6 +123,8 @@ class AccessScope:
     def __post_init__(self) -> None:
         _uint(self.scope.tenant_id, UINT64_MAX, "tenant_id", nonzero=True)
         _uint(self.permission_epoch, UINT64_MAX, "permission_epoch")
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", self.expires_at):
+            raise ValueError("expires_at must use RFC3339 syntax")
         try:
             expiry = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
         except ValueError as exc:
@@ -130,6 +133,8 @@ class AccessScope:
             raise ValueError("expires_at must include a timezone")
         if self.purpose not in {AccessPurpose.SEARCH, AccessPurpose.REASON, AccessPurpose.INDEX}:
             raise ValueError("access scope purpose is unsupported")
+        if isinstance(self.purpose, str):
+            object.__setattr__(self, "purpose", AccessPurpose(self.purpose))
         if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.budget_ref:
             raise ValueError("access scope identity fields are required")
 
@@ -389,6 +394,8 @@ def search_request_to_wire(value: SearchRequest):
 
 def search_request_from_wire(wire) -> SearchRequest:
     from semantic_service.proto import semantic_pb2
+    if wire is None or not wire.HasField("limits") or not wire.HasField("access_scope"):
+        raise ValueError("search request access scope and limits are required")
     modes = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
     if wire.requested_mode not in modes:
         raise ValueError("unknown requested retrieval mode")
@@ -457,6 +464,8 @@ def capabilities_to_wire(value: Capabilities):
 
 def capabilities_from_wire(wire) -> Capabilities:
     from semantic_service.proto import semantic_pb2
+    if wire is None or not wire.HasField("limits"):
+        raise ValueError("capability query limits are required")
     retrieval = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
     reasoning = {semantic_pb2.REASONING_MODE_RULES: "rules", semantic_pb2.REASONING_MODE_MODEL: "model"}
     if any(item not in retrieval for item in wire.retrieval_modes) or any(item not in reasoning for item in wire.reasoning_modes): raise ValueError("unknown capability mode")

@@ -189,6 +189,34 @@ def test_access_scope_rejects_naive_expiry_and_zero_tenant() -> None:
             raise AssertionError("expected invalid access scope rejection")
 
 
+def test_access_scope_rejects_non_rfc3339_and_normalizes_purpose() -> None:
+    from semantic_service.contracts import AccessPurpose, AccessScope, ScopeKey
+    valid = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 1, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
+    assert valid.purpose is AccessPurpose.SEARCH
+    for expiry in ("2026-09-20 00:00:00+00:00", "20260920T000000+0000"):
+        try:
+            AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 1, expiry, "semantic", "search", "budget")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected strict RFC3339 expiry validation")
+
+
+def test_search_and_capabilities_wire_reject_missing_limits() -> None:
+    from semantic_service.contracts import capabilities_from_wire, search_request_from_wire
+    from semantic_service.proto import semantic_pb2
+    for operation in (
+        lambda: search_request_from_wire(semantic_pb2.SearchRequest()),
+        lambda: capabilities_from_wire(semantic_pb2.Capabilities(protocol_version="v1", engine_version="e")),
+    ):
+        try:
+            operation()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected missing limits rejection")
+
+
 def test_operation_wire_round_trip_preserves_state() -> None:
     from semantic_service.contracts import Operation, ScopeKey, operation_from_wire, operation_to_wire
 
