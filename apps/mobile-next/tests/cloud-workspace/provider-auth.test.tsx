@@ -2,22 +2,21 @@ import { createTrustedScopePublisher, subscribeCloudWorkspace } from "@/cloud-wo
 import type { WeKnoraApi } from "@/api/weknora";
 
 describe("CloudWorkspaceProvider authentication lifetime", () => {
-  it("drops t1 client before publishing t2 after a successful server switch", async () => {
-    const scopes: Array<string | null> = [];
+  it("publishes t1 → null → t2 client lifetimes with their generations", () => {
+    const scopes: Array<{ tenantId: string; generation: number } | null> = [];
     const api = {} as WeKnoraApi;
     const onTrustedScope = createTrustedScopePublisher(api);
-    const unsubscribe = subscribeCloudWorkspace((client) => scopes.push(client?.scope.tenantId ?? null));
-    const auth = {
-      async switchSpace(tenantId: string): Promise<void> {
-        onTrustedScope(null);
-        onTrustedScope({ backend: "https://api", accountId: "u1", tenantId, generation: 5 });
-      },
-    };
+    onTrustedScope({ backend: "https://api", accountId: "u1", tenantId: "t1", generation: 4 });
+    const unsubscribe = subscribeCloudWorkspace((client) => {
+      scopes.push(client ? { tenantId: client.scope.tenantId, generation: client.scope.generation } : null);
+    });
+    scopes.length = 0;
 
-    await auth.switchSpace("t2");
+    onTrustedScope(null);
+    onTrustedScope({ backend: "https://api", accountId: "u1", tenantId: "t2", generation: 5 });
 
-    expect(scopes).toContain(null);
-    expect(scopes.at(-1)).toBe("t2");
+    expect(scopes).toEqual([null, { tenantId: "t2", generation: 5 }]);
     unsubscribe();
+    onTrustedScope(null);
   });
 });
