@@ -2,15 +2,15 @@
   "schema_version": 1,
   "python": {
     "version": "3.12.12 (main, Feb  4 2026, 01:57:59) [Clang 21.1.4 ]",
-    "executable": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpTi9Fxl/bin/python",
-    "prefix": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpTi9Fxl"
+    "executable": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/bin/python",
+    "prefix": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm"
   },
   "platform": "macOS-26.6.2-arm64-arm-64bit",
   "distribution": {
     "name": "semantica",
     "version": "0.6.8",
-    "path": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpTi9Fxl/lib/python3.12/site-packages",
-    "package_file": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpTi9Fxl/lib/python3.12/site-packages/semantica/__init__.py",
+    "path": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/lib/python3.12/site-packages",
+    "package_file": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/lib/python3.12/site-packages/semantica/__init__.py",
     "expected_wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7"
   },
   "lock_hash": "c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54",
@@ -62,5 +62,6 @@
     "No provider, model, persistent storage, Go authorization, or external service was invoked.",
     "The lock records the frozen wheel hash; installed files do not retain a wheel byte-for-byte hash."
   ],
-  "failures": []
+  "failures": [],
+  "artifact_path": "docs/plans/semantica/evidence/2026-09-20/v01-installed-contract.json"
 }

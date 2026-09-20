@@ -35,7 +35,7 @@ by downstream work. It does not construct providers or connect to storage.
 
 ```sh
 uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q
-uv run --isolated --project semantic/experiments python semantic/experiments/verify_version.py --output docs/plans/semantica/evidence/2026-09-20/v01-installed-contract.json
+uv run --locked --isolated --project semantic/experiments python semantic/experiments/verify_version.py --output docs/plans/semantica/evidence/2026-09-20/v01-installed-contract.json
 ```
 
 `--isolated` deliberately replays the lock in a fresh uv environment. The
