@@ -107,6 +107,57 @@ test('authorized sign-in persists its deployment and sign-out clears it', async 
   assert.deepEqual(deployments.calls, [`write:${DEPLOYMENT.origin}`, 'clear']);
 });
 
+test('a delayed boot cannot override a later manual sign-in', async () => {
+  const restored = deferred<{ origin: string; label?: string } | undefined>();
+  const original = DEPLOYMENT;
+  const manual: DeploymentInput = { origin: 'https://manual.example.test', label: 'Manual' };
+  const store = fakeStore({ [original.origin]: { token: 'stored-access', refreshToken: 'stored-refresh' } });
+  const deployments: DeploymentStore = {
+    read: async () => restored.promise,
+    write: async () => {},
+    clear: async () => {},
+  };
+  const runtime = createMobileRuntime({
+    ...ports(store, (origin) => remote({
+      passwordLogin: async () => ({ token: `login-${origin}`, refreshToken: 'refresh' }),
+      me: async () => ({ user: { id: origin }, tenant: { id: origin } }),
+    })),
+    deploymentStore: deployments,
+  });
+
+  const boot = runtime.boot();
+  await Promise.resolve();
+  await runtime.signIn({ deployment: manual, email: 'member@example.test', password: 'password' });
+  restored.resolve(original);
+  await boot;
+
+  assert.deepEqual(runtime.snapshot(), {
+    surface: 'authorized', deployment: manual,
+    identity: { userId: manual.origin, activeTenantId: manual.origin },
+  });
+});
+
+test('sign-out clears deployment persistence after an in-flight authorized write', async () => {
+  const writeStarted = deferred<void>();
+  const finishWrite = deferred<void>();
+  let stored: { origin: string; label?: string } | undefined;
+  const deployments: DeploymentStore = {
+    read: async () => stored,
+    async write(deployment) { writeStarted.resolve(); await finishWrite.promise; stored = { ...deployment }; },
+    async clear() { stored = undefined; },
+  };
+  const runtime = createMobileRuntime({ ...ports(), deploymentStore: deployments });
+
+  const signIn = runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await writeStarted.promise;
+  const signOut = runtime.signOut();
+  finishWrite.resolve();
+  await Promise.all([signIn, signOut]);
+
+  assert.equal(stored, undefined);
+  assert.equal(runtime.snapshot().surface, 'deployment-login');
+});
+
 test('Task 2 AuthSession token reaches /auth/me and capabilities bearer requests', async () => {
   const seen: Array<{ path: string; authorization?: string }> = [];
   const task2Remote = createMobileRuntimeRemote({

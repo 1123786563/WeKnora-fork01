@@ -69,6 +69,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let lease: ScopeLease | undefined;
   let revocableLease: RuntimeScopeLease | undefined;
   let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
+  let deploymentMutation: Promise<void> = Promise.resolve();
   let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -84,7 +85,18 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     activeDeployment = deployment;
     return epoch;
   };
+  const reserve = (): number => {
+    epoch += 1;
+    revoke();
+    activeDeployment = undefined;
+    return epoch;
+  };
   const current = (requestEpoch: number, deployment: Deployment): boolean => requestEpoch === epoch && activeDeployment?.origin === deployment.origin;
+  const mutateDeployment = (mutation: () => Promise<void>): Promise<void> => {
+    const next = deploymentMutation.then(mutation, mutation);
+    deploymentMutation = next.catch(() => {});
+    return next;
+  };
   const safe = (requestEpoch: number, deployment: Deployment, reason: RuntimeReason): RuntimeSnapshot =>
     current(requestEpoch, deployment) ? publish({ surface: 'upgrade-required', deployment, reason }) : state;
 
@@ -100,7 +112,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
       if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
-      await ports.deploymentStore?.write(deployment);
+      await mutateDeployment(async () => { await ports.deploymentStore?.write(deployment); });
       if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease();
       lease = revocableLease as unknown as ScopeLease;
@@ -111,29 +123,29 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   };
   const signOut = async (): Promise<void> => {
     const deployment = activeDeployment;
-    epoch += 1;
-    revoke();
-    activeDeployment = undefined;
+    reserve();
     publish({ surface: 'deployment-login', reason: 'authentication-required' });
     if (deployment) await ports.credentialStore.clear(deployment.origin);
-    await ports.deploymentStore?.clear();
+    await mutateDeployment(async () => { await ports.deploymentStore?.clear(); });
   };
 
   return {
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async boot(input?: DeploymentInput): Promise<RuntimeSnapshot> {
+      const requestEpoch = reserve();
       try {
         const storedDeployment = input ?? await ports.deploymentStore?.read();
+        if (requestEpoch !== epoch) return state;
         if (!storedDeployment) return publish({ surface: 'deployment-login', reason: 'authentication-required' });
         const deployment = normalizeDeployment(storedDeployment);
-        const requestEpoch = begin(deployment);
+        activeDeployment = deployment;
         const credential = await ports.credentialStore.read(deployment.origin);
         if (!current(requestEpoch, deployment)) return state;
         if (!credential) return publish({ surface: 'deployment-login', deployment, reason: 'authentication-required' });
         return await authenticate(requestEpoch, deployment, credential);
       } catch {
-        return publish({ surface: 'deployment-login', reason: 'authentication-required' });
+        return requestEpoch === epoch ? publish({ surface: 'deployment-login', reason: 'authentication-required' }) : state;
       }
     },
     async signIn(input): Promise<RuntimeSnapshot> {

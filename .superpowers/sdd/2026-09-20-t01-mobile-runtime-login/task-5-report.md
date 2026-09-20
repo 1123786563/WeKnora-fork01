@@ -57,6 +57,54 @@ git diff --check
 # exit 0
 ```
 
+## Review fix round 2
+
+The second scoped review found two valid ordering defects in the first
+restoration fix. Runtime now reserves an epoch before beginning an async
+deployment-store read. A manual sign-in or other later lifecycle operation
+increments that epoch, so a delayed boot returns without changing active
+deployment, lease, or visible state.
+
+Deployment persistence now runs through a private serial mutation queue. An
+authorized write that began before sign-out must settle before the queued
+sign-out clear, so a stale selected deployment cannot remain persisted after
+both operations complete.
+
+### Fix-round RED
+
+```text
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 14 / pass 12 / fail 2
+AssertionError: delayed boot replaced the expected manual deployment with
+https://weknora.example.test
+AssertionError: persisted deployment remained after sign-out
+```
+
+### Fix-round GREEN
+
+```text
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 14 / pass 14 / fail 0
+
+pnpm --filter @weknora/mobile test
+# tests 9 / pass 9 / fail 0
+
+pnpm --filter @weknora/mobile typecheck
+# exit 0
+
+pnpm --filter @weknora/mobile-core exec tsc --noEmit --strict --skipLibCheck \
+  --target ES2022 --lib ES2022,DOM --types node --module NodeNext \
+  --moduleResolution NodeNext --allowImportingTsExtensions src/index.ts \
+  src/runtime/mobile-runtime.test.ts
+# exit 0
+
+rg -n "@weknora/(api-client|contracts)" apps/mobile/src/screens
+# exit 1 (no forbidden Screen imports)
+
+git diff --check
+# exit 0
+```
+
 The smoke coverage asserts literal safe/unsafe origin cases, routes an
 upgrade snapshot to the restricted screen, rejects an authorized snapshot
 without an active Tenant, and reaches the authorized screen only when both
