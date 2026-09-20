@@ -1,10 +1,6 @@
-import { Text, View } from 'react-native';
+import { MobileApp } from '../composition.ts';
 
-/** Placeholder initial route; later tasks replace it with Runtime-driven screens. */
+/** The initial route is entirely selected by the Runtime presentation snapshot. */
 export default function Index() {
-  return (
-    <View>
-      <Text>WeKnora</Text>
-    </View>
-  );
+  return <MobileApp />;
 }

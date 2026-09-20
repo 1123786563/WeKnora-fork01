@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 
-/** Root layout of the native WeKnora app shell. */
+/** The router hosts one Runtime-selected mobile surface at a time. */
 export default function RootLayout() {
-  return <Stack />;
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

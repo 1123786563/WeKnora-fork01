@@ -20,6 +20,7 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-router': 'module.exports = { Stack: function Stack() { return null; } }',
+  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
 const stubPath = (name: string): string => join(stubDir, `${name.replaceAll('/', '+')}.cjs`);
@@ -49,6 +50,35 @@ test('app module exports an application root', async () => {
     'function',
     'src/app/_layout.tsx must default-export the application root component',
   );
+});
+
+test('deployment login accepts only normalized HTTPS origins without embedded credentials', async () => {
+  const { validatedDeploymentOrigin } = await import('./screens/DeploymentLoginScreen.tsx');
+  assert.equal(validatedDeploymentOrigin('https://weknora.example.test/'), 'https://weknora.example.test');
+  assert.equal(validatedDeploymentOrigin('http://weknora.example.test'), undefined);
+  assert.equal(validatedDeploymentOrigin('https://member:password@weknora.example.test'), undefined);
+  assert.equal(validatedDeploymentOrigin('https://weknora.example.test/path'), undefined);
+});
+
+test('surface routing keeps upgrade-required free of authorized controls and guards incomplete identity', async () => {
+  const { RuntimeSurface } = await import('./composition.ts');
+  const safe = RuntimeSurface({
+    snapshot: { surface: 'upgrade-required', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, reason: 'protocol-mismatch' },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+  });
+  assert.equal(safe.type.name, 'UpgradeRequiredScreen');
+
+  const invalidAuthorized = RuntimeSurface({
+    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1' } },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+  });
+  assert.equal(invalidAuthorized.type.name, 'UpgradeRequiredScreen');
+
+  const authorized = RuntimeSurface({
+    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-1' } },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+  });
+  assert.equal(authorized.type.name, 'AuthorizedLandingScreen');
 });
 
 test('pnpm --filter @weknora/mobile typecheck resolves the package', () => {

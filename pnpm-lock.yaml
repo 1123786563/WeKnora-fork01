@@ -149,6 +149,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@weknora/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@weknora/mobile-core':
         specifier: workspace:*
         version: link:../../packages/mobile-core
