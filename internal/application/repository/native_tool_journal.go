@@ -2,24 +2,52 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"gorm.io/gorm"
+	agenttool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // NativeToolJournal is the durable, fenced boundary for a native logical tool
 // call. It deliberately records an unknown effect without creating a result:
 // an external success that cannot be persisted must remain recoverable rather
 // than being represented as a local success.
-type NativeToolJournal struct{ db *gorm.DB }
+type NativeToolJournal struct {
+	db        *gorm.DB
+	committer nativecontract.CommitCoordinator
+}
 
 func NewNativeToolJournal(db *gorm.DB) *NativeToolJournal { return &NativeToolJournal{db: db} }
 
+// NewNativeToolBoundary supplies the P1.5 commit barrier required before a
+// callable wrapper may report a confirmed external result to its caller.
+func NewNativeToolBoundary(db *gorm.DB, committer nativecontract.CommitCoordinator) *NativeToolJournal {
+	return &NativeToolJournal{db: db, committer: committer}
+}
+
 var _ nativecontract.AttemptJournal = (*NativeToolJournal)(nil)
+var _ nativecontract.ToolBoundary = (*NativeToolJournal)(nil)
+
+type nativeToolDispatchKey struct{}
+
+// NativeToolDispatch is server-owned dispatch state supplied by P3. It is not
+// derived from SDK tool metadata or model input.
+type NativeToolDispatch struct {
+	Fence          nativecontract.Fence
+	Plan           nativecontract.ToolPlan
+	Attempt        nativecontract.Attempt
+	CommitIntentID string
+}
+
+func WithNativeToolDispatch(ctx context.Context, dispatch NativeToolDispatch) context.Context {
+	return context.WithValue(ctx, nativeToolDispatchKey{}, dispatch)
+}
 
 func toolJournalFailure(code nativecontract.ErrorCode, message string, effect nativecontract.EffectState) error {
 	return &nativecontract.Failure{Code: code, Message: message, Effect: effect}
@@ -164,7 +192,7 @@ func (j *NativeToolJournal) Begin(ctx context.Context, fence nativecontract.Fenc
 			if err := j.loadAttempt(tx, fence.Run, attempt.ID, &row); err != nil {
 				return err
 			}
-			if row.Kind != attempt.Kind || row.LogicalCallID != attempt.LogicalCallID || row.Number != attempt.Number || row.Epoch != attempt.Epoch {
+			if row.Kind != attempt.Kind || row.LogicalCallID != attempt.LogicalCallID || row.InvocationID != attempt.InvocationID || row.ReplacesAttemptID != attempt.ReplacesAttemptID || row.ProviderRequestID != attempt.ProviderRequestID || row.Number != attempt.Number || row.Epoch != attempt.Epoch || !row.StartedAt.Equal(attempt.StartedAt) {
 				return toolJournalFailure(nativecontract.ErrConflict, "tool attempt identity changed", nativecontract.EffectNotDispatched)
 			}
 			return nil
@@ -198,6 +226,37 @@ func (j *NativeToolJournal) Finish(ctx context.Context, fence nativecontract.Fen
 		if effect == nativecontract.EffectUnknown {
 			status = "unknown"
 		}
+		var callID string
+		if err := tx.Table("native_agent_attempts").Select("logical_call_id").Where("tenant_id=? AND run_id=? AND attempt_id=? AND kind='tool'", fence.Run.TenantID, fence.Run.RunID, attemptID).Row().Scan(&callID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return toolJournalFailure(nativecontract.ErrNotFound, "tool attempt was not found", nativecontract.EffectNotDispatched)
+			}
+			return err
+		}
+		if failure != nil {
+			failure.Effect = effect
+			failure.AttemptID = attemptID
+			content := json.RawMessage(`{}`)
+			outcome := nativecontract.ToolOutcome{AttemptID: attemptID, CallID: callID, ResultHash: failureHash(attemptID, failure), Effect: effect, IsError: true, Content: content, Failure: failure}
+			payload, err := json.Marshal(outcome)
+			if err != nil {
+				return toolJournalFailure(nativecontract.ErrStore, "tool failure is not durable JSON", nativecontract.EffectNotDispatched)
+			}
+			inserted := tx.Exec(`INSERT INTO native_agent_tool_results (tenant_id, run_id, attempt_id, call_id, result_hash, outcome, effect_state, is_error, content, failure)
+				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT DO NOTHING`, fence.Run.TenantID, fence.Run.RunID, attemptID, callID, outcome.ResultHash, string(payload), string(effect), string(content), nullableFailure(failure))
+			if inserted.Error != nil {
+				return inserted.Error
+			}
+			if inserted.RowsAffected == 0 {
+				var stored string
+				if err := tx.Table("native_agent_tool_results").Select("result_hash").Where("tenant_id=? AND run_id=? AND attempt_id=? AND call_id=?", fence.Run.TenantID, fence.Run.RunID, attemptID, callID).Row().Scan(&stored); err != nil {
+					return err
+				}
+				if stored != outcome.ResultHash {
+					return toolJournalFailure(nativecontract.ErrConflict, "tool failure changed", nativecontract.EffectNotDispatched)
+				}
+			}
+		}
 		updated := tx.Exec(`UPDATE native_agent_attempts SET effect_state=?, status=?, finished_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND run_id=? AND attempt_id=? AND kind='tool'`, string(effect), status, fence.Run.TenantID, fence.Run.RunID, attemptID)
 		if updated.Error != nil {
 			return updated.Error
@@ -207,6 +266,107 @@ func (j *NativeToolJournal) Finish(ctx context.Context, fence nativecontract.Fen
 		}
 		return nil
 	})
+}
+
+func failureHash(attemptID string, failure *nativecontract.Failure) string {
+	payload, _ := json.Marshal(struct {
+		AttemptID string
+		Failure   *nativecontract.Failure
+	}{attemptID, failure})
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// Decide intentionally fails closed until P2.4 provides the durable pending
+// decision CAS store. It prevents a caller from treating an in-memory approval
+// as authority to dispatch a tool.
+func (j *NativeToolJournal) Decide(_ context.Context, _ nativecontract.Scope, _ nativecontract.UserDecision) error {
+	return toolJournalFailure(nativecontract.ErrConflict, "durable pending decision handling is owned by P2.4", nativecontract.EffectNotDispatched)
+}
+
+func (j *NativeToolJournal) Wrap(ctx context.Context, scope nativecontract.Scope, identity nativecontract.ToolIdentity, delegate agenttool.Tool) (agenttool.Tool, error) {
+	dispatch, ok := ctx.Value(nativeToolDispatchKey{}).(NativeToolDispatch)
+	if !ok || dispatch.CommitIntentID == "" || dispatch.Attempt.ID == "" || dispatch.Plan.CallID == "" {
+		return nil, toolJournalFailure(nativecontract.ErrStore, "durable tool dispatch is required", nativecontract.EffectNotDispatched)
+	}
+	if j == nil || j.committer == nil || scope.TenantID == 0 || scope.TenantID != dispatch.Fence.Run.TenantID || identity != dispatch.Plan.Tool || delegate == nil {
+		return nil, toolJournalFailure(nativecontract.ErrForbidden, "tool boundary dispatch is not authorized", nativecontract.EffectNotDispatched)
+	}
+	if _, err := j.Plan(ctx, dispatch.Fence, dispatch.Plan); err != nil {
+		return nil, err
+	}
+	if stream, ok := delegate.(agenttool.StreamableTool); ok {
+		return &journalStreamableTool{delegate: stream, journal: j, dispatch: dispatch}, nil
+	}
+	if callable, ok := delegate.(agenttool.CallableTool); ok {
+		return &journalCallableTool{delegate: callable, journal: j, dispatch: dispatch}, nil
+	}
+	return nil, toolJournalFailure(nativecontract.ErrInvalid, "tool is neither callable nor streamable", nativecontract.EffectNotDispatched)
+}
+
+type journalCallableTool struct {
+	delegate agenttool.CallableTool
+	journal  *NativeToolJournal
+	dispatch NativeToolDispatch
+}
+
+func (t *journalCallableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
+func (t *journalCallableTool) Call(ctx context.Context, args []byte) (any, error) {
+	if string(args) != string(t.dispatch.Plan.Args) {
+		return nil, toolJournalFailure(nativecontract.ErrConflict, "tool arguments differ from durable plan", nativecontract.EffectNotDispatched)
+	}
+	attempt, err := t.journal.Begin(ctx, t.dispatch.Fence, t.dispatch.Attempt)
+	if err != nil {
+		return nil, err
+	}
+	result, err := t.delegate.Call(ctx, args)
+	if err != nil {
+		_ = t.journal.Finish(ctx, t.dispatch.Fence, attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrProvider, Message: "tool call returned without a durable outcome", Effect: nativecontract.EffectUnknown})
+		return nil, err
+	}
+	content, err := json.Marshal(result)
+	if err != nil {
+		_ = t.journal.Finish(ctx, t.dispatch.Fence, attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrStore, Message: "tool result cannot be persisted", Effect: nativecontract.EffectUnknown})
+		return nil, err
+	}
+	sum := sha256.Sum256(content)
+	outcome := nativecontract.ToolOutcome{AttemptID: attempt.ID, CallID: t.dispatch.Plan.CallID, ResultHash: "sha256:" + hex.EncodeToString(sum[:]), Effect: nativecontract.EffectConfirmed, Content: content}
+	if err := t.journal.RecordOutcome(ctx, t.dispatch.Fence, outcome); err != nil {
+		_ = t.journal.Finish(ctx, t.dispatch.Fence, attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrStore, Message: "tool result persistence failed", Effect: nativecontract.EffectUnknown})
+		return nil, err
+	}
+	intent := nativecontract.CommitIntent{Version: 1, ID: t.dispatch.CommitIntentID, PayloadHash: outcome.ResultHash, Fence: t.dispatch.Fence, Results: []nativecontract.ToolOutcome{outcome}}
+	if _, err := t.journal.committer.Commit(ctx, intent); err != nil {
+		return nil, err
+	}
+	if err := t.journal.committer.Barrier(ctx, t.dispatch.Fence, intent.ID); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+type journalStreamableTool struct {
+	delegate agenttool.StreamableTool
+	journal  *NativeToolJournal
+	dispatch NativeToolDispatch
+}
+
+func (t *journalStreamableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
+func (t *journalStreamableTool) StreamableCall(ctx context.Context, args []byte) (*agenttool.StreamReader, error) {
+	if string(args) != string(t.dispatch.Plan.Args) {
+		return nil, toolJournalFailure(nativecontract.ErrConflict, "tool arguments differ from durable plan", nativecontract.EffectNotDispatched)
+	}
+	if _, err := t.journal.Begin(ctx, t.dispatch.Fence, t.dispatch.Attempt); err != nil {
+		return nil, err
+	}
+	reader, err := t.delegate.StreamableCall(ctx, args)
+	if err != nil {
+		_ = t.journal.Finish(ctx, t.dispatch.Fence, t.dispatch.Attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrProvider, Message: "stream tool returned without a durable outcome", Effect: nativecontract.EffectUnknown})
+		return nil, err
+	}
+	// A StreamReader reports progress only. Its completion cannot prove an
+	// external side effect, so P3/P7 must query or explicitly confirm it.
+	return reader, nil
 }
 
 func (j *NativeToolJournal) Get(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, id string) (nativecontract.Attempt, error) {
