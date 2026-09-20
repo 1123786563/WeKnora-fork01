@@ -105,7 +105,7 @@
 |---|------|------|---------|------|------|
 | K-1 | 接口分层 | Load/Poll/Slim/OAuth/Event/Checkpointed/Resolver/Hierarchy `connectors/interfaces.py:120-343` | Connector（FetchAll/FetchIncremental）+可选 FullSyncWithCursor/Streaming 三档 `internal/datasource/connector.go:11-118` | 🔷有意不同 | WeKnora 多出资源选择器（ListResources/ResolveResourceAncestors）这一 Onyx 没有的交互层 |
 | K-2 | Document 统一模型 | sections（Text/Image/Tabular）+owner+权限 `connectors/models.py:196` | FetchedItem（Content []byte 文件流模型，复用 KB 解析管线）`internal/types/datasource.go:313` | 🟡部分 | 无 owner/权限字段、无 Section 类型；有 IsDeleted+子树协调字段 |
-| K-3 | 凭据体系 | EncryptedJson+动态续期+Redis 分布式锁 `connectors/credentials_provider.py:17,82` | AES-256-GCM 静态加密 `internal/types/datasource.go:531,590`；凭据子资源 API `internal/handler/datasource_credentials.go` | 🟡部分 | 无 token 轮换回写与分布式锁 |
+| K-3 | 凭据体系 | EncryptedJson+动态续期+Redis 分布式锁 `connectors/credentials_provider.py:17,82` | AES-256-GCM 静态加密 `internal/types/datasource.go:531,590`；凭据子资源 API `internal/handler/datasource_credentials.go`；**SP2-b 动态续期**：机器回写通道 `RefreshDataSourceCredential`（三子句防覆盖守卫+写入集 {key,last_refreshed_at}+credential_auto_refreshed 审计）`datasource_service.go:484`、CredentialsRefresher 临期触发（<5min，scoped 分支后）+AuthVersion 递增旧 cursor 失效、credentials 子资源字段级元数据（expires_at/last_refreshed_at/needs_reauthorization） | ✅对齐（SP2-b） | 有意不同：单实例部署以 asynq 单飞+守卫拒写替代 Redis 分布式锁；token 轮换回写已交付（mock OAuth 验收载体，真实 OAuth 连接器留 SP8） |
 | K-4 | cc_pair 多对多绑定 | Connector×Credential 多对多+access_type+auto_sync_options `db/models.py:912,946` | DataSource 单表 1:1 内聚（配置+凭据+目标 KB+调度）`internal/types/datasource.go:65-104` | 🔷有意不同 | 换简单失凭据复用/多凭据同源/access_type |
 | K-5 | 注册表与懒加载 | 57 条懒加载 `connectors/registry.py:14`、`factory.py:40` | 进程内 map，启动全量构造 11 实例 `internal/datasource/connector.go:121`、`internal/container/container.go:2017`；元数据注册表钉死同一 11 源集，registry==implementation 由对齐断言测试锁定（`connector_registry_test.go`） | ✅对齐（SP1） | Go 饥饿式合理；SP1 清除 6 条幽灵元数据（github/google_drive/onedrive/web_crawler/slack/imap），常量保留供 SP7-9 复用 |
 | K-6 | 创建前实连校验 | `factory.py:151` validate_ccpair_for_user | Connector.Validate 三路径触发 `internal/application/service/datasource_service.go:1415,1433`、`internal/handler/datasource.go:309,272` | ✅对齐 | WeKnora 无 perm-sync 附加校验（本就无 perm sync） |
@@ -119,7 +119,7 @@
 | K-9 | 增量 checkpoint | FileStore 存 checkpoint JSON | DB 存 SyncCursor+流式分页持久化+fence 校验+失败保留 cursor+attempt>0 续传 `internal/application/service/datasource_service.go:1183-1205,847-857,1144` | ✅对齐 | 机制不同语义等价 |
 | K-10 | 两阶段管道 | docfetching→docprocessing 批次协议+FileStore 暂存 | sync worker 抓取→asynq document process 异步索引（单文档粒度）`datasource_service.go:1455-1542`、`knowledge_create.go:252` | 🟡部分 | 实为两阶段但无 batch/attempt 协议、无跨 attempt 批次重放 |
 | K-11 | IndexAttempt 状态机 | 状态+total/completed_batches+heartbeat+stall+取消标记 `db/models.py:2555-2649` | SyncLog（running/success/partial/failed/canceled）+流式实时回写进度+heartbeat_at（流式+批式双路径）+SyncStallWindow 2h15m 失活窗口（超窗不再阻塞再调度）+cancel_requested 协作取消标记（checkpoint 退出、cursor 保留断点续传）+取消 API `POST /:id/logs/:log_id/cancel`（202 cancel_requested）+React/Vue 运行中取消入口 `internal/types/datasource.go:60-65,197-203`、`internal/handler/datasource.go:661` | ✅对齐（SP2-a） | batch 级 completed_batches 以 items_* 流式计数等价呈现（有意不同）；交付物 `ee3a6ed0`/`13ea321b`/`86070810`/`cc424e71`/`cd56a458`/`14d56739`/`d8bac0d3`+Vue 收尾；测试各任务报告 |
-| K-12 | 失败处理与修复 | ConnectorFailure+错误分页 API+targeted reindex（Resolver 重抓） | 逐项失败不中断+稳定 i18n 错误码+partial 状态 `internal/types/datasource.go:452`、`datasource_service.go:927-940`；**无 targeted reindex** | 🟡部分 | 修复手段缺：只能等下次增量或 ForceFull |
+| K-12 | 失败处理与修复 | ConnectorFailure+错误分页 API+targeted reindex（Resolver 重抓） | 逐项失败不中断+稳定 i18n 错误码+partial 状态 `internal/types/datasource.go:452`、`datasource_service.go:927-940`；**SP2-b targeted reindex**：TargetedFetcher 11 连接器实装（ima 降级前置条件错误）`internal/datasource/connector.go`、`POST /datasource/:id/reindex` scoped 重跑（request_id 幂等/独立 SyncLog/ds 零写）`routes_infra.go:336`、SyncItemError 失败样本带 ExternalID+Code/Params、React 失败项复选框+重试选中项、Vue/React 五语言 syncError 连接器码 | ✅对齐（SP2-b） | 交付物 `848f19d2`/`d292e17e`/`2d0e3dcb`/`d63c2881`/`1f693ea4`；失败样本有上限采样（非全量分页 API，等价够用） |
 | K-13 | pruning/deletion_sync | SlimConnector 独立 prune 周期任务 | IsDeleted+SyncDeletions 随每次同步（增量事件+全量对账双路）+子树清扫 `datasource_service.go:1003-1070,1611` | ✅对齐 | WeKnora 有独有附件子树清扫协议 |
 | K-14 | 层级浏览 HierarchyNode | 持久化源结构镜像+周期抓取+前端浏览器 | 选择期 ListResources/ResolveResourceAncestors `connector.go:28,40`；**索引后文档树浏览无**（文档平铺进 KB） | 🟡部分 | 层级只用于建源时资源选择 |
 
@@ -236,7 +236,7 @@
 ## 4.1 总体定性
 
 - **Craft**：WeKnora 已有强治理形态（不可变版本/恢复程序/usage 账本/发布门控，反向领先 15 项）；相对 Onyx 的缺口集中在**生态面**：定时任务、User Library、craft 内 MCP、AGENTS.md 模板、外部应用桥、admin 管理页、onboarding。另有**两处"已实现未接线"**（模型网关、Stop 路由）。
-- **Connectors**：WeKnora 强在治理与写操作（审批/预授权/open-connector），弱在**广度**（11 vs 57，西文 SaaS 几乎全空）与**文档级权限**（EE 三件套全缺）。框架层 6 项中 4 项对齐/有意不同；管道层 attempt 心跳/stall/取消与删源级联清理已由 SP2-a 补齐（K-11/K-29 ✅），定向重索引（K-12）留 SP2-b。
+- **Connectors**：WeKnora 强在治理与写操作（审批/预授权/open-connector），弱在**广度**（11 vs 57，西文 SaaS 几乎全空）与**文档级权限**（EE 三件套全缺）。框架层 6 项中 4 项对齐/有意不同；管道层 attempt 心跳/stall/取消与删源级联清理已由 SP2-a 补齐（K-11/K-29 ✅），定向重索引与凭据动态续期已由 SP2-b 补齐（K-12/K-3 ✅）——SP2 治理线收官，剩余差距集中在广度（P2/SP7-9）与文档级权限。
 - **平台运营面**：套餐后端与 API key 已是等价物（甚至更贴合国内支付）；真正缺口是**分析（全新）**、**用量聚合层（新建）**、**查询历史 admin 审计+分享（补齐）**三块，已排 SP11–SP14。
 - **共同注意**：两个"有意不同"大项（webapp 实时预览反代、cc_pair 模型重构）改造成本高且与 WeKnora 现有形态冲突，建议默认**不追随**，除非有明确产品诉求。
 
@@ -257,9 +257,9 @@
 
 **P1 · Connectors 治理补强**（框架层补洞）
 - ~~K-11 attempt 级进度/心跳/stall/取消~~ ✅ SP2-a（2026-09-20，见 2.2 表）
-- K-12 targeted reindex（单点重索引）——SP2-b
+- ~~K-12 targeted reindex（单点重索引）~~ ✅ SP2-b（2026-09-21，见 2.2 表；TargetedFetcher 11 实装+scoped reindex API+失败样本重试 UI）
 - ~~K-29 删源级联文档清理~~ ✅ SP2-a（2026-09-20，见 2.6 表；双选 purge）
-- K-3 凭据动态续期——SP2-b
+- ~~K-3 凭据动态续期~~ ✅ SP2-b（2026-09-21，见 2.1 表；机器回写通道+CredentialsRefresher 触发+字段级元数据）
 
 **P2 · Connectors 广度扩展**（按需求逐个立项）
 - GitHub（已有声明+元数据）、Web 爬虫、IMAP/邮件、Google Drive、Slack…
