@@ -88,16 +88,39 @@ class PostgresOperationStore:
         return sql.SQL(template).format(schema=self._schema)
 
     def migrate(self) -> None:
-        migration = (Path(__file__).parent.parent / "migrations" / "001_operations.sql").read_text()
+        migrations_dir = Path(__file__).parent.parent / "migrations"
+        migrations = {
+            1: (migrations_dir / "001_operations.sql").read_text(),
+            2: (migrations_dir / "002_operation_stage.sql").read_text(),
+        }
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"semantic-operations:{self.schema}",))
                 cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(self._schema))
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = %s AND table_name = 'operations'
+                    ) AS exists
+                """, (self.schema,))
+                legacy_operations_exists = cursor.fetchone()["exists"]
                 cursor.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {}.schema_migrations (version INTEGER PRIMARY KEY)").format(self._schema))
-                cursor.execute(sql.SQL("SELECT version FROM {}.schema_migrations WHERE version = 1").format(self._schema))
-                if cursor.fetchone() is None:
-                    cursor.execute(migration.replace("{{schema}}", self._schema.as_string(connection)))
+                cursor.execute(sql.SQL("SELECT version FROM {}.schema_migrations ORDER BY version").format(self._schema))
+                versions = {row["version"] for row in cursor.fetchall()}
+                if any(version < 1 or version > 2 for version in versions):
+                    raise OperationFailedPrecondition("database schema version is unsupported")
+                if 2 in versions and versions != {1, 2}:
+                    raise OperationFailedPrecondition("database schema migration history is incomplete")
+                if not versions and legacy_operations_exists:
                     cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (1)").format(self._schema))
+                    versions.add(1)
+                if 1 not in versions:
+                    cursor.execute(migrations[1].replace("{{schema}}", self._schema.as_string(connection)))
+                    cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (1)").format(self._schema))
+                    versions.add(1)
+                if 2 not in versions:
+                    cursor.execute(migrations[2].replace("{{schema}}", self._schema.as_string(connection)))
+                    cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (2)").format(self._schema))
 
     def accept(self, request: ApplyRequest) -> Operation:
         request_bytes = apply_request_to_wire(request).SerializeToString(deterministic=True)

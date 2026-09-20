@@ -196,6 +196,24 @@ def test_store_migration_is_idempotent_across_restarts(operation_store_factory):
     operation_store_factory().migrate()
 
 
+def test_store_migration_upgrades_a_previously_created_operations_table(legacy_operation_schema, apply_request):
+    operation_id = legacy_operation_schema.seed_from_unversioned_operations_table(apply_request)
+    store = legacy_operation_schema.new_store()
+    store.migrate()
+    restored = store.get(apply_request.document.scope, operation_id)
+    assert restored.operation_id == operation_id and restored.stage == "running"
+    assert request_bytes_for_test(store, operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
+
+
+def test_two_new_stores_can_migrate_same_empty_schema_concurrently(unmigrated_operation_schema):
+    first, second = unmigrated_operation_schema.new_store(), unmigrated_operation_schema.new_store()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = (pool.submit(first.migrate), pool.submit(second.migrate))
+        for future in futures:
+            future.result()
+    assert unmigrated_operation_schema.schema_version() == 2
+
+
 def test_store_migration_serializes_concurrent_startup(operation_store_factory):
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(operation_store_factory().migrate) for _ in range(2)]
@@ -210,6 +228,17 @@ def test_exhausted_lease_fence_fails_without_exceeding_uint64(operation_store_fa
     with pytest.raises(OperationFailedPrecondition):
         store.claim("worker", 30)
     assert store.get(apply_request.document.scope, operation.operation_id).lease_token == UINT64_MAX
+
+
+def test_cancel_at_uint64_max_does_not_overflow_or_leave_request_bytes(operation_store_factory, apply_request):
+    store = operation_store_factory()
+    operation = store.accept(apply_request)
+    set_lease_token_for_test(store, operation.operation_id, UINT64_MAX)
+    cancelled = store.cancel(apply_request.document.scope, operation.operation_id)
+    assert cancelled.state == "cancelled" and cancelled.lease_token == UINT64_MAX
+    assert request_bytes_for_test(store, operation.operation_id) is None
+    assert not store.renew(operation.operation_id, "worker", UINT64_MAX, 30)
+    assert not store.transition(operation.operation_id, "worker", UINT64_MAX, OperationPhase.RUNNING, OperationPhase.FAILED, "failed")
 
 
 def test_c01_projection_preserves_internal_stage(operation_store, apply_request):
