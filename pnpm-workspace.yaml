@@ -10,6 +10,7 @@ packages:
   - apps/web
   - apps/embed
   - apps/miniprogram
+  - apps/mobile
   - packages/happy-wire
 
 onlyBuiltDependencies:

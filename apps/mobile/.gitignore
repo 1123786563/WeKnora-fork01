@@ -1,0 +1,5 @@
+# The root .gitignore's `!apps/mobile/**` re-include block (legacy of the removed
+# vendored app) would otherwise re-add these generated directories; deeper rules
+# take precedence over the root negations.
+node_modules/
+.expo/

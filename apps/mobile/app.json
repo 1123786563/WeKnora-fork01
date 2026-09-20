@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "WeKnora",
+    "slug": "weknora-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "weknora",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.weknora.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.weknora.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
+  }
+}
