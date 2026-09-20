@@ -22,7 +22,7 @@ import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialA
 // R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
 import { deriveKbFilterForAgent, isKbModelReady, mergeSharedKbsForMention, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
 // R490 B3 — Vue botmsg handleAddToKnowledge: prefilled manual-editor dialog.
-import { BookmarkAnswerDialog, buildManualBookmarkContent, formatManualBookmarkTitle } from './BookmarkAnswerDialog.tsx';
+import { BookmarkAnswerDialog, buildManualBookmarkContent, formatManualBookmarkTitle, manualEditorStrings } from './BookmarkAnswerDialog.tsx';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip, resolveChatModelOptions } from './model-chip.ts';
 import { buildHeaderUtilityItems } from './header-menu-actions.ts';
 import { readStoredLocale } from '../i18n.ts';
@@ -1997,10 +1997,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         client={client}
         copy={copy}
         open
+        locale={readStoredLocale()}
         initialTitle={bookmarkTarget.title}
         initialContent={bookmarkTarget.content}
         onClose={() => setBookmarkTarget(null)}
-        onSaved={() => showAgentToast(copy.bookmarkDraftSaved)}
+        onSaved={(status) => showAgentToast(status === 'publish' ? manualEditorStrings(readStoredLocale()).publishedToast : copy.bookmarkDraftSaved)}
       />
     ) : null}
   </>;

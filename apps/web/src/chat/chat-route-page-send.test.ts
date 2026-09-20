@@ -54,6 +54,7 @@ async function renderChatRoutePage(input: {
         }
         export function isAgentWebSearchReady() { return false; }
         export function isTenantWebSearchReady() { return false; }
+        export function renderChatMarkdown() { return ''; }
 
         export function splitLiveThinking(content) {
           if (!content || !content.includes('<think>')) {

@@ -285,10 +285,14 @@ test('ssrf whitelist edits confirm per entry before the PUT', async () => {
   assert.deepEqual(calls.update, [['ssrf.whitelist', ['10.0.0.0/8', 'example.com']]], 'the merged whitelist landed in a single PUT');
 });
 
-test('other tab appears only when unknown keys exist', async () => {
+test('the conditional other tab renders when unknown keys exist', async () => {
   const settings = [...fullSettings(), { id: 99, key: 'future.unknown_key', value: 'x', value_type: 'string', category: 'system', description: '', is_secret: false, requires_restart: false, last_modified_by: '', created_at: '', updated_at: '' }] as SystemSetting[];
   const container = await mountPanel(makeClient({ settings }), settings);
   assert.ok(tabButton(container, '其他 1'), 'the conditional other tab renders with its count');
-  const plain = await mountPanel(makeClient({ settings: fullSettings() }), fullSettings());
-  assert.equal(tabButton(plain, '其他 1'), undefined, 'no other tab without unknown keys');
+});
+
+test('no other tab renders for the standard registry', async () => {
+  const container = await mountPanel(makeClient({ settings: fullSettings() }), fullSettings());
+  assert.equal(tabButton(container, '其他 1'), undefined, 'no other tab without unknown keys');
+  assert.equal((container.textContent ?? '').includes('其他配置'), false, 'the other section copy stays hidden');
 });

@@ -65,6 +65,7 @@ async function renderChatRoutePage(input: { location: string }): Promise<Capture
             }
             export function isAgentWebSearchReady() { return false; }
             export function isTenantWebSearchReady() { return false; }
+            export function renderChatMarkdown() { return ''; }
 
             export function splitLiveThinking() {
               return { showThink: false, thinking: false, thinkContent: '', answer: '' };
