@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -290,6 +291,24 @@ func TestMarketInstallSkillUnreachableIs503(t *testing.T) {
 	require.Contains(t, w.Body.String(), "unreachable")
 }
 
+func TestMarketInstallSkillCapsBodySize(t *testing.T) {
+	market := &fakeSkillMarket{installSkill: &interfaces.MarketSkillInstallResult{CatalogID: "cat-1"}}
+	r := newMarketRouter(true)
+	r.POST("/skills/market/install", NewSkillMarketHandler(market).InstallSkill)
+
+	// Whitespace-only body (the tenant-market cap-test pattern): the JSON
+	// tokenizer consumes it without a syntax error, so the only thing that
+	// can refuse it is the 64 KiB cap itself.
+	big := strings.Repeat(" ", skillSourceJSONMaxBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/skills/market/install", strings.NewReader(big))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "too large")
+	require.Empty(t, market.installSkillSlug, "the service is never reached for an oversized body")
+}
+
 func TestMarketListSkillsetsServesIndex(t *testing.T) {
 	market := &fakeSkillMarket{list: &interfaces.MarketSkillsetIndex{
 		Skillsets: []interfaces.MarketSkillset{{Slug: "pdf-tools", Installed: true}},
@@ -419,4 +438,24 @@ func TestMarketInstallSkillsetRequiresTenantContext(t *testing.T) {
 	w := doMarketRequest(r, http.MethodPost, "/experts/market/pdf-tools/install", nil)
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 	require.Empty(t, market.installSetSlug, "the service is never reached without a tenant")
+}
+
+func TestMarketInstallSkillsetCapsBodySize(t *testing.T) {
+	market := &fakeSkillMarket{installSet: &interfaces.MarketSkillsetInstallResult{
+		InstantiateResult: interfaces.InstantiateResult{Agent: &types.CustomAgent{ID: "agent-1"}},
+	}}
+	r := newMarketRouter(true)
+	r.POST("/experts/market/:slug/install", NewSkillMarketHandler(market).InstallSkillset)
+
+	// Whitespace-only body (the tenant-market cap-test pattern): the JSON
+	// tokenizer consumes it without a syntax error, so the only thing that
+	// can refuse it is the 64 KiB cap itself.
+	big := strings.Repeat(" ", skillSourceJSONMaxBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/experts/market/pdf-tools/install", strings.NewReader(big))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "too large")
+	require.Empty(t, market.installSetSlug, "the service is never reached for an oversized body")
 }

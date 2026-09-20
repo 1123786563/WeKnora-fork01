@@ -1,4 +1,4 @@
--- M4: SQLite twin of 000173. One row per (tenant, skillset slug) installed
+-- M4: SQLite twin of 000174. One row per (tenant, skillset slug) installed
 -- from the SkillHub market. StorageRef names the materialized expert tree
 -- (ScanExperts layout) under the tenant-scoped expert-market root;
 -- SnapshotSHA256 is the content digest of that tree at write time.

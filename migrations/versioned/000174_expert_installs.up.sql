@@ -5,7 +5,7 @@
 -- of that tree at write time, so reinstalling unchanged content is
 -- recognizable without re-reading storage. The catalog reads the trees, not
 -- these rows; the ledger is the idempotency and audit record.
-DO $$ BEGIN RAISE NOTICE '[Migration 000173] Creating expert_installs'; END $$;
+DO $$ BEGIN RAISE NOTICE '[Migration 000174] Creating expert_installs'; END $$;
 
 CREATE TABLE IF NOT EXISTS expert_installs (
     id              VARCHAR(36)   NOT NULL,

@@ -1,4 +1,4 @@
--- M4: SQLite twin of 000175. One live row per (tenant, agent) published to
+-- M4: SQLite twin of 000176. One live row per (tenant, agent) published to
 -- the workspace-internal expert market. The row owns an immutable
 -- materialized-expert snapshot (manifest.yaml + persona doc, skills as
 -- references) in tenant storage; installs copy the snapshot into the

@@ -119,8 +119,15 @@ func decodeMarketSkillInstallBody(r io.Reader) (marketSkillInstallBody, error) {
 // @Failure      503  {object}  apperrors.AppError  "Registry unreachable"
 // @Router       /skills/market/install [post]
 func (h *SkillMarketHandler) InstallSkill(c *gin.Context) {
+	// Same JSON cap as every other skill-source body: the zip is fetched
+	// server-side, so a locator slug never needs more than 64 KiB.
+	limitJSONBody(c, skillSourceJSONMaxBytes)
 	body, err := decodeMarketSkillInstallBody(c.Request.Body)
 	if err != nil {
+		if isRequestBodyTooLarge(err) {
+			_ = c.Error(skillJSONRequestTooLargeError())
+			return
+		}
 		_ = c.Error(apperrors.NewBadRequestError("invalid install request"))
 		return
 	}
@@ -207,8 +214,14 @@ func (h *SkillMarketHandler) InstallSkillset(c *gin.Context) {
 		return
 	}
 
+	// Same JSON cap as the tenant-market install handlers this mirrors.
+	limitJSONBody(c, skillSourceJSONMaxBytes)
 	req, err := decodeExpertInstantiateBody(c.Request.Body)
 	if err != nil {
+		if isRequestBodyTooLarge(err) {
+			_ = c.Error(skillJSONRequestTooLargeError())
+			return
+		}
 		_ = c.Error(apperrors.NewBadRequestError("invalid body: " + err.Error()))
 		return
 	}

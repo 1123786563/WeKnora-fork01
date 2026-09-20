@@ -11,7 +11,7 @@
 -- Unpublish soft-deletes the row (the snapshot stays on disk — immutable
 -- history); a soft-deleted scope frees the unique slot so a later publish
 -- reinserts fresh (the published_skills semantics).
-DO $$ BEGIN RAISE NOTICE '[Migration 000175] Creating published_experts'; END $$;
+DO $$ BEGIN RAISE NOTICE '[Migration 000176] Creating published_experts'; END $$;
 
 CREATE TABLE IF NOT EXISTS published_experts (
     id              VARCHAR(36)   NOT NULL,

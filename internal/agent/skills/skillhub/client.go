@@ -176,7 +176,7 @@ func (c *HTTPClient) Search(ctx context.Context, query string, limit int) ([]Ski
 	if err != nil {
 		return nil, err
 	}
-	return parseSummaries(payload, "search")
+	return parseSummaries(payload, "search", "results")
 }
 
 // Rankings implements Client.
@@ -189,7 +189,12 @@ func (c *HTTPClient) Rankings(ctx context.Context, kind string) ([]SkillSummary,
 	if err != nil {
 		return nil, err
 	}
-	return parseSummaries(payload, kind)
+	// The live showcase endpoints answer {"section", "skills", "total"} —
+	// there is no "results" key — so rankings accept "skills" as the list
+	// key when "results" is absent (verified against api.skillhub.cn's
+	// /api/v1/showcase/hot; item fields slug/name/description/version match
+	// the search entry shape).
+	return parseSummaries(payload, kind, "results", "skills")
 }
 
 // Download implements Client.
@@ -279,25 +284,34 @@ func isTimeoutError(err error) bool {
 	return false
 }
 
-// parseSummaries decodes a {"results": [...]} document into normalized
-// SkillSummary values, mirroring _fetch_search_json's JSON walk:
-//   - the document must be a JSON object with a "results" array,
+// parseSummaries decodes a listing document into normalized SkillSummary
+// values. The first key in listKeys whose value is an array supplies the
+// entries: search responses carry "results", while the live showcase
+// (ranking) endpoints return {"section", "skills", "total"}, so rankings
+// also accept "skills". Mirroring _fetch_search_json's JSON walk:
+//   - the document must be a JSON object with one of the list-key arrays,
 //   - entries that are not objects, or lack a non-empty slug, are skipped,
 //   - name falls back displayName -> name -> slug,
 //   - description falls back summary -> description -> "",
 //   - version carries through as a trimmed string.
-func parseSummaries(payload []byte, source string) ([]SkillSummary, error) {
+func parseSummaries(payload []byte, source string, listKeys ...string) ([]SkillSummary, error) {
 	var document any
 	if err := json.Unmarshal(payload, &document); err != nil {
 		return nil, fmt.Errorf("%w: invalid JSON from SkillHub %s: %v", ErrMarket, source, err)
 	}
 	object, ok := document.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: SkillHub %s response must contain a results array", ErrMarket, source)
+		return nil, fmt.Errorf("%w: SkillHub %s response must contain a %s array", ErrMarket, source, strings.Join(listKeys, "/"))
 	}
-	rawResults, ok := object["results"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("%w: SkillHub %s response must contain a results array", ErrMarket, source)
+	var rawResults []any
+	for _, key := range listKeys {
+		if list, ok := object[key].([]any); ok {
+			rawResults = list
+			break
+		}
+	}
+	if rawResults == nil {
+		return nil, fmt.Errorf("%w: SkillHub %s response must contain a %s array", ErrMarket, source, strings.Join(listKeys, "/"))
 	}
 
 	results := make([]SkillSummary, 0, len(rawResults))

@@ -204,6 +204,65 @@ func TestRankingsHappyPathAllKinds(t *testing.T) {
 	}
 }
 
+// liveShowcaseHotFixture mirrors the LIVE GET /api/v1/showcase/hot answer
+// from api.skillhub.cn (probed 2026-09-20): top-level
+// {"section":"hot_downloads","skills":[...],"total":100} — there is no
+// "results" key. Item fields (slug/name/description/version/ownerName/
+// stars/downloads + nested namespace) are the real first entries.
+const liveShowcaseHotFixture = `{"section":"hot_downloads","total":2,"skills":[
+  {"slug":"self-improving-agent","name":"self-improving agent","description":"A skill where the agent logs it's own findings for self-improvement","description_zh":"记录自身发现以实现自我改进的技能","version":"3.0.24","ownerName":"pskoett","stars":4506,"downloads":1219096,"namespace":{"canonicalName":"@clawhub_pskoett/self-improving-agent","displayName":"pskoett","handle":"clawhub_pskoett","publicSlug":"self-improving-agent"}},
+  {"slug":"dev-expert","name":"编程专家.Skill","description":"P8级全栈编程专家","version":"1.0.0","ownerName":"user_741dc82b","stars":246,"downloads":1128568}
+]}`
+
+func TestRankingsParsesLiveShowcaseShape(t *testing.T) {
+	var rec recordedRequest
+	client, _ := newTestServerClient(t, 5*time.Second, func(w http.ResponseWriter, r *http.Request) {
+		recordRequest(r, &rec)
+		fmt.Fprint(w, liveShowcaseHotFixture)
+	})
+	results, err := client.Rankings(context.Background(), "hot")
+	require.NoError(t, err)
+	require.Equal(t, "/api/v1/showcase/hot", rec.path)
+	require.Len(t, results, 2)
+
+	first := results[0]
+	require.Equal(t, "self-improving-agent", first.Slug)
+	// No top-level displayName on the live shape; name wins directly.
+	require.Equal(t, "self-improving agent", first.Name)
+	require.Equal(t, "A skill where the agent logs it's own findings for self-improvement", first.Description)
+	require.Equal(t, "3.0.24", first.Version)
+	// Non-target fields pass through the Raw display map as strings.
+	require.Equal(t, "pskoett", first.Raw["ownerName"])
+	require.Equal(t, "4506", first.Raw["stars"])
+	// Large float64 renders in Go's short 'g' form (the ported Raw
+	// passthrough; JSON numbers arrive as float64).
+	require.Equal(t, "1.219096e+06", first.Raw["downloads"])
+
+	require.Equal(t, "dev-expert", results[1].Slug)
+	require.Equal(t, "1.0.0", results[1].Version)
+}
+
+func TestRankingsStillAcceptsResultsKey(t *testing.T) {
+	client, _ := newTestServerClient(t, 5*time.Second, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"results":[{"slug":"via-results","name":"Via Results"}]}`)
+	})
+	results, err := client.Rankings(context.Background(), "featured")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, "via-results", results[0].Slug)
+}
+
+func TestRankingsMissingBothListKeysIsError(t *testing.T) {
+	for _, body := range []string{`{"section":"hot","total":0}`, `{"skills":{}}`, `[1,2,3]`} {
+		client, _ := newTestServerClient(t, 5*time.Second, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, body)
+		})
+		_, err := client.Rankings(context.Background(), "newest")
+		require.Error(t, err, "body %q must be rejected", body)
+		require.ErrorIs(t, err, ErrMarket)
+	}
+}
+
 func TestRankingsInvalidKindNeverHitsNetwork(t *testing.T) {
 	calls := 0
 	client, _ := newTestServerClient(t, 5*time.Second, func(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
--- M4: SQLite twin of 000174. One live row per (tenant, catalog skill)
+-- M4: SQLite twin of 000175. One live row per (tenant, catalog skill)
 -- published to the workspace-internal skill market. The row is a visibility
 -- flag on the shared tenant_skill_catalog definition, not a content copy:
 -- publisher and installer are members of the SAME tenant, so install reuses

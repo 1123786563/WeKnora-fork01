@@ -7,7 +7,7 @@
 -- InstallCatalogToConfigs on the shared definition and never re-registers
 -- content. Unpublish soft-deletes; a soft-deleted scope frees the unique
 -- slot so a later publish reinserts fresh (the expert_installs semantics).
-DO $$ BEGIN RAISE NOTICE '[Migration 000174] Creating published_skills'; END $$;
+DO $$ BEGIN RAISE NOTICE '[Migration 000175] Creating published_skills'; END $$;
 
 CREATE TABLE IF NOT EXISTS published_skills (
     id           VARCHAR(36)   NOT NULL,

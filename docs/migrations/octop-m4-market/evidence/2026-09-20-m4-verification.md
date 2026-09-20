@@ -4,10 +4,14 @@ Branch `octop-m4-market`, HEAD `a32476a3` (feat(web): experts page remote and
 tenant-market tabs) — the full M4 stack: SkillHub client (search/rankings/
 download + exhaustive zip port + TTL cache, `internal/agent/skills/skillhub`),
 skillset index + expert materialization (`internal/agent/experts`,
-migrations `000173`/`000094`), market routes
+migrations `000174`/`000095`), market routes
 (`internal/router/routes_skill_market.go`), tenant skill market
-(`000174`/`000095`), tenant expert market (`000175`/`000096`), api-client
-market module, `MarketPage` + experts-page market tabs. Verifier: Task 9 of
+(`000175`/`000096`), tenant expert market (`000176`/`000097`), api-client
+market module, `MarketPage` + experts-page market tabs. (Migration numbers
+renumbered in the final fix wave — origin/main took
+`000173_sync_logs_lifecycle`/sqlite `000094`; the M4 set moved from
+173-175/94-96 to the numbers above. This verification ran at the
+pre-renumber numbers.) Verifier: Task 9 of
 the M4 skill-market milestone. Everything in §1–§6 ran against a real server
 process with a real SQLite database and — where the flow leaves the process —
 a REAL SkillHub client talking to a local mock registry standing in for the
@@ -22,7 +26,7 @@ labeled where the environment blocked a live path.
 | Port | `127.0.0.1:18095` via `SERVER_PORT`/`SERVER_HOST` |
 | SkillHub host | **config-file override** (the T1 ledger records there is no env knob): the scratch `config/config.yaml` gained `skillhub_market: {host: http://127.0.0.1:18094, timeout_seconds: 10}` — exactly the operator-facing mechanism deployments would use |
 | Mock registry | `mock_skillhub.py` (python scratch script, never committed) on `127.0.0.1:18094`, serving fixture JSON + zips from disk: `/api/v1/search`, `/api/v1/showcase/{hot,featured,newest,recommended,trending,paid}`, `/api/v1/download?slug=`, `/api/v1/skillsets[?page=&pageSize=]`, `/api/v1/skillsets/<slug>`. Every hit is logged with its User-Agent — the log shows **`weknora-skillhub-market/1.0`** (the port's rebranded UA) making 20+ of the 26 hits: the real Go client, not curl, consumed the mock. |
-| DB | `DB_DRIVER=sqlite`, `DB_PATH=<scratch>/weknora.db`; migrations ran **0 → 96 cleanly on first boot** — `000094` (expert_installs), `000095` (published_skills), `000096` (published_experts) all part of the clean run (`schema_migrations` = 96, dirty 0) |
+| DB | `DB_DRIVER=sqlite`, `DB_PATH=<scratch>/weknora.db`; migrations ran **0 → 96 cleanly on first boot** — `000094` (expert_installs), `000095` (published_skills), `000096` (published_experts) all part of the clean run (`schema_migrations` = 96, dirty 0) — witnessed at the pre-renumber numbers; post-fix-wave they are 95/96/97 (99 total) |
 | Redis | scratch docker container `redis:7-alpine` on `127.0.0.1:16379` via `REDIS_ADDR` — the skill-install progress bus (publishProgress/SSE) is Redis-backed and degrades to a poll sentinel in Lite mode; Redis was added so the REAL SSE frames could be witnessed |
 | Retrieval | `RETRIEVE_DRIVER=sqlite` |
 | Storage | `LOCAL_STORAGE_BASE_DIR=<scratch>/files` (the expert-market and published-experts roots nest under it) |
@@ -275,10 +279,16 @@ The live `search` and `skillsets` documents carry exactly the shapes and
 field names the port parses (`results` / `skillSets` with
 `slug`/`displayName`/`summary`/`displayNameEn`…). One observation recorded
 without gating: the live showcase document nests its list under `skills`
-(plus `section`/`total`), while the port — following Octop's client — reads
-`results`; a live rankings call would therefore normalize to an empty (200,
-non-stale) list rather than error. Mock-based verification used the
-`results` shape Octop/WeKnora code against.
+(plus `section`/`total`), while the port at this HEAD — following Octop's
+client — read only `results`. Correction from the final whole-branch
+review's live probe: a live rankings call did **not** return an empty 200
+list (an earlier draft of this note claimed that); because `results` was
+absent the strict parse failed and every rankings call surfaced as a
+**503** — visible on `/platform/market`, whose default tab is the hot
+ranking. Fixed in the final fix wave: the rankings parse path now accepts
+`skills` as the list-key fallback when `results` is absent (search keeps
+`results`; item fields `slug`/`name`/`description`/`version` are identical
+on both wires, verified live), with a live-shape fixture test.
 
 ## 8. Go test gates
 
@@ -321,9 +331,10 @@ by the milestone.
 3. **Unknown skillset upstream-404 → 503** (not 404): the registry does not
    distinguish a missing slug from an outage on the detail wire — the
    T2-ledger deferred minor, re-confirmed live here (§2.1).
-4. **Live showcase shape observation** (§7): recorded for a future
-   registry-contract task; the port is byte-faithful to Octop's client,
-   which also reads `results`.
+4. **Live showcase shape observation** (§7): superseded — the final
+   whole-branch review confirmed the live rankings shape breaks the strict
+   `results` parse (503, not an empty 200), and the fix wave taught the
+   rankings path the `skills` fallback (§7 above).
 5. **Scratch is scaffolding.** The mock registry script, fixtures, scratch
    config copy, redis container, sqlite DB, server binary, logs and curl
    outputs lived under the git-ignored scratch root and are deleted after
