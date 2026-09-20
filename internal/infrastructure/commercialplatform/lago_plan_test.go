@@ -43,8 +43,8 @@ type planStub struct {
 	metricStatus int
 	metricID     string
 
-	featureStatus    int
-	entitleStatus    int
+	featureStatus int
+	entitleStatus int
 
 	server *httptest.Server
 }
@@ -52,15 +52,15 @@ type planStub struct {
 func newPlanStub(t *testing.T) *planStub {
 	t.Helper()
 	s := &planStub{
-		createStatuses:    []int{http.StatusCreated},
-		readbackStatus:    http.StatusOK,
-		readbackCurrency:  "CNY",
-		readbackInterval:  "monthly",
+		createStatuses:     []int{http.StatusCreated},
+		readbackStatus:     http.StatusOK,
+		readbackCurrency:   "CNY",
+		readbackInterval:   "monthly",
 		readbackPayAdvance: true,
-		metricStatus:      http.StatusOK,
-		metricID:          "lagoid-metric-42",
-		featureStatus:     http.StatusOK,
-		entitleStatus:     http.StatusOK,
+		metricStatus:       http.StatusOK,
+		metricID:           "lagoid-metric-42",
+		featureStatus:      http.StatusOK,
+		entitleStatus:      http.StatusOK,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/plans", func(w http.ResponseWriter, r *http.Request) {

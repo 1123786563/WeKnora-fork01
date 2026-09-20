@@ -49,9 +49,9 @@ var (
 // (CONTEXT.md 功能权益). Unknown keys fail publish validation closed; the
 // set is a first-slice constant a later ticket may externalize.
 var PublishedFeatureKeys = []string{
-	"api_access",        // programmatic API usage
-	"advanced_models",   // frontier model access
-	"priority_support",  // priority support channel
+	"api_access",       // programmatic API usage
+	"advanced_models",  // frontier model access
+	"priority_support", // priority support channel
 }
 
 // QuotaDimensionKeys is the closed first-slice resource-quota dimension set
