@@ -218,41 +218,25 @@ def _ensure_env_file() -> tuple[str, dict]:
     return seed_key, overrides
 
 
-def _create_objects(key: str, k: int) -> dict:
-    run_id = f"{fixture.RUN_ID_PREFIX}{uuid.uuid4()}"
-    run_spec = fixture.build_run(run_id, task_count=k + 1)
+def _plan_payload(run_spec, metric_lago_ids: dict) -> dict:
+    """POST /api/v1/plans payload for the run's Pricing Group plan.
 
-    created = {"metrics": [], "plan": None, "customer": None, "subscriptions": []}
-    for metric in run_spec.metrics:
-        result = request(
-            API_BASE, key, "POST", "/api/v1/billable_metrics",
-            {
-                "billable_metric": {
-                    "code": metric.code,
-                    "name": metric.name,
-                    "aggregation_type": metric.aggregation_type,
-                    "field_name": metric.field_name,
-                }
-            },
-        )
-        created["metrics"].append(
-            {"code": metric.code, "http_status": result.status, "body": result.body}
-        )
-        if not 200 <= result.status < 300:
-            raise RuntimeError(f"metric {metric.code} rejected: HTTP {result.status}")
-
-    plan_payload = {
+    Live-verified contract (v1.53.0): plan charges reference the billable
+    metric via ``billable_metric_id`` (its lago_id) -- a ``billable_metric_code``
+    reference is rejected with HTTP 404 ``billable_metric_not_found``.
+    Charge ``amount`` values stay decimal strings (v1.53.0 DecimalAmountService).
+    """
+    return {
         "plan": {
             "code": run_spec.plan.code,
             "name": run_spec.plan.name,
             "interval": run_spec.plan.interval,
             "amount_cents": run_spec.plan.amount_cents,
             "amount_currency": run_spec.plan.currency,
-            "currency": run_spec.plan.currency,
             "pay_in_advance": False,
             "charges": [
                 {
-                    "billable_metric_code": charge.metric_code,
+                    "billable_metric_id": metric_lago_ids[charge.metric_code],
                     "charge_model": charge.charge_model,
                     "pay_in_advance": False,
                     "invoiceable": True,
@@ -270,7 +254,38 @@ def _create_objects(key: str, k: int) -> dict:
             ],
         }
     }
-    result = request(API_BASE, key, "POST", "/api/v1/plans", plan_payload)
+
+
+def _create_objects(key: str, k: int) -> dict:
+    run_id = f"{fixture.RUN_ID_PREFIX}{uuid.uuid4()}"
+    run_spec = fixture.build_run(run_id, task_count=k + 1)
+
+    created = {"metrics": [], "plan": None, "customer": None, "subscriptions": []}
+    metric_lago_ids = {}
+    for metric in run_spec.metrics:
+        result = request(
+            API_BASE, key, "POST", "/api/v1/billable_metrics",
+            {
+                "billable_metric": {
+                    "code": metric.code,
+                    "name": metric.name,
+                    "aggregation_type": metric.aggregation_type,
+                    "field_name": metric.field_name,
+                }
+            },
+        )
+        lago_id = None
+        if isinstance(result.body, dict):
+            lago_id = result.body.get("billable_metric", {}).get("lago_id")
+        metric_lago_ids[metric.code] = lago_id
+        created["metrics"].append(
+            {"code": metric.code, "http_status": result.status, "lago_id": lago_id}
+        )
+        if not 200 <= result.status < 300:
+            raise RuntimeError(f"metric {metric.code} rejected: HTTP {result.status}")
+
+    result = request(API_BASE, key, "POST", "/api/v1/plans",
+                     _plan_payload(run_spec, metric_lago_ids))
     created["plan"] = {"code": run_spec.plan.code, "http_status": result.status, "body": result.body}
     if not 200 <= result.status < 300:
         raise RuntimeError(f"plan rejected: HTTP {result.status}")

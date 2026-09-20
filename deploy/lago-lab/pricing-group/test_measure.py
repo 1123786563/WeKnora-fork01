@@ -154,3 +154,30 @@ class EnvPatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlanPayloadTests(unittest.TestCase):
+    def test_plan_charges_reference_metrics_by_lago_id_with_decimal_string_amounts(self):
+        import fixture
+        from run_phase import _plan_payload
+
+        run = fixture.build_run("weknora-t04-planpayload", task_count=1)
+        lago_ids = {
+            run.metrics[0].code: "11111111-1111-1111-1111-111111111111",
+            run.metrics[1].code: "22222222-2222-2222-2222-222222222222",
+        }
+        payload = _plan_payload(run, lago_ids)
+        plan = payload["plan"]
+        self.assertEqual(plan["amount_cents"], 0)
+        self.assertEqual(plan["amount_currency"], "CNY")
+        charges = plan["charges"]
+        self.assertEqual(charges[0]["billable_metric_id"], lago_ids[run.metrics[0].code])
+        self.assertEqual(charges[0]["charge_model"], "standard")
+        self.assertEqual(charges[0]["properties"]["amount"], "7")  # decimal string
+        self.assertEqual(charges[1]["billable_metric_id"], lago_ids[run.metrics[1].code])
+        self.assertEqual(charges[1]["properties"]["amount"], "1500")
+        self.assertEqual(charges[1]["properties"]["package_size"], 100)
+        self.assertEqual(charges[1]["properties"]["free_units"], 0)
+        # the v1.53.0 live-verified 404 trap: never reference metrics by code
+        for charge in charges:
+            self.assertNotIn("billable_metric_code", charge)
