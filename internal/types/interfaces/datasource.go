@@ -69,6 +69,12 @@ type DataSourceService interface {
 	// GetSyncLog retrieves a specific sync log entry
 	GetSyncLog(ctx context.Context, syncLogID string) (*types.SyncLog, error)
 
+	// CancelSyncLog flags a running sync for cooperative cancellation. The log
+	// must belong to dsID within tenantID and still be running, otherwise
+	// service.ErrSyncLogNotFound. The sync loop observes the flag at its next
+	// checkpoint/batch boundary and exits gracefully with the cursor kept.
+	CancelSyncLog(ctx context.Context, tenantID uint64, dsID, logID string) error
+
 	// ProcessSync handles the actual sync operation (called by asynq task)
 	ProcessSync(ctx context.Context, task *asynq.Task) error
 }

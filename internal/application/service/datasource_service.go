@@ -701,8 +701,55 @@ func (s *DataSourceService) GetSyncLog(ctx context.Context, syncLogID string) (*
 	return log, nil
 }
 
+// ErrSyncLogNotFound is returned by CancelSyncLog when the requested sync log
+// does not exist, does not belong to the caller's tenant and data source, or is
+// not currently running. All three cases answer identically so the API leaks no
+// information about other tenants' sync logs.
+var ErrSyncLogNotFound = errors.New("sync log not found")
+
+// syncCanceledMessage is the terminal error message recorded when a run exits
+// because a user requested cancellation (SP2-a §3.3).
+const syncCanceledMessage = "canceled by user"
+
+// errSyncCanceled is the in-band sentinel that unwinds a sync loop after a
+// cooperative cancel was observed at a checkpoint or batch boundary. The sync
+// paths convert it to a graceful canceled terminal state; ProcessSync
+// additionally normalizes it to nil so asynq never treats a user cancel as a
+// failure and retries the run.
+var errSyncCanceled = errors.New("sync canceled by user")
+
+// CancelSyncLog flags a running sync for cooperative cancellation (SP2-a
+// §3.3). The sync loop observes the flag at its throttled checkpoint/batch
+// pulse (see syncPulse) and exits gracefully: status=canceled, error_message
+// "canceled by user", the cursor left where the last checkpoint put it so the
+// next sync resumes instead of restarting. The log must belong to dsID within
+// tenantID and still be running, otherwise ErrSyncLogNotFound — a terminal log
+// cannot be canceled. Flagging an already-flagged log is idempotent.
+func (s *DataSourceService) CancelSyncLog(ctx context.Context, tenantID uint64, dsID, logID string) error {
+	log, err := s.syncLogRepo.FindByID(ctx, logID)
+	if err != nil {
+		return ErrSyncLogNotFound
+	}
+	if log.DataSourceID != dsID || log.TenantID != tenantID || log.Status != types.SyncLogStatusRunning {
+		return ErrSyncLogNotFound
+	}
+	return s.syncLogRepo.RequestCancel(ctx, logID)
+}
+
 // ProcessSync handles the actual sync operation (called by asynq task)
 func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) error {
+	err := s.processSync(ctx, task)
+	// SP2-a §3.3: a cooperative cancel is a graceful exit, not a failure. The
+	// sync paths handle the sentinel locally; this normalization is the
+	// belt-and-braces guarantee that a sentinel leaking from any path never
+	// makes asynq retry a run the user asked to stop.
+	if errors.Is(err, errSyncCanceled) {
+		return nil
+	}
+	return err
+}
+
+func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) error {
 	var payload types.DataSourceSyncPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		logger.Errorf(ctx, "failed to unmarshal sync payload: %v", err)
@@ -901,7 +948,17 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 	for i, item := range items {
 		item := item
 		s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, &item, autoTagIDs, result)
-		maybeHeartbeat(ctx, s.syncLogRepo, syncLog.ID, &lastBeat)
+		// SP2-a §3.3: the same throttled pulse as the streaming path —
+		// heartbeat plus cooperative-cancel check. The batch path has no
+		// checkpoints, so its cursor is only persisted on completion: on cancel
+		// the run stops here and the stored cursor keeps its previous value,
+		// which is exactly the resume semantics.
+		if syncPulse(ctx, s.syncLogRepo, syncLog.ID, &lastBeat) {
+			s.cancelSyncRun(ctx, syncLog, result)
+			logger.Infof(ctx, "batch sync canceled by user after %d/%d item(s): ds=%s",
+				i+1, len(items), payload.DataSourceID)
+			return nil
+		}
 		// Every batchProgressInterval items, mirror the running counts into the
 		// sync log (same six fields as a streaming checkpoint) so a long batch
 		// sync shows mid-flight progress instead of jumping from 0 to done.
@@ -1182,6 +1239,11 @@ type streamSyncHandler struct {
 	tagIDs  []string
 	result  *types.SyncResult
 	syncLog *types.SyncLog
+	// lastBeat is the caller-owned heartbeat/cancel-check throttle state; the
+	// zero value means the first checkpoint pulses immediately. Connectors
+	// like Confluence checkpoint per document, so the pulse must be throttled
+	// or every document would cost an extra row write (SP2-a Task 2 condition).
+	lastBeat time.Time
 	// A07 lease fence of this worker; currentFence reports the live holder.
 	workerFence  int64
 	currentFence func() int64
@@ -1237,6 +1299,21 @@ func (h *streamSyncHandler) Checkpoint(ctx context.Context, cursor *types.SyncCu
 		return err
 	}
 
+	// SP2-a §3.2/§3.3: one throttled pulse per window refreshes the heartbeat
+	// (stall detection sees page-boundary liveness) and observes the
+	// cooperative-cancel flag on the same cadence. Connectors that checkpoint
+	// per document (Confluence) would otherwise hammer the row once per item.
+	canceled := syncPulse(ctx, h.svc.syncLogRepo, h.syncLog.ID, &h.lastBeat)
+
+	if canceled {
+		// SP2-a §3.3: the terminal canceled state rides the progress write;
+		// the cursor persisted above stays at this checkpoint so a later run
+		// resumes right after the already-ingested documents.
+		h.svc.cancelSyncRun(ctx, h.syncLog, h.result)
+		logger.Infof(ctx, "sync canceled by user at checkpoint: ds=%s log=%s", h.ds.ID, h.syncLog.ID)
+		return errSyncCanceled
+	}
+
 	// Best-effort live progress; a failure here must not abort the sync.
 	h.syncLog.ItemsTotal = h.result.Total
 	h.syncLog.ItemsCreated = h.result.Created
@@ -1246,12 +1323,6 @@ func (h *streamSyncHandler) Checkpoint(ctx context.Context, cursor *types.SyncCu
 	h.syncLog.ItemsFailed = h.result.Failed
 	if err := h.svc.syncLogRepo.UpdateResult(ctx, h.syncLog); err != nil {
 		logger.Warnf(ctx, "failed to persist sync log progress at checkpoint: %v", err)
-	}
-	// SP2-a §3.2: stamp the heartbeat alongside progress so stall detection
-	// (COALESCE(heartbeat_at, started_at) against the stall window) sees the
-	// run alive at every page boundary. Best-effort, like the progress write.
-	if err := h.svc.syncLogRepo.UpdateHeartbeat(ctx, h.syncLog.ID, time.Now().UTC()); err != nil {
-		logger.Warnf(ctx, "failed to persist sync heartbeat at checkpoint: %v", err)
 	}
 	return nil
 }
@@ -1268,20 +1339,46 @@ const syncHeartbeatInterval = 30 * time.Second
 // advanced on every out-of-window attempt, including failed ones, so a
 // struggling database does not turn the batch loop into one write per item.
 // Failures are logged and swallowed — a heartbeat is advisory liveness and must
-// never abort a sync. Task 4's cooperative-cancel check reuses this same
-// throttling point on both sync paths.
-func maybeHeartbeat(ctx context.Context, syncLogRepo interfaces.SyncLogRepository, logID string, lastBeat *time.Time) {
+// never abort a sync. The return value reports whether this call was a pulse
+// point (throttle window elapsed); SP2-a §3.3's cooperative-cancel check rides
+// exactly those points on both sync paths via syncPulse.
+func maybeHeartbeat(ctx context.Context, syncLogRepo interfaces.SyncLogRepository, logID string, lastBeat *time.Time) bool {
 	if lastBeat == nil {
-		return
+		return false
 	}
 	now := time.Now().UTC()
 	if !lastBeat.IsZero() && now.Sub(*lastBeat) < syncHeartbeatInterval {
-		return
+		return false
 	}
 	*lastBeat = now
 	if err := syncLogRepo.UpdateHeartbeat(ctx, logID, now); err != nil {
 		logger.Warnf(ctx, "failed to persist sync heartbeat for log %s: %v", logID, err)
 	}
+	return true
+}
+
+// checkCancelRequested reports whether a cooperative cancel has been requested
+// for the sync log. It is queried on the throttled pulse of maybeHeartbeat, so
+// a flag raised mid-run lands within one window plus one checkpoint/batch
+// boundary (~30s at the default interval). A missing row or a query failure
+// reads as "not canceled": a broken read must never abort a healthy sync.
+func checkCancelRequested(ctx context.Context, syncLogRepo interfaces.SyncLogRepository, logID string) bool {
+	log, err := syncLogRepo.FindByID(ctx, logID)
+	if err != nil || log == nil {
+		return false
+	}
+	return log.CancelRequested
+}
+
+// syncPulse is the single throttled observation point shared by both sync
+// paths: it refreshes the heartbeat (at most once per syncHeartbeatInterval)
+// and, on the same pulse, checks the cooperative-cancel flag. It reports
+// whether the run should stop because a user asked to cancel it.
+func syncPulse(ctx context.Context, syncLogRepo interfaces.SyncLogRepository, logID string, lastBeat *time.Time) bool {
+	if !maybeHeartbeat(ctx, syncLogRepo, logID, lastBeat) {
+		return false
+	}
+	return checkCancelRequested(ctx, syncLogRepo, logID)
 }
 
 // processSyncStreaming runs a sync through a StreamingConnector, ingesting each
@@ -1345,6 +1442,14 @@ func (s *DataSourceService) processSyncStreaming(
 		}
 	}
 	nextCursor, fetchErr := streamingFetch(ctx, sc, config, forceFull, startCursor, fullBaseline, handler)
+	if errors.Is(fetchErr, errSyncCanceled) {
+		// SP2-a §3.3: the checkpoint that observed the flag already persisted
+		// the terminal canceled state and the resumed cursor. Report success so
+		// asynq does not treat a user cancel as a failure and retry the run.
+		logger.Infof(ctx, "streaming sync canceled by user: ds=%s log=%s created=%d updated=%d",
+			payload.DataSourceID, syncLog.ID, result.Created, result.Updated)
+		return nil
+	}
 	if fetchErr != nil {
 		// Progress so far is already checkpointed onto ds.LastSyncCursor; leave
 		// it in place so the Asynq retry resumes from there. Persist counts.
@@ -1390,6 +1495,26 @@ func (s *DataSourceService) processSyncStreaming(
 	logger.Infof(ctx, "streaming sync completed: ds=%s created=%d updated=%d deleted=%d skipped=%d failed=%d",
 		payload.DataSourceID, result.Created, result.Updated, result.Deleted, result.Skipped, result.Failed)
 	return nil
+}
+
+// cancelSyncRun writes the cooperative-cancel terminal state (SP2-a §3.3):
+// status=canceled, error_message="canceled by user", finished_at=now, with the
+// live progress counts. The data source row is deliberately untouched — a user
+// cancel is not a failure — and the cursor stays where the last checkpoint put
+// it, so the next sync resumes instead of restarting.
+func (s *DataSourceService) cancelSyncRun(ctx context.Context, syncLog *types.SyncLog, result *types.SyncResult) {
+	syncLog.ItemsTotal = result.Total
+	syncLog.ItemsCreated = result.Created
+	syncLog.ItemsUpdated = result.Updated
+	syncLog.ItemsDeleted = result.Deleted
+	syncLog.ItemsSkipped = result.Skipped
+	syncLog.ItemsFailed = result.Failed
+	syncLog.Status = types.SyncLogStatusCanceled
+	syncLog.ErrorMessage = syncCanceledMessage
+	syncLog.FinishedAt = timePtr(time.Now().UTC())
+	if err := s.syncLogRepo.UpdateResult(ctx, syncLog); err != nil {
+		logger.Errorf(ctx, "failed to persist canceled sync log %s: %v", syncLog.ID, err)
+	}
 }
 
 func (s *DataSourceService) updateSyncRunResult(

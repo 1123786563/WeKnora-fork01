@@ -317,7 +317,7 @@ func (r *SyncLogRepository) HasRunningSync(ctx context.Context, dsID string) (bo
 		Model(&types.SyncLog{}).
 		Where("data_source_id = ?", dsID).
 		Where("status = ?", types.SyncLogStatusRunning).
-		Where("COALESCE(heartbeat_at, started_at) > ?", time.Now().Add(-types.SyncStallWindow)).
+		Where("COALESCE(heartbeat_at, started_at) > ?", time.Now().UTC().Add(-types.SyncStallWindow)).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

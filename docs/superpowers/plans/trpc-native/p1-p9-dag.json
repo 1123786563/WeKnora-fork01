@@ -157,7 +157,7 @@
         "internal/application/repository/native_usage.go",
         "internal/application/repository/native_usage_test.go"
       ],
-      "status": "blocked-design"
+      "status": "review-failed"
     },
     {
       "id": "P2.6",
@@ -328,7 +328,7 @@
         "tests/native-agent/wire-v1.json",
         "packages/contracts/package.json"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P5.2",
@@ -361,7 +361,7 @@
         "packages/api-client/package.json",
         "packages/domain/package.json"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P5.4",
@@ -441,7 +441,7 @@
         "internal/handler/session/native_archive_test.go",
         "internal/router/routes_native_archive.go"
       ],
-      "status": "blocked-design"
+      "status": "review-failed"
     },
     {
       "id": "P6.2",

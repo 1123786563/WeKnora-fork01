@@ -330,6 +330,10 @@ func RegisterDataSourceRoutes(
 		// Sync logs — Viewer+ (read-only audit trail)
 		ds.GET("/:id/logs", g.Viewer(), handler.GetSyncLogs)
 		ds.GET("/logs/:log_id", g.Viewer(), handler.GetSyncLog)
+		// Cooperative cancel of a running sync — Admin+ (a mutation: it stops a
+		// job another admin started). The loop exits at its next checkpoint/
+		// batch boundary with the cursor kept (SP2-a §3.3).
+		ds.POST("/:id/logs/:log_id/cancel", g.Admin(), handler.CancelSyncLog)
 	}
 }
 

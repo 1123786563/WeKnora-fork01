@@ -40,7 +40,9 @@ func resetPendingTasks(db *gorm.DB) {
 
 	var staleCutoff time.Time
 	if distributed {
-		staleCutoff = time.Now().Add(-resetPendingStaleWindow)
+		// The writers (heartbeat_at/started_at) are UTC; a bare local time.Now()
+		// would misjudge liveness by the host's offset on a non-UTC sqlite host.
+		staleCutoff = time.Now().UTC().Add(-resetPendingStaleWindow)
 	}
 
 	// Resolve Lite-mode orphaned knowledge rows first. A finalizing row whose

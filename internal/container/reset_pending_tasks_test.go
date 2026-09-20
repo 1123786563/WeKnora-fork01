@@ -241,8 +241,10 @@ func TestResetPendingTasks_SyncLogStaleRunning(t *testing.T) {
 	db := setupResetPendingDB(t)
 	// No heartbeat at all: liveness falls back to started_at, so the row must
 	// be older than the 2h15m stall window (types.SyncStallWindow) to count
-	// as dead.
-	stale := time.Now().Add(-3 * time.Hour)
+	// as dead. Seeded in UTC to match the staleCutoff's zone — the sqlite
+	// driver keeps zone offsets in timestrings, so a local-zone seed would
+	// order incorrectly against a UTC cutoff on a non-UTC host.
+	stale := time.Now().UTC().Add(-3 * time.Hour)
 	require.NoError(t, db.Exec(
 		`INSERT INTO sync_logs (id, status, started_at) VALUES (?, ?, ?)`,
 		"sync-1", types.SyncLogStatusRunning, stale,
@@ -285,7 +287,8 @@ func TestResetPendingTasks_SyncLogLiteMode(t *testing.T) {
 // whose heartbeat is past the window are reset to failed.
 func TestResetPendingTasks_DistributedSyncLivenessFromHeartbeat(t *testing.T) {
 	db := setupResetPendingDB(t)
-	now := time.Now()
+	// UTC seeds match the UTC staleCutoff (see the SyncLogStaleRunning test).
+	now := time.Now().UTC()
 	// Active long task: started 40 minutes ago (past the old 30-minute
 	// startup window) but heartbeated one minute ago.
 	require.NoError(t, db.Exec(

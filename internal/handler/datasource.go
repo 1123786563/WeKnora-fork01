@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -597,6 +599,46 @@ func (h *DataSourceHandler) GetSyncLog(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, log)
+}
+
+// CancelSyncLog godoc
+// @Summary Cancel a running sync
+// @Description Request cooperative cancellation of a running sync. The sync loop
+// @Description observes the flag at its next checkpoint/batch boundary and exits
+// @Description gracefully (status=canceled, cursor preserved for resume).
+// @Tags DataSource
+// @Param id path string true "Data source ID"
+// @Param log_id path string true "Sync log ID"
+// @Success 202 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /datasource/{id}/logs/{log_id}/cancel [post]
+func (h *DataSourceHandler) CancelSyncLog(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	id := c.Param("id")
+	logID := c.Param("log_id")
+
+	if _, status, msg := h.getOwnedDataSource(ctx, tenantID, id); status != http.StatusOK {
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	if err := h.service.CancelSyncLog(ctx, tenantID, id, logID); err != nil {
+		if errors.Is(err, service.ErrSyncLogNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "sync log not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cancel sync"})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"status": "cancel_requested"})
 }
 
 // GetAvailableConnectors godoc

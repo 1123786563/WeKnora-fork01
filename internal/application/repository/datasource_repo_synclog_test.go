@@ -113,11 +113,11 @@ func TestSyncLogLifecycleHasRunningSyncExcludesStalledRuns(t *testing.T) {
 	db := setupDataSourceRepoTestDB(t)
 	repo := NewSyncLogRepository(db)
 	ctx := context.Background()
-	// Local time on purpose: the sqlite driver persists timestrings with
-	// their zone offset, so seeded values must share the zone of the
-	// time.Now() cutoff inside HasRunningSync for SQL comparisons to order
-	// correctly (same convention as the container reset tests).
-	now := time.Now()
+	// UTC on purpose: the sqlite driver persists timestrings with their zone
+	// offset, so seeded values must share the zone of the time.Now().UTC()
+	// cutoff inside HasRunningSync for SQL comparisons to order correctly —
+	// and the production writers (heartbeat_at/started_at) are UTC too.
+	now := time.Now().UTC()
 
 	stalled := &types.SyncLog{
 		ID: "log-stalled", DataSourceID: "ds-stalled", TenantID: 1,
