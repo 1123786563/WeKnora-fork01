@@ -2,9 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -44,13 +41,9 @@ func failureCode(t *testing.T, err error) nativecontract.ErrorCode {
 
 func nativeCommitSessionHash(t *testing.T, e *event.Event) string {
 	t.Helper()
-	payload, err := json.Marshal(struct {
-		Version int          `json:"version"`
-		Event   *event.Event `json:"event"`
-	}{Version: 1, Event: e})
+	hash, err := CanonicalNativeSessionEventHash(e)
 	require.NoError(t, err)
-	sum := sha256.Sum256(payload)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return hash
 }
 
 func TestNativeCommitSameIntentIsIdempotentAndChangedHashConflicts(t *testing.T) {
