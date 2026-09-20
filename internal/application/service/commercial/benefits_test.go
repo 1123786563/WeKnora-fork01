@@ -568,3 +568,80 @@ func TestEnsureBenefitsStorageOccupancySynced(t *testing.T) {
 		t.Fatalf("storage counter = (%d, %d, has=%v), want used=4096 limit=10×2^30", used, limit, has)
 	}
 }
+
+// slowGrantPlatform delays every grant submit mid-flight BEFORE it reaches
+// the authority — the read-before-create windows of concurrent first
+// grants then overlap the way they do against the real authority (which,
+// per E3, has no wallet idempotency: every grant POST that reaches it is a
+// potential doubled balance). The fake's own internal serialization cannot
+// expose the service-level TOCTOU; this wrapper can.
+type slowGrantPlatform struct {
+	inner domain.CommercialPlatform
+	delay time.Duration
+
+	mu           sync.Mutex
+	grantSubmits int
+}
+
+func (p *slowGrantPlatform) SubmitCommand(ctx context.Context, cmd domain.Command) (domain.CommandReceipt, error) {
+	if cmd.Kind == domain.CommandKindGrantIncludedCredits {
+		p.mu.Lock()
+		p.grantSubmits++
+		p.mu.Unlock()
+		time.Sleep(p.delay)
+	}
+	return p.inner.SubmitCommand(ctx, cmd)
+}
+
+func (p *slowGrantPlatform) ReadSnapshot(ctx context.Context, q domain.SnapshotQuery) (domain.Snapshot, error) {
+	return p.inner.ReadSnapshot(ctx, q)
+}
+
+func (p *slowGrantPlatform) Reconcile(ctx context.Context, from domain.ReconciliationCursor) (domain.ReconciliationPage, error) {
+	return p.inner.Reconcile(ctx, from)
+}
+
+func (p *slowGrantPlatform) grantsSubmitted() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.grantSubmits
+}
+
+// TestEnsureBenefitsConcurrentFirstGrantExactlyOnePost: N concurrent
+// FIRST-TIME ensures on one tenant with a mid-POST delay — EXACTLY ONE
+// grant submit may leave the service (each submit is a potential E3 POST
+// against an authority with no wallet idempotency); exactly one wallet and
+// one registry row result.
+func TestEnsureBenefitsConcurrentFirstGrantExactlyOnePost(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	slow := &slowGrantPlatform{inner: fake, delay: 50 * time.Millisecond}
+	svc, broker, _ := newBenefitsService(t, slow)
+	svc.SetNow(septemberClock())
+
+	const racers = 8
+	started := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-started
+			if _, err := svc.EnsureBenefits(context.Background(), benefitsTenant, "TOCTOU Space", "user-1"); err != nil {
+				t.Errorf("racer: %v", err)
+			}
+		}()
+	}
+	close(started)
+	wg.Wait()
+
+	if got := slow.grantsSubmitted(); got != 1 {
+		t.Fatalf("EXACTLY ONE grant submit may leave the service under a concurrent first grant (E3): got %d", got)
+	}
+	if wallets := fake.Wallets(); len(wallets) != 1 || wallets[0].GrantedCents != BasePlanSeedIncludedCreditsMicro/10_000 {
+		t.Fatalf("exactly one wallet with one month's grant expected, got %+v", wallets)
+	}
+	if n := broker.batchCount(benefitsTenant); n != 1 {
+		t.Fatalf("one registry row expected, got %d", n)
+	}
+}

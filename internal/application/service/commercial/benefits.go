@@ -108,6 +108,16 @@ type BenefitsService struct {
 	// without it, racing seeds would each allocate the next (base, N)
 	// version and fork parallel publications of one product plan.
 	seedMu sync.Mutex
+	// grantMus serializes the monthly grant PER TENANT (the seedMu pattern;
+	// single-process deployment model). The registry's unique (tenant,
+	// period) row alone cannot stop two concurrent FIRST grants: both
+	// callers would observe WalletRef == "" — the row exists but the grant
+	// has not completed — and both would POST to an authority with NO
+	// wallet idempotency (E3: a replayed grant POST doubles the balance).
+	// The per-tenant mutex closes that window in-process; the row's
+	// WalletRef is the completed marker the second caller then reads.
+	grantMuGuard sync.Mutex
+	grantMus     map[uint64]*sync.Mutex
 }
 
 // NewBenefitsService builds the service and bootstraps its schema (portable
@@ -298,18 +308,42 @@ func (s *BenefitsService) EnsureBenefits(ctx context.Context, tenantID uint64, d
 	return status, nil
 }
 
+// tenantGrantMu returns the per-tenant grant serialization mutex (lazily
+// created; bounded by the active tenant count).
+func (s *BenefitsService) tenantGrantMu(tenantID uint64) *sync.Mutex {
+	s.grantMuGuard.Lock()
+	defer s.grantMuGuard.Unlock()
+	if s.grantMus == nil {
+		s.grantMus = map[uint64]*sync.Mutex{}
+	}
+	mu, ok := s.grantMus[tenantID]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.grantMus[tenantID] = mu
+	}
+	return mu
+}
+
 // EnsureMonthlyCredits issues the current period's included credits through
 // the three-layer idempotency: the registry's unique (tenant, period) row
 // is the gate; the seam command's deterministic Key
 // (grant_included_credits:<ext>:<period>) plus the adapter's
 // read-before-create make every replay an identity resolve, never a blind
-// second grant (E3). A batch row whose grant never completed (refused or
+// second grant (E3). The grant path is serialized PER TENANT: a batch row
+// with WalletRef == "" means an earlier grant has not completed yet, and a
+// concurrent first-ensure racing through that window would issue a second
+// POST to an authority with no wallet idempotency (E3) — exactly one
+// caller proceeds (the seedMu in-process pattern; single-process
+// deployment model). A batch row whose grant never completed (refused or
 // lost response) re-submits safely on the next ensure — the adapter finds
 // the existing wallet by deterministic name and replays.
 func (s *BenefitsService) EnsureMonthlyCredits(ctx context.Context, tenantID uint64) (repocommercial.CreditBatchRow, error) {
 	if s.platform == nil {
 		return repocommercial.CreditBatchRow{}, domain.ErrPlatformUnconfigured
 	}
+	mu := s.tenantGrantMu(tenantID)
+	mu.Lock()
+	defer mu.Unlock()
 	now := s.now().UTC()
 	period := domain.MonthlyPeriod(now)
 	end, err := domain.PeriodEnd(period)

@@ -761,7 +761,11 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 	if err := payload.Validate(); err != nil {
 		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout)
+	// The grant command carries its own time budget: the request budget PLUS
+	// the wallet-limit retry window, computed at call time so test-tuned
+	// retry vars shrink the whole budget together (a fixed 15 s command
+	// budget would make the 70 s retry window unreachable).
+	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout+walletLimitRetryBudget)
 	defer cancel()
 
 	walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)

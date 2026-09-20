@@ -55,6 +55,6 @@ CREATE TABLE commercial_credit_batches (
 COMMENT ON TABLE commercial_credit_batches IS 'Coordinator-owned monthly credit batch registry: one short-TTL wallet batch per (tenant, period) — grant idempotency anchor, pre-dispatch expiry gate and wallet-cap ledger (Lago T08, #80; T03 verdict obligations)';
 COMMENT ON COLUMN commercial_credit_batches.period IS 'UTC calendar month YYYY-MM of the batch';
 COMMENT ON COLUMN commercial_credit_batches.command_key IS 'Idempotency identity grant_included_credits:<ext-customer>:<period> — coordinator-owned (E3: the authority wallet API has none)';
-COMMENT ON COLUMN commercial_credit_batches.wallet_ref IS 'Seam-internal wallet lago_id once known — immutable once set';
+COMMENT ON COLUMN commercial_credit_batches.wallet_ref IS 'Seam-internal deterministic WeKnora wallet name (the E3 recovery identity) — empty until the grant completes, immutable once set';
 COMMENT ON COLUMN commercial_credit_batches.expires_at IS 'Exclusive period end; a batch at expires_at <= now is unavailable even while the authority still reports the wallet active (lazy termination window)';
 COMMENT ON COLUMN commercial_credit_batches.state IS 'Advisory state granted|expired — expiry is always decided by expires_at, never by this column';
