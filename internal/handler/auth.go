@@ -936,6 +936,12 @@ type updateMyPreferencesRequest struct {
 	// login, not here. Nil = field omitted from the PATCH and stays
 	// untouched.
 	LastActiveTenantID *uint64 `json:"last_active_tenant_id"`
+	// DefaultModel is the user's preferred chat model id, applied to new
+	// conversations instead of the platform default. Send a non-empty
+	// model id to set / replace, or an empty string to clear and fall
+	// back to the platform default. Nil = field omitted from the PATCH
+	// and stays untouched.
+	DefaultModel *string `json:"default_model"`
 }
 
 // UpdateMyPreferences godoc
@@ -970,6 +976,7 @@ func (h *AuthHandler) UpdateMyPreferences(c *gin.Context) {
 
 	patch := types.UserPreferences{
 		LastActiveTenantID: req.LastActiveTenantID,
+		DefaultModel:       req.DefaultModel,
 	}
 	prefs, err := h.userService.UpdateUserPreferences(ctx, user.ID, patch)
 	if err != nil {
