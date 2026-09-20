@@ -99,3 +99,12 @@ def test_search_response_echoes_modes_and_evidence() -> None:
     response = SearchResponse(query_id="q", generation="g", requested_mode="graph_rag", actual_mode="graph_rag", evidence=(evidence,), assertion_ids=("a",))
 
     assert response.actual_mode == "graph_rag" and response.evidence[0].evidence_id == "e"
+
+
+def test_reason_response_keeps_retrieval_without_conclusion() -> None:
+    from semantic_service.contracts import Evidence, ReasonResponse, ReasonStatus, SearchResponse
+
+    retrieval = SearchResponse("q", "g", "reason", "reason", (Evidence("e", "d", 1, "c", "h", "文本", None, None),), ("a",))
+    response = ReasonResponse(status=ReasonStatus.INSUFFICIENT_EVIDENCE, conclusion=None, retrieval=retrieval, premise_ids=(), rule_ids=(), limitations=("missing",))
+
+    assert response.conclusion is None and response.retrieval is retrieval

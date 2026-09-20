@@ -178,3 +178,10 @@ class ReasonStatus(str, Enum):
 class ReasonResponse:
     status: ReasonStatus
     conclusion: str | None
+    retrieval: SearchResponse | None = None
+    conclusion_kind: str | None = None
+    premise_ids: tuple[str, ...] = ()
+    rule_ids: tuple[str, ...] = ()
+    model_version: str | None = None
+    prompt_version: str | None = None
+    limitations: tuple[str, ...] = ()
