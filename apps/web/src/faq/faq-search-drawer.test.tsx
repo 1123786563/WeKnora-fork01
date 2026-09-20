@@ -93,6 +93,16 @@ async function openDrawer(container: HTMLElement) {
   return Boolean(document.querySelector('.faq-search-drawer'));
 }
 
+/** Poll until the 280ms exit animation finishes and the drawer unmounts. */
+async function waitForDrawerGone(timeoutMs = 3000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    if (!document.querySelector('.faq-search-drawer')) return true;
+  }
+  return !document.querySelector('.faq-search-drawer');
+}
+
 async function typeQuery(value: string) {
   const input = document.querySelector('#faq-search-query') as HTMLInputElement | null;
   if (!input) return false;
@@ -120,7 +130,7 @@ test('toolbar search-test button opens the drawer and its close button closes it
     outcomes.closeFound = Boolean(close);
     if (close) {
       await act(async () => { close.click(); await settle(5); });
-      outcomes.drawerCloses = !document.querySelector('.faq-search-drawer');
+      outcomes.drawerCloses = await waitForDrawerGone();
     }
   }
 
@@ -137,13 +147,13 @@ test('search drawer closes on Escape and backdrop click like the Vue drawer', as
   outcomes.opened = await openDrawer(container);
   if (outcomes.opened) {
     await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5); });
-    outcomes.escapeClosed = !document.querySelector('.faq-search-drawer');
+    outcomes.escapeClosed = await waitForDrawerGone();
   }
   outcomes.reopened = await openDrawer(container);
   if (outcomes.reopened) {
     const overlay = document.querySelector('.faq-search-drawer')?.parentElement as HTMLElement | null;
     if (overlay) await act(async () => { overlay.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true })); await settle(5); });
-    outcomes.backdropClosed = !document.querySelector('.faq-search-drawer');
+    outcomes.backdropClosed = await waitForDrawerGone();
   }
   assert.equal(outcomes.opened, true, 'drawer opened');
   assert.equal(outcomes.escapeClosed, true, 'Escape closes the drawer');
@@ -262,4 +272,126 @@ test('expanding a hit reveals its answers and similar questions', async () => {
   assert.equal(outcomes.expandedState, 'true', 'expander flips aria-expanded');
   assert.ok(outcomes.answerShown, 'answers section reveals');
   assert.ok(outcomes.similarShown, 'similar questions section reveals');
+});
+
+// R488 A3: Vue t-drawer motion semantics — the right panel transitions
+// transform 0.28s cubic-bezier(0.38,0,0.24,1) from translateX(100%) and the
+// overlay fades (tdesign.css:17144-17158). React must carry the same enter
+// animation and keep the DOM mounted through the exit animation instead of
+// vanishing instantly.
+test('drawer enters with the Vue t-drawer slide/fade and unmounts only after the exit animation', async () => {
+  const fake = fakeClient([]);
+  const container = await mountPage(fake.client);
+  const outcomes: Record<string, unknown> = {};
+
+  outcomes.opened = await openDrawer(container);
+  if (outcomes.opened) {
+    const overlay = document.querySelector('.faq-search-drawer')?.parentElement ?? null;
+    const aside = document.querySelector('.faq-search-drawer');
+    outcomes.overlayAnimatesIn = (overlay?.className || '').includes('faq-drawer-overlay-enter');
+    outcomes.panelAnimatesIn = (aside?.className || '').includes('faq-drawer-panel-enter');
+    const close = aside?.querySelector('.faq-modal-close') as HTMLButtonElement | null;
+    outcomes.closeFound = Boolean(close);
+    if (close) {
+      await act(async () => { close.click(); await settle(10); });
+      outcomes.stillMountedDuringExit = Boolean(document.querySelector('.faq-search-drawer'));
+      outcomes.exitClasses = (document.querySelector('.faq-search-drawer')?.className || '').includes('faq-drawer-panel-exit');
+      outcomes.unmountedAfterExit = await waitForDrawerGone();
+    }
+  }
+
+  assert.equal(outcomes.opened, true, 'drawer open');
+  assert.equal(outcomes.overlayAnimatesIn, true, 'overlay fades in like the t-drawer mask');
+  assert.equal(outcomes.panelAnimatesIn, true, 'panel slides in from translateX(100%)');
+  assert.ok(outcomes.closeFound, 'close button present');
+  assert.equal(outcomes.stillMountedDuringExit, true, 'panel stays mounted while the exit animation runs');
+  assert.equal(outcomes.exitClasses, true, 'exit state swaps the animation classes');
+  assert.equal(outcomes.unmountedAfterExit, true, 'drawer unmounts after the exit animation completes');
+});
+
+// R488 A6 (K2 report): the Vue search drawer has no explicit #footer, so the
+// TDesign t-drawer DEFAULT footer renders — for placement="right" the button
+// row is [确认(primary), 取消(default)] (tdesign-vue-next drawer.mjs:222
+// `placement === "right" ? confirmBtn : null, cancelBtn, ...`; useAction.mjs
+// default themes primary/default, zh-CN locale 确认/取消). React must carry the
+// same pinned footer button set.
+test('search drawer carries the TDesign default footer: 确认 then 取消, pinned at the bottom', async () => {
+  const fake = fakeClient([]);
+  const container = await mountPage(fake.client);
+  const outcomes: Record<string, unknown> = {};
+
+  outcomes.drawerOpens = await openDrawer(container);
+  if (outcomes.drawerOpens) {
+    const footer = document.querySelector('.faq-search-drawer .faq-editor-footer');
+    outcomes.footerFound = Boolean(footer);
+    if (footer) {
+      const buttons = [...footer.querySelectorAll('button')].map((node) => node.textContent || '');
+      outcomes.buttonLabels = buttons;
+      // TDesign right placement order: confirm BEFORE cancel.
+      outcomes.confirmFirst = buttons[0] === '确认';
+      outcomes.cancelSecond = buttons[1] === '取消';
+    }
+  }
+
+  assert.equal(outcomes.drawerOpens, true, 'drawer open');
+  assert.ok(outcomes.footerFound, 'pinned footer rendered inside the search drawer');
+  assert.deepEqual(outcomes.buttonLabels, ['确认', '取消'], 'TDesign right-placement default footer order [确认, 取消]');
+  assert.equal(outcomes.confirmFirst, true, '确认 renders first (tdesign drawer.mjs right placement)');
+  assert.equal(outcomes.cancelSecond, true, '取消 renders second');
+});
+
+test('footer 取消 closes the search drawer', async () => {
+  const fake = fakeClient([]);
+  const container = await mountPage(fake.client);
+  const outcomes: Record<string, unknown> = {};
+
+  outcomes.drawerOpens = await openDrawer(container);
+  if (outcomes.drawerOpens) {
+    const cancel = [...document.querySelectorAll('.faq-search-drawer .faq-editor-footer button')]
+      .find((node) => node.textContent === '取消') as HTMLButtonElement | undefined;
+    outcomes.cancelFound = Boolean(cancel);
+    if (cancel) {
+      await act(async () => { cancel.click(); await settle(5); });
+      outcomes.drawerClosed = await waitForDrawerGone();
+    }
+  }
+
+  assert.equal(outcomes.drawerOpens, true, 'drawer open');
+  assert.ok(outcomes.cancelFound, 'footer cancel button present');
+  assert.equal(outcomes.drawerClosed, true, '取消 closes the drawer (TDesign cancelBtnAction closeDrawer)');
+});
+
+test('footer 确认 runs the search test: blank query warns, filled query posts', async () => {
+  const fake = fakeClient([
+    { id: 3, standard_question: '如何升级？', similar_questions: [], negative_questions: [], answers: ['下载新包。'], is_enabled: true, is_recommended: false, score: 0.88 },
+  ]);
+  const container = await mountPage(fake.client);
+  const outcomes: Record<string, unknown> = {};
+
+  outcomes.drawerOpens = await openDrawer(container);
+  if (outcomes.drawerOpens) {
+    const confirm = [...document.querySelectorAll('.faq-search-drawer .faq-editor-footer button')]
+      .find((node) => node.textContent === '确认') as HTMLButtonElement | undefined;
+    outcomes.confirmFound = Boolean(confirm);
+    if (confirm) {
+      // Blank query → the shared runSearchTest warning path, no request.
+      await act(async () => { confirm.click(); await settle(10); });
+      outcomes.blankWarning = (document.querySelector('.faq-search-drawer')?.textContent || '').includes('请输入要检索的问题');
+      outcomes.noRequestWhenBlank = fake.searchCalls.length === 0;
+      // Filled query → confirm posts the search request like 开始检索.
+      await typeQuery('如何升级');
+      await act(async () => { confirm.click(); await settle(20); });
+      outcomes.requestSent = fake.searchCalls.length === 1;
+      outcomes.payload = fake.searchCalls[0];
+      outcomes.drawerStaysOpen = Boolean(document.querySelector('.faq-search-drawer'));
+    }
+  }
+
+  assert.equal(outcomes.drawerOpens, true, 'drawer open');
+  assert.ok(outcomes.confirmFound, 'footer confirm button present');
+  assert.ok(outcomes.blankWarning, '确认 with a blank query surfaces the shared warning');
+  assert.ok(outcomes.noRequestWhenBlank, 'no faq.search call while blank');
+  assert.equal(outcomes.requestSent, true, '确认 posts the search request');
+  assert.deepEqual(outcomes.payload, { query_text: '如何升级', vector_threshold: 0.7, match_count: 10 }, '确认 posts the same Vue-default payload as 开始检索');
+  assert.equal(outcomes.drawerStaysOpen, true, 'drawer stays open so results stay readable');
 });

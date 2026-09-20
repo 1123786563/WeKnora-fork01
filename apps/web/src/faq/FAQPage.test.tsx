@@ -343,7 +343,25 @@ test('editor drawer mirrors the Vue form: labels, per-field desc copy, required 
   assert.match(html, /max(?:length|Length)=\"200\"/, 'standard question capped at 200 (Vue t-input :maxlength)');
   assert.equal((html.match(/required-mark/g) || []).length, 2, '标准问 + 答案 carry the required mark');
   assert.ok(!html.includes('faq-editor-checks'), 'Vue editor has no enable/recommended checkboxes');
-  assert.ok(html.includes(t('knowledgeEditor.faq.tagPlaceholder')), 'tag select keeps the Vue placeholder');
+  // R488: t-select semantics — the placeholder lives in the trigger only while
+  // no tag is selected (the old native-select placeholder <option> was K2 noise).
+  const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: { ...drawerForm, tagId: '' } })));
+  assert.ok(untagged.includes(t('knowledgeEditor.faq.tagPlaceholder')), 'tag trigger shows the Vue placeholder while unselected');
+});
+
+// R488 A3 residual (K2): the Vue tag field is a t-select — its options live in
+// a dropdown, so a closed editor leaks only the placeholder line. A native
+// <select> leaks every <option> text into innerText (K2 noise: 请选择标签 +
+// every tag name). The React field must be a closed-state combobox trigger.
+test('editor tag field is a closed-state combobox, not a native select leaking options', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
+  const tagRow = html.slice(html.indexOf('faq-editor-tag'));
+  assert.ok(tagRow.includes('role="combobox"'), 'tag trigger carries the combobox role');
+  assert.ok(!html.includes('<option'), 'no native <option> text leaks into the editor drawer');
+  assert.ok(!html.includes('>重要</option>'), 'closed tag dropdown does not list tag names');
+  // Selected tag renders inside the trigger (Vue t-select shows the label).
+  const tagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: { ...drawerForm, tagId: '3' } })));
+  assert.ok(tagged.includes('>重要</span>'), 'trigger shows the selected tag name');
 });
 
 test('editor drawer builds Vue list fields: add buttons, item rows, n/5 counter', () => {

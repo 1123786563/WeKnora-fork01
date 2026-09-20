@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import type { WeKnoraClient } from '@weknora/api-client';
+import type { ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { createScopeController, scopedKey, filterKnowledgeBases } from '@weknora/domain';
 import {
   canDuplicateKBCard,
@@ -36,6 +36,9 @@ import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTas
 import { KbIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
 import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KB_EMPTY_SVG } from './knowledge-bases/empty-kb-svg.ts';
+import { ModelOptionSelect, type ModelOption } from './settings/ModelOptionSelect.tsx';
+import { selectInitialModelId } from './agents/agent-editor.ts';
+import { resolveChatModelOptions, listChatModels } from './chat/model-chip.ts';
 import './knowledge-list.css';
 
 interface KnowledgeBasesPageProps {
@@ -195,6 +198,31 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [summaryModelId, setSummaryModelId] = useState('');
   const [indexingStrategy, setIndexingStrategy] = useState<KbIndexingStrategy>(DEFAULT_KB_INDEXING);
   const [editorConfig, setEditorConfig] = useState<KnowledgeEditorConfig>(defaultKnowledgeEditorConfig);
+  // R488 summary_model_id slice: the Vue editor feeds its ModelSelectors from
+  // GET /api/v1/models (KnowledgeBaseEditorModal.vue:680-693); React keeps the
+  // same rows for the models section dropdowns and the create-time prefill.
+  const [modelRows, setModelRows] = useState<readonly ModelConfiguration[]>([]);
+  // Vue KnowledgeBaseEditorModal.vue:687-693 — a fresh create form preseeds the
+  // model config with the tenant defaults (is_default first, else the first
+  // active row) once the model rows land, so the summary model is never left
+  // blank behind a placeholder that claims 可选. Runs as an effect (not inside
+  // loadEditorOptions) because openCreate batches setEditingId(null) — the
+  // fetch closure would still see the stale editing id.
+  useEffect(() => {
+    if (!dialogOpen || editingId !== null) return;
+    if (summaryModelId && embeddingModelId) return;
+    const candidates = modelRows.map((row) => ({
+      id: row.id,
+      type: typeof row.type === 'string' ? row.type : undefined,
+      status: typeof row.status === 'string' ? row.status : undefined,
+      is_default: row.is_default === true,
+    }));
+    if (!summaryModelId) setSummaryModelId(selectInitialModelId(candidates, 'KnowledgeQA') || '');
+    if (!embeddingModelId) setEmbeddingModelId(selectInitialModelId(candidates, 'Embedding') || '');
+    // modelRows is the arrival signal; manual clears during the dialog session
+    // do not re-run this (value changes are not dependencies).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, editingId, modelRows]);
   const [editorOptions, setEditorOptions] = useState<KnowledgeEditorOptions>({ parserEngines: [], storageBackends: [], vectorStores: [], loading: false, error: null });
   const [editorActivity, setEditorActivity] = useState<Array<{ id: number; action: string; outcome: string; created_at: string }>>([]);
   const [editorActivityLoading, setEditorActivityLoading] = useState(false);
@@ -551,15 +579,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
   async function loadEditorOptions() {
     setEditorOptions((current) => ({ ...current, loading: true, error: null }));
-    const [parser, storage, vector] = await Promise.allSettled([
+    const [parser, storage, vector, models] = await Promise.allSettled([
       client.knowledgeBases.settings.parserEngines(),
       client.knowledgeBases.settings.storageBackends(),
       client.knowledgeBases.settings.vectorStores(),
+      // R488: model rows for the ModelSelector dropdowns (Vue loads the same
+      // list inside loadKBData). A rejected fetch only leaves the dropdowns
+      // empty — it must not fail the editor open like the settings trio.
+      client.configuration.models.list(),
     ]);
     if (parser.status === 'rejected' && storage.status === 'rejected' && vector.status === 'rejected') {
       setEditorOptions((current) => ({ ...current, loading: false, error: t('knowledgeEditor.messages.loadDataFailed') }));
       return;
     }
+    const nextModelRows = models.status === 'fulfilled' ? models.value : [];
+    setModelRows(nextModelRows);
     setEditorOptions({
       parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
       storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
@@ -580,6 +614,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       setEditorActivityLoading(false);
     }
   }
+
+  // R488: model dropdown options + the Vue KBModelConfig.vue:33 embedding
+  // required rule (ragEnabled = vector OR keyword indexing on a document KB).
+  const modelsEmbeddingRequired = type === 'document' && (indexingStrategy.vector_enabled || indexingStrategy.keyword_enabled);
+  const chatModelOptions: ModelOption[] = resolveChatModelOptions(listChatModels(modelRows)).map((option) => ({ value: option.id, label: option.name }));
+  const embeddingModelOptions: ModelOption[] = modelRows
+    .filter((row) => row.type === 'Embedding')
+    .map((row) => ({ value: row.id, label: String(row.display_name || row.name || row.id) }));
 
   function openCreate() {
     setEditingId(null);
@@ -634,6 +676,16 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     }
     if (type === 'document' && (indexingStrategy.vector_enabled || indexingStrategy.keyword_enabled) && !embeddingModelId) {
       setError(t('knowledgeEditor.indexing.embeddingRequired'));
+      return;
+    }
+    // R488: Vue validateForm (KnowledgeBaseEditorModal.vue:1170-1174) requires
+    // the summary model for BOTH document and FAQ editors, jumps to the models
+    // section and shows summaryRequired — before this the React form left a
+    // free-text blank behind a 可选 placeholder and only failed inside the
+    // mutation boundary with a raw English error.
+    if (!summaryModelId) {
+      setEditorSection('models');
+      setError(t('knowledgeEditor.messages.summaryRequired'));
       return;
     }
     if (type === 'faq' && !editorConfig.faqConfig.indexMode) {
@@ -1110,7 +1162,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} />{/* Vue KnowledgeBaseEditorModal.vue:171-179 t-textarea maxlength=200 → .t-textarea__limit counter (12px/20px, placeholder gray, right-aligned) */}
                   <span className="kb-editor-desc-count justify-self-end text-xs leading-5 text-[var(--color-text-placeholder)]" aria-live="polite">{description.length}/200</span></label>
               </div> : null}
-              {editorSection === 'models' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.models.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.models.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.models.embeddingLabel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder={t('knowledgeEditor.models.embeddingPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label><label className="grid gap-1">{t('knowledgeEditor.models.llmLabel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder={t('knowledgeEditor.models.llmPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label></div> : null}
+              {/* R488 summary_model_id: the models section mirrors Vue KBModelConfig.vue —
+                  LLM row first (always required), then the Embedding row (required while
+                  RAG indexing runs). Both are ModelSelector dropdowns fed by GET /models
+                  with the add-model entry, NOT free-text inputs whose 可选 placeholder
+                  contradicted the submit-time summary_model_id requirement (K2). */}
+              {editorSection === 'models' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.models.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.models.description')}</p></div><div className="grid gap-1" data-guide="kb-create-llm"><label className="text-[15px] font-medium text-ink">{t('knowledgeEditor.models.llmLabel')}<span className="ml-1 text-[#e34d59]">*</span></label><p className="m-0 text-[13px] leading-[1.5] text-muted">{t('knowledgeEditor.models.llmDesc')}</p><ModelOptionSelect value={summaryModelId} options={chatModelOptions} addModelLabel={t('model.addModelInSettings')} onAddModel={() => navigate('/platform/settings?section=models&subsection=chat')} onChange={setSummaryModelId} /></div><div className="grid gap-1" data-guide="kb-create-embedding"><label className="text-[15px] font-medium text-ink">{t('knowledgeEditor.models.embeddingLabel')}{modelsEmbeddingRequired ? <span className="ml-1 text-[#e34d59]">*</span> : null}</label><p className="m-0 text-[13px] leading-[1.5] text-muted">{t('knowledgeEditor.models.embeddingDesc')}</p><ModelOptionSelect value={embeddingModelId} options={embeddingModelOptions} addModelLabel={t('model.addModelInSettings')} onAddModel={() => navigate('/platform/settings?section=models&subsection=embedding')} onChange={setEmbeddingModelId} /></div></div> : null}
               {editorSection === 'faq' && type === 'faq' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.faq.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.faq.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.faq.indexModeLabel')}<Select value={editorConfig.faqConfig.indexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, indexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['indexMode'] } }))}><option value="question_only">{t('knowledgeEditor.faq.modes.questionOnly')}</option><option value="question_answer">{t('knowledgeEditor.faq.modes.questionAnswer')}</option></Select></label><label className="grid gap-1">{t('knowledgeEditor.faq.questionIndexModeLabel')}<Select value={editorConfig.faqConfig.questionIndexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, questionIndexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['questionIndexMode'] } }))}><option value="combined">{t('knowledgeEditor.faq.modes.combined')}</option><option value="separate">{t('knowledgeEditor.faq.modes.separate')}</option></Select></label><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.faq.entryGuide')}</p></div> : null}
               {editorSection === 'chunking' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.chunking.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.chunking.description')}</p></div><div className="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1"><label className="grid gap-1">{t('knowledgeEditor.chunking.sizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.chunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, chunkSize: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.overlapLabel')}<Input type="number" min={0} value={editorConfig.chunkingConfig.chunkOverlap} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, chunkOverlap: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.strategyLabel')}<Select value={editorConfig.chunkingConfig.strategy} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, strategy: event.target.value } }))}><option value="auto">{t('knowledgeEditor.chunking.strategies.auto.label')}</option><option value="heading">{t('knowledgeEditor.chunking.strategies.heading.label')}</option><option value="heuristic">{t('knowledgeEditor.chunking.strategies.heuristic.label')}</option><option value="legacy">{t('knowledgeEditor.chunking.strategies.legacy.label')}</option></Select></label><label className="grid gap-1">{t('knowledgeEditor.chunking.tokenLimitLabel')}<Input type="number" min={0} value={editorConfig.chunkingConfig.tokenLimit} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, tokenLimit: Number(event.target.value) } }))} /></label></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.chunkingConfig.enableParentChild} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, enableParentChild: event.target.checked } }))} />{t('knowledgeEditor.chunking.parentChildLabel')}</label>{editorConfig.chunkingConfig.enableParentChild ? <div className="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1"><label className="grid gap-1">{t('knowledgeEditor.chunking.parentChunkSizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.parentChunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, parentChunkSize: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.childChunkSizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.childChunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, childChunkSize: Number(event.target.value) } }))} /></label></div> : null}<label className="grid gap-1">{t('knowledgeEditor.advanced.tableMetadataInstructions.label')}<Textarea rows={3} value={editorConfig.chunkingConfig.tableMetadataInstructions} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, tableMetadataInstructions: event.target.value } }))} /></label></div> : null}
               {editorSection === 'multimodal' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.multimodal.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.multimodal.description')}</p></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.multimodalConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.advanced.multimodal.label')}</label>{editorConfig.multimodalConfig.enabled ? <><label className="grid gap-1">{t('knowledgeEditor.advanced.multimodal.vllmLabel')}<Input value={editorConfig.multimodalConfig.vllmModelId} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, vllmModelId: event.target.value } }))} placeholder={t('knowledgeEditor.advanced.multimodal.vllmPlaceholder')} /></label><label className="grid gap-1">{t('knowledgeEditor.advanced.multimodal.customInstructionsLabel')}<Textarea rows={4} maxLength={4000} value={editorConfig.multimodalConfig.customInstructions} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, customInstructions: event.target.value } }))} placeholder={t('knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder')} /></label></> : null}</div> : null}

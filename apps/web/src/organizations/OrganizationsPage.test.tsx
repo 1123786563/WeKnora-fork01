@@ -423,7 +423,15 @@ test('settings renders shared agents and protects the organization owner member'
   const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
-  assert.equal((dialog.querySelector('select[aria-label="角色"]') as HTMLSelectElement).disabled, true);
+  await act(async () => {});
+  // R488 D-B5: Vue renders the owner row with a static role tag (管理员) plus
+  // the 创建者 badge (OrganizationSettingsModal.vue:466-481) — no role select,
+  // no remove affordance on the owner's own row.
+  const ownerRow = [...dialog.querySelectorAll('tbody tr')].find((row) => (row.textContent ?? '').includes('Owner')) as HTMLElement | undefined;
+  assert.ok(ownerRow, 'owner member row renders');
+  assert.match(ownerRow.textContent ?? '', /创建者/, 'owner row carries the 创建者 badge (Vue organization.owner)');
+  assert.equal(ownerRow.querySelectorAll('select').length, 0, 'owner role cell is a static tag, not a select (Vue t-tag branch)');
+  assert.match(ownerRow.textContent ?? '', /管理员/, 'owner role renders the static 管理员 tag');
   assert.equal(textButtons(dialog, '移除').length, 0);
   // R487 K1: shared-resources nav badges always carry the totals (Vue
   // OrganizationSettingsModal.vue:30-33), so match on the label prefix.
@@ -461,6 +469,110 @@ test('members section filters the Vue-parity member list by name or email', asyn
   assert.match(dialog.textContent ?? '', /Bob/);
   assert.doesNotMatch(dialog.textContent ?? '', /Alice/);
   assert.equal(dialog.querySelector('[aria-label="共享空间成员 count"]')?.textContent, '1');
+});
+
+// R488 D-B5 — Vue renders the members list as a table (memberColumns, Vue
+// OrganizationSettingsModal.vue:1124-1134): 成员/角色/加入时间/操作 headers, a
+// joined-date cell, and badges on the member cell instead of the old
+// headerless row cards.
+test('members list renders the Vue table anatomy with joined dates and owner badges', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.members.list = async () => ({
+    items: [
+      { id: 'member-owner', user_id: 'u1', username: 'Alice', email: 'alice@example.dev', role: 'admin', tenant_id: 1, tenant_name: 'Alice Workspace', joined_at: '2030-03-05T00:00:00' },
+      { id: 'member-bob', user_id: 'u2', username: 'Bob', email: 'bob@example.dev', role: 'viewer', tenant_id: 2, tenant_name: 'Bob Workspace', joined_at: '2030-03-06T00:00:00' },
+    ],
+    total: 2,
+  });
+  const root = await mountPage(client);
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  await act(async () => {});
+
+  const table = dialog.querySelector('table') as HTMLTableElement | null;
+  assert.ok(table, 'members list renders as a table (Vue members-table-shell)');
+  const headerTexts = [...table.querySelectorAll('thead th')].map((cell) => (cell.textContent ?? '').trim());
+  assert.deepEqual(headerTexts, ['成员', '角色', '加入时间', '操作'], 'table headers mirror Vue memberColumns (member/role/joinedAt/operations)');
+
+  const rows = [...table.querySelectorAll('tbody tr')] as HTMLTableRowElement[];
+  assert.equal(rows.length, 2);
+  // Owner row (tenant 1 = owner_tenant_id): workspace-name primary label +
+  // 创建者 + 我 badges + static 管理员 tag + joined date + empty actions cell.
+  const ownerRow = rows.find((row) => (row.textContent ?? '').includes('Alice Workspace')) as HTMLTableRowElement;
+  assert.ok(ownerRow, 'member primary label is the workspace name (Vue memberPrimaryLabel)');
+  assert.match(ownerRow.textContent ?? '', /创建者/, 'owner row shows the 创建者 badge (Vue owner-tag)');
+  assert.match(ownerRow.textContent ?? '', /我/, 'own row shows the 我 badge (Vue me-tag, authStore.currentUserId)');
+  assert.match(ownerRow.textContent ?? '', /Alice/, 'representative username renders as the secondary label');
+  assert.match(ownerRow.textContent ?? '', /2030-03-05/, 'joined date renders in the Vue formatDate YYYY-MM-DD form');
+  assert.equal(ownerRow.querySelectorAll('select').length, 0, 'owner role cell is static (Vue t-tag branch)');
+  assert.equal((ownerRow.querySelector('td:last-child') as HTMLTableCellElement).textContent, '', 'owner actions cell stays empty (Vue :486 popconfirm skips owner)');
+  // Non-owner row: role select enabled + remove affordance in the actions cell.
+  const bobRow = rows.find((row) => (row.textContent ?? '').includes('Bob Workspace')) as HTMLTableRowElement;
+  assert.ok(bobRow);
+  assert.match(bobRow.textContent ?? '', /2030-03-06/, 'non-owner row carries its joined date too');
+  const bobSelect = bobRow.querySelector('select[aria-label="角色"]') as HTMLSelectElement | null;
+  assert.ok(bobSelect, 'non-owner role cell keeps the change-role select (Vue :476-478)');
+  assert.equal(bobSelect.disabled, false);
+  assert.equal(textButtons(bobRow, '移除').length, 1, 'non-owner actions cell keeps the remove affordance');
+});
+
+// R488 D-B5 — Vue has NO resident add-member form: the invite entry is an
+// admin-only icon button that opens a popup (Vue :408-446). The resident
+// 「添加成员」 form block must be gone.
+test('add-member entry is a popup behind the icon button, not a resident form', async () => {
+  const { client, calls } = clientWith([ownerOrg]);
+  const inviteCalls: unknown[] = [];
+  const searches: string[] = [];
+  client.identity.organizations.searchTenantsForInvite = async (_id: string, query: string) => {
+    searches.push(query);
+    return [{ tenant_id: 42, tenant_name: 'Team Workspace', representative_username: 'rep-user', representative_user_id: 'ru-9', representative_email: 'rep@x.dev' }];
+  };
+  (client.identity.organizations as unknown as { inviteMember: (id: string, input: unknown) => Promise<void> }).inviteMember = async (id: string, input: unknown) => {
+    inviteCalls.push([id, input]);
+  };
+  const root = await mountPage(client);
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  await act(async () => {});
+
+  // The popup trigger: a small icon button titled 添加成员 (Vue members-list-add-btn).
+  const trigger = [...dialog.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === '添加成员') as HTMLButtonElement | undefined;
+  assert.ok(trigger, 'the add-member icon button renders for managing admins (Vue :410-414)');
+  // Closed state: no dialog title / tenant picker / role picker in the panel.
+  assert.doesNotMatch(dialog.textContent ?? '', /选择空间/, 'no resident add-member form: the tenant picker only exists inside the popup');
+  assert.doesNotMatch(dialog.textContent ?? '', /分配角色/, 'the role picker only exists inside the popup');
+
+  await click(trigger);
+  await act(async () => {});
+  assert.match(dialog.textContent ?? '', /添加成员/, 'popup opens with the Vue dialogTitle');
+  assert.match(dialog.textContent ?? '', /共享空间的成员单位是空间/, 'popup carries the Vue tipTenant line');
+  assert.match(dialog.textContent ?? '', /输入至少 2 个字符开始搜索/, 'popup carries the Vue searchTenantHint');
+  const confirmBtn = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '添加') as HTMLButtonElement | undefined;
+  assert.ok(confirmBtn, 'popup footer carries the Vue confirmBtn 添加');
+  assert.equal(confirmBtn.disabled, true, 'confirm stays disabled until a workspace is selected (Vue :selectedTenantId == null)');
+
+  // Search → candidate appears → select it → confirm becomes enabled.
+  const tenantSearch = [...dialog.querySelectorAll('input')].find((input) => input.getAttribute('aria-label') === '选择空间') as HTMLInputElement | undefined;
+  assert.ok(tenantSearch, 'popup exposes the tenant search input (Vue searchTenant)');
+  await setInputValueAsync(tenantSearch, 'team');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.deepEqual(searches, ['team'], 'typing routes through searchTenantsForInvite');
+  const candidate = [...dialog.querySelectorAll('button')].find((button) => (button.textContent ?? '').includes('Team Workspace')) as HTMLElement | undefined;
+  assert.ok(candidate, 'the deduped workspace candidate renders');
+  await click(candidate);
+  await act(async () => {});
+  assert.equal(confirmBtn.disabled, false, 'selecting a candidate enables the confirm button');
+
+  await click(confirmBtn);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(inviteCalls.length, 1, 'confirm calls inviteMember');
+  assert.deepEqual((inviteCalls[0] as unknown[])[1], { tenant_id: 42, representative_user_id: 'ru-9', role: 'viewer' });
+  assert.deepEqual(calls.membersList, ['org-1', 'org-1'], 'the member list refetches after adding (Vue fetchMembers)');
+  assert.doesNotMatch(dialog.textContent ?? '', /Team Workspace/, 'popup closes and resets on success (Vue resetAddMemberDialog)');
 });
 
 test('settings modal exposes an equivalent section selector when the sidebar is hidden on mobile', async () => {
@@ -592,9 +704,10 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
-  const memberRole = dialog.querySelector('select[aria-label="角色"]') as HTMLSelectElement | null;
-  assert.ok(memberRole);
-  assert.equal(memberRole.disabled, true);
+  // R488 D-B5: Vue only offers the role select to admins on non-owner rows
+  // (v-if="isAdmin && !isOwnerMember(row)"); anyone else reads a static tag.
+  assert.equal(dialog.querySelector('select[aria-label="角色"]'), null, 'non-managing viewers read a static role tag, no select');
+  assert.match(dialog.textContent ?? '', /管理员/, 'the role still renders as the static tag text');
   assert.equal(textButtons(dialog, '移除').length, 0);
 
   const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
@@ -837,9 +950,12 @@ test('basic embeds the Vue invite-member card with all six control groups', asyn
   assert.ok(text.includes('INV-7X'), 'the invite code value renders');
   assert.ok([...dialog.querySelectorAll('button')].some((button) => button.getAttribute('aria-label') === '刷新邀请码'), 'control 1: refresh-invite-code affordance');
   assert.match(text, /永不过期/, 'control 1: remaining-validity note (never expires)');
-  const validity = dialog.querySelector('select[aria-label="邀请链接有效期"]') as HTMLSelectElement | null;
+  // R488 D-B4.3: validity is a closed custom select (Vue t-select) — a button
+  // carrying the selected label, not a native select leaking every option.
+  const validity = dialog.querySelector('button[aria-label="邀请链接有效期"]') as HTMLButtonElement | null;
   assert.ok(validity, 'control 2: validity select renders');
-  assert.equal(validity.value, '7', 'validity select initializes from the org detail');
+  assert.match(validity.textContent ?? '', /7 天/, 'validity trigger shows the selected label (initialized from the org detail)');
+  assert.equal(dialog.querySelector('select[aria-label="邀请链接有效期"]'), null, 'no native select leaks the option list into the DOM');
   assert.match(text, /\/join\?code=INV-7X/, 'control 3: invite link uses the Vue /join?code= formula');
   assert.ok(dialog.querySelector('[role="switch"][aria-label="需要审核"]'), 'control 4: require-approval switch');
   assert.ok(dialog.querySelector('[role="switch"][aria-label="开放可被搜索"]'), 'control 5: searchable switch');
@@ -853,8 +969,13 @@ test('validity change and the approval toggle save immediately like Vue', async 
   const { client, calls } = clientWith([ownerOrg]);
   const dialog = await openSettings(client);
 
-  const validity = dialog.querySelector('select[aria-label="邀请链接有效期"]') as HTMLSelectElement;
-  await selectValue(validity, '30');
+  // R488 D-B4.3: the validity control is a Vue-style closed select — open the
+  // dropdown, then click the 30 天 option.
+  const validity = dialog.querySelector('button[aria-label="邀请链接有效期"]') as HTMLButtonElement;
+  await click(validity);
+  const option30 = [...dialog.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim() === '30 天') as HTMLElement | undefined;
+  assert.ok(option30, 'validity dropdown lists the Vue options (validity30Days)');
+  await click(option30);
   assert.equal(calls.update.length, 1, 'validity change saves immediately (Vue handleValidityChange)');
   assert.deepEqual(calls.update[0], ['org-1', { invite_code_validity_days: 30 }]);
 
@@ -863,6 +984,47 @@ test('validity change and the approval toggle save immediately like Vue', async 
   assert.equal(calls.update.length, 2, 'approval toggle saves immediately (Vue handleApprovalToggle)');
   assert.deepEqual(calls.update[1], ['org-1', { require_approval: true }]);
   assert.equal((dialog.querySelector('[role="switch"][aria-label="需要审核"]') as HTMLElement).getAttribute('aria-checked'), 'true', 'switch reflects the saved value');
+});
+
+// R488 D-B4.1 — Vue keeps the name/description field hints in EDIT mode too
+// (setting-info .desc, Vue :59/:97); React only rendered them in create mode.
+test('edit basic keeps the Vue name and description field hints', async () => {
+  const { client } = clientWith([ownerOrg]);
+  const dialog = await openSettings(client);
+  const text = dialog.textContent ?? '';
+
+  assert.match(text, /建议使用团队或项目名称，便于成员识别/, 'edit mode renders organization.editor.nameTip (Vue :59)');
+  assert.match(text, /描述共享空间的用途和目标，帮助成员了解共享空间/, 'edit mode renders organization.editor.descriptionTip (Vue :97)');
+});
+
+// R488 D-B4.2 — Vue invite-card actions are icon-only text buttons with
+// tooltips (Vue :122-134/:164-168); React rendered text buttons 复制/刷新邀请码.
+test('invite-card copy and refresh actions are icon buttons like Vue', async () => {
+  const { client } = clientWith([ownerOrg], undefined, orgDetailWith({ invite_code: 'INV-7X' }));
+  const dialog = await openSettings(client);
+
+  const copyButtons = [...dialog.querySelectorAll('button[aria-label="复制"]')];
+  assert.equal(copyButtons.length, 2, 'code + link each expose an icon copy button (title tooltip only)');
+  assert.ok([...dialog.querySelectorAll('button')].some((button) => button.getAttribute('aria-label') === '刷新邀请码'), 'refresh stays an icon button with the tooltip label');
+  for (const label of ['复制', '刷新邀请码']) {
+    assert.equal(textButtons(dialog, label).length, 0, 'no text-button variant of ' + label + ' remains (Vue icon-button form)');
+  }
+});
+
+// R488 D-B4.3 — noise control: the validity options must not leak into the
+// closed panel (Vue t-select renders only the selected label) and the member
+// limit input must not render ▲▼ stepper glyphs (Vue t-input-number
+// theme="normal" has no stepper column).
+test('validity options stay inside the dropdown and the member limit drops the stepper glyphs', async () => {
+  const { client } = clientWith([ownerOrg], undefined, orgDetailWith({ invite_code: 'INV-7X', invite_code_expires_at: '2099-01-01T00:00:00Z' }));
+  const dialog = await openSettings(client);
+  const text = dialog.textContent ?? '';
+
+  assert.doesNotMatch(text, /(?<!\d)1 天|30 天/, 'unselected validity options do not leak into the closed panel');
+  const limit = dialog.querySelector('input[aria-label="成员数量上限"]') as HTMLInputElement | null;
+  assert.ok(limit, 'member-limit input renders');
+  assert.equal(limit.type, 'number', 'member limit uses a plain number input');
+  assert.doesNotMatch(text, /[▲▼]/, 'no stepper glyphs leak (Vue t-input-number theme=normal)');
 });
 
 test('refreshing the invite code goes through the invite-code endpoint and updates the code', async () => {

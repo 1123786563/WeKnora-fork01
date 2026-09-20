@@ -5,7 +5,22 @@
    faq-tag-filter-panel、faq-tag-filter-chip 等），避免跨域全局规则再次覆盖。
    仅以下复杂动画 keyframes 无法用 utilities 表达，按约定保留：
    faq-shimmer — 骨架屏卡片渐变扫光；faq-import-spin — 导入进度图标旋转；
-   faq-tooltip-fade — FAQTagTooltip 气泡淡入。 */
+   faq-tooltip-fade — FAQTagTooltip 气泡淡入；
+   faq-drawer-* — R488 A3：编辑器/检索测试右抽屉的进出动画，对齐 Vue t-drawer
+   语义（tdesign.css:17130-17158：右面板 transition transform 0.28s
+   cubic-bezier(0.38,0,0.24,1)，闭合位 translateX(100%)；遮罩淡入淡出）。 */
 @keyframes faq-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes faq-import-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes faq-tooltip-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes faq-drawer-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes faq-drawer-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes faq-drawer-panel-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes faq-drawer-panel-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+.faq-drawer-overlay-enter { animation: faq-drawer-overlay-in 0.28s ease both; }
+.faq-drawer-overlay-exit { animation: faq-drawer-overlay-out 0.28s ease both; }
+.faq-drawer-panel-enter { animation: faq-drawer-panel-in 0.28s cubic-bezier(0.38, 0, 0.24, 1) both; }
+.faq-drawer-panel-exit { animation: faq-drawer-panel-out 0.28s cubic-bezier(0.38, 0, 0.24, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .faq-drawer-overlay-enter, .faq-drawer-overlay-exit,
+  .faq-drawer-panel-enter, .faq-drawer-panel-exit { animation: none; }
+}

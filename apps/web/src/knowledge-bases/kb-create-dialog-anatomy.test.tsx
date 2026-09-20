@@ -72,7 +72,14 @@ afterEach(async () => {
   dom.window.localStorage.clear();
 });
 
-function makeClient(calls: string[] = []): WeKnoraClient {
+/** Default tenant model rows: one default chat model, one spare chat, one embedding. */
+const defaultModelRows = (): Array<Record<string, unknown>> => [
+  { id: 'm-chat-default', name: 'Default Chat', display_name: '', type: 'KnowledgeQA', status: 'active', is_default: true },
+  { id: 'm-chat-2', name: 'Second Chat', display_name: '', type: 'KnowledgeQA', status: 'active', is_default: false },
+  { id: 'm-embed', name: 'Mock Embed', display_name: '', type: 'Embedding', status: 'active', is_default: false },
+];
+
+function makeClient(calls: string[] = [], modelRows: () => Array<Record<string, unknown>> = defaultModelRows): WeKnoraClient {
   return {
     auth: {
       me: async () => ({ user: { id: 'u-1', is_system_admin: false }, memberships: [{ tenant_id: 't-1', role: 'contributor' }] }),
@@ -90,6 +97,14 @@ function makeClient(calls: string[] = []): WeKnoraClient {
         parserEngines: async () => ({ data: [] }),
         storageBackends: async () => ({ data: [] }),
         vectorStores: async () => ({ data: [] }),
+      },
+    },
+    configuration: {
+      models: {
+        // R488 summary_model_id slice: the Vue editor pulls GET /api/v1/models
+        // (KnowledgeBaseEditorModal.vue:680-693) to feed the ModelSelector
+        // dropdowns and prefill the create-time defaults.
+        list: async () => modelRows(),
       },
     },
     identity: { organizations: { knowledgeBaseShares: { listShared: async () => [] } } },
@@ -249,23 +264,21 @@ test('(e) the save button submits the create pipeline via onClick like Vue @clic
     nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
   await act(async () => {});
-  // The embedding field lives on the models section — navigate there like a
-  // user would before filling it.
+  // The model fields live on the models section — navigate there like a user
+  // would. R488: they are ModelSelector dropdowns prefilled with the tenant's
+  // default chat + embedding models (Vue KnowledgeBaseEditorModal.vue:687-693),
+  // so no manual typing is needed — exactly the Vue flow K2 had to fake by
+  // hand-typing builtin-llm-mock into a free-text input.
   await act(async () => {
     document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]')?.click();
   });
   await act(async () => {});
-  const embeddingInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-embedding"]');
-  assert.ok(embeddingInput, 'embedding input rendered after switching to the models section');
-  const summaryInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-llm"]');
-  assert.ok(summaryInput, 'summary model input rendered on the models section');
-  await act(async () => {
-    setInputValue?.call(embeddingInput, 'm-embed');
-    embeddingInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    setInputValue?.call(summaryInput, 'm-summary');
-    summaryInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  });
-  await act(async () => {});
+  const summaryTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-llm"] [role="combobox"]');
+  assert.ok(summaryTrigger, 'summary model selector rendered on the models section');
+  assert.equal(summaryTrigger.getAttribute('data-value'), 'm-chat-default', 'create prefill picks the default chat model (selectInitialModelId)');
+  const embeddingTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-embedding"] [role="combobox"]');
+  assert.ok(embeddingTrigger, 'embedding model selector rendered on the models section');
+  assert.equal(embeddingTrigger.getAttribute('data-value'), 'm-embed', 'embedding prefill picks the first active Embedding row');
   await act(async () => {
     button.click();
   });
@@ -355,15 +368,12 @@ test('(h) saving keeps its own disable+aria-busy semantics once loading has sett
     document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]')?.click();
   });
   await act(async () => {});
-  const embeddingInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-embedding"]');
-  const summaryInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-llm"]');
-  assert.ok(embeddingInput && summaryInput, 'model inputs rendered on the models section');
-  await act(async () => {
-    setInputValue?.call(embeddingInput, 'm-embed');
-    embeddingInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    setInputValue?.call(summaryInput, 'm-summary');
-    summaryInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  });
+  // R488: model fields are prefilled dropdowns (default chat + embedding), so
+  // the save pipeline is ready without manual model typing.
+  const embeddingTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-embedding"] [role="combobox"]');
+  const summaryTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-llm"] [role="combobox"]');
+  assert.ok(embeddingTrigger && summaryTrigger, 'model selectors rendered on the models section');
+  assert.equal(summaryTrigger?.getAttribute('data-value'), 'm-chat-default', 'summary prefilled with the default chat model');
   await act(async () => {});
 
   await act(async () => {
@@ -381,4 +391,141 @@ test('(h) saving keeps its own disable+aria-busy semantics once loading has sett
   await act(async () => {});
   assert.deepEqual(calls, ['create'], 'double-submit guard holds: exactly one create while saving');
   assert.ok(!saveButton.isConnected || !saveButton.disabled, 'a successful save closes the dialog (button gone or re-enabled)');
+});
+
+// R488 summary_model_id slice (Vue KBModelConfig.vue authority, K2 report
+// "placeholder claims optional but the submit validation requires it"):
+//   (i) the models section renders Vue's ModelSelector form — LLM row first,
+//       Embedding row second, combobox triggers (no free-text inputs), the
+//       required star on both labels (LLM always, Embedding while RAG runs),
+//       the shared desc lines, and the add-model entry
+//   (j) opening create prefills the defaults: the declared-default chat model
+//       and the first active embedding model (KnowledgeBaseEditorModal.vue
+//       :687-693 selectInitialModelId semantics)
+//   (k) a missing summary model is blocked in the UI pipeline BEFORE the
+//       request (Vue validateForm :1170-1174 summaryRequired + models jump);
+//       with the prefill in place the create payload carries both model ids
+
+async function openCreateAndGoToModels(): Promise<void> {
+  await act(async () => {
+    document.body.querySelector<HTMLButtonElement>('[data-guide="kb-list-create"]')?.click();
+  });
+  await act(async () => {});
+  await act(async () => {
+    document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]')?.click();
+  });
+  await act(async () => {});
+}
+
+test('(i) the models section mirrors Vue KBModelConfig: LLM first, combobox model selectors, required stars, descs, add-model entry', async () => {
+  await mountPage();
+  await openCreateAndGoToModels();
+
+  const section = document.body.querySelector('.wk-form');
+  assert.ok(section, 'models section rendered');
+  const rows = Array.from(section.querySelectorAll('[data-guide="kb-create-llm"], [data-guide="kb-create-embedding"]'));
+  assert.equal(rows.length, 2, 'exactly two model rows render');
+  assert.equal(rows[0].getAttribute('data-guide'), 'kb-create-llm', 'LLM row renders FIRST (KBModelConfig.vue:10 before :29)');
+  assert.equal(rows[1].getAttribute('data-guide'), 'kb-create-embedding', 'Embedding row renders second');
+
+  // Free-text inputs are gone — the Vue ModelSelector is a dropdown.
+  assert.equal(document.body.querySelectorAll<HTMLInputElement>('input[data-guide="kb-create-llm"], input[data-guide="kb-create-embedding"]').length, 0,
+    'no free-text model inputs remain (K2: placeholder said 可选 while the submit required the value)');
+
+  const llmLabel = rows[0].querySelector('label') ?? rows[0];
+  assert.ok((llmLabel.textContent ?? '').includes('LLM 大语言模型'), 'shared llmLabel key');
+  assert.ok((llmLabel.textContent ?? '').includes('*'), 'LLM label carries the required star (KBModelConfig.vue:12)');
+  assert.ok((rows[0].textContent ?? '').includes('用于总结和摘要的大语言模型'), 'shared llmDesc line renders');
+
+  const embeddingLabel = rows[1].querySelector('label') ?? rows[1];
+  assert.ok((embeddingLabel.textContent ?? '').includes('Embedding 嵌入模型'), 'shared embeddingLabel key');
+  assert.ok((embeddingLabel.textContent ?? '').includes('*'), 'Embedding label carries the required star while RAG indexing is enabled (KBModelConfig.vue:33)');
+  assert.ok((rows[1].textContent ?? '').includes('用于文本向量化的嵌入模型'), 'shared embeddingDesc line renders');
+
+  // Dropdown options + the Vue add-model entry (ModelSelector.vue:46-56).
+  const llmTrigger = rows[0].querySelector<HTMLElement>('[role="combobox"]');
+  assert.ok(llmTrigger, 'LLM combobox trigger rendered');
+  await act(async () => { llmTrigger?.click(); });
+  await act(async () => {});
+  const listbox = document.body.querySelector('[role="listbox"]');
+  assert.ok(listbox, 'LLM dropdown opens');
+  const optionTexts = Array.from(listbox?.querySelectorAll('button') ?? []).map((node) => node.textContent ?? '');
+  assert.ok(optionTexts.some((text) => text.includes('Default Chat')), 'dropdown lists the tenant chat models');
+  assert.ok(optionTexts.some((text) => text.includes('前往全局设置添加模型')), 'add-model entry renders at the dropdown bottom (ModelSelector.vue:54)');
+});
+
+test('(j) opening create prefills the default chat model and the first active embedding model', async () => {
+  await mountPage();
+  await openCreateAndGoToModels();
+
+  const summaryTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-llm"] [role="combobox"]');
+  const embeddingTrigger = document.body.querySelector<HTMLElement>('[data-guide="kb-create-embedding"] [role="combobox"]');
+  assert.ok(summaryTrigger && embeddingTrigger, 'both selectors rendered');
+  assert.equal(summaryTrigger.getAttribute('data-value'), 'm-chat-default', 'is_default chat row wins (selectInitialModelId)');
+  assert.ok((summaryTrigger.textContent ?? '').includes('Default Chat'), 'trigger shows the default chat model name');
+  assert.equal(embeddingTrigger.getAttribute('data-value'), 'm-embed', 'first active Embedding row prefills');
+});
+
+test('(k) a missing summary model blocks the save in the UI pipeline with the models-section jump, and the prefill lands in the payload', async () => {
+  const calls: string[] = [];
+  const payloads: Array<Record<string, unknown>> = [];
+  // Tenant with an embedding model but NO chat model: the embedding prefill
+  // succeeds so the save hits the summary-model gate alone (an empty tenant
+  // would trip the embedding guard first).
+  const client = makeClient(calls, () => [
+    { id: 'm-embed', name: 'Mock Embed', display_name: '', type: 'Embedding', status: 'active', is_default: false },
+  ]);
+  (client.knowledgeBases as unknown as { create: unknown }).create = async (input: Record<string, unknown>) => {
+    calls.push('create');
+    payloads.push(input);
+    return { id: 'kb-new' };
+  };
+  await mountPageWithClient(client);
+
+  const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  assert.ok(saveButton, 'save button rendered');
+  const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  assert.ok(nameInput, 'name input rendered');
+  await act(async () => {
+    setInputValue?.call(nameInput, 'R488 无模型租户');
+    nameInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {});
+  await act(async () => { saveButton.click(); });
+  await act(async () => {});
+
+  assert.deepEqual(calls, [], 'no create request leaves the page when the summary model is missing');
+  assert.ok((document.body.textContent ?? '').includes('请选择 Summary 模型'), 'Vue summaryRequired message surfaces (KnowledgeBaseEditorModal.vue:1172)');
+  const activeNav = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]');
+  assert.equal(activeNav?.className.includes('bg-'), true, 'the editor jumps to the models section like Vue currentSection="models"');
+
+  // With models available the prefill rides along in the payload.
+  const calls2: string[] = [];
+  const payloads2: Array<Record<string, unknown>> = [];
+  const client2 = makeClient(calls2);
+  (client2.knowledgeBases as unknown as { create: unknown }).create = async (input: Record<string, unknown>) => {
+    calls2.push('create');
+    payloads2.push(input);
+    return { id: 'kb-new-2' };
+  };
+  // Mount the second page on a clean body — otherwise the first app (the
+  // summary-blocked one) still owns the query-selected buttons.
+  if (mountedRoot) await act(async () => { await mountedRoot?.unmount(); });
+  mountedRoot = undefined;
+  document.body.replaceChildren();
+  await mountPageWithClient(client2);
+  const saveButton2 = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  const nameInput2 = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  assert.ok(nameInput2, 'second mount rendered the name input');
+  await act(async () => {
+    setInputValue?.call(nameInput2, 'R488 预填默认模型');
+    nameInput2.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  await act(async () => {});
+  await act(async () => { saveButton2?.click(); });
+  await act(async () => {});
+  assert.deepEqual(calls2, ['create'], 'prefilled defaults let the create through');
+  assert.equal(payloads2[0]?.summary_model_id, 'm-chat-default', 'payload carries the prefilled summary model');
+  assert.equal(payloads2[0]?.embedding_model_id, 'm-embed', 'payload carries the prefilled embedding model');
 });

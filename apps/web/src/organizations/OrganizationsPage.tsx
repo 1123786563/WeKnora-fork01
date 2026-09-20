@@ -8,7 +8,7 @@ import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
-import { Input, NumberInput, Select, Switch, Textarea } from '@weknora/ui';
+import { Input, Select, Switch, Textarea } from '@weknora/ui';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { copyText, sharedResourceRow } from './settings-actions.ts';
 import { organizationRoleLabel, organizationSettingsNavGroups, organizationSettingsSections } from './summary.ts';
@@ -91,6 +91,32 @@ function remainingValidityText(locale: string, expiresAt: string | null): string
   return t(locale, 'organization.settings.remainingValidity', { n: days });
 }
 
+/* R488 D-B5 — Vue formatDate (OrganizationSettingsModal.vue:1798-1805):
+ * local YYYY-MM-DD for the 加入时间 column. */
+function formatDateYmd(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
+}
+
+/* R488 D-B5 — static role tag tones mirroring Vue getRoleTheme (L1807-1814):
+ * admin=primary (accent), editor=warning (amber), viewer=default (grey). */
+const MEMBER_ROLE_TAG = 'inline-flex h-[22px] items-center rounded-[4px] px-[6px] text-[12px] font-medium';
+const MEMBER_ROLE_TAG_TONES: Record<string, string> = {
+  admin: 'bg-accent-soft text-accent',
+  editor: 'bg-[rgba(250,173,20,0.12)] text-[#faad14]',
+  viewer: 'bg-[rgba(100,116,139,0.08)] text-[rgba(23,26,29,0.6)]',
+};
+/* Table recipes for the members table (Vue members-table-shell, t-table
+ * medium: 13px rows on #f9f9fc zebra-free header). */
+const MEMBER_TABLE = 'w-full border-collapse text-[13px]';
+const MEMBER_TH = 'border-b border-[#e7e7ea] bg-[#f9f9f9] px-[12px] py-[10px] text-left text-[12px] font-semibold whitespace-nowrap text-[rgba(23,26,29,0.6)]';
+const MEMBER_TD = 'border-b border-[#e7e7ea] px-[12px] py-[10px] align-middle text-[rgba(23,26,29,0.92)]';
+
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 function strOf(value: unknown): string { return typeof value === 'string' ? value : ''; }
 function numOf(value: unknown): number { return typeof value === 'number' ? value : 0; }
@@ -165,6 +191,10 @@ const IconChevron = ({ size = 14, direction }: { size?: number; direction: 'down
 const IconClose = ({ size = 20 }: { size?: number }) => (<IconGlyph size={size} d="M4 4l8 8M12 4l-8 8" viewBox="0 0 16 16" />);
 const IconBack = ({ size = 18 }: { size?: number }) => (<IconGlyph size={size} d="M10 3 5 8l5 5" />);
 const IconSearch = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Zm6.5 1.5L10.4 10.4" />);
+/* R488 D-B4.2 — icon glyphs for the Vue t-icon file-copy / refresh invite-card
+ * actions (OrganizationSettingsModal.vue:125/:131). */
+const IconCopy = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M5.5 5.5V4a1 1 0 0 1 1-1H12a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-1.5M4 6h5.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z" />);
+const IconRefresh = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" />);
 const IconCheckCircle = ({ size = 18 }: { size?: number }) => (<IconGlyph size={size} d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Zm-2.6-6.2L7.5 9.9l3.2-3.8" />);
 const IconInfoCircle = ({ size = 20 }: { size?: number }) => (<IconGlyph size={size} d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 7.4V11M8 5.2v.2" />);
 const IconSetting = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm5.6-2.2a5.6 5.6 0 0 0-.1-1l1.2-1-1.4-2.4-1.4.6a5.6 5.6 0 0 0-1.7-1L9.9 1.8H6.1L5.8 3.2a5.6 5.6 0 0 0-1.7 1l-1.4-.6-1.4 2.4 1.2 1a5.6 5.6 0 0 0 0 2l-1.2 1 1.4 2.4 1.4-.6a5.6 5.6 0 0 0 1.7 1l.3 1.4h3.8l.3-1.4a5.6 5.6 0 0 0 1.7-1l1.4.6 1.4-2.4-1.2-1c.1-.3.1-.7.1-1Z" />);
@@ -328,6 +358,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [formValidityDays, setFormValidityDays] = useState(7);
   const [formMemberLimit, setFormMemberLimit] = useState<number | ''>(50);
   const [permissionsPopupOpen, setPermissionsPopupOpen] = useState(false);
+  // R488 D-B5 — Vue renders the「我」badge via authStore.currentUserId
+  // (OrganizationSettingsModal.vue:467); the auth/me call already runs for
+  // canManageOrg, so the user id rides along.
+  const [currentUserId, setCurrentUserId] = useState('');
+  // R488 D-B5 — Vue's add-member entry is a popup behind an icon button
+  // (:408-446), not a resident form.
+  const [addMemberPopupOpen, setAddMemberPopupOpen] = useState(false);
+  const [selectedInviteTenant, setSelectedInviteTenant] = useState<Record<string, unknown> | null>(null);
+  const [validityPopupOpen, setValidityPopupOpen] = useState(false);
   const [upgradeRole, setUpgradeRole] = useState<'admin' | 'editor' | 'viewer'>('editor');
   const [upgradeNote, setUpgradeNote] = useState('');
 
@@ -380,6 +419,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     void client.auth?.me?.().then((me) => {
       if (!active) return;
       const record = me.user as Record<string, unknown>;
+      // R488 D-B5: the「我」member badge keys off the current user id
+      // (Vue authStore.currentUserId, OrganizationSettingsModal.vue:467).
+      const userId = record.id;
+      if (typeof userId === 'string' || typeof userId === 'number') setCurrentUserId(String(userId));
       const selected = readReactPlatformState(window.localStorage)?.tenantId ?? null;
       const homeTenant = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
       const tenantId = selected ?? homeTenant;
@@ -763,7 +806,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function searchMemberInviteCandidates(query: string) {
     setMemberInviteQuery(query);
-    if (!settingsOrg || query.trim().length < 2) { setMemberInviteCandidates([]); return; }
+    if (!settingsOrg || query.trim().length < 2) { setMemberInviteCandidates([]); setSelectedInviteTenant(null); return; }
     setMemberInviteLoading(true);
     try {
       const rows = await organizationsApi.searchTenantsForInvite(settingsOrg.id, query.trim(), 10);
@@ -783,6 +826,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     try {
       await organizationsApi.inviteMember(settingsOrg.id, { tenant_id: tenantId, representative_user_id: strOf(candidate.representative_user_id), role: memberInviteRole });
       setMemberInviteCandidates((rows) => rows.filter((row) => String(row.tenant_id) !== candidateId));
+      // Vue handleAddMember (L1652-1656): close the popup, reset the dialog
+      // (selectedTenantId null, role back to viewer, results cleared) and
+      // refetch the member list — loadOrganizationDetail reloads all feeds.
+      setAddMemberPopupOpen(false);
+      setSelectedInviteTenant(null);
+      setMemberInviteRole('viewer');
+      setMemberInviteQuery('');
+      setMemberInviteCandidates([]);
       await loadOrganizationDetail(settingsOrg.id);
       showToast('success', t(locale, 'organization.addMember.success'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.addMember.failed'))); }
@@ -993,6 +1044,17 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const filteredMembers = normalizedMemberSearchQuery
     ? members.filter((member) => [member.tenant_name, member.username, member.email].some((value) => strOf(value).toLocaleLowerCase().includes(normalizedMemberSearchQuery)))
     : members;
+  // R488 D-B5 — member-row helpers ported from Vue OrganizationSettingsModal
+  // (L1246-1272): the workspace name is the primary label (members are
+  // workspaces after Plan 3), the representative username is the secondary
+  // line, and owner identification is tenant-keyed with a user-id fallback.
+  const memberPrimaryLabelOf = (member: OrganizationMember): string => member.tenant_name || member.username || 'tenant#' + String(member.tenant_id);
+  const memberSecondaryLabelOf = (member: OrganizationMember): string => (member.tenant_name && member.username) ? member.username : '';
+  const isOwnerMemberOf = (member: OrganizationMember): boolean => {
+    const ownerTenantId = numOf(settingsOrg?.owner_tenant_id);
+    if (ownerTenantId > 0) return member.tenant_id === ownerTenantId;
+    return member.user_id === strOf(settingsOrg?.owner_id);
+  };
   const feedStatus = (key: DetailFeedKey, fallback: string) => {
     const state = detailFeeds[key];
     if (state.status === 'loading') return <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p>;
@@ -1151,6 +1213,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             picker sits on the name row in edit mode too. */}
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
+                          {/* R488 D-B4.1 — Vue keeps the field hints in edit mode
+                              too (setting-info .desc, Vue :59). */}
+                          <p className={ORG_FORM_DESC + ' mb-[6px]'}>{t(locale, 'organization.editor.nameTip')}</p>
                           <div className="flex min-w-0 items-center gap-3">
                             <div className="relative flex shrink-0 flex-col items-center gap-1">
                               <button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button>
@@ -1162,6 +1227,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
+                          {/* R488 D-B4.1 — the description hint survives edit mode
+                              like Vue (setting-info .desc, Vue :97). */}
+                          <p className={ORG_FORM_DESC + ' mb-[6px]'}>{t(locale, 'organization.editor.descriptionTip')}</p>
                           {/* Vue t-textarea :maxlength="500" (L102) — the edit
                               mode shows the same 0/500 counter as create. */}
                           <div className="min-w-0">
@@ -1183,8 +1251,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.inviteCode')}</strong>
                               <div className="flex min-w-0 items-center gap-[8px]">
                                 <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)]">{settingsInviteCode || '—'}</code>
-                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] px-[10px] text-[12px]'} aria-label={t(locale, 'common.copy')} disabled={!settingsInviteCode} onClick={() => { void copyText(settingsInviteCode).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>{t(locale, 'common.copy')}</button>
-                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] px-[10px] text-[12px]'} aria-label={t(locale, 'organization.refreshInviteCode')} title={t(locale, 'organization.refreshInviteCode')} disabled={refreshingCode} onClick={() => void refreshInviteCode()}>{t(locale, 'organization.refreshInviteCode')}</button>
+                                {/* R488 D-B4.2 — Vue t-button variant=text icon-only with a tooltip (L123-127). */}
+                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteCode} onClick={() => { void copyText(settingsInviteCode).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
+                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.refreshInviteCode')} title={t(locale, 'organization.refreshInviteCode')} disabled={refreshingCode} onClick={() => void refreshInviteCode()}><span className={refreshingCode ? 'inline-flex animate-[orgSpin_1s_linear_infinite]' : 'inline-flex'}><IconRefresh size={15} /></span></button>
                               </div>
                               {settingsInviteCode ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{remainingValidityText(locale, inviteCodeExpiresAt)}</p> : null}
                             </div>
@@ -1192,16 +1261,30 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
                               <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLinkValidity')}</strong>
                               <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.inviteLinkValidityDesc')}</p>
-                              <Select aria-label={t(locale, 'organization.settings.inviteLinkValidity')} className={ORG_FIELD + ' min-h-[30px] max-w-[220px]'} value={String(formValidityDays)} onChange={(event) => void handleValidityChange(Number(event.target.value))}>
-                                {ORG_INVITE_VALIDITY_OPTIONS.map(([value, labelKey]) => <option key={value} value={String(value)}>{t(locale, labelKey)}</option>)}
-                              </Select>
+                              {/* R488 D-B4.3 — Vue t-select renders only the
+                                  selected label until opened; a native select
+                                  leaks every option into the DOM text. */}
+                              <div className="relative w-[220px] max-w-full">
+                                <button type="button" className={ORG_FIELD + ' flex min-h-[30px] cursor-pointer items-center justify-between gap-[6px] text-left'} aria-label={t(locale, 'organization.settings.inviteLinkValidity')} aria-expanded={validityPopupOpen} aria-haspopup="listbox" onClick={() => setValidityPopupOpen((open) => !open)}>
+                                  {t(locale, (ORG_INVITE_VALIDITY_OPTIONS.find(([value]) => value === formValidityDays) ?? ORG_INVITE_VALIDITY_OPTIONS[1])[1])}
+                                  <IconChevron size={14} direction="down" />
+                                </button>
+                                {validityPopupOpen ? (
+                                  <div role="listbox" aria-label={t(locale, 'organization.settings.inviteLinkValidity')} className="absolute left-0 top-[34px] z-30 w-full overflow-hidden rounded-[6px] border border-[#e7e7ea] bg-surface py-[4px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                                    {ORG_INVITE_VALIDITY_OPTIONS.map(([value, labelKey]) => (
+                                      <button type="button" key={value} role="option" aria-selected={value === formValidityDays} className={'block w-full cursor-pointer border-0 bg-transparent px-[10px] py-[6px] text-left text-[13px] text-[rgba(23,26,29,0.92)] hover:bg-[#f3f3f5] ' + (value === formValidityDays ? 'font-semibold text-accent' : '')} onClick={() => { setValidityPopupOpen(false); void handleValidityChange(value); }}>{t(locale, labelKey)}</button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
                             {/* ③ 邀请链接：/join?code= + 复制 */}
                             <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
                               <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLink')}</strong>
                               <div className="flex min-w-0 items-center gap-[8px]">
                                 <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)] [overflow-wrap:anywhere]">{settingsInviteLink || '—'}</code>
-                                <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[30px] shrink-0 px-[10px] text-[12px]'} aria-label={t(locale, 'common.copy')} disabled={!settingsInviteLink} onClick={() => { void copyText(settingsInviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>{t(locale, 'common.copy')}</button>
+                                {/* R488 D-B4.2 — icon-only copy like Vue (L164-168). */}
+                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteLink} onClick={() => { void copyText(settingsInviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
                               </div>
                             </div>
                             {/* ④ 需要审核：立即保存 */}
@@ -1225,7 +1308,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.memberLimit')}</strong>
                               <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitDesc')}</p>
                               <div className="flex items-center gap-[10px]">
-                                <NumberInput aria-label={t(locale, 'organization.settings.memberLimit')} className="w-[140px]" min={0} max={10000} value={formMemberLimit} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onValueChange={setFormMemberLimit} />
+                                {/* R488 D-B4.3 — Vue t-input-number theme="normal"
+                                    carries no stepper column; the ▲▼ glyphs were
+                                    scrape noise. Clamping keeps the 0-10000
+                                    contract (submitBasic payload unchanged). */}
+                                <Input type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
                                 <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
                               </div>
                             </div>
@@ -1269,32 +1356,109 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           </div>
                           <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
                         </div>
-                        {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[34px] w-[min(100%,240px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
                       </div>
-                      {settingsCanManage ? <div className="mb-[16px] rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9] p-[12px]"><div className="mb-[8px] flex items-center justify-between gap-[12px]"><strong className="text-[14px]">{t(locale, 'organization.addMember.button')}</strong><Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>{roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}</Select></div><Input className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />{memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => <div key={String(candidate.tenant_id)} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[13px]">{strOf(candidate.tenant_name)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span></div><button type="button" className={ORG_BTN_OUTLINE} disabled={memberInviteSaving === String(candidate.tenant_id)} onClick={() => void inviteMember(candidate)}>{t(locale, 'organization.addMember.confirmBtn')}</button></div>)}</div> : null}
-                      {/* Vue members-list-titlewrap (L343-347): the INNER list
-                          keeps the 共享空间成员 wording plus a live count badge. */}
-                      <div className="mb-[8px] flex items-center gap-[8px]">
-                        <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.members.listTitle')}</span>
-                        <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
+                      {/* Vue members-list-header (L343-448): the INNER list keeps
+                          the 共享空间成员 wording plus a live count badge on the
+                          left; the right side carries the member search and —
+                          for managing admins — the add-member icon button with
+                          its popup (R488 D-B5: no resident form anymore). */}
+                      <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[12px]">
+                        <div className="flex items-center gap-[8px]">
+                          <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.members.listTitle')}</span>
+                          <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
+                        </div>
+                        <div className="flex items-center gap-[8px]">
+                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                          {settingsCanManage ? (
+                            <div className="relative">
+                              <button type="button" className="box-border inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
+                              {addMemberPopupOpen ? (
+                                <div className="absolute right-0 top-[36px] z-30 w-[min(340px,calc(100vw-48px))] rounded-[8px] border border-[#e7e7ea] bg-surface p-[14px] text-left shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                                  <div className="mb-[4px] text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.addMember.dialogTitle')}</div>
+                                  <p className="m-0 mb-[12px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.addMember.tipTenant')}</p>
+                                  <div className="mb-[12px]">
+                                    <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.searchTenant')}</label>
+                                    <Input className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
+                                    <p className="m-0 mt-[4px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.addMember.searchTenantHint')}</p>
+                                    {memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => {
+                                      const candidateId = String(candidate.tenant_id);
+                                      const selected = selectedInviteTenant != null && String(selectedInviteTenant.tenant_id) === candidateId;
+                                      return (
+                                        <button type="button" key={candidateId} className={'mb-[6px] flex w-full cursor-pointer flex-col items-start gap-[2px] rounded-[6px] border px-[10px] py-[8px] text-left last:mb-0 ' + (selected ? 'border-accent bg-accent-wash' : 'border-[#e7e7ea] bg-surface hover:border-[#c9c9cf]')} aria-pressed={selected} onClick={() => setSelectedInviteTenant(candidate)}>
+                                          <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{strOf(candidate.tenant_name) || ('tenant#' + candidateId)}</strong>
+                                          <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="mb-[12px]">
+                                    <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.selectRole')}</label>
+                                    <Select className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                      {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
+                                    </Select>
+                                  </div>
+                                  <div className="flex items-center justify-end gap-[8px]">
+                                    <button type="button" className={ORG_BTN_OUTLINE + ' min-h-[30px] px-[12px] text-[13px]'} onClick={() => setAddMemberPopupOpen(false)}>{t(locale, 'common.cancel')}</button>
+                                    <button type="button" className={ORG_BTN_PRIMARY + ' min-h-[30px] px-[12px] text-[13px]'} disabled={selectedInviteTenant == null || memberInviteSaving != null} onClick={() => { if (selectedInviteTenant) void inviteMember(selectedInviteTenant); }}>{t(locale, 'organization.addMember.confirmBtn')}</button>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                       {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
                       {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
                       {detailFeeds.members.status === 'ready' && members.length > 0 && filteredMembers.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.members.emptySearch').replace('{q}', memberSearchQuery.trim())}</p> : null}
-                      {detailFeeds.members.status === 'ready' ? filteredMembers.map((member) => (
-                        <div key={member.id} className={ORG_MEMBER_ROW}>
-                          <div className={ORG_MEMBER_COPY}>
-                            <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{member.tenant_name ?? member.username}</strong>
-                            <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
-                          </div>
-                          <div className={ORG_ROW_ACTIONS}>
-                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage || member.tenant_id === settingsOrg?.owner_tenant_id || member.user_id === settingsOrg?.owner_id} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
-                              {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                            </Select>
-                            {settingsCanManage && member.tenant_id !== settingsOrg?.owner_tenant_id && member.user_id !== settingsOrg?.owner_id ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
-                          </div>
+                      {detailFeeds.members.status === 'ready' && filteredMembers.length > 0 ? (
+                        /* R488 D-B5 — the member list is a table mirroring Vue
+                         * memberColumns (L1124-1134): 成员/角色/加入时间 plus
+                         * 操作 for managing admins; the owner row renders
+                         * static role/创建者/我 badges (L462-497). */
+                        <div className="overflow-hidden rounded-[8px] border border-[#e7e7ea]">
+                          <table className={MEMBER_TABLE}>
+                            <thead>
+                              <tr>
+                                <th className={MEMBER_TH}>{t(locale, 'organization.members.columns.member')}</th>
+                                <th className={MEMBER_TH + ' w-[132px]'}>{t(locale, 'organization.members.columns.role')}</th>
+                                <th className={MEMBER_TH + ' w-[154px]'}>{t(locale, 'organization.members.columns.joinedAt')}</th>
+                                {settingsCanManage ? <th className={MEMBER_TH + ' w-[96px]'}>{t(locale, 'organization.members.columns.operations')}</th> : null}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredMembers.map((member) => {
+                                const memberIsOwner = isOwnerMemberOf(member);
+                                const secondary = memberSecondaryLabelOf(member);
+                                return (
+                                  <tr key={member.id}>
+                                    <td className={MEMBER_TD}>
+                                      <div className="flex min-w-0 flex-col gap-[2px]">
+                                        <span className="flex min-w-0 items-center gap-[6px] text-[14px] font-medium text-[rgba(23,26,29,0.92)]">
+                                          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{memberPrimaryLabelOf(member)}</span>
+                                          {memberIsOwner ? <span className="inline-flex h-[16px] shrink-0 items-center rounded-[3px] bg-accent-wash px-[5px] text-[10px] font-medium text-accent">{t(locale, 'organization.owner')}</span> : null}
+                                          {member.user_id === currentUserId ? <span className="inline-flex h-[16px] shrink-0 items-center rounded-[3px] bg-accent px-[5px] text-[10px] font-medium text-white">{t(locale, 'common.me')}</span> : null}
+                                        </span>
+                                        {secondary ? <span className="text-[12px] leading-[1.35] text-[rgba(23,26,29,0.6)]">{secondary}</span> : null}
+                                      </div>
+                                    </td>
+                                    <td className={MEMBER_TD}>
+                                      {settingsCanManage && !memberIsOwner ? (
+                                        <Select className={ORG_FIELD + ' min-h-[28px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                          {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
+                                        </Select>
+                                      ) : (
+                                        <span className={MEMBER_ROLE_TAG + ' ' + (MEMBER_ROLE_TAG_TONES[member.role] ?? MEMBER_ROLE_TAG_TONES.viewer)}>{t(locale, 'organization.role.' + member.role)}</span>
+                                      )}
+                                    </td>
+                                    <td className={MEMBER_TD + ' text-[13px] text-[rgba(23,26,29,0.82)]'}>{formatDateYmd(strOf(member.joined_at))}</td>
+                                    {settingsCanManage ? <td className={MEMBER_TD}>{memberIsOwner ? null : <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[28px] px-[10px] text-[12px]'} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>}</td> : null}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      )) : null}
+                      ) : null}
                       {/* R487 K1 — the upgrade entry lives in the members
                           section (Vue :357-390 popup on the members header),
                           not in basic. */}

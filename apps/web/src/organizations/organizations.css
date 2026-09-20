@@ -13,3 +13,9 @@
   0% { background-position: 100% 0; }
   100% { background-position: 0 0; }
 }
+
+/* R488 D-B4.2 — refresh-invite-code spinner (Vue t-button loading icon). */
+@keyframes orgSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

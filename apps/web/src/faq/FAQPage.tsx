@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
@@ -183,6 +183,26 @@ export function toggleSearchResultId(ids: ReadonlySet<number>, id: number): Set<
   return next;
 }
 
+// --- R488 A3: Vue t-drawer exit semantics ----------------------------------------
+// The Vue drawer transitions out over 0.28s (tdesign.css:17130-17158 transform
+// transition on .t-drawer__content-wrapper) before hiding; React swaps the
+// enter animation classes for the exit pair and defers the unmount by the same
+// duration. renderToStaticMarkup mounts with the open value (no effects run),
+// so SSR snapshots keep rendering the drawer.
+export const FAQ_DRAWER_EXIT_MS = 280;
+export function useDrawerExit(open: boolean, exitMs: number = FAQ_DRAWER_EXIT_MS): boolean {
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), exitMs);
+    return () => window.clearTimeout(timer);
+  }, [open, exitMs]);
+  return mounted;
+}
+
 // --- B5: FAQTagTooltip (Vue frontend/src/components/FAQTagTooltip.vue) --------------
 
 export type FaqTooltipPlacement = 'top' | 'bottom' | 'left' | 'right';
@@ -300,6 +320,83 @@ export function FaqTagTooltip({ content, type = 'answer', placement = 'top', chi
         document.body,
       ) : null}
     </span>
+  );
+}
+
+// --- R488 A3 residual: Vue tag t-select (FAQEntryManager.vue:559-564) ---------------
+// A native <select> leaks every <option> text into innerText while the Vue
+// t-select keeps its options inside a dropdown (K2 noise). This trigger +
+// body-teleported listbox keeps the closed editor at the Vue text surface:
+// one placeholder/label line, options only while open. Re-selecting the
+// current tag clears the value (t-select clearable semantics).
+
+export interface FAQTagSelectProps {
+  id?: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  placeholder: string;
+  ariaLabel?: string;
+  onChange: (value: string) => void;
+}
+
+export function FAQTagSelect({ id, value, options, placeholder, ariaLabel, onChange }: FAQTagSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [left, setLeft] = useState(0);
+  const [top, setTop] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const listboxId = `faq-tag-options-${useId()}`;
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => { if (!triggerRef.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const box = triggerRef.current?.getBoundingClientRect();
+    if (box) {
+      setLeft(box.left);
+      setTop(box.bottom + 4);
+    }
+  }, [open]);
+  const selected = options.find((option) => option.value === value);
+  return (
+    <div className="relative w-full">
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        className={`${EDITOR_CONTROL} flex w-full cursor-pointer items-center justify-between gap-2 text-left`}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-label={ariaLabel}
+        data-value={value}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}
+      >
+        <span className="faq-tag-select-value truncate">{selected?.label ?? placeholder}</span>
+        <span aria-hidden="true" className="ml-auto text-base leading-none text-faint">⌄</span>
+      </button>
+      {open ? createPortal(
+        <div id={listboxId} role="listbox" aria-label={ariaLabel} className="fixed z-[1001] max-h-60 w-[var(--faq-tag-select-width,16rem)] min-w-[10rem] overflow-auto rounded-lg border border-[#e7e7e7] bg-surface p-1 shadow-[0_8px_24px_rgba(23,32,51,.14)] animate-[faq-tooltip-fade_0.15s_ease]" style={{ left: left + 'px', top: top + 'px', ['--faq-tag-select-width' as string]: ((triggerRef.current?.getBoundingClientRect().width ?? 256) + 'px') }}>
+          {options.length === 0 ? <div className="px-2.5 py-2 text-[13px] leading-[1.5] text-faint">{placeholder}</div> : options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              className={`m-0.5 flex w-full rounded-md border-0 px-2.5 py-2 text-left text-[13px] leading-[1.5] ${option.value === value ? 'bg-[rgba(0,168,112,0.12)] text-accent-deep' : 'bg-transparent text-ink hover:bg-[rgba(0,168,112,0.06)]'}`}
+              onClick={() => { onChange(option.value === value ? '' : option.value); setOpen(false); }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
   );
 }
 
@@ -736,6 +833,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   const [moreMenuId, setMoreMenuId] = useState<number | null>(null);
   // B4: Vue stores expanded on each hit with default false (:2669) — a per-id set.
   const [expandedResults, setExpandedResults] = useState<ReadonlySet<number>>(new Set());
+  // R488 A3: both drawers ride the Vue t-drawer enter/exit motion (slide from
+  // translateX(100%) + overlay fade, 0.28s) instead of vanishing on close.
+  const editorMounted = useDrawerExit(Boolean(editorOpen));
+  const searchMounted = useDrawerExit(Boolean(searchOpen));
   useEffect(() => {
     if (!importOpen && !editorOpen && !searchOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1185,10 +1286,11 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
 
       {/* B1: Vue editor drawer (FAQEntryManager.vue:440-577) — 520px right
           drawer, one settings-row per field with the shared desc keys, list
-          editors with add/remove, and a pinned cancel/save footer. */}
-      {editorOpen ? (
-        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={editorTitle} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseEditor(); }}>
-          <aside className="faq-editor-drawer flex h-full w-[520px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw]">
+          editors with add/remove, and a pinned cancel/save footer. R488 A3:
+          enter/exit slide+fade per the Vue t-drawer motion. */}
+      {editorMounted ? (
+        <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)] ${editorOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={editorTitle} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseEditor(); }}>
+          <aside className={`faq-editor-drawer flex h-full w-[520px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw] ${editorOpen ? 'faq-drawer-panel-enter' : 'faq-drawer-panel-exit'}`}>
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{editorTitle}</h2>
               <button type="button" className="faq-modal-close static z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseEditor}><CloseIcon size={16} /></button>
@@ -1303,10 +1405,19 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.tagDesc')}</p>
                     </div>
                     <div className="setting-control flex flex-col gap-2">
-                      <Select id="faq-editor-tag" className={'full-width-input w-full ' + EDITOR_CONTROL} value={form.tagId} onChange={(event) => onFormChange({ tagId: event.target.value })}>
-                        <option value="">{t('knowledgeEditor.faq.tagPlaceholder')}</option>
-                        {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
-                      </Select>
+                      {/* R488 A3: Vue t-select — closed combobox keeps option texts
+                          out of the drawer innerText (K2 noise); options open on
+                          demand via the teleported listbox, re-select clears. */}
+                      <div className="full-width-input w-full">
+                        <FAQTagSelect
+                          id="faq-editor-tag"
+                          value={form.tagId}
+                          options={[...tagNameBySeq.entries()].map(([seqId, tagName]) => ({ value: String(seqId), label: tagName }))}
+                          placeholder={t('knowledgeEditor.faq.tagPlaceholder')}
+                          ariaLabel={t('knowledgeBase.tagLabel')}
+                          onChange={(tagId) => onFormChange({ tagId })}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1322,10 +1433,11 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
 
       {/* B4: Vue search test drawer (FAQEntryManager.vue:734-853) — 420px right
           drawer, query input + two sliders with the shared desc keys, a primary
-          search button, and a ranked result list with 3-decimal score tags. */}
-      {searchOpen ? (
-        <section className="faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
-          <aside className="faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw]">
+          search button, and a ranked result list with 3-decimal score tags.
+          R488 A3: same t-drawer enter/exit motion as the editor drawer. */}
+      {searchMounted ? (
+        <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)] ${searchOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
+          <aside className={`faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw] ${searchOpen ? 'faq-drawer-panel-enter' : 'faq-drawer-panel-exit'}`}>
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
               <button type="button" className="faq-modal-close static z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
@@ -1396,6 +1508,16 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               {searchResults.length > 0 || hasSearched ? (
                 <FAQSearchResults t={t} results={searchResults} expandedIds={expandedResults} onToggle={toggleSearchResult} />
               ) : null}
+            </div>
+            {/* R488 A6: Vue search drawer has no explicit #footer, so the
+                TDesign t-drawer DEFAULT footer renders — placement="right"
+                orders the row [确认(primary), 取消(default)] (drawer.mjs:222),
+                left-aligned per .t-drawer__footer (tdesign.css:17190-17197
+                text-align:left + button margin-left). 确认 runs the search
+                test (the drawer's whole purpose), 取消 closes it. */}
+            <div className="faq-editor-footer flex flex-none items-center gap-2 border-t border-[#e3e8f0] bg-surface px-5 py-3.5">
+              <Button type="button" variant="primary" loading={searching} onClick={runSearchTest}>{t('common.confirm')}</Button>
+              <Button type="button" onClick={onCloseSearchTest}>{t('common.cancel')}</Button>
             </div>
           </aside>
         </section>
