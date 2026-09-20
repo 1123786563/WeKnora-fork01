@@ -2,7 +2,6 @@ package interfaces
 
 import (
 	"context"
-	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -33,22 +32,18 @@ type AgentVersionService interface {
 	ListAgentVersions(ctx context.Context, tenantID uint64, agentID string) ([]AgentVersionView, error)
 }
 
+// The view/snapshot read models are DEFINED in internal/types beside
+// AgentVersionEntity and re-exported here as type aliases: the Marketplace
+// release exporter (internal/agent/experts) projects from the snapshot but
+// cannot import this package (interfaces already imports experts for the
+// ExpertService surface), so the concrete structs live one layer down and
+// every existing interfaces.* reference keeps resolving to the same types.
+
 // AgentVersionView is the frozen version as the API answers it: the
 // immutable reference (ID + source digest) the Marketplace stores.
-type AgentVersionView struct {
-	ID            string    `json:"id"`
-	AgentID       string    `json:"agent_id"`
-	VersionNumber int       `json:"version_number"`
-	SourceSHA256  string    `json:"source_sha256"`
-	FrozenBy      string    `json:"frozen_by"`
-	CreatedAt     time.Time `json:"created_at"`
-}
+type AgentVersionView = types.AgentVersionView
 
 // AgentVersionSnapshot is the full read model: the view plus the decoded
 // CustomAgent frozen at freeze time. It never reflects later edits to the
 // live agent.
-type AgentVersionSnapshot struct {
-	AgentVersionView
-	// Agent is the CustomAgent decoded from the immutable snapshot bytes.
-	Agent *types.CustomAgent `json:"agent"`
-}
+type AgentVersionSnapshot = types.AgentVersionSnapshot

@@ -41,3 +41,30 @@ type AgentVersionEntity struct {
 
 // TableName pins the table so GORM's pluralizer cannot drift.
 func (AgentVersionEntity) TableName() string { return "agent_versions" }
+
+// AgentVersionView is the frozen version as the API answers it: the
+// immutable reference (ID + source digest) the Marketplace stores.
+//
+// It lives here, beside AgentVersionEntity, because consumers on both sides
+// of the Agent-domain boundary need the read model: the interfaces package
+// re-exports it as interfaces.AgentVersionView (a type alias), and the
+// Marketplace release exporter projects from the full snapshot without an
+// import cycle through interfaces (interfaces imports the experts package).
+type AgentVersionView struct {
+	ID            string    `json:"id"`
+	AgentID       string    `json:"agent_id"`
+	VersionNumber int       `json:"version_number"`
+	SourceSHA256  string    `json:"source_sha256"`
+	FrozenBy      string    `json:"frozen_by"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// AgentVersionSnapshot is the full read model: the view plus the decoded
+// CustomAgent frozen at freeze time. It never reflects later edits to the
+// live agent. The Marketplace Release exporter consumes exactly this fixed
+// source (T28 Task 2); interfaces.AgentVersionSnapshot aliases it.
+type AgentVersionSnapshot struct {
+	AgentVersionView
+	// Agent is the CustomAgent decoded from the immutable snapshot bytes.
+	Agent *CustomAgent `json:"agent"`
+}
