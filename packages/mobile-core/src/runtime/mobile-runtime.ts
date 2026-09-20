@@ -134,6 +134,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async boot(input?: DeploymentInput): Promise<RuntimeSnapshot> {
       const requestEpoch = reserve();
+      publish({ surface: 'deployment-login', reason: 'authentication-required' });
       try {
         const storedDeployment = input ?? await ports.deploymentStore?.read();
         if (requestEpoch !== epoch) return state;

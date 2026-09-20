@@ -107,6 +107,27 @@ test('authorized sign-in persists its deployment and sign-out clears it', async 
   assert.deepEqual(deployments.calls, [`write:${DEPLOYMENT.origin}`, 'clear']);
 });
 
+test('a repeated boot hides the authorized snapshot synchronously while deployment restore is pending', async () => {
+  const restored = deferred<{ origin: string; label?: string } | undefined>();
+  const deployments: DeploymentStore = {
+    read: async () => restored.promise,
+    write: async () => {},
+    clear: async () => {},
+  };
+  const runtime = createMobileRuntime({ ...ports(), deploymentStore: deployments });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.equal(runtime.snapshot().surface, 'authorized');
+  assert.ok(runtime.scopeLease());
+
+  const boot = runtime.boot();
+
+  assert.deepEqual(runtime.snapshot(), { surface: 'deployment-login', reason: 'authentication-required' });
+  assert.equal(runtime.scopeLease(), undefined);
+  restored.resolve(DEPLOYMENT);
+  await boot;
+  assert.equal(runtime.snapshot().surface, 'authorized');
+});
+
 test('a delayed boot cannot override a later manual sign-in', async () => {
   const restored = deferred<{ origin: string; label?: string } | undefined>();
   const original = DEPLOYMENT;

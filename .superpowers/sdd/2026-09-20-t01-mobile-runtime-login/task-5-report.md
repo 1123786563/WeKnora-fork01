@@ -57,6 +57,43 @@ git diff --check
 # exit 0
 ```
 
+## Review fix round 3
+
+A repeated boot now publishes the fail-closed deployment-login snapshot in the
+same synchronous turn that it reserves a new epoch and revokes the previous
+ScopeLease. No authorized presentation can remain visible while the async
+deployment-store read is pending.
+
+### Fix-round RED
+
+```text
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 15 / pass 14 / fail 1
+AssertionError: snapshot remained authorized while scopeLease() was undefined
+```
+
+### Fix-round GREEN
+
+```text
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 15 / pass 15 / fail 0
+
+pnpm --filter @weknora/mobile test
+# tests 9 / pass 9 / fail 0
+
+pnpm --filter @weknora/mobile typecheck
+# exit 0
+
+pnpm --filter @weknora/mobile-core exec tsc --noEmit --strict --skipLibCheck \
+  --target ES2022 --lib ES2022,DOM --types node --module NodeNext \
+  --moduleResolution NodeNext --allowImportingTsExtensions src/index.ts \
+  src/runtime/mobile-runtime.test.ts
+# exit 0
+
+git diff --check
+# exit 0
+```
+
 ## Review fix round 2
 
 The second scoped review found two valid ordering defects in the first
