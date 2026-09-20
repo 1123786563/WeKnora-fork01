@@ -206,6 +206,45 @@ type SemanticReasonResponse struct {
 	Limitations    []string
 }
 
+type SemanticQueryLimits struct{ MaxHops, MaxNodes, MaxEdges, TopK, MaxTokens, DeadlineMS uint32 }
+type SemanticSearchRequest struct {
+	QueryID, Query string
+	AccessScope    SemanticAccessScope
+	Limits         SemanticQueryLimits
+	RequestedMode  SemanticRetrievalMode
+}
+
+func SemanticSearchRequestFromWire(wire *semanticpb.SearchRequest) (SemanticSearchRequest, error) {
+	if wire == nil || wire.QueryId == "" || wire.Query == "" {
+		return SemanticSearchRequest{}, fmt.Errorf("semantic search request is incomplete")
+	}
+	scope, err := SemanticAccessScopeFromWire(wire.AccessScope)
+	if err != nil {
+		return SemanticSearchRequest{}, err
+	}
+	modes := map[semanticpb.RetrievalMode]SemanticRetrievalMode{semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG: SemanticRetrievalModeGraphRAG, semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON: SemanticRetrievalModeReason}
+	mode, ok := modes[wire.RequestedMode]
+	if !ok {
+		return SemanticSearchRequest{}, fmt.Errorf("unsupported requested retrieval mode")
+	}
+	if wire.Limits == nil {
+		return SemanticSearchRequest{}, fmt.Errorf("semantic query limits are required")
+	}
+	return SemanticSearchRequest{QueryID: wire.QueryId, Query: wire.Query, AccessScope: scope, Limits: SemanticQueryLimits{MaxHops: wire.Limits.MaxHops, MaxNodes: wire.Limits.MaxNodes, MaxEdges: wire.Limits.MaxEdges, TopK: wire.Limits.TopK, MaxTokens: wire.Limits.MaxTokens, DeadlineMS: wire.Limits.DeadlineMs}, RequestedMode: mode}, nil
+}
+
+func SemanticSearchRequestToWire(value SemanticSearchRequest) (*semanticpb.SearchRequest, error) {
+	modes := map[SemanticRetrievalMode]semanticpb.RetrievalMode{SemanticRetrievalModeGraphRAG: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG, SemanticRetrievalModeReason: semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON}
+	mode, ok := modes[value.RequestedMode]
+	if !ok {
+		return nil, fmt.Errorf("unsupported requested retrieval mode")
+	}
+	if value.QueryID == "" || value.Query == "" {
+		return nil, fmt.Errorf("semantic search request is incomplete")
+	}
+	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: SemanticAccessScopeToWire(value.AccessScope), Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, RequestedMode: mode}, nil
+}
+
 func SemanticReasonResponseFromWire(wire *semanticpb.ReasonResponse) (SemanticReasonResponse, error) {
 	if wire == nil {
 		return SemanticReasonResponse{}, fmt.Errorf("semantic reason response is nil")

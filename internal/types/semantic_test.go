@@ -66,6 +66,19 @@ func TestSemanticReasonResponseWireRoundTripPreservesAbsentConclusion(t *testing
 	}
 }
 
+func TestSemanticSearchRequestWireRoundTrip(t *testing.T) {
+	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: "PURPOSE_SEARCH", BudgetRef: "budget"}
+	original := SemanticSearchRequest{QueryID: "q", Query: "query", AccessScope: scope, Limits: SemanticQueryLimits{MaxHops: 2, MaxNodes: 10, MaxEdges: 20, TopK: 3, MaxTokens: 100, DeadlineMS: 1000}, RequestedMode: SemanticRetrievalModeGraphRAG}
+	wire, err := SemanticSearchRequestToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticSearchRequestFromWire(wire)
+	if err != nil || result.QueryID != original.QueryID || result.Limits.MaxNodes != 10 || result.RequestedMode != original.RequestedMode {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,
