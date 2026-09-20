@@ -194,6 +194,48 @@ const (
 	SemanticReasonStatusUnavailable          SemanticReasonStatus = "unavailable"
 )
 
+type SemanticReasoningMode string
+
+const (
+	SemanticReasoningModeRules SemanticReasoningMode = "rules"
+	SemanticReasoningModeModel SemanticReasoningMode = "model"
+)
+
+type SemanticReasonRequest struct {
+	Search         SemanticSearchRequest
+	ReasoningMode  SemanticReasoningMode
+	RuleSetVersion string
+}
+
+func SemanticReasonRequestFromWire(wire *semanticpb.ReasonRequest) (SemanticReasonRequest, error) {
+	if wire == nil || wire.RuleSetVersion == "" {
+		return SemanticReasonRequest{}, fmt.Errorf("semantic reason request is incomplete")
+	}
+	search, err := SemanticSearchRequestFromWire(wire.Search)
+	if err != nil {
+		return SemanticReasonRequest{}, err
+	}
+	modes := map[semanticpb.ReasoningMode]SemanticReasoningMode{semanticpb.ReasoningMode_REASONING_MODE_RULES: SemanticReasoningModeRules, semanticpb.ReasoningMode_REASONING_MODE_MODEL: SemanticReasoningModeModel}
+	mode, ok := modes[wire.ReasoningMode]
+	if !ok {
+		return SemanticReasonRequest{}, fmt.Errorf("unsupported reasoning mode")
+	}
+	return SemanticReasonRequest{Search: search, ReasoningMode: mode, RuleSetVersion: wire.RuleSetVersion}, nil
+}
+
+func SemanticReasonRequestToWire(value SemanticReasonRequest) (*semanticpb.ReasonRequest, error) {
+	modes := map[SemanticReasoningMode]semanticpb.ReasoningMode{SemanticReasoningModeRules: semanticpb.ReasoningMode_REASONING_MODE_RULES, SemanticReasoningModeModel: semanticpb.ReasoningMode_REASONING_MODE_MODEL}
+	mode, ok := modes[value.ReasoningMode]
+	if !ok || value.RuleSetVersion == "" {
+		return nil, fmt.Errorf("semantic reason request is invalid")
+	}
+	search, err := SemanticSearchRequestToWire(value.Search)
+	if err != nil {
+		return nil, err
+	}
+	return &semanticpb.ReasonRequest{Search: search, ReasoningMode: mode, RuleSetVersion: value.RuleSetVersion}, nil
+}
+
 type SemanticReasonResponse struct {
 	Status         SemanticReasonStatus
 	Conclusion     *string
