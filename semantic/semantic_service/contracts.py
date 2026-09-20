@@ -9,13 +9,19 @@ from enum import Enum
 UINT64_MAX = 2**64 - 1
 
 
+def _uint(value: object, maximum: int, name: str, *, nonzero: bool = False) -> None:
+    if type(value) is not int or value < (1 if nonzero else 0) or value > maximum:
+        raise ValueError(f"{name} must be an unsigned integer")
+
+
 @dataclass(frozen=True)
 class ScopeKey:
     tenant_id: int
     kb_id: str
 
     def __post_init__(self) -> None:
-        if not 0 <= self.tenant_id <= UINT64_MAX or not self.kb_id:
+        _uint(self.tenant_id, UINT64_MAX, "tenant_id")
+        if not self.kb_id:
             raise ValueError("tenant_id must be uint64 and kb_id is required")
 
 
@@ -28,7 +34,8 @@ class DocumentRevision:
     deleted: bool
 
     def __post_init__(self) -> None:
-        if not 1 <= self.revision <= UINT64_MAX or not self.document_id:
+        _uint(self.revision, UINT64_MAX, "revision", nonzero=True)
+        if not self.document_id:
             raise ValueError("revision must be nonzero uint64 and document_id is required")
 
     def require_delete(self) -> None:
@@ -79,7 +86,8 @@ class AccessScope:
     budget_ref: str
 
     def __post_init__(self) -> None:
-        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose or self.permission_epoch < 0:
+        _uint(self.permission_epoch, UINT64_MAX, "permission_epoch")
+        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose:
             raise ValueError("access scope identity fields are required")
 
 
@@ -120,8 +128,8 @@ class QueryLimits:
     deadline_ms: int
 
     def __post_init__(self) -> None:
-        if any(value < 0 for value in (self.max_hops, self.max_nodes, self.max_edges, self.top_k, self.max_tokens, self.deadline_ms)):
-            raise ValueError("query limits must be non-negative")
+        for name, value in self.__dict__.items():
+            _uint(value, 2**32 - 1, name)
 
 
 @dataclass(frozen=True)

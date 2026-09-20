@@ -35,6 +35,13 @@ def test_scope_and_revision_reject_uint64_overflow() -> None:
         pass
     else:
         raise AssertionError("expected revision uint64 validation")
+    for invalid in (True, 1.5):
+        try:
+            ScopeKey(tenant_id=invalid, kb_id="kb")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected strict integer validation")
 
 
 def test_delete_request_rejects_non_tombstone_revision() -> None:
