@@ -263,6 +263,43 @@ def reason_response_from_wire(wire) -> ReasonResponse:
     return ReasonResponse(statuses[wire.status], wire.conclusion if wire.HasField("conclusion") else None, search_response_from_wire(wire.retrieval) if wire.HasField("retrieval") else None, wire.conclusion_kind if wire.HasField("conclusion_kind") else None, tuple(wire.premise_ids), tuple(wire.rule_ids), wire.model_version if wire.HasField("model_version") else None, wire.prompt_version if wire.HasField("prompt_version") else None, tuple(wire.limitations))
 
 
+def _limits_to_wire(value: QueryLimits):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.QueryLimits(max_hops=value.max_hops, max_nodes=value.max_nodes, max_edges=value.max_edges, top_k=value.top_k, max_tokens=value.max_tokens, deadline_ms=value.deadline_ms)
+
+
+def _limits_from_wire(wire) -> QueryLimits:
+    return QueryLimits(wire.max_hops, wire.max_nodes, wire.max_edges, wire.top_k, wire.max_tokens, wire.deadline_ms)
+
+
+def search_request_to_wire(value: SearchRequest):
+    from semantic_service.proto import semantic_pb2
+    modes = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}
+    return semantic_pb2.SearchRequest(query_id=value.query_id, query=value.query, access_scope=access_scope_to_wire(value.access_scope), limits=_limits_to_wire(value.limits), requested_mode=modes[value.requested_mode])
+
+
+def search_request_from_wire(wire) -> SearchRequest:
+    from semantic_service.proto import semantic_pb2
+    modes = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
+    if wire.requested_mode not in modes:
+        raise ValueError("unknown requested retrieval mode")
+    return SearchRequest(wire.query_id, wire.query, access_scope_from_wire(wire.access_scope), _limits_from_wire(wire.limits), modes[wire.requested_mode])
+
+
+def reason_request_to_wire(value: ReasonRequest):
+    from semantic_service.proto import semantic_pb2
+    modes = {"rules": semantic_pb2.REASONING_MODE_RULES, "model": semantic_pb2.REASONING_MODE_MODEL}
+    return semantic_pb2.ReasonRequest(search=search_request_to_wire(value.search), reasoning_mode=modes[value.reasoning_mode], rule_set_version=value.rule_set_version)
+
+
+def reason_request_from_wire(wire) -> ReasonRequest:
+    from semantic_service.proto import semantic_pb2
+    modes = {semantic_pb2.REASONING_MODE_RULES: "rules", semantic_pb2.REASONING_MODE_MODEL: "model"}
+    if wire.reasoning_mode not in modes:
+        raise ValueError("unknown reasoning mode")
+    return ReasonRequest(search_request_from_wire(wire.search), modes[wire.reasoning_mode], wire.rule_set_version)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

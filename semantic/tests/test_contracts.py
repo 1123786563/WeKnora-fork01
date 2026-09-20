@@ -151,3 +151,19 @@ def test_reason_response_wire_round_trip_preserves_absent_conclusion() -> None:
 
     value = ReasonResponse(ReasonStatus.INSUFFICIENT_EVIDENCE, None, None, None, (), (), None, None, ("missing",))
     assert reason_response_from_wire(reason_response_to_wire(value)) == value
+
+
+def test_search_request_wire_round_trip_preserves_scope_and_limits() -> None:
+    from semantic_service.contracts import AccessScope, QueryLimits, ScopeKey, SearchRequest, search_request_from_wire, search_request_to_wire
+
+    scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
+    value = SearchRequest("q", "问题", scope, QueryLimits(2, 10, 20, 3, 100, 1000), "graph_rag")
+    assert search_request_from_wire(search_request_to_wire(value)) == value
+
+
+def test_reason_request_wire_round_trip_preserves_rule_version() -> None:
+    from semantic_service.contracts import AccessScope, QueryLimits, ReasonRequest, ScopeKey, SearchRequest, reason_request_from_wire, reason_request_to_wire
+
+    scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "reason", "budget")
+    value = ReasonRequest(SearchRequest("q", "问题", scope, QueryLimits(2, 10, 20, 3, 100, 1000), "reason"), "rules", "v1")
+    assert reason_request_from_wire(reason_request_to_wire(value)) == value
