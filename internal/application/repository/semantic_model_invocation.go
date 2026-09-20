@@ -27,40 +27,48 @@ func (s *SemanticModelInvocationStore) EnsureRun(ctx context.Context, c types.Se
 	if s == nil || s.db == nil || !validSemanticCapability(c) {
 		return ErrSemanticModelInvocationConflict
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var n int
-		err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=? AND kb_id=? AND scope_hash=? AND policy_version=? AND model_id=? AND funding=? AND price_version=? AND max_input_tokens_per_call=? AND max_output_tokens_per_call=? AND per_call_upper_micro=? AND max_calls_per_task=? AND max_input_tokens_per_task=? AND max_output_tokens_per_task=?", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask).Scan(&n).Error
-		if err != nil {
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.ensureRunTx(tx, c) })
+		if err == nil || !retryableSemanticInvocationError(err) {
 			return err
 		}
-		if n == 1 {
-			return nil
-		}
-		var existing int
-		if err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=?", semanticUint(c.OwnerTenantID), c.RunID).Scan(&existing).Error; err != nil {
-			return err
-		}
-		if existing != 0 {
-			return ErrSemanticModelInvocationConflict
-		}
-		return tx.Exec("INSERT INTO semantic_model_invocation_runs(tenant_id,run_id,kb_id,scope_hash,policy_version,model_id,funding,price_version,max_input_tokens_per_call,max_output_tokens_per_call,per_call_upper_micro,max_calls_per_task,max_input_tokens_per_task,max_output_tokens_per_task,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask, c.ExpiresAt.UTC()).Error
-	})
-}
-func (s *SemanticModelInvocationStore) Claim(ctx context.Context, c types.SemanticModelCapability, requestHash string) (types.SemanticModelInvocationResult, error) {
-	var result types.SemanticModelInvocationResult
-	if s == nil || s.db == nil || !validSemanticCapability(c) || requestHash == "" {
-		return result, ErrSemanticModelInvocationConflict
+		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
 	}
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &result) })
+	return err
+}
+func (s *SemanticModelInvocationStore) ensureRunTx(tx *gorm.DB, c types.SemanticModelCapability) error {
+	err := tx.Exec("INSERT INTO semantic_model_invocation_runs(tenant_id,run_id,kb_id,scope_hash,policy_version,model_id,funding,price_version,max_input_tokens_per_call,max_output_tokens_per_call,per_call_upper_micro,max_calls_per_task,max_input_tokens_per_task,max_output_tokens_per_task,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,run_id) DO NOTHING", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask, c.ExpiresAt.UTC()).Error
+	if err != nil {
+		return err
+	}
+	var n int
+	if err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=? AND kb_id=? AND scope_hash=? AND policy_version=? AND model_id=? AND funding=? AND price_version=? AND max_input_tokens_per_call=? AND max_output_tokens_per_call=? AND per_call_upper_micro=? AND max_calls_per_task=? AND max_input_tokens_per_task=? AND max_output_tokens_per_task=?", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask).Scan(&n).Error; err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrSemanticModelInvocationConflict
+	}
+	return nil
+}
+func (s *SemanticModelInvocationStore) Claim(ctx context.Context, c types.SemanticModelCapability, requestHash string) (types.SemanticModelInvocationClaim, error) {
+	var claim types.SemanticModelInvocationClaim
+	if s == nil || s.db == nil || !validSemanticCapability(c) || requestHash == "" {
+		return claim, ErrSemanticModelInvocationConflict
+	}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &claim) })
 	// SQLite serializes writers. A transient lock is retried; PostgreSQL still
 	// relies on its transaction isolation and unique call key for convergence.
-	for attempts := 0; err != nil && (strings.Contains(err.Error(), "database is locked") || strings.Contains(strings.ToLower(err.Error()), "duplicate key")) && attempts < 4; attempts++ {
+	for attempts := 0; err != nil && retryableSemanticInvocationError(err) && attempts < 4; attempts++ {
 		time.Sleep(time.Duration(attempts+1) * 10 * time.Millisecond)
-		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &result) })
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.claimTx(tx, c, requestHash, &claim) })
 	}
-	return result, err
+	return claim, err
 }
-func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticModelCapability, requestHash string, result *types.SemanticModelInvocationResult) error {
+func retryableSemanticInvocationError(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "database is locked") || strings.Contains(strings.ToLower(err.Error()), "duplicate key"))
+}
+func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticModelCapability, requestHash string, claim *types.SemanticModelInvocationClaim) error {
 	var run int
 	runQuery := "SELECT 1 FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=?"
 	if tx.Dialector.Name() == "postgres" {
@@ -81,9 +89,14 @@ func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticMode
 			return ErrSemanticModelInvocationConflict
 		}
 		if state == "completed" {
-			*result = types.SemanticModelInvocationResult{Result: response, InputTokens: in.Int64, OutputTokens: out.Int64}
+			*claim = types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationCompletedReplay, Result: types.SemanticModelInvocationResult{Result: response, InputTokens: in.Int64, OutputTokens: out.Int64}}
 			return nil
 		}
+		if state == "unknown" {
+			claim.Disposition = types.SemanticModelInvocationUnknown
+			return nil
+		}
+		claim.Disposition = types.SemanticModelInvocationInFlight
 		return nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) && !errors.Is(err, sql.ErrNoRows) {
@@ -96,7 +109,11 @@ func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticMode
 	if calls >= c.MaxCallsPerTask || inputs+c.MaxInputTokensPerCall > c.MaxInputTokensPerTask || outputs+c.MaxOutputTokensPerCall > c.MaxOutputTokensPerTask {
 		return ErrSemanticModelInvocationQuotaExceeded
 	}
-	return tx.Exec("INSERT INTO semantic_model_invocations(tenant_id,run_id,call_id,request_hash,state,reserved_input_tokens,reserved_output_tokens) VALUES (?,?,?,?,?,?,?)", semanticUint(c.OwnerTenantID), c.RunID, c.CallID, requestHash, "claimed", c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall).Error
+	if err := tx.Exec("INSERT INTO semantic_model_invocations(tenant_id,run_id,call_id,request_hash,state,reserved_input_tokens,reserved_output_tokens) VALUES (?,?,?,?,?,?,?)", semanticUint(c.OwnerTenantID), c.RunID, c.CallID, requestHash, "claimed", c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall).Error; err != nil {
+		return err
+	}
+	claim.Disposition = types.SemanticModelInvocationClaimedNew
+	return nil
 }
 func (s *SemanticModelInvocationStore) Complete(ctx context.Context, c types.SemanticModelCapability, result types.SemanticModelInvocationResult) error {
 	return s.transition(ctx, c, "completed", result, true)

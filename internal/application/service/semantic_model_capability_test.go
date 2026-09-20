@@ -9,6 +9,7 @@ import (
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,6 +26,36 @@ func TestSemanticModelCapabilityVerifyRejectsTamperingAndRevokedScope(t *testing
 	resolver.err = ErrSemanticScopeChanged
 	_, err = issuer.Verify(context.Background(), issued.Token)
 	require.ErrorIs(t, err, ErrSemanticModelCapabilityScopeInvalid)
+}
+
+func TestSemanticModelCapabilityVerifyRequiresExpiryAndAudience(t *testing.T) {
+	resolver := &semanticCapabilityScopeResolver{snapshot: SemanticScopeSnapshot{Scope: types.SemanticScopeKey{TenantID: 7, KBID: "kb-1"}, SubjectID: "requester", RequesterTenantID: 9, ScopeHash: "scope-hash", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Audience: "semantic"}}
+	issuer := NewSemanticModelCapabilityIssuer(semanticCapabilityConfig("semantic"), resolver, semanticCapabilityPolicy(), semanticCapabilityPricing, nil, nil)
+	for name, claims := range map[string]semanticModelCapabilityClaims{
+		"expired":        {RegisteredClaims: jwt.RegisteredClaims{Audience: jwt.ClaimStrings{"semantic"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))}, Version: 1, ScopeRef: "scope-ref", ScopeHash: "scope-hash", KBID: "kb-1", ModelID: "model-1", Funding: domain.FundingBYOK, PriceVersion: "pv1", RunID: "semantic-run:" + hash("scope-ref"), CallID: "semantic-call:test", OwnerTenantID: 7, PolicyVersion: 3},
+		"missing expiry": {RegisteredClaims: jwt.RegisteredClaims{Audience: jwt.ClaimStrings{"semantic"}}, Version: 1, ScopeRef: "scope-ref", ScopeHash: "scope-hash", KBID: "kb-1", ModelID: "model-1", Funding: domain.FundingBYOK, PriceVersion: "pv1", RunID: "semantic-run:" + hash("scope-ref"), CallID: "semantic-call:test", OwnerTenantID: 7, PolicyVersion: 3},
+		"wrong audience": {RegisteredClaims: jwt.RegisteredClaims{Audience: jwt.ClaimStrings{"other"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute))}, Version: 1, ScopeRef: "scope-ref", ScopeHash: "scope-hash", KBID: "kb-1", ModelID: "model-1", Funding: domain.FundingBYOK, PriceVersion: "pv1", RunID: "semantic-run:" + hash("scope-ref"), CallID: "semantic-call:test", OwnerTenantID: 7, PolicyVersion: 3},
+	} {
+		t.Run(name, func(t *testing.T) {
+			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(issuer.cfg.ModelSigningKey))
+			require.NoError(t, err)
+			_, err = issuer.Verify(context.Background(), token)
+			require.ErrorIs(t, err, ErrSemanticModelCapabilityInvalid)
+		})
+	}
+}
+
+func TestSemanticModelCapabilityIssueRejectsOverflowingInputBytes(t *testing.T) {
+	resolver := &semanticCapabilityScopeResolver{snapshot: SemanticScopeSnapshot{Scope: types.SemanticScopeKey{TenantID: 7, KBID: "kb-1"}, ScopeHash: "scope-hash", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Audience: "semantic"}}
+	policy := semanticCapabilityPolicy()
+	policy.repo = semanticCapabilityRepo{p: repository.SemanticModelPolicy{TenantID: 7, KBID: "kb-1", ModelCallsEnabled: true, ModelID: "model-1", Funding: domain.FundingBYOK, PriceVersion: "pv1", PolicyVersion: 3, MaxInputTokensPerCall: int64(^uint64(0)>>1)/4 + 1, MaxOutputTokensPerCall: 1, MaxCallsPerTask: 1, MaxInputTokensPerTask: int64(^uint64(0)>>1)/4 + 1, MaxOutputTokensPerTask: 1, UpdatedBy: "owner"}}
+	issuer := NewSemanticModelCapabilityIssuer(semanticCapabilityConfig("semantic"), resolver, policy, semanticCapabilityPricing, nil, nil)
+	_, err := issuer.Issue(context.Background(), "scope-ref", "key")
+	require.ErrorIs(t, err, ErrSemanticModelCapabilityPolicyInvalid)
+	policy.repo = semanticCapabilityRepo{p: repository.SemanticModelPolicy{TenantID: 7, KBID: "kb-1", ModelCallsEnabled: true, ModelID: "model-1", Funding: domain.FundingBYOK, PriceVersion: "pv1", PolicyVersion: 3, MaxInputTokensPerCall: int64(^uint64(0)>>1) / 4, MaxOutputTokensPerCall: 1, MaxCallsPerTask: 1, MaxInputTokensPerTask: int64(^uint64(0)>>1) / 4, MaxOutputTokensPerTask: 1, UpdatedBy: "owner"}}
+	issued, err := issuer.Issue(context.Background(), "scope-ref", "key-boundary")
+	require.NoError(t, err)
+	require.Equal(t, int64(^uint64(0)>>1)-3, issued.MaxInputBytes)
 }
 
 type semanticCapabilityScopeResolver struct {

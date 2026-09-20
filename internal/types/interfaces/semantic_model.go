@@ -11,7 +11,7 @@ type SemanticModelCapabilityIssuer interface {
 }
 type SemanticModelInvocationStore interface {
 	EnsureRun(context.Context, types.SemanticModelCapability) error
-	Claim(context.Context, types.SemanticModelCapability, string) (types.SemanticModelInvocationResult, error)
+	Claim(context.Context, types.SemanticModelCapability, string) (types.SemanticModelInvocationClaim, error)
 	Complete(context.Context, types.SemanticModelCapability, types.SemanticModelInvocationResult) error
 	FailBeforeDispatch(context.Context, types.SemanticModelCapability) error
 	MarkUnknown(context.Context, types.SemanticModelCapability) error

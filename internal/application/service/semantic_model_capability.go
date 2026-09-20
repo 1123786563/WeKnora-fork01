@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -61,6 +62,9 @@ func (s *SemanticModelCapabilityIssuerService) Issue(ctx context.Context, scopeR
 	if err != nil {
 		return types.SemanticModelIssuedCapability{}, err
 	}
+	if c.MaxInputTokensPerCall > math.MaxInt64/4 {
+		return types.SemanticModelIssuedCapability{}, ErrSemanticModelCapabilityPolicyInvalid
+	}
 	if s.invocations != nil {
 		if err := s.invocations.EnsureRun(ctx, c); err != nil {
 			return types.SemanticModelIssuedCapability{}, err
@@ -91,7 +95,7 @@ func (s *SemanticModelCapabilityIssuerService) Verify(ctx context.Context, token
 			return nil, ErrSemanticModelCapabilityInvalid
 		}
 		return []byte(s.cfg.ModelSigningKey), nil
-	}, jwt.WithAudience(s.cfg.Audience))
+	}, jwt.WithAudience(s.cfg.Audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
 	if err != nil || !parsed.Valid || claims.Version != 1 {
 		return types.SemanticModelCapability{}, ErrSemanticModelCapabilityInvalid
 	}

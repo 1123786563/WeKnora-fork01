@@ -41,3 +41,19 @@ type SemanticModelInvocationResult struct {
 	Result                    []byte
 	InputTokens, OutputTokens int64
 }
+
+type SemanticModelInvocationDisposition string
+
+const (
+	SemanticModelInvocationClaimedNew      SemanticModelInvocationDisposition = "claimed_new"
+	SemanticModelInvocationCompletedReplay SemanticModelInvocationDisposition = "completed_replay"
+	SemanticModelInvocationInFlight        SemanticModelInvocationDisposition = "in_flight"
+	SemanticModelInvocationUnknown         SemanticModelInvocationDisposition = "unknown"
+)
+
+// SemanticModelInvocationClaim makes provider dispatch authority explicit:
+// only ClaimedNew may cross the outbound provider boundary.
+type SemanticModelInvocationClaim struct {
+	Disposition SemanticModelInvocationDisposition
+	Result      SemanticModelInvocationResult
+}
