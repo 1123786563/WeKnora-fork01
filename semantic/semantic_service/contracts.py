@@ -244,6 +244,25 @@ def search_response_from_wire(wire) -> SearchResponse:
     return SearchResponse(wire.query_id, wire.generation, modes[wire.requested_mode], modes[wire.actual_mode], tuple(evidence_from_wire(item) for item in wire.evidence), tuple(wire.assertion_ids), tuple(tuple(path.ids) for path in wire.paths), wire.stale, wire.partial, wire.truncated)
 
 
+def reason_response_to_wire(value: ReasonResponse):
+    from semantic_service.proto import semantic_pb2
+    statuses = {ReasonStatus.DERIVED: semantic_pb2.REASON_STATUS_DERIVED, ReasonStatus.INSUFFICIENT_EVIDENCE: semantic_pb2.REASON_STATUS_INSUFFICIENT_EVIDENCE, ReasonStatus.CONFLICT: semantic_pb2.REASON_STATUS_CONFLICT, ReasonStatus.UNAVAILABLE: semantic_pb2.REASON_STATUS_UNAVAILABLE}
+    wire = semantic_pb2.ReasonResponse(status=statuses[value.status], premise_ids=list(value.premise_ids), rule_ids=list(value.rule_ids), limitations=list(value.limitations))
+    if value.retrieval is not None: wire.retrieval.CopyFrom(search_response_to_wire(value.retrieval))
+    if value.conclusion is not None: wire.conclusion = value.conclusion
+    if value.conclusion_kind is not None: wire.conclusion_kind = value.conclusion_kind
+    if value.model_version is not None: wire.model_version = value.model_version
+    if value.prompt_version is not None: wire.prompt_version = value.prompt_version
+    return wire
+
+
+def reason_response_from_wire(wire) -> ReasonResponse:
+    from semantic_service.proto import semantic_pb2
+    statuses = {semantic_pb2.REASON_STATUS_DERIVED: ReasonStatus.DERIVED, semantic_pb2.REASON_STATUS_INSUFFICIENT_EVIDENCE: ReasonStatus.INSUFFICIENT_EVIDENCE, semantic_pb2.REASON_STATUS_CONFLICT: ReasonStatus.CONFLICT, semantic_pb2.REASON_STATUS_UNAVAILABLE: ReasonStatus.UNAVAILABLE}
+    if wire.status not in statuses: raise ValueError("unknown reason status")
+    return ReasonResponse(statuses[wire.status], wire.conclusion if wire.HasField("conclusion") else None, search_response_from_wire(wire.retrieval) if wire.HasField("retrieval") else None, wire.conclusion_kind if wire.HasField("conclusion_kind") else None, tuple(wire.premise_ids), tuple(wire.rule_ids), wire.model_version if wire.HasField("model_version") else None, wire.prompt_version if wire.HasField("prompt_version") else None, tuple(wire.limitations))
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

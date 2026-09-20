@@ -144,3 +144,10 @@ def test_search_response_wire_round_trip_preserves_modes() -> None:
 
     value = SearchResponse("q", "g", "graph_rag", "graph_rag", (Evidence("e", "d", 1, "c", "h", "文本", None, None),), ("a",))
     assert search_response_from_wire(search_response_to_wire(value)) == value
+
+
+def test_reason_response_wire_round_trip_preserves_absent_conclusion() -> None:
+    from semantic_service.contracts import ReasonResponse, ReasonStatus, reason_response_from_wire, reason_response_to_wire
+
+    value = ReasonResponse(ReasonStatus.INSUFFICIENT_EVIDENCE, None, None, None, (), (), None, None, ("missing",))
+    assert reason_response_from_wire(reason_response_to_wire(value)) == value
