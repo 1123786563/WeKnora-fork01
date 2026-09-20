@@ -594,6 +594,30 @@ func TestFakeEnsureCustomerUpsertsUnderNewKey(t *testing.T) {
 	}
 }
 
+// TestFakeEnsureCustomerSameKeyReplayRefreshesAdvisoryName: US-59 — a replay
+// under the SAME Key with a different display name (space renamed)
+// legitimately updates ADVISORY metadata while the ORIGINAL receipt
+// (unchanged RecordedAt) answers; identity is immutable.
+func TestFakeEnsureCustomerSameKeyReplayRefreshesAdvisoryName(t *testing.T) {
+	f := NewFakeAdapter()
+	ctx := context.Background()
+	first, err := f.SubmitCommand(ctx, ensureCommand(7, "Old Name", "ensure_customer:weknora-tenant-7"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.SubmitCommand(ctx, ensureCommand(7, "New Name", "ensure_customer:weknora-tenant-7"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("replay must return the ORIGINAL receipt, got %+v then %+v", first, second)
+	}
+	customers := f.Customers()
+	if len(customers) != 1 || customers[0].Name != "New Name" || customers[0].ExternalID != "weknora-tenant-7" {
+		t.Fatalf("same-Key replay refreshes advisory metadata on ONE customer, got %+v", customers)
+	}
+}
+
 // TestFakeFaultKnobSurfacesInjectedSentinel: FailSubmitsWith drives the
 // recovery tests — every submit fails with the injected sentinel.
 func TestFakeFaultKnobSurfacesInjectedSentinel(t *testing.T) {

@@ -156,7 +156,12 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		return commercial.CommandReceipt{}, f.failSubmits
 	}
 	if receipt, ok := f.receipts[cmd.Key]; ok {
-		return receipt, nil // the ORIGINAL receipt, unchanged RecordedAt
+		// US-59 note: a replay under the same Key with a different display
+		// name legitimately updates ADVISORY metadata (identity immutable) —
+		// so the name applies while the ORIGINAL receipt (unchanged
+		// RecordedAt) answers.
+		apply()
+		return receipt, nil
 	}
 	receipt := commercial.CommandReceipt{
 		Key:        cmd.Key,
