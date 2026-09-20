@@ -29,6 +29,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
 	pgmigrate "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -41,6 +42,11 @@ import (
 	"gorm.io/gorm/logger"
 	sdklog "trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+)
+
+const (
+	recoveryOllamaModelEnv = "TRPC_RECOVERY_OLLAMA_MODEL"
+	recoveryOllamaPrompt   = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, reply with exactly: recovered answer. Do not make another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
 )
 
 const (
@@ -446,6 +452,113 @@ func (m *scriptedModel) respond(messages []chat.Message) *types.ChatResponse {
 	}
 }
 
+// recoveryContractChat makes a configured local model fail visibly when it
+// does not meet the matrix's deliberately narrow tool protocol. The default
+// scripted model remains the deterministic acceptance provider.
+type recoveryContractChat struct {
+	inner    chat.Chat
+	toolName string
+}
+
+func newRecoveryChat(toolName string) (chat.Chat, string, error) {
+	modelName := strings.TrimSpace(os.Getenv(recoveryOllamaModelEnv))
+	if modelName == "" {
+		return &scriptedModel{toolName: toolName}, "", nil
+	}
+	service, err := ollama.GetOllamaService()
+	if err != nil {
+		return nil, "", fmt.Errorf("configure Ollama recovery model: %w", err)
+	}
+	ollamaChat, err := chat.NewOllamaChat(&chat.ChatConfig{
+		Source:    types.ModelSourceLocal,
+		ModelName: modelName,
+		ModelID:   "recovery-ollama:" + modelName,
+	}, service)
+	if err != nil {
+		return nil, "", fmt.Errorf("create Ollama recovery chat: %w", err)
+	}
+	return &recoveryContractChat{inner: ollamaChat, toolName: toolName}, recoveryOllamaPrompt, nil
+}
+
+func (c *recoveryContractChat) Chat(
+	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
+) (*types.ChatResponse, error) {
+	response, err := c.inner.Chat(ctx, messages, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.validate(messages, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *recoveryContractChat) ChatStream(
+	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
+) (<-chan types.StreamResponse, error) {
+	stream, err := c.inner.ChatStream(ctx, messages, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan types.StreamResponse)
+	go func() {
+		defer close(out)
+		var chunks []types.StreamResponse
+		response := &types.ChatResponse{}
+		for chunk := range stream {
+			chunks = append(chunks, chunk)
+			response.Content += chunk.Content
+			response.ToolCalls = append(response.ToolCalls, chunk.ToolCalls...)
+			if chunk.Done {
+				response.FinishReason = chunk.FinishReason
+				if chunk.Usage != nil {
+					response.Usage = *chunk.Usage
+				}
+			}
+		}
+		if err := c.validate(messages, response); err != nil {
+			out <- types.StreamResponse{ResponseType: types.ResponseTypeError, Content: err.Error(), Done: true}
+			return
+		}
+		for _, chunk := range chunks {
+			out <- chunk
+		}
+	}()
+	return out, nil
+}
+
+func (c *recoveryContractChat) GetModelName() string { return c.inner.GetModelName() }
+
+func (c *recoveryContractChat) GetModelID() string { return c.inner.GetModelID() }
+
+func (c *recoveryContractChat) validate(messages []chat.Message, response *types.ChatResponse) error {
+	if response == nil {
+		return errors.New("Ollama recovery model returned no response")
+	}
+	for _, message := range messages {
+		if message.Role == "tool" {
+			if len(response.ToolCalls) != 0 || strings.TrimSpace(response.Content) != "recovered answer" {
+				return fmt.Errorf("Ollama recovery model violated post-tool contract: want exactly %q without tool calls", "recovered answer")
+			}
+			return nil
+		}
+	}
+	if len(response.ToolCalls) != 1 {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want one %q call, got %d", c.toolName, len(response.ToolCalls))
+	}
+	call := response.ToolCalls[0]
+	if call.Function.Name != c.toolName {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want %q, got %q", c.toolName, call.Function.Name)
+	}
+	var args struct {
+		Tick *float64 `json:"tick"`
+	}
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil || args.Tick == nil || *args.Tick != 1 {
+		return fmt.Errorf("Ollama recovery model violated initial tool contract: want %s({\"tick\":1})", c.toolName)
+	}
+	return nil
+}
+
 // ---- counting tool (external side effect via HTTP) ----
 
 type countingTool struct {
@@ -658,9 +771,14 @@ func newMatrixExecutor(
 		fatal(fmt.Sprintf("declarations: %v", err))
 	}
 
+	chatModel, systemPrompt, err := newRecoveryChat(modelToolName)
+	if err != nil {
+		fatal(err.Error())
+	}
+
 	build := func() *trpcagent.GraphRunner {
 		bindings := trpcagent.GraphBindings{
-			Model: trpcagent.NewModel(&scriptedModel{toolName: modelToolName}),
+			Model: trpcagent.NewModel(chatModel),
 			Store: store,
 			Tools: agentruntime.NewToolExecutor(store, journal, toolBridge),
 			WaitForDecision: func(ctx context.Context, fence agentruntime.Fence, pending string) error {
@@ -687,6 +805,7 @@ func newMatrixExecutor(
 			Capabilities: trpcagent.CapabilitySnapshot{
 				ToolIdentities: []string{capabilityToolName},
 				DeferredNames:  []string{capabilityToolName},
+				SystemPrompt:   systemPrompt,
 			},
 			Events:     store,
 			ModelTools: modelTools,
