@@ -3,14 +3,17 @@
 // fake for tests and dev, and a Lago adapter that reads the authority's
 // health signal with server-side env config and fails closed. Both adapters
 // run the same shared contract suite (contract_test.go); a behavior only one
-// adapter has is a defect. W3 (#78) enables the first command kind —
-// ensure_customer, idempotent by deterministic identity — and the account
-// snapshot kind; every other command kind and the reconcile family stay
-// frozen and fail closed with commercial.ErrPlatformUnsupported.
+// adapter has is a defect. W3 (#78) enables ensure_customer — idempotent by
+// deterministic identity — and the account snapshot kind; T07 (#79) enables
+// publish_plan_version on BOTH adapters; every other command kind and the
+// reconcile family stay frozen and fail closed with
+// commercial.ErrPlatformUnsupported.
 package commercialplatform
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -29,10 +32,14 @@ type FakeCustomer struct {
 // tests and dev environments. SetReadiness stores one readiness snapshot;
 // ReadSnapshot copies it back verbatim. The W3 customer surface is a real
 // in-memory authority: customers are stored keyed by external id (upsert —
-// never a second entry), submits are idempotent per Command.Key, and the
-// account snapshot derives from the store honestly — an absent customer is
-// absent, never a fabricated linked. The store mutates now, so every access
-// is mutex-guarded.
+// never a second entry), ensure_customer submits are idempotent per
+// Command.Key, and the account snapshot derives from the store honestly —
+// an absent customer is absent, never a fabricated linked. SubmitCommand
+// also implements the publish_plan_version kind with coordinator-owned
+// idempotency: the same Key with byte-equal payload replays the same
+// receipt, the same Key with different content is a definitive conflict
+// (spec story 59). The store mutates now, so every access is
+// mutex-guarded — concurrent publish tests are legal.
 type FakeAdapter struct {
 	mu          sync.Mutex
 	primed      bool
@@ -40,6 +47,15 @@ type FakeAdapter struct {
 	customers   map[string]FakeCustomer
 	receipts    map[string]commercial.CommandReceipt
 	failSubmits error
+	commands    map[string]fakeCommand
+	creates     []commercial.Command
+}
+
+// fakeCommand is one recorded publish command: its exact payload and the
+// receipt issued for it.
+type fakeCommand struct {
+	payload commercial.PublishPlanVersionPayload
+	receipt commercial.CommandReceipt
 }
 
 // NewFakeAdapter builds the fake with no readiness primed: reading readiness
@@ -49,6 +65,7 @@ func NewFakeAdapter() *FakeAdapter {
 	return &FakeAdapter{
 		customers: map[string]FakeCustomer{},
 		receipts:  map[string]commercial.CommandReceipt{},
+		commands:  map[string]fakeCommand{},
 	}
 }
 
@@ -85,12 +102,23 @@ func (f *FakeAdapter) Customers() []FakeCustomer {
 	return out
 }
 
+// Commands returns the publish commands that CREATED state, in order — the
+// test observation point proving a replay creates nothing (each create
+// appends exactly once).
+func (f *FakeAdapter) Commands() []commercial.Command {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]commercial.Command(nil), f.creates...)
+}
+
 // ReadSnapshot answers the primed readiness snapshot verbatim and the
 // account truth from the customer store; unknown kinds fail closed
 // unsupported.
 func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQuery) (commercial.Snapshot, error) {
 	switch query.Kind {
 	case commercial.SnapshotKindReadiness:
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		if !f.primed {
 			return commercial.Snapshot{}, commercial.ErrPlatformUnconfigured
 		}
@@ -123,57 +151,93 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 	}
 }
 
-// SubmitCommand implements ensure_customer (the W3 first enabled kind,
-// #78): idempotent per Command.Key — a replay returns the ORIGINAL receipt
-// with unchanged RecordedAt — and upserting per external id, so a different
-// Key addressing the same identity refreshes advisory metadata and never
-// creates a second customer. Every other kind fails closed unsupported.
+// SubmitCommand applies the enabled command families. ensure_customer (the
+// W3 first enabled kind, #78) is idempotent per Command.Key — a replay
+// returns the ORIGINAL receipt with unchanged RecordedAt — and upserting
+// per external id, so a different Key addressing the same identity refreshes
+// advisory metadata and never creates a second customer. publish_plan_version
+// (T07, #79) validates the command and payload, records under the
+// coordinator Key and answers a receipt whose ExternalID echoes the
+// payload's deterministic plan code; a replay with equal payload returns the
+// SAME receipt without a second record, the same Key with different payload
+// is a conflict. Every other kind fails closed unsupported.
 func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (commercial.CommandReceipt, error) {
-	if cmd.Kind != commercial.CommandKindEnsureCustomer {
-		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+	if err := cmd.Validate(); err != nil {
+		return commercial.CommandReceipt{}, err
 	}
-	payload, ok := cmd.Payload.(commercial.EnsureCustomerPayload)
-	if !ok || payload.TenantID == 0 || payload.ExternalCustomerID == "" ||
-		payload.ExternalCustomerID != commercial.ExternalCustomerID(payload.TenantID) {
-		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
-	}
+	switch cmd.Kind {
+	case commercial.CommandKindEnsureCustomer:
+		payload, ok := cmd.Payload.(commercial.EnsureCustomerPayload)
+		if !ok || payload.TenantID == 0 || payload.ExternalCustomerID == "" ||
+			payload.ExternalCustomerID != commercial.ExternalCustomerID(payload.TenantID) {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
 
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	apply := func() {
-		if f.customers == nil {
-			f.customers = map[string]FakeCustomer{}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		apply := func() {
+			if f.customers == nil {
+				f.customers = map[string]FakeCustomer{}
+			}
+			f.customers[payload.ExternalCustomerID] = FakeCustomer{
+				ExternalID: payload.ExternalCustomerID,
+				Name:       payload.DisplayName,
+			}
 		}
-		f.customers[payload.ExternalCustomerID] = FakeCustomer{
+		if f.failSubmits != nil {
+			// Persisted-but-response-lost: the authority state applies, the
+			// caller observes the injected failure.
+			apply()
+			return commercial.CommandReceipt{}, f.failSubmits
+		}
+		if receipt, ok := f.receipts[cmd.Key]; ok {
+			// US-59 note: a replay under the same Key with a different display
+			// name legitimately updates ADVISORY metadata (identity immutable) —
+			// so the name applies while the ORIGINAL receipt (unchanged
+			// RecordedAt) answers.
+			apply()
+			return receipt, nil
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
 			ExternalID: payload.ExternalCustomerID,
-			Name:       payload.DisplayName,
+			RecordedAt: time.Now().UTC(),
 		}
-	}
-	if f.failSubmits != nil {
-		// Persisted-but-response-lost: the authority state applies, the
-		// caller observes the injected failure.
-		apply()
-		return commercial.CommandReceipt{}, f.failSubmits
-	}
-	if receipt, ok := f.receipts[cmd.Key]; ok {
-		// US-59 note: a replay under the same Key with a different display
-		// name legitimately updates ADVISORY metadata (identity immutable) —
-		// so the name applies while the ORIGINAL receipt (unchanged
-		// RecordedAt) answers.
+		if f.receipts == nil {
+			f.receipts = map[string]commercial.CommandReceipt{}
+		}
+		f.receipts[cmd.Key] = receipt
 		apply()
 		return receipt, nil
+
+	case commercial.CommandKindPublishPlanVersion:
+		payload, ok := cmd.Payload.(commercial.PublishPlanVersionPayload)
+		if !ok {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: publish payload has the wrong type", commercial.ErrPlatformInvalidResponse)
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if existing, ok := f.commands[cmd.Key]; ok {
+			if reflect.DeepEqual(existing.payload, payload) {
+				return existing.receipt, nil // same receipt, no second record
+			}
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: publish command conflict", commercial.ErrPlatformInvalidResponse)
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.PlanCode,
+			RecordedAt: time.Now().UTC(),
+		}
+		f.commands[cmd.Key] = fakeCommand{payload: payload, receipt: receipt}
+		f.creates = append(f.creates, cmd)
+		return receipt, nil
+
+	default:
+		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
-	receipt := commercial.CommandReceipt{
-		Key:        cmd.Key,
-		ExternalID: payload.ExternalCustomerID,
-		RecordedAt: time.Now().UTC(),
-	}
-	if f.receipts == nil {
-		f.receipts = map[string]commercial.CommandReceipt{}
-	}
-	f.receipts[cmd.Key] = receipt
-	apply()
-	return receipt, nil
 }
 
 // Reconcile stays frozen and disabled: fail closed.

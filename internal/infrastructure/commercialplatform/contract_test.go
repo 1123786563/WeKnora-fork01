@@ -140,6 +140,78 @@ func runPlatformContract(t *testing.T, name string, p commercial.CommercialPlatf
 	})
 }
 
+// runPublishContract is the shared publish_plan_version leg every adapter
+// must satisfy identically (#79): publish returns a receipt echoing the
+// deterministic plan code, a replay of the same Key NEVER creates a second
+// external object, and the same Key with DIFFERENT content is a definitive
+// conflict. creates() reports how many external creates the adapter issued
+// (fake: recorded commands; Lago stub: POST /api/v1/plans count).
+func runPublishContract(t *testing.T, name string, p commercial.CommercialPlatform, creates func() int) {
+	t.Helper()
+	payload := commercial.PublishPlanVersionPayload{
+		PlanKey:              "contract-plan",
+		Version:              1,
+		PlanCode:             commercial.DeterministicPlanCode("contract-plan", 1),
+		Name:                 "Contract Plan",
+		Interval:             "monthly",
+		AmountFen:            9900,
+		Currency:             "CNY",
+		PayInAdvance:         true,
+		IncludedCreditsMicro: 9_900_000,
+	}
+	cmd := func(payload commercial.PublishPlanVersionPayload) commercial.Command {
+		return commercial.Command{
+			Kind:    commercial.CommandKindPublishPlanVersion,
+			Key:     commercial.PublishCommandKey(payload.PlanKey, payload.Version),
+			Actor:   "contract",
+			Reason:  "shared contract",
+			Payload: payload,
+		}
+	}
+
+	t.Run(name+"/publish returns a receipt echoing the plan code", func(t *testing.T) {
+		receipt, err := p.SubmitCommand(context.Background(), cmd(payload))
+		if err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		if receipt.Key != cmd(payload).Key {
+			t.Fatalf("receipt key = %q", receipt.Key)
+		}
+		if receipt.ExternalID != payload.PlanCode {
+			t.Fatalf("receipt ExternalID = %q, want %q", receipt.ExternalID, payload.PlanCode)
+		}
+		if receipt.RecordedAt.IsZero() {
+			t.Fatal("receipt RecordedAt must be set")
+		}
+	})
+
+	t.Run(name+"/replay of the same key never creates twice", func(t *testing.T) {
+		before := creates()
+		receipt, err := p.SubmitCommand(context.Background(), cmd(payload))
+		if err != nil {
+			t.Fatalf("replay: %v", err)
+		}
+		if receipt.ExternalID != payload.PlanCode {
+			t.Fatalf("replay receipt ExternalID = %q", receipt.ExternalID)
+		}
+		if after := creates(); after != before {
+			t.Fatalf("replay must not create a second external object: %d -> %d", before, after)
+		}
+	})
+
+	t.Run(name+"/same key with different content is a conflict", func(t *testing.T) {
+		different := payload
+		different.AmountFen = 19_900
+		_, err := p.SubmitCommand(context.Background(), cmd(different))
+		if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+			t.Fatalf("content conflict must be ErrPlatformInvalidResponse, got %v", err)
+		}
+		if after := creates(); after != 1 {
+			t.Fatalf("the conflict must not create anything new, creates = %d", after)
+		}
+	})
+}
+
 // TestFakeAdapterContract registers the fake leg of the shared contract
 // table (the Lago leg joins in lago_test.go once the adapter exists).
 func TestFakeAdapterContract(t *testing.T) {
@@ -158,6 +230,11 @@ func TestFakeAdapterContract(t *testing.T) {
 		Reason:    "unconfigured",
 	})
 	runPlatformContract(t, "fake-unavailable", unavailable, func() bool { return false }, 102)
+
+	// The publish leg against the fake: the fake exposes Commands() so the
+	// contract can observe that a replay creates nothing.
+	publishFake := NewFakeAdapter()
+	runPublishContract(t, "fake", publishFake, func() int { return len(publishFake.Commands()) })
 }
 
 // TestLagoAdapterContract registers the stub-backed Lago leg of the SAME
@@ -168,6 +245,16 @@ func TestFakeAdapterContract(t *testing.T) {
 func TestLagoAdapterContract(t *testing.T) {
 	stub := newCustomersStub(t, http.StatusNotFound, http.StatusOK)
 	runPlatformContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), func() bool { return true }, 103)
+}
+
+// TestLagoAdapterPublishContract registers the stub-backed Lago leg of the
+// shared publish contract: the same legs the fake runs, observed through
+// the stub's POST /api/v1/plans count.
+func TestLagoAdapterPublishContract(t *testing.T) {
+	stub := newPlanStub(t)
+	stub.readbackAmountCen = 9900
+	stub.createStatuses = []int{http.StatusCreated, http.StatusUnprocessableEntity}
+	runPublishContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), stub.countCreatePosts)
 }
 
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no

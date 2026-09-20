@@ -527,14 +527,15 @@ func TestLagoAccountSnapshotTruth(t *testing.T) {
 	})
 }
 
-// TestLagoRemainingKindsStillFailClosed: Reconcile and unknown command kinds
-// stay frozen (ErrPlatformUnsupported) even with the customers surface
-// enabled; no request is issued for them.
+// TestLagoRemainingKindsStillFailClosed: Reconcile and command kinds outside
+// the enabled set (ensure_customer, publish_plan_version) stay frozen
+// (ErrPlatformUnsupported) even with the customers surface enabled; no
+// request is issued for them.
 func TestLagoRemainingKindsStillFailClosed(t *testing.T) {
 	stub := newCustomersStub(t, http.StatusOK, http.StatusOK)
 	p := NewLagoAdapter(lagoTestConfig(stub.url()))
 	if _, err := p.SubmitCommand(context.Background(), commercial.Command{
-		Kind: commercial.CommandKind("publish_plan_version"), Key: "k",
+		Kind: commercial.CommandKind("ensure_subscription"), Key: "k",
 	}); !errors.Is(err, commercial.ErrPlatformUnsupported) {
 		t.Fatalf("unknown kind must fail closed, got %v", err)
 	}

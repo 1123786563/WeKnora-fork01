@@ -788,6 +788,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.BillingAccountService) {
 		h.SetBillingAccountService(s)
 	}))
+	// T07 (#79): the plan-version lifecycle service (draft → six-axis
+	// validate → idempotent publish through the seam above). Registered in
+	// the SAME block, away from the pre-craft-Invoke provider block around
+	// the OpenMeter gateway (the ordering trap documented there). A nil
+	// platform from empty env stays legal: drafts and validation work,
+	// publish fails closed unconfigured (blocked-env).
+	must(container.Provide(commercialsvc.NewPlanVersionService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.PlanVersionService) {
+		h.SetPlanVersionService(s)
+	}))
 	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
 	// handlers (installations, connections incl. OAuth, sync status,
 	// actions), each owning its routes and write gate.

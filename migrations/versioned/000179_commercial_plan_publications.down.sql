@@ -1,0 +1,3 @@
+DROP TRIGGER IF EXISTS trg_commercial_plan_catalog_published_immutable ON commercial_plan_catalog;
+DROP FUNCTION IF EXISTS commercial_plan_catalog_published_immutable();
+DROP TABLE IF EXISTS commercial_plan_publications;
