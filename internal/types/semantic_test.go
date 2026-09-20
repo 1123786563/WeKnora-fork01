@@ -1,6 +1,7 @@
 package types
 
 import (
+	"reflect"
 	"testing"
 
 	semanticpb "github.com/Tencent/WeKnora/semantic/proto"
@@ -22,7 +23,10 @@ func TestSemanticApplyAllowsNonDeletedRevision(t *testing.T) {
 
 func TestSemanticDocumentRevisionWireRoundTrip(t *testing.T) {
 	original := SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, ContentHash: "hash", Deleted: false}
-	wire := SemanticDocumentRevisionToWire(original)
+	wire, err := SemanticDocumentRevisionToWire(original)
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := SemanticDocumentRevisionFromWire(wire)
 	if err != nil || result != original {
 		t.Fatalf("round trip = %#v, %v", result, err)
@@ -31,7 +35,10 @@ func TestSemanticDocumentRevisionWireRoundTrip(t *testing.T) {
 
 func TestSemanticOperationRefWireRoundTrip(t *testing.T) {
 	original := SemanticOperationRef{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, OperationID: "op"}
-	wire := SemanticOperationRefToWire(original)
+	wire, err := SemanticOperationRefToWire(original)
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := SemanticOperationRefFromWire(wire)
 	if err != nil || result != original {
 		t.Fatalf("round trip = %#v, %v", result, err)
@@ -46,7 +53,7 @@ func TestSemanticOperationWireRoundTrip(t *testing.T) {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticOperationFromWire(wire)
-	if err != nil || result.OperationID != original.OperationID || result.State != original.State || result.ResultGeneration == nil || *result.ResultGeneration != "g" {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
@@ -65,44 +72,47 @@ func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 }
 
 func TestSemanticSearchResponseWireRoundTrip(t *testing.T) {
-	original := SemanticSearchResponse{QueryID: "q", Generation: "g", RequestedMode: SemanticRetrievalModeGraphRAG, ActualMode: SemanticRetrievalModeGraphRAG, Evidence: []SemanticEvidence{{EvidenceID: "e", DocumentID: "d", Revision: 1, ChunkID: "c", ContentHash: "h", Quote: "text"}}, AssertionIDs: []string{"a"}, Paths: [][]string{{"a", "b"}}, Partial: true}
+	start, end := uint32(2), uint32(5)
+	original := SemanticSearchResponse{QueryID: "q", Generation: "g", RequestedMode: SemanticRetrievalModeGraphRAG, ActualMode: SemanticRetrievalModeGraphRAG, Evidence: []SemanticEvidence{{EvidenceID: "e", DocumentID: "d", Revision: 1, ChunkID: "c", ContentHash: "h", Quote: "text", StartChar: &start, EndChar: &end}}, AssertionIDs: []string{"a"}, Paths: [][]string{{"a", "b"}}, Stale: true, Partial: true, Truncated: true}
 	wire, err := SemanticSearchResponseToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticSearchResponseFromWire(wire)
-	if err != nil || result.QueryID != original.QueryID || len(result.Evidence) != 1 || !result.Partial || len(result.Paths) != 1 {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
 
 func TestSemanticReasonResponseWireRoundTripPreservesAbsentConclusion(t *testing.T) {
-	original := SemanticReasonResponse{Status: SemanticReasonStatusInsufficientEvidence, Limitations: []string{"missing"}}
+	version, kind := "model-v1", "rule"
+	retrieval := SemanticSearchResponse{QueryID: "q", Generation: "g", RequestedMode: SemanticRetrievalModeReason, ActualMode: SemanticRetrievalModeReason}
+	original := SemanticReasonResponse{Status: SemanticReasonStatusInsufficientEvidence, Retrieval: &retrieval, ConclusionKind: &kind, PremiseIDs: []string{"p1"}, RuleIDs: []string{"r1"}, ModelVersion: &version, Limitations: []string{"missing"}}
 	wire, err := SemanticReasonResponseToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticReasonResponseFromWire(wire)
-	if err != nil || result.Status != original.Status || result.Conclusion != nil || len(result.Limitations) != 1 {
+	if err != nil || !reflect.DeepEqual(result, original) || result.Conclusion != nil {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
 
 func TestSemanticSearchRequestWireRoundTrip(t *testing.T) {
-	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: "PURPOSE_SEARCH", BudgetRef: "budget"}
+	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: SemanticAccessPurposeSearch, BudgetRef: "budget"}
 	original := SemanticSearchRequest{QueryID: "q", Query: "query", AccessScope: scope, Limits: SemanticQueryLimits{MaxHops: 2, MaxNodes: 10, MaxEdges: 20, TopK: 3, MaxTokens: 100, DeadlineMS: 1000}, RequestedMode: SemanticRetrievalModeGraphRAG}
 	wire, err := SemanticSearchRequestToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticSearchRequestFromWire(wire)
-	if err != nil || result.QueryID != original.QueryID || result.Limits.MaxNodes != 10 || result.RequestedMode != original.RequestedMode {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
 
 func TestSemanticReasonRequestWireRoundTrip(t *testing.T) {
-	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: "PURPOSE_REASON", BudgetRef: "budget"}
+	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 2, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: SemanticAccessPurposeReason, BudgetRef: "budget"}
 	search := SemanticSearchRequest{QueryID: "q", Query: "query", AccessScope: scope, Limits: SemanticQueryLimits{MaxHops: 2}, RequestedMode: SemanticRetrievalModeReason}
 	original := SemanticReasonRequest{Search: search, ReasoningMode: SemanticReasoningModeRules, RuleSetVersion: "v1"}
 	wire, err := SemanticReasonRequestToWire(original)
@@ -110,19 +120,28 @@ func TestSemanticReasonRequestWireRoundTrip(t *testing.T) {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticReasonRequestFromWire(wire)
-	if err != nil || result.ReasoningMode != original.ReasoningMode || result.RuleSetVersion != "v1" {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
 
+func TestSemanticReasonRequestRejectsSearchScope(t *testing.T) {
+	scope := SemanticAccessScope{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, SubjectID: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 1, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: SemanticAccessPurposeSearch, BudgetRef: "budget"}
+	_, err := SemanticReasonRequestToWire(SemanticReasonRequest{Search: SemanticSearchRequest{QueryID: "q", Query: "query", AccessScope: scope, RequestedMode: SemanticRetrievalModeGraphRAG}, ReasoningMode: SemanticReasoningModeRules, RuleSetVersion: "v1"})
+	if err == nil {
+		t.Fatal("expected reason request scope/mode rejection")
+	}
+}
+
 func TestSemanticApplyRequestWireRoundTrip(t *testing.T) {
-	original := SemanticApplyRequest{Document: SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, ContentHash: "h"}, Chunks: []SemanticChunkSnapshot{{ChunkID: "c", Text: "text", ContentHash: "ch"}}, Config: SemanticIndexConfig{ConfigDigest: "d", EngineVersion: "e", ModelProfileRef: "m", PromptVersion: "p", RuleSetVersion: "r", SchemaVersion: "s"}, IdempotencyKey: "idem", PayloadHash: "payload"}
+	manifest := "manifest-v1"
+	original := SemanticApplyRequest{Document: SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, ContentHash: "h"}, Chunks: []SemanticChunkSnapshot{{ChunkID: "c", Text: "text", ContentHash: "ch"}}, Config: SemanticIndexConfig{ConfigDigest: "d", EngineVersion: "e", ModelProfileRef: "m", PromptVersion: "p", RuleSetVersion: "r", SchemaVersion: "s"}, IdempotencyKey: "idem", PayloadHash: "payload", ManifestRef: &manifest}
 	wire, err := SemanticApplyRequestToWire(original)
 	if err != nil {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticApplyRequestFromWire(wire)
-	if err != nil || result.IdempotencyKey != original.IdempotencyKey || len(result.Chunks) != 1 || result.Document.Deleted {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
@@ -134,7 +153,7 @@ func TestSemanticCapabilitiesWireRoundTrip(t *testing.T) {
 		t.Fatalf("to wire: %v", err)
 	}
 	result, err := SemanticCapabilitiesFromWire(wire)
-	if err != nil || result.ProtocolVersion != original.ProtocolVersion || len(result.RetrievalModes) != 1 {
+	if err != nil || !reflect.DeepEqual(result, original) {
 		t.Fatalf("round trip = %#v, %v", result, err)
 	}
 }
@@ -162,7 +181,11 @@ func TestSemanticEvidencePreservesAbsentSpanAndAccessScope(t *testing.T) {
 	if err != nil || scope.PermissionEpoch != 2 || scope.ExpiresAt != "2026-09-20T00:00:00Z" {
 		t.Fatalf("scope = %#v, %v", scope, err)
 	}
-	roundTrip, err := SemanticAccessScopeFromWire(SemanticAccessScopeToWire(scope))
+	accessWire, err := SemanticAccessScopeToWire(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := SemanticAccessScopeFromWire(accessWire)
 	if err != nil || roundTrip != scope {
 		t.Fatalf("scope round trip = %#v, %v", roundTrip, err)
 	}

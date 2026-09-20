@@ -12,6 +12,28 @@ type SemanticScopeKey struct {
 	KBID     string
 }
 
+type SemanticAccessPurpose string
+
+const (
+	SemanticAccessPurposeSearch SemanticAccessPurpose = "search"
+	SemanticAccessPurposeReason SemanticAccessPurpose = "reason"
+	SemanticAccessPurposeIndex  SemanticAccessPurpose = "index"
+)
+
+func SemanticScopeKeyFromWire(wire *semanticpb.ScopeKey) (SemanticScopeKey, error) {
+	if wire == nil || wire.TenantId == 0 || wire.KbId == "" {
+		return SemanticScopeKey{}, fmt.Errorf("semantic scope key is incomplete")
+	}
+	return SemanticScopeKey{TenantID: wire.TenantId, KBID: wire.KbId}, nil
+}
+
+func SemanticScopeKeyToWire(value SemanticScopeKey) (*semanticpb.ScopeKey, error) {
+	if value.TenantID == 0 || value.KBID == "" {
+		return nil, fmt.Errorf("semantic scope key is incomplete")
+	}
+	return &semanticpb.ScopeKey{TenantId: value.TenantID, KbId: value.KBID}, nil
+}
+
 type SemanticDocumentRevision struct {
 	Scope       SemanticScopeKey
 	DocumentID  string
@@ -48,15 +70,19 @@ type SemanticOperation struct {
 }
 
 func SemanticOperationFromWire(wire *semanticpb.Operation) (SemanticOperation, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.OperationId == "" || wire.DocumentId == "" || wire.Revision == 0 || wire.Stage == "" {
+	if wire == nil || wire.OperationId == "" || wire.DocumentId == "" || wire.Revision == 0 || wire.Stage == "" {
 		return SemanticOperation{}, fmt.Errorf("semantic operation is incomplete")
+	}
+	scope, err := SemanticScopeKeyFromWire(wire.Scope)
+	if err != nil {
+		return SemanticOperation{}, err
 	}
 	states := map[semanticpb.OperationState]SemanticOperationState{semanticpb.OperationState_OPERATION_STATE_PENDING: SemanticOperationStatePending, semanticpb.OperationState_OPERATION_STATE_RUNNING: SemanticOperationStateRunning, semanticpb.OperationState_OPERATION_STATE_SUCCEEDED: SemanticOperationStateSucceeded, semanticpb.OperationState_OPERATION_STATE_FAILED: SemanticOperationStateFailed, semanticpb.OperationState_OPERATION_STATE_CANCELLED: SemanticOperationStateCancelled}
 	state, ok := states[wire.State]
 	if !ok {
 		return SemanticOperation{}, fmt.Errorf("unsupported semantic operation state")
 	}
-	result := SemanticOperation{OperationID: wire.OperationId, Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, State: state, Stage: wire.Stage, LeaseToken: wire.LeaseToken}
+	result := SemanticOperation{OperationID: wire.OperationId, Scope: scope, DocumentID: wire.DocumentId, Revision: wire.Revision, State: state, Stage: wire.Stage, LeaseToken: wire.LeaseToken}
 	if wire.ResultGeneration != nil {
 		result.ResultGeneration = wire.ResultGeneration
 	}
@@ -75,7 +101,11 @@ func SemanticOperationToWire(value SemanticOperation) (*semanticpb.Operation, er
 	if !ok {
 		return nil, fmt.Errorf("unsupported semantic operation state")
 	}
-	wire := &semanticpb.Operation{OperationId: value.OperationID, Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, DocumentId: value.DocumentID, Revision: value.Revision, State: state, Stage: value.Stage, LeaseToken: value.LeaseToken}
+	scope, err := SemanticScopeKeyToWire(value.Scope)
+	if err != nil {
+		return nil, err
+	}
+	wire := &semanticpb.Operation{OperationId: value.OperationID, Scope: scope, DocumentId: value.DocumentID, Revision: value.Revision, State: state, Stage: value.Stage, LeaseToken: value.LeaseToken}
 	if value.ResultGeneration != nil {
 		wire.ResultGeneration = value.ResultGeneration
 	}
@@ -86,21 +116,36 @@ func SemanticOperationToWire(value SemanticOperation) (*semanticpb.Operation, er
 }
 
 func SemanticOperationRefFromWire(wire *semanticpb.OperationRef) (SemanticOperationRef, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.OperationId == "" {
+	if wire == nil || wire.OperationId == "" {
 		return SemanticOperationRef{}, fmt.Errorf("semantic operation reference is incomplete")
 	}
-	return SemanticOperationRef{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, OperationID: wire.OperationId}, nil
+	scope, err := SemanticScopeKeyFromWire(wire.Scope)
+	if err != nil {
+		return SemanticOperationRef{}, err
+	}
+	return SemanticOperationRef{Scope: scope, OperationID: wire.OperationId}, nil
 }
 
-func SemanticOperationRefToWire(value SemanticOperationRef) *semanticpb.OperationRef {
-	return &semanticpb.OperationRef{Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, OperationId: value.OperationID}
+func SemanticOperationRefToWire(value SemanticOperationRef) (*semanticpb.OperationRef, error) {
+	if value.OperationID == "" {
+		return nil, fmt.Errorf("semantic operation reference is incomplete")
+	}
+	scope, err := SemanticScopeKeyToWire(value.Scope)
+	if err != nil {
+		return nil, err
+	}
+	return &semanticpb.OperationRef{Scope: scope, OperationId: value.OperationID}, nil
 }
 
 func SemanticDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (SemanticDocumentRevision, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.DocumentId == "" || wire.Revision == 0 {
+	if wire == nil || wire.DocumentId == "" || wire.Revision == 0 {
 		return SemanticDocumentRevision{}, fmt.Errorf("semantic document revision is incomplete")
 	}
-	return SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, ContentHash: wire.ContentHash, Deleted: wire.Deleted}, nil
+	scope, err := SemanticScopeKeyFromWire(wire.Scope)
+	if err != nil {
+		return SemanticDocumentRevision{}, err
+	}
+	return SemanticDocumentRevision{Scope: scope, DocumentID: wire.DocumentId, Revision: wire.Revision, ContentHash: wire.ContentHash, Deleted: wire.Deleted}, nil
 }
 
 func SemanticDeleteDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (SemanticDocumentRevision, error) {
@@ -114,14 +159,21 @@ func SemanticDeleteDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (
 	return revision, nil
 }
 
-func SemanticDocumentRevisionToWire(value SemanticDocumentRevision) *semanticpb.DocumentRevision {
+func SemanticDocumentRevisionToWire(value SemanticDocumentRevision) (*semanticpb.DocumentRevision, error) {
+	if value.DocumentID == "" || value.Revision == 0 {
+		return nil, fmt.Errorf("semantic document revision is incomplete")
+	}
+	scope, err := SemanticScopeKeyToWire(value.Scope)
+	if err != nil {
+		return nil, err
+	}
 	return &semanticpb.DocumentRevision{
-		Scope:       &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID},
+		Scope:       scope,
 		DocumentId:  value.DocumentID,
 		Revision:    value.Revision,
 		ContentHash: value.ContentHash,
 		Deleted:     value.Deleted,
-	}
+	}, nil
 }
 
 type SemanticRetrievalMode string
@@ -173,35 +225,49 @@ type SemanticAccessScope struct {
 	Scope                                                          SemanticScopeKey
 	SubjectID, ScopeRef, ScopeHash, ExpiresAt, Audience, BudgetRef string
 	PermissionEpoch                                                uint64
-	Purpose                                                        string
+	Purpose                                                        SemanticAccessPurpose
 }
 
 func SemanticAccessScopeFromWire(wire *semanticpb.AccessScope) (SemanticAccessScope, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.TenantId == 0 || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
+	if wire == nil || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope is incomplete")
+	}
+	scope, err := SemanticScopeKeyFromWire(wire.Scope)
+	if err != nil {
+		return SemanticAccessScope{}, err
 	}
 	if _, err := time.Parse(time.RFC3339, wire.ExpiresAt); err != nil {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope expiry is invalid")
 	}
-	purposes := map[semanticpb.Purpose]string{semanticpb.Purpose_PURPOSE_SEARCH: "PURPOSE_SEARCH", semanticpb.Purpose_PURPOSE_REASON: "PURPOSE_REASON", semanticpb.Purpose_PURPOSE_INDEX: "PURPOSE_INDEX"}
+	purposes := map[semanticpb.Purpose]SemanticAccessPurpose{semanticpb.Purpose_PURPOSE_SEARCH: SemanticAccessPurposeSearch, semanticpb.Purpose_PURPOSE_REASON: SemanticAccessPurposeReason, semanticpb.Purpose_PURPOSE_INDEX: SemanticAccessPurposeIndex}
 	purpose, ok := purposes[wire.Purpose]
 	if !ok {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope purpose is unsupported")
 	}
-	return SemanticAccessScope{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, ExpiresAt: wire.ExpiresAt, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
+	return SemanticAccessScope{Scope: scope, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, ExpiresAt: wire.ExpiresAt, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
 }
 
-func SemanticAccessScopeToWire(value SemanticAccessScope) *semanticpb.AccessScope {
-	purposes := map[string]semanticpb.Purpose{
-		"PURPOSE_SEARCH": semanticpb.Purpose_PURPOSE_SEARCH,
-		"PURPOSE_REASON": semanticpb.Purpose_PURPOSE_REASON,
-		"PURPOSE_INDEX":  semanticpb.Purpose_PURPOSE_INDEX,
+func SemanticAccessScopeToWire(value SemanticAccessScope) (*semanticpb.AccessScope, error) {
+	purposes := map[SemanticAccessPurpose]semanticpb.Purpose{
+		SemanticAccessPurposeSearch: semanticpb.Purpose_PURPOSE_SEARCH,
+		SemanticAccessPurposeReason: semanticpb.Purpose_PURPOSE_REASON,
+		SemanticAccessPurposeIndex:  semanticpb.Purpose_PURPOSE_INDEX,
 	}
 	purpose, ok := purposes[value.Purpose]
 	if !ok {
-		panic("unsupported semantic access scope purpose")
+		return nil, fmt.Errorf("unsupported semantic access scope purpose")
 	}
-	return &semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, SubjectId: value.SubjectID, ScopeRef: value.ScopeRef, ScopeHash: value.ScopeHash, PermissionEpoch: value.PermissionEpoch, ExpiresAt: value.ExpiresAt, Audience: value.Audience, Purpose: purpose, BudgetRef: value.BudgetRef}
+	if _, err := time.Parse(time.RFC3339, value.ExpiresAt); err != nil {
+		return nil, fmt.Errorf("semantic access scope expiry is invalid")
+	}
+	scope, err := SemanticScopeKeyToWire(value.Scope)
+	if err != nil {
+		return nil, err
+	}
+	if value.SubjectID == "" || value.ScopeRef == "" || value.ScopeHash == "" || value.Audience == "" || value.BudgetRef == "" {
+		return nil, fmt.Errorf("semantic access scope is incomplete")
+	}
+	return &semanticpb.AccessScope{Scope: scope, SubjectId: value.SubjectID, ScopeRef: value.ScopeRef, ScopeHash: value.ScopeHash, PermissionEpoch: value.PermissionEpoch, ExpiresAt: value.ExpiresAt, Audience: value.Audience, Purpose: purpose, BudgetRef: value.BudgetRef}, nil
 }
 
 func semanticRetrievalModeFromWire(mode semanticpb.RetrievalMode) (SemanticRetrievalMode, error) {
@@ -230,7 +296,7 @@ func SemanticSearchResponseFromWire(wire *semanticpb.SearchResponse) (SemanticSe
 	if requested == SemanticRetrievalModeGraphRAG && actual == SemanticRetrievalModeReason {
 		return SemanticSearchResponse{}, fmt.Errorf("semantic search cannot implicitly upgrade graph_rag to reason")
 	}
-	evidence := make([]SemanticEvidence, 0, len(wire.Evidence))
+	var evidence []SemanticEvidence
 	for _, item := range wire.Evidence {
 		mapped, err := SemanticEvidenceFromWire(item)
 		if err != nil {
@@ -238,7 +304,7 @@ func SemanticSearchResponseFromWire(wire *semanticpb.SearchResponse) (SemanticSe
 		}
 		evidence = append(evidence, mapped)
 	}
-	paths := make([][]string, 0, len(wire.Paths))
+	var paths [][]string
 	for _, path := range wire.Paths {
 		paths = append(paths, append([]string(nil), path.Ids...))
 	}
@@ -299,6 +365,9 @@ func SemanticReasonRequestFromWire(wire *semanticpb.ReasonRequest) (SemanticReas
 	if err != nil {
 		return SemanticReasonRequest{}, err
 	}
+	if search.RequestedMode != SemanticRetrievalModeReason || search.AccessScope.Purpose != SemanticAccessPurposeReason {
+		return SemanticReasonRequest{}, fmt.Errorf("reason request requires reason mode and purpose")
+	}
 	modes := map[semanticpb.ReasoningMode]SemanticReasoningMode{semanticpb.ReasoningMode_REASONING_MODE_RULES: SemanticReasoningModeRules, semanticpb.ReasoningMode_REASONING_MODE_MODEL: SemanticReasoningModeModel}
 	mode, ok := modes[wire.ReasoningMode]
 	if !ok {
@@ -316,6 +385,9 @@ func SemanticReasonRequestToWire(value SemanticReasonRequest) (*semanticpb.Reaso
 	search, err := SemanticSearchRequestToWire(value.Search)
 	if err != nil {
 		return nil, err
+	}
+	if value.Search.RequestedMode != SemanticRetrievalModeReason || value.Search.AccessScope.Purpose != SemanticAccessPurposeReason {
+		return nil, fmt.Errorf("reason request requires reason mode and purpose")
 	}
 	return &semanticpb.ReasonRequest{Search: search, ReasoningMode: mode, RuleSetVersion: value.RuleSetVersion}, nil
 }
@@ -448,7 +520,11 @@ func SemanticApplyRequestToWire(value SemanticApplyRequest) (*semanticpb.ApplyRe
 		}
 		chunks = append(chunks, &semanticpb.ChunkSnapshot{ChunkId: chunk.ChunkID, Text: chunk.Text, ContentHash: chunk.ContentHash})
 	}
-	wire := &semanticpb.ApplyRequest{Document: SemanticDocumentRevisionToWire(value.Document), Chunks: chunks, Config: &semanticpb.IndexConfig{ConfigDigest: value.Config.ConfigDigest, EngineVersion: value.Config.EngineVersion, ModelProfileRef: value.Config.ModelProfileRef, PromptVersion: value.Config.PromptVersion, RuleSetVersion: value.Config.RuleSetVersion, SchemaVersion: value.Config.SchemaVersion}, IdempotencyKey: value.IdempotencyKey, PayloadHash: value.PayloadHash}
+	document, err := SemanticDocumentRevisionToWire(value.Document)
+	if err != nil {
+		return nil, err
+	}
+	wire := &semanticpb.ApplyRequest{Document: document, Chunks: chunks, Config: &semanticpb.IndexConfig{ConfigDigest: value.Config.ConfigDigest, EngineVersion: value.Config.EngineVersion, ModelProfileRef: value.Config.ModelProfileRef, PromptVersion: value.Config.PromptVersion, RuleSetVersion: value.Config.RuleSetVersion, SchemaVersion: value.Config.SchemaVersion}, IdempotencyKey: value.IdempotencyKey, PayloadHash: value.PayloadHash}
 	if value.ManifestRef != nil {
 		wire.ManifestRef = value.ManifestRef
 	}
@@ -476,7 +552,7 @@ func SemanticSearchRequestFromWire(wire *semanticpb.SearchRequest) (SemanticSear
 	if !ok {
 		return SemanticSearchRequest{}, fmt.Errorf("unsupported requested retrieval mode")
 	}
-	if (mode == SemanticRetrievalModeGraphRAG && scope.Purpose != "PURPOSE_SEARCH") || (mode == SemanticRetrievalModeReason && scope.Purpose != "PURPOSE_REASON") {
+	if (mode == SemanticRetrievalModeGraphRAG && scope.Purpose != SemanticAccessPurposeSearch) || (mode == SemanticRetrievalModeReason && scope.Purpose != SemanticAccessPurposeReason) {
 		return SemanticSearchRequest{}, fmt.Errorf("semantic search request purpose is incompatible with requested mode")
 	}
 	if wire.Limits == nil {
@@ -494,10 +570,14 @@ func SemanticSearchRequestToWire(value SemanticSearchRequest) (*semanticpb.Searc
 	if value.QueryID == "" || value.Query == "" {
 		return nil, fmt.Errorf("semantic search request is incomplete")
 	}
-	if (value.RequestedMode == SemanticRetrievalModeGraphRAG && value.AccessScope.Purpose != "PURPOSE_SEARCH") || (value.RequestedMode == SemanticRetrievalModeReason && value.AccessScope.Purpose != "PURPOSE_REASON") {
+	if (value.RequestedMode == SemanticRetrievalModeGraphRAG && value.AccessScope.Purpose != SemanticAccessPurposeSearch) || (value.RequestedMode == SemanticRetrievalModeReason && value.AccessScope.Purpose != SemanticAccessPurposeReason) {
 		return nil, fmt.Errorf("semantic search request purpose is incompatible with requested mode")
 	}
-	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: SemanticAccessScopeToWire(value.AccessScope), Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, RequestedMode: mode}, nil
+	scope, err := SemanticAccessScopeToWire(value.AccessScope)
+	if err != nil {
+		return nil, err
+	}
+	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: scope, Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, RequestedMode: mode}, nil
 }
 
 func SemanticReasonResponseFromWire(wire *semanticpb.ReasonResponse) (SemanticReasonResponse, error) {

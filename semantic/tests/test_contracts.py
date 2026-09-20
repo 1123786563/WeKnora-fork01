@@ -178,6 +178,17 @@ def test_access_scope_rejects_invalid_expiry_and_empty_budget() -> None:
             raise AssertionError("expected access scope validation")
 
 
+def test_access_scope_rejects_naive_expiry_and_zero_tenant() -> None:
+    from semantic_service.contracts import AccessScope, ScopeKey
+    for tenant, expiry in ((1, "2026-09-20T00:00:00"), (0, "2026-09-20T00:00:00Z")):
+        try:
+            AccessScope(ScopeKey(tenant, "kb"), "user", "ref", "hash", 1, expiry, "semantic", "search", "budget")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected invalid access scope rejection")
+
+
 def test_operation_wire_round_trip_preserves_state() -> None:
     from semantic_service.contracts import Operation, ScopeKey, operation_from_wire, operation_to_wire
 

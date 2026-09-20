@@ -10,6 +10,12 @@ from datetime import datetime
 UINT64_MAX = 2**64 - 1
 
 
+class AccessPurpose(str, Enum):
+    SEARCH = "search"
+    REASON = "reason"
+    INDEX = "index"
+
+
 def _uint(value: object, maximum: int, name: str, *, nonzero: bool = False) -> None:
     if type(value) is not int or value < (1 if nonzero else 0) or value > maximum:
         raise ValueError(f"{name} must be an unsigned integer")
@@ -21,7 +27,7 @@ class ScopeKey:
     kb_id: str
 
     def __post_init__(self) -> None:
-        _uint(self.tenant_id, UINT64_MAX, "tenant_id")
+        _uint(self.tenant_id, UINT64_MAX, "tenant_id", nonzero=True)
         if not self.kb_id:
             raise ValueError("tenant_id must be uint64 and kb_id is required")
 
@@ -110,17 +116,21 @@ class AccessScope:
     permission_epoch: int
     expires_at: str
     audience: str
-    purpose: str
+    purpose: AccessPurpose | str
     budget_ref: str
 
     def __post_init__(self) -> None:
         _uint(self.scope.tenant_id, UINT64_MAX, "tenant_id", nonzero=True)
         _uint(self.permission_epoch, UINT64_MAX, "permission_epoch")
         try:
-            datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
+            expiry = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
         except ValueError as exc:
             raise ValueError("expires_at must be an ISO-8601 timestamp") from exc
-        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose or not self.budget_ref:
+        if expiry.tzinfo is None or expiry.utcoffset() is None:
+            raise ValueError("expires_at must include a timezone")
+        if self.purpose not in {AccessPurpose.SEARCH, AccessPurpose.REASON, AccessPurpose.INDEX}:
+            raise ValueError("access scope purpose is unsupported")
+        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.budget_ref:
             raise ValueError("access scope identity fields are required")
 
 
@@ -178,7 +188,7 @@ class SearchRequest:
     def __post_init__(self) -> None:
         if not self.query_id or not self.query or self.requested_mode not in {"graph_rag", "reason"}:
             raise ValueError("search request is invalid")
-        expected_purpose = "search" if self.requested_mode == "graph_rag" else "reason"
+        expected_purpose = AccessPurpose.SEARCH if self.requested_mode == "graph_rag" else AccessPurpose.REASON
         if self.access_scope.purpose != expected_purpose:
             raise ValueError("search request purpose is incompatible with requested mode")
 
@@ -192,7 +202,7 @@ class ReasonRequest:
     def __post_init__(self) -> None:
         if self.reasoning_mode not in {"rules", "model"} or not self.rule_set_version:
             raise ValueError("reason request is invalid")
-        if self.search.requested_mode != "reason" or self.search.access_scope.purpose != "reason":
+        if self.search.requested_mode != "reason" or self.search.access_scope.purpose != AccessPurpose.REASON:
             raise ValueError("reason request requires a reason-scoped retrieval request")
 
 
@@ -296,7 +306,7 @@ def access_scope_to_wire(value: AccessScope):
 def access_scope_from_wire(wire) -> AccessScope:
     from semantic_service.proto import semantic_pb2
 
-    purposes = {semantic_pb2.PURPOSE_SEARCH: "search", semantic_pb2.PURPOSE_REASON: "reason", semantic_pb2.PURPOSE_INDEX: "index"}
+    purposes = {semantic_pb2.PURPOSE_SEARCH: AccessPurpose.SEARCH, semantic_pb2.PURPOSE_REASON: AccessPurpose.REASON, semantic_pb2.PURPOSE_INDEX: AccessPurpose.INDEX}
     if wire.purpose not in purposes:
         raise ValueError("unknown access scope purpose")
     return AccessScope(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.subject_id, wire.scope_ref, wire.scope_hash, wire.permission_epoch, wire.expires_at, wire.audience, purposes[wire.purpose], wire.budget_ref)
