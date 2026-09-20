@@ -8,7 +8,7 @@
 #   down           stop the stack (named data volumes are preserved)
 #   status         print the Task 1 health snapshot JSON
 #   config         print the resolved Compose config with secrets redacted
-#   contract-probe reserved for Task 3
+#   contract-probe run the real Customer create/delete contract probe (API key comes from the caller environment)
 
 set -euo pipefail
 
@@ -170,8 +170,13 @@ PY
 }
 
 cmd_contract_probe() {
-  echo "contract-probe: not implemented yet (arrives with Task 3)" >&2
-  exit 1
+  ensure_env
+  local port
+  port="$(env_value LAGO_API_PORT)"
+  [[ -n "$port" ]] && export LAGO_API_PORT="$port"
+  # The API key is operator input: only inherited from the caller
+  # environment, never read from .env, logged, or written to reports.
+  exec python3 "$LAGO_DIR/contract_probe.py" "$@"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
