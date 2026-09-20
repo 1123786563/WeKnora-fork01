@@ -62,6 +62,12 @@ def test_delete_request_rejects_non_tombstone_revision() -> None:
         raise AssertionError("expected direct delete boundary validation")
 
 
+def test_delete_wire_round_trip_preserves_tombstone() -> None:
+    from semantic_service.contracts import DeleteDocumentRequest, DocumentRevision, ScopeKey, delete_request_from_wire, delete_request_to_wire
+    value = DeleteDocumentRequest(DocumentRevision(ScopeKey(1, "kb"), "doc", 1, "hash", True))
+    assert delete_request_from_wire(delete_request_to_wire(value)) == value
+
+
 def test_evidence_preserves_absent_span_and_access_scope_identity() -> None:
     from semantic_service.contracts import AccessScope, Evidence, ScopeKey
 
@@ -114,6 +120,18 @@ def test_reason_request_embeds_search_and_limits_reasoning_mode() -> None:
     request = ReasonRequest(search=search, reasoning_mode="rules", rule_set_version="v1")
 
     assert request.search is search and request.reasoning_mode == "rules"
+
+
+def test_reason_request_rejects_search_scoped_graph_rag() -> None:
+    from semantic_service.contracts import AccessScope, QueryLimits, ReasonRequest, ScopeKey, SearchRequest
+    scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
+    search = SearchRequest("q", "question", scope, QueryLimits(1, 1, 1, 1, 1, 1), "graph_rag")
+    try:
+        ReasonRequest(search, "rules", "v1")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected reason scope rejection")
 
 
 def test_search_response_echoes_modes_and_evidence() -> None:

@@ -57,6 +57,26 @@ class DeleteDocumentRequest:
         return cls(revision=revision)
 
 
+def document_revision_to_wire(value: DocumentRevision):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.DocumentRevision(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), document_id=value.document_id, revision=value.revision, content_hash=value.content_hash, deleted=value.deleted)
+
+
+def document_revision_from_wire(wire) -> DocumentRevision:
+    if wire is None or not wire.HasField("scope"):
+        raise ValueError("document revision scope is required")
+    return DocumentRevision(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, wire.content_hash, wire.deleted)
+
+
+def delete_request_to_wire(value: DeleteDocumentRequest):
+    value.revision.require_delete()
+    return document_revision_to_wire(value.revision)
+
+
+def delete_request_from_wire(wire) -> DeleteDocumentRequest:
+    return DeleteDocumentRequest.from_revision(document_revision_from_wire(wire))
+
+
 @dataclass(frozen=True)
 class Evidence:
     evidence_id: str
@@ -172,6 +192,8 @@ class ReasonRequest:
     def __post_init__(self) -> None:
         if self.reasoning_mode not in {"rules", "model"} or not self.rule_set_version:
             raise ValueError("reason request is invalid")
+        if self.search.requested_mode != "reason" or self.search.access_scope.purpose != "reason":
+            raise ValueError("reason request requires a reason-scoped retrieval request")
 
 
 @dataclass(frozen=True)
