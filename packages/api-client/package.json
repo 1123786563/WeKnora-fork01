@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./chat/native": "./src/chat/native.ts",
     "./embed": "./src/embed/client.ts",
+    "./mobile/runtime": "./src/mobile/runtime.ts",
     "./transport": "./src/transport/json.ts"
   },
   "dependencies": {
