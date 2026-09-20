@@ -28,6 +28,12 @@ var (
 	ErrFetchFailed      = errors.New("failed to fetch items from source")
 	ErrResourceNotFound = errors.New("resource not found in source system")
 
+	// ErrItemNotFound is returned by TargetedFetcher.FetchByExternalID when the
+	// requested external id no longer exists at the source (deleted, moved out
+	// of the configured resources, or unfetchable), so the scoped-reindex path
+	// can record a recognizable per-item failure instead of a generic one.
+	ErrItemNotFound = errors.New("item not found in source system")
+
 	// Knowledge base errors
 	ErrKnowledgeBaseNotFound = errors.New("knowledge base not found")
 

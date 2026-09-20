@@ -3,11 +3,13 @@ package notion
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -283,6 +285,53 @@ func (c *Connector) FetchIncremental(ctx context.Context, config *types.DataSour
 	logger.Infof(ctx, "[Notion] incremental: %d changed, %d total items", changedCount, len(changedItems))
 
 	return changedItems, buildCursor(newEditTimes), nil
+}
+
+// Notion supports targeted (scoped) reindex; the service asserts
+// datasource.TargetedFetcher to retry a single failed item without re-running
+// the whole resource discovery.
+var _ datasource.TargetedFetcher = (*Connector)(nil)
+
+// FetchByExternalID refetches a single page (or database record) by its page id
+// for a targeted reindex round, rebuilding the item through the regular
+// fetchPage path so its shape is identical to a normal sync. An attachment
+// external id ("<pageID>:<file name>") refetches its parent page and picks the
+// matching attachment item from the fan-out.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, config *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	notionCfg, err := parseNotionConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	client, err := newClient(notionCfg.APIKey, extractBaseURL(config))
+	if err != nil {
+		return nil, err
+	}
+
+	// An attachment id shares its parent page's id prefix.
+	pageID, _, _ := strings.Cut(externalID, ":")
+
+	page, err := client.GetPage(ctx, pageID)
+	if err != nil {
+		if errors.Is(err, datasource.ErrResourceNotFound) {
+			return nil, fmt.Errorf("%w: notion page %q: %v", datasource.ErrItemNotFound, pageID, err)
+		}
+		return nil, fmt.Errorf("get notion page %s: %w", pageID, err)
+	}
+
+	items := c.fetchPage(ctx, client, page, map[string]bool{})
+	for i := range items {
+		if items[i].ExternalID == externalID {
+			return &items[i], nil
+		}
+	}
+	return nil, fmt.Errorf(
+		"%w: notion page %s produced no item for %q",
+		datasource.ErrItemNotFound, pageID, externalID)
 }
 
 func buildCursor(editTimes map[string]time.Time) *types.SyncCursor {

@@ -3,6 +3,7 @@ package yuque
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -346,5 +347,75 @@ func (c *Connector) FetchIncremental(
 	return items, &types.SyncCursor{
 		LastSyncTime:    newCursor.LastSyncTime,
 		ConnectorCursor: cursorMap,
+	}, nil
+}
+
+// Yuque supports targeted (scoped) reindex; the service asserts
+// datasource.TargetedFetcher to retry a single failed item without re-listing
+// every book.
+var _ datasource.TargetedFetcher = (*Connector)(nil)
+
+// FetchByExternalID refetches a single doc by its numeric doc id for a
+// targeted reindex round. The doc detail response is self-sufficient (it
+// carries the book id and the book namespace), so the item is rebuilt exactly
+// like a normal sync's GetDocDetail path, including the same acceptance
+// filters as walk (published Markdown-family docs only). Docs that exist but
+// are not syncable (draft, non-Doc type, non-Markdown format) return a
+// descriptive error rather than ErrItemNotFound, so the per-item failure does
+// not read as "deleted at source".
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, config *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	docID, err := strconv.ParseInt(externalID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("%w: yuque doc id must be numeric, got %q", datasource.ErrItemNotFound, externalID)
+	}
+	cfg, err := parseYuqueConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	cli := newClient(cfg)
+
+	detail, err := cli.GetDocDetail(ctx, docID)
+	if err != nil {
+		if errors.Is(err, datasource.ErrInvalidCredentials) {
+			return nil, err // a credential problem is not a missing item
+		}
+		return nil, fmt.Errorf("%w: yuque doc %d: %v", datasource.ErrItemNotFound, docID, err)
+	}
+
+	// Acceptance filters mirroring walk(): empty values are tolerated
+	// (forward-compat with API variations that omit the field).
+	if detail.Type != "" && detail.Type != "Doc" {
+		return nil, fmt.Errorf("yuque doc %d has unsupported type %q (only Doc is syncable)", docID, detail.Type)
+	}
+	if detail.Status != "" && detail.Status != "1" {
+		return nil, fmt.Errorf("yuque doc %d has status %q (only published docs are syncable)", docID, detail.Status)
+	}
+	if detail.Format != "" && detail.Format != "markdown" && detail.Format != "lake" {
+		return nil, fmt.Errorf("yuque doc %d has unsupported format %q (body may not be Markdown)", docID, detail.Format)
+	}
+
+	docIDStr := strconv.FormatInt(detail.ID, 10)
+	bookIDStr := strconv.FormatInt(detail.BookID, 10)
+	return &types.FetchedItem{
+		ExternalID:       docIDStr,
+		Title:            detail.Title,
+		Content:          []byte(detail.Body),
+		ContentType:      "text/markdown",
+		FileName:         datasource.SanitizeFileName(detail.Title) + ".md",
+		URL:              buildDocURL(cfg.GetBaseURL(), detail.Book.Namespace, detail.Slug),
+		UpdatedAt:        parseContentUpdatedAt(detail.ContentUpdatedAt),
+		SourceResourceID: bookIDStr,
+		Metadata: map[string]string{
+			"doc_id":     docIDStr,
+			"book_id":    bookIDStr,
+			"slug":       detail.Slug,
+			"word_count": strconv.Itoa(detail.WordCount),
+			"channel":    types.ChannelYuque,
+		},
 	}, nil
 }

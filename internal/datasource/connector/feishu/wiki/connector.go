@@ -216,6 +216,74 @@ func (c *Connector) FetchStream(
 	return core.FetchStreamEngine(ctx, client, config, cursor, h, ops)
 }
 
+// Feishu supports targeted (scoped) reindex; the service asserts
+// datasource.TargetedFetcher to retry a single failed item without walking the
+// whole wiki.
+var _ datasource.TargetedFetcher = (*Connector)(nil)
+
+// FetchByExternalID refetches a single wiki node by its node token (the wiki
+// item's external id) for a targeted reindex round. The token alone does not
+// identify the wiki space, so every configured resource is probed
+// (deduplicated by space) through the single-node get_node API until the token
+// resolves; when no space knows the token a recognizable not-found error is
+// returned so the scoped-reindex caller can record a per-item failure. A
+// subtree child id ("<node>#<kind>#<token>", e.g. a failed attachment from a
+// prior sync's error sample) refetches its parent node and picks the matching
+// sub-item from the fetch fan-out, so the item shape and the
+// ReplacesSubtree/SubtreeKeep subtree contract are identical to a normal sync.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, config *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	feishuConfig, err := core.ParseFeishuConfig(config, c.region)
+	if err != nil {
+		return nil, err
+	}
+	client := core.NewClient(feishuConfig)
+
+	// A subtree child id shares its parent node's token prefix.
+	nodeToken, _, _ := strings.Cut(externalID, "#")
+
+	seenSpaces := make(map[string]bool)
+	for _, resourceID := range config.ResourceIDs {
+		spaceID, _ := parseWikiResourceID(resourceID)
+		if spaceID == "" || seenSpaces[spaceID] {
+			continue
+		}
+		seenSpaces[spaceID] = true
+
+		node, err := client.GetWikiNode(ctx, spaceID, nodeToken)
+		if err != nil {
+			// The token does not live in this space (or the space is
+			// inaccessible) — keep probing the remaining configured spaces.
+			logger.Debugf(ctx, "[Feishu] targeted refetch %s: probe space %s: %v", nodeToken, spaceID, err)
+			continue
+		}
+		if node.SpaceID != "" {
+			spaceID = node.SpaceID
+		}
+		items, err := fetchNodeContent(ctx, client, node, spaceID, resourceID, config.MultimodalEnabled, c.region)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			if it != nil && it.ExternalID == externalID {
+				return it, nil
+			}
+		}
+		// The node resolved but produced no item for this id (unsupported doc
+		// type, or a child id that no longer exists in the fan-out).
+		return nil, fmt.Errorf(
+			"%w: wiki node %s in space %s produced no item for %q",
+			datasource.ErrItemNotFound, nodeToken, spaceID, externalID)
+	}
+	return nil, fmt.Errorf(
+		"%w: wiki node %q not found in any configured space (%d probed)",
+		datasource.ErrItemNotFound, nodeToken, len(seenSpaces))
+}
+
 // wikiOps adapts the wiki Connector to the generic sync engine. It carries the
 // region (for URL rendering) and encodes/decodes the wiki cursor wire format
 // (core.FeishuCursor / space_node_times) so the engine can stay format-agnostic.

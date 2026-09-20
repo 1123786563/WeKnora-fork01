@@ -65,6 +65,28 @@ type FullSyncWithCursor interface {
 	) ([]types.FetchedItem, *types.SyncCursor, error)
 }
 
+// TargetedFetcher is optional. The scoped-reindex path uses it to re-fetch one
+// source item by its external id — e.g. retrying a document whose previous sync
+// attempt failed — without walking the whole resource tree. Connectors that
+// omit it make the service degrade to rejecting a scoped reindex with a "run a
+// normal sync instead" hint (type assertion, same pattern as
+// FullSyncWithCursor).
+//
+// The returned item must be the same complete, standalone item the connector
+// emits from FetchAll/FetchStream for that id — including the
+// ReplacesSubtree/SubtreeKeep subtree contract: a fetch path that does not set
+// ReplacesSubtree in normal syncs must keep it unset here, so a targeted
+// re-ingest never sweeps prior children it cannot re-list. When the item no
+// longer exists at the source, return an error wrapping ErrItemNotFound so the
+// caller can record a recognizable per-item failure.
+type TargetedFetcher interface {
+	FetchByExternalID(
+		ctx context.Context,
+		config *types.DataSourceConfig,
+		externalID string,
+	) (*types.FetchedItem, error)
+}
+
 // StreamHandler receives items and progress checkpoints emitted during a
 // streaming fetch. The service implements it to ingest each item as it arrives
 // (bounding memory to one item instead of the whole wiki) and to persist the

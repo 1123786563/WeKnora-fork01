@@ -282,6 +282,76 @@ func (c *DriveConnector) FetchStream(
 	return core.FetchStreamEngine(ctx, client, config, cursor, h, ops)
 }
 
+// Drive supports targeted (scoped) reindex; the service asserts
+// datasource.TargetedFetcher to retry a single failed item without walking the
+// whole folder tree.
+var _ datasource.TargetedFetcher = (*DriveConnector)(nil)
+
+// FetchByExternalID refetches a single Drive file by its file token (the Drive
+// item's external id) for a targeted reindex round. Drive exposes no
+// single-file metadata API and the token does not reveal its type, so the
+// configured folders are walked with the existing paginated list and filtered
+// by token (Ruling P-2); the match then goes through the regular per-type
+// fetch dispatch, so the item shape and the ReplacesSubtree/SubtreeKeep
+// subtree contract are identical to a normal sync. A subtree child id
+// ("<file>#<kind>#<token>", e.g. a failed docx attachment) refetches its
+// parent file and picks the matching sub-item from the fan-out.
+func (c *DriveConnector) FetchByExternalID(
+	ctx context.Context, config *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	feishuConfig, err := core.ParseFeishuConfig(config, c.region)
+	if err != nil {
+		return nil, err
+	}
+	client := core.NewClient(feishuConfig)
+
+	// A subtree child id shares its parent file's token prefix.
+	fileToken, _, _ := strings.Cut(externalID, "#")
+
+	seen := make(map[string]bool)
+	var lastWalkErr error
+	for _, resourceID := range config.ResourceIDs {
+		if resourceID == "" || seen[resourceID] {
+			continue
+		}
+		seen[resourceID] = true
+
+		files, walkErr := listDriveFilesForResource(ctx, client, resourceID)
+		matched := filterDriveFileByToken(files, fileToken)
+		if len(matched) == 0 {
+			if walkErr != nil {
+				// The subtree walk was partial — the file may live in a
+				// sub-folder that could not be listed. Keep the cause.
+				lastWalkErr = walkErr
+			}
+			continue
+		}
+		items, err := fetchDriveFileContent(ctx, client, matched[0], resourceID, config.MultimodalEnabled, c.region)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			if it != nil && it.ExternalID == externalID {
+				return it, nil
+			}
+		}
+		return nil, fmt.Errorf(
+			"%w: drive file %q under %s produced no item",
+			datasource.ErrItemNotFound, externalID, resourceID)
+	}
+	if lastWalkErr != nil {
+		// Deliberately not ErrItemNotFound: the file may exist in a folder the
+		// walk could not list, so surface the listing failure instead.
+		return nil, fmt.Errorf("list drive folders for targeted refetch of %q: %w", externalID, lastWalkErr)
+	}
+	return nil, fmt.Errorf(
+		"%w: drive file %q not found under the configured folders",
+		datasource.ErrItemNotFound, externalID)
+}
+
 // driveOps adapts the Drive DriveConnector to the generic sync engine. It
 // carries the region (for channel + URL) and encodes/decodes the Drive cursor
 // wire format (core.FeishuDriveCursor / file_times) so the engine stays format-agnostic.
