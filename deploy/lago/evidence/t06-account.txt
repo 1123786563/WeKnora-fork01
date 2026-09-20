@@ -1,0 +1,79 @@
+Lago T06 real runtime run narrative (sanitized operator log)
+Ticket: #78 [Lago 06] tenant -> Lago Customer mapping (Billing Account)
+Stack: pinned Lago Community v1.53.0 per deploy/lago/images.lock.json
+Machine: macOS arm64 (Apple Silicon), Docker available
+Isolation: COMPOSE_PROJECT_NAME=weknora-lago-78, LAGO_API_PORT=48899,
+           LAGO_FRONT_PORT=48900 (own project, own volumes, own ports; the
+           #73 compose assets reused read-only). No secret values appear
+           in this file.
+
+All timestamps local 2026-09-20/21. Commands run from the worktree root.
+
+1) ./deploy/lago/lago.sh init
+     wrote deploy/lago/.env (mode 600, random secrets); then configured for
+     the #78 isolation values (project weknora-lago-78, ports 48899/48900,
+     URL/port consistency) and appended the first-run seed block
+     (LAGO_CREATE_ORG=true + operator account + locally generated
+     LAGO_ORG_API_KEY; local throwaway material, never committed).
+
+2) ./deploy/lago/lago.sh up
+     exit 0 after pull + --wait; compose reported, in order:
+       db Healthy -> redis Healthy -> migrate (one-shot) Exited 0
+       -> api Healthy, api-worker Healthy, api-clock Healthy,
+          front running, pdf running (amd64-emulated start, normal on
+          Apple Silicon)
+
+3) ./deploy/lago/lago.sh status --json
+     overall: "ready", release v1.53.0 (digests match images.lock.json)
+     api healthy | api-worker healthy | db healthy | redis healthy
+     api-clock running_unverified | front running_unverified
+     pdf running_unverified
+     -> captured verbatim as deploy/lago/evidence/t06-status.json
+
+4) LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48899 \
+   LAGO_INTEGRATION_API_KEY=<operator key from .env, never printed> \
+   go test -tags lago_integration \
+     ./internal/infrastructure/commercialplatform/ \
+     -run TestLagoCustomerIntegration -count=1 -v
+     --- PASS: TestLagoCustomerIntegration (0.81s)
+
+     Probe narrative (lab-only tenant id 780001 -> external id
+     "weknora-tenant-780001", lenient pre-cleanup DELETE first):
+       (1) SubmitCommand(ensure_customer, Key "ensure_customer:"
+           + ext) -> receipt with the REQUESTED deterministic identity.
+       (2) ReadSnapshot(account, 780001) -> linked.
+       (3) Same-Key replay -> identity unchanged.
+       (3b) RAW upsert probe (deliberately bypassing the adapter, which
+            read-before-creates and never POSTs an existing identity):
+            POST /api/v1/customers {"customer":{"external_id": ext,
+            "name":"T06 Upsert Probe"}} -> HTTP 200.
+            RUNTIME VERDICT: create-on-external_id is UPSERT on pinned
+            v1.53.0 — the #74 research claim is confirmed at runtime.
+            (Product correctness does NOT depend on this: the adapter's
+            read-before-create never issues the POST when the GET finds
+            the customer.)
+       (3c) After the upsert probe: snapshot still linked; direct
+            GET /api/v1/customers/{ext} -> 200, exactly one customer
+            object with the expected external_id.
+       (4) Rename probe (different display name, canonical Key):
+            identity unchanged, snapshot still linked.
+       (5) Cleanup DELETE /api/v1/customers/{ext} -> 200 deleted;
+            post-cleanup snapshot -> absent.
+
+     Also confirmed at runtime through the adapter: the
+     GET /api/v1/customers/{external_id} external-id addressing path used
+     by read-before-create and the account snapshot (the plan's second
+     runtime-unverified behavior) answers 200/404 as mapped.
+
+     Dropped-response simulation is deliberately NOT run against the
+     shared stack (it would orphan real authority objects); that path is
+     proven by fault injection in the unit suites (Task 2 stub recovery
+     cases, Task 3 TestBillingAccountRecoversByIdentityAfterLostResponse).
+
+5) ./deploy/lago/lago.sh down
+     project containers + network removed; named volumes preserved.
+
+Result: ensure_customer idempotent-by-identity on the real pinned
+authority; AC1/AC3/AC4 real-stack legs green; AC2/AC4 fault legs green in
+the unit suites; PG twin remains blocked-env (no SAAS_TEST_PG_DSN provided
+this session) with the SQLite serialization + constraint tests standing in.

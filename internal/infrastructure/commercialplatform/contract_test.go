@@ -18,8 +18,11 @@ import (
 //
 // wantReady reports whether the adapter, as primed by the caller, is expected
 // to answer the readiness snapshot as ready; the contract then additionally
-// demands the closed ready state and an empty reason.
-func runPlatformContract(t *testing.T, name string, p commercial.CommercialPlatform, wantReady func() bool) {
+// demands the closed ready state and an empty reason. ensureTenant is the
+// tenant the W3 legs (ensure_customer command + account snapshot) run
+// against; both adapters must prove the identical idempotency-by-identity
+// contract for it.
+func runPlatformContract(t *testing.T, name string, p commercial.CommercialPlatform, wantReady func() bool, ensureTenant uint64) {
 	t.Helper()
 
 	t.Run(name+"/readiness snapshot is a closed product answer", func(t *testing.T) {
@@ -62,13 +65,68 @@ func runPlatformContract(t *testing.T, name string, p commercial.CommercialPlatf
 		}
 	})
 
-	t.Run(name+"/any submit command fails closed unsupported", func(t *testing.T) {
+	t.Run(name+"/unknown command kind fails closed unsupported", func(t *testing.T) {
 		_, err := p.SubmitCommand(context.Background(), commercial.Command{
-			Kind: commercial.CommandKind("ensure_customer"),
+			Kind: commercial.CommandKind("no_such_kind"),
 			Key:  "contract-1",
 		})
 		if !errors.Is(err, commercial.ErrPlatformUnsupported) {
-			t.Fatalf("SubmitCommand must fail closed with ErrPlatformUnsupported in T05, got %v", err)
+			t.Fatalf("an unknown command kind must fail closed with ErrPlatformUnsupported, got %v", err)
+		}
+	})
+
+	// W3 leg (#78): ensure_customer is idempotent BY IDENTITY — the same Key
+	// replayed answers the same external id, and the authority holds exactly
+	// that identity afterwards.
+	t.Run(name+"/ensure_customer is idempotent by identity", func(t *testing.T) {
+		ext := commercial.ExternalCustomerID(ensureTenant)
+		key := "ensure_customer:" + ext
+		cmd := commercial.Command{
+			Kind:    commercial.CommandKindEnsureCustomer,
+			Key:     key,
+			Actor:   "contract",
+			Reason:  "first_billing_access",
+			Payload: commercial.EnsureCustomerPayload{TenantID: ensureTenant, ExternalCustomerID: ext, DisplayName: "Contract Space"},
+		}
+		first, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("first ensure_customer: %v", err)
+		}
+		second, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("replay ensure_customer: %v", err)
+		}
+		if first.ExternalID != ext || second.ExternalID != ext {
+			t.Fatalf("both receipts must carry the deterministic identity %q, got %+v / %+v", ext, first, second)
+		}
+		if first.Key != key || second.Key != key {
+			t.Fatalf("receipts must echo the command Key, got %+v / %+v", first, second)
+		}
+	})
+
+	// W3 leg (#78): the account snapshot answers the closed authority truth
+	// for the ensured tenant and stays honest (absent) for an untouched one.
+	t.Run(name+"/account snapshot answers closed truth", func(t *testing.T) {
+		snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindAccount, TenantID: ensureTenant,
+		})
+		if err != nil {
+			t.Fatalf("account snapshot: %v", err)
+		}
+		if snap.Account == nil {
+			t.Fatalf("account snapshot must carry the Account section")
+		}
+		if snap.Account.State != commercial.AccountStateLinked || snap.Account.TenantID != ensureTenant {
+			t.Fatalf("ensured tenant must answer linked, got %+v", snap.Account)
+		}
+		other, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindAccount, TenantID: ensureTenant + 1,
+		})
+		if err != nil {
+			t.Fatalf("other-tenant account snapshot: %v", err)
+		}
+		if other.Account == nil || other.Account.State != commercial.AccountStateAbsent {
+			t.Fatalf("an untouched tenant must answer absent, got %+v", other.Account)
 		}
 	})
 
@@ -91,7 +149,7 @@ func TestFakeAdapterContract(t *testing.T) {
 		Release:   "v1.53.0",
 		CheckedAt: time.Now().UTC(),
 	})
-	runPlatformContract(t, "fake-ready", ready, func() bool { return true })
+	runPlatformContract(t, "fake-ready", ready, func() bool { return true }, 101)
 
 	unavailable := NewFakeAdapter()
 	unavailable.SetReadiness(commercial.ReadinessSnapshot{
@@ -99,15 +157,17 @@ func TestFakeAdapterContract(t *testing.T) {
 		CheckedAt: time.Now().UTC(),
 		Reason:    "unconfigured",
 	})
-	runPlatformContract(t, "fake-unavailable", unavailable, func() bool { return false })
+	runPlatformContract(t, "fake-unavailable", unavailable, func() bool { return false }, 102)
 }
 
 // TestLagoAdapterContract registers the stub-backed Lago leg of the SAME
 // contract table — acceptance criterion: fake and Lago adapter pass the
-// identical interface contract.
+// identical interface contract. The customers stub answers absent on the
+// identity GET (404) and created on the POST (200), so the W3 legs run the
+// read-before-create path.
 func TestLagoAdapterContract(t *testing.T) {
-	stub := newHealthStub(t, http.StatusOK)
-	runPlatformContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), func() bool { return true })
+	stub := newCustomersStub(t, http.StatusNotFound, http.StatusOK)
+	runPlatformContract(t, "lago", NewLagoAdapter(lagoTestConfig(stub.url())), func() bool { return true }, 103)
 }
 
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no

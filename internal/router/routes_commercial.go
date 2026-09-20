@@ -36,6 +36,12 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		// billing-role write gate by design (it is a read). The handler fails
 		// closed when no platform is wired (unavailable/unconfigured).
 		commercialGroup.GET("/platform/readiness", commercialHandler.PlatformReadiness)
+		// T06 (#78): the caller space's billing account status. This GET is
+		// the documented LAZY ENSURE trigger (first billing access): an
+		// idempotent, authority-failure-safe establish of the space's
+		// Billing Account, answered in the closed linked|pending envelope —
+		// no provider identifier ever crosses.
+		commercialGroup.GET("/account", commercialHandler.AccountStatus)
 		// P02: quote and order pipeline. The billing gate and capability
 		// checks above apply; tenant comes exclusively from the authenticated
 		// context. Checkout names the channel provider explicitly.
