@@ -1,3 +1,5 @@
+import type { CloudWorkspaceScope } from "@/cloud-workspace/CloudWorkspaceClient";
+
 // Scope 隔离（详细设计 §3.2）：
 // ScopeKey = canonicalOrigin + userId + tenantId；generation 单调递增；
 // 切空间序：禁写 → generation+1 → abort 旧订阅 → 清可见数据 → 校验新空间 → 加载新数据。
@@ -7,6 +9,15 @@ export interface ScopeKey {
   origin: string;
   userId: string;
   tenantId: string;
+}
+
+export function toCloudWorkspaceScope(scope: ScopeKey, generation: number): CloudWorkspaceScope {
+  return {
+    backend: scope.origin,
+    accountId: scope.userId,
+    tenantId: scope.tenantId,
+    generation,
+  };
 }
 
 export function sameScope(a: ScopeKey, b: ScopeKey): boolean {
