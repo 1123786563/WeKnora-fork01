@@ -179,3 +179,15 @@ func TestSemanticAccessScopeRejectsMalformedExpiryAndUnknownPurpose(t *testing.T
 		t.Fatal("expected unknown purpose rejection")
 	}
 }
+
+func TestSemanticInboundScopeRejectsZeroTenant(t *testing.T) {
+	if _, err := SemanticDocumentRevisionFromWire(&semanticpb.DocumentRevision{Scope: &semanticpb.ScopeKey{TenantId: 0, KbId: "kb"}, DocumentId: "doc", Revision: 1}); err == nil {
+		t.Fatal("expected document zero tenant rejection")
+	}
+	if _, err := SemanticOperationRefFromWire(&semanticpb.OperationRef{Scope: &semanticpb.ScopeKey{TenantId: 0, KbId: "kb"}, OperationId: "op"}); err == nil {
+		t.Fatal("expected operation ref zero tenant rejection")
+	}
+	if _, err := SemanticAccessScopeFromWire(&semanticpb.AccessScope{Scope: &semanticpb.ScopeKey{TenantId: 0, KbId: "kb"}, SubjectId: "u", ScopeRef: "ref", ScopeHash: "hash", PermissionEpoch: 1, ExpiresAt: "2026-09-20T00:00:00Z", Audience: "semantic", Purpose: semanticpb.Purpose_PURPOSE_SEARCH, BudgetRef: "budget"}); err == nil {
+		t.Fatal("expected scope zero tenant rejection")
+	}
+}
