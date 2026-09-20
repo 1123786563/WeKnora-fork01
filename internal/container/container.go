@@ -661,18 +661,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// lister the session path uses). Since M4 the catalog is builtin ∪ the
 	// tenant's market installs (builtin precedence on ID collision): the
 	// source scans <LOCAL_STORAGE_BASE_DIR>/expert-market/<tenant>/, the
-	// trees MaterializeSkillset + WriteMaterializedExpert produce.
+	// trees MaterializeSkillset + WriteMaterializedExpert produce. The
+	// service itself is provided as the interface so the skill-market
+	// handler composes with the SAME instance the expert routes serve.
 	must(container.Provide(func(
 		agents interfaces.CustomAgentService,
 		tenantSkills *service.TenantSkillService,
 		skillRepo repository.TenantSkillRepository,
-	) *handler.ExpertHandler {
+	) interfaces.ExpertService {
 		resolver := service.NewBundledSkillResolver(tenantSkills, skillRepo)
-		expertSvc := service.NewExpertServiceWithSource(
+		return service.NewExpertServiceWithSource(
 			experts.LoadBuiltinExperts, agents, resolver,
 			service.NewMarketExpertSource(experts.MarketDataRoot()))
-		return handler.NewExpertHandler(expertSvc)
 	}))
+	must(container.Provide(handler.NewExpertHandler))
 	// Sub-agent catalog API (M3): the real builtin library (lazy scan, shared
 	// read-only catalog — the same loading model the delegate gate uses),
 	// agent persistence through the shared CustomAgentService (the persona
@@ -688,6 +690,23 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(s *service.TenantSkillService) *handler.SkillHandler {
 		return handler.NewSkillHandler(s, s)
+	}))
+	// Skill market API (M4): the cached SkillHub client from the
+	// skillhub_market config section (stale-tolerant listings, cache-bypassed
+	// downloads), skill installs through the tenant skill service's catalog
+	// pipeline, skillset installs composing with the shared ExpertService
+	// above and the expert install ledger.
+	must(container.Provide(func(
+		cfg *config.Config,
+		tenantSkills *service.TenantSkillService,
+		expertSvc interfaces.ExpertService,
+		installs repository.ExpertInstallRepository,
+	) (*handler.SkillMarketHandler, error) {
+		marketSvc, err := service.NewSkillMarketServiceFromConfig(cfg, tenantSkills, expertSvc, installs)
+		if err != nil {
+			return nil, err
+		}
+		return handler.NewSkillMarketHandler(marketSvc), nil
 	}))
 	must(container.Provide(handler.NewOrganizationHandler))
 	must(container.Provide(handler.NewMemoryHandler))
