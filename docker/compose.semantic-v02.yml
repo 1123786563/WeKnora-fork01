@@ -1,0 +1,23 @@
+name: semantica-v02
+
+services:
+  neo4j:
+    image: neo4j:2025.10.1
+    environment:
+      NEO4J_AUTH: neo4j/${SEMANTICA_V02_NEO4J_PASSWORD:?set in docker/.env.semantic-v02.local}
+      SEMANTICA_V02_NEO4J_PASSWORD: ${SEMANTICA_V02_NEO4J_PASSWORD:?set in docker/.env.semantic-v02.local}
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 512m
+    ports:
+      - "127.0.0.1:17474:7474"
+      - "127.0.0.1:17687:7687"
+    volumes:
+      - semantica-v02-neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$SEMANTICA_V02_NEO4J_PASSWORD\" -d neo4j 'RETURN 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  semantica-v02-neo4j-data:
