@@ -24,6 +24,7 @@ const (
 var (
 	_ datasource.Connector          = (*Connector)(nil)
 	_ datasource.FullSyncWithCursor = (*Connector)(nil)
+	_ datasource.TargetedFetcher    = (*Connector)(nil)
 )
 
 type apiFactory func(*config) dingTalkAPI
@@ -525,6 +526,77 @@ func (c *Connector) sync(
 		return items, next, &datasource.PartialFetchError{}
 	}
 	return items, next, nil
+}
+
+// FetchByExternalID refetches a single DingTalk document by its node id (the
+// document item's external id) for a targeted reindex round. DingTalk exposes
+// no single-document metadata API, so the selected scopes are walked with the
+// regular scan and filtered by node id to recover the document's real listing
+// metadata (title, modifiedTime, URL); the match is then read through the same
+// documentBlocks + renderDocument path a normal sync uses, so the item shape —
+// including never setting ReplacesSubtree — is identical. A node id not
+// present in any selected scope returns ErrItemNotFound.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context,
+	dataSourceConfig *types.DataSourceConfig,
+	externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	cfg, err := parseConfig(dataSourceConfig)
+	if err != nil {
+		return nil, err
+	}
+	selected := uniqueIDs(dataSourceConfig.ResourceIDs)
+	if len(selected) == 0 {
+		return nil, errors.New("no DingTalk resources selected")
+	}
+	api := c.api(cfg)
+	workspaces, err := api.listWorkspaces(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scopes, _, err := resolveSyncScopes(ctx, api, workspaces, selected)
+	if err != nil {
+		return nil, err
+	}
+	var lastScanErr error
+	for _, scope := range scopes {
+		documents, err := scanScope(ctx, api, scope)
+		if err != nil {
+			if isContextError(err) {
+				return nil, err
+			}
+			// Never infer not-found from an unscannable scope; keep scanning
+			// the remaining selections and remember the failure.
+			lastScanErr = err
+			continue
+		}
+		for _, document := range documents {
+			if document.ID != externalID {
+				continue
+			}
+			blocks, err := api.documentBlocks(ctx, document.ID)
+			if err != nil {
+				if isContextError(err) {
+					return nil, err
+				}
+				return nil, fmt.Errorf("read DingTalk document %s: %w", externalID, err)
+			}
+			rendered := renderDocument(document.title(), blocks)
+			item := fetchedDocument(scope.ResourceID, scope.Reference.WorkspaceID, document, rendered)
+			return &item, nil
+		}
+	}
+	if lastScanErr != nil {
+		// Deliberately not ErrItemNotFound: the document may live in a scope
+		// that could not be scanned, so surface the scan failure instead.
+		return nil, fmt.Errorf("scan DingTalk scopes for targeted refetch of %q: %w", externalID, lastScanErr)
+	}
+	return nil, fmt.Errorf(
+		"%w: DingTalk document %q not found in the selected scopes",
+		datasource.ErrItemNotFound, externalID)
 }
 
 func resolveSyncScopes(

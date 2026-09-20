@@ -3,7 +3,9 @@ package gitlab
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -12,7 +14,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-var _ datasource.StreamingConnector = (*Connector)(nil)
+var (
+	_ datasource.StreamingConnector = (*Connector)(nil)
+	_ datasource.TargetedFetcher    = (*Connector)(nil)
+)
 
 type Connector struct {
 	client        *client
@@ -289,6 +294,67 @@ func gitLabCursor(value cursor) *types.SyncCursor {
 		LastSyncTime:    time.Now().UTC(),
 		ConnectorCursor: map[string]interface{}{"projects": value.Projects, "raw": string(raw)},
 	}
+}
+
+// FetchByExternalID refetches a single repository file for a targeted reindex
+// round. The external id minted by item embeds everything the rebuild needs
+// ("gitlab:<base>:<projectID>:<ref>:<file>"), so the id is matched against the
+// configured instance's canonical base and then split into project / ref /
+// file; the file is rebuilt through the same client.project + item path a
+// normal sync uses, keeping the item shape identical. The git file fetch path
+// never sets ReplacesSubtree, so the targeted item keeps it unset too.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, ds *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	configured, err := c.configured(ds)
+	if err != nil {
+		return nil, err
+	}
+	// Anchor the parse on the configured canonical base: base URLs contain
+	// colons (scheme, optional port, /api/v4), so a blind split is ambiguous.
+	prefix := "gitlab:" + configured.canonicalBase + ":"
+	if !strings.HasPrefix(externalID, prefix) {
+		return nil, fmt.Errorf(
+			"%w: external id %q does not belong to this GitLab instance (%s)",
+			datasource.ErrItemNotFound, externalID, configured.canonicalBase)
+	}
+	// Git refnames cannot contain ':', so exactly the first two colons of the
+	// remainder separate project and ref; everything after the second belongs
+	// to the file path (which may legitimately contain colons).
+	parts := strings.SplitN(strings.TrimPrefix(externalID, prefix), ":", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return nil, fmt.Errorf("%w: malformed gitlab external id %q", datasource.ErrItemNotFound, externalID)
+	}
+	projectID, ref, file := parts[0], parts[1], parts[2]
+
+	p, err := configured.client.project(ctx, projectID)
+	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: gitlab project %q: %v", datasource.ErrItemNotFound, projectID, err)
+		}
+		return nil, fmt.Errorf("gitlab get project %s: %w", projectID, err)
+	}
+	item, err := configured.item(ctx, p, ref, file)
+	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: gitlab file %q@%s: %v", datasource.ErrItemNotFound, file, ref, err)
+		}
+		return nil, err
+	}
+	if item.ExternalID != externalID {
+		// The id did not round-trip (e.g. a namespace-path project id resolved
+		// to its numeric id). Ingesting the rebuilt item would file it under a
+		// different identity instead of replacing the failed one, so refuse.
+		return nil, fmt.Errorf(
+			"%w: gitlab refetch of %q rebuilt id %q",
+			datasource.ErrItemNotFound, externalID, item.ExternalID)
+	}
+	return &item, nil
 }
 
 func (c *Connector) streamChanges(

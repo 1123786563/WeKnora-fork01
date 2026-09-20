@@ -16,7 +16,10 @@ import (
 )
 
 // Compile-time proof that *Connector satisfies the datasource.Connector interface.
-var _ datasource.Connector = (*Connector)(nil)
+var (
+	_ datasource.Connector       = (*Connector)(nil)
+	_ datasource.TargetedFetcher = (*Connector)(nil)
+)
 
 // Connector implements datasource.Connector for RSS/Atom/JSON feeds.
 type Connector struct{}
@@ -282,6 +285,80 @@ func (c *Connector) walk(
 	}
 
 	return out, newCursor, nil
+}
+
+// FetchByExternalID refetches a single feed entry for a targeted reindex
+// round. Feeds expose no per-item API, so the owning feed is identified from
+// the external id itself ("<feedURL>:<itemID>", minted by itemExternalID),
+// re-fetched and re-parsed, and the entry is matched on the same id components
+// the sync path used (GUID / link / title). The match then goes through the
+// regular resolveItem path — full-text article fetch included — so the item
+// shape is identical to a normal sync and never sets ReplacesSubtree. An entry
+// the feed no longer lists returns ErrItemNotFound (feeds drop old items as a
+// matter of course); an unfetchable owning feed surfaces its transport error
+// instead, since that is transient rather than a per-item not-found.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, config *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	cfg, err := parseConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Same defaulting as walk: probe the saved selection, or every configured
+	// feed when nothing is selected.
+	feedURLs := config.ResourceIDs
+	if len(feedURLs) == 0 {
+		feedURLs = cfg.feedURLList()
+	}
+	cli := newClient(cfg.parseHeaders())
+	parser := gofeed.NewParser()
+
+	for _, feedURL := range feedURLs {
+		prefix := feedURL + ":"
+		if !strings.HasPrefix(externalID, prefix) {
+			continue
+		}
+		itemID := strings.TrimPrefix(externalID, prefix)
+
+		data, err := cli.fetchFeed(ctx, feedURL)
+		if err != nil {
+			return nil, fmt.Errorf("fetch feed %s: %w", feedURL, err)
+		}
+		feed, err := parser.Parse(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("parse feed %s: %w", feedURL, err)
+		}
+		for _, item := range feed.Items {
+			if item == nil || itemID == "" {
+				continue
+			}
+			// The id was minted from the first non-empty of GUID / link /
+			// title; also accept a match on any single component so a feed
+			// that started or stopped exposing one of them still resolves the
+			// same entry.
+			if itemID != firstNonEmpty(item.GUID, item.Link, item.Title) &&
+				itemID != item.GUID && itemID != item.Link && itemID != item.Title {
+				continue
+			}
+			resolved := c.resolveItem(
+				ctx, cli, feed, item, feedURL, itemID,
+				firstNonEmpty(item.Content, item.Description),
+			)
+			if resolved.item.ExternalID != externalID {
+				continue
+			}
+			return &resolved.item, nil
+		}
+		return nil, fmt.Errorf(
+			"%w: feed %s no longer lists item %q", datasource.ErrItemNotFound, feedURL, itemID)
+	}
+	return nil, fmt.Errorf(
+		"%w: external id %q does not belong to any configured feed",
+		datasource.ErrItemNotFound, externalID)
 }
 
 type resolvedFeedItem struct {

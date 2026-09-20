@@ -16,6 +16,7 @@ import (
 var (
 	_ datasource.StreamingConnector     = (*Connector)(nil)
 	_ datasource.FullStreamingConnector = (*Connector)(nil)
+	_ datasource.TargetedFetcher        = (*Connector)(nil)
 )
 
 // Connector implements datasource.StreamingConnector for Confluence.
@@ -261,6 +262,83 @@ func (c *Connector) fetchStream(
 	next.FullSync = false
 	next.FullSyncBaseline = nil
 	return next.syncCursor(), nil
+}
+
+// FetchByExternalID refetches a single page by its page id (the Confluence
+// item's external id) for a targeted reindex round. The single-page body API
+// does not carry the listing metadata a normal sync item needs (title,
+// version, space, webui link), so the configured spaces are paged through the
+// connector's own pages listing and filtered by page id to recover the real
+// page summary (Ruling P-3, list-and-filter); the match is then re-read
+// through the regular body + markdownItem path, so the item shape is identical
+// to a normal sync and never sets ReplacesSubtree. A page id no longer present
+// in any configured space returns ErrItemNotFound.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, ds *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	if externalID == "" {
+		return nil, fmt.Errorf("%w: empty external id", datasource.ErrItemNotFound)
+	}
+	if ds == nil || len(ds.ResourceIDs) == 0 {
+		return nil, fmt.Errorf("confluence requires at least one selected space")
+	}
+	client, _, err := c.configured(ds)
+	if err != nil {
+		return nil, err
+	}
+	spaces, err := client.spaces(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list Confluence spaces: %w", err)
+	}
+	byID := make(map[string]space, len(spaces))
+	for _, s := range spaces {
+		byID[s.ID] = s
+	}
+	var lastListErr error
+	for _, resourceID := range ds.ResourceIDs {
+		s, found := byID[resourceID]
+		if !found {
+			// Selection drift: the space is no longer visible to these
+			// credentials. The page may live in another configured space, so
+			// keep looking.
+			continue
+		}
+		pages, err := client.pages(ctx, s)
+		if err != nil {
+			// Keep scanning the remaining spaces; remember the failure so a
+			// total miss can be told apart from a clean not-found.
+			lastListErr = fmt.Errorf("list pages in Confluence space %s: %w", s.Key, err)
+			continue
+		}
+		for _, summary := range pages {
+			if summary.ID != externalID {
+				continue
+			}
+			full, err := client.body(ctx, summary.ID)
+			if err != nil {
+				var api *apiError
+				if errors.As(err, &api) && api.status == http.StatusNotFound {
+					// Listed a moment ago but gone on read: treat as deleted.
+					return nil, fmt.Errorf("%w: confluence page %q: %v",
+						datasource.ErrItemNotFound, externalID, err)
+				}
+				return nil, fmt.Errorf("read Confluence page %s: %w", externalID, err)
+			}
+			item, err := markdownItem(client, resourceID, summary, full)
+			if err != nil {
+				return nil, fmt.Errorf("render Confluence page %s: %w", externalID, err)
+			}
+			return &item, nil
+		}
+	}
+	if lastListErr != nil {
+		// Deliberately not ErrItemNotFound: the page may exist in a space that
+		// could not be listed, so surface the listing failure instead.
+		return nil, lastListErr
+	}
+	return nil, fmt.Errorf(
+		"%w: confluence page %q not found in any configured space",
+		datasource.ErrItemNotFound, externalID)
 }
 
 func failedPageItem(resourceID string, summary page, err error) types.FetchedItem {

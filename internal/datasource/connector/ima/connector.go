@@ -3,6 +3,7 @@ package ima
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,7 +15,12 @@ import (
 )
 
 // Compile-time proof that *Connector satisfies the datasource.Connector interface.
-var _ datasource.Connector = (*Connector)(nil)
+// IMA also declares TargetedFetcher so the scoped-reindex path gets its
+// recognizable degradation below instead of a generic "connector unsupported".
+var (
+	_ datasource.Connector       = (*Connector)(nil)
+	_ datasource.TargetedFetcher = (*Connector)(nil)
+)
 
 // Connector implements datasource.Connector for Tencent IMA (ima.qq.com).
 type Connector struct{}
@@ -217,6 +223,32 @@ func (c *Connector) FetchIncremental(
 		LastSyncTime:    newCursor.LastSyncTime,
 		ConnectorCursor: cursorMap,
 	}, nil
+}
+
+// ErrTargetedRefetchUnsupported is the recognizable degradation IMA returns
+// from FetchByExternalID (Ruling P-1). The IMA external id is a one-way
+// logical-key hash (see logicalKey) — it cannot be turned back into the
+// kb/folder/title triple, let alone the media_id GetMediaInfo needs, and the
+// FetchByExternalID signature has no access to the KB row's metadata where the
+// raw media_id is preserved. Until a metadata-based refetch path exists, the
+// actionable remedy is a normal incremental sync, which re-lists the knowledge
+// base and re-ingests the failed item.
+var ErrTargetedRefetchUnsupported = errors.New(
+	"ima targeted refetch is not supported yet: the ima external id is a one-way " +
+		"logical-key hash and cannot be resolved back to a media_id; run a normal " +
+		"(incremental) sync so the item is re-listed and re-ingested — " +
+		"metadata-based targeted refetch arrives in a later release")
+
+// FetchByExternalID deliberately does not refetch (see
+// ErrTargetedRefetchUnsupported): it always returns that precondition error so
+// the scoped-reindex caller records a recognizable per-item failure that tells
+// the user which remedy works today.
+func (c *Connector) FetchByExternalID(
+	ctx context.Context, _ *types.DataSourceConfig, externalID string,
+) (*types.FetchedItem, error) {
+	logger.Warnf(ctx, "[IMA] targeted refetch of %q rejected: %v",
+		externalID, ErrTargetedRefetchUnsupported)
+	return nil, fmt.Errorf("%w (external_id=%q)", ErrTargetedRefetchUnsupported, externalID)
 }
 
 // walk is the shared implementation for FetchAll / FetchIncremental.
