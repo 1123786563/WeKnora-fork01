@@ -20,6 +20,7 @@ var (
 	ErrSemanticRevisionOverflow = errors.New("semantic_revision_overflow")
 	ErrSemanticEpochOverflow    = errors.New("semantic_epoch_overflow")
 	ErrSemanticOutboxLeaseLost  = errors.New("semantic_outbox_lease_lost")
+	ErrSemanticOutboxOverflow   = errors.New("semantic_outbox_overflow")
 	ErrSemanticMutationInvalid  = errors.New("semantic_mutation_invalid")
 )
 
@@ -159,9 +160,9 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 		}
 		row := tx.Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at,error_code FROM semantic_outbox WHERE retry_at<=? AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY retry_at,event_id LIMIT 1"+lock, now, now).Row()
 		var tenant, rev string
-		var attempt, token uint64
+		var attemptText, tokenText string
 		var deleted bool
-		err := row.Scan(&event.EventID, &tenant, &event.Scope.KBID, &event.DocumentID, &rev, &event.ContentHash, &event.ConfigDigest, &deleted, &event.Payload, &event.PayloadHash, &attempt, &token, &event.RetryAt, &event.ErrorCode)
+		err := row.Scan(&event.EventID, &tenant, &event.Scope.KBID, &event.DocumentID, &rev, &event.ContentHash, &event.ConfigDigest, &deleted, &event.Payload, &event.PayloadHash, &attemptText, &tokenText, &event.RetryAt, &event.ErrorCode)
 		if err != nil {
 			if err.Error() == "sql: no rows in result set" {
 				return nil
@@ -174,6 +175,17 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 		}
 		if event.Revision, parseErr = strconv.ParseUint(rev, 10, 64); parseErr != nil {
 			return parseErr
+		}
+		attempt, parseErr := strconv.ParseUint(attemptText, 10, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		token, parseErr := strconv.ParseUint(tokenText, 10, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		if attempt == math.MaxUint64 || token == math.MaxUint64 {
+			return ErrSemanticOutboxOverflow
 		}
 		event.Deleted = deleted
 		event.AttemptCount = attempt + 1
