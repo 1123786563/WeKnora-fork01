@@ -8,6 +8,7 @@ import (
 )
 
 func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
+	semanticTables := []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"}
 	root := sqliteRepoRoot(t)
 	chdirAndRestore(t, root)
 	path := filepath.Join(t.TempDir(), "semantic-migration.db")
@@ -16,16 +17,24 @@ func TestSemanticMigrationSQLiteUpDownUp(t *testing.T) {
 	version, dirty := sqliteMigrationState(t, db)
 	require.Equal(t, 99, version)
 	require.False(t, dirty)
-	for _, table := range []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"} {
+	for _, table := range semanticTables {
 		require.True(t, sqliteTableExists(t, db, table))
 	}
+	require.True(t, sqliteIndexExists(t, db, "idx_semantic_outbox_claim"))
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
 	require.NoError(t, m.Steps(-1))
-	require.False(t, sqliteTableExists(t, db, "semantic_outbox"))
+	for _, table := range semanticTables {
+		require.False(t, sqliteTableExists(t, db, table), "down migration must remove %s", table)
+	}
+	require.False(t, sqliteIndexExists(t, db, "idx_semantic_outbox_claim"))
 	require.NoError(t, m.Up())
 	version, dirty = sqliteMigrationState(t, db)
 	require.Equal(t, 99, version)
 	require.False(t, dirty)
+	for _, table := range semanticTables {
+		require.True(t, sqliteTableExists(t, db, table), "up migration must restore %s", table)
+	}
+	require.True(t, sqliteIndexExists(t, db, "idx_semantic_outbox_claim"))
 }

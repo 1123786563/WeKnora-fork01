@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -108,7 +109,7 @@ func (r *SemanticControlRepository) WithSemanticMutation(ctx context.Context, m 
 		}
 		payload := append([]byte{}, m.Payload...)
 		eventID := uuid.NewString()
-		if err := tx.Exec("INSERT INTO semantic_outbox(event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,retry_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", eventID, tenant, m.KBID, m.DocumentID, semanticUint(next), m.ContentHash, m.ConfigDigest, m.Deleted, payload, semanticHash(payload), time.Now().UTC()).Error; err != nil {
+		if err := tx.Exec("INSERT INTO semantic_outbox(event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,retry_at) VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)", eventID, tenant, m.KBID, m.DocumentID, semanticUint(next), m.ContentHash, m.ConfigDigest, m.Deleted, payload, semanticHash(payload)).Error; err != nil {
 			return err
 		}
 		result = next
@@ -151,14 +152,16 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 	if worker == "" || seconds <= 0 {
 		return nil, ErrSemanticMutationInvalid
 	}
+	if r.db.Dialector.Name() == "sqlite" {
+		candidate, err := r.selectSQLiteOutboxCandidate(ctx)
+		if err != nil || candidate == nil {
+			return nil, err
+		}
+		return r.claimSQLiteOutboxCandidate(ctx, candidate, worker, seconds)
+	}
 	var event types.SemanticOutboxEvent
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		now := time.Now().UTC()
-		lock := ""
-		if tx.Dialector.Name() == "postgres" {
-			lock = " FOR UPDATE SKIP LOCKED"
-		}
-		row := tx.Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at,error_code FROM semantic_outbox WHERE retry_at<=? AND (lease_expires_at IS NULL OR lease_expires_at<=?) ORDER BY retry_at,event_id LIMIT 1"+lock, now, now).Row()
+		row := tx.Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at,error_code FROM semantic_outbox WHERE retry_at<=CURRENT_TIMESTAMP AND (lease_expires_at IS NULL OR lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY retry_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED").Row()
 		var tenant, rev string
 		var attemptText, tokenText string
 		var deleted bool
@@ -190,16 +193,16 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 		event.Deleted = deleted
 		event.AttemptCount = attempt + 1
 		event.LeaseToken = token + 1
-		event.LeaseExpiresAt = now.Add(time.Duration(seconds) * time.Second)
 		event.LeaseOwner = worker
-		res := tx.Exec("UPDATE semantic_outbox SET attempt_count=?,lease_token=?,lease_owner=?,lease_expires_at=?,retry_at=? WHERE event_id=? AND lease_token=?", semanticUint(event.AttemptCount), semanticUint(event.LeaseToken), worker, event.LeaseExpiresAt, event.LeaseExpiresAt, event.EventID, semanticUint(token))
+		res := tx.Exec("UPDATE semantic_outbox SET attempt_count=?,lease_token=?,lease_owner=?,lease_expires_at=CURRENT_TIMESTAMP + (? * INTERVAL '1 second'),retry_at=CURRENT_TIMESTAMP + (? * INTERVAL '1 second') WHERE event_id=? AND lease_token=? AND retry_at<=CURRENT_TIMESTAMP AND (lease_expires_at IS NULL OR lease_expires_at<=CURRENT_TIMESTAMP)", semanticUint(event.AttemptCount), semanticUint(event.LeaseToken), worker, seconds, seconds, event.EventID, semanticUint(token))
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			return ErrSemanticOutboxLeaseLost
+			event.EventID = ""
+			return nil
 		}
-		return nil
+		return tx.Raw("SELECT lease_expires_at,retry_at FROM semantic_outbox WHERE event_id=? AND lease_token=?", event.EventID, semanticUint(event.LeaseToken)).Row().Scan(&event.LeaseExpiresAt, &event.RetryAt)
 	})
 	if err != nil {
 		return nil, err
@@ -208,6 +211,67 @@ func (r *SemanticControlRepository) ClaimSemanticOutbox(ctx context.Context, wor
 		return nil, nil
 	}
 	return &event, nil
+}
+
+type semanticOutboxCandidate struct {
+	event       types.SemanticOutboxEvent
+	oldToken    string
+	oldAttempts string
+}
+
+func (r *SemanticControlRepository) selectSQLiteOutboxCandidate(ctx context.Context) (*semanticOutboxCandidate, error) {
+	row := r.db.WithContext(ctx).Raw("SELECT event_id,tenant_id,kb_id,document_id,revision,content_hash,config_digest,deleted,payload,payload_hash,attempt_count,lease_token,retry_at,error_code FROM semantic_outbox WHERE retry_at<=CURRENT_TIMESTAMP AND (lease_expires_at IS NULL OR lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY retry_at,event_id LIMIT 1").Row()
+	candidate := &semanticOutboxCandidate{}
+	var tenant, revision string
+	var deleted bool
+	if err := row.Scan(&candidate.event.EventID, &tenant, &candidate.event.Scope.KBID, &candidate.event.DocumentID, &revision, &candidate.event.ContentHash, &candidate.event.ConfigDigest, &deleted, &candidate.event.Payload, &candidate.event.PayloadHash, &candidate.oldAttempts, &candidate.oldToken, &candidate.event.RetryAt, &candidate.event.ErrorCode); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var err error
+	if candidate.event.Scope.TenantID, err = strconv.ParseUint(tenant, 10, 64); err != nil {
+		return nil, err
+	}
+	if candidate.event.Revision, err = strconv.ParseUint(revision, 10, 64); err != nil {
+		return nil, err
+	}
+	attempt, err := strconv.ParseUint(candidate.oldAttempts, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	token, err := strconv.ParseUint(candidate.oldToken, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	if attempt == math.MaxUint64 || token == math.MaxUint64 {
+		return nil, ErrSemanticOutboxOverflow
+	}
+	candidate.event.Deleted = deleted
+	candidate.event.AttemptCount = attempt + 1
+	candidate.event.LeaseToken = token + 1
+	return candidate, nil
+}
+
+func (r *SemanticControlRepository) claimSQLiteOutboxCandidate(ctx context.Context, candidate *semanticOutboxCandidate, worker string, seconds int) (*types.SemanticOutboxEvent, error) {
+	if candidate == nil || worker == "" || seconds <= 0 {
+		return nil, ErrSemanticMutationInvalid
+	}
+	expiry := "datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds')"
+	query := "UPDATE semantic_outbox SET attempt_count=?,lease_token=?,lease_owner=?,lease_expires_at=" + expiry + ",retry_at=" + expiry + " WHERE event_id=? AND lease_token=? AND retry_at<=CURRENT_TIMESTAMP AND (lease_expires_at IS NULL OR lease_expires_at<=CURRENT_TIMESTAMP)"
+	res := r.db.WithContext(ctx).Exec(query, semanticUint(candidate.event.AttemptCount), semanticUint(candidate.event.LeaseToken), worker, seconds, seconds, candidate.event.EventID, candidate.oldToken)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected != 1 {
+		return nil, nil
+	}
+	if err := r.db.WithContext(ctx).Raw("SELECT lease_expires_at,retry_at FROM semantic_outbox WHERE event_id=? AND lease_token=?", candidate.event.EventID, semanticUint(candidate.event.LeaseToken)).Row().Scan(&candidate.event.LeaseExpiresAt, &candidate.event.RetryAt); err != nil {
+		return nil, err
+	}
+	candidate.event.LeaseOwner = worker
+	return &candidate.event, nil
 }
 func (r *SemanticControlRepository) AckSemanticOutbox(ctx context.Context, eventID, worker string, token uint64) error {
 	res := r.db.WithContext(ctx).Exec("DELETE FROM semantic_outbox WHERE event_id=? AND lease_owner=? AND lease_token=?", eventID, worker, semanticUint(token))
@@ -220,6 +284,9 @@ func (r *SemanticControlRepository) AckSemanticOutbox(ctx context.Context, event
 	return nil
 }
 func (r *SemanticControlRepository) FailSemanticOutbox(ctx context.Context, eventID, worker string, token uint64, retry time.Time, code string) error {
+	if eventID == "" || worker == "" || code == "" {
+		return ErrSemanticMutationInvalid
+	}
 	res := r.db.WithContext(ctx).Exec("UPDATE semantic_outbox SET retry_at=?,lease_expires_at=NULL,lease_owner='',error_code=? WHERE event_id=? AND lease_owner=? AND lease_token=?", retry, code, eventID, worker, semanticUint(token))
 	if res.Error != nil {
 		return res.Error

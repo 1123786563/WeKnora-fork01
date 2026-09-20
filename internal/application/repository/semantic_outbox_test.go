@@ -85,6 +85,11 @@ func TestSemanticPayloadHashAndOutboxLeaseFence(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, sha256Hex([]byte("apply-payload")), event.PayloadHash)
 	require.Equal(t, "config-v1", event.ConfigDigest)
+	var databaseClock string
+	require.NoError(t, db.Raw("SELECT CURRENT_TIMESTAMP").Row().Scan(&databaseClock))
+	databaseNow, err := time.ParseInLocation("2006-01-02 15:04:05", databaseClock, time.UTC)
+	require.NoError(t, err)
+	require.WithinDuration(t, databaseNow.Add(30*time.Second), event.LeaseExpiresAt, time.Second)
 	second, err := repo.ClaimSemanticOutbox(ctx, "worker-b", 30)
 	require.NoError(t, err)
 	require.Nil(t, second)
@@ -109,6 +114,63 @@ func TestSemanticOutboxFailureReclaimsStableEvent(t *testing.T) {
 	require.Equal(t, "config-v1", second.ConfigDigest)
 	require.Equal(t, "unavailable", second.ErrorCode)
 	require.ErrorIs(t, repo.AckSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken), ErrSemanticOutboxLeaseLost)
+}
+
+func TestSemanticOutboxFailureRejectsEmptyErrorCodeWithoutChangingLease(t *testing.T) {
+	ctx, db := context.Background(), newSemanticSQLiteTestDB(t)
+	repo := NewSemanticControlRepository(db)
+	_, err := repo.WithSemanticMutation(ctx, mutationFixture(0, false, []byte("payload")), noBusinessWrite)
+	require.NoError(t, err)
+	event, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
+	require.NoError(t, err)
+	require.ErrorIs(t, repo.FailSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken, time.Now(), ""), ErrSemanticMutationInvalid)
+	require.NoError(t, repo.AckSemanticOutbox(ctx, event.EventID, "worker-a", event.LeaseToken))
+}
+
+func TestSemanticOutboxSQLiteStaleClaimCannotOverrideFailureRetry(t *testing.T) {
+	ctx := context.Background()
+	db, path := newSemanticSQLiteTestDBWithPath(t)
+	admin, err := db.DB()
+	require.NoError(t, err)
+	admin.SetMaxOpenConns(4)
+	require.NoError(t, db.Exec("PRAGMA journal_mode=WAL").Error)
+	otherDB, err := gorm.Open(sqlite.Open(path+"?_foreign_keys=on&_busy_timeout=5000"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	otherPool, err := otherDB.DB()
+	require.NoError(t, err)
+	otherPool.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = otherPool.Close() })
+	repo := NewSemanticControlRepository(db)
+	otherRepo := NewSemanticControlRepository(otherDB)
+	_, err = repo.WithSemanticMutation(ctx, mutationFixture(0, false, []byte("payload")), noBusinessWrite)
+	require.NoError(t, err)
+	first, err := repo.ClaimSemanticOutbox(ctx, "worker-a", 30)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.NoError(t, db.Exec("UPDATE semantic_outbox SET retry_at=?,lease_expires_at=? WHERE event_id=?", time.Unix(1, 0), time.Unix(1, 0), first.EventID).Error)
+
+	staleCandidate, err := repo.selectSQLiteOutboxCandidate(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, staleCandidate)
+	retryAt := time.Now().Add(time.Hour)
+	failResult := make(chan error, 1)
+	go func() {
+		failResult <- otherRepo.FailSemanticOutbox(ctx, first.EventID, "worker-a", first.LeaseToken, retryAt, "deferred")
+	}()
+	require.NoError(t, <-failResult)
+
+	claimed, err := repo.claimSQLiteOutboxCandidate(ctx, staleCandidate, "worker-b", 30)
+	require.NoError(t, err)
+	require.Nil(t, claimed)
+	claimed, err = repo.ClaimSemanticOutbox(ctx, "worker-c", 30)
+	require.NoError(t, err)
+	require.Nil(t, claimed)
+	var owner, code string
+	var persistedRetry time.Time
+	require.NoError(t, db.Raw("SELECT lease_owner,error_code,retry_at FROM semantic_outbox WHERE event_id=?", first.EventID).Row().Scan(&owner, &code, &persistedRetry))
+	require.Empty(t, owner)
+	require.Equal(t, "deferred", code)
+	require.WithinDuration(t, retryAt, persistedRetry, time.Second)
 }
 
 func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
@@ -257,6 +319,11 @@ func loadSemanticRevisionAsUint64(t *testing.T, db *gorm.DB, scope types.Semanti
 }
 
 func newSemanticSQLiteTestDB(t *testing.T) *gorm.DB {
+	db, _ := newSemanticSQLiteTestDBWithPath(t)
+	return db
+}
+
+func newSemanticSQLiteTestDBWithPath(t *testing.T) (*gorm.DB, string) {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
@@ -278,5 +345,5 @@ func newSemanticSQLiteTestDB(t *testing.T) *gorm.DB {
 			_ = c.Close()
 		}
 	})
-	return db
+	return db, path
 }

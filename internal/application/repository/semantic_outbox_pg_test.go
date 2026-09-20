@@ -27,42 +27,57 @@ import (
 )
 
 func TestSemanticMutationPostgresConcurrentSameRevision(t *testing.T) {
-	db := newSemanticPostgresDB(t)
+	db1, db2 := newSemanticPostgresDBPair(t)
 	start := make(chan struct{})
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
 	results := make(chan error, 2)
-	for i := 0; i < 2; i++ {
-		go func() {
+	for _, db := range []*gorm.DB{db1, db2} {
+		go func(db *gorm.DB) {
 			<-start
-			_, err := NewSemanticControlRepository(db.Session(&gorm.Session{NewDB: true})).WithSemanticMutation(context.Background(), mutationFixture(0, false, []byte("race")), noBusinessWrite)
+			_, err := NewSemanticControlRepository(db).WithSemanticMutation(context.Background(), mutationFixture(0, false, []byte("race")), func(*gorm.DB) error {
+				arrived <- struct{}{}
+				<-release
+				return nil
+			})
 			results <- err
-		}()
+		}(db)
 	}
 	close(start)
+	waitForSemanticArrivals(t, arrived, release)
 	a, b := <-results, <-results
 	require.NotEqual(t, a == nil, b == nil)
 	var revision string
-	require.NoError(t, db.Raw("SELECT revision FROM semantic_document_revisions WHERE tenant_id='1' AND kb_id='kb-1' AND document_id='doc-1'").Scan(&revision).Error)
+	require.NoError(t, db1.Raw("SELECT revision FROM semantic_document_revisions WHERE tenant_id='1' AND kb_id='kb-1' AND document_id='doc-1'").Scan(&revision).Error)
 	require.Equal(t, "1", revision)
 }
 
 func TestSemanticMutationPostgresConcurrentDistinctTombstones(t *testing.T) {
-	db := newSemanticPostgresDB(t)
+	db1, db2 := newSemanticPostgresDBPair(t)
 	start := make(chan struct{})
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
 	results := make(chan error, 2)
-	for _, doc := range []string{"a", "b"} {
-		go func(doc string) {
+	for i, doc := range []string{"a", "b"} {
+		db := []*gorm.DB{db1, db2}[i]
+		go func(db *gorm.DB, doc string) {
 			<-start
 			m := mutationFixture(0, true, nil)
 			m.DocumentID = doc
-			_, err := NewSemanticControlRepository(db.Session(&gorm.Session{NewDB: true})).WithSemanticMutation(context.Background(), m, noBusinessWrite)
+			_, err := NewSemanticControlRepository(db).WithSemanticMutation(context.Background(), m, func(*gorm.DB) error {
+				arrived <- struct{}{}
+				<-release
+				return nil
+			})
 			results <- err
-		}(doc)
+		}(db, doc)
 	}
 	close(start)
+	waitForSemanticArrivals(t, arrived, release)
 	require.NoError(t, <-results)
 	require.NoError(t, <-results)
 	var epoch string
-	require.NoError(t, db.Raw("SELECT epoch FROM semantic_access_epochs WHERE tenant_id='1' AND kb_id='kb-1'").Scan(&epoch).Error)
+	require.NoError(t, db1.Raw("SELECT epoch FROM semantic_access_epochs WHERE tenant_id='1' AND kb_id='kb-1'").Scan(&epoch).Error)
 	require.Equal(t, "2", epoch)
 }
 
@@ -73,6 +88,9 @@ func TestSemanticOutboxPostgresFailureReclaimAndLeaseFencing(t *testing.T) {
 	require.NoError(t, err)
 	first, err := repo.ClaimSemanticOutbox(context.Background(), "worker-a", 30)
 	require.NoError(t, err)
+	var databaseNow time.Time
+	require.NoError(t, db.Raw("SELECT CURRENT_TIMESTAMP").Scan(&databaseNow).Error)
+	require.WithinDuration(t, databaseNow.Add(30*time.Second), first.LeaseExpiresAt, time.Second)
 	require.NoError(t, repo.FailSemanticOutbox(context.Background(), first.EventID, "worker-a", first.LeaseToken, time.Unix(1, 0), "pg-unavailable"))
 	second, err := repo.ClaimSemanticOutbox(context.Background(), "worker-b", 30)
 	require.NoError(t, err)
@@ -215,4 +233,38 @@ func newSemanticPostgresDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() { _, _ = m.Close() })
 	_ = sql.ErrNoRows
 	return db
+}
+
+func newSemanticPostgresDBPair(t *testing.T) (*gorm.DB, *gorm.DB) {
+	t.Helper()
+	setup := newSemanticPostgresDB(t)
+	dsn := setup.Dialector.(*postgres.Dialector).Config.DSN
+	first, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	second, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	for _, db := range []*gorm.DB{first, second} {
+		pool, poolErr := db.DB()
+		require.NoError(t, poolErr)
+		pool.SetMaxOpenConns(1)
+		t.Cleanup(func() { _ = pool.Close() })
+	}
+	var firstPID, secondPID int
+	require.NoError(t, first.Raw("SELECT pg_backend_pid()").Scan(&firstPID).Error)
+	require.NoError(t, second.Raw("SELECT pg_backend_pid()").Scan(&secondPID).Error)
+	require.NotEqual(t, firstPID, secondPID, "concurrency test requires independent PostgreSQL backend connections")
+	return first, second
+}
+
+func waitForSemanticArrivals(t *testing.T, arrived <-chan struct{}, release chan struct{}) {
+	t.Helper()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-arrived:
+		case <-time.After(30 * time.Second):
+			close(release)
+			t.Fatal("both independent PostgreSQL transactions did not reach the rendezvous")
+		}
+	}
+	close(release)
 }

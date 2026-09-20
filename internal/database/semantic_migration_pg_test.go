@@ -21,6 +21,7 @@ import (
 )
 
 func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
+	semanticTables := []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"}
 	dsn := os.Getenv("TRPC_TEST_POSTGRES_DSN")
 	if dsn == "" {
 		t.Fatal("TRPC_TEST_POSTGRES_DSN is required for semantic PostgreSQL integration")
@@ -62,24 +63,32 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint(178), version)
 	require.False(t, dirty)
-	for _, table := range []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"} {
+	assertTablesAndIndex := func(want bool) {
+		for _, table := range semanticTables {
+			var n int
+			require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
+			if want {
+				require.Equal(t, 1, n)
+			} else {
+				require.Zero(t, n)
+			}
+		}
 		var n int
-		require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
-		require.Equal(t, 1, n)
+		require.NoError(t, db.Raw("SELECT COUNT(*) FROM pg_indexes WHERE schemaname=? AND indexname='idx_semantic_outbox_claim'", schema).Scan(&n).Error)
+		if want {
+			require.Equal(t, 1, n)
+		} else {
+			require.Zero(t, n)
+		}
 	}
-	for _, index := range []string{"idx_semantic_outbox_claim"} {
-		var n int
-		require.NoError(t, db.Raw("SELECT COUNT(*) FROM pg_indexes WHERE schemaname=? AND indexname=?", schema, index).Scan(&n).Error)
-		require.Equal(t, 1, n)
-	}
+	assertTablesAndIndex(true)
 	require.NoError(t, m.Steps(-1))
-	var n int
-	require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name='semantic_outbox'", schema).Scan(&n).Error)
-	require.Zero(t, n)
+	assertTablesAndIndex(false)
 	require.NoError(t, m.Up())
 	version, dirty, err = m.Version()
 	require.NoError(t, err)
 	require.Equal(t, uint(178), version)
 	require.False(t, dirty)
+	assertTablesAndIndex(true)
 	_ = sql.ErrNoRows
 }
