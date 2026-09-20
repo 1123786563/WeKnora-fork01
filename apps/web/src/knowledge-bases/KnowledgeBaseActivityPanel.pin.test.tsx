@@ -87,3 +87,28 @@ test('an exhausted cursor (next_cursor 0 with an empty page) renders the end hin
   assert.ok(text.includes('No earlier activity'), 'the end hint renders after the final empty page');
   assert.equal([...document.body.querySelectorAll('button')].some((candidate) => (candidate.textContent ?? '').includes('Load more')), false, 'the Load more affordance is gone once the cursor is exhausted');
 });
+
+// R489 M1 regression-sweep finding: the actor column must follow Vue
+// KnowledgeBaseActivitySettings.actorLabel (L506-512) — the current user
+// renders as their username/email, other actors render the actor_user_id
+// 8-char prefix, and a missing id means the system actor. The full id never
+// renders.
+test('actor column follows the Vue actorLabel semantics (me → username, others → 8-char prefix)', async () => {
+  const page = {
+    data: [
+      { id: 1, action: 'kb.updated', outcome: 'success', created_at: '2026-09-19T10:00:00Z', actor_user_id: 'u-me-1234' },
+      { id: 2, action: 'kb.updated', outcome: 'success', created_at: '2026-09-19T10:00:01Z', actor_user_id: '3cd9521f-0e49-4c65-8cf5-f9b80b950e39' },
+      { id: 3, action: 'kb.updated', outcome: 'success', created_at: '2026-09-19T10:00:02Z' },
+    ],
+    next_cursor: 0,
+  };
+  const client = {
+    knowledgeBases: { settings: { activity: async () => page } },
+    auth: { me: async () => ({ user: { id: 'u-me-1234', username: 'parity-test', email: 'parity-test@local.dev' } }) },
+  } as unknown as WeKnoraClient;
+  await renderPanel(client);
+  const text = document.body.textContent ?? '';
+  assert.ok(text.includes('parity-test'), 'the current user renders as their username');
+  assert.ok(text.includes('3cd9521f'), 'another actor renders the 8-char id prefix');
+  assert.equal(text.includes('3cd9521f-0e49'), false, 'the full actor id never renders');
+});
