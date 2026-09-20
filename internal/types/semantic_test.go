@@ -42,6 +42,18 @@ func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 	}
 }
 
+func TestSemanticSearchResponseWireRoundTrip(t *testing.T) {
+	original := SemanticSearchResponse{QueryID: "q", Generation: "g", RequestedMode: SemanticRetrievalModeGraphRAG, ActualMode: SemanticRetrievalModeGraphRAG, Evidence: []SemanticEvidence{{EvidenceID: "e", DocumentID: "d", Revision: 1, ChunkID: "c", ContentHash: "h", Quote: "text"}}, AssertionIDs: []string{"a"}, Paths: [][]string{{"a", "b"}}, Partial: true}
+	wire, err := SemanticSearchResponseToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticSearchResponseFromWire(wire)
+	if err != nil || result.QueryID != original.QueryID || len(result.Evidence) != 1 || !result.Partial || len(result.Paths) != 1 {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,

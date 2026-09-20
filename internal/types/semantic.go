@@ -55,8 +55,16 @@ const (
 )
 
 type SemanticSearchResponse struct {
+	QueryID       string
+	Generation    string
 	RequestedMode SemanticRetrievalMode
 	ActualMode    SemanticRetrievalMode
+	Evidence      []SemanticEvidence
+	AssertionIDs  []string
+	Paths         [][]string
+	Stale         bool
+	Partial       bool
+	Truncated     bool
 }
 
 type SemanticEvidence struct {
@@ -138,5 +146,41 @@ func SemanticSearchResponseFromWire(wire *semanticpb.SearchResponse) (SemanticSe
 	if requested == SemanticRetrievalModeGraphRAG && actual == SemanticRetrievalModeReason {
 		return SemanticSearchResponse{}, fmt.Errorf("semantic search cannot implicitly upgrade graph_rag to reason")
 	}
-	return SemanticSearchResponse{RequestedMode: requested, ActualMode: actual}, nil
+	evidence := make([]SemanticEvidence, 0, len(wire.Evidence))
+	for _, item := range wire.Evidence {
+		mapped, err := SemanticEvidenceFromWire(item)
+		if err != nil {
+			return SemanticSearchResponse{}, err
+		}
+		evidence = append(evidence, mapped)
+	}
+	paths := make([][]string, 0, len(wire.Paths))
+	for _, path := range wire.Paths {
+		paths = append(paths, append([]string(nil), path.Ids...))
+	}
+	return SemanticSearchResponse{QueryID: wire.QueryId, Generation: wire.Generation, RequestedMode: requested, ActualMode: actual, Evidence: evidence, AssertionIDs: append([]string(nil), wire.AssertionIds...), Paths: paths, Stale: wire.Stale, Partial: wire.Partial, Truncated: wire.Truncated}, nil
+}
+
+func SemanticSearchResponseToWire(value SemanticSearchResponse) (*semanticpb.SearchResponse, error) {
+	modes := map[SemanticRetrievalMode]semanticpb.RetrievalMode{SemanticRetrievalModeGraphRAG: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG, SemanticRetrievalModeReason: semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON}
+	requested, ok := modes[value.RequestedMode]
+	if !ok {
+		return nil, fmt.Errorf("unsupported requested retrieval mode")
+	}
+	actual, ok := modes[value.ActualMode]
+	if !ok {
+		return nil, fmt.Errorf("unsupported actual retrieval mode")
+	}
+	if value.RequestedMode == SemanticRetrievalModeGraphRAG && value.ActualMode == SemanticRetrievalModeReason {
+		return nil, fmt.Errorf("semantic search cannot implicitly upgrade graph_rag to reason")
+	}
+	evidence := make([]*semanticpb.Evidence, 0, len(value.Evidence))
+	for _, item := range value.Evidence {
+		evidence = append(evidence, SemanticEvidenceToWire(item))
+	}
+	paths := make([]*semanticpb.StringPath, 0, len(value.Paths))
+	for _, path := range value.Paths {
+		paths = append(paths, &semanticpb.StringPath{Ids: append([]string(nil), path...)})
+	}
+	return &semanticpb.SearchResponse{QueryId: value.QueryID, Generation: value.Generation, RequestedMode: requested, ActualMode: actual, Evidence: evidence, AssertionIds: append([]string(nil), value.AssertionIDs...), Paths: paths, Stale: value.Stale, Partial: value.Partial, Truncated: value.Truncated}, nil
 }
