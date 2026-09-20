@@ -130,3 +130,6 @@ W4+ 渐进风险（提前登记）：#80/#81 都会触及 `internal/commercial/`
   - Wave 测试：go test ./... 零 FAIL + 4 个 python 套件全绿。
   - 事件：GitHub push protection 拦截 #74 测试里 secret 形状 canary（sk_test_51Canary.../rk_live_51BadBadBad...）→ 已 defuse（拼接字面量）+ #74 squash 并入（d1eec16b）后推送成功；lago-74 分支保留完整本地历史。
 - **W3 启动**：#78（Lago Customer 映射）/ #79（Plan Version 发布）planning 中，基于 6a651c30（#77 seam 冻结接口）。
+
+- **2026-09-21 Wave 3 完成**：#78/#79（产品代码，均 Approved 无 Critical/Important；真实栈证据各 4/4）。两分支基于旧链 6a651c30（secret 事件前），已 rebase 到 1b5b241 后并入（merge 冲突=共享 seam 扩展点 union 合并 + 1 处联动修正，6ea0511f）。go test 120 包零 FAIL。迁移 000178/000099（#78）+ 000179/000100（#79）。运行时裁决：create-on-external_id=UPSERT；GET /plans/{code} 可用。
+- **W4 启动（降级为单票）**：#80 ready；#81 被 #74（blocked-env 待 Stripe key）阻塞，保持等待——依赖安全优先于并发数。
