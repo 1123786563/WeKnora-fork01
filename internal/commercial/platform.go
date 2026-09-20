@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -25,6 +26,24 @@ import (
 // kinds (both adapters fail closed); W3 adds constants additively (e.g.
 // ensure_customer, publish_plan_version).
 type CommandKind string
+
+// CommandKindEnsureCustomer is the W3 additive first enabled command kind
+// (#78, ADR-0014): idempotently ensure the tenant's customer exists on the
+// authority under the deterministic identity. An ensure/upsert command —
+// replay under the same Key legitimately refreshes advisory metadata and
+// never changes identity.
+const CommandKindEnsureCustomer CommandKind = "ensure_customer"
+
+// EnsureCustomerPayload is the typed payload of ensure_customer. TenantID is
+// the WeKnora space; ExternalCustomerID is the deterministic immutable
+// identity (ExternalCustomerID(t) — a mismatched identity must be refused by
+// the adapter, never silently forwarded); DisplayName is ADVISORY metadata
+// (a rename updates it, never identity).
+type EnsureCustomerPayload struct {
+	TenantID           uint64
+	ExternalCustomerID string
+	DisplayName        string
+}
 
 // Command is one typed commercial command. Key is the idempotency identity:
 // a replay of the same Key can never apply the command twice. Actor and
@@ -58,6 +77,12 @@ type SnapshotKind string
 // snapshot: platform operational state, not a commercial domain object.
 const SnapshotKindReadiness SnapshotKind = "readiness"
 
+// SnapshotKindAccount reads the billing authority's account truth for one
+// tenant: whether the authority already holds this tenant's customer
+// (linked) or definitively holds none (absent). W3 additive kind (#78,
+// ADR-0014 additive-kind rule).
+const SnapshotKindAccount SnapshotKind = "account"
+
 // SnapshotQuery addresses one snapshot read. TenantID 0 means platform-wide
 // (readiness is always platform-wide).
 type SnapshotQuery struct {
@@ -87,11 +112,48 @@ type ReadinessSnapshot struct {
 	Reason    string
 }
 
+// AccountState is the closed authority-truth enum for the account snapshot:
+// the authority holds this tenant's customer (linked) or definitively holds
+// none (absent). This is NOT the Billing API state — the API projects its
+// own closed linked|pending envelope from this truth plus local recovery
+// state (ADR-0014 additive-kind rule, #78).
+type AccountState string
+
+const (
+	// AccountStateLinked: the authority holds this tenant's customer.
+	AccountStateLinked AccountState = "linked"
+	// AccountStateAbsent: the authority definitively holds none.
+	AccountStateAbsent AccountState = "absent"
+)
+
+// AccountSnapshot is the authority-side account section of a Snapshot: the
+// customer truth for one tenant at one check time.
+type AccountSnapshot struct {
+	TenantID  uint64
+	State     AccountState
+	CheckedAt time.Time
+}
+
 // Snapshot is one authoritative commercial snapshot read. Later kinds add
 // sections additively; readiness remains the first section.
 type Snapshot struct {
 	Kind      SnapshotKind
 	Readiness *ReadinessSnapshot
+	// Account is the additive W3 account section (#78); nil unless the
+	// snapshot kind is account. Readiness-only consumers are unaffected —
+	// a zero-value Snapshot keeps Account nil.
+	Account *AccountSnapshot
+}
+
+// ExternalCustomerID is THE deterministic WeKnora→authority customer
+// identity: a pure function of the tenant ID only (no name, owner, or time),
+// so a space rename (UpdateTenant) or owner transfer can never move it.
+// Defined once here (ADR-0014 additive rule); the service (Key/payload),
+// both adapters (REST addressing), and tests all call it — never a local
+// copy. Format: "weknora-tenant-<decimal tenantID>" (the #73 probe-proven
+// Lago external-id charset).
+func ExternalCustomerID(tenantID uint64) string {
+	return "weknora-tenant-" + strconv.FormatUint(tenantID, 10)
 }
 
 // ReconciliationCursor is an opaque durable token into a reconciliation

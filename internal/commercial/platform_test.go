@@ -1,6 +1,97 @@
 package commercial
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+	"time"
+)
+
+// TestExternalCustomerIDIsAPureFunctionOfTheTenantID locks the deterministic
+// WeKnora→authority customer identity: same input ⇒ same output, the format
+// is weknora-tenant-<decimal id>, distinct tenants ⇒ distinct ids, and the
+// charset is the #73 probe-proven Lago external-id class [a-z0-9-] only. The
+// signature takes EXACTLY one uint64 — rename and owner transfer have no
+// input through which to influence identity (compile-enforced).
+func TestExternalCustomerIDIsAPureFunctionOfTheTenantID(t *testing.T) {
+	cases := []uint64{0, 1, 42, 101, 999999999}
+	for _, id := range cases {
+		want := "weknora-tenant-" + strconv.FormatUint(id, 10)
+		if got := ExternalCustomerID(id); got != want {
+			t.Fatalf("ExternalCustomerID(%d) = %q, want %q", id, got, want)
+		}
+	}
+	if ExternalCustomerID(7) != ExternalCustomerID(7) {
+		t.Fatalf("same input must yield the same output")
+	}
+	if ExternalCustomerID(7) == ExternalCustomerID(8) {
+		t.Fatalf("distinct tenants must yield distinct ids")
+	}
+	for _, id := range cases {
+		for _, r := range ExternalCustomerID(id) {
+			ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+			if !ok {
+				t.Fatalf("ExternalCustomerID(%d) = %q carries rune %q outside [a-z0-9-]", id, ExternalCustomerID(id), r)
+			}
+		}
+	}
+}
+
+// TestW3KindConstantsHaveTheFrozenTokenValues locks the exact wire tokens of
+// the W3 additions on the frozen seam: the ensure_customer command kind, the
+// account snapshot kind, and the closed account-truth enum.
+func TestW3KindConstantsHaveTheFrozenTokenValues(t *testing.T) {
+	if CommandKindEnsureCustomer != "ensure_customer" {
+		t.Fatalf("CommandKindEnsureCustomer must be \"ensure_customer\", got %q", CommandKindEnsureCustomer)
+	}
+	if SnapshotKindAccount != "account" {
+		t.Fatalf("SnapshotKindAccount must be \"account\", got %q", SnapshotKindAccount)
+	}
+	if AccountStateLinked != "linked" || AccountStateAbsent != "absent" {
+		t.Fatalf("account states must be exactly linked/absent, got %q/%q", AccountStateLinked, AccountStateAbsent)
+	}
+}
+
+// TestEnsureCustomerCommandPassesValidateUnchanged: Validate stays the T05
+// shape (Kind/Key only) — a well-formed ensure_customer command passes
+// without any payload typing being added to Validate.
+func TestEnsureCustomerCommandPassesValidateUnchanged(t *testing.T) {
+	cmd := Command{
+		Kind:    CommandKindEnsureCustomer,
+		Key:     "ensure_customer:weknora-tenant-1",
+		Actor:   "user-1",
+		Reason:  "first_billing_access",
+		Payload: EnsureCustomerPayload{TenantID: 1, ExternalCustomerID: "weknora-tenant-1", DisplayName: "Space One"},
+	}
+	if err := cmd.Validate(); err != nil {
+		t.Fatalf("well-formed ensure_customer rejected: %v", err)
+	}
+	if cmd.Payload.(EnsureCustomerPayload).ExternalCustomerID != ExternalCustomerID(1) {
+		t.Fatalf("payload identity must match the derivation")
+	}
+}
+
+// TestAccountSnapshotSectionRoundTrips: the account section is an ADDITIVE
+// optional field — set it and read it back; a zero-value Snapshot keeps
+// Account == nil so readiness-only consumers are unaffected.
+func TestAccountSnapshotSectionRoundTrips(t *testing.T) {
+	checked := time.Now().UTC()
+	snap := Snapshot{
+		Kind: SnapshotKindAccount,
+		Account: &AccountSnapshot{
+			TenantID:  42,
+			State:     AccountStateLinked,
+			CheckedAt: checked,
+		},
+	}
+	if snap.Account == nil || snap.Account.TenantID != 42 ||
+		snap.Account.State != AccountStateLinked || !snap.Account.CheckedAt.Equal(checked) {
+		t.Fatalf("account section must round-trip, got %+v", snap.Account)
+	}
+	var zero Snapshot
+	if zero.Account != nil {
+		t.Fatalf("zero-value Snapshot must keep Account nil, got %+v", zero.Account)
+	}
+}
 
 // TestCommandValidateRejectsEmptyKindAndKey: a command without a kind or
 // without its idempotency identity is not submittable — the freeze requires
