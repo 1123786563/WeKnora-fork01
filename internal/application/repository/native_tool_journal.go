@@ -33,6 +33,7 @@ func NewNativeToolBoundary(db *gorm.DB, committer nativecontract.CommitCoordinat
 
 var _ nativecontract.AttemptJournal = (*NativeToolJournal)(nil)
 var _ nativecontract.ToolBoundary = (*NativeToolJournal)(nil)
+var _ nativecontract.ToolAttemptPreparer = (*NativeToolJournal)(nil)
 
 type nativeToolDispatchKey struct{}
 
@@ -45,6 +46,7 @@ type NativeToolDispatch struct {
 	CommitIntentID    string
 	DecisionReference string
 	Preflight         nativecontract.ToolDispatchPreflight
+	Preparer          nativecontract.ToolAttemptPreparer
 }
 
 func WithNativeToolDispatch(ctx context.Context, dispatch NativeToolDispatch) context.Context {
@@ -109,6 +111,16 @@ func (j *NativeToolJournal) Plan(ctx context.Context, fence nativecontract.Fence
 	err = j.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := j.assertFence(tx, fence); err != nil {
 			return err
+		}
+		var duplicateModelCalls int64
+		if err := tx.Table("native_agent_tool_calls AS calls").
+			Joins("JOIN native_agent_attempts AS source ON source.tenant_id=calls.tenant_id AND source.run_id=calls.run_id AND source.attempt_id=calls.attempt_id AND source.kind='model'").
+			Where("calls.tenant_id=? AND calls.run_id=? AND calls.call_id=? AND calls.attempt_id<>?", fence.Run.TenantID, fence.Run.RunID, plan.CallID, plan.ModelAttemptID).
+			Count(&duplicateModelCalls).Error; err != nil {
+			return err
+		}
+		if duplicateModelCalls != 0 {
+			return toolJournalFailure(nativecontract.ErrConflict, "tool call ID is already bound to another model attempt", nativecontract.EffectNotDispatched)
 		}
 		var count int64
 		if err := tx.Table("native_agent_attempts").Where("tenant_id=? AND run_id=? AND attempt_id=?", fence.Run.TenantID, fence.Run.RunID, plan.ModelAttemptID).Count(&count).Error; err != nil {
@@ -179,6 +191,10 @@ func (j *NativeToolJournal) Begin(ctx context.Context, fence nativecontract.Fenc
 // produced the durable call. A CallID alone is not sufficient identity.
 func (j *NativeToolJournal) beginForPlan(ctx context.Context, fence nativecontract.Fence, attempt nativecontract.Attempt, modelAttemptID string) (nativecontract.Attempt, error) {
 	return j.begin(ctx, fence, attempt, modelAttemptID)
+}
+
+func (j *NativeToolJournal) PrepareToolAttempt(ctx context.Context, fence nativecontract.Fence, attempt nativecontract.Attempt, plan nativecontract.ToolPlan) (nativecontract.Attempt, error) {
+	return j.beginForPlan(ctx, fence, attempt, plan.ModelAttemptID)
 }
 
 func (j *NativeToolJournal) begin(ctx context.Context, fence nativecontract.Fence, attempt nativecontract.Attempt, modelAttemptID string) (nativecontract.Attempt, error) {
@@ -369,11 +385,15 @@ func (j *NativeToolJournal) Wrap(ctx context.Context, scope nativecontract.Scope
 	if _, err := j.Plan(ctx, dispatch.Fence, dispatch.Plan); err != nil {
 		return nil, err
 	}
-	if stream, ok := delegate.(agenttool.StreamableTool); ok {
-		return &journalStreamableTool{delegate: stream, journal: j, dispatch: dispatch, scope: scope}, nil
+	if _, ok := delegate.(agenttool.StreamableTool); ok {
+		return nil, toolJournalFailure(nativecontract.ErrForbidden, "streamable tools require a completion-aware durable outcome adapter", nativecontract.EffectNotDispatched)
 	}
 	if callable, ok := delegate.(agenttool.CallableTool); ok {
-		return &journalCallableTool{delegate: callable, journal: j, dispatch: dispatch, scope: scope}, nil
+		preparer := dispatch.Preparer
+		if preparer == nil {
+			preparer = j
+		}
+		return &journalCallableTool{delegate: callable, journal: j, dispatch: dispatch, scope: scope, preparer: preparer}, nil
 	}
 	return nil, toolJournalFailure(nativecontract.ErrInvalid, "tool is neither callable nor streamable", nativecontract.EffectNotDispatched)
 }
@@ -383,6 +403,7 @@ type journalCallableTool struct {
 	journal  *NativeToolJournal
 	dispatch NativeToolDispatch
 	scope    nativecontract.Scope
+	preparer nativecontract.ToolAttemptPreparer
 }
 
 func (t *journalCallableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
@@ -393,12 +414,12 @@ func (t *journalCallableTool) Call(ctx context.Context, args []byte) (any, error
 	if err := t.journal.assertAttemptDispatchable(ctx, t.dispatch.Fence, t.dispatch.Attempt); err != nil {
 		return nil, err
 	}
-	request := nativecontract.ToolDispatchRequest{Scope: t.scope, Fence: t.dispatch.Fence, Plan: t.dispatch.Plan, Attempt: t.dispatch.Attempt, DecisionReference: t.dispatch.DecisionReference}
-	if err := t.dispatch.Preflight.Authorize(ctx, request); err != nil {
+	attempt, err := t.preparer.PrepareToolAttempt(ctx, t.dispatch.Fence, t.dispatch.Attempt, t.dispatch.Plan)
+	if err != nil {
 		return nil, err
 	}
-	attempt, err := t.journal.beginForPlan(ctx, t.dispatch.Fence, t.dispatch.Attempt, t.dispatch.Plan.ModelAttemptID)
-	if err != nil {
+	request := nativecontract.ToolDispatchRequest{Scope: t.scope, Fence: t.dispatch.Fence, Plan: t.dispatch.Plan, Attempt: attempt, DecisionReference: t.dispatch.DecisionReference}
+	if err := t.dispatch.Preflight.Authorize(ctx, request); err != nil {
 		return nil, err
 	}
 	result, err := t.delegate.Call(ctx, args)
@@ -436,27 +457,7 @@ type journalStreamableTool struct {
 
 func (t *journalStreamableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
 func (t *journalStreamableTool) StreamableCall(ctx context.Context, args []byte) (*agenttool.StreamReader, error) {
-	if string(args) != string(t.dispatch.Plan.Args) {
-		return nil, toolJournalFailure(nativecontract.ErrConflict, "tool arguments differ from durable plan", nativecontract.EffectNotDispatched)
-	}
-	if err := t.journal.assertAttemptDispatchable(ctx, t.dispatch.Fence, t.dispatch.Attempt); err != nil {
-		return nil, err
-	}
-	request := nativecontract.ToolDispatchRequest{Scope: t.scope, Fence: t.dispatch.Fence, Plan: t.dispatch.Plan, Attempt: t.dispatch.Attempt, DecisionReference: t.dispatch.DecisionReference}
-	if err := t.dispatch.Preflight.Authorize(ctx, request); err != nil {
-		return nil, err
-	}
-	if _, err := t.journal.beginForPlan(ctx, t.dispatch.Fence, t.dispatch.Attempt, t.dispatch.Plan.ModelAttemptID); err != nil {
-		return nil, err
-	}
-	reader, err := t.delegate.StreamableCall(ctx, args)
-	if err != nil {
-		_ = t.journal.Finish(ctx, t.dispatch.Fence, t.dispatch.Attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrProvider, Message: "stream tool returned without a durable outcome", Effect: nativecontract.EffectUnknown})
-		return nil, err
-	}
-	// A StreamReader reports progress only. Its completion cannot prove an
-	// external side effect, so P3/P7 must query or explicitly confirm it.
-	return reader, nil
+	return nil, toolJournalFailure(nativecontract.ErrForbidden, "streamable tools require a completion-aware durable outcome adapter", nativecontract.EffectNotDispatched)
 }
 
 func (j *NativeToolJournal) Get(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, id string) (nativecontract.Attempt, error) {
@@ -608,12 +609,27 @@ func (j *NativeToolJournal) recordOutcomeAndIntent(ctx context.Context, outcome 
 	})
 }
 
-func (j *NativeToolJournal) LookupResult(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, callID string) (nativecontract.ToolOutcome, error) {
+func (j *NativeToolJournal) LookupResult(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, modelAttemptID, callID string) (nativecontract.ToolOutcome, error) {
 	if j == nil || j.db == nil {
 		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrStore, "tool journal is unavailable", nativecontract.EffectNotDispatched)
 	}
 	if scope.TenantID == 0 || scope.TenantID != run.TenantID {
 		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrForbidden, "tool result is outside scope", nativecontract.EffectNotDispatched)
+	}
+	if modelAttemptID == "" || callID == "" {
+		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrInvalid, "model attempt and call ID are required", nativecontract.EffectNotDispatched)
+	}
+	var modelCalls int64
+	if err := j.db.WithContext(ctx).Table("native_agent_tool_calls AS calls").
+		Joins("JOIN native_agent_attempts AS source ON source.tenant_id=calls.tenant_id AND source.run_id=calls.run_id AND source.attempt_id=calls.attempt_id AND source.kind='model'").
+		Where("calls.tenant_id=? AND calls.run_id=? AND calls.attempt_id=? AND calls.call_id=?", run.TenantID, run.RunID, modelAttemptID, callID).Count(&modelCalls).Error; err != nil {
+		return nativecontract.ToolOutcome{}, err
+	}
+	if modelCalls == 0 {
+		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrNotFound, "model tool call was not found", nativecontract.EffectNotDispatched)
+	}
+	if modelCalls != 1 {
+		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrConflict, "model tool call is ambiguous", nativecontract.EffectNotDispatched)
 	}
 	var payload string
 	err := j.db.WithContext(ctx).Table("native_agent_tool_results").Select("outcome").Where("tenant_id=? AND run_id=? AND call_id=? AND effect_state=?", run.TenantID, run.RunID, callID, string(nativecontract.EffectConfirmed)).Order("created_at DESC").Limit(1).Row().Scan(&payload)

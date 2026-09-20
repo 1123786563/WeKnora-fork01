@@ -22,6 +22,16 @@ func (t *repositoryTestCallableTool) Call(context.Context, []byte) (any, error) 
 	return "ok", nil
 }
 
+type repositoryTestStreamableTool struct{ calls int }
+
+func (t *repositoryTestStreamableTool) Declaration() *tool.Declaration {
+	return &tool.Declaration{Name: "stream-write"}
+}
+func (t *repositoryTestStreamableTool) StreamableCall(context.Context, []byte) (*tool.StreamReader, error) {
+	t.calls++
+	return tool.NewStream(1).Reader, nil
+}
+
 type repositoryPreflight func(context.Context, nativecontract.ToolDispatchRequest) error
 
 func (f repositoryPreflight) Authorize(ctx context.Context, request nativecontract.ToolDispatchRequest) error {
@@ -29,6 +39,13 @@ func (f repositoryPreflight) Authorize(ctx context.Context, request nativecontra
 }
 
 func allowRepositoryDispatch(context.Context, nativecontract.ToolDispatchRequest) error { return nil }
+
+type repositoryFailingPreparer struct{ calls int }
+
+func (p *repositoryFailingPreparer) PrepareToolAttempt(context.Context, nativecontract.Fence, nativecontract.Attempt, nativecontract.ToolPlan) (nativecontract.Attempt, error) {
+	p.calls++
+	return nativecontract.Attempt{}, &nativecontract.Failure{Code: nativecontract.ErrStore}
+}
 
 func nativeToolJournalFixture(t *testing.T) (*NativeToolJournal, nativecontract.Fence) {
 	t.Helper()
@@ -96,8 +113,48 @@ func TestNativeToolAttemptPersistsUnknownEffectWithoutForgingResult(t *testing.T
 	var failure string
 	require.NoError(t, journal.db.Table("native_agent_tool_results").Select("failure").Where("tenant_id=? AND run_id=? AND attempt_id=? AND call_id=?", 1, "run-1", attempt.ID, "call-1").Scan(&failure).Error)
 	require.Contains(t, failure, string(nativecontract.ErrUnknownEffect))
-	_, err = journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "call-1")
+	_, err = journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "model-1", "call-1")
 	require.Equal(t, nativecontract.ErrNotFound, failureCode(t, err), "unknown effect is not a confirmed result")
+}
+
+func TestNativeToolBoundaryRejectsStreamableDelegateUntilCompletionAdapterExists(t *testing.T) {
+	journal, fence := nativeToolJournalFixture(t)
+	boundary := NewNativeToolBoundary(journal.db, NewNativeCommitCoordinator(journal.db))
+	plan := nativeToolPlan()
+	dispatch := NativeToolDispatch{
+		Fence: fence, Plan: plan,
+		Attempt:        nativecontract.Attempt{ID: "tool-stream", Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: plan.CallID, Number: 2, Epoch: fence.Epoch, StartedAt: time.Now().UTC()},
+		CommitIntentID: "intent-stream", DecisionReference: "decision-stream", Preflight: repositoryPreflight(allowRepositoryDispatch),
+	}
+	delegate := &repositoryTestStreamableTool{}
+	_, err := boundary.Wrap(WithNativeToolDispatch(context.Background(), dispatch), nativecontract.Scope{TenantID: 1}, plan.Tool, delegate)
+	require.Equal(t, nativecontract.ErrForbidden, failureCode(t, err))
+	require.Zero(t, delegate.calls)
+}
+
+func TestNativeToolBoundaryPreparesAttemptBeforePreflightConsumption(t *testing.T) {
+	journal, fence := nativeToolJournalFixture(t)
+	boundary := NewNativeToolBoundary(journal.db, NewNativeCommitCoordinator(journal.db))
+	plan := nativeToolPlan()
+	preflightCalls := 0
+	preparer := &repositoryFailingPreparer{}
+	dispatch := NativeToolDispatch{
+		Fence: fence, Plan: plan,
+		Attempt:        nativecontract.Attempt{ID: "tool-prepare-fail", Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: plan.CallID, Number: 2, Epoch: fence.Epoch, StartedAt: time.Now().UTC()},
+		CommitIntentID: "intent-prepare-fail", DecisionReference: "decision-prepare-fail", Preparer: preparer,
+		Preflight: repositoryPreflight(func(context.Context, nativecontract.ToolDispatchRequest) error {
+			preflightCalls++
+			return nil
+		}),
+	}
+	delegate := &repositoryTestCallableTool{}
+	wrapped, err := boundary.Wrap(WithNativeToolDispatch(context.Background(), dispatch), nativecontract.Scope{TenantID: 1}, plan.Tool, delegate)
+	require.NoError(t, err)
+	_, err = wrapped.(tool.CallableTool).Call(context.Background(), plan.Args)
+	require.Equal(t, nativecontract.ErrStore, failureCode(t, err))
+	require.Equal(t, 1, preparer.calls)
+	require.Zero(t, preflightCalls, "a failed durable attempt must not consume a decision or budget reservation")
+	require.Zero(t, delegate.calls)
 }
 
 func TestNativeToolAttemptRejectsChangedImmutableIdentity(t *testing.T) {
@@ -143,19 +200,19 @@ func TestNativeToolBoundaryCommitsConfirmedCallableResultBehindBarrier(t *testin
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 	require.Equal(t, 1, delegate.calls)
-	stored, err := boundary.LookupResult(context.Background(), nativecontract.Scope{TenantID: 1}, fence.Run, plan.CallID)
+	stored, err := boundary.LookupResult(context.Background(), nativecontract.Scope{TenantID: 1}, fence.Run, plan.ModelAttemptID, plan.CallID)
 	require.NoError(t, err)
 	require.Equal(t, nativecontract.EffectConfirmed, stored.Effect)
 	require.NoError(t, NewNativeCommitCoordinator(journal.db).Barrier(context.Background(), fence, dispatch.CommitIntentID))
 }
 
 func TestNativeToolBoundaryPreflightFailureMakesZeroDelegateCalls(t *testing.T) {
-	journal, fence := nativeToolJournalFixture(t)
-	boundary := NewNativeToolBoundary(journal.db, NewNativeCommitCoordinator(journal.db))
-	plan := nativeToolPlan()
-	delegate := &repositoryTestCallableTool{}
 	for _, code := range []nativecontract.ErrorCode{nativecontract.ErrForbidden, nativecontract.ErrBudget, nativecontract.ErrLeaseLost} {
 		t.Run(string(code), func(t *testing.T) {
+			journal, fence := nativeToolJournalFixture(t)
+			boundary := NewNativeToolBoundary(journal.db, NewNativeCommitCoordinator(journal.db))
+			plan := nativeToolPlan()
+			delegate := &repositoryTestCallableTool{}
 			dispatch := NativeToolDispatch{
 				Fence: fence, Plan: plan,
 				Attempt:        nativecontract.Attempt{ID: "tool-" + string(code), Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: plan.CallID, Number: 2, Epoch: fence.Epoch, StartedAt: time.Now().UTC()},
@@ -203,15 +260,14 @@ func TestNativeToolBoundaryNeverRedispatchesWhenAtomicOutcomeIntentWriteFails(t 
 	require.Equal(t, 1, preflightCalls, "a held attempt must not consume another decision or budget reservation")
 }
 
-func TestNativeToolAttemptRejectsAmbiguousCallIDAcrossModelAttempts(t *testing.T) {
+func TestNativeToolPlanRejectsDuplicateCallIDAcrossModelAttempts(t *testing.T) {
 	journal, fence := nativeToolJournalFixture(t)
 	plan := nativeToolPlan()
 	require.NoError(t, func() error { _, err := journal.Plan(context.Background(), fence, plan); return err }())
 	require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, attempt_number) VALUES (?, ?, ?, ?, ?, ?)`, 1, "run-1", "model-2", 7, "model", 2).Error)
 	other := plan
 	other.ModelAttemptID = "model-2"
-	require.NoError(t, func() error { _, err := journal.Plan(context.Background(), fence, other); return err }())
-	_, err := journal.Begin(context.Background(), fence, nativecontract.Attempt{ID: "tool-ambiguous", Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: plan.CallID, Number: 2, Epoch: fence.Epoch, StartedAt: time.Now().UTC()})
+	_, err := journal.Plan(context.Background(), fence, other)
 	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
 }
 
@@ -228,9 +284,9 @@ func TestNativeToolConfirmedOutcomeIsImmutableAndVisibleOnlyInScope(t *testing.T
 	changed.ResultHash = "result-2"
 	require.Equal(t, nativecontract.ErrConflict, failureCode(t, journal.RecordOutcome(ctx, fence, changed)))
 
-	got, err := journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "call-1")
+	got, err := journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "model-1", "call-1")
 	require.NoError(t, err)
 	require.Equal(t, outcome, got)
-	_, err = journal.LookupResult(ctx, nativecontract.Scope{TenantID: 2}, fence.Run, "call-1")
+	_, err = journal.LookupResult(ctx, nativecontract.Scope{TenantID: 2}, fence.Run, "model-1", "call-1")
 	require.Equal(t, nativecontract.ErrForbidden, failureCode(t, err))
 }

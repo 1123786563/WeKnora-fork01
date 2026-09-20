@@ -103,6 +103,23 @@ func TestServerToolDispatchPreflightRejectsRevokedGrantBeforeReservation(t *test
 	require.Zero(t, reservation.calls.Load())
 }
 
+func TestServerToolDispatchPreflightRejectsChangedOwnerOrPrincipalBeforeReservation(t *testing.T) {
+	request := nativeTestDispatchRequest()
+	request.Scope.SessionOwnerID = "owner-1"
+	request.Scope.Principal = nativecontract.Principal{Type: "user", ID: "user-1"}
+	for _, changed := range []nativecontract.Scope{
+		{TenantID: 1, SessionOwnerID: "owner-2", Principal: request.Scope.Principal, Grants: request.Plan.RequiredGrants},
+		{TenantID: 1, SessionOwnerID: request.Scope.SessionOwnerID, Principal: nativecontract.Principal{Type: "service", ID: "user-1"}, Grants: request.Plan.RequiredGrants},
+	} {
+		t.Run(changed.SessionOwnerID+changed.Principal.Type, func(t *testing.T) {
+			reservation := &nativeTestReservation{}
+			err := (ServerToolDispatchPreflight{Scopes: &nativeTestScopeResolver{result: changed}, Reservations: reservation}).Authorize(context.Background(), request)
+			require.Equal(t, nativecontract.ErrForbidden, nativeFailureCode(t, err))
+			require.Zero(t, reservation.calls.Load())
+		})
+	}
+}
+
 func TestServerToolDispatchPreflightReturnsBudgetAndFenceFailuresBeforeDelegate(t *testing.T) {
 	request := nativeTestDispatchRequest()
 	granted := nativecontract.Scope{TenantID: 1, Grants: request.Plan.RequiredGrants}
@@ -128,4 +145,17 @@ func TestRecoveryActionForPlanHoldsExpiredIdempotencyKey(t *testing.T) {
 	plan.IdempotencyKey = "provider-key"
 	plan.IdempotencyExpiresAt = time.Now().Add(-time.Second)
 	require.Equal(t, "hold", RecoveryActionForPlan(plan, false, time.Now()))
+}
+
+func TestNativeStreamableToolIsUnsupportedBeforePreflightOrDelegate(t *testing.T) {
+	delegate := &nativeTestStreamTool{}
+	preflightCalls := atomic.Int64{}
+	wrapped := WrapStreamableTool(delegate, func(context.Context, []byte) error {
+		preflightCalls.Add(1)
+		return nil
+	})
+	_, err := wrapped.StreamableCall(context.Background(), []byte(`{}`))
+	require.Equal(t, nativecontract.ErrForbidden, nativeFailureCode(t, err))
+	require.Zero(t, preflightCalls.Load())
+	require.Zero(t, delegate.calls.Load())
 }

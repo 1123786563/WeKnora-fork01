@@ -204,6 +204,12 @@ type ToolDispatchPreflight interface {
 type ToolDispatchReservation interface {
 	ReserveAndConsume(context.Context, ToolDispatchRequest) error
 }
+
+// ToolAttemptPreparer durably records the exact model-plan-bound tool attempt
+// before a decision reference or budget reservation can be consumed.
+type ToolAttemptPreparer interface {
+	PrepareToolAttempt(context.Context, Fence, Attempt, ToolPlan) (Attempt, error)
+}
 type UserDecision struct {
 	Reason, ResourceRef           string
 	Version                       int
@@ -342,7 +348,7 @@ type ToolBoundary interface {
 	Plan(context.Context, Fence, ToolPlan) (ToolPlan, error)
 	Decide(context.Context, Scope, UserDecision) error
 	Wrap(context.Context, Scope, ToolIdentity, tool.Tool) (tool.Tool, error)
-	LookupResult(context.Context, Scope, RunIdentity, string) (ToolOutcome, error)
+	LookupResult(context.Context, Scope, RunIdentity, string, string) (ToolOutcome, error)
 }
 
 type ErrorCode string

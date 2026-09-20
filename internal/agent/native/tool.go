@@ -57,7 +57,8 @@ func (p ServerToolDispatchPreflight) Authorize(ctx context.Context, request nati
 	if err != nil {
 		return err
 	}
-	if current.TenantID != request.Fence.Run.TenantID || !containsGrants(current.Grants, request.Plan.RequiredGrants) {
+	if current.TenantID != request.Scope.TenantID || current.SessionOwnerID != request.Scope.SessionOwnerID ||
+		current.Principal != request.Scope.Principal || !containsGrants(current.Grants, request.Plan.RequiredGrants) {
 		return nativeToolFailure(nativecontract.ErrForbidden, "tool dispatch grants were revoked")
 	}
 	return p.Reservations.ReserveAndConsume(ctx, request)
@@ -124,8 +125,5 @@ func WrapStreamableTool(delegate tool.StreamableTool, preflight ToolPreflight) t
 }
 
 func (t *guardedStreamableTool) StreamableCall(ctx context.Context, args []byte) (*tool.StreamReader, error) {
-	if err := t.preflight(ctx, args); err != nil {
-		return nil, err
-	}
-	return t.StreamableTool.StreamableCall(ctx, args)
+	return nil, nativeToolFailure(nativecontract.ErrForbidden, "streamable tools require a completion-aware durable outcome adapter")
 }
