@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +59,83 @@ func TestNativeUsageHigherRevisionSettlesOnlyCumulativeDelta(t *testing.T) {
 	require.EqualValues(t, 7, delta.PromptTokens)
 	require.EqualValues(t, 4, delta.CompletionTokens)
 	require.EqualValues(t, 11, delta.TotalTokens)
+}
+
+func TestNativeUsageLargeIntegersRemainExactAcrossRevisionAndReplay(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	const unsafeJavaScriptInteger = int64(9_007_199_254_740_993)
+	observation.PromptTokens = unsafeJavaScriptInteger
+	observation.CompletionTokens = 11
+	observation.TotalTokens = unsafeJavaScriptInteger + 11
+
+	first, err := ledger.ObserveDelta(context.Background(), fence, observation)
+	require.NoError(t, err)
+	require.Equal(t, observation.TotalTokens, first.TotalTokens)
+	claimed, err := ledger.ClaimSettlement(context.Background(), fence, first.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, first.IntentID))
+
+	correction := observation
+	correction.Revision++
+	correction.PromptTokens += 7
+	correction.CompletionTokens += 3
+	correction.TotalTokens += 10
+	delta, err := ledger.ObserveDelta(context.Background(), fence, correction)
+	require.NoError(t, err)
+	require.EqualValues(t, 7, delta.PromptTokens)
+	require.EqualValues(t, 3, delta.CompletionTokens)
+	require.EqualValues(t, 10, delta.TotalTokens)
+	claimed, err = ledger.ClaimSettlement(context.Background(), fence, delta.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, delta.IntentID))
+
+	replay, err := ledger.ObserveDelta(context.Background(), fence, correction)
+	require.NoError(t, err)
+	require.Zero(t, replay.TotalTokens)
+	var stored struct {
+		Revision, PromptTokens, CompletionTokens int64
+	}
+	require.NoError(t, ledger.db.Table("native_agent_usage_observations").
+		Select("revision, input_tokens AS prompt_tokens, output_tokens AS completion_tokens").
+		Where("tenant_id=? AND run_id=? AND attempt_id=? AND observation_id=?", 1, "run-1", observation.AttemptID, observation.ObservationID).
+		Take(&stored).Error)
+	require.Equal(t, correction.Revision, stored.Revision)
+	require.Equal(t, correction.PromptTokens, stored.PromptTokens)
+	require.Equal(t, correction.CompletionTokens, stored.CompletionTokens)
+	var payload string
+	require.NoError(t, ledger.db.Table("native_agent_commit_intents").
+		Select("payload").
+		Where("tenant_id=? AND run_id=? AND intent_id=?", 1, "run-1", delta.IntentID).
+		Scan(&payload).Error)
+	require.Contains(t, payload, strconv.FormatInt(correction.PromptTokens, 10))
+}
+
+func TestNativeUsageCollidingLegacyKeysPersistSeparateSettlementIntents(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	first := observation
+	first.AttemptID, first.ObservationID = "a:b", "c"
+	second := observation
+	second.AttemptID, second.ObservationID = "a", "b:c"
+	require.Equal(t, first.AttemptID+":"+first.ObservationID+":1", second.AttemptID+":"+second.ObservationID+":1")
+	require.NoError(t, ledger.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, attempt_number, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", first.AttemptID, 1, fence.Epoch).Error)
+	require.NoError(t, ledger.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, attempt_number, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", second.AttemptID, 2, fence.Epoch).Error)
+
+	firstDelta, err := ledger.ObserveDelta(context.Background(), fence, first)
+	require.NoError(t, err)
+	secondDelta, err := ledger.ObserveDelta(context.Background(), fence, second)
+	require.NoError(t, err)
+	require.NotEqual(t, firstDelta.IntentID, secondDelta.IntentID)
+	for _, delta := range []NativeUsageDelta{firstDelta, secondDelta} {
+		claimed, err := ledger.ClaimSettlement(context.Background(), fence, delta.IntentID)
+		require.NoError(t, err)
+		require.True(t, claimed)
+		require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, delta.IntentID))
+	}
+	var receipts int64
+	require.NoError(t, ledger.db.Table("native_agent_usage_observations").Count(&receipts).Error)
+	require.EqualValues(t, 2, receipts)
 }
 
 func TestNativeUsageRejectsChangedReplayStaleRevisionAndStaleFence(t *testing.T) {
