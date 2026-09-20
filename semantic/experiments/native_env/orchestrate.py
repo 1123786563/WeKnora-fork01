@@ -92,7 +92,8 @@ def up(config: NativeEnvConfig) -> int:
     except TimeoutError as error:
         (paths.root / "readiness-error.log").write_text(str(error) + "\n", encoding="utf-8")
         return 1
-    env = dict(os.environ)
+    # Do not inherit ambient provider, storage, proxy, or user credentials.
+    env = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "CGO_ENABLED") if key in os.environ}
     secrets_map = dict(line.split("=", 1) for line in paths.env.read_text(encoding="utf-8").splitlines() if "=" in line)
     env.update({
         "SERVER_HOST": "127.0.0.1", "SERVER_PORT": str(url_port(config.app_url)),
@@ -102,6 +103,7 @@ def up(config: NativeEnvConfig) -> int:
         "OLLAMA_BASE_URL": config.ollama_url, "STORAGE_TYPE": "local", "LOCAL_STORAGE_BASE_DIR": str(paths.root / "storage"), "JWT_SECRET": secrets_map["NATIVE_JWT_SECRET"], "SYSTEM_AES_KEY": secrets_map["NATIVE_SYSTEM_AES_KEY"],
         "DISABLE_REGISTRATION": "false", "WEKNORA_AUTH_DEFAULT_TENANT_MODE": "create_personal", "AUTO_MIGRATE": "true",
         "SSRF_WHITELIST_EXTRA": "127.0.0.1",
+        "HTTP_PROXY": "", "HTTPS_PROXY": "", "ALL_PROXY": "", "NO_PROXY": "*",
     })
     with paths.app_log.open("w", encoding="utf-8") as log:
         app = subprocess.Popen(["go", "run", "./cmd/server"], cwd=Path(__file__).parents[3], stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
