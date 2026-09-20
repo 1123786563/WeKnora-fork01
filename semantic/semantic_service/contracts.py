@@ -97,8 +97,8 @@ class Evidence:
 
     def __post_init__(self) -> None:
         _uint(self.revision, UINT64_MAX, "revision", nonzero=True)
-        if not self.quote:
-            raise ValueError("evidence quote and uint64 revision are required")
+        if not all((self.evidence_id, self.document_id, self.chunk_id, self.content_hash, self.quote)):
+            raise ValueError("evidence identity, quote, and uint64 revision are required")
         if (self.start_char is None) != (self.end_char is None):
             raise ValueError("evidence span must be fully absent or present")
         if self.start_char is not None:
@@ -166,6 +166,8 @@ class Operation:
         _uint(self.lease_token, UINT64_MAX, "lease_token")
         if not self.operation_id or not self.document_id or not self.state or not self.stage:
             raise ValueError("operation fields are invalid")
+        if self.state not in {"pending", "running", "succeeded", "failed", "cancelled"}:
+            raise ValueError("operation state is unsupported")
 
 
 @dataclass(frozen=True)
@@ -263,6 +265,10 @@ class Capabilities:
     def __post_init__(self) -> None:
         if not self.protocol_version or not self.engine_version:
             raise ValueError("capabilities are incomplete")
+        if any(mode not in {"graph_rag", "reason"} for mode in self.retrieval_modes):
+            raise ValueError("capabilities contain an unsupported retrieval mode")
+        if any(mode not in {"rules", "model"} for mode in self.reasoning_modes):
+            raise ValueError("capabilities contain an unsupported reasoning mode")
 
 
 @dataclass(frozen=True)
