@@ -278,6 +278,17 @@ def operation_from_wire(wire) -> Operation:
     return Operation(wire.operation_id, ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, states[wire.state], wire.stage, wire.lease_token, wire.result_generation if wire.HasField("result_generation") else None, wire.error_code if wire.HasField("error_code") else None)
 
 
+def operation_ref_to_wire(value: OperationRef):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.OperationRef(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), operation_id=value.operation_id)
+
+
+def operation_ref_from_wire(wire) -> OperationRef:
+    if wire is None or not wire.HasField("scope"):
+        raise ValueError("operation reference scope is required")
+    return OperationRef(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.operation_id)
+
+
 def search_response_to_wire(value: SearchResponse):
     from semantic_service.proto import semantic_pb2
     modes = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}

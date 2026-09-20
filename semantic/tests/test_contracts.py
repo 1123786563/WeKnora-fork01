@@ -156,6 +156,13 @@ def test_operation_wire_round_trip_preserves_state() -> None:
     assert operation_from_wire(operation_to_wire(value)) == value
 
 
+def test_operation_ref_wire_round_trip_preserves_scope() -> None:
+    from semantic_service.contracts import OperationRef, ScopeKey, operation_ref_from_wire, operation_ref_to_wire
+
+    value = OperationRef(ScopeKey(1, "kb"), "op")
+    assert operation_ref_from_wire(operation_ref_to_wire(value)) == value
+
+
 def test_search_response_wire_round_trip_preserves_modes() -> None:
     from semantic_service.contracts import Evidence, SearchResponse, search_response_from_wire, search_response_to_wire
 
