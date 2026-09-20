@@ -388,11 +388,19 @@ const defaultMarketBaseDir = "/data/files"
 // so materialized experts live under the same local-data base dir every
 // other on-disk consumer uses, tenant-scoped one level down.
 func MarketDataRoot() string {
+	return filepath.Join(marketBaseDirOrDefault(), "expert-market")
+}
+
+// marketBaseDirOrDefault resolves the local-data base dir every
+// local-storage consumer in the server reads (the file service's local
+// backend, the desktop build's data dir); both expert-market roots nest
+// under it so one deployment has one data root.
+func marketBaseDirOrDefault() string {
 	base := strings.TrimSpace(os.Getenv(marketBaseDirEnv))
 	if base == "" {
 		base = defaultMarketBaseDir
 	}
-	return filepath.Join(base, "expert-market")
+	return base
 }
 
 // MarketTenantDir is the directory holding one tenant's installed experts:

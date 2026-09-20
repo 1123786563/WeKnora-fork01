@@ -24,6 +24,9 @@ const (
 	// expertSourceSkillhub stamps agents instantiated from experts a tenant
 	// installed out of the SkillHub market (M4).
 	expertSourceSkillhub = "skillhub"
+	// expertSourceTenant stamps agents instantiated from experts a member
+	// published to the tenant-internal market (M4 Task 5).
+	expertSourceTenant = "tenant"
 	// expertPersonaFileSeparator joins an expert's persona documents (and
 	// the agent-config system prompt) into one markdown system prompt.
 	expertPersonaFileSeparator = "\n\n---\n\n"
@@ -398,20 +401,36 @@ func buildAgentFromExpert(e *experts.Expert, locale, nameOverride string) *types
 		agent.Config.SelectedSkills = append([]string(nil), m.Skills...)
 	}
 
+	// Subagents (the M4 tenant-publish manifest extension): delegation
+	// slugs ride in the manifest yaml and map onto the agent config
+	// verbatim. A copied slice — experts are shared read-only.
+	if len(m.Subagents) > 0 {
+		agent.Config.Subagents = append([]string(nil), m.Subagents...)
+	}
+
 	agent.Config.ExpertSource = expertProvenance(m.ID)
 	return agent
 }
 
 // expertProvenance stamps where a template came from: builtin experts carry
 // Source "builtin"; market-installed experts (IDs under the
-// skillhub-skillset- prefix) carry Source "skillhub" plus the skillset slug,
-// which disambiguates same-ID templates from the market.
+// skillhub-skillset- prefix) carry Source "skillhub" plus the skillset slug;
+// tenant-published experts (IDs under the tenant-expert- prefix, M4 Task 5)
+// carry Source "tenant" plus the source agent ID — which disambiguates
+// same-ID templates across all three sources.
 func expertProvenance(expertID string) *types.ExpertSourceStruct {
 	if slug, ok := experts.MarketExpertSlugFromID(expertID); ok {
 		return &types.ExpertSourceStruct{
 			ExpertID: expertID,
 			Source:   expertSourceSkillhub,
 			Slug:     slug,
+		}
+	}
+	if agentID, ok := experts.TenantExpertAgentFromID(expertID); ok {
+		return &types.ExpertSourceStruct{
+			ExpertID: expertID,
+			Source:   expertSourceTenant,
+			Slug:     agentID,
 		}
 	}
 	return &types.ExpertSourceStruct{

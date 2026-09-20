@@ -33,9 +33,11 @@ const (
 //   - Every prompt_files entry must be a plain base name (no separators,
 //     no "..") and must exist with non-empty content; contents are loaded
 //     into Expert.PersonaFiles here.
-//   - Every skills entry must be a plain base name with a matching
-//     skills/<slug>/ directory containing SKILL.md; SkillDirs carries the
-//     absolute directory paths.
+//   - Every skills entry must be a plain base name; unless the manifest
+//     sets skill_refs (references resolved at instantiation, the M4
+//     tenant-publish extension), it must also have a matching
+//     skills/<slug>/ directory containing SKILL.md, whose absolute path
+//     lands in SkillDirs.
 //
 // The returned experts are ordered by directory name. An unreadable root
 // directory (including a missing one) is returned as an error.
@@ -111,6 +113,11 @@ func scanExpertDir(expertDir, manifestPath string) (*Expert, error) {
 		if !isSafeBaseName(slug) {
 			return nil, fmt.Errorf("experts: %s: skills entry %q must be a plain directory name", manifestPath, slug)
 		}
+		if m.SkillRefs {
+			// References carry no bundled directory: the name is resolved
+			// at instantiation (installed → selected, otherwise pending).
+			continue
+		}
 		skillDir := filepath.Join(expertDir, skillsDirName, slug)
 		if err := requireSkillDir(skillDir); err != nil {
 			return nil, fmt.Errorf("experts: %s: skill %q: %w", manifestPath, slug, err)
@@ -123,6 +130,19 @@ func scanExpertDir(expertDir, manifestPath string) (*Expert, error) {
 	}
 
 	return e, nil
+}
+
+// LoadExpertDir loads exactly one expert package directory — the
+// scanExpertDir contract without the sibling sweep — so a caller that
+// already knows its directory (the tenant-expert install path reading one
+// published snapshot) neither parses unrelated snapshots nor fails because
+// a sibling is broken.
+func LoadExpertDir(dir string) (*Expert, error) {
+	manifestPath := filepath.Join(dir, manifestFileName)
+	if _, err := os.Stat(manifestPath); err != nil {
+		return nil, fmt.Errorf("experts: stat %s: %w", manifestPath, err)
+	}
+	return scanExpertDir(dir, manifestPath)
 }
 
 // requireSkillDir validates that skillDir is a directory containing SKILL.md.

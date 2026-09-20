@@ -47,6 +47,20 @@ type ExpertManifest struct {
 	QuickPrompts []QuickPrompt     `yaml:"quick_prompts"`
 	Skills       []string          `yaml:"skills"`
 	AgentConfig  ExpertAgentConfig `yaml:"agent_config"`
+
+	// SkillRefs marks the skills list as REFERENCES rather than bundled
+	// directories (the M4 tenant-expert-publish extension): the entries name
+	// skills the installer resolves at instantiation (installed → selected,
+	// otherwise pending — the bundled resolver's missing-directory path), and
+	// the scanner requires no skills/<slug>/ directories. False — including
+	// every pre-existing manifest — keeps the strict bundled-dir contract.
+	SkillRefs bool `yaml:"skill_refs"`
+
+	// Subagents names the sub-agent catalog slugs an instantiated agent may
+	// delegate to (the M4 tenant-expert-publish extension: a published agent
+	// exports its Subagents list). M2 manifests never set it; Instantiate
+	// maps it onto CustomAgentConfig.Subagents verbatim.
+	Subagents []string `yaml:"subagents"`
 }
 
 // Expert is one scanned expert package. The scanner fills PersonaFiles with

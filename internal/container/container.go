@@ -262,6 +262,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantSubagentRepository))
 	must(container.Provide(repository.NewExpertInstallRepository))
 	must(container.Provide(repository.NewPublishedSkillRepository))
+	must(container.Provide(repository.NewPublishedExpertRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
@@ -722,6 +723,24 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	) *handler.TenantSkillMarketHandler {
 		marketSvc := service.NewTenantSkillMarketService(published, skillsRepo, tenantSkills, users)
 		return handler.NewTenantSkillMarketHandler(marketSvc)
+	}))
+	// Tenant-internal expert market API (M4): publishing an agent exports an
+	// immutable materialized-expert snapshot under the tenant's
+	// published-experts root; installs seed the shared ExpertService's
+	// installed-experts root from the snapshot, record the expert install
+	// ledger row and compose with the SAME ExpertService instance the
+	// expert routes serve.
+	must(container.Provide(func(
+		agents interfaces.CustomAgentService,
+		published repository.PublishedExpertRepository,
+		installs repository.ExpertInstallRepository,
+		expertSvc interfaces.ExpertService,
+		users interfaces.UserRepository,
+	) *handler.TenantExpertMarketHandler {
+		marketSvc := service.NewTenantExpertMarketService(
+			agents, published, installs, expertSvc, users,
+			experts.PublishedDataRoot(), experts.MarketDataRoot())
+		return handler.NewTenantExpertMarketHandler(marketSvc)
 	}))
 	must(container.Provide(handler.NewOrganizationHandler))
 	must(container.Provide(handler.NewMemoryHandler))
