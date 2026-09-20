@@ -132,6 +132,11 @@ test('authenticated platform paths match their pages inside the shell layout', (
     ['/platform/creatChat', '/platform/creatChat'],
     ['/platform/chat/session-7', '/platform/chat/$'],
     ['/platform/organizations', '/platform/organizations'],
+    // SP14 Task 1 — commercial billing wiring: all three pages live under the
+    // platform shell (checkout reads ?order; admin gets capability.operator).
+    ['/platform/billing', '/platform/billing'],
+    ['/platform/billing/checkout', '/platform/billing/checkout'],
+    ['/platform/billing/admin', '/platform/billing/admin'],
   ] as const) {
     const ids = matchedRouteIds(router, path.split('?')[0]!);
     assert.ok(ids.includes(routeId), `${path} should match ${routeId}, got ${ids.join(',')}`);

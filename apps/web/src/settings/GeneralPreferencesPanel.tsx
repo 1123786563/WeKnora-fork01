@@ -1,7 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { WeKnoraClient } from '@weknora/api-client';
+import type { CommercialSummary } from '@weknora/contracts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, readUserPreference, writeUserPreference, migratePreferencesIntoUser, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
-import { Select, Status, Switch } from '@weknora/ui';
+import { Button, Card, Select, Status, Switch } from '@weknora/ui';
+import { navigate } from '../platform/navigation.ts';
+
+/**
+ * SP14 Task 1 — 套餐卡片文案组装（纯函数）：plan_name 原样透传，paid_until
+ * 为 null 时落到 billing.noExpiry 本地化文案，available/held 按微积分整数
+ * 本地化（UsagePanel 预算卡的 Number().toLocaleString(locale) 同款）。
+ */
+export interface BillingSummaryCardCopy {
+  readonly plan: string;
+  readonly paidUntil: string;
+  readonly available: string;
+  readonly held: string;
+}
+
+export function formatBillingSummary(locale: Locale, summary: CommercialSummary): BillingSummaryCardCopy {
+  const number = (value: string): string => Number(value).toLocaleString(locale);
+  return {
+    plan: summary.plan_name,
+    paidUntil: summary.paid_until ?? formatMessage(locale, 'billing.noExpiry'),
+    available: number(summary.available),
+    held: number(summary.held),
+  };
+}
 
 function readStoredLocale(): Locale {
   const stored = window.localStorage.getItem('locale');
@@ -109,7 +134,7 @@ function applyFontCssVariables(sans: string, mono: string, size: FontSize): void
   root.style.setProperty('--wk-font-scale', String(FONT_SCALES[size]));
 }
 
-export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boolean }) {
+export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode?: boolean; client?: WeKnoraClient }) {
   const [locale, setLocale] = useState<Locale>(readStoredLocale);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     // Vue useTheme.ts default: 'light' when storage is unavailable.
@@ -134,6 +159,10 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
     } catch { return 'system'; }
   });
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(readAutoCheckUpdate);
+  // SP14 Task 1 — 顶部套餐卡片数据：client.commercial.summary() 仅挂载时拉取
+  // 一次（UsagePanel 预算卡模式）；summary 失败 / 无 client（或测试桩缺
+  // commercial facet）时静默隐藏整卡，不影响分区其余内容。
+  const [billing, setBilling] = useState<CommercialSummary | null>(null);
   // Vue GeneralSettings.vue closes each accepted preference change with a
   // MessagePlugin.success (language.languageSaved / common.success); the React
   // domain surfaces the same feedback as an inline success Status.
@@ -148,6 +177,21 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
   useEffect(() => {
     applyFontCssVariables(sansFont, monoFont, fontSize);
   }, []);
+
+  useEffect(() => {
+    if (!client) return undefined;
+    let cancelled = false;
+    try {
+      void client.commercial.summary()
+        .then((summary) => { if (!cancelled) setBilling(summary); })
+        .catch(() => { if (!cancelled) setBilling(null); });
+    } catch {
+      // A partial client facade (test doubles) without the commercial facet
+      // hides the card the same way a failed request does.
+      setBilling(null);
+    }
+    return () => { cancelled = true; };
+  }, [client]);
 
   function handleLanguageChange(next: string) {
     if (!isLocale(next)) return;
@@ -194,6 +238,7 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
   const monoOptions = visibleMonoKeys(platform);
   const currentSansStack = SANS_STACKS[sansFont] ?? SANS_STACKS.system!;
   const currentMonoStack = MONO_STACKS[monoFont] ?? MONO_STACKS.system!;
+  const billingCopy = billing ? formatBillingSummary(locale, billing) : null;
 
   return (
     <div className="general-settings" data-testid="general-preferences-panel">
@@ -201,6 +246,17 @@ export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boole
         <h2>{t('general.title')}</h2>
         <p className="section-description">{t('general.description')}</p>
       </div>
+      {billing && billingCopy ? (
+        <Card data-testid="general-billing-card" className="mb-4 flex flex-wrap items-center gap-x-[24px] gap-y-[6px]">
+          <h3 className="w-full m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('billing.cardTitle')}</h3>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.plan')}：</span>{billingCopy.plan}</span>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.paidUntil')}：</span>{billingCopy.paidUntil}</span>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.available')}：</span>{billingCopy.available}</span>
+          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.held')}：</span>{billingCopy.held}</span>
+          {/* orderId 空串 = checkout 页自建 quote+order（升级/续费新订单）。 */}
+          <Button type="button" onClick={() => navigate('/platform/billing/checkout')}>{t('billing.upgrade')}</Button>
+        </Card>
+      ) : null}
       {notice ? <div data-testid="general-preferences-notice" role="status"><Status tone="success">{notice}</Status></div> : null}
       <div className="settings-group">
         <div className="setting-row">

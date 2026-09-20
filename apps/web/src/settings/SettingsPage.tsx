@@ -338,7 +338,9 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const sectionDenied = sectionRoleDenied
       ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
       : null;
-    const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
+    // SP14 Task 1 — general 分区传入 client：GeneralPreferencesPanel 顶部套餐
+    // 卡片用它拉 client.commercial.summary()（失败静默隐藏整卡）。
+    const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} client={client} /> : null;
     const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
       ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} role={role} />
       : null;

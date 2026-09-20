@@ -50,6 +50,11 @@ const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.t
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage.tsx').then((module) => ({ default: module.AnalyticsPage })));
 // SP13 Task 8 — 会话只读分享页（/platform/shared/:token）。
 const SharedSessionPage = lazy(() => import('./shared/SharedSessionPage.tsx').then((module) => ({ default: module.SharedSessionPage })));
+// SP14 Task 1 — 商业套餐三页（/platform/billing*）。RefundPage 本期不挂路由：
+// refundId 由宿主注入（expectedVersion 对齐语义），留组件库待真实退款流程接入。
+const BillingPage = lazy(() => import('./commercial/BillingPage.tsx').then((module) => ({ default: module.BillingPage })));
+const CheckoutPage = lazy(() => import('./commercial/CheckoutPage.tsx').then((module) => ({ default: module.CheckoutPage })));
+const AdminCommercialPage = lazy(() => import('./commercial/AdminCommercialPage.tsx').then((module) => ({ default: module.AdminCommercialPage })));
 const ExpertsPage = lazy(() => import('./experts/ExpertsPage.tsx').then((module) => ({ default: module.ExpertsPage })));
 const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
 const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
@@ -632,6 +637,46 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     },
   });
 
+  // SP14 Task 1 — 套餐接线（照 analyticsRoute 模式：platformRoute 子路由 +
+  // lazy + Suspense）。/platform/billing 账单总览；checkout 从 URL query
+  // `order` 取已有订单 id，无则空串（页面自建 quote+order，内部不导航）；
+  // admin 的 capability 仅是 UI affordance（Ruling P-2：operator 取
+  // scopeRuntime.isSystemAdmin()），页面自身渲染无权限占位，服务端校验才是权威。
+  const billingRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'billing',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <BillingPage client={client} scopeController={scopeController} />
+      </Suspense>
+    ),
+  });
+
+  const billingCheckoutRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'billing/checkout',
+    component: (): ReactNode => {
+      // Same query-reading precedent as the wiki route's knowledge_id: the
+      // TanStack location href carries the search string.
+      const orderId = new URLSearchParams(searchOf(useLocation().href)).get('order')?.trim() ?? '';
+      return (
+        <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+          <CheckoutPage client={client} scopeController={scopeController} orderId={orderId} />
+        </Suspense>
+      );
+    },
+  });
+
+  const billingAdminRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'billing/admin',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <AdminCommercialPage client={client} scopeController={scopeController} capability={{ operator: scopeRuntime.isSystemAdmin() }} />
+      </Suspense>
+    ),
+  });
+
   // Octop M2 expert-template catalog; list/detail are Viewer+ reads, the
   // instantiate write stays Contributor+ server-side (routes_expert.go guard).
   const expertsRoute = createRoute({
@@ -827,6 +872,9 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       settingsRoute,
       analyticsRoute,
       sharedSessionRoute,
+      billingRoute,
+      billingCheckoutRoute,
+      billingAdminRoute,
       devMarkdownRoute,
       appsCatalogRoute,
       appsConnectionsRoute,
