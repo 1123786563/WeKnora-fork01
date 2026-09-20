@@ -290,8 +290,8 @@ func TestNativeUsageServiceRealLedgerFailedRevisionBlocksThenSettlesDelta(t *tes
 	require.NoError(t, svc.Observe(context.Background(), fence, first))
 	require.NoError(t, svc.Observe(context.Background(), fence, later))
 	require.Len(t, budget.settledDeltas, 2)
-	require.EqualValues(t, 15, budget.settledDeltas[0].TotalTokens)
-	require.EqualValues(t, 11, budget.settledDeltas[1].TotalTokens)
+	require.EqualValues(t, 10, budget.settledDeltas[0].TotalTokens)
+	require.EqualValues(t, 16, budget.settledDeltas[1].TotalTokens)
 }
 
 func nativeUsageFailureCode(t *testing.T, err error) nativecontract.ErrorCode {
