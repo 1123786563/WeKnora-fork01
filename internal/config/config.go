@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,6 +32,7 @@ type Config struct {
 	StreamManager      *StreamManagerConfig      `yaml:"stream_manager"   json:"stream_manager"`
 	ExtractManager     *ExtractManagerConfig     `yaml:"extract"          json:"extract"`
 	WebSearch          *WebSearchConfig          `yaml:"web_search"       json:"web_search"`
+	SkillHubMarket     *SkillHubMarketConfig     `yaml:"skillhub_market"  json:"skillhub_market"` // M4 skill market; defaults + nil-safe accessors below
 	PromptTemplates    *PromptTemplatesConfig    `yaml:"prompt_templates" json:"prompt_templates"`
 	IM                 *IMConfig                 `yaml:"im"               json:"im"`
 	Agent              *AgentConfig              `yaml:"agent"            json:"agent"`
@@ -830,6 +832,7 @@ func LoadConfig() (*Config, error) {
 	applyCommercialRolloutDefaults(&cfg)
 	applyOpenConnectorDefaults(&cfg)
 	applyWorkbenchCapabilityDefaults(&cfg)
+	applySkillHubMarketDefaults(&cfg)
 
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
@@ -901,6 +904,16 @@ func ValidateConfig(cfg *Config) error {
 	if cfg.Audit != nil && cfg.Audit.RetentionDays < 0 {
 		errs = append(errs, fmt.Sprintf("audit.retention_days must be >= 0 (got %d); use 0 to disable purge",
 			cfg.Audit.RetentionDays))
+	}
+
+	// The marketplace host must be an absolute http(s) origin; anything
+	// else (bare hostname, ftp, etc.) would be rejected per-request anyway,
+	// so fail the boot early with an actionable message.
+	if host := strings.TrimSpace(cfg.SkillHubMarketHost()); host != "" {
+		if u, parseErr := url.Parse(host); parseErr != nil ||
+			(u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			errs = append(errs, fmt.Sprintf("skillhub_market.host must be an absolute http(s) URL, got %q", host))
+		}
 	}
 
 	if cfg.Conversation != nil {
@@ -1545,4 +1558,69 @@ func loadPromptTemplates(configDir string) (*PromptTemplatesConfig, error) {
 // WebSearchConfig represents the web search configuration
 type WebSearchConfig struct {
 	Timeout int `yaml:"timeout" json:"timeout"` // 超时时间（秒）
+}
+
+// SkillHubMarketConfig configures the remote SkillHub marketplace client
+// (M4 skill market: search / rankings / package download). Optional section;
+// every field defaults through applySkillHubMarketDefaults and the
+// SkillHubMarketHost / SkillHubMarketTimeout accessors, which are nil-safe.
+type SkillHubMarketConfig struct {
+	// Host is the public registry origin. Must be an absolute http(s) URL.
+	Host string `yaml:"host" json:"host"`
+	// TimeoutSeconds bounds every outbound marketplace request.
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
+}
+
+// SkillHub market defaults. These mirror the constants in
+// internal/agent/skills/skillhub (DefaultHost / DefaultTimeout); they are
+// duplicated here so the config package keeps zero dependency on the
+// agent tree. Keep the two in sync.
+const (
+	// DefaultSkillHubMarketHost is the public SkillHub registry origin.
+	DefaultSkillHubMarketHost = "https://api.skillhub.cn"
+	// DefaultSkillHubMarketTimeoutSeconds bounds each marketplace request.
+	DefaultSkillHubMarketTimeoutSeconds = 30
+)
+
+// applySkillHubMarketDefaults fills an omitted section with the defaults
+// and repairs partially-specified values (blank host, non-positive timeout).
+func applySkillHubMarketDefaults(cfg *Config) {
+	if cfg.SkillHubMarket == nil {
+		cfg.SkillHubMarket = &SkillHubMarketConfig{
+			Host:           DefaultSkillHubMarketHost,
+			TimeoutSeconds: DefaultSkillHubMarketTimeoutSeconds,
+		}
+		return
+	}
+	if strings.TrimSpace(cfg.SkillHubMarket.Host) == "" {
+		cfg.SkillHubMarket.Host = DefaultSkillHubMarketHost
+	} else {
+		cfg.SkillHubMarket.Host = strings.TrimRight(strings.TrimSpace(cfg.SkillHubMarket.Host), "/")
+	}
+	if cfg.SkillHubMarket.TimeoutSeconds <= 0 {
+		cfg.SkillHubMarket.TimeoutSeconds = DefaultSkillHubMarketTimeoutSeconds
+	}
+}
+
+// SkillHubMarketHost resolves the marketplace host, defaulting when the
+// section or value is unset. Nil-receiver safe.
+func (c *Config) SkillHubMarketHost() string {
+	if c == nil || c.SkillHubMarket == nil {
+		return DefaultSkillHubMarketHost
+	}
+	host := strings.TrimRight(strings.TrimSpace(c.SkillHubMarket.Host), "/")
+	if host == "" {
+		return DefaultSkillHubMarketHost
+	}
+	return host
+}
+
+// SkillHubMarketTimeout resolves the marketplace request timeout,
+// defaulting when the section or value is unset. Nil-receiver safe.
+func (c *Config) SkillHubMarketTimeout() time.Duration {
+	seconds := DefaultSkillHubMarketTimeoutSeconds
+	if c != nil && c.SkillHubMarket != nil && c.SkillHubMarket.TimeoutSeconds > 0 {
+		seconds = c.SkillHubMarket.TimeoutSeconds
+	}
+	return time.Duration(seconds) * time.Second
 }
