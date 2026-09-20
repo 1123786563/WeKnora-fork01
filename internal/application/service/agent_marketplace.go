@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/experts"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -27,12 +29,15 @@ type AgentMarketplaceService struct {
 	resolver   interfaces.ReleaseDependencyResolver
 	repo       interfaces.AgentMarketplaceRepository
 	bundleRoot string
+	// publishNoReplace makes the final path visible atomically only if it does
+	// not already exist. Keeping this seam small lets tests control a real race.
+	publishNoReplace func(tempPath, finalPath string) error
 }
 
 var _ interfaces.AgentMarketplaceService = (*AgentMarketplaceService)(nil)
 
 func NewAgentMarketplaceService(versions interfaces.AgentVersionService, resolver interfaces.ReleaseDependencyResolver, repo interfaces.AgentMarketplaceRepository, bundleRoot string) *AgentMarketplaceService {
-	return &AgentMarketplaceService{versions: versions, resolver: resolver, repo: repo, bundleRoot: bundleRoot}
+	return &AgentMarketplaceService{versions: versions, resolver: resolver, repo: repo, bundleRoot: bundleRoot, publishNoReplace: os.Link}
 }
 
 func (s *AgentMarketplaceService) SubmitRelease(ctx context.Context, tenantID uint64, actorID, versionID string, input interfaces.SubmitReleaseInput) (interfaces.ReleaseSubmissionView, error) {
@@ -134,27 +139,25 @@ func (s *AgentMarketplaceService) ReviewSubmission(ctx context.Context, tenantID
 	}
 	priorReleaseID := ""
 	if decision.Decision == "approved" {
-		listings, err := s.repo.ListTenantCatalog(ctx, tenantID)
+		listing, err := s.repo.GetListing(ctx, tenantID, submission.ListingID)
 		if err != nil {
 			return interfaces.ReleaseReviewResult{}, err
 		}
-		found := false
-		for _, listing := range listings {
-			if listing.ID == submission.ListingID {
-				found = true
-				if listing.CurrentReleaseID != nil {
-					priorReleaseID = *listing.CurrentReleaseID
-				}
-				break
-			}
-		}
-		if !found {
+		if listing == nil {
 			return interfaces.ReleaseReviewResult{}, fmt.Errorf("submission listing not found")
+		}
+		if listing.CurrentReleaseID != nil {
+			priorReleaseID = *listing.CurrentReleaseID
 		}
 	}
 	var stagedPath string
 	created := false
 	if decision.Decision == "approved" {
+		unlock, err := s.lockReleaseBundle(ctx, tenantID, submissionID, expectedDigest)
+		if err != nil {
+			return interfaces.ReleaseReviewResult{}, err
+		}
+		defer unlock()
 		stagedPath, created, err = s.stageReleaseBundle(ctx, tenantID, submissionID, expectedDigest, submission.Bundle)
 		if err != nil {
 			return interfaces.ReleaseReviewResult{}, err
@@ -163,11 +166,52 @@ func (s *AgentMarketplaceService) ReviewSubmission(ctx context.Context, tenantID
 	review, release, err := s.repo.ReviewAndPublishTx(ctx, tenantID, priorReleaseID, submissionID, expectedDigest, decision)
 	if err != nil {
 		if created {
-			_ = os.Remove(stagedPath)
+			persisted, lookupErr := s.repo.GetReleaseBySubmission(ctx, tenantID, submissionID)
+			if lookupErr == nil && (persisted == nil || persisted.BundleDigest != expectedDigest) {
+				_ = os.Remove(stagedPath)
+			}
 		}
 		return interfaces.ReleaseReviewResult{}, err
 	}
 	return interfaces.ReleaseReviewResult{Review: review, Release: release}, nil
+}
+
+// lockReleaseBundle serializes the filesystem stage/transaction/compensation
+// window for one immutable digest across service processes sharing the
+// bundle filesystem. Database CAS remains the publication correctness
+// boundary; this lock only prevents one failed attempt from removing bytes
+// another in-flight approval is about to commit.
+func (s *AgentMarketplaceService) lockReleaseBundle(ctx context.Context, tenantID uint64, submissionID, digest string) (func(), error) {
+	if strings.TrimSpace(s.bundleRoot) == "" {
+		return nil, fmt.Errorf("release bundle storage root is required")
+	}
+	dir := filepath.Join(s.bundleRoot, fmt.Sprintf("tenant-%d", tenantID), "releases", filepath.Base(submissionID))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create release bundle directory: %w", err)
+	}
+	lockFile, err := os.OpenFile(filepath.Join(dir, "."+digest+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open release bundle lock: %w", err)
+	}
+	for {
+		err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return func() {
+				_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+				_ = lockFile.Close()
+			}, nil
+		}
+		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
+			_ = lockFile.Close()
+			return nil, fmt.Errorf("lock release bundle path: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			_ = lockFile.Close()
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }
 
 func validMarketplaceDigest(digest string) bool {
@@ -226,8 +270,23 @@ func (s *AgentMarketplaceService) stageReleaseBundle(ctx context.Context, tenant
 	if hex.EncodeToString(stagedSum[:]) != digest {
 		return "", false, fmt.Errorf("staged bundle digest verification failed")
 	}
-	if err := os.Rename(temp, final); err != nil {
-		return "", false, fmt.Errorf("commit staged release bundle: %w", err)
+	publish := s.publishNoReplace
+	if publish == nil {
+		publish = os.Link
+	}
+	if err := publish(temp, final); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return "", false, fmt.Errorf("commit staged release bundle: %w", err)
+		}
+		existing, readErr := os.ReadFile(final)
+		if readErr != nil {
+			return "", false, fmt.Errorf("read existing release bundle after exclusive publish conflict: %w", readErr)
+		}
+		existingSum := sha256.Sum256(existing)
+		if hex.EncodeToString(existingSum[:]) != digest {
+			return "", false, fmt.Errorf("existing release bundle digest path contains different bytes")
+		}
+		return final, false, nil
 	}
 	return final, true, nil
 }

@@ -12,6 +12,8 @@ type AgentMarketplaceRepository interface {
 	ListTenantCatalog(ctx context.Context, tenantID uint64) ([]types.AgentMarketplaceListingEntity, error)
 	GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error)
 	GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error)
+	GetReleaseBySubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseEntity, error)
+	GetListing(ctx context.Context, tenantID uint64, listingID string) (*types.AgentMarketplaceListingEntity, error)
 }
 
 // AgentMarketplaceService coordinates Tenant-authorized release submission

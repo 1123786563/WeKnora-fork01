@@ -30,6 +30,8 @@ type AgentMarketplaceRepository interface {
 	ListTenantCatalog(context.Context, uint64) ([]types.AgentMarketplaceListingEntity, error)
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
 	GetSubmission(context.Context, uint64, string) (*types.AgentReleaseSubmissionEntity, error)
+	GetReleaseBySubmission(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
 }
 
 func (r *agentMarketplaceRepository) GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error) {
@@ -236,13 +238,37 @@ func (r *agentMarketplaceRepository) findReviewResult(ctx context.Context, tenan
 
 func (r *agentMarketplaceRepository) ListTenantCatalog(ctx context.Context, tenantID uint64) ([]types.AgentMarketplaceListingEntity, error) {
 	var rows []types.AgentMarketplaceListingEntity
-	err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Order("created_at ASC, id ASC").Find(&rows).Error
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND state = ? AND current_release_id IS NOT NULL", tenantID, "listed").Order("created_at ASC, id ASC").Find(&rows).Error
 	return rows, err
 }
 
 func (r *agentMarketplaceRepository) GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
 	var row types.AgentReleaseEntity
 	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, releaseID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *agentMarketplaceRepository) GetReleaseBySubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseEntity, error) {
+	var row types.AgentReleaseEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND submission_id = ?", tenantID, strings.TrimSpace(submissionID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *agentMarketplaceRepository) GetListing(ctx context.Context, tenantID uint64, listingID string) (*types.AgentMarketplaceListingEntity, error) {
+	var row types.AgentMarketplaceListingEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(listingID)).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

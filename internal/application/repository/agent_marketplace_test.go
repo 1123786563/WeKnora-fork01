@@ -39,6 +39,9 @@ func TestAgentMarketplaceSubmissionReviewPublishAndTenantScope(t *testing.T) {
 	require.NoError(t, err, "retrying the same reviewer decision must return its durable result")
 	require.Equal(t, review.ID, retryReview.ID)
 	require.Equal(t, release.ID, retryRelease.ID)
+	releaseBySubmission, err := repo.GetReleaseBySubmission(ctx, 1, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, release.ID, releaseBySubmission.ID)
 	var storedStatus string
 	require.NoError(t, db.Model(&types.AgentReleaseSubmissionEntity{}).Where("tenant_id = ? AND id = ?", 1, created.ID).Select("status").Scan(&storedStatus).Error)
 	require.Equal(t, "submitted", storedStatus, "review outcome must be appended without mutating the Submission")
@@ -117,9 +120,14 @@ func TestAgentMarketplaceSubmissionIgnoresCallerReleasePointer(t *testing.T) {
 	require.NoError(t, err)
 	listings, err := repo.ListTenantCatalog(context.Background(), 1)
 	require.NoError(t, err)
-	require.Len(t, listings, 1)
-	require.Equal(t, submission.ListingID, listings[0].ID)
-	require.Nil(t, listings[0].CurrentReleaseID, "new Listing pointer must be server-owned and empty")
+	require.Empty(t, listings, "pending Listings must not appear in the member catalog")
+	var stored types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, submission.ListingID).First(&stored).Error)
+	require.Nil(t, stored.CurrentReleaseID, "new Listing pointer must be server-owned and empty")
+	pending, err := repo.GetListing(context.Background(), 1, submission.ListingID)
+	require.NoError(t, err)
+	require.NotNil(t, pending, "review workflow retains a tenant-scoped internal read for pending Listings")
+	require.Nil(t, pending.CurrentReleaseID)
 }
 
 func TestAgentMarketplaceSubmissionRequiresMatchingVersionAgent(t *testing.T) {
@@ -154,12 +162,10 @@ func TestAgentMarketplaceTenantIsolationWithPopulatedTenants(t *testing.T) {
 	require.Equal(t, second.ID, queueTwoBeforeReview[0].ID)
 	catalogOneBeforeReview, err := repo.ListTenantCatalog(ctx, 1)
 	require.NoError(t, err)
-	require.Len(t, catalogOneBeforeReview, 1)
-	require.Equal(t, first.ListingID, catalogOneBeforeReview[0].ID)
+	require.Empty(t, catalogOneBeforeReview)
 	catalogTwoBeforeReview, err := repo.ListTenantCatalog(ctx, 2)
 	require.NoError(t, err)
-	require.Len(t, catalogTwoBeforeReview, 1)
-	require.Equal(t, second.ListingID, catalogTwoBeforeReview[0].ID)
+	require.Empty(t, catalogTwoBeforeReview)
 
 	_, releaseOne, err := repo.ReviewAndPublishTx(ctx, 1, "", first.ID, "tenant-one", types.AgentReleaseReviewDecision{ReviewerID: "reviewer-one", Decision: "approved"})
 	require.NoError(t, err)
