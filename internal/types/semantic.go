@@ -34,6 +34,45 @@ func SemanticScopeKeyToWire(value SemanticScopeKey) (*semanticpb.ScopeKey, error
 	return &semanticpb.ScopeKey{TenantId: value.TenantID, KbId: value.KBID}, nil
 }
 
+func SemanticQueryLimitsFromWire(wire *semanticpb.QueryLimits) (SemanticQueryLimits, error) {
+	if wire == nil {
+		return SemanticQueryLimits{}, fmt.Errorf("semantic query limits are required")
+	}
+	return SemanticQueryLimits{MaxHops: wire.MaxHops, MaxNodes: wire.MaxNodes, MaxEdges: wire.MaxEdges, TopK: wire.TopK, MaxTokens: wire.MaxTokens, DeadlineMS: wire.DeadlineMs}, nil
+}
+
+func SemanticQueryLimitsToWire(value SemanticQueryLimits) *semanticpb.QueryLimits {
+	return &semanticpb.QueryLimits{MaxHops: value.MaxHops, MaxNodes: value.MaxNodes, MaxEdges: value.MaxEdges, TopK: value.TopK, MaxTokens: value.MaxTokens, DeadlineMs: value.DeadlineMS}
+}
+
+func SemanticChunkSnapshotFromWire(wire *semanticpb.ChunkSnapshot) (SemanticChunkSnapshot, error) {
+	if wire == nil || wire.ChunkId == "" || wire.ContentHash == "" {
+		return SemanticChunkSnapshot{}, fmt.Errorf("semantic chunk snapshot is incomplete")
+	}
+	return SemanticChunkSnapshot{ChunkID: wire.ChunkId, Text: wire.Text, ContentHash: wire.ContentHash}, nil
+}
+
+func SemanticChunkSnapshotToWire(value SemanticChunkSnapshot) (*semanticpb.ChunkSnapshot, error) {
+	if value.ChunkID == "" || value.ContentHash == "" {
+		return nil, fmt.Errorf("semantic chunk snapshot is incomplete")
+	}
+	return &semanticpb.ChunkSnapshot{ChunkId: value.ChunkID, Text: value.Text, ContentHash: value.ContentHash}, nil
+}
+
+func SemanticIndexConfigFromWire(wire *semanticpb.IndexConfig) (SemanticIndexConfig, error) {
+	if wire == nil || wire.ConfigDigest == "" || wire.EngineVersion == "" || wire.ModelProfileRef == "" || wire.PromptVersion == "" || wire.RuleSetVersion == "" || wire.SchemaVersion == "" {
+		return SemanticIndexConfig{}, fmt.Errorf("semantic index config is incomplete")
+	}
+	return SemanticIndexConfig{ConfigDigest: wire.ConfigDigest, EngineVersion: wire.EngineVersion, ModelProfileRef: wire.ModelProfileRef, PromptVersion: wire.PromptVersion, RuleSetVersion: wire.RuleSetVersion, SchemaVersion: wire.SchemaVersion}, nil
+}
+
+func SemanticIndexConfigToWire(value SemanticIndexConfig) (*semanticpb.IndexConfig, error) {
+	if value.ConfigDigest == "" || value.EngineVersion == "" || value.ModelProfileRef == "" || value.PromptVersion == "" || value.RuleSetVersion == "" || value.SchemaVersion == "" {
+		return nil, fmt.Errorf("semantic index config is incomplete")
+	}
+	return &semanticpb.IndexConfig{ConfigDigest: value.ConfigDigest, EngineVersion: value.EngineVersion, ModelProfileRef: value.ModelProfileRef, PromptVersion: value.PromptVersion, RuleSetVersion: value.RuleSetVersion, SchemaVersion: value.SchemaVersion}, nil
+}
+
 type SemanticDocumentRevision struct {
 	Scope       SemanticScopeKey
 	DocumentID  string
@@ -444,9 +483,13 @@ func SemanticCapabilitiesFromWire(wire *semanticpb.Capabilities) (SemanticCapabi
 	if wire == nil || wire.ProtocolVersion == "" || wire.EngineVersion == "" || wire.Limits == nil {
 		return SemanticCapabilities{}, fmt.Errorf("semantic capabilities are incomplete")
 	}
+	limits, err := SemanticQueryLimitsFromWire(wire.Limits)
+	if err != nil {
+		return SemanticCapabilities{}, err
+	}
 	retrievalMap := map[semanticpb.RetrievalMode]SemanticRetrievalMode{semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG: SemanticRetrievalModeGraphRAG, semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON: SemanticRetrievalModeReason}
 	reasoningMap := map[semanticpb.ReasoningMode]SemanticReasoningMode{semanticpb.ReasoningMode_REASONING_MODE_RULES: SemanticReasoningModeRules, semanticpb.ReasoningMode_REASONING_MODE_MODEL: SemanticReasoningModeModel}
-	result := SemanticCapabilities{ProtocolVersion: wire.ProtocolVersion, EngineVersion: wire.EngineVersion, Limits: SemanticQueryLimits{MaxHops: wire.Limits.MaxHops, MaxNodes: wire.Limits.MaxNodes, MaxEdges: wire.Limits.MaxEdges, TopK: wire.Limits.TopK, MaxTokens: wire.Limits.MaxTokens, DeadlineMS: wire.Limits.DeadlineMs}, Limitations: append([]string(nil), wire.Limitations...)}
+	result := SemanticCapabilities{ProtocolVersion: wire.ProtocolVersion, EngineVersion: wire.EngineVersion, Limits: limits, Limitations: append([]string(nil), wire.Limitations...)}
 	for _, mode := range wire.RetrievalModes {
 		mapped, ok := retrievalMap[mode]
 		if !ok {
@@ -473,7 +516,8 @@ func SemanticCapabilitiesToWire(value SemanticCapabilities) (*semanticpb.Capabil
 	}
 	retrievalMap := map[SemanticRetrievalMode]semanticpb.RetrievalMode{SemanticRetrievalModeGraphRAG: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG, SemanticRetrievalModeReason: semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON}
 	reasoningMap := map[SemanticReasoningMode]semanticpb.ReasoningMode{SemanticReasoningModeRules: semanticpb.ReasoningMode_REASONING_MODE_RULES, SemanticReasoningModeModel: semanticpb.ReasoningMode_REASONING_MODE_MODEL}
-	wire := &semanticpb.Capabilities{ProtocolVersion: value.ProtocolVersion, EngineVersion: value.EngineVersion, Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, Limitations: append([]string(nil), value.Limitations...)}
+	wireLimits := SemanticQueryLimitsToWire(value.Limits)
+	wire := &semanticpb.Capabilities{ProtocolVersion: value.ProtocolVersion, EngineVersion: value.EngineVersion, Limits: wireLimits, Limitations: append([]string(nil), value.Limitations...)}
 	for _, mode := range value.RetrievalModes {
 		mapped, ok := retrievalMap[mode]
 		if !ok {
@@ -505,16 +549,17 @@ func SemanticApplyRequestFromWire(wire *semanticpb.ApplyRequest) (SemanticApplyR
 	if document.Deleted {
 		return SemanticApplyRequest{}, fmt.Errorf("semantic apply cannot use deleted revision")
 	}
-	config := SemanticIndexConfig{ConfigDigest: wire.Config.ConfigDigest, EngineVersion: wire.Config.EngineVersion, ModelProfileRef: wire.Config.ModelProfileRef, PromptVersion: wire.Config.PromptVersion, RuleSetVersion: wire.Config.RuleSetVersion, SchemaVersion: wire.Config.SchemaVersion}
-	if config.ConfigDigest == "" || config.EngineVersion == "" || config.ModelProfileRef == "" || config.PromptVersion == "" || config.RuleSetVersion == "" || config.SchemaVersion == "" {
-		return SemanticApplyRequest{}, fmt.Errorf("semantic index config is incomplete")
+	config, err := SemanticIndexConfigFromWire(wire.Config)
+	if err != nil {
+		return SemanticApplyRequest{}, err
 	}
 	chunks := make([]SemanticChunkSnapshot, 0, len(wire.Chunks))
 	for _, chunk := range wire.Chunks {
-		if chunk == nil || chunk.ChunkId == "" || chunk.ContentHash == "" {
-			return SemanticApplyRequest{}, fmt.Errorf("semantic chunk is incomplete")
+		mapped, err := SemanticChunkSnapshotFromWire(chunk)
+		if err != nil {
+			return SemanticApplyRequest{}, err
 		}
-		chunks = append(chunks, SemanticChunkSnapshot{ChunkID: chunk.ChunkId, Text: chunk.Text, ContentHash: chunk.ContentHash})
+		chunks = append(chunks, mapped)
 	}
 	result := SemanticApplyRequest{Document: document, Chunks: chunks, Config: config, IdempotencyKey: wire.IdempotencyKey, PayloadHash: wire.PayloadHash}
 	if wire.ManifestRef != nil {
@@ -527,21 +572,23 @@ func SemanticApplyRequestToWire(value SemanticApplyRequest) (*semanticpb.ApplyRe
 	if value.Document.Deleted || value.IdempotencyKey == "" || value.PayloadHash == "" {
 		return nil, fmt.Errorf("semantic apply request is invalid")
 	}
-	if value.Config.ConfigDigest == "" || value.Config.EngineVersion == "" || value.Config.ModelProfileRef == "" || value.Config.PromptVersion == "" || value.Config.RuleSetVersion == "" || value.Config.SchemaVersion == "" {
-		return nil, fmt.Errorf("semantic index config is incomplete")
+	wireConfig, err := SemanticIndexConfigToWire(value.Config)
+	if err != nil {
+		return nil, err
 	}
 	chunks := make([]*semanticpb.ChunkSnapshot, 0, len(value.Chunks))
 	for _, chunk := range value.Chunks {
-		if chunk.ChunkID == "" || chunk.ContentHash == "" {
-			return nil, fmt.Errorf("semantic chunk is incomplete")
+		mapped, err := SemanticChunkSnapshotToWire(chunk)
+		if err != nil {
+			return nil, err
 		}
-		chunks = append(chunks, &semanticpb.ChunkSnapshot{ChunkId: chunk.ChunkID, Text: chunk.Text, ContentHash: chunk.ContentHash})
+		chunks = append(chunks, mapped)
 	}
 	document, err := SemanticDocumentRevisionToWire(value.Document)
 	if err != nil {
 		return nil, err
 	}
-	wire := &semanticpb.ApplyRequest{Document: document, Chunks: chunks, Config: &semanticpb.IndexConfig{ConfigDigest: value.Config.ConfigDigest, EngineVersion: value.Config.EngineVersion, ModelProfileRef: value.Config.ModelProfileRef, PromptVersion: value.Config.PromptVersion, RuleSetVersion: value.Config.RuleSetVersion, SchemaVersion: value.Config.SchemaVersion}, IdempotencyKey: value.IdempotencyKey, PayloadHash: value.PayloadHash}
+	wire := &semanticpb.ApplyRequest{Document: document, Chunks: chunks, Config: wireConfig, IdempotencyKey: value.IdempotencyKey, PayloadHash: value.PayloadHash}
 	if value.ManifestRef != nil {
 		wire.ManifestRef = value.ManifestRef
 	}
@@ -572,10 +619,11 @@ func SemanticSearchRequestFromWire(wire *semanticpb.SearchRequest) (SemanticSear
 	if (mode == SemanticRetrievalModeGraphRAG && scope.Purpose != SemanticAccessPurposeSearch) || (mode == SemanticRetrievalModeReason && scope.Purpose != SemanticAccessPurposeReason) {
 		return SemanticSearchRequest{}, fmt.Errorf("semantic search request purpose is incompatible with requested mode")
 	}
-	if wire.Limits == nil {
-		return SemanticSearchRequest{}, fmt.Errorf("semantic query limits are required")
+	limits, err := SemanticQueryLimitsFromWire(wire.Limits)
+	if err != nil {
+		return SemanticSearchRequest{}, err
 	}
-	return SemanticSearchRequest{QueryID: wire.QueryId, Query: wire.Query, AccessScope: scope, Limits: SemanticQueryLimits{MaxHops: wire.Limits.MaxHops, MaxNodes: wire.Limits.MaxNodes, MaxEdges: wire.Limits.MaxEdges, TopK: wire.Limits.TopK, MaxTokens: wire.Limits.MaxTokens, DeadlineMS: wire.Limits.DeadlineMs}, RequestedMode: mode}, nil
+	return SemanticSearchRequest{QueryID: wire.QueryId, Query: wire.Query, AccessScope: scope, Limits: limits, RequestedMode: mode}, nil
 }
 
 func SemanticSearchRequestToWire(value SemanticSearchRequest) (*semanticpb.SearchRequest, error) {
@@ -594,7 +642,7 @@ func SemanticSearchRequestToWire(value SemanticSearchRequest) (*semanticpb.Searc
 	if err != nil {
 		return nil, err
 	}
-	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: scope, Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, RequestedMode: mode}, nil
+	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: scope, Limits: SemanticQueryLimitsToWire(value.Limits), RequestedMode: mode}, nil
 }
 
 func SemanticReasonResponseFromWire(wire *semanticpb.ReasonResponse) (SemanticReasonResponse, error) {

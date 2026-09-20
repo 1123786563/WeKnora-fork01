@@ -66,13 +66,13 @@ class DeleteDocumentRequest:
 
 def document_revision_to_wire(value: DocumentRevision):
     from semantic_service.proto import semantic_pb2
-    return semantic_pb2.DocumentRevision(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), document_id=value.document_id, revision=value.revision, content_hash=value.content_hash, deleted=value.deleted)
+    return semantic_pb2.DocumentRevision(scope=scope_key_to_wire(value.scope), document_id=value.document_id, revision=value.revision, content_hash=value.content_hash, deleted=value.deleted)
 
 
 def document_revision_from_wire(wire) -> DocumentRevision:
     if wire is None or not wire.HasField("scope"):
         raise ValueError("document revision scope is required")
-    return DocumentRevision(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, wire.content_hash, wire.deleted)
+    return DocumentRevision(scope_key_from_wire(wire.scope), wire.document_id, wire.revision, wire.content_hash, wire.deleted)
 
 
 def delete_request_to_wire(value: DeleteDocumentRequest):
@@ -291,6 +291,50 @@ class SearchResponse:
             raise ValueError("search cannot implicitly upgrade graph_rag to reason")
 
 
+def scope_key_to_wire(value: ScopeKey):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.ScopeKey(tenant_id=value.tenant_id, kb_id=value.kb_id)
+
+
+def scope_key_from_wire(wire) -> ScopeKey:
+    if wire is None:
+        raise ValueError("scope key is required")
+    return ScopeKey(wire.tenant_id, wire.kb_id)
+
+
+def query_limits_to_wire(value: QueryLimits):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.QueryLimits(max_hops=value.max_hops, max_nodes=value.max_nodes, max_edges=value.max_edges, top_k=value.top_k, max_tokens=value.max_tokens, deadline_ms=value.deadline_ms)
+
+
+def query_limits_from_wire(wire) -> QueryLimits:
+    if wire is None:
+        raise ValueError("query limits are required")
+    return QueryLimits(wire.max_hops, wire.max_nodes, wire.max_edges, wire.top_k, wire.max_tokens, wire.deadline_ms)
+
+
+def chunk_snapshot_to_wire(value: ChunkSnapshot):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.ChunkSnapshot(chunk_id=value.chunk_id, text=value.text, content_hash=value.content_hash)
+
+
+def chunk_snapshot_from_wire(wire) -> ChunkSnapshot:
+    if wire is None:
+        raise ValueError("chunk snapshot is required")
+    return ChunkSnapshot(wire.chunk_id, wire.text, wire.content_hash)
+
+
+def index_config_to_wire(value: IndexConfig):
+    from semantic_service.proto import semantic_pb2
+    return semantic_pb2.IndexConfig(config_digest=value.config_digest, engine_version=value.engine_version, model_profile_ref=value.model_profile_ref, prompt_version=value.prompt_version, rule_set_version=value.rule_set_version, schema_version=value.schema_version)
+
+
+def index_config_from_wire(wire) -> IndexConfig:
+    if wire is None:
+        raise ValueError("index config is required")
+    return IndexConfig(wire.config_digest, wire.engine_version, wire.model_profile_ref, wire.prompt_version, wire.rule_set_version, wire.schema_version)
+
+
 def evidence_to_wire(value: Evidence):
     from semantic_service.proto import semantic_pb2
 
@@ -311,7 +355,7 @@ def access_scope_to_wire(value: AccessScope):
     from semantic_service.proto import semantic_pb2
 
     purposes = {"search": semantic_pb2.PURPOSE_SEARCH, "reason": semantic_pb2.PURPOSE_REASON, "index": semantic_pb2.PURPOSE_INDEX}
-    return semantic_pb2.AccessScope(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), subject_id=value.subject_id, scope_ref=value.scope_ref, scope_hash=value.scope_hash, permission_epoch=value.permission_epoch, expires_at=value.expires_at, audience=value.audience, purpose=purposes[value.purpose], budget_ref=value.budget_ref)
+    return semantic_pb2.AccessScope(scope=scope_key_to_wire(value.scope), subject_id=value.subject_id, scope_ref=value.scope_ref, scope_hash=value.scope_hash, permission_epoch=value.permission_epoch, expires_at=value.expires_at, audience=value.audience, purpose=purposes[value.purpose], budget_ref=value.budget_ref)
 
 
 def access_scope_from_wire(wire) -> AccessScope:
@@ -320,13 +364,13 @@ def access_scope_from_wire(wire) -> AccessScope:
     purposes = {semantic_pb2.PURPOSE_SEARCH: AccessPurpose.SEARCH, semantic_pb2.PURPOSE_REASON: AccessPurpose.REASON, semantic_pb2.PURPOSE_INDEX: AccessPurpose.INDEX}
     if wire.purpose not in purposes:
         raise ValueError("unknown access scope purpose")
-    return AccessScope(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.subject_id, wire.scope_ref, wire.scope_hash, wire.permission_epoch, wire.expires_at, wire.audience, purposes[wire.purpose], wire.budget_ref)
+    return AccessScope(scope_key_from_wire(wire.scope), wire.subject_id, wire.scope_ref, wire.scope_hash, wire.permission_epoch, wire.expires_at, wire.audience, purposes[wire.purpose], wire.budget_ref)
 
 
 def operation_to_wire(value: Operation):
     from semantic_service.proto import semantic_pb2
     states = {"pending": semantic_pb2.OPERATION_STATE_PENDING, "running": semantic_pb2.OPERATION_STATE_RUNNING, "succeeded": semantic_pb2.OPERATION_STATE_SUCCEEDED, "failed": semantic_pb2.OPERATION_STATE_FAILED, "cancelled": semantic_pb2.OPERATION_STATE_CANCELLED}
-    wire = semantic_pb2.Operation(operation_id=value.operation_id, scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), document_id=value.document_id, revision=value.revision, state=states[value.state], stage=value.stage, lease_token=value.lease_token)
+    wire = semantic_pb2.Operation(operation_id=value.operation_id, scope=scope_key_to_wire(value.scope), document_id=value.document_id, revision=value.revision, state=states[value.state], stage=value.stage, lease_token=value.lease_token)
     if value.result_generation is not None: wire.result_generation = value.result_generation
     if value.error_code is not None: wire.error_code = value.error_code
     return wire
@@ -336,18 +380,18 @@ def operation_from_wire(wire) -> Operation:
     from semantic_service.proto import semantic_pb2
     states = {semantic_pb2.OPERATION_STATE_PENDING: "pending", semantic_pb2.OPERATION_STATE_RUNNING: "running", semantic_pb2.OPERATION_STATE_SUCCEEDED: "succeeded", semantic_pb2.OPERATION_STATE_FAILED: "failed", semantic_pb2.OPERATION_STATE_CANCELLED: "cancelled"}
     if wire.state not in states: raise ValueError("unknown operation state")
-    return Operation(wire.operation_id, ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.document_id, wire.revision, states[wire.state], wire.stage, wire.lease_token, wire.result_generation if wire.HasField("result_generation") else None, wire.error_code if wire.HasField("error_code") else None)
+    return Operation(wire.operation_id, scope_key_from_wire(wire.scope), wire.document_id, wire.revision, states[wire.state], wire.stage, wire.lease_token, wire.result_generation if wire.HasField("result_generation") else None, wire.error_code if wire.HasField("error_code") else None)
 
 
 def operation_ref_to_wire(value: OperationRef):
     from semantic_service.proto import semantic_pb2
-    return semantic_pb2.OperationRef(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), operation_id=value.operation_id)
+    return semantic_pb2.OperationRef(scope=scope_key_to_wire(value.scope), operation_id=value.operation_id)
 
 
 def operation_ref_from_wire(wire) -> OperationRef:
     if wire is None or not wire.HasField("scope"):
         raise ValueError("operation reference scope is required")
-    return OperationRef(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.operation_id)
+    return OperationRef(scope_key_from_wire(wire.scope), operation_id=wire.operation_id)
 
 
 def search_response_to_wire(value: SearchResponse):
@@ -383,19 +427,10 @@ def reason_response_from_wire(wire) -> ReasonResponse:
     return ReasonResponse(statuses[wire.status], wire.conclusion if wire.HasField("conclusion") else None, search_response_from_wire(wire.retrieval) if wire.HasField("retrieval") else None, wire.conclusion_kind if wire.HasField("conclusion_kind") else None, tuple(wire.premise_ids), tuple(wire.rule_ids), wire.model_version if wire.HasField("model_version") else None, wire.prompt_version if wire.HasField("prompt_version") else None, tuple(wire.limitations))
 
 
-def _limits_to_wire(value: QueryLimits):
-    from semantic_service.proto import semantic_pb2
-    return semantic_pb2.QueryLimits(max_hops=value.max_hops, max_nodes=value.max_nodes, max_edges=value.max_edges, top_k=value.top_k, max_tokens=value.max_tokens, deadline_ms=value.deadline_ms)
-
-
-def _limits_from_wire(wire) -> QueryLimits:
-    return QueryLimits(wire.max_hops, wire.max_nodes, wire.max_edges, wire.top_k, wire.max_tokens, wire.deadline_ms)
-
-
 def search_request_to_wire(value: SearchRequest):
     from semantic_service.proto import semantic_pb2
     modes = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}
-    return semantic_pb2.SearchRequest(query_id=value.query_id, query=value.query, access_scope=access_scope_to_wire(value.access_scope), limits=_limits_to_wire(value.limits), requested_mode=modes[value.requested_mode])
+    return semantic_pb2.SearchRequest(query_id=value.query_id, query=value.query, access_scope=access_scope_to_wire(value.access_scope), limits=query_limits_to_wire(value.limits), requested_mode=modes[value.requested_mode])
 
 
 def search_request_from_wire(wire) -> SearchRequest:
@@ -405,7 +440,7 @@ def search_request_from_wire(wire) -> SearchRequest:
     modes = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
     if wire.requested_mode not in modes:
         raise ValueError("unknown requested retrieval mode")
-    return SearchRequest(wire.query_id, wire.query, access_scope_from_wire(wire.access_scope), _limits_from_wire(wire.limits), modes[wire.requested_mode])
+    return SearchRequest(wire.query_id, wire.query, access_scope_from_wire(wire.access_scope), query_limits_from_wire(wire.limits), modes[wire.requested_mode])
 
 
 def reason_request_to_wire(value: ReasonRequest):
@@ -444,18 +479,18 @@ class ReasonResponse:
 
 def apply_request_to_wire(value: ApplyRequest):
     from semantic_service.proto import semantic_pb2
-    document = semantic_pb2.DocumentRevision(scope=semantic_pb2.ScopeKey(tenant_id=value.document.scope.tenant_id, kb_id=value.document.scope.kb_id), document_id=value.document.document_id, revision=value.document.revision, content_hash=value.document.content_hash, deleted=value.document.deleted)
-    config = semantic_pb2.IndexConfig(config_digest=value.config.config_digest, engine_version=value.config.engine_version, model_profile_ref=value.config.model_profile_ref, prompt_version=value.config.prompt_version, rule_set_version=value.config.rule_set_version, schema_version=value.config.schema_version)
-    wire = semantic_pb2.ApplyRequest(document=document, chunks=[semantic_pb2.ChunkSnapshot(chunk_id=item.chunk_id, text=item.text, content_hash=item.content_hash) for item in value.chunks], config=config, idempotency_key=value.idempotency_key, payload_hash=value.payload_hash)
+    wire = semantic_pb2.ApplyRequest(document=document_revision_to_wire(value.document), chunks=[chunk_snapshot_to_wire(item) for item in value.chunks], config=index_config_to_wire(value.config), idempotency_key=value.idempotency_key, payload_hash=value.payload_hash)
     if value.manifest_ref is not None:
         wire.manifest_ref = value.manifest_ref
     return wire
 
 
 def apply_request_from_wire(wire) -> ApplyRequest:
-    document = DocumentRevision(ScopeKey(wire.document.scope.tenant_id, wire.document.scope.kb_id), wire.document.document_id, wire.document.revision, wire.document.content_hash, wire.document.deleted)
-    config = IndexConfig(wire.config.config_digest, wire.config.engine_version, wire.config.model_profile_ref, wire.config.prompt_version, wire.config.rule_set_version, wire.config.schema_version)
-    chunks = tuple(ChunkSnapshot(item.chunk_id, item.text, item.content_hash) for item in wire.chunks)
+    if wire is None or not wire.HasField("document") or not wire.HasField("config"):
+        raise ValueError("apply request document and index config are required")
+    document = document_revision_from_wire(wire.document)
+    config = index_config_from_wire(wire.config)
+    chunks = tuple(chunk_snapshot_from_wire(item) for item in wire.chunks)
     return ApplyRequest(document, chunks, config, wire.idempotency_key, wire.payload_hash, wire.manifest_ref if wire.HasField("manifest_ref") else None)
 
 
@@ -463,7 +498,7 @@ def capabilities_to_wire(value: Capabilities):
     from semantic_service.proto import semantic_pb2
     retrieval = {"graph_rag": semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG, "reason": semantic_pb2.RETRIEVAL_MODE_REASON}
     reasoning = {"rules": semantic_pb2.REASONING_MODE_RULES, "model": semantic_pb2.REASONING_MODE_MODEL}
-    wire = semantic_pb2.Capabilities(protocol_version=value.protocol_version, engine_version=value.engine_version, retrieval_modes=[retrieval[item] for item in value.retrieval_modes], reasoning_modes=[reasoning[item] for item in value.reasoning_modes], limits=_limits_to_wire(value.limits), limitations=list(value.limitations))
+    wire = semantic_pb2.Capabilities(protocol_version=value.protocol_version, engine_version=value.engine_version, retrieval_modes=[retrieval[item] for item in value.retrieval_modes], reasoning_modes=[reasoning[item] for item in value.reasoning_modes], limits=query_limits_to_wire(value.limits), limitations=list(value.limitations))
     if value.unavailable_reason is not None: wire.unavailable_reason = value.unavailable_reason
     return wire
 
@@ -475,4 +510,4 @@ def capabilities_from_wire(wire) -> Capabilities:
     retrieval = {semantic_pb2.RETRIEVAL_MODE_GRAPH_RAG: "graph_rag", semantic_pb2.RETRIEVAL_MODE_REASON: "reason"}
     reasoning = {semantic_pb2.REASONING_MODE_RULES: "rules", semantic_pb2.REASONING_MODE_MODEL: "model"}
     if any(item not in retrieval for item in wire.retrieval_modes) or any(item not in reasoning for item in wire.reasoning_modes): raise ValueError("unknown capability mode")
-    return Capabilities(wire.protocol_version, wire.engine_version, tuple(retrieval[item] for item in wire.retrieval_modes), tuple(reasoning[item] for item in wire.reasoning_modes), _limits_from_wire(wire.limits), tuple(wire.limitations), wire.unavailable_reason if wire.HasField("unavailable_reason") else None)
+    return Capabilities(wire.protocol_version, wire.engine_version, tuple(retrieval[item] for item in wire.retrieval_modes), tuple(reasoning[item] for item in wire.reasoning_modes), query_limits_from_wire(wire.limits), tuple(wire.limitations), wire.unavailable_reason if wire.HasField("unavailable_reason") else None)
