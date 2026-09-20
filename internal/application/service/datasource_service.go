@@ -773,8 +773,10 @@ func (s *DataSourceService) ResolveResourceAncestors(
 	return ancestors, nil
 }
 
-// ManualSync triggers an immediate sync for a data source
-func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types.SyncLog, error) {
+// ManualSync triggers an immediate sync for a data source. forceFull asks the
+// worker to drop any persisted cursor and reconcile the whole source (the
+// payload field always existed; the API flag now exposes it).
+func (s *DataSourceService) ManualSync(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error) {
 	ds, err := s.GetDataSource(ctx, dsID)
 	if err != nil {
 		return nil, err
@@ -820,7 +822,7 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types
 		DataSourceID: dsID,
 		TenantID:     ds.TenantID,
 		SyncLogID:    syncLog.ID,
-		ForceFull:    false,
+		ForceFull:    forceFull,
 		Initiator:    types.TaskInitiatorFromContext(ctx),
 		Trigger:      "manual",
 	}
@@ -1304,7 +1306,10 @@ func recordSyncError(result *types.SyncResult, item types.SyncItemError) {
 // without codes keep the raw text as a Message fallback. Best practice per
 // Airbyte/Fivetran/Onyx: humanised, actionable, localised UI; raw detail in logs.
 func fetchFailureSyncError(item *types.FetchedItem, rawMsg string) types.SyncItemError {
-	e := types.SyncItemError{Title: item.Title}
+	e := types.SyncItemError{
+		Title:      item.Title,
+		ExternalID: item.ExternalID,
+	}
 	if code := item.Metadata["error_reason_code"]; code != "" {
 		e.Code = code
 		if v := item.Metadata["error_reason_code_value"]; v != "" {
@@ -1425,9 +1430,10 @@ func (s *DataSourceService) applyFetchedItem(
 			logger.Warnf(ctx, "failed to ingest item %q (external_id=%s): %v", item.Title, item.ExternalID, err)
 			result.Failed++
 			recordSyncError(result, types.SyncItemError{
-				Title:   item.Title,
-				Code:    "ingest_failed",
-				Message: "Ingest failed; see server logs",
+				Title:      item.Title,
+				ExternalID: item.ExternalID,
+				Code:       "ingest_failed",
+				Message:    "Ingest failed; see server logs",
 			})
 		}
 	} else if isUpdate {

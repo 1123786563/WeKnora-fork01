@@ -6,6 +6,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A sync that fails thousands of documents must not accumulate an unbounded
@@ -64,4 +65,40 @@ func TestApplyFetchedItem_ProducesLocalisableStructuredError(t *testing.T) {
 	assert.Equal(t, "1663", got.Params["code"], "feishu error code is passed as an interpolation param")
 	assert.NotContains(t, got.Message, "body=", "raw API body must not reach the UI sample")
 	assert.NotContains(t, got.Message, "log_id", "raw log_id must not reach the UI sample")
+}
+
+// Both failure branches of applyFetchedItem must stamp the item's external_id
+// onto the persisted sample: without it the sync-log UI cannot offer a
+// targeted retry of the failed document (SP2 targeted reindex).
+func TestApplyFetchedItem_FailureSamplesCarryExternalID(t *testing.T) {
+	ds := &types.DataSource{ID: "ds-1", Type: "feishu", TenantID: 7, KnowledgeBaseID: "kb-1"}
+
+	// Fetch-failure branch (connector error item, no content/URL).
+	s := &DataSourceService{}
+	fetchRes := &types.SyncResult{}
+	s.applyFetchedItem(context.Background(), ds, &types.FetchedItem{
+		ExternalID: "nt-fetch-fail",
+		Title:      "抓取失败文档",
+		Metadata:   map[string]string{"error": "export failed: rate limited"},
+	}, nil, fetchRes)
+	require.Len(t, fetchRes.Errors, 1)
+	assert.Equal(t, "nt-fetch-fail", fetchRes.Errors[0].ExternalID,
+		"fetch-failure sample must carry the item's external id")
+
+	// Ingest-failure branch (content present, KB write fails).
+	ks := &sweepFakeKS{repo: &sweepFakeRepo{}, createErr: assert.AnError}
+	sIngest := &DataSourceService{knowledgeService: ks}
+	ingestRes := &types.SyncResult{}
+	sIngest.applyFetchedItem(context.Background(), ds, &types.FetchedItem{
+		ExternalID:  "nt-ingest-fail",
+		Title:       "写入失败文档",
+		Content:     []byte("# hello\n"),
+		ContentType: "text/markdown",
+		FileName:    "doc.md",
+	}, nil, ingestRes)
+	require.Equal(t, 1, ingestRes.Failed)
+	require.Len(t, ingestRes.Errors, 1)
+	assert.Equal(t, "ingest_failed", ingestRes.Errors[0].Code)
+	assert.Equal(t, "nt-ingest-fail", ingestRes.Errors[0].ExternalID,
+		"ingest-failure sample must carry the item's external id")
 }

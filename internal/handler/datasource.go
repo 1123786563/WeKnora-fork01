@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -463,11 +464,20 @@ type resolveAncestorsRequest struct {
 	ResourceIDs []string `json:"resource_ids"`
 }
 
+// manualSyncRequest is the optional body of ManualSync. An absent or empty
+// body is legal and means a regular (cursor-respecting) sync.
+type manualSyncRequest struct {
+	// ForceFull drops the persisted cursor and reconciles the whole source.
+	ForceFull bool `json:"force_full"`
+}
+
 // ManualSync godoc
 // @Summary Trigger immediate sync
 // @Description Trigger an immediate sync for a data source
 // @Tags DataSource
+// @Accept json
 // @Param id path string true "Data source ID"
+// @Param request body manualSyncRequest false "Optional: {\"force_full\": bool} — defaults to false"
 // @Success 200 {object} types.SyncLog
 // @Failure 400 {object} map[string]string
 // @Router /datasource/{id}/sync [post]
@@ -486,7 +496,14 @@ func (h *DataSourceHandler) ManualSync(c *gin.Context) {
 		return
 	}
 
-	syncLog, err := h.service.ManualSync(ctx, id)
+	// The body is optional: empty/absent payloads keep the legacy behaviour.
+	var req manualSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	syncLog, err := h.service.ManualSync(ctx, id, req.ForceFull)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

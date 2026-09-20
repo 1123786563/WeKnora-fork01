@@ -450,6 +450,47 @@ test('FAQ batch enable/disable render conditionally on the selected entries stat
   assert.ok(!allDisabled.includes('批量禁用'), 'disabled-only selection hides disable (Vue enabledCount === 0)');
 });
 
+// R491 1b/1c: Vue FAQBatchBar.vue:33-79 — the batch panel is 已选 N 项 + 取消选择
+// on the left, then 批量设置标签 (dialog) / conditional 启用/禁用 / 批量删除
+// (confirm) on the right. React previously showed a 推荐 button and an inline
+// tag select that Vue does not have.
+test('batch bar mirrors the Vue FAQBatchBar copy set (selectedCount, clearSelection, no recommend, no inline select)', () => {
+  const html = renderCards({ selected: new Set([1]) });
+  assert.ok(html.includes('已选 1 项'), 'selection count uses knowledgeBase.selectedCount (Vue :39)');
+  assert.ok(html.includes('取消选择'), 'clear-selection text button (Vue :42)');
+  assert.ok(html.includes('批量设置标签'), 'batch tag entry point (Vue :50)');
+  assert.ok(html.includes('批量删除'), 'batch delete (Vue :72)');
+  assert.ok(!html.includes('推荐'), 'no recommend action — Vue hides the recommend switch and has no batch entry');
+  assert.ok(!html.includes('wk-batch-tag'), 'no inline tag select — Vue opens a dialog instead');
+});
+
+// R491 1c: Vue batch-tag overlay (FAQEntryManager.vue:685-735) — title, tip with
+// the selection count, a single tag select with placeholder, cancel/confirm.
+test('batch tag dialog mirrors the Vue batch-tag overlay copy set', () => {
+  const html = renderCards({ selected: new Set([1]), batchTagOpen: true } as Partial<FAQViewProps>);
+  assert.ok(html.includes('batch-tag-overlay'), 'overlay container (Vue :685)');
+  assert.ok(html.includes('批量设置标签'), 'dialog title (Vue :697)');
+  assert.ok(html.includes('将为 1 个选中的条目设置标签'), 'tip with count (Vue :702)');
+  assert.ok(html.includes('标签'), 'tagLabel form label (Vue :706)');
+  assert.ok(html.includes('请选择标签'), 'select placeholder option (Vue :708)');
+  assert.ok(html.includes('重要'), 'tag options come from the tag list');
+  assert.ok(html.includes('取消') && html.includes('确认'), 'footer cancel + confirm (Vue :725-731)');
+});
+
+test('batch tag dialog shows the noTags empty hint when the KB has no tags', () => {
+  const html = renderCards({ selected: new Set([1]), batchTagOpen: true, tags: [] } as Partial<FAQViewProps>);
+  assert.ok(html.includes('暂无标签'), 'noTags hint (Vue #empty :710-714)');
+});
+
+// R491 1b: Vue FAQBatchBar wraps 批量删除 in a t-popconfirm (:65-74) whose copy is
+// confirmBatchDelete + knowledgeBase.confirmDelete + common.cancel.
+test('batch delete is gated by a confirmation with the Vue popconfirm copy', () => {
+  const html = renderCards({ selected: new Set([1]), confirmingBatchDelete: true } as Partial<FAQViewProps>);
+  assert.ok(html.includes('确认删除选中的 1 个 FAQ 条目'), 'confirmBatchDelete copy with count (Vue :66)');
+  assert.ok(html.includes('确认删除'), 'confirm button uses knowledgeBase.confirmDelete (Vue :67)');
+  assert.ok(html.includes('取消'), 'cancel button (Vue :68)');
+});
+
 test('entries render as Vue faq-cards with a question header and more menu', () => {
   const html = renderCards();
   assert.ok(html.includes('faq-card-list'), 'Vue card list container');
@@ -494,6 +535,15 @@ test('cards render the three collapsible sections collapsed by default', () => {
   assert.ok(html.includes('>(2)</span>'), 'similar count rendered as (n)');
   assert.ok(/faq-section-label[^>]*aria-expanded=\"false\"/.test(html), 'sections collapsed by default (FAQEntryManager.vue:1592-1594)');
   assert.ok(/class=\"faq-tags[^\"]*\" hidden/.test(html), 'collapsed section bodies hidden but kept in the DOM');
+  // R491 1a: Tailwind `flex` (display:flex) overrides the UA [hidden]{display:none},
+  // which made answer bodies visible on load in real browsers (Vue FAQEntryManager.vue:337-357
+  // keeps answersCollapsed: true until clicked). Every faq-tags body must carry the
+  // [&[hidden]]:hidden guard, matching the faq-menu pattern used across this file.
+  const faqTagsBodies = html.match(/class=\"faq-tags[^\"]*\"/g) ?? [];
+  assert.ok(faqTagsBodies.length > 0, 'faq-tags bodies rendered for assertions');
+  // renderToStaticMarkup escapes & as &amp;, so accept either raw or escaped guard text.
+  const guard = /\[\&(?:amp;)?\[hidden\]\]:hidden/;
+  assert.ok(faqTagsBodies.every((cls) => guard.test(cls)), 'faq-tags carry the [&[hidden]]:hidden guard so flex cannot defeat the collapsed state');
 });
 
 test('empty sections disappear while answers always render', () => {

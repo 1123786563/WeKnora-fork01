@@ -432,12 +432,15 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               skills — SkillSettings.vue:3-11 renders the h2 + help-circle
               tooltip + section-description itself; envvars — R484 G4 D3,
               EnvVarSettings.vue:3-25 renders the h2 + help-circle hover popup
-              (introPersonal/introRuntime blocks) + description itself.
+              (introPersonal/introRuntime blocks) + description itself;
+              system-global — R491 agent I, SystemSettings.vue:35-57 renders
+              the h2 + info-circle priority popup + description itself, so the
+              wrapper heading duplicated it (R484 D3 envvars fix pattern).
               R484 G4 D7 — role-denied sections skip the wrapper heading too:
               Vue Settings.vue:88-94 renders ONLY the role-denied block when
               canSeeSection fails (the section component, and with it its
               h2/description, never mounts). */}
-          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && !sectionRoleDenied ? (
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && !sectionRoleDenied ? (
             <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
               <div className="w-full">
                 <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>

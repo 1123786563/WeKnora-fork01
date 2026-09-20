@@ -44,8 +44,10 @@ function makeClient(options: {
   runtime?: TenantRecord;
   runtimeTasks?: TenantRecord[];
   systemSettings?: TenantRecord[];
+  systemAdmins?: TenantRecord[];
   apiKeys?: TenantRecord[];
   audit?: TenantRecord[];
+  profile?: TenantRecord;
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -60,7 +62,7 @@ function makeClient(options: {
         get: tenantGet,
         update: async (_id: number, body: Record<string, unknown>) => ({ id: 10000, ...body, status: 'active', created_at: '2026-01-01T00:00:00Z' }),
       },
-      profile: { get: async () => ({ id: 'u-1', username: 'parity', email: 'parity-test@local.dev', created_at: '2026-01-01T00:00:00Z' }) },
+      profile: { get: async () => options.profile ?? { id: 'u-1', username: 'parity', email: 'parity-test@local.dev', created_at: '2026-01-01T00:00:00Z' } },
       system: { info: async () => options.system ?? { version: 'unknown' } },
       chatHistory: { config: { get: async () => options.chathistory?.config ?? { enabled: false, embedding_model_id: '' }, update: async () => options.chathistory?.config ?? {} }, stats: async () => options.chathistory?.stats ?? null },
     },
@@ -72,10 +74,18 @@ function makeClient(options: {
         queues: async () => options.runtime ?? { available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1, pools: [], queues: [], model_limiter_available: false, models: [], timestamp: 0 },
         tasks: { list: async () => ({ available: true, tasks: options.runtimeTasks ?? [], pageSize: 20, hasMore: false }) },
       },
+      admins: {
+        list: async () => ({ items: options.systemAdmins ?? [], total: (options.systemAdmins ?? []).length }),
+        promote: async (input: { email?: string }) => ({ id: 'u-2', username: 'promoted', email: input.email ?? '', is_active: true, is_system_admin: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }),
+        revoke: async () => ({ id: 'u-2', username: 'revoked', email: '', is_active: true, is_system_admin: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }),
+        resetPassword: async () => ({ message: 'ok' }),
+        createUser: async (input: Record<string, unknown>) => ({ user: { id: 'u-3', username: input.username, email: input.email, is_active: true, is_system_admin: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }, generatedPassword: 'Gen-Passw0rd' }),
+      },
       settings: {
         list: async () => options.systemSettings ?? [],
         update: async (_key: string, value: unknown) => ({ key: _key, value }),
         reset: async () => undefined,
+        applyDefaultStorageQuota: async () => ({ affected: 3, quotaBytes: 30 * 1024 ** 3, quotaGb: 30 }),
       },
       apiKeys: {
         list: async () => options.apiKeys ?? [],
@@ -305,11 +315,20 @@ test('system-global section renders grouped editable settings instead of a gener
   const container = await mountPage(makeClient({ systemSettings: [
     { id: 1, key: 'auth.registration_mode', value: 'open', value_type: 'string', enum: ['open', 'invite_only'], description: '注册方式', is_secret: false, requires_restart: false },
     { id: 2, key: 'sandbox.docker_enabled', value: true, value_type: 'bool', description: 'Docker 沙箱', is_secret: false, requires_restart: true },
-  ] }), '?section=system-global', 'system-admin');
+  ], systemAdmins: [{ id: 'u-9', username: 'peer', email: 'peer-admin@local.dev', is_active: true, is_system_admin: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] }), '?section=system-global', 'system-admin');
   const text = container.textContent ?? '';
-  assert.ok(text.includes('系统全局设置'), 'the Vue system settings heading renders');
-  assert.ok(text.includes('访问控制'), 'the access tab renders');
-  assert.ok(text.includes('注册模式'), 'the localized setting row renders');
+  assert.ok(text.includes('系统设置'), 'the Vue system settings heading renders');
+  assert.equal((container.textContent?.match(/系统设置/g) ?? []).length >= 1, true, 'the heading renders at least once');
+  // R491 agent I — heading renders once (the shell wrapper no longer duplicates it).
+  const headings = Array.from(container.querySelectorAll('h2')).map((node) => node.textContent);
+  assert.equal(headings.filter((value) => value === '系统设置').length, 1, 'no duplicated section heading');
+  assert.ok(text.includes('平台级运行时配置，保存后立即对所有空间生效。仅系统管理员可见可改。'), 'the Vue description renders');
+  assert.ok(text.includes('账户与访问 3'), 'the access tab renders with the Vue count (1 setting + 2 high-risk rows)');
+  assert.ok(text.includes('自助注册模式'), 'the Vue keyLabel renders for the setting row');
+  assert.ok(text.includes('系统管理员'), 'the system-admins management row renders');
+  assert.ok(text.includes('重置用户密码'), 'the reset-password high-risk row renders');
+  assert.ok(text.includes('创建用户'), 'the create-user high-risk row renders');
+  assert.ok(container.textContent?.includes('peer-admin@local.dev'), 'the peer admin tag renders (current user excluded)');
   const registrationSelect = container.querySelector<HTMLSelectElement>('select');
   assert.ok(registrationSelect, 'enum settings use a select control');
   registrationSelect.value = 'invite_only';
@@ -319,8 +338,8 @@ test('system-global section renders grouped editable settings instead of a gener
   assert.ok(cancelConfirm);
   await act(async () => cancelConfirm?.click());
   assert.equal(container.querySelector('[role="alertdialog"]'), null, 'cancelling rolls back the pending high-risk edit');
-  const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === '安全');
-  assert.ok(securityTab, 'the security tab renders');
+  const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent?.includes('网络安全'));
+  assert.ok(securityTab, 'the security tab renders with the Vue label');
   await act(async () => securityTab?.click());
   assert.ok(container.querySelector('[role="switch"]'), 'boolean settings use the shared switch control');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');

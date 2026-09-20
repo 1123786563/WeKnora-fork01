@@ -469,6 +469,9 @@ type SyncResult struct {
 type SyncItemError struct {
 	// Title is the document title (user content, not translated).
 	Title string `json:"title,omitempty"`
+	// ExternalID identifies the failed item in the source system so the UI can
+	// offer a targeted retry (scoped reindex) of just this document.
+	ExternalID string `json:"external_id,omitempty"`
 	// Code is a stable key the frontend maps to a localized string, e.g.
 	// "feishu_rate_limited" → datasource.syncError.feishu_rate_limited.
 	Code string `json:"code,omitempty"`
@@ -530,6 +533,18 @@ type DataSourceSyncPayload struct {
 
 	// Maximum number of items to fetch (0 = unlimited)
 	MaxItems int `json:"max_items,omitempty"`
+
+	// Scope narrows the run to specific source items (targeted reindex).
+	// nil means a regular full/incremental run over the whole data source.
+	Scope *SyncScope `json:"scope,omitempty"`
+}
+
+// SyncScope restricts a sync run to a fixed set of source items identified by
+// their external ids. Populated by the reindex API; connectors that cannot
+// refetch a single item report per-item failures instead of failing the run.
+type SyncScope struct {
+	// ExternalIDs lists the source items to refetch, in request order.
+	ExternalIDs []string `json:"external_ids,omitempty"`
 }
 
 // ToJSON converts a DataSourceConfig to the JSON blob stored in

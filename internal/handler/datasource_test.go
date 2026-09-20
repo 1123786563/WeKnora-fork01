@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -20,6 +21,7 @@ type stubDataSourceService struct {
 	cancelSyncLog            func(ctx context.Context, tenantID uint64, dsID, logID string) error
 	deleteDataSource         func(ctx context.Context, id string, purgeDocuments bool) error
 	countDataSourceDocuments func(ctx context.Context, tenantID uint64, dsID string) (int64, error)
+	manualSync               func(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error)
 }
 
 func (s *stubDataSourceService) GetSyncLogs(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error) {
@@ -57,6 +59,13 @@ func (s *stubDataSourceService) CountDataSourceDocuments(ctx context.Context, te
 	return 0, nil
 }
 
+func (s *stubDataSourceService) ManualSync(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error) {
+	if s.manualSync != nil {
+		return s.manualSync(ctx, dsID, forceFull)
+	}
+	return nil, nil
+}
+
 type stubKBServiceForDS struct {
 	interfaces.KnowledgeBaseService
 	getByID func(ctx context.Context, id string) (*types.KnowledgeBase, error)
@@ -83,6 +92,7 @@ func newDataSourceTestRouter(h *DataSourceHandler) *gin.Engine {
 	r.POST("/datasource/:id/logs/:log_id/cancel", h.CancelSyncLog)
 	r.GET("/datasource/:id/documents-count", h.CountDocuments)
 	r.DELETE("/datasource/:id", h.DeleteDataSource)
+	r.POST("/datasource/:id/sync", h.ManualSync)
 	return r
 }
 
@@ -359,4 +369,88 @@ func TestDataSource_CancelSyncLog_NotFound(t *testing.T) {
 	if resp["error"] == "" {
 		t.Fatal("expected an error message in the 404 body")
 	}
+}
+
+// ManualSync's optional body {"force_full": bool} must default to false for an
+// absent/empty body while forwarding an explicit true, so an old client that
+// POSTs with no body keeps the previous incremental behaviour.
+func TestDataSource_ManualSync_ForceFullBodyMatrix(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"explicit true", `{"force_full":true}`, true},
+		{"explicit false", `{"force_full":false}`, false},
+		{"empty object", `{}`, false},
+		{"empty body", ``, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotForceFull *bool
+			dsSvc := &stubDataSourceService{
+				getDataSource: func(_ context.Context, id string) (*types.DataSource, error) {
+					return &types.DataSource{ID: id, KnowledgeBaseID: "kb1"}, nil
+				},
+				manualSync: func(_ context.Context, _ string, forceFull bool) (*types.SyncLog, error) {
+					gotForceFull = &forceFull
+					return &types.SyncLog{ID: "log1"}, nil
+				},
+			}
+			kbSvc := &stubKBServiceForDS{
+				getByID: func(_ context.Context, _ string) (*types.KnowledgeBase, error) {
+					return &types.KnowledgeBase{ID: "kb1", TenantID: 1}, nil
+				},
+			}
+			h := NewDataSourceHandler(dsSvc, kbSvc)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/datasource/ds1/sync", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = withDSCtx(req, 1)
+			newDataSourceTestRouter(h).ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+			}
+			if gotForceFull == nil {
+				t.Fatal("service.ManualSync was never called")
+			}
+			if *gotForceFull != tc.want {
+				t.Fatalf("force_full = %v, want %v", *gotForceFull, tc.want)
+			}
+		})
+	}
+
+	// No body at all (nil) is also legal.
+	t.Run("nil body", func(t *testing.T) {
+		var gotForceFull *bool
+		dsSvc := &stubDataSourceService{
+			getDataSource: func(_ context.Context, id string) (*types.DataSource, error) {
+				return &types.DataSource{ID: id, KnowledgeBaseID: "kb1"}, nil
+			},
+			manualSync: func(_ context.Context, _ string, forceFull bool) (*types.SyncLog, error) {
+				gotForceFull = &forceFull
+				return &types.SyncLog{ID: "log1"}, nil
+			},
+		}
+		kbSvc := &stubKBServiceForDS{
+			getByID: func(_ context.Context, _ string) (*types.KnowledgeBase, error) {
+				return &types.KnowledgeBase{ID: "kb1", TenantID: 1}, nil
+			},
+		}
+		h := NewDataSourceHandler(dsSvc, kbSvc)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/datasource/ds1/sync", nil)
+		req = withDSCtx(req, 1)
+		newDataSourceTestRouter(h).ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		if gotForceFull == nil || *gotForceFull {
+			t.Fatalf("nil body must default force_full to false, got %v", gotForceFull)
+		}
+	})
 }

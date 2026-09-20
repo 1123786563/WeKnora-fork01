@@ -32,7 +32,8 @@ test('gives every registered settings section a concrete inventory description',
 });
 
 test('system-admin settings keep Vue-localized section titles on direct role-denied links', () => {
-  assert.equal(settingsSectionMeta('system-global')?.title, '系统全局设置');
+  // R491 agent I: title follows Vue system.globalSettings.title (SystemSettings.vue:37).
+  assert.equal(settingsSectionMeta('system-global')?.title, '系统设置');
   assert.equal(settingsSectionMeta('runtime-queues')?.title, '运行时队列');
   assert.equal(settingsSectionMeta('platform-api-keys')?.title, '平台 API Key');
   assert.equal(settingsSectionMeta('system-audit-log')?.title, '审计日志');

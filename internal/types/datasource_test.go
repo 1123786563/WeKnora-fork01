@@ -166,3 +166,41 @@ func TestSubtreeChildID_MatchesPrefix(t *testing.T) {
 	assert.False(t, strings.HasPrefix(sibling, prefix),
 		"sibling node whose id shares a leading substring must not match the prefix")
 }
+
+// TestDataSourceSyncPayload_ScopeRoundTrip locks the payload wire contract for
+// scoped reindex runs: a payload carrying Scope.ExternalIDs must round-trip
+// through the asynq JSON blob, and legacy payloads without "scope" must decode
+// with a nil Scope (a nil scope means a regular full/incremental run).
+func TestDataSourceSyncPayload_ScopeRoundTrip(t *testing.T) {
+	in := DataSourceSyncPayload{
+		DataSourceID: "ds-1",
+		TenantID:     7,
+		SyncLogID:    "log-1",
+		Trigger:      "manual_reindex",
+		Scope:        &SyncScope{ExternalIDs: []string{"nt-1", "nt-2"}},
+	}
+	b, err := json.Marshal(&in)
+	assert.NoError(t, err)
+
+	var out DataSourceSyncPayload
+	assert.NoError(t, json.Unmarshal(b, &out))
+	assert.NotNil(t, out.Scope, "scope must round-trip")
+	assert.Equal(t, []string{"nt-1", "nt-2"}, out.Scope.ExternalIDs)
+	assert.Equal(t, "manual_reindex", out.Trigger)
+
+	// Legacy payload without scope decodes to nil Scope.
+	var legacy DataSourceSyncPayload
+	assert.NoError(t, json.Unmarshal([]byte(`{"data_source_id":"ds-1","tenant_id":7,"sync_log_id":"log-1"}`), &legacy))
+	assert.Nil(t, legacy.Scope, "absent scope must decode to nil (regular run)")
+
+	// An empty scope object with no ids also decodes cleanly.
+	var emptyScope DataSourceSyncPayload
+	assert.NoError(t, json.Unmarshal([]byte(`{"data_source_id":"ds-1","scope":{}}`), &emptyScope))
+	assert.NotNil(t, emptyScope.Scope)
+	assert.Empty(t, emptyScope.Scope.ExternalIDs)
+
+	// A payload without scope marshals without a "scope" key (legacy shape).
+	noScope, err := json.Marshal(&DataSourceSyncPayload{DataSourceID: "ds-1"})
+	assert.NoError(t, err)
+	assert.NotContains(t, string(noScope), "scope", "nil scope must stay omitted")
+}

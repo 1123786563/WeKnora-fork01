@@ -42,3 +42,40 @@ func TestSyncItemError_UnmarshalAcceptsLegacyStringAndObject(t *testing.T) {
 		t.Fatalf("structured form did not round-trip: %+v", out)
 	}
 }
+
+// ExternalID (SP2 targeted reindex) lets a failure sample be retried
+// individually. Rows persisted before the field existed must keep decoding
+// with a zero ExternalID, and the field must round-trip when set.
+func TestSyncItemError_ExternalIDLegacyCompatAndRoundTrip(t *testing.T) {
+	// Pre-external_id structured row: missing field decodes to the zero value.
+	var old []SyncItemError
+	legacy := `[{"title":"季度报告","code":"feishu_api_error","message":"boom"}]`
+	if err := json.Unmarshal([]byte(legacy), &old); err != nil {
+		t.Fatalf("old object without external_id must decode: %v", err)
+	}
+	if len(old) != 1 || old[0].ExternalID != "" {
+		t.Fatalf("missing external_id must decode to the zero value, got %+v", old)
+	}
+
+	// New row round-trips the external id so the UI can offer a targeted retry.
+	b, err := json.Marshal(SyncItemError{Title: "季度报告", Code: "ingest_failed", ExternalID: "nt-123"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out SyncItemError
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.ExternalID != "nt-123" {
+		t.Fatalf("external_id did not round-trip, got %q", out.ExternalID)
+	}
+
+	// omitempty keeps unset samples byte-identical to the legacy shape.
+	bEmpty, err := json.Marshal(SyncItemError{Title: "t"})
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	if string(bEmpty) != `{"title":"t"}` {
+		t.Fatalf("unset external_id must be omitted, got %s", bEmpty)
+	}
+}

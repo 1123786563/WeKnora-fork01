@@ -122,7 +122,7 @@ func TestManualSyncPausedByPlanExpiryBeforeScheduling(t *testing.T) {
 	svc := newTestService(activeDS(), logs, enq)
 	svc.SetSyncExecution(nil, nil, func(ctx context.Context, tenant uint64) bool { return false })
 
-	_, err := svc.ManualSync(context.Background(), "ds-1")
+	_, err := svc.ManualSync(context.Background(), "ds-1", false)
 	if err == nil {
 		t.Fatal("expired plan must pause manual sync")
 	}
@@ -148,7 +148,7 @@ func TestManualSyncPausedForUnprovableLegacyCredentials(t *testing.T) {
 	}}
 	svc.SetSyncExecution(store, &fakeSpaceState{state: nil}, func(ctx context.Context, tenant uint64) bool { return true })
 
-	_, err := svc.ManualSync(context.Background(), "ds-1")
+	_, err := svc.ManualSync(context.Background(), "ds-1", false)
 	var paused *appconnector.SyncPausedError
 	if !errors.As(err, &paused) || paused.Reason != appconnector.PauseReasonPermission {
 		t.Fatalf("expected permission pause for legacy credentials, got %v", err)
@@ -171,7 +171,7 @@ func TestManualSyncPausedForRevokedSpaceConnection(t *testing.T) {
 		InstallationState: appconnector.InstallationActive,
 	}}, func(ctx context.Context, tenant uint64) bool { return true })
 
-	if _, err := svc.ManualSync(context.Background(), "ds-1"); err == nil {
+	if _, err := svc.ManualSync(context.Background(), "ds-1", false); err == nil {
 		t.Fatal("revoked connection must pause manual sync")
 	}
 }
@@ -190,7 +190,7 @@ func TestManualSyncDispatchesWithActiveSpaceConnection(t *testing.T) {
 		InstallationState: appconnector.InstallationActive,
 	}}, func(ctx context.Context, tenant uint64) bool { return true })
 
-	if _, err := svc.ManualSync(context.Background(), "ds-1"); err != nil {
+	if _, err := svc.ManualSync(context.Background(), "ds-1", false); err != nil {
 		t.Fatalf("active space connection must dispatch: %v", err)
 	}
 	if logs.created != 1 || enq.enqueued != 1 {
@@ -205,7 +205,7 @@ func TestLegacyUnboundDataSourceStillGatedByPlan(t *testing.T) {
 	svc := newTestService(activeDS(), logs, &fakeEnqueuer{})
 	svc.SetSyncExecution(&fakeBindingStore{}, nil, func(ctx context.Context, tenant uint64) bool { return false })
 
-	if _, err := svc.ManualSync(context.Background(), "ds-1"); err == nil {
+	if _, err := svc.ManualSync(context.Background(), "ds-1", false); err == nil {
 		t.Fatal("unbound legacy data source must not bypass the plan gate")
 	}
 	// With the plan active, the same unbound data source runs the legacy path.

@@ -701,7 +701,20 @@ export interface FAQPageViewProps {
   saving?: boolean;
   exportLoading?: boolean;
   message?: { tone: 'error' | 'success' | 'warning'; text: string } | null;
-  batchTag?: string;
+  /** R491 1b: Vue FAQBatchBar cancel — clears the whole selection. */
+  onClearSelection?: () => void;
+  /** R491 1c: Vue batch-tag overlay state (FAQEntryManager.vue:685-735). */
+  batchTagOpen?: boolean;
+  batchTagValue?: string;
+  batchTagBusy?: boolean;
+  onOpenBatchTag?: () => void;
+  onBatchTagValueChange?: (value: string) => void;
+  onBatchTagConfirm?: () => void;
+  onCloseBatchTag?: () => void;
+  /** R491 1b: Vue t-popconfirm around 批量删除 (FAQBatchBar.vue:65-74). */
+  confirmingBatchDelete?: boolean;
+  onConfirmBatchDelete?: () => void;
+  onCancelBatchDelete?: () => void;
   onNavigate?: (path: string) => void;
   onKeywordDraftChange?: (value: string) => void;
   onSearchSubmit?: () => void;
@@ -725,9 +738,6 @@ export interface FAQPageViewProps {
   onToggleEntryStatus?: (entry: FAQEntry, value: boolean) => void;
   onBatchEnable?: () => void;
   onBatchDisable?: () => void;
-  onBatchRecommend?: () => void;
-  onBatchTagChange?: (value: string) => void;
-  onBatchSetTag?: () => void;
   onBatchDelete?: () => void;
   onLoadMore?: () => void;
   onOpenEditor?: () => void;
@@ -780,7 +790,17 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     saving = false,
     exportLoading = false,
     message = null,
-    batchTag = '',
+    onClearSelection = () => {},
+    batchTagOpen = false,
+    batchTagValue = '',
+    batchTagBusy = false,
+    onOpenBatchTag = () => {},
+    onBatchTagValueChange = () => {},
+    onBatchTagConfirm = () => {},
+    onCloseBatchTag = () => {},
+    confirmingBatchDelete = false,
+    onConfirmBatchDelete = () => {},
+    onCancelBatchDelete = () => {},
     onNavigate = defaultNavigate,
     onKeywordDraftChange = () => {},
     onSearchSubmit = () => {},
@@ -802,9 +822,6 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     onDeleteEntry = () => {},
     onBatchEnable = () => {},
     onBatchDisable = () => {},
-    onBatchRecommend = () => {},
-    onBatchTagChange = () => {},
-    onBatchSetTag = () => {},
     onBatchDelete = () => {},
     onLoadMore = () => {},
     onToggleEntryStatus = () => {},
@@ -1100,7 +1117,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       </button>
                       {/* B5: Vue wraps each chip in FAQTagTooltip (:303-354) — the
                           bubble carries the full text instead of a native title. */}
-                      <div className="faq-tags flex min-h-[18px] min-w-0 w-full flex-wrap gap-[5px] [&>*]:max-w-full [&>*]:min-w-0 [&>*]:flex-[0_1_auto]" hidden={collapsed}>
+                      {/* R491 1a: the `flex` utility (display:flex) would override the UA
+                          [hidden]{display:none} and leak answer bodies on load — guard with
+                          [&[hidden]]:hidden like every faq-menu here (Vue :348 v-if). */}
+                      <div className="faq-tags flex min-h-[18px] min-w-0 w-full flex-wrap gap-[5px] [&>*]:max-w-full [&>*]:min-w-0 [&>*]:flex-[0_1_auto] [&[hidden]]:hidden" hidden={collapsed}>
                         {values.map((value, index) => (
                           <FaqTagTooltip key={index} content={value} placement="top" type={name === 'negative' ? 'negative' : name === 'answers' ? 'answer' : 'similar'}>
                             <span className={tagClass}>{value}</span>
@@ -1186,30 +1206,34 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             {hasMore === false && entries.length > 0 ? <div className="faq-no-more flex items-center justify-center px-4 py-6 text-[13px] italic leading-[1.5] text-faint">{t('common.noMoreData')}</div> : null}
           </div>
 
+          {/* R491 1b: Vue FAQBatchBar.vue:33-79 — 已选 N 项 + 取消选择 on the
+              left; 批量设置标签 (dialog), conditional 启用/禁用 and 批量删除
+              (confirm) on the right. The old React-only recommend button and
+              inline tag select are gone. */}
           {canContribute && selected.size > 0 ? (
-            <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" aria-label="FAQ batch actions">
-              <span className="mr-auto text-[0.85rem] text-muted">{t('common.itemCount', { count: selected.size })}</span>
-              {/* Vue FAQBatchBar.vue:53-63 (+ FAQEntryManager.vue:1046-1049):
-                  批量启用 only renders when the selection has disabled entries,
-                  批量禁用 only when it has enabled ones. */}
-              {(() => {
-                const selectedEntries = entries.filter((entry) => selected.has(entry.id));
-                const selectedEnabledCount = selectedEntries.filter((entry) => entry.is_enabled !== false).length;
-                const selectedDisabledCount = selectedEntries.length - selectedEnabledCount;
-                return (
-                  <>
-                    {selectedDisabledCount > 0 ? <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button> : null}
-                    {selectedEnabledCount > 0 ? <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button> : null}
-                  </>
-                );
-              })()}
-              <Button type="button" onClick={onBatchRecommend}>{t('knowledgeEditor.faq.recommended')}</Button>
-              <Select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
-                <option value="">{t('knowledgeBase.untagged')}</option>
-                {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
-              </Select>
-              <Button type="button" onClick={onBatchSetTag}>{t('knowledgeEditor.faq.batchUpdateTag')}</Button>
-              <Button type="button" onClick={onBatchDelete}>{t('knowledgeEditor.faq.batchDelete')}</Button>
+            <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3 mb-[0.75rem] flex flex-wrap items-center justify-between gap-[0.5rem]" role="region" aria-label={t('knowledgeBase.selectedCount', { count: selected.size })}>
+              <div className="faq-batch-bar__selection flex shrink-0 items-center gap-1">
+                <span className="faq-batch-bar__count text-[13px] font-medium text-muted">{t('knowledgeBase.selectedCount', { count: selected.size })}</span>
+                <Button type="button" variant="text" onClick={onClearSelection}>{t('knowledgeBase.clearSelection')}</Button>
+              </div>
+              <div className="faq-batch-bar__actions flex flex-wrap items-center justify-end gap-[0.5rem]">
+                {/* Vue FAQBatchBar.vue:53-63 (+ FAQEntryManager.vue:1046-1049):
+                    批量启用 only renders when the selection has disabled entries,
+                    批量禁用 only when it has enabled ones. */}
+                {(() => {
+                  const selectedEntries = entries.filter((entry) => selected.has(entry.id));
+                  const selectedEnabledCount = selectedEntries.filter((entry) => entry.is_enabled !== false).length;
+                  const selectedDisabledCount = selectedEntries.length - selectedEnabledCount;
+                  return (
+                    <>
+                      <Button type="button" onClick={onOpenBatchTag}>{t('knowledgeEditor.faq.batchUpdateTag')}</Button>
+                      {selectedDisabledCount > 0 ? <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button> : null}
+                      {selectedEnabledCount > 0 ? <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button> : null}
+                    </>
+                  );
+                })()}
+                <Button type="button" onClick={onBatchDelete}>{t('knowledgeEditor.faq.batchDelete')}</Button>
+              </div>
             </div>
           ) : null}
 
@@ -1282,6 +1306,53 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {/* R491 1c: Vue batch-tag overlay (FAQEntryManager.vue:685-735) — title,
+          info tip with the selection count, one tag select (clearable via the
+          placeholder option), and a cancel/confirm footer with loading. */}
+      {batchTagOpen ? (
+        <section className="batch-tag-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-5 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.batchUpdateTag')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseBatchTag(); }}>
+          <div className="batch-tag-modal relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_6px_28px_rgba(15,23,42,0.08)]">
+            <button type="button" className="batch-tag-close-btn absolute right-[18px] top-[18px] z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseBatchTag}><CloseIcon size={16} /></button>
+            <div className="batch-tag-header shrink-0 border-b border-[#e3e8f0] px-6 pb-4 pt-6">
+              <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.batchUpdateTag')}</h2>
+            </div>
+            <div className="batch-tag-content flex flex-col gap-4 p-6">
+              <div className="batch-tag-tip flex items-start gap-2 text-[13px] leading-[1.5] text-muted">
+                <InfoIcon size={16} className="mt-0.5 shrink-0" />
+                <span>{t('knowledgeEditor.faq.batchUpdateTagTip', { count: selected.size })}</span>
+              </div>
+              <div className="batch-tag-form flex flex-col gap-2">
+                <label className="text-sm font-semibold leading-[1.5] text-ink" htmlFor="faq-batch-tag-select">{t('knowledgeBase.tagLabel')}</label>
+                {/* Vue t-select clearable: the placeholder option maps back to
+                    null → updates clear the tag (handleBatchTag :1810-1821). */}
+                <Select id="faq-batch-tag-select" className="w-full rounded-control border border-line-control bg-surface px-[0.65rem] py-[0.55rem] text-sm text-ink [font:inherit]" value={batchTagValue} onChange={(event) => onBatchTagValueChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
+                  <option value="">{t('knowledgeBase.tagPlaceholder')}</option>
+                  {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
+                </Select>
+                {tagNameBySeq.size === 0 ? <p className="tag-select-empty m-0 text-xs leading-[1.5] text-faint">{t('knowledgeBase.noTags')}</p> : null}
+              </div>
+            </div>
+            <div className="batch-tag-footer flex flex-none justify-end gap-2.5 border-t border-[#e3e8f0] px-6 py-4">
+              <Button type="button" onClick={onCloseBatchTag}>{t('common.cancel')}</Button>
+              <Button type="button" variant="primary" loading={batchTagBusy} disabled={batchTagBusy} onClick={onBatchTagConfirm}>{t('common.confirm')}</Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* R491 1b: Vue wraps 批量删除 in a t-popconfirm (FAQBatchBar.vue:65-74)
+          with confirmBatchDelete / knowledgeBase.confirmDelete / common.cancel —
+          React renders the same copy in a Dialog (repo convention). */}
+      {confirmingBatchDelete ? (
+        <Dialog open title={t('knowledgeEditor.faq.batchDelete')} onClose={onCancelBatchDelete}>
+          <p className="m-0">{t('knowledgeEditor.faq.confirmBatchDelete', { count: selected.size })}</p>
+          <div className="wk-list-actions mb-[0.75rem] mt-4 flex items-center justify-end gap-[0.5rem]">
+            <Button type="button" onClick={onConfirmBatchDelete}>{t('knowledgeBase.confirmDelete')}</Button>
+            <Button type="button" onClick={onCancelBatchDelete}>{t('common.cancel')}</Button>
+          </div>
+        </Dialog>
       ) : null}
 
       {/* B1: Vue editor drawer (FAQEntryManager.vue:440-577) — 520px right
@@ -1754,7 +1825,12 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<FAQEntryPayload[]>([]);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<readonly number[]>([]);
-  const [batchTag, setBatchTag] = useState('');
+  // R491 1b/1c: Vue batch bar state — the tag dialog (FAQEntryManager.vue:687)
+  // and the delete popconfirm (FAQBatchBar.vue:65-74) replace the old inline select.
+  const [batchTagOpen, setBatchTagOpen] = useState(false);
+  const [batchTagValue, setBatchTagValue] = useState('');
+  const [batchTagBusy, setBatchTagBusy] = useState(false);
+  const [confirmingBatchDelete, setConfirmingBatchDelete] = useState(false);
   const [tagManageOpen, setTagManageOpen] = useState(false);
   // B4: Vue search test state (FAQEntryManager.vue:1329-1338).
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1941,15 +2017,26 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }
   async function updateSelection(input: FAQEntryFieldsUpdate) {
     if (!selected.size) return;
-    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: t(faqBatchSuccessKey(input), { count: selected.size }) }); }
+    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: t(faqBatchSuccessKey(input), { count: selected.size }) }); setSelected(new Set()); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
-  async function updateSelectedTag() {
-    if (!selected.size) return;
-    const tagId = batchTag.trim() ? Number(batchTag) : null;
+  // R491 1c: Vue handleBatchTag (FAQEntryManager.vue:1806-1826) — confirm from
+  // the batch-tag dialog; an empty value clears the tag (null), success uses
+  // knowledgeEditor.messages.updateSuccess, the dialog closes and the
+  // selection resets.
+  async function confirmBatchTag() {
+    if (!selected.size || batchTagBusy) return;
+    const tagId = batchTagValue.trim() ? Number(batchTagValue) : null;
     if (tagId !== null && (!Number.isSafeInteger(tagId) || tagId < 0)) { setMessage({ tone: 'error', text: 'Tag ID must be a non-negative integer.' }); return; }
-    try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(false); setBatchTag(''); setMessage({ tone: 'success', text: t('knowledgeBase.tagUpdateSuccess') }); }
+    setBatchTagBusy(true);
+    try {
+      await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) });
+      await load(false);
+      setMessage({ tone: 'success', text: t('knowledgeEditor.messages.updateSuccess') });
+      setBatchTagOpen(false); setBatchTagValue(''); setSelected(new Set());
+    }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
+    finally { setBatchTagBusy(false); }
   }
   async function removeMany(ids: number[]) {
     try { await faq.removeMany(knowledgeBaseId, ids); await load(false); setMessage({ tone: 'success', text: t(faqDeleteSuccessKey(ids.length), { count: ids.length }) }); }
@@ -2066,8 +2153,21 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       saving={saving}
       exportLoading={exportLoading}
       message={message}
-      batchTag={batchTag}
+      onBatchEnable={() => void updateSelection({ is_enabled: true })}
+      onBatchDisable={() => void updateSelection({ is_enabled: false })}
+      onClearSelection={() => setSelected(new Set())}
       onNavigate={navigate}
+      batchTagOpen={batchTagOpen}
+      batchTagValue={batchTagValue}
+      batchTagBusy={batchTagBusy}
+      onOpenBatchTag={() => { setBatchTagValue(''); setBatchTagOpen(true); }}
+      onBatchTagValueChange={setBatchTagValue}
+      onBatchTagConfirm={() => void confirmBatchTag()}
+      onCloseBatchTag={() => setBatchTagOpen(false)}
+      confirmingBatchDelete={confirmingBatchDelete}
+      onConfirmBatchDelete={() => { setConfirmingBatchDelete(false); void removeMany([...selected]).then(() => setSelected(new Set())); }}
+      onCancelBatchDelete={() => setConfirmingBatchDelete(false)}
+      onBatchDelete={() => setConfirmingBatchDelete(true)}
       onKeywordDraftChange={setKeywordDraft}
       onSearchSubmit={() => setKeyword(keywordDraft.trim())}
       onSearchClear={() => { setKeywordDraft(''); setKeyword(''); }}
@@ -2088,12 +2188,6 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onDeleteEntry={(entry) => void removeMany([entry.id])}
       onToggleEntryStatus={(entry, value) => void toggleEntryStatus(entry, value)}
       statusUpdatingIds={statusUpdatingIds}
-      onBatchEnable={() => void updateSelection({ is_enabled: true })}
-      onBatchDisable={() => void updateSelection({ is_enabled: false })}
-      onBatchRecommend={() => void updateSelection({ is_recommended: true })}
-      onBatchTagChange={setBatchTag}
-      onBatchSetTag={() => void updateSelectedTag()}
-      onBatchDelete={() => void removeMany([...selected])}
       onLoadMore={loadMore}
       onCloseEditor={() => setEditing(undefined)}
       onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}

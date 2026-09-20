@@ -96,7 +96,7 @@ const descriptions: Record<string, { title: string; description: string }> = {
   chathistory: { title: 'Chat history', description: 'Chat-history configuration and aggregate statistics.' },
   system: { title: 'System information', description: 'Deployment information; this section never treats presence as health.' },
   weknoracloud: { title: 'WeKnora Cloud', description: 'Cloud connection status with credentials redacted at the API boundary.' },
-  'system-global': { title: '系统全局设置', description: '管理平台级配置；修改会立即保存。' },
+  'system-global': { title: '系统设置', description: '平台级运行时配置，保存后立即对所有空间生效。仅系统管理员可见可改。' },
   'runtime-queues': { title: '运行时队列', description: '查看任务队列、工作池和模型限流状态。' },
   'platform-api-keys': { title: '平台 API Key', description: '管理平台级自动化凭据与能力范围。' },
   'system-audit-log': { title: '审计日志', description: '查看平台级管理操作和结果。' },

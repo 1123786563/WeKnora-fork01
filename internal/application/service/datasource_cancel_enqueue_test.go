@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -233,7 +234,7 @@ func TestManualSyncRecordsAsynqTaskID(t *testing.T) {
 		scheduler:    datasource.NewScheduler(f.dsRepo, f.syncLogRepo, nil),
 	}
 
-	log, err := svc.ManualSync(context.Background(), f.ds.ID)
+	log, err := svc.ManualSync(context.Background(), f.ds.ID, false)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	assert.NotEmpty(t, log.AsynqTaskID, "returned log must carry the asynq task id")
@@ -241,4 +242,40 @@ func TestManualSyncRecordsAsynqTaskID(t *testing.T) {
 
 	stored := f.reloadLog(t, log.ID)
 	assert.Equal(t, "asynq-manual-1", stored.AsynqTaskID, "task id must be persisted")
+}
+
+// payloadCaptureEnqueuer records every enqueued task payload so tests can
+// assert what actually reaches the asynq queue.
+type payloadCaptureEnqueuer struct{ payloads [][]byte }
+
+func (e *payloadCaptureEnqueuer) Enqueue(task *asynq.Task, _ ...asynq.Option) (*asynq.TaskInfo, error) {
+	e.payloads = append(e.payloads, task.Payload())
+	return &asynq.TaskInfo{ID: "asynq-manual-x", Payload: task.Payload()}, nil
+}
+
+// ManualSync's forceFull argument must reach the task payload verbatim so the
+// handler's force_full flag drives the full/incremental choice inside
+// ProcessSync (the payload field already existed; the API now opens it up).
+func TestManualSyncPassesForceFullToPayload(t *testing.T) {
+	for _, force := range []bool{true, false} {
+		f := newSQLiteSyncCancelFixture(t)
+		enq := &payloadCaptureEnqueuer{}
+		svc := &DataSourceService{
+			dsRepo:       f.dsRepo,
+			syncLogRepo:  f.syncLogRepo,
+			taskEnqueuer: enq,
+			scheduler:    datasource.NewScheduler(f.dsRepo, f.syncLogRepo, nil),
+		}
+
+		log, err := svc.ManualSync(context.Background(), f.ds.ID, force)
+		require.NoError(t, err)
+		require.NotNil(t, log)
+		require.Len(t, enq.payloads, 1, "exactly one sync task must be enqueued")
+
+		var payload types.DataSourceSyncPayload
+		require.NoError(t, json.Unmarshal(enq.payloads[0], &payload))
+		assert.Equal(t, f.ds.ID, payload.DataSourceID)
+		assert.Equal(t, force, payload.ForceFull,
+			"payload ForceFull must mirror the ManualSync forceFull argument")
+	}
 }
