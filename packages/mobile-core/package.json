@@ -10,6 +10,7 @@
     "@weknora/domain": "workspace:*"
   },
   "devDependencies": {
+    "@weknora/api-client": "workspace:*",
     "@types/node": "22.14.0"
   }
 }

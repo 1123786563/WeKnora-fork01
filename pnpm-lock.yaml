@@ -348,6 +348,9 @@ importers:
       '@types/node':
         specifier: 22.14.0
         version: 22.14.0
+      '@weknora/api-client':
+        specifier: workspace:*
+        version: link:../api-client
 
   packages/ui:
     dependencies:

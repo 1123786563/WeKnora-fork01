@@ -1,46 +1,47 @@
 import { clientGate } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
-import { scopeLeaseBrand, type MobileRuntime, type RuntimeIdentity, type RuntimeSnapshot, type RuntimeTenant, type ScopeLease } from './types.ts';
+import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
-function normalizeDeployment(value: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new Error('deployment is required');
+const scopeLeaseBrand = Symbol('ScopeLease');
+
+function normalizeDeployment(input: DeploymentInput): Deployment {
+  if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
   let parsed: URL;
   try {
-    parsed = new URL(value);
+    parsed = new URL(input.origin);
   } catch {
-    throw new Error('deployment must be an absolute URL');
+    throw new Error('deployment origin must be an absolute URL');
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
     throw new Error('deployment must be an HTTPS origin');
   }
-  return parsed.origin;
+  const origin = parsed.origin;
+  return { origin, label: typeof input.label === 'string' && input.label.trim() !== '' ? input.label.trim() : origin };
 }
 
-function identity(value: unknown): RuntimeIdentity | undefined {
-  if (typeof value !== 'object' || value === null || typeof (value as { id?: unknown }).id !== 'string' || (value as { id: string }).id.trim() === '') return undefined;
-  return { id: (value as { id: string }).id };
+function userId(value: unknown): string | undefined {
+  const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
+  return typeof id === 'string' && id.trim() !== '' ? id : undefined;
 }
 
-function tenant(value: unknown): RuntimeTenant | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const id = (value as { id?: unknown }).id;
-  if (typeof id === 'string' && id.trim() !== '') return { id };
-  if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0) return { id: String(id) };
-  return undefined;
+function tenantId(value: unknown): string | undefined {
+  const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
+  if (typeof id === 'string' && id.trim() !== '') return id;
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
 }
 
-class RuntimeScopeLease implements ScopeLease {
+class RuntimeScopeLease {
   readonly [scopeLeaseBrand] = undefined;
   #active = true;
-  isActive(): boolean { return this.#active; }
   revoke(): void { this.#active = false; }
 }
 
 export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let epoch = 0;
-  let activeDeployment: string | undefined;
-  let lease: RuntimeScopeLease | undefined;
-  let state: RuntimeSnapshot = { surface: 'signed-out' };
+  let activeDeployment: Deployment | undefined;
+  let lease: ScopeLease | undefined;
+  let revocableLease: RuntimeScopeLease | undefined;
+  let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
   const publish = (next: RuntimeSnapshot): RuntimeSnapshot => {
@@ -48,34 +49,34 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     for (const listener of listeners) listener(state);
     return state;
   };
-  const revoke = (): void => { lease?.revoke(); lease = undefined; };
-  const begin = (deployment: string, surface: RuntimeSnapshot['surface']): number => {
+  const revoke = (): void => { revocableLease?.revoke(); revocableLease = undefined; lease = undefined; };
+  const begin = (deployment: Deployment): number => {
     epoch += 1;
     revoke();
     activeDeployment = deployment;
-    publish({ surface, deployment });
     return epoch;
   };
-  const current = (requestEpoch: number, deployment: string): boolean => requestEpoch === epoch && activeDeployment === deployment;
-  const safe = (requestEpoch: number, deployment: string, gate?: RuntimeSnapshot['gate']): RuntimeSnapshot =>
-    current(requestEpoch, deployment) ? publish({ surface: 'upgrade-required', deployment, ...(gate ? { gate } : {}) }) : state;
+  const current = (requestEpoch: number, deployment: Deployment): boolean => requestEpoch === epoch && activeDeployment?.origin === deployment.origin;
+  const safe = (requestEpoch: number, deployment: Deployment, reason: RuntimeReason): RuntimeSnapshot =>
+    current(requestEpoch, deployment) ? publish({ surface: 'upgrade-required', deployment, reason }) : state;
 
-  const authenticate = async (requestEpoch: number, deployment: string, credential: StoredCredential): Promise<RuntimeSnapshot> => {
+  const authenticate = async (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<RuntimeSnapshot> => {
     try {
-      const remote = ports.remoteFor(deployment);
-      const me = await remote.me(credential.accessToken);
+      const remote = ports.remoteFor(deployment.origin);
+      const me = await remote.me(credential.token);
       if (!current(requestEpoch, deployment)) return state;
-      const currentIdentity = identity(me.user);
-      const currentTenant = tenant(me.tenant);
-      if (!currentIdentity || !currentTenant) return safe(requestEpoch, deployment);
-      const capabilities = await remote.deploymentCapabilities(credential.accessToken);
+      const authenticatedUserId = userId(me.user);
+      const activeTenantId = tenantId(me.tenant);
+      if (!authenticatedUserId || !activeTenantId) return safe(requestEpoch, deployment, 'tenant-required');
+      const capabilities = await remote.deploymentCapabilities(credential.token);
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
-      if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate);
-      lease = new RuntimeScopeLease();
-      return publish({ surface: 'full', deployment, identity: currentIdentity, tenant: currentTenant, gate, scopeLease: lease });
+      if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
+      revocableLease = new RuntimeScopeLease();
+      lease = revocableLease as unknown as ScopeLease;
+      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId } });
     } catch {
-      return safe(requestEpoch, deployment);
+      return safe(requestEpoch, deployment, 'authentication-required');
     }
   };
   const signOut = async (): Promise<void> => {
@@ -83,42 +84,51 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     epoch += 1;
     revoke();
     activeDeployment = undefined;
-    publish({ surface: 'signed-out' });
-    if (deployment) await ports.credentialStore.clear(deployment);
+    publish({ surface: 'deployment-login', reason: 'authentication-required' });
+    if (deployment) await ports.credentialStore.clear(deployment.origin);
   };
 
   return {
-    async boot(deploymentHint?: string): Promise<RuntimeSnapshot> {
-      if (!deploymentHint) return state;
-      const deployment = normalizeDeployment(deploymentHint);
-      const requestEpoch = begin(deployment, 'restoring');
-      try {
-        const credential = await ports.credentialStore.read(deployment);
-        if (!current(requestEpoch, deployment)) return state;
-        if (!credential) return publish({ surface: 'signed-out', deployment });
-        return await authenticate(requestEpoch, deployment, credential);
-      } catch {
-        return safe(requestEpoch, deployment);
-      }
-    },
-    async signIn(deploymentInput, input): Promise<RuntimeSnapshot> {
-      const deployment = normalizeDeployment(deploymentInput);
-      const requestEpoch = begin(deployment, 'restoring');
-      try {
-        const credential = await ports.remoteFor(deployment).passwordLogin(input);
-        if (!current(requestEpoch, deployment)) return state;
-        await ports.credentialStore.write(deployment, credential);
-        if (!current(requestEpoch, deployment)) return state;
-        return await authenticate(requestEpoch, deployment, credential);
-      } catch {
-        return safe(requestEpoch, deployment);
-      }
-    },
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    async boot(input?: DeploymentInput): Promise<RuntimeSnapshot> {
+      if (!input) return publish({ surface: 'deployment-login', reason: 'authentication-required' });
+      const deployment = normalizeDeployment(input);
+      const requestEpoch = begin(deployment);
+      try {
+        const credential = await ports.credentialStore.read(deployment.origin);
+        if (!current(requestEpoch, deployment)) return state;
+        if (!credential) return publish({ surface: 'deployment-login', deployment, reason: 'authentication-required' });
+        return await authenticate(requestEpoch, deployment, credential);
+      } catch {
+        return safe(requestEpoch, deployment, 'authentication-required');
+      }
+    },
+    async signIn(input): Promise<RuntimeSnapshot> {
+      const deployment = normalizeDeployment(input.deployment);
+      const requestEpoch = begin(deployment);
+      try {
+        const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
+        if (!current(requestEpoch, deployment)) return state;
+        await ports.credentialStore.write(deployment.origin, credential);
+        if (!current(requestEpoch, deployment)) return state;
+        return await authenticate(requestEpoch, deployment, credential);
+      } catch {
+        return safe(requestEpoch, deployment, 'authentication-required');
+      }
+    },
+    async beginOidc(): Promise<void> {
+      throw new Error('OIDC_NOT_IMPLEMENTED');
+    },
+    async completeOidc(): Promise<RuntimeSnapshot> {
+      return state;
+    },
+    scopeLease: () => lease,
     signOut,
-    async dispose(): Promise<void> {
-      await signOut();
+    dispose(): void {
+      epoch += 1;
+      revoke();
+      activeDeployment = undefined;
       listeners.clear();
     },
   };
