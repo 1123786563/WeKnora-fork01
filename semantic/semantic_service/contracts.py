@@ -65,12 +65,16 @@ class Evidence:
     end_char: int | None
 
     def __post_init__(self) -> None:
-        if not self.quote or not 1 <= self.revision <= UINT64_MAX:
+        _uint(self.revision, UINT64_MAX, "revision", nonzero=True)
+        if not self.quote:
             raise ValueError("evidence quote and uint64 revision are required")
         if (self.start_char is None) != (self.end_char is None):
             raise ValueError("evidence span must be fully absent or present")
-        if self.start_char is not None and (self.start_char < 0 or self.end_char <= self.start_char):
-            raise ValueError("evidence span must be a positive half-open range")
+        if self.start_char is not None:
+            _uint(self.start_char, 2**32 - 1, "start_char")
+            _uint(self.end_char, 2**32 - 1, "end_char")
+            if self.end_char <= self.start_char:
+                raise ValueError("evidence span must be a positive half-open range")
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,9 @@ class Operation:
     error_code: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.operation_id or not self.document_id or not self.state or not self.stage or not 1 <= self.revision <= UINT64_MAX or not 0 <= self.lease_token <= UINT64_MAX:
+        _uint(self.revision, UINT64_MAX, "revision", nonzero=True)
+        _uint(self.lease_token, UINT64_MAX, "lease_token")
+        if not self.operation_id or not self.document_id or not self.state or not self.stage:
             raise ValueError("operation fields are invalid")
 
 
