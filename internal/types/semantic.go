@@ -24,6 +24,66 @@ type SemanticOperationRef struct {
 	OperationID string
 }
 
+type SemanticOperationState string
+
+const (
+	SemanticOperationStatePending   SemanticOperationState = "pending"
+	SemanticOperationStateRunning   SemanticOperationState = "running"
+	SemanticOperationStateSucceeded SemanticOperationState = "succeeded"
+	SemanticOperationStateFailed    SemanticOperationState = "failed"
+	SemanticOperationStateCancelled SemanticOperationState = "cancelled"
+)
+
+type SemanticOperation struct {
+	OperationID      string
+	Scope            SemanticScopeKey
+	DocumentID       string
+	Revision         uint64
+	State            SemanticOperationState
+	Stage            string
+	LeaseToken       uint64
+	ResultGeneration *string
+	ErrorCode        *string
+}
+
+func SemanticOperationFromWire(wire *semanticpb.Operation) (SemanticOperation, error) {
+	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.OperationId == "" || wire.DocumentId == "" || wire.Revision == 0 || wire.Stage == "" {
+		return SemanticOperation{}, fmt.Errorf("semantic operation is incomplete")
+	}
+	states := map[semanticpb.OperationState]SemanticOperationState{semanticpb.OperationState_OPERATION_STATE_PENDING: SemanticOperationStatePending, semanticpb.OperationState_OPERATION_STATE_RUNNING: SemanticOperationStateRunning, semanticpb.OperationState_OPERATION_STATE_SUCCEEDED: SemanticOperationStateSucceeded, semanticpb.OperationState_OPERATION_STATE_FAILED: SemanticOperationStateFailed, semanticpb.OperationState_OPERATION_STATE_CANCELLED: SemanticOperationStateCancelled}
+	state, ok := states[wire.State]
+	if !ok {
+		return SemanticOperation{}, fmt.Errorf("unsupported semantic operation state")
+	}
+	result := SemanticOperation{OperationID: wire.OperationId, Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, State: state, Stage: wire.Stage, LeaseToken: wire.LeaseToken}
+	if wire.ResultGeneration != nil {
+		result.ResultGeneration = wire.ResultGeneration
+	}
+	if wire.ErrorCode != nil {
+		result.ErrorCode = wire.ErrorCode
+	}
+	return result, nil
+}
+
+func SemanticOperationToWire(value SemanticOperation) (*semanticpb.Operation, error) {
+	if value.OperationID == "" || value.Scope.KBID == "" || value.DocumentID == "" || value.Revision == 0 || value.Stage == "" {
+		return nil, fmt.Errorf("semantic operation is incomplete")
+	}
+	states := map[SemanticOperationState]semanticpb.OperationState{SemanticOperationStatePending: semanticpb.OperationState_OPERATION_STATE_PENDING, SemanticOperationStateRunning: semanticpb.OperationState_OPERATION_STATE_RUNNING, SemanticOperationStateSucceeded: semanticpb.OperationState_OPERATION_STATE_SUCCEEDED, SemanticOperationStateFailed: semanticpb.OperationState_OPERATION_STATE_FAILED, SemanticOperationStateCancelled: semanticpb.OperationState_OPERATION_STATE_CANCELLED}
+	state, ok := states[value.State]
+	if !ok {
+		return nil, fmt.Errorf("unsupported semantic operation state")
+	}
+	wire := &semanticpb.Operation{OperationId: value.OperationID, Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, DocumentId: value.DocumentID, Revision: value.Revision, State: state, Stage: value.Stage, LeaseToken: value.LeaseToken}
+	if value.ResultGeneration != nil {
+		wire.ResultGeneration = value.ResultGeneration
+	}
+	if value.ErrorCode != nil {
+		wire.ErrorCode = value.ErrorCode
+	}
+	return wire, nil
+}
+
 func SemanticOperationRefFromWire(wire *semanticpb.OperationRef) (SemanticOperationRef, error) {
 	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.OperationId == "" {
 		return SemanticOperationRef{}, fmt.Errorf("semantic operation reference is incomplete")

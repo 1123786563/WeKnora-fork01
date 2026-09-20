@@ -38,6 +38,19 @@ func TestSemanticOperationRefWireRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSemanticOperationWireRoundTrip(t *testing.T) {
+	resultGeneration := "g"
+	original := SemanticOperation{OperationID: "op", Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, State: SemanticOperationStateRunning, Stage: "index", LeaseToken: 2, ResultGeneration: &resultGeneration}
+	wire, err := SemanticOperationToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticOperationFromWire(wire)
+	if err != nil || result.OperationID != original.OperationID || result.State != original.State || result.ResultGeneration == nil || *result.ResultGeneration != "g" {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 	response, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,
