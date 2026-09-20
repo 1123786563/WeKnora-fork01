@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "assertions": [
+    {
+      "semantic_id": "a-d1",
+      "tenant_id": "T1",
+      "kb_id": "K1",
+      "document_id": "D1",
+      "revision": 1,
+      "chunk_id": "C1",
+      "generation": "g1",
+      "content_hash": "sha256-d1",
+      "quote": "模块 A 依赖模块 B。",
+      "predicate": "depends_on",
+      "subject": "A",
+      "object": "B",
+      "evidence_ids": ["e-d1"]
+    },
+    {
+      "semantic_id": "a-d2",
+      "tenant_id": "T1",
+      "kb_id": "K1",
+      "document_id": "D2",
+      "revision": 1,
+      "chunk_id": "C1",
+      "generation": "g1",
+      "content_hash": "sha256-d2",
+      "quote": "模块 B 依赖模块 C。",
+      "predicate": "depends_on",
+      "subject": "B",
+      "object": "C",
+      "evidence_ids": ["e-d2"]
+    },
+    {
+      "semantic_id": "a-foreign",
+      "tenant_id": "T2",
+      "kb_id": "K2",
+      "document_id": "D-foreign",
+      "revision": 1,
+      "chunk_id": "C1",
+      "generation": "g1",
+      "content_hash": "sha256-foreign",
+      "quote": "模块 A 的内部代号是松柏。",
+      "predicate": "alias",
+      "subject": "A",
+      "object": "松柏",
+      "evidence_ids": ["e-foreign"]
+    }
+  ]
+}
