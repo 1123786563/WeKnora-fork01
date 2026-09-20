@@ -37,6 +37,16 @@ func SemanticDeleteDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (
 	return revision, nil
 }
 
+func SemanticDocumentRevisionToWire(value SemanticDocumentRevision) *semanticpb.DocumentRevision {
+	return &semanticpb.DocumentRevision{
+		Scope:       &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID},
+		DocumentId:  value.DocumentID,
+		Revision:    value.Revision,
+		ContentHash: value.ContentHash,
+		Deleted:     value.Deleted,
+	}
+}
+
 type SemanticRetrievalMode string
 
 const (

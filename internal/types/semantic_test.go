@@ -20,6 +20,15 @@ func TestSemanticApplyAllowsNonDeletedRevision(t *testing.T) {
 	}
 }
 
+func TestSemanticDocumentRevisionWireRoundTrip(t *testing.T) {
+	original := SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, DocumentID: "doc", Revision: 1, ContentHash: "hash", Deleted: false}
+	wire := SemanticDocumentRevisionToWire(original)
+	result, err := SemanticDocumentRevisionFromWire(wire)
+	if err != nil || result != original {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 	response, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,
