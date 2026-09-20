@@ -8,8 +8,62 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/stretchr/testify/require"
 )
+
+type nativePendingReservedFake struct {
+	nativePendingStoreFake
+	consumed int
+}
+
+func (s *nativePendingReservedFake) ResolveReserved(_ context.Context, _ nativecontract.Scope, _ nativecontract.PendingKey, req nativecontract.ResolvePendingRequest, _ nativecontract.Fence, reserve func() error) (nativecontract.PendingResolution, error) {
+	if err := reserve(); err != nil {
+		return nativecontract.PendingResolution{}, err
+	}
+	if s.detail.Status == nativecontract.PendingOpen {
+		s.consumed++
+		s.detail.Status = nativecontract.PendingResolved
+		s.detail.ResolvedDecisionID = req.DecisionID
+		s.detail.Ref.Revision = "2"
+	}
+	return nativecontract.PendingResolution{Detail: s.detail}, nil
+}
+
+func TestNativePendingCoordinatorReservesBeforeConsumption(t *testing.T) {
+	base, resolver, scope, key := nativePendingServiceFixture(t, nil)
+	store := &nativePendingReservedFake{nativePendingStoreFake: nativePendingStoreFake{detail: nativePendingServiceDetail(key)}}
+	base.store = store
+	reservation := repository.NewInMemoryNativeToolDispatchReservation(repository.NativeToolDispatchBudget{Root: key.Run, Available: 6})
+	fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
+	reservation.SetLiveFence(fence)
+	coordinator := NewNativePendingConsumptionCoordinator(base, reservation)
+	dispatch := nativecontract.ToolDispatchRequest{Scope: scope, Fence: fence,
+		Plan:    nativecontract.ToolPlan{Run: key.Run, Version: 2, CallID: "call-1", ArgsHash: "args-v1", Tool: nativecontract.ToolIdentity{Name: "create", ServiceID: "svc-1", InstallationID: "install-1", SchemaHash: "schema-v1"}},
+		Attempt: nativecontract.Attempt{ID: "attempt", Run: key.Run, Kind: nativecontract.ToolAttempt, Epoch: 1, LogicalCallID: "call-1"}, Funding: nativecontract.FundingBinding{BudgetRootRunID: key.Run.RunID}, ReservationUnits: 7}
+	_, err := coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
+	require.Error(t, err)
+	require.Zero(t, store.consumed)
+	reservation.SetBudget(key.Run, 10)
+	first, err := coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
+	require.NoError(t, err)
+	require.Equal(t, key, first.Key)
+	require.Equal(t, "decision-1", first.DecisionID)
+	_, err = coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
+	require.NoError(t, err)
+	require.Equal(t, 1, store.consumed)
+	remaining, ok := reservation.Remaining(key.Run)
+	require.True(t, ok)
+	require.EqualValues(t, 3, remaining)
+	dispatch.ReservationUnits = 8
+	_, err = coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
+	require.Error(t, err)
+	resolver.err = errors.New("revoked")
+	resolver.errAt = 0
+	_, err = coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
+	require.Error(t, err)
+	require.Equal(t, 1, store.consumed)
+}
 
 type nativePendingScopeResolverFake struct {
 	mu     sync.Mutex

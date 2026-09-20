@@ -3,12 +3,64 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 )
+
+// Reservation denial must not advance either durable revision. A retry with
+// the exact original decision must still be able to win the pending CAS.
+func TestNativePendingReservedResolutionFailureRemainsReusable(t *testing.T) {
+	repo, scope, key := nativePendingFixture(t)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, key.Run, nativePendingDetail(key)))
+	fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
+	require.NoError(t, repo.db.Exec("UPDATE native_agent_runs SET lease_owner=?, lease_expires_at=?", fence.Owner, time.Now().Add(time.Hour)).Error)
+	denied := errors.New("reservation denied")
+	_, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return denied })
+	require.ErrorIs(t, err, denied)
+	detail, err := repo.Get(ctx, scope, key)
+	require.NoError(t, err)
+	require.Equal(t, nativecontract.PendingOpen, detail.Status)
+	require.Equal(t, "4", detail.RunRevision)
+	resolved, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return nil })
+	require.NoError(t, err)
+	require.Equal(t, "2", resolved.Detail.Ref.Revision)
+	replay, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return nil })
+	require.NoError(t, err)
+	require.Equal(t, resolved, replay)
+	changed := nativeResolveRequest()
+	changed.Reason = "different payload"
+	_, err = repo.ResolveReserved(ctx, scope, key, changed, fence, func() error { t.Fatal("changed decision reserved"); return nil })
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativePendingReservedResolutionRejectsStaleFenceAndCancellation(t *testing.T) {
+	for _, cancel := range []bool{false, true} {
+		repo, scope, key := nativePendingFixture(t)
+		ctx := context.Background()
+		require.NoError(t, repo.Create(ctx, key.Run, nativePendingDetail(key)))
+		fence := nativecontract.Fence{Run: key.Run, Owner: "old-worker", Epoch: 1}
+		if cancel {
+			req := nativeResolveRequest()
+			req.Action = nativecontract.DecisionTerminate
+			_, err := repo.Resolve(ctx, scope, key, req)
+			require.NoError(t, err)
+		}
+		_, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { t.Fatal("invalid decision reserved"); return nil })
+		require.Error(t, err)
+		detail, err := repo.Get(ctx, scope, key)
+		require.NoError(t, err)
+		if cancel {
+			require.Equal(t, nativecontract.RunCancelled, detail.RunStatus)
+		} else {
+			require.Equal(t, nativecontract.PendingOpen, detail.Status)
+		}
+	}
+}
 
 func nativePendingFixture(t *testing.T) (*NativePendingDecisionRepository, nativecontract.Scope, nativecontract.PendingKey) {
 	t.Helper()
