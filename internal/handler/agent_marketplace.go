@@ -203,7 +203,7 @@ func (h *AgentMarketplaceHandler) ReviewSubmission(c *gin.Context) {
 	actorID, _ := types.UserIDFromContext(c.Request.Context())
 	result, err := h.market.ReviewSubmission(c.Request.Context(), sandboxConfigTenantID(c), actorID, c.Param("id"), body.ExpectedDigest, types.AgentReleaseReviewDecision{Decision: body.Decision, Reason: body.Reason})
 	if err != nil {
-		_ = c.Error(err)
+		_ = c.Error(marketplaceClientError(err))
 		return
 	}
 	var review *marketplaceReviewResponse

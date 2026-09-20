@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -106,6 +107,22 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	call := func(method, path, role, actor string, body any) *httptest.ResponseRecorder {
 		return callTenant(1, method, path, role, actor, body)
 	}
+	assertReviewError := func(response *httptest.ResponseRecorder, status int, code apperrors.ErrorCode) {
+		t.Helper()
+		require.Equal(t, status, response.Code, response.Body.String())
+		var envelope struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+		require.False(t, envelope.Success)
+		require.Equal(t, int(code), envelope.Error.Code)
+		require.NotEmpty(t, envelope.Error.Message)
+		require.NotEqual(t, "Internal server error", envelope.Error.Message)
+	}
 
 	frozen := call(http.MethodPost, "/api/v1/agents/agent-owned/versions", "contributor", "contributor", nil)
 	require.Equal(t, http.StatusCreated, frozen.Code, frozen.Body.String())
@@ -167,6 +184,14 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.Len(t, queueBody.Data, 1)
 	require.Equal(t, submissionBody.Data.ID, queueBody.Data[0].ID)
 	require.Equal(t, submissionBody.Data.BundleDigest, queueBody.Data[0].BundleDigest)
+	staleDigestReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": "0000000000000000000000000000000000000000000000000000000000000000", "decision": "approved"})
+	assertReviewError(staleDigestReview, http.StatusConflict, apperrors.ErrConflict)
+	invalidDecisionReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "approve"})
+	assertReviewError(invalidDecisionReview, http.StatusBadRequest, apperrors.ErrValidation)
+	missingReasonReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "rejected"})
+	assertReviewError(missingReasonReview, http.StatusBadRequest, apperrors.ErrValidation)
+	missingSubmissionReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/missing-submission/review", "admin", "reviewer", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "approved"})
+	assertReviewError(missingSubmissionReview, http.StatusNotFound, apperrors.ErrNotFound)
 	viewerQueue := call(http.MethodGet, "/api/v1/marketplace/tenant/release-submissions/review-queue", "viewer", "viewer", nil)
 	require.Equal(t, http.StatusForbidden, viewerQueue.Code)
 
@@ -189,6 +214,8 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.Equal(t, submissionBody.Data.BundleDigest, result.Data.Review.ReviewedDigest)
 	require.NotNil(t, result.Data.Release)
 	require.Equal(t, submissionBody.Data.BundleDigest, result.Data.Release.BundleDigest)
+	competingReview := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+submissionBody.Data.ID+"/review", "owner", "owner", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "changes_requested", "reason": "Conflicting decision"})
+	assertReviewError(competingReview, http.StatusConflict, apperrors.ErrConflict)
 	storedRelease, err := marketRepo.GetRelease(context.Background(), 1, result.Data.Release.ID)
 	require.NoError(t, err)
 	require.NotNil(t, storedRelease)
