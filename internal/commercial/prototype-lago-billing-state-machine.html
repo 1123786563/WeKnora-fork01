@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PROTOTYPE — Lago 计费状态机</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --ink: #17211d;
+      --muted: #66736d;
+      --line: #dbe2dd;
+      --accent: #197a54;
+      --accent-soft: #e6f4ed;
+      --warn: #9a5b00;
+      --warn-soft: #fff3dc;
+      --danger: #a63d40;
+      --danger-soft: #fdeceb;
+      --shadow: 0 14px 34px rgba(23, 33, 29, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 32px auto 72px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: start;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 10px; font-size: clamp(30px, 4vw, 46px); line-height: 1.08; }
+    h2 { margin-bottom: 16px; font-size: 22px; }
+    h3 { margin-bottom: 8px; font-size: 16px; }
+
+    .intro {
+      max-width: 800px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .throwaway {
+      max-width: 280px;
+      padding: 12px 14px;
+      border: 1px solid #e9bf79;
+      border-radius: 12px;
+      background: var(--warn-soft);
+      color: #6f4300;
+      font-size: 13px;
+    }
+
+    .question {
+      margin-bottom: 24px;
+      padding: 18px 20px;
+      border-left: 4px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      background: var(--accent-soft);
+    }
+
+    .question strong { display: block; margin-bottom: 4px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.75fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-body { padding: 20px; }
+    .sticky { position: sticky; top: 16px; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .state-card {
+      min-height: 116px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcfb;
+    }
+
+    .state-card.wide { grid-column: span 3; min-height: 0; }
+    .state-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .state-value { margin: 6px 0 4px; font-size: 18px; font-weight: 780; }
+    .state-detail { color: var(--muted); font-size: 13px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: #edf1ee;
+      color: #435149;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .badge.good { background: var(--accent-soft); color: var(--accent); }
+    .badge.warn { background: var(--warn-soft); color: var(--warn); }
+    .badge.bad { background: var(--danger-soft); color: var(--danger); }
+
+    .meter {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin: 10px 0 6px;
+      height: 9px;
+    }
+
+    .meter span { border-radius: 999px; background: #e8ece9; }
+    .meter .settled { background: #75b798; }
+    .meter .reserved { background: #e5ad52; }
+    .meter .locked { background: #d77c7e; }
+
+    .notice {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #f1f4f2;
+      font-size: 14px;
+    }
+
+    .notice.good { background: var(--accent-soft); color: #14593f; }
+    .notice.warn { background: var(--warn-soft); color: #754600; }
+    .notice.bad { background: var(--danger-soft); color: #7e292c; }
+
+    .section { margin-top: 20px; }
+    .section:first-child { margin-top: 0; }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    button {
+      min-height: 42px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 720;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    button:hover { border-color: #9aaba1; background: #fafcfb; }
+    button:focus-visible { outline: 3px solid rgba(25, 122, 84, 0.22); outline-offset: 2px; }
+    button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    button.danger { border-color: #dfb4b5; color: var(--danger); }
+    button:disabled { cursor: not-allowed; opacity: 0.48; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .tab { min-width: max-content; text-align: center; }
+    .tab.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+    .walkthrough {
+      margin-top: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcfb;
+    }
+
+    .steps { display: grid; gap: 8px; margin-top: 14px; }
+    .step-button { display: flex; align-items: center; gap: 10px; width: 100%; }
+    .step-number {
+      flex: 0 0 25px;
+      display: grid;
+      place-items: center;
+      height: 25px;
+      border-radius: 50%;
+      background: #edf1ee;
+      font-size: 12px;
+    }
+    .step-button.done { background: var(--accent-soft); color: var(--accent); }
+    .step-button.current { border-color: var(--accent); }
+
+    dl { display: grid; grid-template-columns: 1fr auto; gap: 7px 16px; margin: 0; }
+    dt { color: var(--muted); font-size: 13px; }
+    dd { margin: 0; font-weight: 720; text-align: right; }
+
+    .batch-list, .audit-list { display: grid; gap: 8px; margin-top: 10px; }
+    .batch, .audit-item {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcfb;
+      font-size: 13px;
+    }
+    .batch-head { display: flex; justify-content: space-between; gap: 12px; }
+    .audit-item strong { display: block; margin-bottom: 2px; }
+    .audit-item span { color: var(--muted); }
+
+    details { margin-top: 16px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 700; }
+    pre {
+      max-height: 360px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 10px;
+      background: #111915;
+      color: #d7e6dd;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 900px) {
+      header { grid-template-columns: 1fr; }
+      .layout { grid-template-columns: 1fr; }
+      .sticky { position: static; }
+      .summary-grid, .button-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .state-card.wide { grid-column: span 2; }
+    }
+
+    @media (max-width: 560px) {
+      main { width: min(100% - 20px, 1180px); margin-top: 18px; }
+      .summary-grid, .button-grid { grid-template-columns: 1fr; }
+      .state-card.wide { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="eyebrow">Throwaway logic prototype</div>
+        <h1>Lago 计费状态机试验台</h1>
+        <p class="intro">点击业务动作，观察付款、权益、Credits、Task 预占、异步计价与退款状态如何分别变化。所有状态只在当前页面内存中存在。</p>
+      </div>
+      <div class="throwaway"><strong>一次性原型</strong><br>不是生产 UI，不连接 Lago、支付渠道或数据库，也不应合入生产实现。</div>
+    </header>
+
+    <section class="question">
+      <strong>要回答的问题</strong>
+      当支付成功、Lago 激活、Task 预占、异步计价和退款撤权分别延迟或失败时，用户可用权益和 Credits 是否仍然不会被重复发放、提前释放或错误撤回？
+    </section>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="panel-body">
+          <div class="section">
+            <h2>当前完整状态</h2>
+            <div id="state-summary" class="summary-grid"></div>
+            <div id="last-outcome"></div>
+          </div>
+
+          <div class="section">
+            <h2>自由试验</h2>
+            <p class="state-detail">按钮始终可点；不合法动作不会改变状态，而会说明被哪条领域规则拒绝。</p>
+            <div id="free-play" class="button-grid"></div>
+          </div>
+
+          <div class="section">
+            <h2>引导场景</h2>
+            <div id="scenario-tabs" class="tabs"></div>
+            <div id="walkthrough" class="walkthrough"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel sticky">
+        <div class="panel-body">
+          <h2>结算批次</h2>
+          <div id="batch-list" class="batch-list"></div>
+
+          <div class="section">
+            <h2>最近事实</h2>
+            <div id="audit-list" class="audit-list"></div>
+          </div>
+
+          <details>
+            <summary>查看机器可读状态</summary>
+            <pre id="raw-state"></pre>
+          </details>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    // Portable pure logic module. It intentionally has no DOM access.
+    const BillingPrototypeModel = (() => {
+      const clone = value => JSON.parse(JSON.stringify(value));
+
+      function initialState() {
+        return {
+          clock: 0,
+          lagoAvailable: true,
+          commercial: {
+            quote: "none",
+            invoice: "none",
+            payment: "none",
+            subscription: "none",
+            entitlement: "inactive",
+            fulfillment: "none",
+            refund: "none"
+          },
+          wallet: {
+            confirmedCredits: 0,
+            reservedCredits: 0,
+            settledCredits: 0,
+            refundLockedCredits: 0,
+            lastAuthoritativeBalance: 0
+          },
+          task: {
+            state: "not_started",
+            budgetLimit: 60,
+            settled: 0,
+            pauseReason: "none"
+          },
+          batches: [],
+          paymentFacts: [],
+          audit: [],
+          lastOutcome: {
+            kind: "neutral",
+            title: "等待操作",
+            detail: "选择自由动作，或从下方引导场景开始。"
+          }
+        };
+      }
+
+      function availableCredits(state) {
+        return state.wallet.confirmedCredits
+          - state.wallet.reservedCredits
+          - state.wallet.refundLockedCredits;
+      }
+
+      function taskBudgetRemaining(state) {
+        return state.task.budgetLimit
+          - state.task.settled
+          - state.wallet.reservedCredits;
+      }
+
+      function record(state, title, detail, kind = "good") {
+        state.clock += 1;
+        state.lastOutcome = { kind, title, detail };
+        state.audit.unshift({ at: state.clock, title, detail, kind });
+        state.audit = state.audit.slice(0, 8);
+      }
+
+      function reject(state, title, detail) {
+        record(state, title, detail, "bad");
+        return state;
+      }
+
+      function nextBatch(state) {
+        return state.batches.find(batch => batch.status === "reserved" || batch.status === "event_accepted");
+      }
+
+      function reduce(previous, action) {
+        if (action.type === "RESET") return initialState();
+        const state = clone(previous);
+
+        switch (action.type) {
+          case "CREATE_QUOTE":
+            if (!state.lagoAvailable) return reject(state, "报价被阻止", "Lago 不可用时不开始新的商业命令。");
+            if (state.commercial.quote !== "none") return reject(state, "已有报价", "同一购买流程不能并行创建第二份报价。");
+            state.commercial.quote = "ready_¥99";
+            record(state, "报价已生成", "WeKnora 显示确定套餐、99 元和 100 Credits；尚未产生权益。");
+            return state;
+
+          case "CREATE_INVOICE":
+            if (!state.lagoAvailable) return reject(state, "账单创建被阻止", "Lago 不可用，报价保留但不能继续购买。");
+            if (state.commercial.quote !== "ready_¥99") return reject(state, "缺少有效报价", "必须先有确定且未过期的报价。");
+            if (state.commercial.invoice !== "none") return reject(state, "账单已经存在", "重试应查询原账单，不能创建第二张。");
+            state.commercial.invoice = "open_¥99";
+            state.commercial.subscription = "incomplete";
+            state.commercial.payment = "awaiting_payment";
+            record(state, "Lago 账单已创建", "报价与账单一致；订阅保持 incomplete，权益仍未开放。");
+            return state;
+
+          case "PAY_EXACT":
+            if (state.commercial.invoice !== "open_¥99") return reject(state, "无法确认付款", "没有对应的 99 元开放账单。");
+            if (state.paymentFacts.some(fact => fact.kind === "exact")) {
+              record(state, "重复回调已去重", "付款事实已存在，没有重复登记 Payment 或发放 Credits。", "warn");
+              return state;
+            }
+            state.paymentFacts.push({ kind: "exact", amount: 99, channel: "支付宝", id: "pay_001" });
+            state.commercial.payment = "paid";
+            state.commercial.fulfillment = "activation_pending";
+            record(state, "付款事实已确认", "金额、币种和账单匹配；前端显示“已付款，权益处理中”。");
+            return state;
+
+          case "PAY_WRONG_AMOUNT":
+            if (state.commercial.invoice !== "open_¥99") return reject(state, "异常付款无对应账单", "仍保存渠道事实，但不能改变权益。");
+            state.paymentFacts.push({ kind: "mismatch", amount: 88, channel: "微信", id: `pay_bad_${state.clock}` });
+            state.commercial.payment = state.commercial.payment === "paid" ? "paid" : "payment_attention";
+            record(state, "金额不符，未激活", "收到 88 元而账单是 99 元；事实被记录，订阅仍不可使用。", "warn");
+            return state;
+
+          case "ACTIVATE_SUBSCRIPTION":
+            if (!state.lagoAvailable) return reject(state, "激活等待恢复", "付款事实保留；Lago 不可用时不在本地伪造 active。");
+            if (state.commercial.payment !== "paid") return reject(state, "激活被拒绝", "只有可信付款成功后，Lago 才能激活订阅。");
+            if (state.commercial.subscription === "active") {
+              record(state, "激活通知已去重", "订阅和套餐 Credits 均未重复发放。", "warn");
+              return state;
+            }
+            state.commercial.invoice = "paid";
+            state.commercial.subscription = "active";
+            state.commercial.entitlement = "active";
+            state.commercial.fulfillment = "fulfilled";
+            state.wallet.confirmedCredits = 100;
+            state.wallet.lastAuthoritativeBalance = 100;
+            record(state, "订阅与权益已生效", "Lago 确认 active 后，100 套餐 Credits 恰好到账一次。");
+            return state;
+
+          case "START_TASK":
+            if (state.commercial.entitlement !== "active") return reject(state, "Task 未启动", "付款或权益处理中时不能开始收费执行。");
+            if (!state.lagoAvailable) return reject(state, "Task 未启动", "Lago 不可用，新的收费执行 fail closed。");
+            if (state.task.state === "running") return reject(state, "Task 已在运行", "无需重复开始。");
+            state.task.state = "running";
+            state.task.pauseReason = "none";
+            record(state, "Task 已启动", "本 Task 的 Credits 上限是 60。");
+            return state;
+
+          case "RESERVE_CALL": {
+            const amount = action.amount || 30;
+            if (!state.lagoAvailable) return reject(state, "预占被拒绝", "Lago 不可用时不开始新的收费动作。");
+            if (state.task.state !== "running") return reject(state, "预占被拒绝", `Task 当前为 ${state.task.state}。`);
+            if (state.task.pauseReason !== "none") return reject(state, "预占被拒绝", `Task 正在等待：${state.task.pauseReason}。`);
+            if (availableCredits(state) < amount) return reject(state, "空间 Credits 不足", `可用 ${availableCredits(state)}，本次上界需要 ${amount}。`);
+            if (taskBudgetRemaining(state) < amount) return reject(state, "Task Budget 不足", `Task 剩余可预占 ${taskBudgetRemaining(state)}。`);
+            const id = `batch_${state.batches.length + 1}`;
+            state.batches.push({ id, reserved: amount, actual: null, status: "reserved", lagMinutes: 0 });
+            state.wallet.reservedCredits += amount;
+            record(state, "调用额度已预占", `${id} 在真实调用前预占 ${amount} Credits。`);
+            return state;
+          }
+
+          case "EVENT_ACCEPTED": {
+            const batch = state.batches.find(item => item.status === "reserved");
+            if (!batch) return reject(state, "没有可投递批次", "需要先为真实调用预占额度。");
+            batch.status = "event_accepted";
+            record(state, "Lago 已接收用量事件", `${batch.id} 仍保留 ${batch.reserved} Credits 预占；接收成功不等于完成计价。`, "warn");
+            return state;
+          }
+
+          case "ADVANCE_LAG": {
+            const batch = state.batches.find(item => item.status === "event_accepted");
+            if (!batch) return reject(state, "没有等待计价的批次", "先投递一个已预占的用量事件。");
+            batch.lagMinutes = Math.max(batch.lagMinutes, action.minutes || 5);
+            if (batch.lagMinutes >= 5) {
+              state.task.state = "paused";
+              state.task.pauseReason = "等待计费同步";
+            }
+            record(state, "计价延迟达到暂停门槛", `${batch.id} 已等待 ${batch.lagMinutes} 分钟；本 Task 暂停新收费动作，原预占不释放。`, "warn");
+            return state;
+          }
+
+          case "CONFIRM_RATING": {
+            if (!state.lagoAvailable) return reject(state, "无法核对计价", "Lago 不可用，批次保持待核对。");
+            const batch = nextBatch(state);
+            if (!batch || batch.status !== "event_accepted") return reject(state, "没有可核对批次", "只有已接收且未计价的批次可以确认。");
+            const actual = action.actual ?? 22;
+            batch.actual = actual;
+            batch.status = "reconciled";
+            state.wallet.reservedCredits -= batch.reserved;
+            state.wallet.confirmedCredits -= actual;
+            state.wallet.settledCredits += actual;
+            state.wallet.lastAuthoritativeBalance = state.wallet.confirmedCredits;
+            state.task.settled += actual;
+            state.task.state = "running";
+            state.task.pauseReason = "none";
+            const released = batch.reserved - actual;
+            if (actual > batch.reserved || availableCredits(state) < 0 || taskBudgetRemaining(state) < 0) {
+              state.task.state = "paused";
+              state.task.pauseReason = "实际费用超过预占，需要核对";
+              record(state, "实际费用超过安全上界", `${batch.id} 实际 ${actual}、预占 ${batch.reserved}；新收费已暂停，已发生用量仍保留。`, "bad");
+            } else {
+              record(state, "结算批次已核对", `${batch.id} 实际 ${actual}，释放多余预占 ${released}。`);
+            }
+            return state;
+          }
+
+          case "LAGO_DOWN":
+            state.lagoAvailable = false;
+            if (state.task.state === "running") {
+              state.task.state = "paused";
+              state.task.pauseReason = "Lago 不可用";
+            }
+            record(state, "Lago 不可用", "停止新购买、充值和收费动作；付款事实、已发生用量和恢复队列仍可持久化。", "warn");
+            return state;
+
+          case "LAGO_UP":
+            state.lagoAvailable = true;
+            if (state.task.pauseReason === "Lago 不可用") {
+              state.task.state = "running";
+              state.task.pauseReason = "none";
+            }
+            record(state, "Lago 已恢复", "可以继续查询权威状态和恢复待处理命令。");
+            return state;
+
+          case "REQUEST_REFUND": {
+            if (state.commercial.payment !== "paid" || state.commercial.subscription !== "active") {
+              return reject(state, "不能申请退款", "需要已付款且已生效的购买。");
+            }
+            if (state.commercial.refund !== "none") return reject(state, "退款已经存在", "同一购买不能并行发起第二个退款流程。");
+            const refundable = Math.max(0, availableCredits(state));
+            const lock = Math.min(action.amount || 40, refundable);
+            if (lock <= 0) return reject(state, "没有可退款权益", "可用余额已被消费、预占或其他退款锁定。");
+            state.wallet.refundLockedCredits += lock;
+            state.commercial.refund = "reviewing";
+            record(state, "退款权益已锁定", `锁定 ${lock} Credits；这些权益不能继续消费，但尚未发生渠道退款。`, "warn");
+            return state;
+          }
+
+          case "APPROVE_REFUND":
+            if (state.commercial.refund !== "reviewing") return reject(state, "退款不能审批", "需要先有处于审核中的退款申请。");
+            state.commercial.refund = "channel_pending";
+            record(state, "退款已批准", "使用稳定退款键请求原支付渠道；Credits 继续锁定。", "warn");
+            return state;
+
+          case "CHANNEL_REFUND_SUCCESS":
+            if (state.commercial.refund !== "channel_pending") return reject(state, "渠道退款状态无效", "只有已批准退款可以确认渠道成功。");
+            state.commercial.refund = "revocation_pending";
+            record(state, "渠道已退款，等待 Lago 撤权", "资金已退回，但 Credits 仍锁定；此时不能显示退款完成。", "warn");
+            return state;
+
+          case "LAGO_REVOKE_SUCCESS":
+            if (!state.lagoAvailable) return reject(state, "撤权等待恢复", "渠道退款事实保留，Credits 继续锁定。");
+            if (state.commercial.refund !== "revocation_pending") return reject(state, "没有待撤权益", "必须先确认原渠道退款成功。");
+            state.wallet.confirmedCredits -= state.wallet.refundLockedCredits;
+            state.wallet.lastAuthoritativeBalance = state.wallet.confirmedCredits;
+            state.wallet.refundLockedCredits = 0;
+            state.commercial.refund = "completed";
+            record(state, "退款完成", "渠道退款和 Lago 撤权均已确认，退款锁定解除。");
+            return state;
+
+          default:
+            return reject(state, "未知动作", action.type);
+        }
+      }
+
+      function derive(state) {
+        return {
+          availableCredits: availableCredits(state),
+          taskBudgetRemaining: taskBudgetRemaining(state),
+          pendingBatches: state.batches.filter(batch => batch.status !== "reconciled").length,
+          canCharge: state.lagoAvailable
+            && state.commercial.entitlement === "active"
+            && state.task.state === "running"
+            && state.task.pauseReason === "none"
+            && availableCredits(state) > 0
+            && taskBudgetRemaining(state) > 0
+        };
+      }
+
+      return { initialState, reduce, derive };
+    })();
+
+    const actions = [
+      { type: "CREATE_QUOTE", label: "生成 99 元报价" },
+      { type: "CREATE_INVOICE", label: "创建 Lago 账单" },
+      { type: "PAY_EXACT", label: "确认 99 元付款" },
+      { type: "PAY_WRONG_AMOUNT", label: "收到错误金额 88 元", danger: true },
+      { type: "ACTIVATE_SUBSCRIPTION", label: "Lago 激活订阅" },
+      { type: "START_TASK", label: "开始 Task（预算 60）" },
+      { type: "RESERVE_CALL", label: "预占调用上界 30" },
+      { type: "EVENT_ACCEPTED", label: "Lago 接收用量事件" },
+      { type: "ADVANCE_LAG", minutes: 5, label: "计价延迟 5 分钟", danger: true },
+      { type: "CONFIRM_RATING", actual: 22, label: "确认实际费用 22" },
+      { type: "CONFIRM_RATING", actual: 35, label: "确认超额费用 35", danger: true },
+      { type: "REQUEST_REFUND", amount: 40, label: "申请退款并锁定 40" },
+      { type: "APPROVE_REFUND", label: "批准退款" },
+      { type: "CHANNEL_REFUND_SUCCESS", label: "渠道退款成功" },
+      { type: "LAGO_REVOKE_SUCCESS", label: "Lago 撤回 Credits" },
+      { type: "LAGO_DOWN", label: "模拟 Lago 故障", danger: true },
+      { type: "LAGO_UP", label: "恢复 Lago" },
+      { type: "RESET", label: "重置全部状态", danger: true }
+    ];
+
+    const scenarios = [
+      {
+        id: "happy",
+        title: "正常购买与使用",
+        description: "观察付款成功不会立即开放权益；用量事件被接收后，预占也不会立即释放。",
+        watch: "最终只有 Lago active 才发 100 Credits；30 的预占按实际 22 结算并释放 8。",
+        steps: [
+          ["CREATE_QUOTE", "生成报价"],
+          ["CREATE_INVOICE", "创建账单和 incomplete 订阅"],
+          ["PAY_EXACT", "确认渠道付款"],
+          ["ACTIVATE_SUBSCRIPTION", "等待 Lago 激活"],
+          ["START_TASK", "开始 Task"],
+          ["RESERVE_CALL", "调用前预占 30"],
+          ["EVENT_ACCEPTED", "投递用量事件"],
+          ["CONFIRM_RATING", "按实际 22 结算", { actual: 22 }]
+        ]
+      },
+      {
+        id: "activation",
+        title: "已付款但未激活",
+        description: "模拟支付回调先到、Lago 暂时不可用，并重放同一个付款回调。",
+        watch: "订阅保持 incomplete，Task 不能启动；重复回调不重复发 Credits。",
+        steps: [
+          ["CREATE_QUOTE", "生成报价"],
+          ["CREATE_INVOICE", "创建 Lago 账单"],
+          ["PAY_EXACT", "渠道付款成功"],
+          ["LAGO_DOWN", "Lago 暂时不可用"],
+          ["PAY_EXACT", "重复收到同一回调"],
+          ["START_TASK", "尝试提前开始 Task"],
+          ["LAGO_UP", "恢复 Lago"],
+          ["ACTIVATE_SUBSCRIPTION", "恢复并确认激活"]
+        ]
+      },
+      {
+        id: "lag",
+        title: "异步计价延迟",
+        description: "用量已接收但 5 分钟仍未出现在可核对 current usage 中。",
+        watch: "只暂停这个 Task 的新收费动作，原 30 Credits 预占继续保留；恢复后按 22 结算。",
+        prelude: ["CREATE_QUOTE", "CREATE_INVOICE", "PAY_EXACT", "ACTIVATE_SUBSCRIPTION", "START_TASK"],
+        steps: [
+          ["RESERVE_CALL", "预占 30"],
+          ["EVENT_ACCEPTED", "Lago 接收事件"],
+          ["ADVANCE_LAG", "等待达到 5 分钟", { minutes: 5 }],
+          ["RESERVE_CALL", "尝试继续收费"],
+          ["CONFIRM_RATING", "计价恢复，实际 22", { actual: 22 }],
+          ["RESERVE_CALL", "恢复后再次预占"]
+        ]
+      },
+      {
+        id: "overrun",
+        title: "实际费用超过预占",
+        description: "故意让实际费用 35 高于调用前上界 30，验证系统不会隐瞒差额。",
+        watch: "已发生的 35 仍入账；Task 暂停并进入核对，不自动扩大预算。",
+        prelude: ["CREATE_QUOTE", "CREATE_INVOICE", "PAY_EXACT", "ACTIVATE_SUBSCRIPTION", "START_TASK"],
+        steps: [
+          ["RESERVE_CALL", "预占 30"],
+          ["EVENT_ACCEPTED", "Lago 接收事件"],
+          ["CONFIRM_RATING", "确认实际费用 35", { actual: 35 }],
+          ["RESERVE_CALL", "尝试继续收费"]
+        ]
+      },
+      {
+        id: "refund",
+        title: "退款成功但撤权延迟",
+        description: "先使用部分 Credits，再退款；渠道已退款时让 Lago 故障。",
+        watch: "待退 40 Credits 始终锁定；只有 Lago 撤权成功后才显示退款完成。",
+        prelude: ["CREATE_QUOTE", "CREATE_INVOICE", "PAY_EXACT", "ACTIVATE_SUBSCRIPTION", "START_TASK", "RESERVE_CALL", "EVENT_ACCEPTED"],
+        preludeOverrides: { CONFIRM_RATING: { actual: 22 } },
+        steps: [
+          ["CONFIRM_RATING", "先结算已用 22", { actual: 22 }],
+          ["REQUEST_REFUND", "申请退款并锁定 40", { amount: 40 }],
+          ["APPROVE_REFUND", "运营批准退款"],
+          ["CHANNEL_REFUND_SUCCESS", "原渠道退款成功"],
+          ["LAGO_DOWN", "Lago 撤权时故障"],
+          ["LAGO_REVOKE_SUCCESS", "尝试完成撤权"],
+          ["LAGO_UP", "恢复 Lago"],
+          ["LAGO_REVOKE_SUCCESS", "完成 Credits 撤回"]
+        ]
+      }
+    ];
+
+    let state = BillingPrototypeModel.initialState();
+    let activeScenario = scenarios[0].id;
+    let scenarioStep = 0;
+
+    const dispatch = action => {
+      state = BillingPrototypeModel.reduce(state, action);
+      render();
+    };
+
+    const actionFor = (type, overrides = {}) => ({ type, ...overrides });
+
+    function startScenario(id) {
+      const scenario = scenarios.find(item => item.id === id);
+      activeScenario = id;
+      scenarioStep = 0;
+      state = BillingPrototypeModel.initialState();
+      (scenario.prelude || []).forEach(type => {
+        const override = scenario.preludeOverrides?.[type] || {};
+        state = BillingPrototypeModel.reduce(state, actionFor(type, override));
+      });
+      state.audit = [];
+      state.lastOutcome = {
+        kind: "neutral",
+        title: `场景已准备：${scenario.title}`,
+        detail: scenario.watch
+      };
+      render();
+    }
+
+    function runScenarioStep(index) {
+      const scenario = scenarios.find(item => item.id === activeScenario);
+      if (index !== scenarioStep) return;
+      const [type, , overrides = {}] = scenario.steps[index];
+      dispatch(actionFor(type, overrides));
+      scenarioStep += 1;
+      render();
+    }
+
+    const labelFor = value => ({
+      none: "无",
+      inactive: "未生效",
+      active: "已生效",
+      incomplete: "等待首单付款激活",
+      awaiting_payment: "待付款",
+      paid: "已付款",
+      payment_attention: "付款异常待处理",
+      activation_pending: "已付款待激活",
+      fulfilled: "已履约",
+      not_started: "未开始",
+      running: "运行中",
+      paused: "已暂停",
+      reviewing: "退款审核中",
+      channel_pending: "渠道退款中",
+      revocation_pending: "渠道已退、等待撤权",
+      completed: "已完成",
+      reserved: "已预占",
+      event_accepted: "事件已接收、等待计价",
+      reconciled: "已核对"
+    }[value] || value);
+
+    const badgeClass = value => {
+      if (["active", "paid", "fulfilled", "running", "completed", "reconciled"].includes(value)) return "good";
+      if (["payment_attention", "paused"].includes(value)) return "bad";
+      if (["incomplete", "awaiting_payment", "activation_pending", "reviewing", "channel_pending", "revocation_pending", "event_accepted"].includes(value)) return "warn";
+      return "";
+    };
+
+    function stateCard(label, value, detail, rawValue = value) {
+      return `<article class="state-card"><div class="state-label">${label}</div><div class="state-value"><span class="badge ${badgeClass(rawValue)}">${value}</span></div><div class="state-detail">${detail}</div></article>`;
+    }
+
+    function render() {
+      const derived = BillingPrototypeModel.derive(state);
+      const percent = value => Math.max(0, Math.min(4, Math.ceil(value / 25)));
+      const segments = [0, 1, 2, 3].map(index => {
+        const settledLimit = percent(state.wallet.settledCredits);
+        const reservedLimit = settledLimit + percent(state.wallet.reservedCredits);
+        const lockedLimit = reservedLimit + percent(state.wallet.refundLockedCredits);
+        const cls = index < settledLimit ? "settled" : index < reservedLimit ? "reserved" : index < lockedLimit ? "locked" : "";
+        return `<span class="${cls}"></span>`;
+      }).join("");
+
+      document.querySelector("#state-summary").innerHTML = [
+        stateCard("Lago", state.lagoAvailable ? "可用" : "不可用", state.lagoAvailable ? "允许读取权威商业状态" : "新商业命令 fail closed", state.lagoAvailable ? "active" : "paused"),
+        stateCard("订阅", labelFor(state.commercial.subscription), `权益：${labelFor(state.commercial.entitlement)}`, state.commercial.subscription),
+        stateCard("付款 / 履约", `${labelFor(state.commercial.payment)} / ${labelFor(state.commercial.fulfillment)}`, `付款事实 ${state.paymentFacts.length} 条`, state.commercial.fulfillment),
+        `<article class="state-card wide"><div class="state-label">Credits</div><div class="state-value">可用 ${derived.availableCredits} / 权威余额 ${state.wallet.confirmedCredits}</div><div class="meter">${segments}</div><div class="state-detail">已结算 ${state.wallet.settledCredits} · 预占 ${state.wallet.reservedCredits} · 退款锁定 ${state.wallet.refundLockedCredits}</div></article>`,
+        stateCard("Task", labelFor(state.task.state), state.task.pauseReason === "none" ? "没有暂停原因" : state.task.pauseReason, state.task.state),
+        stateCard("Task Budget", `剩余 ${derived.taskBudgetRemaining}`, `上限 ${state.task.budgetLimit} · 已结算 ${state.task.settled}`, derived.taskBudgetRemaining > 0 ? "active" : "paused"),
+        stateCard("退款", labelFor(state.commercial.refund), state.wallet.refundLockedCredits ? `锁定 ${state.wallet.refundLockedCredits} Credits` : "没有待退权益", state.commercial.refund),
+        stateCard("新收费动作", derived.canCharge ? "允许" : "阻止", derived.canCharge ? "仍需逐调用原子预占" : "检查权益、Lago、Task 和余额", derived.canCharge ? "active" : "paused")
+      ].join("");
+
+      const outcome = state.lastOutcome;
+      document.querySelector("#last-outcome").innerHTML = `<div class="notice ${outcome.kind}"><strong>${outcome.title}</strong><br>${outcome.detail}</div>`;
+
+      document.querySelector("#free-play").innerHTML = actions.map(action => `<button class="${action.danger ? "danger" : ""}" data-free='${JSON.stringify(action)}'>${action.label}</button>`).join("");
+      document.querySelectorAll("[data-free]").forEach(button => {
+        button.addEventListener("click", () => dispatch(JSON.parse(button.dataset.free)));
+      });
+
+      document.querySelector("#scenario-tabs").innerHTML = scenarios.map(scenario => `<button class="tab ${scenario.id === activeScenario ? "active" : ""}" data-scenario="${scenario.id}">${scenario.title}</button>`).join("");
+      document.querySelectorAll("[data-scenario]").forEach(button => {
+        button.addEventListener("click", () => startScenario(button.dataset.scenario));
+      });
+
+      const scenario = scenarios.find(item => item.id === activeScenario);
+      document.querySelector("#walkthrough").innerHTML = `
+        <h3>${scenario.title}</h3>
+        <p>${scenario.description}</p>
+        <div class="notice"><strong>观察重点</strong><br>${scenario.watch}</div>
+        <div class="steps">
+          ${scenario.steps.map((step, index) => `<button class="step-button ${index < scenarioStep ? "done" : index === scenarioStep ? "current" : ""}" data-step="${index}" ${index > scenarioStep ? "disabled" : ""}><span class="step-number">${index < scenarioStep ? "✓" : index + 1}</span><span>${step[1]}</span></button>`).join("")}
+        </div>`;
+      document.querySelectorAll("[data-step]").forEach(button => {
+        button.addEventListener("click", () => runScenarioStep(Number(button.dataset.step)));
+      });
+
+      document.querySelector("#batch-list").innerHTML = state.batches.length
+        ? state.batches.map(batch => `<div class="batch"><div class="batch-head"><strong>${batch.id}</strong><span class="badge ${badgeClass(batch.status)}">${labelFor(batch.status)}</span></div><div class="state-detail">预占 ${batch.reserved} · 实际 ${batch.actual ?? "待定"} · 延迟 ${batch.lagMinutes} 分钟</div></div>`).join("")
+        : `<div class="state-detail">尚无结算批次。</div>`;
+
+      document.querySelector("#audit-list").innerHTML = state.audit.length
+        ? state.audit.map(item => `<div class="audit-item"><strong>${item.at}. ${item.title}</strong><span>${item.detail}</span></div>`).join("")
+        : `<div class="state-detail">场景动作会在这里留下不可变事实摘要。</div>`;
+
+      document.querySelector("#raw-state").textContent = JSON.stringify({ ...state, derived }, null, 2);
+    }
+
+    startScenario(activeScenario);
+  </script>
+</body>
+</html>

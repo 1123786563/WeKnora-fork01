@@ -1,438 +1,277 @@
-# Lago 计费平台迁移设计
+# Lago 计费平台迁移
 
 日期：2026-09-20  
 状态：已批准  
 关联：[领域词汇](../../CONTEXT.md)、[ADR-0012](../adr/0012-lago-as-commercial-billing-authority.md)
 
-## 1. 决策摘要
-
-WeKnora 将自托管 Lago Community 作为套餐、订阅、功能权益、Credits、用量计价、客户账单、Credit Note 和商业付款状态的权威平台，替代现有 OpenMeter 集成。
-
-WeKnora 继续拥有空间身份与权限、面向用户的计费 API、付款前报价、微信／支付宝渠道集成、Task Budget、同步额度预占、原始用量事实、渠道退款、Outbox、计费投影以及异常恢复。WeKnora 不再维护可独立发放或扣减 Credits 的第二本商业账。
-
-迁移只处理开发环境数据，不迁移现有 OpenMeter 测试数据，不长期双写。Lago 一旦开始承载真实商业数据，系统只允许前向修复，不能通过切回 OpenMeter 回滚账本。
-
-## 2. 背景与问题
-
-当前实现并不是完整的 OpenMeter 计费系统：
-
-- WeKnora 本地商业域掌握套餐版本、订单、微信／支付宝、退款、价格换算、任务预算、资源配额和原始用量。
-- `internal/infrastructure/openmeter/commercial.go` 只尝试实现 Credits Grant、撤回和结算等少量外部操作，没有贯通 Customer、Plan、Subscription、Entitlement、Invoice 或 Usage Event API。
-- OpenMeter 部署目录被定义为本地开发和集成环境，不是生产部署。
-- 现有 OpenMeter 接口清单记录的 external settlement 是 `POST .../settlement/external`，而 Go 适配器使用 `PATCH .../settlement`；现有适配器测试是 HTTP 桩，不构成真实端到端证据。
-
-因此，本迁移不能把当前 OpenMeter 适配器视为正确且完整的生产基线，也不能只做包名和 URL 替换。目标是重新确定商业权威边界，并用真实 Lago 环境验证关键语义。
-
-## 3. 目标
-
-本次迁移必须实现：
-
-1. 一个空间对应一个独立 Lago Customer，并保持独立购买、付款和 Credits 归属。
-2. Lago 权威管理不可变套餐版本、连续订阅链、权益、Wallet、Credits、用量计价、账单、付款状态和 Credit Note。
-3. WeKnora 保留微信／支付宝支付体验和渠道安全边界。
-4. 收费执行在真实调用前经过同步、原子的 Task Budget 和额度预占。
-5. Lago 异步计价通过 Task／结算批次与 Pricing Group 对账，不伪造逐事件计价回执。
-6. 套餐额度、充值额度、升级补发、退款锁定、BYOK 和基础档语义保持不变。
-7. 所有付款、履约、用量、退款和 Webhook 流程支持幂等重放、乱序、响应丢失和 worker 崩溃恢复。
-8. 自托管 Community 版、许可证、生产运维、备份恢复和观测门槛在上线前得到验证。
-
-## 4. 非目标
-
-首期不包含：
-
-- OpenMeter 测试数据迁移；
-- Lago Cloud；
-- Lago Premium 功能；
-- 中国法定税务发票；
-- 多 Billing Entity、多币种或跨币种 Wallet；
-- 阶梯价、百分比、最低消费、承诺消费等无法生成可信执行上界的复杂价格；
-- 自动扣款；
-- 客户端直连 Lago；
-- Lago 提供逐事件计价完成回执；
-- ClickHouse／Kafka event store；
-- 运营人员直接修改已发布 Lago Plan；
-- 长期双写 OpenMeter 与 Lago；
-- 通过绕过许可证或 Premium 功能开关获得受限能力。
-
-## 5. 必须保持的产品不变量
-
-- 空间是购买、付款、订阅、余额和账单的唯一归属边界；共享组织不合并商业归属。
-- 套餐决定功能权益、资源上限和周期额度；充值只增加 Credits。
-- 套餐内额度按月发放、当期有效、不结转；年付套餐仍逐月发放。
-- 每批充值额度自到账起有效 12 个日历月。
-- Credits 按先到期先消费；同到期批次按发放先后消费。
-- 到期未续费切换到基础档，保留未到期充值额度和已有数据；超限只阻止新增，不删除已有资源。
-- 平台模型产生模型 Credits；BYOK 不重复收取模型 Credits，但解析、沙箱和 Connector 等仍可收费。
-- 每个收费 Task 有有限预算；父子执行共享该预算，不能复制余额。
-- 失败和取消仍结算实际发生的收费使用；未知结果继续保留预占。
-- 退款先锁定待退权益；渠道退款和 Lago 撤权都确认后才完成。
-- 支付成功、Lago 权益生效和 WeKnora 准入放行是三个独立事实。
-
-## 6. 权威边界
-
-| 数据或决策 | 权威方 | WeKnora 本地允许保存的内容 |
-| --- | --- | --- |
-| 空间、成员、账单管理员和操作权限 | WeKnora | 权威身份与授权记录 |
-| Lago Organization | 部署配置 | Lago Organization 映射与版本 |
-| Customer | Lago | 空间到 Customer 的不可变映射和投影 |
-| 套餐草稿与发布审批 | WeKnora | 草稿、审计、发布命令 |
-| 已发布套餐、Charge、Metric、Entitlement | Lago | 不可变版本映射和只读计费投影 |
-| Subscription | Lago | 可重建状态投影，不可独立变更 |
-| Wallet、Credits、消费与 Credit Note | Lago | 余额／批次投影和对账水位，不可独立改账 |
-| 最终用量计价 | Lago | 价格版本投影、原始用量和关联证据 |
-| Task Budget、预占和退款锁定 | WeKnora | 同步协调状态；不是第二个 Wallet |
-| Customer Invoice 与商业付款状态 | Lago | Invoice／Payment 投影和对象映射 |
-| 微信／支付宝交易与渠道退款事实 | WeKnora | 不可变验签结果、尝试、外部交易和退款状态 |
-| 实际资源占用 | WeKnora | 成员、存储、并发等权威计数 |
-
-WeKnora 的计费投影可用于展示、权限判断和保守准入，但不得脱离 Lago 发放、扣减或撤回 Credits，也不得把本地余额字段暴露为独立商业真相。
-
-## 7. 逻辑架构
-
-```mermaid
-flowchart TD
-  Client[Web / Mobile] --> API[WeKnora Billing API]
-  API --> Auth[空间权限与账单管理员]
-  API --> Quote[报价与套餐发布编排]
-  API --> Pay[微信 / 支付宝渠道适配]
-  API --> Budget[Task Budget 与同步预占]
-
-  Quote --> Lago[Lago Community]
-  Pay --> Lago
-  Budget --> Runtime[模型 / 解析 / 沙箱 / Connector]
-  Runtime --> Facts[不可变用量事实与 Outbox]
-  Facts --> Lago
-  Lago --> Webhook[签名 Webhook]
-  Webhook --> Projection[计费投影与对账]
-  Projection --> Budget
-```
-
-Lago API 不直接暴露给浏览器或移动端。客户端只使用 WeKnora 的 provider-neutral Billing API；Lago 内部 ID、API Key、Lago Organization 和原始状态枚举不构成公共客户端契约。
-
-## 8. 身份、组织与币种
-
-- 一个 WeKnora 部署实例对应一个独立 Lago Organization。
-- 一个空间对应一个 Lago Customer。
-- `external_customer_id` 由 WeKnora 生成，稳定、不可复用且不包含个人信息。
-- 成员变更、Owner 转移或空间改名不改变 Customer 身份。
-- 首期每个部署实例只有一个收费主体和人民币 CNY。
-- 货币金额在 WeKnora 使用整数分；与 Lago 交互时不得经过浮点数。
-- 空间删除后停止新收费并撤销可消费权益；交易、账单、付款、退款和审计按合规政策保留，展示信息可去标识化，Customer ID 永不复用。
-
-## 9. 套餐、订阅与权益
-
-### 9.1 不可变套餐版本
-
-每个 WeKnora 套餐版本对应一个新的 Lago `plan_code`。发布后禁止修改其基础费、Charge、Billable Metric、Entitlement、资源上限或周期额度；任何商业变化都发布新版本。
-
-套餐层级必须与基础订阅费的日化金额单调一致，使 Lago 对 upgrade／downgrade 的判断与产品语义一致。促销使用 Discount／Coupon 表达，不通过降低高档套餐基础价格制造层级倒挂。
-
-WeKnora 管理后台是唯一商业配置入口。Lago UI 仅供受控诊断，不允许运营人员直接编辑已发布对象。
-
-### 9.2 升级、降级与基础档
-
-- 升级使用相同 external subscription ID，立即生效并保留周期锚点。
-- WeKnora 根据新旧不可变套餐版本和原周期锚点计算当月套餐 Credits 补发；补发作为带确定到期时间和幂等键的 Lago granted Wallet Transaction。
-- 降级在当前周期结束后生效，不提前收回本周期已发额度。
-- 年付订阅仍按月创建套餐额度，不一次发放全年 Credits。
-- 到期未续费通过同一 external subscription ID 切换到免费基础套餐，不创建并行订阅。
-- Wallet 属于 Customer；切换套餐不清除未到期充值 Credits。
-
-### 9.3 Entitlement 与资源配额
-
-Lago Entitlement／Privilege 定义套餐允许的功能和资源上限。WeKnora 同步只读投影，并在敏感操作时检查当前有效订阅。成员、存储、并发等实际占用由 WeKnora 原子统计和限制。
-
-充值只增加 Wallet，不改变 Entitlement 或资源配额。投影过期或 Lago 不可用时，禁止新增高级操作，但允许查看、导出和清理。
-
-## 10. 报价、购买与支付
-
-### 10.1 报价
-
-首期只允许能从不可变套餐版本确定计算的价格。WeKnora 在付款前生成带商品版本、币种、金额、权益和有效期的报价，再让 Lago 创建实际订阅／账单。
-
-创建渠道支付单前，报价必须与 Lago Invoice 的金额、币种和行项目逐项一致。任何不一致、报价过期或订阅状态变化都会终止流程并要求重新报价。报价不是最终账单，也不能反向修改 Lago Invoice。
-
-### 10.2 首次购买
-
-1. WeKnora 验证购买权限和报价。
-2. Lago 创建 pay-in-advance、无 trial、带 payment activation rule 的 Subscription。
-3. Subscription 保持 `incomplete`，Lago 生成首张 Invoice。
-4. WeKnora 核对报价与 Invoice，并创建渠道支付单。
-5. 微信／支付宝回调经签名、商户、订单、金额、币种和状态验证后形成付款事实。
-6. WeKnora 通过 Lago 支持的外部付款接入写入 Payment。
-7. 只有 Lago Subscription 变为 `active` 后，WeKnora 才更新投影并开放权益。
-
-付款成功但尚未激活时显示“已付款，权益处理中”，继续按原幂等键恢复，不引导再次付款。
-
-外部 manual payment 是否能解除 payment activation rule 尚无官方明确保证，必须通过真实契约测试。若不能，实施 Lago 认可的外部 Payment Provider 适配；不得由 WeKnora 绕过 Lago 强行把订阅标为 active。
-
-### 10.3 Credits 充值
-
-1. Lago 创建待付款 Wallet Transaction／Invoice。
-2. WeKnora 核对报价并创建渠道支付单。
-3. 渠道付款确认后向 Lago 登记 Payment。
-4. 只有 Lago 确认 Wallet Credits 已入账后才允许消费。
-5. 付款成功但 Credits 未到账时进入幂等履约队列。
-
-不得在支付成功前把 paid credits 计入可消费余额。
-
-### 10.4 异常付款
-
-- 重复通知幂等处理，不重复创建 Lago Payment。
-- 多个支付尝试均成功时只履约一次，其余进入多收款退款处理。
-- 金额不足、币种不符或账单不匹配不能激活权益。
-- 超额付款不自动转换为额外 Credits。
-- 异常渠道事实必须保留，但不得改变 Lago Invoice 或扩大权益。
-
-## 11. Usage、计价和预算
-
-### 11.1 用量事实与事件身份
-
-WeKnora 保存每个真实收费活动的不可变 Usage Fact。它至少记录 tenant、task、run、physical call、attempt、revision、服务维度、资金来源、发生时间、状态和原始数量。
-
-每个物理尝试和修订映射到全局稳定、不可复用的 Lago `transaction_id`：
-
-- 相同投递重试复用同一 transaction ID 和 timestamp；
-- 真正的新尝试或修订使用新 ID；
-- 相同 ID 但内容不同返回冲突；
-- 不利用 ClickHouse pipeline 的 overwrite 行为静默改写事件；
-- 持久保存 Usage Fact、transaction ID、Subscription、Metric、timestamp、接收响应和结算批次之间的关联。
-
-Lago Event API 的成功响应只证明接收，不证明事件已经关联、聚合或计价。
-
-### 11.2 价格与预占
-
-Lago Billable Metric 和 Charge 是最终计价权威。WeKnora 只保留同一不可变版本的准入价格投影，用于计算收费执行的保守上界。
-
-首期只开放固定单价、确定包价或具有明确封顶、能生成可信上界的模型。无法计算上界、价格投影缺失或投影过期时拒绝新的收费执行。
-
-每次真实模型、解析、沙箱或 Connector 调用前，WeKnora 必须原子检查：
-
-- 当前 Tenant、Task 和 Run；
-- Task Budget；
-- 空间保守可用余额；
-- 已结算消费；
-- 未确认结算批次；
-- 退款锁定；
-- 调用费用上界；
-- 预算和执行截止时间。
-
-读余额后再派发不是安全的原子预占。并发调用不能消费同一份余额；父子 Agent 和 Connector 共享父 Task Budget。
-
-### 11.3 Task／结算批次
-
-Lago 没有公开的单事件 `rated` 状态或成功计价 Webhook。首期按 Task 或受控时间窗口形成结算批次，并通过独立 Pricing Group 查询 current usage。
-
-只有当 Lago current usage 可关联到该 Task／结算批次并返回确定计价结果时，WeKnora 才按实际费用结算对应预占。不得用整个 Wallet 的余额变化猜测单笔费用，也不得把聚合结果描述为逐事件计价回执。
-
-计价异步期间：
-
-- 原预占继续占用；
-- 只要 Task Budget 和空间保守余额仍有余量，可以继续新的已预占调用；
-- 达到预算、余额下界或最大未确认窗口后，暂停该 Task 新收费动作；
-- 已发生用量必须继续持久化并最终进入 Lago。
-
-若 Lago ongoing balance 为负，立即停止新的收费动作并进入对账；不得删除或伪造已发生用量，也不得静默补发 Credits。
-
-### 11.4 修正
-
-原始用量事实永不覆盖。未形成最终 Invoice 时，只对经过真实验证支持修正的 Metric 发送关联补偿用量。原事件与补偿事件共同形成审计链。
-
-已形成最终 Invoice 后，不修改原事件或原账单；财务差额通过 Credit Note 或追加账单处理。无法证明安全修正时进入人工核对。
-
-## 12. Credits 批次与消费顺序
-
-套餐额度和充值额度必须保持独立来源、金额、发放时间和到期时间。产品要求全局先到期先消费，同到期先发先用。
-
-Lago 支持多个 Wallet、Wallet priority、Transaction priority、Wallet expiration 和 traceable transaction，但公开契约尚未证明任意数量批次下能够完整满足该排序。实现可以通过 WeKnora 协调层组合 Lago Wallet／Transaction 和优先级，但 Lago 始终是余额权威。
-
-以下能力在真实环境验证前阻断上线：
-
-- 每月套餐额度到期且不结转；
-- 每批充值额度独立有效 12 个月；
-- 套餐与充值批次统一先到期先消费；
-- 同到期批次按发放顺序消费；
-- 升级补发不会重发已用额度；
-- refund／void 只撤回未消费部分；
-- 并发消费、到期、补发和退款不会产生负的可退余额或重复 Credits。
-
-若 Lago 原生对象和协调层无法通过这些测试，迁移保持阻断状态；不得静默弱化产品规则。维护 Lago fork 或修改产品规则需要新的 ADR 和 Spec。
-
-## 13. 退款与撤权
-
-1. WeKnora 创建退款申请并锁定对应待退权益。
-2. 根据 Lago traceable Wallet、Invoice、Payment 和 Credit Note 重新计算可退范围。
-3. 平台运营审核，申请人与审批职责分离。
-4. 使用稳定退款键调用原微信／支付宝渠道。
-5. 渠道确认退款成功后，在 Lago void 剩余 Credits、调整 Subscription 或创建 Credit Note。
-6. 渠道成功但 Lago 撤权失败时保持退款锁定和 `revocation_pending`，继续按原命令恢复。
-7. 渠道退款和 Lago 撤权都确认后，退款完成。
-
-渠道退款受理、Lago 命令接收或本地状态写入均不能单独代表退款完成。退款锁定只是临时风险控制，不是第二个 Wallet。
-
-## 14. 本地持久化边界
-
-WeKnora 保留：
-
-- 套餐草稿、发布命令、审计和 Lago 对象映射；
-- 报价；
-- 渠道支付单、付款事实和渠道退款事实；
-- Task Budget、额度预占和退款锁定；
-- Usage Fact、Lago Event 关联和结算批次；
-- Customer、Subscription、Entitlement、Wallet、Invoice 和 Payment 的可重建投影；
-- Outbox、Inbox、Webhook 去重、对账和恢复记录。
-
-现有表可以迁移为投影或协调记录，但不得继续作为本地套餐发布、Subscription、Wallet、Credit Lot、最终计价、Invoice 或 Payment 状态的独立权威。
-
-## 15. API 与用户状态
-
-客户端使用稳定的 WeKnora Billing API。服务端把 Lago 状态映射为产品状态，至少包括：
-
-- 待付款；
-- 已付款待激活；
-- 已生效；
-- 权益处理中；
-- 等待计费同步；
-- 余额不足；
-- 退款审核中；
-- 渠道退款处理中；
-- 撤权待恢复；
-- 需要人工处理。
-
-客户端不能依赖 Lago 内部 ID、字段名或状态枚举，也不能获得 Lago API Key 或内部 URL。
-
-## 16. Webhook、幂等与恢复
-
-- Lago Webhook 只表示状态可能变化；收到后必须从 Lago API 重新读取权威对象。
-- 校验 HMAC 或 JWT 签名。
-- 使用 `X-Lago-Unique-Key`、对象 ID 和版本去重。
-- 乱序通知不得使本地投影倒退。
-- 定期对账覆盖丢通知、有限重试耗尽和投影漂移。
-- WeKnora → Lago 命令通过本地 Outbox、稳定幂等键和响应关联恢复。
-- 相同幂等键不同内容必须拒绝。
-- 超时和 5xx 视为结果未知；先查询原对象，不能换键盲目重试。
-
-Lago 不可用时停止新购买、套餐变更、充值和新的收费执行，但继续持久化支付回调、已发生用量、Outbox 和恢复任务；查看、导出和清理仍按权限开放。
-
-## 17. 安全、隐私和许可证
-
-- Lago API Key 只存于服务端 Secret Manager。
-- 网络策略只允许指定 WeKnora 服务和受控运维网络访问 Lago。
-- Webhook 使用独立验签材料。
-- 替换 Compose 示例中的数据库密码、`SECRET_KEY_BASE`、RSA 和加密密钥。
-- Community 版通过受控即时轮换与服务配置切换管理 API Key。
-- 密钥泄露时立即停止新商业命令、轮换、审计并对账。
-- Usage Event 不包含 Task 内容、Prompt、模型输出、知识内容或 Connector 参数，只包含计费所需维度与关联标识。
-- 账单联系人、地址和税务信息按实际业务需要最小化同步。
-- 日志和 metadata 不保存渠道密钥、原始凭据或敏感回调正文。
-
-Lago 主仓库采用 AGPL-3.0。生产上线前必须完成法务／合规审查；任何 Lago 代码修改、自定义计价回执扩展或发布方式变化都需要重新审查。不得绕过 Premium 功能开关或商业许可。
-
-## 18. 部署与运维
-
-### 18.1 环境
-
-- 本地开发和 CI：固定版本的 Lago Docker Compose。
-- 生产：Kubernetes／Helm。
-- 生产依赖：独立高可用 PostgreSQL、Sidekiq Redis、Cache Redis 和 S3 兼容对象存储。
-- API、events、billing、webhook、wallet、clock、PDF worker 分开部署和扩缩。
-- 补充项目级 readiness；不能只依赖 `/health` liveness。
-- 首期使用 PostgreSQL event store。
-- 只有真实压测超过容量或查询延迟门槛后，才按 Lago 官方流程另行迁移 ClickHouse／Kafka；不得手工翻转 Lago Organization event-store 标志。
-
-### 18.2 可恢复性
-
-- PostgreSQL 持续归档／PITR，目标 RPO 不超过 5 分钟。
-- 服务恢复目标 RTO 不超过 60 分钟。
-- Redis 队列不是唯一事实源；关键工作可从 Outbox、Lago 数据库和幂等命令重建。
-- 对象存储、配置、密钥引用、许可证材料和固定版本清单纳入备份。
-- 上线前必须在 staging 完成完整恢复和账务对账演练。
-
-### 18.3 观测目标
-
-- event acceptance 到结算批次可核对：p95 不超过 60 秒；
-- 单批次超过 5 分钟仍不可核对：暂停该 Task 新收费动作；
-- 超过 15 分钟或收到 `events.errors`：触发运营告警；
-- 监控 API、各 Sidekiq 队列延迟、dead jobs、失败率、Webhook 重试、负余额、投影陈旧、付款未激活、退款撤权失败和 `reconciliation_pending` 年龄。
-
-### 18.4 升级
-
-- 固定精确 release tag，禁止 `latest`。
-- 阅读 release notes 和 migration guide，按要求经过 bridge release。
-- 升级前建立恢复点。
-- staging 重放固定的计费、支付、退款和对账 fixtures。
-- API 契约、数据迁移、性能和恢复门槛通过后才滚动生产。
-- 不手工修改 Lago 业务数据或 Lago Organization event-store 标志。
-
-## 19. 迁移与收尾
-
-1. 建立独立 Lago 开发／集成环境，不复用 OpenMeter 数据库、Kafka、ClickHouse 或 Redis。
-2. 固定 Lago Community 版本、镜像摘要、配置和依赖。
-3. 用合成 Tenant、Customer、套餐、Subscription、Wallet、Payment 和 Usage 完成能力门槛。
-4. 新增 Lago 适配器并保留 provider-neutral commercial seam。
-5. 将本地权威表迁移为协调记录或可重建投影。
-6. 完成端到端、故障注入、性能、安全和恢复验收。
-7. 在发布窗口停止 OpenMeter 开发写入并切换默认适配器。
-8. 完成一次无真实商业数据的可回退发布验证。
-9. 关闭回退窗口后删除 OpenMeter adapter、Compose、镜像锁、专属探测脚本和环境变量。
-10. 保留必要历史设计／验证记录并标记为已废弃。
-
-影子验证只能使用合成数据，影子 Lago 不得改变真实权益。不存在长期双写模式。
-
-## 20. 能力门槛
-
-以下均必须使用固定版本的真实 Lago Community 环境取得证据，OpenAPI、mock 或单元测试不能代替：
-
-| ID | 门槛 | 通过标准 |
-| --- | --- | --- |
-| LG-01 | Community 与许可证 | 目标 API 均可在 Community 使用；AGPL／商业许可审查完成。 |
-| LG-02 | Customer 与隔离 | 一空间一 Customer；跨空间 ID、Event、Wallet、Invoice 和 Webhook 不串。 |
-| LG-03 | 不可变套餐 | 新版本使用新 plan code；旧 Subscription 不受目录修改影响。 |
-| LG-04 | 外部支付激活 | 微信／支付宝可信付款能通过受支持接入使 `incomplete` Subscription 变为 `active`；重复不重复激活。 |
-| LG-05 | 充值履约 | 未付款不入账；付款成功后恰一次入账；响应丢失可恢复。 |
-| LG-06 | Credits 批次 | 月额度、12 个月充值、先到期先消费、并发消费和 void／refund 全部符合不变量。 |
-| LG-07 | Usage 幂等 | 重复 Event 不重复计量；新 attempt／revision 独立；冲突内容拒绝。 |
-| LG-08 | Task／批次计价 | Pricing Group 可关联 current usage；金额与固定 fixtures 一致；无逐事件回执时不伪造确认。 |
-| LG-09 | 计价延迟与规模 | 达成 p95 60 秒目标；Task/Pricing Group 基数、峰值 ingestion 和账期峰值通过压测。 |
-| LG-10 | 预算并发 | 多 worker 竞争最后余额时总获准上界不超可用余额；未知结算不提前释放。 |
-| LG-11 | 修正与出账 | 未出账补偿、finalized Invoice 后 Credit Note 和追加账单行为正确。 |
-| LG-12 | 升降级与基础档 | 升级立即生效和补发正确；降级／基础档周期末生效；Wallet 保留。 |
-| LG-13 | 退款 | 锁定、审批、渠道退款、Lago 撤权、失败恢复和重复调用不造成多退或多撤。 |
-| LG-14 | Webhook 与对账 | 签名、重复、乱序、丢失、有限重试耗尽和定期对账可恢复。 |
-| LG-15 | 故障注入 | API 超时、worker 崩溃、队列积压、响应丢失和重启不丢付款／用量且不重复权益。 |
-| LG-16 | 安全与隐私 | API Key、Webhook secret、Tenant 隔离、最小 Usage metadata 和日志脱敏通过审查。 |
-| LG-17 | 备份恢复 | staging 恢复后 Customer、Subscription、Wallet、Invoice、Payment、待处理任务和投影完成对账；满足 RPO/RTO。 |
-| LG-18 | OpenMeter 收尾 | 回退窗口关闭；运行依赖和配置删除；历史记录明确废弃；无双写路径。 |
-
-任何门槛失败都必须标记为 blocker 或形成新的已批准范围调整，不得静默降级或以“接口请求成功”替代业务验收。
-
-## 21. 完成标准
-
-只有在以下全部成立时，迁移才算完成：
-
-- LG-01 至 LG-18 全部通过；
-- 套餐购买、充值、升级、降级、到期回基础档闭环；
-- Task 预占、Lago 计价、结算批次和余额对账闭环；
-- 修正、退款、Credit Note 和撤权恢复闭环；
-- 微信／支付宝与 Lago 激活闭环；
-- 必要测试、类型检查、Lint／静态分析和故障注入通过；
-- 性能、延迟、RPO／RTO 和恢复演练通过；
-- AGPL／许可证审查通过；
-- 独立 Spec Compliance 与代码 Review 无未处理阻断项；
-- 最终 Diff 只包含批准范围内的迁移内容。
-
-## 22. 官方事实来源
-
-- [Lago GitHub 与许可证](https://github.com/getlago/lago)
-- [Lago Self-hosted](https://docs.getlago.com/guide/self-hosted)
-- [Lago OpenAPI](https://getlago.com/api/openapi.yaml)
-- [Lago Event Object](https://docs.getlago.com/api-reference/events/event-object)
-- [Lago Current Usage](https://getlago.com/docs/api-reference/customer-usage/get-current)
-- [Lago Subscription Assignment](https://getlago.com/docs/guide/subscriptions/assign-plan)
-- [Lago Upgrades and Downgrades](https://doc.getlago.com/guide/subscriptions/upgrades-downgrades)
-- [Lago Payment Receipts](https://docs.getlago.com/guide/payments/receipts)
-- [Lago Webhook Format and Signature](https://getlago.com/docs/api-reference/webhooks/format---signature)
-- [Lago Docker Self-hosted Guide](https://getlago.com/docs/guide/lago-self-hosted/docker)
-- [Lago Helm Charts](https://github.com/getlago/lago-helm-charts)
-- [Lago Monitoring](https://github.com/getlago/lago/blob/main/docs/monitoring.md)
-- [Lago Upgrade Guidance](https://doc.getlago.com/guide/lago-self-hosted/update-instance)
+## Problem Statement
+
+WeKnora 需要让每个空间能够可靠地购买套餐和 Credits，并让模型、解析、沙箱及 Connector 等收费执行具备明确的权益、预算、用量、计价、账单、付款、退款和恢复语义。当前 OpenMeter 接入没有形成完整的商业计费平台：WeKnora 本地同时承担套餐、价格、订阅投影、Credits 批次、支付、退款、预算和最终计价，外部适配只覆盖少量 Grant／Settlement 调用，而且实际适配器与记录的 OpenMeter 契约存在方法及路径偏差。
+
+从空间成员的视角，现状无法证明以下承诺能够在真实计费后端中端到端成立：付款只履约一次、套餐和充值额度按正确顺序消费、两个并发 Task 不会花同一份 Credits、异步计价不会提前释放额度、退款成功不会留下仍可消费的权益，以及计费系统故障后不会丢付款或用量。
+
+从运营和工程视角，当前边界还会形成双账本风险：本地记录与外部计费系统都可能被理解成套餐、余额或消费权威。若直接把 OpenMeter 调用替换成 Lago 调用，这些歧义不会消失，反而会扩展到 Customer、Plan、Subscription、Entitlement、Wallet、Invoice、Payment 和 Credit Note。
+
+本功能需要以 Lago Community 取代 OpenMeter，并重新确立商业权威、同步准入与异步计价之间的关系。迁移必须保留现有产品不变量，不得通过弱化 Credits 到期、预算、退款或 BYOK 规则来适配供应商能力。
+
+## Solution
+
+WeKnora 将自托管 Lago Community 作为商业计费权威。Lago 权威管理 Customer、不可变套餐版本、Subscription、Entitlement、Wallet、Credits、最终用量计价、客户账单、Payment 商业状态和 Credit Note。
+
+WeKnora 保留空间身份与账单权限、面向用户的 Billing API、付款前报价、微信／支付宝渠道集成、渠道支付单、付款事实、渠道退款事实、Task Budget、调用前原子额度预占、不可变用量事实、退款锁定、Outbox、计费投影和异常恢复。WeKnora 的投影与协调状态不能独立发放、扣减或撤回 Credits，也不能形成第二个商业账本。
+
+客户端始终调用 provider-neutral 的 WeKnora Billing API。Lago API、内部对象、凭据和状态枚举不会成为 Web 或移动端契约。WeKnora 通过一个深的 Commercial Platform module 隔离供应商：调用者只表达商业命令、读取商业快照和请求对账，不需要理解 Lago 的对象编排、Webhook、异步 worker 或恢复协议。
+
+收费执行继续由 WeKnora 同步准入。每次真实调用前，系统按照 Lago 已发布价格的只读投影计算可信费用上界，并在 Task Budget 与空间保守可用余额中原子预占。实际用量进入 Lago 后，按 Task／结算批次和 Pricing Group 读取可关联的权威聚合计价结果，再结算或释放预占。Lago 接收事件不等于完成计价；没有可靠计价结果时，预占保持为结算待核对。
+
+迁移只处理开发数据，不迁移 OpenMeter 测试数据，不长期双写。Lago 一旦开始承载真实商业数据，系统只允许前向修复，不能依靠切回 OpenMeter 回滚账本。
+
+## User Stories
+
+1. As a 空间 Owner, I want each space to have an independent Billing Account, so that another space cannot share or consume its subscription or Credits.
+2. As a 空间 Owner, I want to see a fixed Quote before payment, so that the product version, price, currency, entitlements, and validity period are clear.
+3. As a 空间 Owner, I want the Quote to match the Lago Invoice exactly, so that I am never charged an amount different from what I approved.
+4. As a 空间 Owner, I want to pay through WeKnora using WeChat Pay or Alipay, so that the billing-backend migration does not replace the familiar payment experience.
+5. As a 空间 Owner, I want payment success and entitlement activation to be shown as separate states, so that I know when money has been received but fulfillment is still processing.
+6. As a 空间 Owner, I want a repeated payment callback to be harmless, so that retries never grant a second subscription or duplicate Credits.
+7. As a 空间 Owner, I want mismatched, partial, or wrong-currency payments to enter review without activating benefits, so that payment anomalies cannot expand entitlements.
+8. As a 空间 Owner, I want multiple successful payment attempts to fulfill once and refund the excess, so that duplicate money receipt does not duplicate delivery.
+9. As a 空间 Owner, I want paid top-up Credits to become spendable only after Lago confirms them, so that pending fulfillment is not mistaken for an available balance.
+10. As a 空间 Owner, I want annual plans to issue included Credits monthly, so that annual payment does not grant a full year of consumption upfront.
+11. As a 空间 Owner, I want plan upgrades to take effect immediately, so that newly purchased features are available after successful payment and activation.
+12. As a 空间 Owner, I want an upgrade to grant only the prorated difference in current-period Credits, so that already issued or consumed Credits are not granted again.
+13. As a 空间 Owner, I want downgrades to take effect at the end of the paid period, so that already purchased access is not removed early.
+14. As a 空间 Owner, I want expiry without renewal to move the space to the Base Plan, so that existing data and unexpired top-up Credits remain available under reduced limits.
+15. As a 空间 Owner, I want top-up Credits to remain independent from Plan entitlements and Resource Quotas, so that buying Credits cannot unlock unrelated features.
+16. As a 账单管理员, I want to purchase, renew, top up, change plans, inspect invoices, and request refunds within my delegated role, so that ordinary space administrators do not automatically receive financial authority.
+17. As a 账单管理员, I want every commercial command to be audited with actor, reason, idempotency identity, and external receipt, so that adjustments are explainable and recoverable.
+18. As a 账单管理员, I want current balance, reserved Credits, refund-locked Credits, and reconciliation age shown separately, so that available funds are not confused with money already committed.
+19. As a Task Owner, I want to set a finite Task Budget, so that a Task and all delegated work cannot consume unlimited Credits.
+20. As a Task Owner, I want child Agents and Connectors to share the parent Task Budget, so that delegation cannot duplicate spending authority.
+21. As a Task Owner, I want the system to reserve a conservative upper bound before a real paid call, so that concurrent calls cannot spend the same Credits.
+22. As a Task Owner, I want an accepted Lago event to retain its reservation until rating is reconcilable, so that asynchronous ingestion is not mistaken for final settlement.
+23. As a Task Owner, I want only the affected Task paused when its rating exceeds the allowed delay, so that unrelated Tasks with safe budgets can continue.
+24. As a Task Owner, I want a Task paused whenever actual cost exceeds its reserved upper bound, so that an invalid admission-price projection is surfaced even when the space still has other Credits.
+25. As a Task Owner, I want actual usage recorded after failure or cancellation, so that already incurred provider cost is not erased.
+26. As a Task Owner, I want unknown call outcomes to keep their reservations, so that timeouts cannot make the same Credits available twice.
+27. As a Task Owner using BYOK, I want model Credits excluded while platform parsing, sandbox, and Connector costs remain billable, so that the funding source is applied per service dimension.
+28. As a 普通成员, I want an explicit “waiting for billing synchronization” state, so that a paused paid action is distinguishable from an application failure.
+29. As a 普通成员, I want view, export, and cleanup operations to remain available during quota or billing outages, so that commercial controls do not trap existing data.
+30. As a 普通成员, I want Resource Quota overage to block only growth, so that downgrade or expiry does not delete existing members, files, or other resources.
+31. As a 财务运营人员, I want Customer Invoices to remain distinct from Chinese Tax Invoices, so that a Lago Invoice is not presented as a statutory tax document.
+32. As a 财务运营人员, I want refund eligibility recalculated from authoritative Wallet, Invoice, Payment, and Credit Note state, so that consumed or previously refunded value cannot be refunded again.
+33. As a 财务运营人员, I want refundable Credits locked before the channel refund starts, so that the same value cannot be consumed while money is being returned.
+34. As a 财务运营人员, I want channel refund and Lago revocation to be separate recoverable states, so that a successful cash refund cannot leave spendable Credits.
+35. As a 财务运营人员, I want duplicate refund commands to reuse a stable refund identity, so that retries cannot produce multiple payouts or multiple revocations.
+36. As a 财务运营人员, I want finalized billing corrections represented by Credit Notes or later invoices, so that financial history is not silently rewritten.
+37. As a 套餐运营人员, I want every published Plan Version to be immutable, so that changes never retroactively alter existing subscriptions.
+38. As a 套餐运营人员, I want a new Lago plan code for every new Plan Version, so that old subscriptions keep their purchased commercial definition.
+39. As a 套餐运营人员, I want higher product tiers to have non-decreasing daily base prices, so that Lago upgrade and downgrade behavior matches the product hierarchy.
+40. As a 套餐运营人员, I want promotions represented separately from base-tier price, so that a temporary discount cannot invert the plan hierarchy.
+41. As a 套餐运营人员, I want only pricing models with a trustworthy admission upper bound enabled initially, so that no configuration can bypass Task Budget enforcement.
+42. As a 套餐运营人员, I want published Lago Plans editable only through audited WeKnora commands, so that Lago UI changes cannot silently alter customer billing.
+43. As a 平台运营人员, I want Webhook signatures and unique keys verified, so that forged or duplicate notifications cannot mutate product state.
+44. As a 平台运营人员, I want Webhooks treated as change notifications followed by authoritative reads, so that out-of-order delivery cannot make projections move backward.
+45. As a 平台运营人员, I want periodic reconciliation to recover lost Webhooks and exhausted retries, so that projections eventually converge without relying on perfect delivery.
+46. As a 平台运营人员, I want stale projections and negative Lago ongoing balance to block new paid work, so that data uncertainty fails closed.
+47. As a 平台运营人员, I want payment callbacks and occurred usage persisted while Lago is unavailable, so that external facts are not lost during an outage.
+48. As a 平台运营人员, I want pending commercial commands replayed using the same idempotency identity, so that response loss never creates a second remote object.
+49. As a 平台运营人员, I want billing queues, dead jobs, event errors, activation delay, reconciliation age, and revocation failures monitored, so that an available API is not mistaken for a healthy billing system.
+50. As a 平台运营人员, I want a recovery exercise before launch, so that Customer, Subscription, Wallet, Invoice, Payment, pending work, and projections can be reconciled after restore.
+51. As a 安全审计人员, I want Lago credentials accessible only to approved server modules, so that browsers, mobile apps, Agents, logs, and Task content never receive billing secrets.
+52. As a 安全审计人员, I want Usage Events to exclude prompts, outputs, knowledge content, and Connector parameters, so that Lago receives only the minimum data required for billing.
+53. As a 合规负责人, I want Lago AGPL-3.0 usage and modifications reviewed before production, so that deployment and source-availability obligations are understood.
+54. As a 合规负责人, I want transaction history retained separately from removable display data, so that space deletion can de-identify a customer without destroying required financial evidence.
+55. As a WeKnora developer, I want one provider-neutral commercial seam, so that Lago object orchestration and recovery rules are local rather than spread across product callers.
+56. As a WeKnora developer, I want the public Billing API independent of Lago fields and statuses, so that clients do not need another rewrite if the billing provider changes.
+57. As a WeKnora developer, I want real Lago Community contract evidence, so that OpenAPI schemas and HTTP mocks are not mistaken for supported runtime behavior.
+58. As a WeKnora developer, I want immutable Usage Facts correlated with Lago transaction identities and Settlement Batches, so that retries, corrections, and invoices can be audited end to end.
+59. As a WeKnora developer, I want a content conflict under the same idempotency identity rejected, so that retry safety cannot become silent overwriting.
+60. As a WeKnora operator, I want exact Lago release tags and staged bridge upgrades, so that migrations are reproducible and reversible at the infrastructure level.
+61. As a WeKnora operator, I want PostgreSQL as the initial event store, so that the first production topology does not add Kafka and ClickHouse before measured need.
+62. As a WeKnora operator, I want RPO no greater than five minutes and RTO no greater than sixty minutes, so that the billing authority has explicit recovery objectives.
+63. As a WeKnora operator, I want OpenMeter removed after the rollback window closes, so that the system does not preserve an accidental long-term dual-write path.
+
+## Implementation Decisions
+
+### Commercial authority and module seam
+
+- Lago Community is the authority for Customer, published Plan Version, Subscription, Entitlement, Wallet, Credits, final rating, Customer Invoice, Payment commercial state, and Credit Note.
+- WeKnora remains authoritative for Tenant identity, membership and billing roles, Quote, Channel Payment Order, Payment Fact, channel refund fact, Task Budget, Credit Reservation, Refund Lock, Usage Fact, and actual Resource Quota occupancy.
+- The provider-neutral WeKnora Billing API is the primary behavior and acceptance seam. Clients never depend on Lago identifiers, credentials, URLs, field names, or status enums.
+- The existing commercial gateway seam will be replaced rather than layered with a deep Commercial Platform module. Its interface has three cohesive operation families: submit typed commercial commands, read authoritative commercial snapshots, and reconcile from a durable cursor. Lago-specific object ordering, retries, Webhooks, workers, and recovery remain inside the Lago adapter.
+- Commercial application callers and tests cross the same module interface. Internal adapters may exist for HTTP, persistence, clock, and payment providers, but they are not additional product-facing seams.
+- A Tenant maps to one immutable Lago Customer. A WeKnora Deployment maps to one Lago Organization. Shared Organization remains a collaboration concept and never becomes a combined payer.
+- The initial deployment supports one Billing Entity and CNY only. Monetary values use integer minor units and never pass through binary floating point.
+
+### Catalog, subscriptions, and entitlements
+
+- Every published Plan Version receives a distinct Lago plan code. A published version is immutable; price, Charge, Billable Metric, Entitlement, Resource Quota, and included Credits changes require a new version.
+- Base subscription price is monotonic with the product tier. Discounts and promotions do not modify the tier ordering.
+- Subscription continuity uses the same external subscription identity across upgrade, downgrade, and transition to the Base Plan.
+- Upgrade becomes effective immediately after successful payment and Lago activation. WeKnora calculates only the approved prorated included-Credits difference and records it as an idempotent granted Wallet transaction in Lago.
+- Downgrade becomes effective at the paid-period boundary. It does not reclaim already issued current-period Credits.
+- Annual subscriptions issue included Credits monthly. Expiry without renewal moves to the Base Plan while preserving existing data and unexpired top-up Credits.
+- Lago Entitlement defines purchased features and quota limits. WeKnora enforces current occupancy atomically and preserves view, export, and cleanup when growth is blocked.
+- Top-up Credits change Wallet balance only; they do not change Entitlement or Resource Quota.
+
+### Quotes, payments, and fulfillment
+
+- WeKnora creates a short-lived Quote from an immutable Plan Version. Because Premium Invoice Preview is out of scope, initial pricing is limited to models that WeKnora can reproduce deterministically for pre-payment display.
+- Before a Channel Payment Order is created, the Quote and actual Lago Invoice must match in Plan Version, currency, total, and line items. A mismatch aborts the purchase and creates no channel payment request.
+- Initial subscriptions are pay-in-advance, have no trial, and use a payment activation rule. They remain incomplete until the gating payment succeeds.
+- WeKnora owns WeChat Pay and Alipay request creation, callback verification, query, close, and refund behavior. A verified channel result produces an immutable Payment Fact.
+- A supported Lago external-payment integration records the Payment. Only a Lago Subscription observed as active enables Entitlement and fulfillment.
+- If Lago manual Payment does not release the activation rule in the pinned Community version, the implementation must use a Lago-supported external Payment Provider adapter. It may not force the Subscription active locally.
+- Paid Wallet top-up is not spendable until Lago confirms the Wallet transaction. Response loss is recovered with the original invoice, channel, and idempotency identities.
+- Duplicate, mismatched, partial, wrong-currency, and multiple-success payment cases retain their external facts without automatically changing Invoice amount or delivered benefits.
+
+### Credits and Task admission
+
+- Included Credits expire at the end of their monthly period and do not roll over. Each top-up batch expires twelve calendar months after becoming effective.
+- Credits consume globally by earliest expiry, then earliest grant time. Lago Wallet and transaction priorities may implement this order only after real runtime verification; inability to preserve this invariant blocks migration.
+- Task Budget is a spending ceiling for a Task and all delegated work. It is not the Tenant Wallet balance.
+- Before every paid external action, WeKnora atomically reserves a conservative upper bound against both Task Budget and the conservative Tenant available balance.
+- The admission-price projection is a read-only projection of the same immutable Lago pricing version. Missing, stale, or non-bounded pricing blocks dispatch.
+- Initial Charge models are limited to fixed unit, deterministic package, or explicitly capped models for which a trustworthy upper bound exists.
+- Payment success, Lago fulfillment, and WeKnora paid-work admission remain independent states.
+
+### Usage, rating, and reconciliation
+
+- Every physical paid attempt produces an immutable Usage Fact with Tenant, Task, Run, call, attempt, revision, service dimension, funding source, occurrence time, status, and raw quantity.
+- Every physical attempt and revision maps to a globally stable Lago transaction identity. A retry reuses the same identity and timestamp; a real retry or correction uses a new identity. Same identity with different content is a conflict.
+- Lago event acceptance is durable-ingestion evidence only. It is not rating or settlement evidence.
+- Usage is grouped by Task or a bounded time window into a Settlement Batch with its own Pricing Group. The batch is reconciled only when Lago current usage can be associated with that group and yields a determinate authoritative amount.
+- Reservations remain held while rating is unavailable. Other Tasks may continue only when their own budgets and the conservative Tenant balance remain safe.
+- A batch unresolved for five minutes pauses new paid actions for its Task. At fifteen minutes or on an event-processing error, it creates an operational alert.
+- A confirmed actual amount greater than the pre-dispatch reservation always pauses the Task and requires reconciliation, even if the Tenant still has unrelated Wallet headroom. This rule was validated by the logic prototype and prevents an invalid admission upper bound from being silently accepted.
+- Lago negative ongoing balance blocks all new paid actions for the affected Tenant. Already occurred usage remains recorded and billable.
+- Usage Facts are never overwritten. Before invoice finalization, only a verified metric-specific compensating event may adjust usage. After finalization, corrections use a Credit Note or a later Invoice.
+
+### Refunds
+
+- Refund approval first creates a Refund Lock over the still-refundable benefit.
+- Refund eligibility is recalculated from authoritative Lago Wallet, Invoice, Payment, and Credit Note state immediately before approval.
+- Channel refund uses a stable refund identity. A channel-success result moves to revocation pending; it does not complete the refund.
+- Lago then voids remaining Credits, adjusts Subscription, or creates a Credit Note as appropriate. The Refund Lock is released only after channel refund and Lago revocation are both confirmed.
+- Channel success followed by Lago failure retains the lock and recovers forward. It never repays the channel a second time.
+
+### Local persistence and state projection
+
+- WeKnora retains Plan drafts, publish commands, Quote, Channel Payment Order, Payment Fact, channel refund fact, Task Budget, Credit Reservation, Refund Lock, Usage Fact, Lago event correlation, Settlement Batch, Outbox, Inbox, Webhook deduplication, reconciliation cursor, and audit records.
+- Customer, Subscription, Entitlement, Wallet, Invoice, Payment, and Credit Note local records are rebuildable Billing Projections only.
+- Existing local Order, Subscription, Credit Lot, rating, and balance tables must be migrated to these new meanings or retired. No code path may continue to mutate them as an independent commercial authority.
+- Webhooks are signed change notifications. Consumers verify HMAC or JWT, deduplicate by unique key and business object version, then re-read the authoritative Lago object. Out-of-order notifications cannot move a projection backward.
+- WeKnora-to-Lago commands use a durable Outbox and stable idempotency identity. Timeout and server error are indeterminate outcomes that must be queried before replay.
+
+### Public product states
+
+- WeKnora maps provider state into stable product states: awaiting payment, paid awaiting activation, active, fulfillment processing, waiting for billing synchronization, insufficient Credits, refund review, channel refund pending, revocation pending, and operator attention.
+- The public Billing API never exposes Lago credentials, internal URLs, Lago Organization identifiers, or raw status enums.
+- During a Lago outage, WeKnora stops new purchases, plan changes, top-ups, and paid dispatch. It continues to durably accept verified payment callbacks, already occurred usage, Outbox work, view, export, and cleanup.
+
+### Security, privacy, licensing, and lifecycle
+
+- Lago API credentials live only in server-side secret management. Browser, mobile, Agent context, logs, and generated artifacts cannot access them.
+- Network policy allows only approved WeKnora server modules and controlled operations access to Lago.
+- Usage metadata contains billing dimensions and correlation identities only. It excludes prompts, outputs, knowledge content, Connector parameters, and payment secrets.
+- Space deletion stops new commerce, revokes spendable benefits, de-identifies removable presentation data, and retains legally required transaction history. Customer identities are never reused.
+- Lago AGPL-3.0 use and any source modification require legal review before production. Premium feature controls cannot be bypassed.
+- Local and CI environments use a pinned Lago Compose release. Production uses Helm with independently managed PostgreSQL, Sidekiq Redis, cache Redis, and object storage; API and major worker queues scale separately.
+- PostgreSQL is the initial Lago event store. ClickHouse and Kafka require measured need and a separately approved migration.
+- Production targets RPO no greater than five minutes and RTO no greater than sixty minutes. A staging restore and commercial reconciliation exercise is required before release.
+- Lago upgrades pin an exact release, follow release notes and mandatory bridge releases, create a recovery point, and replay fixed commercial fixtures in staging.
+
+### Migration and removal
+
+- A separate Lago environment is created; OpenMeter databases, Kafka, ClickHouse, Redis, and test data are not reused or migrated.
+- Synthetic shadow comparison may be used before cutover, but shadow Lago cannot change real benefits.
+- There is no long-term dual-write mode.
+- The default adapter changes only after Community capability, behavior, failure, performance, security, and recovery gates pass.
+- The rollback window exists only before Lago carries real commercial data. After that point, failures are repaired forward.
+- Once the rollback window closes, OpenMeter adapters, deployment assets, image locks, dedicated probes, environment variables, and write paths are removed. Historical evidence remains explicitly marked as deprecated.
+
+## Testing Decisions
+
+### Testing seams
+
+- The primary acceptance seam is the provider-neutral WeKnora Billing API. Tests drive user-visible commands and assert product states, balances, entitlements, invoices, pauses, refunds, and audit outcomes without referring to Lago response shapes.
+- The supplier seam is the Commercial Platform module. A deterministic fake adapter supports application behavior tests; the real Lago adapter runs the same contract against a pinned Lago Community environment.
+- Task admission and reconciliation are tested through commercial application behavior with a real transactional database for concurrency. Tests do not reach into private repository steps to prove business outcomes.
+- Provider callback verification remains tested through the payment-provider seam because signature, merchant identity, amount, currency, query, close, and refund semantics differ by channel.
+
+### What makes a good test
+
+- A test asserts an observable business invariant: one fulfillment, one spend, one refund, one state transition, one retained reservation, or one rejected unauthorized action.
+- A test uses stable business identities and checks final authoritative and projected state, not only an HTTP status or mocked method call.
+- A failure-injection test proves behavior after response loss, duplicate delivery, reordering, process crash, queue delay, or dependency outage.
+- A concurrency test proves the total granted or reserved amount, not merely that each request returned a plausible response.
+- A contract test records the pinned Lago release, request, response, final Lago objects, and known limitation. Schema inspection alone is not a pass.
+- A UI/API test asserts stable WeKnora product states and never snapshots raw Lago fields.
+
+### Behavior and contract matrix
+
+1. **Community and license:** target Customer, Plan, Subscription, Entitlement, Wallet, Invoice, Payment, Credit Note, Webhook, and current-usage capabilities run in Community; AGPL review is complete.
+2. **Tenant isolation:** a Tenant can observe and mutate only its mapped Customer, Subscription, Wallet, Invoice, Payment, events, and benefits.
+3. **Immutable catalog:** a new Plan Version creates a new external plan; existing subscriptions remain on their purchased version.
+4. **Quote match:** Quote and Invoice totals, currency, and line items match before a Channel Payment Order exists; mismatch produces no payment request.
+5. **External payment activation:** a verified WeChat Pay or Alipay result reaches Lago through a supported integration and moves an incomplete subscription to active exactly once.
+6. **Top-up fulfillment:** unpaid Credits are unavailable; successful payment credits exactly once; response loss recovers without a second Wallet transaction.
+7. **Payment anomalies:** duplicate, partial, mismatched, wrong-currency, late, and multiple-success payments never duplicate benefits.
+8. **Credits ordering:** monthly expiry, twelve-month top-up expiry, earliest-expiry consumption, grant-time tie-break, concurrent use, void, and refund satisfy the approved invariants.
+9. **Usage identity:** duplicate delivery is idempotent; new attempts and revisions remain separate; conflicting content under one identity is rejected.
+10. **Settlement Batch:** Task/Pricing Group current usage produces the expected amount and never masquerades as a per-event rating receipt.
+11. **Latency and scale:** event-to-reconcilable-batch p95 is at most sixty seconds; five- and fifteen-minute behavior works; peak ingestion, billing-cycle load, and Pricing Group cardinality pass.
+12. **Concurrent admission:** racing workers cannot reserve more than Tenant available balance or Task Budget; parent and delegated work share one ceiling.
+13. **Reservation lifecycle:** event acceptance retains reservation; determinate rating captures actual and releases excess; unknown result keeps the hold.
+14. **Upper-bound violation:** actual rating above reservation pauses the Task even when Tenant Wallet remains positive.
+15. **BYOK:** model dimension is not charged, while other billable service dimensions remain charged.
+16. **Correction:** supported pre-invoice compensation adjusts the intended metric; finalized-invoice corrections use Credit Note or later Invoice.
+17. **Plan lifecycle:** immediate upgrade, prorated included-Credits grant, period-end downgrade, annual monthly grant, and Base Plan transition behave as specified.
+18. **Refund:** lock, review, channel payout, Lago revocation, recovery, and replay cannot over-refund or leave refunded Credits spendable.
+19. **Webhook and reconciliation:** signature, duplicate, out-of-order, lost delivery, exhausted retry, and periodic reread converge to authoritative state.
+20. **Fault injection:** API timeout, worker crash, queue backlog, response loss, restart, and partial dependency outage lose neither Payment Facts nor Usage Facts and duplicate no benefit.
+21. **Permissions:** Owner and delegated Billing Admin can perform approved commands; ordinary Admin, removed member, API key without commercial capability, and cross-Tenant identifiers are rejected.
+22. **Privacy and secrets:** Lago credentials and payment secrets do not appear in client payloads, logs, Usage metadata, Task context, or artifacts.
+23. **Backup and restore:** staging restore reconciles Customer, Subscription, Wallet, Invoice, Payment, pending work, and Billing Projections within RPO/RTO.
+24. **OpenMeter removal:** after rollback closure, no runtime configuration, write path, worker, or adapter can reach OpenMeter.
+
+### Prior art in the repository
+
+- Existing commercial domain and repository tests already exercise immutable catalog behavior, idempotent payment confirmation, fulfillment recovery, refund locks, usage revisions, Task reservation, and SQLite/PostgreSQL concurrency.
+- Existing payment-provider tests verify WeChat Pay and Alipay signatures, merchant identity, exact money conversion, callback replay, query, close, and refund behavior.
+- Existing OpenMeter contract probes demonstrate the required evidence shape—pinned release, real endpoint behavior, captured result, and explicit blocked status—but their OpenMeter assumptions are not reusable as Lago passes.
+- Existing guarded-route and product-state tests provide prior art for keeping provider objects behind stable WeKnora API and UI states.
+
+### Completion gate
+
+The feature is complete only when the entire behavior and contract matrix passes against the pinned Lago Community environment; required unit, integration, concurrency, contract, end-to-end, static, performance, security, and restore checks pass; AGPL review is accepted; independent Spec Compliance and code review have no unresolved blockers; the rollback window is closed; and OpenMeter runtime paths are removed.
+
+Mock success, an OpenAPI schema, an event-ingestion response, or a healthy Lago API process is not sufficient completion evidence.
+
+## Out of Scope
+
+- Migration of OpenMeter development or test data.
+- Lago Cloud.
+- Lago Premium features, including Premium Invoice Preview or Subscription Overrides.
+- Chinese statutory Tax Invoice issuance, red-letter correction, or delivery.
+- Multiple Billing Entities, multiple currencies, and cross-currency Wallet behavior.
+- Complex pricing without a trustworthy pre-dispatch upper bound, including graduated, percentage, minimum-commitment, and commitment-spend models.
+- Automatic recurring payment collection.
+- Direct browser or mobile access to Lago.
+- A Lago-provided per-event rating-complete receipt.
+- ClickHouse and Kafka as the initial Lago event store.
+- Direct operator mutation of published Lago Plans.
+- A maintained Lago fork or custom rated-event callback.
+- Weakening Credits expiry, ordering, budget, refund, or BYOK invariants to fit Lago.
+- Long-term OpenMeter/Lago dual write.
+- Treating a rollback to OpenMeter as a data-recovery strategy after Lago receives real commercial data.
+
+## Further Notes
+
+- The accepted architectural rationale is recorded in ADR-0012: Lago owns the commercial ledger while WeKnora retains synchronous Task admission and external Chinese payment-channel facts.
+- The project glossary is authoritative for Tenant, Shared Organization, Billing Account, Billing Entity, Customer Invoice, Channel Payment Order, Quote, Payment Fact, Fulfillment, Usage Fact, Settlement Batch, Plan Version, Base Plan, Task Budget, Credit Reservation, Reconciliation Pending, Refund Lock, Resource Quota, Platform Model, and BYOK.
+- The throwaway logic prototype validated the separation between Payment, activation, reservation, rating, and revocation. Its key newly surfaced verdict is that actual cost above the reserved upper bound pauses the Task even when unrelated Tenant balance remains positive. The prototype is evidence for the decision, not production code.
+- Four vendor capabilities remain explicit implementation blockers until proven on the pinned Community release: external payment releasing the activation rule; pay-after-success Wallet top-up; Credits-lot expiry and deterministic consumption order; and Task/Pricing Group rating latency and cardinality.
+- Lago event acceptance can be queried but does not expose a public per-event rated status. Settlement therefore remains Task／batch-scoped unless a future, separately approved ADR changes the design.
+- The initial operational objectives are event-to-reconcilable-batch p95 at most sixty seconds, Task pause after five minutes, operator alert after fifteen minutes, RPO at most five minutes, and RTO at most sixty minutes.
