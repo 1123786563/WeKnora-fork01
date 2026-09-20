@@ -29,6 +29,15 @@ func TestSemanticDocumentRevisionWireRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSemanticOperationRefWireRoundTrip(t *testing.T) {
+	original := SemanticOperationRef{Scope: SemanticScopeKey{TenantID: 1, KBID: "kb"}, OperationID: "op"}
+	wire := SemanticOperationRefToWire(original)
+	result, err := SemanticOperationRefFromWire(wire)
+	if err != nil || result != original {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseEchoesBothModes(t *testing.T) {
 	response, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,

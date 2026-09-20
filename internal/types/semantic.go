@@ -19,6 +19,22 @@ type SemanticDocumentRevision struct {
 	Deleted     bool
 }
 
+type SemanticOperationRef struct {
+	Scope       SemanticScopeKey
+	OperationID string
+}
+
+func SemanticOperationRefFromWire(wire *semanticpb.OperationRef) (SemanticOperationRef, error) {
+	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.OperationId == "" {
+		return SemanticOperationRef{}, fmt.Errorf("semantic operation reference is incomplete")
+	}
+	return SemanticOperationRef{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, OperationID: wire.OperationId}, nil
+}
+
+func SemanticOperationRefToWire(value SemanticOperationRef) *semanticpb.OperationRef {
+	return &semanticpb.OperationRef{Scope: &semanticpb.ScopeKey{TenantId: value.Scope.TenantID, KbId: value.Scope.KBID}, OperationId: value.OperationID}
+}
+
 func SemanticDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (SemanticDocumentRevision, error) {
 	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.DocumentId == "" || wire.Revision == 0 {
 		return SemanticDocumentRevision{}, fmt.Errorf("semantic document revision is incomplete")
