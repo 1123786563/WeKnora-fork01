@@ -72,7 +72,7 @@ func TestExecutionRegistrationRoutesUseRealRegistrationTargetRevokeLifecycle(t *
 		`CREATE TABLE execution_registration_challenges (tenant_id integer, owner_id text, challenge_id text, runtime_id text, external_target_id text, public_key_fingerprint text, nonce_hash text, nonce text, expires_at datetime, consumed_at datetime, PRIMARY KEY (tenant_id, owner_id, challenge_id))`,
 		`CREATE TABLE execution_registrations (tenant_id integer, owner_id text, registration_id text, runtime_id text, external_target_id text, public_key_fingerprint text, credential_version integer, state text, idempotency_key text, request_hash text, created_at datetime, revoked_at datetime, PRIMARY KEY (tenant_id, owner_id, registration_id))`,
 		`CREATE TABLE execution_target_identities (tenant_id integer, runtime_id text, external_target_id text, owner_id text, credential_version integer, state text, PRIMARY KEY (tenant_id, runtime_id, external_target_id))`,
-		`CREATE TABLE execution_targets (tenant_id integer, id text, owner_id text, kind text, state text, credential_version integer, runtime_id text, external_target_id text, root_ref text, revoked_at datetime, PRIMARY KEY (tenant_id, id))`,
+		`CREATE TABLE execution_targets (tenant_id integer, id text, owner_id text, kind text, state text, credential_version integer, runtime_id text, external_target_id text, usage_binding_json text NOT NULL DEFAULT '{}', root_ref text, revoked_at datetime, PRIMARY KEY (tenant_id, id))`,
 	} {
 		require.NoError(t, db.Exec(ddl).Error)
 	}
