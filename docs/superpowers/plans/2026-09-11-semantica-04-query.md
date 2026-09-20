@@ -6,13 +6,15 @@
 
 **Architecture:** 三种算法共享授权子图与来源协议；Go负责融合、最终授权和回答交付。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；算法接口、运行模式和验收阈值均待实际证据，不能由本计划宣称 verified。
 
 ---
 
@@ -79,7 +81,7 @@ finally:
 - `semantic/semantic_service/query/rules.py`：版本化受限规则集
 - `semantic/semantic_service/query/reason_rules.py`：规则Reasoner适配
 - `semantic/tests/test_reason_rules.py`：前提/冲突/循环测试
-- `semantic/rules/test-control-v1.json`：仅测试控股传递规则
+- `semantic/rules/test-depends-on-v1.json`：仅测试已注册的依赖传递规则
 
 **接口：** RuleRegistry.load(version:str)->RuleSet、RuleReasoner.reason(request:ReasonRequest)->ReasonResponse；RuleSet含version/digest/rules，规则只由部署注册，客户端只能指定已授权版本。事实推导DAG由assertion ID和rule ID组成。测试facts元组最后一项为assertion ID（a1/a2），其来源evidence另在fixture中绑定，不能混用两种ID。
 
@@ -88,19 +90,19 @@ finally:
 ```
 def test_transitive_rule_cannot_infer_without_second_edge(rule_reasoner):
     result = rule_reasoner.reason_fixture(
-        facts=[("a", "controls", "b", "a1")], goal=("a", "controls", "c"))
+        facts=[("a", "depends_on", "b", "a1")], goal=("a", "indirectly_depends_on", "c"))
     assert result.status == "insufficient_evidence"
 
 def test_proof_lists_both_premises(rule_reasoner):
     result = rule_reasoner.reason_fixture(
-        facts=[("a", "controls", "b", "a1"), ("b", "controls", "c", "a2")],
-        goal=("a", "controls", "c"))
+        facts=[("a", "depends_on", "b", "a1"), ("b", "depends_on", "c", "a2")],
+        goal=("a", "indirectly_depends_on", "c"))
     assert set(result.premise_ids) == {"a1", "a2"}
 ```
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 定义受限规则JSON grammar、谓词白名单和版本digest，禁止eval/任意SPARQL/执行代码；reason_fixture测试fixture调用正式适配而非另一套推理器**
+- [ ] **3. 定义受限规则JSON grammar、谓词白名单和版本digest，显式注册 `depends_on(x,y)&depends_on(y,z)->indirectly_depends_on(x,z)`；禁止eval/任意SPARQL/执行代码，不为其他关系提供默认传递；reason_fixture测试fixture调用正式适配而非另一套推理器**
 
 - [ ] **4. 将授权断言映射到已验证Reasoner输入，保存前提ID和规则ID回映射；限制轮数/事实数/时限，检测证明DAG环**
 
@@ -137,7 +139,7 @@ if proof.has_cycle or not registry.contains(proof.rule_id, requested_version):
 
 ```
 def test_model_cannot_cite_nonexistent_evidence():
-    payload = {"status": "supported", "conclusion": "甲控制丙",
+    payload = {"status": "supported", "conclusion": "模块 A 间接依赖模块 C",
                "premise_ids": ["invented"], "conclusion_kind": "model"}
     with pytest.raises(InvalidConclusion):
         validate_conclusion(payload, {"a1", "a2"})
@@ -182,7 +184,7 @@ if not set(payload["premise_ids"]) <= authorized_assertion_ids:
 - `internal/agent/tools/query_knowledge_graph.go`：工具调用新门面
 - `internal/container/container.go`：注入查询服务
 
-**接口：** SemanticQueryService.Search(ctx,subjectID string,req SearchRequest)(SearchResponse,error)、Reason(ctx,subjectID string,req ReasonRequest)(ReasonResponse,error)；服务内部签发scope，外部调用者不能自行授权。ValidateDelivery在整份回答生成后、响应内容交付前执行。
+**接口：** SemanticQueryService.Search(ctx,subjectID string,req SearchRequest)(SearchResponse,error)、Reason(ctx,subjectID string,req ReasonRequest)(ReasonResponse,error)；SearchResponse 同时返回 requested_mode 与 actual_mode。服务内部签发scope，外部调用者不能自行授权；Reason 仅接受明确用户模式或已授权 Agent 工具调用，并校验 scope/tool/budget。ValidateDelivery在整份回答生成后、响应内容交付前执行。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -198,13 +200,13 @@ func TestSemanticQueryDiscardsWholeResultOnRevoke(t *testing.T) {
 
 - [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticQuery -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 所有chat与Agent图工具进入统一门面；Go构造访问范围和预算，不能继续在semantica后端下走旧graphRepo获取旁路数据**
+- [ ] **3. 所有chat与Agent图工具进入统一门面；Go构造访问范围和预算，不能继续在semantica后端下走旧graphRepo获取旁路数据。普通 GraphRAG 不隐式调用 Reason；Reason 只接受用户 requested mode 或已授权 Agent tool。**
 
 - [ ] **4. 普通向量/全文与语义结果按RRF或明确排名规则融合，保留revision证据；新增fusionConfig固定RRF k=60作为实验初值，去重键document/revision/chunk**
 
 - [ ] **5. 生成最终回答后复查epoch/deny；变化时整份答案丢弃，最多一次使用新scope重算，仍变化返回可重试错误，禁止无限消耗**
 
-- [ ] **6. 在最终检查前只发送不含知识内容的进度；普通GraphRAG可按请求配置降级并标明mode，明确Reason请求失败不可伪装普通搜索为推理**
+- [ ] **6. 在最终检查前只发送不含知识内容的进度；返回 requested_mode 与 actual_mode。普通 GraphRAG 可按请求配置降级并标明 actual_mode；明确 Reason 请求在服务不可用、索引未就绪或执行失败时显示未完成与重试入口，不能用普通搜索伪装推理。**
 
 关键实现约束：
 

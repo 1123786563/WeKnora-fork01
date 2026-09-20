@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "classification": "actual-runtime",
+  "command": [
+    "semantic/experiments/runtime_probe.py",
+    "--wheel",
+    "/tmp/semantica-0.6.8-py3-none-any.whl",
+    "--output",
+    "docs/superpowers/plans/semantica/evidence/2026-09-20/runtime-312.json"
+  ],
+  "python": {
+    "version": "3.12.12 (main, Feb  4 2026, 01:57:59) [Clang 21.1.4 ]",
+    "executable": "/Users/wuyongjun/.codex/worktrees/semantica-capability-probe/WeKnora-fork01/semantic/experiments/.venv312/bin/python"
+  },
+  "wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7",
+  "requirements_sha256": "20256fa22c38119c46b7466261e24166054c8b9b21d94035a80441449989db55",
+  "dependencies": {
+    "numpy": "2.0.2",
+    "scipy": "1.13.1",
+    "networkx": "3.2.1",
+    "python-dateutil": "2.9.0.post0",
+    "PyYAML": "6.0.2",
+    "rdflib": "7.1.4",
+    "pytest": "8.4.2"
+  },
+  "public_import": {
+    "exit_code": 0
+  },
+  "semantica_file": "/var/folders/_8/x5vdz8d97cld_s1yp0th3zr00000gn/T/semantica-wheel-gwzzjvaf/semantica/__init__.py",
+  "reasoner": {
+    "positive": {
+      "conclusion": "IndirectDependsOn(A, C)",
+      "premises": [
+        "DependsOn(A, B)",
+        "DependsOn(B, C)"
+      ]
+    },
+    "missing_second_premise": {
+      "results": []
+    }
+  },
+  "context": {
+    "classification": "actual-runtime",
+    "add_nodes_return": 1,
+    "add_edges_return": 1
+  },
+  "graph_reasoner": {
+    "classification": "mock",
+    "factory_patch": true,
+    "result": "controlled-result",
+    "entity_property_in_prompt": true,
+    "relationship_property_in_prompt": true,
+    "limitation": "not a real provider or Go gateway"
+  }
+}

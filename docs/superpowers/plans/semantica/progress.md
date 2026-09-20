@@ -1,8 +1,8 @@
 # Semantica 实施台账
 
-状态：仅计划完成，24个任务均未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：24 个正式任务仍为 pending，尚未完成任务级验收；本轮先导 probe 另行留证，不改变各任务状态。总计划：[实施入口](../2026-09-11-semantica-implementation.md)，校准入口：[2026-09-20 rebaseline](../2026-09-20-semantica-rebaseline.md)。ADR-0002 与 rebaseline 优先于旧计划中的未验证建议。
 
-状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
+状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制及证据层（static / actual-runtime / controlled-provider / live-model / real-storage）；无真实对应层证据不标记verified，mock 不得替代实际运行或存储。执行前记录实际基线与已有脏文件。
 
 | 任务 | 名称 | 依赖 | 状态 | 证据/提交/阻断原因 |
 |---|---|---|---|---|
@@ -35,8 +35,12 @@
 
 每次执行新增一条记录，填写实际内容，不改写旧证据：日期、任务、基线SHA、锁文件hash、修改文件、RED命令及退出码、GREEN命令及退出码、真实环境、证据位置、review结果、提交SHA、剩余限制。
 
+## 先导 probe 记录
+
+- 2026-09-20：[README](evidence/2026-09-20/README.md)、[REPORT](evidence/2026-09-20/REPORT.md) 与 [runtime-312.json](evidence/2026-09-20/runtime-312.json) 是有限可复现 probe 证据；不改变 24 个正式任务的 pending 状态，也不构成 V01/V02/V03 验收。
+
 ## 当前边界
 
-- 本轮只编写计划，没有能力实验、测试运行、容器启动、模型调用或上线切换。
+- 本台账不以正在进行的 probe 代替 V01–V03、实际存储或生产验收；实验输出写入对应证据产物后再按层级判断。
 - V01精确版本、V03数值门槛、真实模型证据须在执行阶段补齐；这些是明确任务产物，不是已经通过的前提。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

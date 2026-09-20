@@ -6,13 +6,15 @@
 
 **Architecture:** 实验环境独立于生产服务；先证实持久存储、授权子图桥接与两种推理。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。V01–V03 仍为 pending；静态或 probe 资料不是 V01/V02 `verified`，未验证版本、协议、存储和阈值仅为候选。
 
 ---
 
@@ -74,7 +76,7 @@ record = {"semantica_version": version("semantica"),
 
 **文件与职责：**
 
-- `semantic/experiments/test_graph_bridge.py`：真实 Neo4j 持久化/重启实验
+- `semantic/experiments/test_graph_bridge.py`：真实候选图存储持久化/重启实验
 - `semantic/experiments/test_reasoning_bridge.py`：规则及模型推理验证
 - `semantic/experiments/fixtures/controlled_graph.json`：带文档来源的中文图
 - `semantic/experiments/bridge_probe.py`：窄上游适配，非生产实现
@@ -90,14 +92,14 @@ def test_persistent_bridge_keeps_source_ids():
     assert result["restart_verified"] is True
     assert set(result["evidence_ids"]) == {"e-d1", "e-d2"}
 
-def test_rule_requires_both_premises():
-    result = probe_rule(["controls(a,b)"], ["controls(x,y)&controls(y,z)->controls(x,z)"])
-    assert "controls(a,c)" not in result["conclusions"]
+def test_registered_depends_on_rule_requires_both_premises():
+    result = probe_rule(["depends_on(a,b)"], ["depends_on(x,y)&depends_on(y,z)->indirectly_depends_on(x,z)"])
+    assert "indirectly_depends_on(a,c)" not in result["conclusions"]
 ```
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 在隔离 Neo4j 写入 fixture，关闭客户端并重启实验服务后读取；显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
+- [ ] **3. 比较 shared-isolated（专用 account 及适用 database/schema/collection/prefix）与 dedicated 实例的隔离能力；选定候选写入 fixture、关闭客户端并重启实验服务后读取，显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
 
 - [ ] **4. 按已核实 API 构造注册规则实验和模型自然语言推断实验，加入缺前提/冲突/中文 quote；只允许批准的模型入口，实际调用用量独立记录**
 
@@ -125,11 +127,11 @@ assert all("evidence_ids" in row for row in allowed_rows)
 
 - `semantic/experiments/evaluate.py`：统一评分与成本/延迟汇总
 - `semantic/experiments/test_evaluate.py`：评分器正确性
-- `semantic/experiments/fixtures/questions.jsonl`：至少30个有人工预期的问题
+- `semantic/experiments/fixtures/questions.jsonl`：可复现且有人工预期的中文问题集
 - `docs/superpowers/plans/semantica/evaluation-baseline.md`：native与Semantica对照
 - `docs/superpowers/plans/semantica/acceptance-policy.json`：待用户确认的数值门槛
 
-**接口：** 定义 score_case(expected_evidence:set[str],actual_evidence:set[str])->dict；评估产物记录 correct、source_precision、source_recall、unanswerable_correct、latency_ms、tokens、query_mode；policy.approved 初值 false，只有明确验收决策可变 true。
+**接口：** 定义 score_case(expected_evidence:set[str],actual_evidence:set[str])->dict；评估产物记录 correct、source_precision、source_recall、unanswerable_correct、latency_ms、tokens、requested_mode、actual_mode；policy.approved 初值 false，只有明确验收决策可变 true。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -142,7 +144,7 @@ def test_evidence_score_penalizes_unsupported_source():
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立事实直答、多跳、冲突、无答案、中文定位与权限反例各至少5题；合成数据可公开，真实企业内容须获得授权且不进入仓库**
+- [ ] **3. 建立可复现中文样本，覆盖跨文档检索、技术文档 `depends_on` 规则链、冲突、证据不足、删除/撤权、中文定位与权限反例；合成数据可公开，真实企业内容须获得授权且不进入仓库**
 
 - [ ] **4. 同一文档版本/模型配置分别运行 native 与候选模式；区分冷启动和热查询，记录索引耗时、p50/p95与实际用量**
 
@@ -158,7 +160,7 @@ def score_case(expected_evidence, actual_evidence):
 # 权限泄漏独立 hard gate，不能通过平均分抵消。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、至少30题完整结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
+- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、完整冻结样本的结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
 
 - [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v03 中文质量与上线阈值评估基线`。
 
@@ -166,6 +168,6 @@ def score_case(expected_evidence, actual_evidence):
 
 V01实现的命令：`uv run --project semantic/experiments python semantic/experiments/verify_version.py --output docs/superpowers/plans/semantica/capability-evidence.json`。脚本成功退出0；缺任一要求的包/签名退出非零并仍写失败原因。source_revision不能从包版本猜，读取所选release的源码提交并记录来源URL。
 
-V03实现的命令：`uv run --project semantic/experiments python semantic/experiments/evaluate.py --backend native --dataset semantic/experiments/fixtures/questions.jsonl --output docs/superpowers/plans/semantica/native-results.jsonl`；第二次把backend改为semantica、output改为semantica-results.jsonl。支持backend只有native/semantica，native经隔离测试部署的现有图抽取/检索入口调用；URL从明确的实验配置读，禁止默认连接真实生产环境。每行输出关联case_id、document_revision、mode、engine/model版本、证据集合、实际用量、耗时与错误；失败例也写出，不能从结果集中剔除。
+V03实现的命令：`uv run --project semantic/experiments python semantic/experiments/evaluate.py --backend native --dataset semantic/experiments/fixtures/questions.jsonl --output docs/superpowers/plans/semantica/native-results.jsonl`；第二次把backend改为semantica、output改为semantica-results.jsonl。支持backend只有native/semantica，native经隔离测试部署的现有图抽取/检索入口调用；URL从明确的实验配置读，禁止默认连接真实生产环境。每行输出关联case_id、document_revision、requested_mode、actual_mode、engine/model版本、证据集合、实际用量、耗时与错误；失败例也写出，不能从结果集中剔除。
 
 O03使用同一CLI与冻结dataset复跑正式适配，并记录commit与锁摘要。live model凭据只通过实验环境注入，不写入结果和命令行。
