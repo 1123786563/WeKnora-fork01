@@ -15,6 +15,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	semanticpb "github.com/Tencent/WeKnora/semantic/proto"
+	"go.opentelemetry.io/otel/baggage"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -83,6 +84,15 @@ func TestClientInjectsApplicationTraceAndRequestID(t *testing.T) {
 	ctx, span := tracerProvider.Tracer("semantic-client-test").Start(context.Background(), "application-call")
 	defer span.End()
 	expectedTraceparent := "00-" + span.SpanContext().TraceID().String() + "-" + span.SpanContext().SpanID().String() + "-01"
+	baggageMember, err := baggage.NewMember("tenant", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestBaggage, err := baggage.New(baggageMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = baggage.ContextWithBaggage(ctx, requestBaggage)
 	ctx = context.WithValue(ctx, types.RequestIDContextKey, "request-123")
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-existing", "preserved"))
 	capabilities, err := client.GetCapabilities(ctx)
@@ -101,6 +111,9 @@ func TestClientInjectsApplicationTraceAndRequestID(t *testing.T) {
 	}
 	if got := md.Get("traceparent"); len(got) != 1 || got[0] != expectedTraceparent {
 		t.Fatalf("trace metadata = %v", got)
+	}
+	if got := md.Get("baggage"); len(got) != 1 || got[0] != "tenant=test" {
+		t.Fatalf("baggage metadata = %v", got)
 	}
 	if got := md.Get("x-request-id"); len(got) != 1 || got[0] != "request-123" {
 		t.Fatalf("request ID metadata = %v", got)
