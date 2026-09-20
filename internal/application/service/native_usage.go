@@ -97,7 +97,28 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 	if !claimed {
 		return nativeUsageServiceFailure(nativecontract.ErrConflict, "usage settlement is being recovered by another worker")
 	}
-	if o.AccountingStatus == "unknown" || o.AccountingStatus == "partial" {
+	if o.AccountingStatus == "partial" {
+		// A partial receipt is not a zero-cost receipt: settle the provider's
+		// reported cumulative delta, then retain the unresolved portion for
+		// commercial reconciliation. Distinct idempotency keys let a replay
+		// complete either side after a failure without conflating them.
+		if delta.TotalTokens != 0 {
+			if err := s.budget.Settle(ctx, root, key+":known", delta); err != nil {
+				if releaseErr := s.store.ReleaseSettlement(ctx, fence, delta.IntentID); releaseErr != nil {
+					return nativeUsageServiceFailure(nativecontract.ErrStore, "partial usage settlement and claim release failed")
+				}
+				return err
+			}
+		}
+		if err := s.budget.MarkUnknown(ctx, root, key+":unknown"); err != nil {
+			if releaseErr := s.store.ReleaseSettlement(ctx, fence, delta.IntentID); releaseErr != nil {
+				return nativeUsageServiceFailure(nativecontract.ErrStore, "partial usage reconciliation and claim release failed")
+			}
+			return err
+		}
+		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
+	}
+	if o.AccountingStatus == "unknown" {
 		if err := s.budget.MarkUnknown(ctx, root, key); err != nil {
 			if releaseErr := s.store.ReleaseSettlement(ctx, fence, delta.IntentID); releaseErr != nil {
 				return nativeUsageServiceFailure(nativecontract.ErrStore, "usage reconciliation and claim release failed")

@@ -83,10 +83,12 @@ type nativeUsageBudgetFake struct {
 	mu                          sync.Mutex
 	reserves, settles, unknowns int
 	roots                       []string
+	settleKeys, unknownKeys     []string
 	settleErr                   error
 	unknownErr                  error
 	remaining                   int64
 	settledDeltas               []NativeUsageDelta
+	settled, reconciled         map[string]bool
 }
 
 func (b *nativeUsageBudgetFake) Reserve(_ context.Context, root nativecontract.RunIdentity, _ string, units int64) error {
@@ -100,25 +102,41 @@ func (b *nativeUsageBudgetFake) Reserve(_ context.Context, root nativecontract.R
 	b.reserves++
 	return nil
 }
-func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.RunIdentity, _ string, delta NativeUsageDelta) error {
+func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.RunIdentity, key string, delta NativeUsageDelta) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.roots = append(b.roots, root.RunID)
 	if b.settleErr != nil {
 		return b.settleErr
 	}
+	if b.settled == nil {
+		b.settled = map[string]bool{}
+	}
+	if b.settled[key] {
+		return nil
+	}
+	b.settled[key] = true
 	b.settles++
+	b.settleKeys = append(b.settleKeys, key)
 	b.settledDeltas = append(b.settledDeltas, delta)
 	return nil
 }
-func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontract.RunIdentity, _ string) error {
+func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontract.RunIdentity, key string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.roots = append(b.roots, root.RunID)
 	if b.unknownErr != nil {
 		return b.unknownErr
 	}
+	if b.reconciled == nil {
+		b.reconciled = map[string]bool{}
+	}
+	if b.reconciled[key] {
+		return nil
+	}
+	b.reconciled[key] = true
 	b.unknowns++
+	b.unknownKeys = append(b.unknownKeys, key)
 	return nil
 }
 
@@ -248,7 +266,7 @@ func TestNativeUsageServiceConcurrentDuplicateHasOneBudgetEffect(t *testing.T) {
 	require.Equal(t, 1, budget.settles)
 }
 
-func TestNativeUsageServicePartialUsageIsReconciled(t *testing.T) {
+func TestNativeUsageServicePartialUsageSettlesKnownTokensAndMarksRemainderUnknown(t *testing.T) {
 	o := nativeUsageServiceObservation()
 	o.AccountingStatus = "partial"
 	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
@@ -256,7 +274,25 @@ func TestNativeUsageServicePartialUsageIsReconciled(t *testing.T) {
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.unknowns)
-	require.Zero(t, budget.settles)
+	require.Equal(t, 1, budget.settles, "the reported portion of a partial receipt is an incurred cost")
+	require.Len(t, budget.settledDeltas, 1)
+	require.EqualValues(t, 10, budget.settledDeltas[0].TotalTokens)
+}
+
+func TestNativeUsageServicePartialUsageRetryDoesNotRepeatKnownSettlement(t *testing.T) {
+	o := nativeUsageServiceObservation()
+	o.AccountingStatus = "partial"
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
+	budget := &nativeUsageBudgetFake{remaining: 10, unknownErr: errors.New("reconciliation unavailable")}
+	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
+
+	require.Error(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
+	budget.unknownErr = nil
+	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
+	require.Equal(t, 1, budget.settles)
+	require.Equal(t, 1, budget.unknowns)
+	require.Equal(t, []string{"a:o:1:known"}, budget.settleKeys)
+	require.Equal(t, []string{"a:o:1:unknown"}, budget.unknownKeys)
 }
 
 func nativeUsageRealLedgerService(t *testing.T, budget *nativeUsageBudgetFake, funding nativecontract.FundingBinding) (*NativeUsageService, nativecontract.Fence) {
