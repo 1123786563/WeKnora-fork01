@@ -169,6 +169,13 @@ func (r *processSyncSyncLogRepo) CancelPendingByDataSource(context.Context, stri
 	return nil
 }
 func (r *processSyncSyncLogRepo) CleanupOldLogs(context.Context, int) error { return nil }
+func (r *processSyncSyncLogRepo) UpdateHeartbeat(context.Context, string, time.Time) error {
+	return nil
+}
+func (r *processSyncSyncLogRepo) UpdateAsynqTaskID(context.Context, string, string) error {
+	return nil
+}
+func (r *processSyncSyncLogRepo) RequestCancel(context.Context, string) error { return nil }
 
 func TestAllFetchedItemsFailedError(t *testing.T) {
 	err := allFetchedItemsFailedError(&types.SyncResult{

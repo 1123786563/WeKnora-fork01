@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -102,6 +103,13 @@ func (r *kbDeleteSyncLogRepo) CancelPendingByDataSource(_ context.Context, dsID 
 	return nil
 }
 func (r *kbDeleteSyncLogRepo) CleanupOldLogs(_ context.Context, _ int) error { return nil }
+func (r *kbDeleteSyncLogRepo) UpdateHeartbeat(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (r *kbDeleteSyncLogRepo) UpdateAsynqTaskID(_ context.Context, _, _ string) error {
+	return nil
+}
+func (r *kbDeleteSyncLogRepo) RequestCancel(_ context.Context, _ string) error { return nil }
 
 var _ interfaces.SyncLogRepository = (*kbDeleteSyncLogRepo)(nil)
 

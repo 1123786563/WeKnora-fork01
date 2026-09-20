@@ -50,6 +50,7 @@ const (
 	DataSourceStatusDeleted = "deleted"
 
 	// Sync log status
+	SyncLogStatusPending  = "pending"
 	SyncLogStatusRunning  = "running"
 	SyncLogStatusSuccess  = "success"
 	SyncLogStatusPartial  = "partial"
@@ -184,6 +185,15 @@ type SyncLog struct {
 
 	// Detailed sync result (JSON-encoded)
 	Result JSON `json:"result" gorm:"type:jsonb"`
+
+	// Last liveness heartbeat from the running sync loop (NULL = no heartbeat yet)
+	HeartbeatAt *time.Time `json:"heartbeat_at"`
+
+	// Asynq task id backing this run (queue-level inspection and hard cancel)
+	AsynqTaskID string `json:"asynq_task_id" gorm:"type:varchar(64)"`
+
+	// Cooperative cancel flag: set via API, observed at sync checkpoints
+	CancelRequested bool `json:"cancel_requested"`
 
 	// Creation timestamp (usually same as StartedAt)
 	CreatedAt time.Time `json:"created_at"`

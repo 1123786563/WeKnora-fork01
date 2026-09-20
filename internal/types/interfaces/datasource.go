@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/hibiken/asynq"
@@ -119,6 +120,16 @@ type SyncLogRepository interface {
 
 	// UpdateResult updates only fields produced by a sync run.
 	UpdateResult(ctx context.Context, log *types.SyncLog) error
+
+	// UpdateHeartbeat records a liveness heartbeat for a sync run.
+	UpdateHeartbeat(ctx context.Context, id string, at time.Time) error
+
+	// UpdateAsynqTaskID records the asynq task id backing a sync run.
+	UpdateAsynqTaskID(ctx context.Context, id string, taskID string) error
+
+	// RequestCancel flags a running sync log for cooperative cancellation.
+	// Non-running rows are a no-op: the row is left untouched and nil is returned.
+	RequestCancel(ctx context.Context, id string) error
 
 	// CancelPendingByDataSource marks all non-terminal sync logs for a data source as canceled.
 	CancelPendingByDataSource(ctx context.Context, dsID string) error
