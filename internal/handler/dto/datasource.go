@@ -59,15 +59,15 @@ func NewDataSourceResponse(ds *types.DataSource) *DataSourceResponse {
 		return nil
 	}
 	var cfgDTO *DataSourceConfigDTO
-	configured := false
-	if parsed, err := ds.ParseConfig(); err == nil && parsed != nil {
+	var parsed *types.DataSourceConfig
+	if p, err := ds.ParseConfig(); err == nil && p != nil {
+		parsed = p
 		cfgDTO = &DataSourceConfigDTO{
 			Type:        parsed.Type,
 			ResourceIDs: parsed.ResourceIDs,
 			Settings:    parsed.Settings,
 		}
 		enrichRSSFeedURLsInSettings(ds.Type, parsed, cfgDTO)
-		configured = parsed.HasConfiguredCredentials(ds.Type)
 	}
 	return &DataSourceResponse{
 		ID:                   ds.ID,
@@ -90,10 +90,39 @@ func NewDataSourceResponse(ds *types.DataSource) *DataSourceResponse {
 		UpdatedAt:            ds.UpdatedAt,
 		TotalItemsSynced:     ds.TotalItemsSynced,
 		LatestSyncLog:        ds.LatestSyncLog,
-		Credentials: map[string]CredentialFieldMetadata{
-			"credentials": {Configured: configured},
-		},
+		Credentials:          NewDataSourceCredentialFields(ds.Type, parsed),
 	}
+}
+
+// credentialReauthorizationWindow is how close to expiry the DataSource
+// credentials metadata starts flagging needs_reauthorization, giving the UI
+// a comfortable window to prompt a re-auth before syncs actually break
+// (SP2-b §6.4).
+const credentialReauthorizationWindow = 7 * 24 * time.Hour
+
+// NewDataSourceCredentialFields builds the field-level credential metadata
+// for a data source (SP2-b §6.4) — presence plus expiry/refresh bookkeeping,
+// following the MCP/Model credentials-subresource field-level shape. parsed
+// must be the DECRYPTED config (DataSource.ParseConfig output) so timestamps
+// are readable; only the derived metadata travels to the response, never a
+// credential value.
+func NewDataSourceCredentialFields(dsType string, parsed *types.DataSourceConfig) map[string]CredentialFieldMetadata {
+	var meta CredentialFieldMetadata
+	if parsed != nil {
+		meta.Configured = parsed.HasConfiguredCredentials(dsType)
+		if expiry, ok := types.CredentialsExpiry(parsed); ok {
+			e := expiry
+			meta.ExpiresAt = &e
+			// Already expired or expiring inside the window → the UI should
+			// offer reauthorization. Long-lived tokens stay quiet.
+			meta.NeedsReauthorization = !expiry.After(time.Now().Add(credentialReauthorizationWindow))
+		}
+		if last, ok := types.ParseCredentialTimestamp(parsed, types.CredentialKeyLastRefreshedAt); ok {
+			l := last
+			meta.LastRefreshedAt = &l
+		}
+	}
+	return map[string]CredentialFieldMetadata{"credentials": meta}
 }
 
 // enrichRSSFeedURLsInSettings copies feed_urls from credentials into settings

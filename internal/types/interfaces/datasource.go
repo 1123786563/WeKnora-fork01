@@ -46,6 +46,13 @@ type DataSourceService interface {
 	// Idempotent on already-empty credentials.
 	ClearDataSourceCredentials(ctx context.Context, id string) error
 
+	// RefreshDataSourceCredential is the machine write-back channel for token
+	// refresh (SP2-b §6.2): it rotates ONE credential key in place, leaves
+	// every other key untouched, refuses to write when no usable credentials
+	// are stored (anti-overwrite guard), skips live validation, and audits
+	// its own datasource.credential_auto_refreshed action.
+	RefreshDataSourceCredential(ctx context.Context, dsID, key, value string) error
+
 	// ValidateConnection tests the connection to an external data source
 	ValidateConnection(ctx context.Context, dsID string) error
 

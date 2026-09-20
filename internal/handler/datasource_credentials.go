@@ -82,14 +82,15 @@ func (h *DataSourceCredentialsHandler) Put(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("failed to update credentials: " + err.Error()))
 		return
 	}
-	configured := false
-	if parsed, err := updated.ParseConfig(); err == nil && parsed != nil {
-		configured = parsed.HasConfiguredCredentials(updated.Type)
+	// Field-level metadata from the decrypted config: configured plus the
+	// SP2-b §6.4 expiry/refresh bookkeeping (expires_at, last_refreshed_at,
+	// needs_reauthorization). Values themselves never travel.
+	var parsed *types.DataSourceConfig
+	if p, err := updated.ParseConfig(); err == nil {
+		parsed = p
 	}
 	resp := dto.CredentialsResponse{
-		Fields: map[string]dto.CredentialFieldMetadata{
-			"credentials": {Configured: configured},
-		},
+		Fields: dto.NewDataSourceCredentialFields(updated.Type, parsed),
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": resp})
 }

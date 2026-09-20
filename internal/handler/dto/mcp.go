@@ -72,6 +72,13 @@ type MCPAuthConfigResponse struct {
 // stored server-side, without exposing the value itself.
 type CredentialFieldMetadata struct {
 	Configured bool `json:"configured"`
+	// Expiry/refresh bookkeeping (SP2-b §6.4), populated only by the
+	// DataSource credentials metadata path. MCP/Model/WebSearch leave them
+	// unset; omitempty keeps those wire shapes byte-identical. Like
+	// Configured these are metadata only — never credential material.
+	ExpiresAt            *time.Time `json:"expires_at,omitempty"`
+	LastRefreshedAt      *time.Time `json:"last_refreshed_at,omitempty"`
+	NeedsReauthorization bool       `json:"needs_reauthorization,omitempty"`
 }
 
 // NewMCPServiceResponse converts a stored MCPService into its response shape.

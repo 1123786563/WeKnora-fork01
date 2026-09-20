@@ -22,6 +22,14 @@ var (
 	ErrInvalidConfig      = errors.New("invalid configuration")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 
+	// ErrCredentialRefreshRejected is returned by the machine credential
+	// write-back channel (SP2-b §6.2) when its anti-overwrite guard trips:
+	// no usable credentials are stored (nothing configured, or the stored
+	// blob no longer decrypts under the current SYSTEM_AES_KEY). Writing a
+	// single refreshed key in that state would permanently overwrite the
+	// surviving ciphertext with blank values, so the channel refuses.
+	ErrCredentialRefreshRejected = errors.New("credential write-back rejected: no usable stored credentials")
+
 	// Sync errors
 	ErrSyncFailed       = errors.New("sync operation failed")
 	ErrSyncCanceled     = errors.New("sync operation was canceled")

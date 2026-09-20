@@ -465,6 +465,98 @@ func (s *DataSourceService) ClearDataSourceCredentials(ctx context.Context, id s
 	return nil
 }
 
+// RefreshDataSourceCredential is the machine write-back channel for token
+// refresh (SP2-b §6.2). It deliberately differs from the user-facing
+// UpdateDataSourceCredentials in four ways:
+//
+//  1. Anti-overwrite guard first: when no usable credentials are stored the
+//     write is refused. This closes the key-rotation trap — after a rotated
+//     or removed SYSTEM_AES_KEY, ParseConfig blanks values to "", and an
+//     unconditional single-key write-back would re-encrypt those blanks and
+//     permanently destroy the surviving ciphertext. Spec §7 hard constraint.
+//  2. Single-key update: only the named key (plus the last_refreshed_at
+//     bookkeeping stamp) changes; every other credential key round-trips
+//     through decrypt → re-encrypt untouched.
+//  3. No live validation: the refreshed token is naturally verified by the
+//     next sync, so a flapping upstream must not fail the write-back.
+//  4. Its own audit action (datasource.credential_auto_refreshed), keeping
+//     machine rotations distinguishable from user PUTs in the audit feed.
+func (s *DataSourceService) RefreshDataSourceCredential(ctx context.Context, dsID, key, value string) error {
+	// An empty value would blank the key — the exact overwrite the guard
+	// exists to prevent — so refuse it up front along with missing ids/keys.
+	if dsID == "" || key == "" || value == "" {
+		return datasource.ErrDataSourceInvalid
+	}
+	// 1. Read + decrypt the stored config.
+	existing, err := s.dsRepo.FindByID(ctx, dsID)
+	if err != nil {
+		return err
+	}
+	parsed, err := existing.ParseConfig()
+	if err != nil {
+		return err
+	}
+	// 2. Anti-overwrite guard: nothing usable stored (or the stored blob no
+	//    longer decrypts) → refuse rather than overwrite.
+	if parsed == nil || !parsed.HasConfiguredCredentials(existing.Type) ||
+		storedCredentialDecryptFailed(existing.Config, parsed) {
+		logger.Warnf(ctx,
+			"credential write-back rejected (no usable stored credentials): id=%s field=%s",
+			secutils.SanitizeForLog(dsID), secutils.SanitizeForLog(key))
+		return datasource.ErrCredentialRefreshRejected
+	}
+	// 3. Single-key update: the named key plus the last_refreshed_at stamp;
+	//    all other keys keep their decrypted values.
+	parsed.Credentials[key] = value
+	parsed.Credentials[types.CredentialKeyLastRefreshedAt] = time.Now().UTC().Format(time.RFC3339)
+	// 4. Re-encrypt and persist (ToJSON is the only credential write path).
+	blob, err := parsed.ToJSON()
+	if err != nil {
+		return err
+	}
+	existing.Config = blob
+	if err := s.dsRepo.Update(ctx, existing); err != nil {
+		logger.Errorf(ctx, "failed to persist refreshed credential: id=%s: %v", secutils.SanitizeForLog(dsID), err)
+		return err
+	}
+	// 5. Audit as its own action; the next sync validates the new token.
+	logger.Infof(ctx, "DataSource credential auto-refreshed: id=%s field=%s",
+		secutils.SanitizeForLog(dsID), secutils.SanitizeForLog(key))
+	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID,
+		types.AuditActionDataSourceCredentialAutoRefreshed,
+		"data_source", existing.ID, types.AuditOutcomeSuccess,
+		map[string]any{"name": existing.Name, "type": existing.Type, "field": key})
+	return nil
+}
+
+// storedCredentialDecryptFailed reports whether any stored credential string
+// failed to decrypt under the current SYSTEM_AES_KEY. ParseConfig blanks such
+// values to "" (lenient load), so compare the decrypted map against the raw
+// jsonb: a non-empty stored string that parsed back empty is a decrypt
+// failure, and writing back in that state would overwrite ciphertext with
+// blanks. Legitimately empty stored strings are not failures.
+func storedCredentialDecryptFailed(raw types.JSON, parsed *types.DataSourceConfig) bool {
+	if len(raw) == 0 || parsed == nil {
+		return false
+	}
+	var probe struct {
+		Credentials map[string]json.RawMessage `json:"credentials"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil || len(probe.Credentials) == 0 {
+		return false
+	}
+	for k, rawVal := range probe.Credentials {
+		var stored string
+		if err := json.Unmarshal(rawVal, &stored); err != nil || stored == "" {
+			continue // non-string value, or stored-empty is not a decrypt failure
+		}
+		if decrypted, _ := parsed.Credentials[k].(string); decrypted == "" {
+			return true
+		}
+	}
+	return false
+}
+
 // DeleteDataSource deletes a data source (soft delete). With
 // purgeDocuments=true (SP2-a Task 8) it appends one step at the end of the
 // existing sequence: enqueue the async datasource:purge task that drains every

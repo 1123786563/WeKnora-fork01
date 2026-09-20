@@ -23,6 +23,7 @@ type stubDataSourceService struct {
 	countDataSourceDocuments func(ctx context.Context, tenantID uint64, dsID string) (int64, error)
 	manualSync               func(ctx context.Context, dsID string, forceFull bool) (*types.SyncLog, error)
 	reindexItems             func(ctx context.Context, dsID string, externalIDs []string, requestID string) (string, error)
+	updateCredentials        func(ctx context.Context, id string, credentials map[string]interface{}) (*types.DataSource, error)
 }
 
 func (s *stubDataSourceService) GetSyncLogs(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error) {
@@ -72,6 +73,13 @@ func (s *stubDataSourceService) ReindexItems(ctx context.Context, dsID string, e
 		return s.reindexItems(ctx, dsID, externalIDs, requestID)
 	}
 	return "", nil
+}
+
+func (s *stubDataSourceService) UpdateDataSourceCredentials(ctx context.Context, id string, credentials map[string]interface{}) (*types.DataSource, error) {
+	if s.updateCredentials != nil {
+		return s.updateCredentials(ctx, id, credentials)
+	}
+	return nil, nil
 }
 
 type stubKBServiceForDS struct {

@@ -296,6 +296,62 @@ func (d *DataSourceConfig) StripNonSecretCredentials(connectorType string) {
 	}
 }
 
+// Credential key conventions inside DataSourceConfig.Credentials (SP2-b §6.1
+// storage protocol): token-class connectors store these as plain string keys
+// in the encrypted map. No schema change — JSONB field conventions only.
+const (
+	// CredentialKeyExpiresAt carries the token expiry as an ISO-8601
+	// timestamp string. Absent or unparseable means a long-lived credential.
+	CredentialKeyExpiresAt = "expires_at"
+	// CredentialKeyLastRefreshedAt records when the machine refresh channel
+	// last wrote a credential back (bookkeeping only, never secret material).
+	CredentialKeyLastRefreshedAt = "last_refreshed_at"
+)
+
+// credentialTimestampLayouts are the ISO-8601 variants upstream token
+// endpoints commonly emit for expires_at-style fields. RFC3339 (first) also
+// accepts fractional seconds via time.Parse.
+var credentialTimestampLayouts = []string{
+	time.RFC3339,                // 2006-01-02T15:04:05Z07:00
+	"2006-01-02T15:04:05Z0700",  // offset without colon
+	"2006-01-02T15:04:05",       // naive, read as UTC
+	"2006-01-02 15:04:05Z07:00", // space separator with offset
+	"2006-01-02 15:04:05",       // space separator, read as UTC
+	time.DateOnly,               // 2006-01-02
+}
+
+// ParseCredentialTimestamp leniently parses an ISO timestamp stored as a
+// plain string under key in config.Credentials. A missing key, a non-string
+// value or unparseable text yields (zero, false) — callers treat that as
+// "no timestamp recorded" instead of failing, matching the §6.1 rule that
+// bad expires_at values mean a long-lived credential.
+func ParseCredentialTimestamp(config *DataSourceConfig, key string) (time.Time, bool) {
+	if config == nil {
+		return time.Time{}, false
+	}
+	raw, ok := config.Credentials[key]
+	if !ok {
+		return time.Time{}, false
+	}
+	s, ok := raw.(string)
+	if !ok || s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range credentialTimestampLayouts {
+		if ts, err := time.Parse(layout, s); err == nil {
+			return ts, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// CredentialsExpiry reads the expires_at convention from the credentials map
+// (SP2-b §6.1). Missing or malformed values report (zero, false) = the
+// credential is long-lived and never needs proactive refresh.
+func CredentialsExpiry(config *DataSourceConfig) (time.Time, bool) {
+	return ParseCredentialTimestamp(config, CredentialKeyExpiresAt)
+}
+
 // Resource represents a syncable resource (document, folder, space) from external system
 type Resource struct {
 	// Unique identifier in the external system

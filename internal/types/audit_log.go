@@ -177,6 +177,11 @@ const (
 	AuditActionDataSourceSyncFailed    AuditAction = "datasource.sync_failed"
 	AuditActionDataSourcePaused        AuditAction = "datasource.paused"
 	AuditActionDataSourceResumed       AuditAction = "datasource.resumed"
+	// Machine credential refresh write-back (SP2-b §6.2) — deliberately its
+	// own action so automated token rotations stay distinguishable from user
+	// PUT /credentials events (which audit as datasource.updated with
+	// changed_fields=credentials).
+	AuditActionDataSourceCredentialAutoRefreshed AuditAction = "datasource.credential_auto_refreshed"
 
 	AuditActionKBShareAdded             AuditAction = "kb.share_added"
 	AuditActionKBSharePermissionChanged AuditAction = "kb.share_permission_changed"
