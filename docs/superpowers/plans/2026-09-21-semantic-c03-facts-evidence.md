@@ -39,8 +39,8 @@
 
 **Interfaces:**
 - `extract_quote(text: str, start: int, end: int) -> str` returns `text[start:end]` for a valid half-open Unicode-codepoint span and raises `ValueError` unless `text` is `str`, `type(start) is type(end) is int` (so bool is rejected), and `0 <= start <= end <= len(text)`.
-- `validate_span(text: str, start: int, end: int, quote: str) -> None` requires exact extracted quote equality.
-- `validate_evidence(chunk: ChunkSnapshot, evidence: Evidence) -> None` requires matching chunk id and opaque content-hash value; an anchored quote must exactly match its span, and an unanchored quote must be an exact substring of chunk text.
+- `validate_span(text: str, start: int, end: int, quote: str) -> None` requires `quote` to be a string and exact extracted quote equality.
+- `validate_evidence(chunk: ChunkSnapshot, evidence: Evidence) -> None` requires string chunk text/quote, matching chunk id and opaque content-hash value; an anchored quote must exactly match its span, and an unanchored quote must be an exact substring of chunk text.
 
 - [ ] **Step 1: Write failing behavior tests**
 
@@ -70,6 +70,16 @@ def test_unanchored_evidence_must_be_an_exact_substring():
     validate_evidence(chunk, Evidence("e1", "d1", 1, "c1", "h", "😀", None, None))
     with pytest.raises(ValueError):
         validate_evidence(chunk, Evidence("e2", "d1", 1, "c1", "h", "缺失", None, None))
+    decomposed = ChunkSnapshot("c2", "e\u0301", "h2")
+    validate_evidence(decomposed, Evidence("e3", "d1", 1, "c2", "h2", "e\u0301", None, None))
+    with pytest.raises(ValueError):
+        validate_evidence(decomposed, Evidence("e4", "d1", 1, "c2", "h2", "\u00e9", None, None))
+
+def test_unanchored_evidence_rejects_non_string_text_and_quote():
+    with pytest.raises(ValueError):
+        validate_evidence(ChunkSnapshot("c1", 1, "h"), Evidence("e1", "d1", 1, "c1", "h", "q", None, None))
+    with pytest.raises(ValueError):
+        validate_evidence(ChunkSnapshot("c1", "text", "h"), Evidence("e2", "d1", 1, "c1", "h", 1, None, None))
 ```
 
 - [ ] **Step 2: Run RED**
@@ -103,13 +113,13 @@ Commit `feat(semantic): validate source evidence spans` with only these files.
 
 **Interfaces:**
 - `new_entity_id() -> str` returns a canonical UUID string.
-- `Entity(entity_id: str, scope: ScopeKey, entity_type: str)` is identity only; it has no name or alias field.
-- `EntityRef(entity_id: str, scope: ScopeKey)` makes scope part of every subject/object reference.
-- `ScopedEvidence(scope: ScopeKey, evidence: Evidence)` associates a C01 evidence DTO with the scope required by the domain model without changing the C01 wire contract.
-- `AssertionKind` has exactly `SOURCE`, `RULE_DERIVED`, and `MODEL_INFERRED` values (`source`, `rule_derived`, `model_inferred`). `Assertion` has non-empty `assertion_id`, `scope`, `subject: EntityRef`, non-empty `predicate`, exactly one of `object_id: EntityRef | None` and `value: str | None`, `kind`, tuple `evidence_ids`, optional `derivation`, and optional timezone-aware `valid_from`/`valid_until: datetime`; when both times exist, `valid_from < valid_until`.
+- `Entity(entity_id: str, scope: ScopeKey, entity_type: str)` is identity only; it has no name or alias field. It rejects non-`ScopeKey` scope values.
+- `EntityRef(entity_id: str, scope: ScopeKey)` makes scope part of every subject/object reference and rejects non-`ScopeKey` values.
+- `ScopedEvidence(scope: ScopeKey, evidence: Evidence)` associates a C01 evidence DTO with the scope required by the domain model without changing the C01 wire contract; both fields are type-checked and a non-`ScopeKey` scope is rejected.
+- `AssertionKind` has exactly `SOURCE`, `RULE_DERIVED`, and `MODEL_INFERRED` values (`source`, `rule_derived`, `model_inferred`). `Assertion` has non-empty `assertion_id`, a required `ScopeKey` `scope`, `subject: EntityRef`, non-empty `predicate`, exactly one of `object_id: EntityRef | None` and `value: str | None`, `kind`, tuple `evidence_ids`, optional `derivation`, and optional timezone-aware `valid_from`/`valid_until: datetime`; when both times exist, `valid_from < valid_until`.
 - A `SOURCE` assertion requires one or more unique evidence IDs and no derivation. `RULE_DERIVED` and `MODEL_INFERRED` assertions require one derivation and no direct evidence IDs.
-- `Derivation` has `conclusion_id`, non-empty unique `premise_ids`, optional `rule_id`/`rule_version`, and optional `model_version`/`prompt_version`. Exactly one complete version pair is required; the pair must match the assertion kind.
-- `validate_assertion(assertion, evidence_by_id: Mapping[str, ScopedEvidence], premises_by_id: Mapping[str, Assertion]) -> None` validates subject/object ref scopes, all reachable evidence/premise references, exact scope equality, map-key identity, version/kind consistency, and the complete reachable support DAG's acyclicity. It does not claim referential existence for entity IDs because C03's approved signature has no entity lookup map. Missing evidence/premise references and scope mismatches raise `ValueError`.
+- `Derivation` explicitly carries a required `ScopeKey` `scope`, `conclusion_id`, non-empty unique `premise_ids`, optional `rule_id`/`rule_version`, and optional `model_version`/`prompt_version`. Exactly one complete version pair is required; the pair and scope must match the parent assertion.
+- `validate_assertion(assertion, evidence_by_id: Mapping[str, ScopedEvidence], premises_by_id: Mapping[str, Assertion]) -> None` first requires the expected public record/mapping types and valid `ScopeKey` values; it then validates subject/object ref scopes, all reachable evidence/premise references, exact scope equality, map-key identity, version/kind consistency, and the complete reachable support DAG's acyclicity. It does not claim referential existence for entity IDs because C03's approved signature has no entity lookup map. Missing evidence/premise references and scope mismatches raise `ValueError`.
 
 - [ ] **Step 1: Write failing model and validation tests**
 
@@ -124,7 +134,7 @@ def test_assertion_requires_exactly_one_object_or_value():
     with pytest.raises(ValueError):
         make_assertion(object_id=None, value=None)
     with pytest.raises(ValueError):
-        make_assertion(object_id=entity_ref("e2"), value="literal")
+        make_assertion(object_id=EntityRef(ENTITY_2, SCOPE), value="literal")
 
 def test_source_assertion_retains_conflicting_values():
     first = source_assertion(assertion_id="a1", value="1", evidence_id="src-1")
@@ -148,6 +158,28 @@ def test_subject_and_object_refs_must_share_assertion_scope():
     with pytest.raises(ValueError):
         make_assertion(object_id=EntityRef(ENTITY_2, foreign))
 
+def test_derivation_carries_the_same_explicit_scope_as_its_assertion():
+    derivation = Derivation(scope=OTHER_SCOPE, conclusion_id="r1", premise_ids=("p1",),
+                            rule_id="depends_on_transitive", rule_version="v1")
+    with pytest.raises(ValueError):
+        make_assertion(kind=AssertionKind.RULE_DERIVED, evidence_ids=(),
+                       derivation=derivation)
+
+def test_every_fact_record_requires_a_scope_key():
+    evidence = Evidence("e1", "d1", 1, "c1", "h", "quote", None, None)
+    for invalid_scope in (None, "tenant-only"):
+        with pytest.raises(ValueError):
+            Entity(ENTITY_1, invalid_scope, "component")
+        with pytest.raises(ValueError):
+            EntityRef(ENTITY_1, invalid_scope)
+        with pytest.raises(ValueError):
+            ScopedEvidence(invalid_scope, evidence)
+    with pytest.raises(ValueError):
+        Derivation(scope=None, conclusion_id="r1", premise_ids=("p1",),
+                   rule_id="depends_on_transitive", rule_version="v1")
+    with pytest.raises(ValueError):
+        make_assertion(scope=None)
+
 def test_source_assertion_requires_resolvable_evidence():
     with pytest.raises(ValueError):
         validate_assertion(source_assertion(evidence_id="missing"), {}, {})
@@ -164,7 +196,7 @@ def test_rule_and_model_derivations_require_matching_version_pairs():
     premise = source_assertion(assertion_id="p1")
     rule = rule_assertion(assertion_id="r1", premise_id="p1")
     validate_assertion(rule, evidence_map("src-1"), {"p1": premise})
-    model_derivation = Derivation(conclusion_id="m1", premise_ids=("p1",),
+    model_derivation = Derivation(scope=SCOPE, conclusion_id="m1", premise_ids=("p1",),
                                  model_version="model-v1", prompt_version="prompt-v1")
     model = make_assertion(assertion_id="m1", kind=AssertionKind.MODEL_INFERRED,
                            evidence_ids=(), derivation=model_derivation)
@@ -213,7 +245,7 @@ def source_assertion(assertion_id="a1", scope=SCOPE, evidence_id="src-1", value=
                           evidence_ids=(evidence_id,), derivation=None)
 
 def rule_assertion(assertion_id="r1", scope=SCOPE, premise_id="p1"):
-    derivation = Derivation(conclusion_id=assertion_id, premise_ids=(premise_id,),
+    derivation = Derivation(scope=scope, conclusion_id=assertion_id, premise_ids=(premise_id,),
                             rule_id="depends_on_transitive", rule_version="v1")
     return make_assertion(assertion_id=assertion_id, scope=scope,
                           kind=AssertionKind.RULE_DERIVED, evidence_ids=(),
