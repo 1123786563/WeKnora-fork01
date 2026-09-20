@@ -98,6 +98,7 @@ export default defineConfig({
       '@weknora/views/integrations/page': fileURLToPath(new URL('../../packages/views/src/integrations/page.tsx', import.meta.url)),
       '@weknora/views/integrations/apiKeys': fileURLToPath(new URL('../../packages/views/src/integrations/apiKeys.ts', import.meta.url)),
       '@weknora/views/integrations/settings-route': fileURLToPath(new URL('../../packages/views/src/integrations/settings-route.ts', import.meta.url)),
+      '@weknora/views/integrations/swagger': fileURLToPath(new URL('../../packages/views/src/integrations/swagger.ts', import.meta.url)),
       '@weknora/views/settings/registry': fileURLToPath(new URL('../../packages/views/src/settings/registry.ts', import.meta.url)),
       '@weknora/views/craft/home': fileURLToPath(new URL('../../packages/views/src/craft/home.tsx', import.meta.url)),
       '@weknora/views/craft/library': fileURLToPath(new URL('../../packages/views/src/craft/library.tsx', import.meta.url)),
