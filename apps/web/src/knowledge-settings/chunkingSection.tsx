@@ -17,6 +17,32 @@ import {
 import { CHUNKING_SAMPLES, DEFAULT_SAMPLE_ID } from './chunkingSamples.ts';
 import './KnowledgeSettingsPage.css';
 
+// Vue renders these with tdesign-icons-vue-next SVGs (ChevronRightIcon,
+// PlayCircleIcon, CloseIcon); text glyphs would leak into innerText.
+function ChevronGlyph({ open }: { open: boolean }) {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s', verticalAlign: '-3px' }}>
+      <path fill="currentColor" d="M4.5 3.5L9.5 8l-5 4.5V3.5z" />
+    </svg>
+  );
+}
+function PlayCircleGlyph() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16" style={{ verticalAlign: '-3px' }}>
+      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path fill="currentColor" d="M6.5 5.2l4.4 2.8-4.4 2.8V5.2z" />
+    </svg>
+  );
+}
+function CloseGlyph() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="12" height="12">
+      <path fill="currentColor" d="M3.3 2.6l10.1 10.1-1.06 1.06L2.24 3.66 3.3 2.6z" />
+      <path fill="currentColor" d="M13.4 3.66L3.3 13.77 2.24 12.7 12.34 2.6 13.4 3.66z" />
+    </svg>
+  );
+}
+
 // R490 extraction: the Vue-parity chunking form (KBChunkingSettings.vue +
 // KBChunkingDebug.vue) previously lived inline in KnowledgeSettingsPage.tsx.
 // The KB editor drawer (App.tsx) rendered a second, bare-implementation
@@ -192,7 +218,7 @@ export function ChunkingSettingsFields({ splitting, onPatch, client, t }: Chunki
         </>
       ) : null}
       <button type="button" style={{ background: 'transparent', border: 'none', padding: '0.6rem 0', cursor: 'pointer', fontWeight: 500, color: 'inherit' }} onClick={() => setAdvancedOpen((open) => !open)}>
-        {advancedOpen ? '▾' : '▸'} {t('knowledgeEditor.chunking.advancedLabel')}
+        <ChevronGlyph open={advancedOpen} /> {t('knowledgeEditor.chunking.advancedLabel')}
       </button>
       {advancedOpen ? (
         <div>
@@ -262,7 +288,7 @@ export function SeparatorChipsInput({ values, onChange, t }: { values: string[];
               aria-label={`${t('common.remove')}: ${label(value)}`}
               onClick={() => removeValue(value)}
             >
-              ×
+              <CloseGlyph />
             </button>
           </span>
         ))}
@@ -393,7 +419,7 @@ export function ChunkingDebugDrawer({ splitting, client, t }: { splitting: Chunk
   return (
     <div className="kb-chunking-debug">
       <button type="button" className="kb-chunking-debug-trigger" onClick={() => setOpen(true)}>
-        ▶ {t('knowledgeEditor.chunking.debug.toggle')}
+        <PlayCircleGlyph /> {t('knowledgeEditor.chunking.debug.toggle')}
       </button>
       {open ? (
         <div className="kb-chunking-debug-layer">
@@ -401,7 +427,7 @@ export function ChunkingDebugDrawer({ splitting, client, t }: { splitting: Chunk
           <aside className="kb-chunking-drawer" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.chunking.debug.toggle')}>
             <header className="kb-chunking-drawer-header">
               <strong>{t('knowledgeEditor.chunking.debug.toggle')}</strong>
-              <button type="button" aria-label={t('common.cancel')} onClick={() => setOpen(false)}>×</button>
+              <button type="button" aria-label={t('common.cancel')} onClick={() => setOpen(false)}><CloseGlyph /></button>
             </header>
             <div className="kb-chunking-drawer-body">
               <section className="kb-chunking-drawer-section">
@@ -499,7 +525,7 @@ export function ChunkingDebugDrawer({ splitting, client, t }: { splitting: Chunk
                             {typeof chunk.context_header === 'string' && chunk.context_header ? (
                               <span className="kb-chunking-context-pill" title={chunk.context_header}>{chunk.context_header}</span>
                             ) : null}
-                            <span className="kb-chunking-chevron">{isOpen ? '▾' : '▸'}</span>
+                            <span className="kb-chunking-chevron"><ChevronGlyph open={isOpen} /></span>
                           </button>
                           <pre className={isOpen ? 'kb-chunking-chunk-text' : 'kb-chunking-chunk-text collapsed'}>
                             {typeof chunk.content === 'string' ? chunk.content : ''}

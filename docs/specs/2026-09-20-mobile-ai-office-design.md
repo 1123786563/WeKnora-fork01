@@ -1,176 +1,436 @@
-# Personal Mobile AI Office：WeKnora 云端 Developer 设计
+# WeKnora 移动 AI Office 设计规格
 
-日期：2026-09-20。状态：设计草案，等待整体审阅；Q1–Q12 的产品选择已确认，见 [ADR-0003](../../adr/0003-mobile-office-cloud-execution.md)。本次只做设计，不开始产品实现。
+日期：2026-09-20
+状态：已批准设计，实施前需完成第 15 节能力验证；本规格只定义 WHAT / WHY，不授权开始产品实现。
 
-## 1. 目标与范围
+事实源：
 
-用户从手机提交开发需求，WeKnora 在隔离的云端工作区执行代码修改与测试。手机可关闭、断网或切换设备；重新连接后查看权威状态，审批确定版本的代码交付，最终获得 GitHub 草稿 PR 或可下载文件。
+- [统一领域语言](../../CONTEXT.md)
+- [ADR-0003：云端执行](../adr/0003-mobile-office-cloud-execution.md)
+- [ADR-0004：Task 沿用 Session 身份](../adr/0004-task-is-session.md)
+- [ADR-0005：WeKnora 原生移动客户端](../adr/0005-weknora-native-mobile-client.md)
+- [ADR-0006：按语义分层传输](../adr/0006-mobile-transport-by-semantics.md)
+- [ADR-0007：设备身份与加密缓存](../adr/0007-registered-devices-and-encrypted-cache.md)
+- [ADR-0008：Developer 交付与单写者](../adr/0008-developer-delivery-and-single-writer.md)
+- [ADR-0009：云端数据信任边界](../adr/0009-cloud-data-trust-boundary.md)
+- [ADR-0010：自托管移动推送](../adr/0010-self-hosted-mobile-push.md)
+- [Agent Marketplace 领域模型](./2026-09-20-agent-marketplace-domain-model.md)
 
-第一版包括 iOS、Android、Developer、GitHub、任务时间线、文件与 Diff、终端输出观察、审批、产物下载、断线恢复与运行预算。管理配置继续使用现有 Web。Video 与 Business 只有扩展边界，不列为首版可用能力；完整编码 CLI、个人电脑执行、人工手机编辑、交互式 PTY、自动合并 PR、离线执行指令、新 Expo Web 和桌面客户端均不在首版。
+## 1. 产品定义
 
-Q1–Q12 确认了以上产品方向；下文具体模块、接口扩展、GitHub 接入方式、导航与沙箱验收策略是本草案提出的设计，不能冒充用户已逐项确认。
+移动 AI Office 是面向团队与企业成员的 iOS / Android 原生工作入口。成员从统一输入框提交目标，由一个 Lead Agent 对结果负责，并在获准范围内使用知识、工具、专业 Agent、办公连接和开发环境完成工作。
 
-## 2. 本地代码依据与适用限制
+它不是 Happy 或 Paseo 的 WeKnora 换皮，也不是知识库 App、编码 Agent 遥控器或传统 Office 编辑器。WeKnora 是身份、Tenant、Task、Run、权限、预算、审批、产物和审计的唯一业务权威；Happy 与 Paseo 只提供交互与工程参考。
 
-核查基于本地工作树，三个仓库可能包含并行工作或未提交修改。记录的 HEAD 不是对未提交代码的完整快照：WeKnora `cc424e71097a4f29bd71a783964b9e4cdd6255c4`；Happy `ac64b9b4677870f7b7a9eacfd0780959229717f1`；Paseo `d636abd7a4ce302e7ccb9eb6074f637c6dd4d83b`。本轮为静态核查，未启动服务或进行真机、云沙箱、GitHub 联调。
+首版必须共同闭环五类工作：
 
-| 代码依据 | 可复用事实与限制 |
-| --- | --- |
-| WeKnora `internal/application/repository/agent_run.go`、`internal/agent/trpc/engine.go` | 已有持久 Run、租约、Session 活跃运行约束与恢复入口；不等于 Developer 闭环已经完成 |
-| WeKnora `internal/handler/session/workbench_read.go` | 快照与 SSE 重放可复用，游标裁剪需要重新获取快照；不能承诺每条增量永久保留 |
-| WeKnora `internal/agent/approval/durable_gate.go` | 已有持久审批等待；不能直接认定覆盖 Git 推送、任意 Shell 或文件副作用 |
-| WeKnora `internal/handler/session/workbench_artifacts.go` | 可复用运行归属与授权下载；Git Diff、文件树和交付版本仍需新增语义 |
-| WeKnora `internal/container/paseo_provider.go`、`internal/application/service/workbench/capability_gate.go` | 存在桥接合约，远程生产准入仍有缺口；首版不依赖该路径 |
-| WeKnora `internal/container/craft_runtime.go` | OpenCode 属于 Craft 专用接入；共享目录与并发限制使其不能直接承担多租户 Developer 工作区 |
-| WeKnora `packages/contracts/src/mobile/`、`packages/domain/src/mobile/` | 已有执行契约、作用域和缓存规则；本次核查时 `apps/mobile/` 不存在，不能声称已有完整原生客户端 |
-| WeKnora `apps/miniprogram/` | 存在 Taro 小程序，可参考认证作用域与断线恢复；其审批、下载交互不等于原生 Developer 验收能力 |
-| Paseo `packages/app/src/runtime/directory-sync/index.ts`、`replica-cache/row-store.ts` | 数据类型与 Daemon 身份绑定，不能直接装入 WeKnora 账户和 Task 数据；复用思想与可分离实现 |
-| Paseo `packages/server/src/server/bootstrap.ts` | Direct／Relay 都服务其 Daemon 执行链；本架构不引入该移动执行链 |
-| Happy `packages/happy-server/prisma/schema.prisma` | Machine／Artifact 是账户所属、加密并版本化的数据；不等同云执行调度器或通用文件产物系统 |
-| Happy `packages/happy-server/sources/app/api/routes/attachmentRoutes.ts` | 聊天图像附件与对象存储可借鉴；不能推导为已具备视频、文档的大文件产物链 |
+1. 基于获准知识回答问题并提供可打开的证据引用；
+2. 多来源研究分析并生成版本化报告；
+3. 生成或修改办公产物，并发布到外部办公系统；
+4. 形成确定的外部操作计划，经审批后逐项执行；
+5. Developer 修改代码、运行测试、展示 Diff，并交付 GitHub PR 或 GitLab MR 草稿。
 
-历史 React 设计里存在 Happy 为移动底座的文字，而当前 CONTEXT 已采用 Paseo。以本轮架构决定和当前领域词汇为准，不据旧文档重建第二套账户或后端。tRPC 全面迁移规格仍作为 Agent 子系统方向；本设计使用其公共运行能力，不另建 Developer 执行循环。
+首版优先服务团队和企业空间。个人使用通过单成员 Tenant 兼容，但不另建个人账户、个人计费或个人设备执行模型。
 
-## 3. 架构与职责
+### 1.1 成功标准
+
+- 用户无须先理解 Agent 类型、模型供应商或工具分类即可创建 Task；
+- 用户离开 App、断网或切换设备后，云端任务继续运行并能恢复；
+- 用户能立即看出当前结果、谁需要处理、使用了哪些来源以及发生了哪些外部操作；
+- 外部写入、预算增加和代码交付都绑定确定目标与确定版本；
+- 五类工作共用一套 Task、Run、时间线、授权、预算、审批、产物和恢复语义；
+- 官方云和合格的企业自托管 WeKnora 都能被标准客户端连接。
+
+## 2. 范围与非目标
+
+### 2.1 首版范围
+
+- iOS、Android 原生客户端和 `首页 / 任务 / 新建 / 资源 / 我的` 导航；
+- 通用创建入口、Lead Agent 推荐与可选高级配置；
+- Task / Run / Attention 三层状态；
+- 结果优先的 Task 详情、规范时间线、证据、产物、文件、Diff 与只读终端；
+- Viewer / Collaborator / Owner 协作；
+- Task Grant、Action Plan、持久审批与 Task Budget；
+- 语音转写和实时语音会话；
+- 加密离线缓存、离线草稿和可撤销设备；
+- 飞书、Notion、Confluence 的受治理读取与写入 Action；
+- GitHub 与 GitLab 的个人连接和空间连接；
+- 官方云、自托管实例、能力协商与两种自托管推送方案；
+- 旧 Session 投影和 Taro 小程序过渡。
+
+### 2.2 非目标
+
+- 用户电脑、个人服务器或企业私有 Worker 上的 Agent 执行；
+- Happy / Paseo 的 Daemon、Machine、Relay、Hub 或本机会话协议；
+- 新 Expo Web、桌面客户端或替换现有 Vue 管理端；
+- 移动端治理 Agent、知识库、连接、成员、策略与计费；
+- 内置完整 Office 编辑器、移动端文件/源码直编或交互式 PTY；
+- 自动合并 PR / MR、直接写受保护分支；
+- 外部文档与 WeKnora 产物的双向实时同步；
+- 离线运行、离线审批或联网后静默重放外部操作；
+- 对外分享完整 Task；
+- 声称服务端不可读取内容的端到端加密；
+- 首版实现企业私有执行节点、机密计算或跨实例统一账号。
+
+## 3. 本地代码依据
+
+本规格基于三个本地工作树的静态核查。工作树可能含未提交或并行修改；本轮未启动服务、真机、云沙箱或外部 Connector 联调，因此“存在接口”不等于已经满足验收。
+
+### 3.1 当前 WeKnora
+
+| 事实 | 代码依据 | 设计含义 |
+| --- | --- | --- |
+| Go / Gin `/api/v1` 是当前业务 API 权威 | `internal/router/router.go:277` | 新客户端复用现有鉴权、Tenant 和应用层，不另建移动后端 |
+| Tenant URL、活动 Tenant 与 API policy 已有强制约束 | `internal/router/routes_auth_tenant.go:13`、`internal/router/router.go:298` | Deployment、User、Active Tenant 共同进入请求和缓存 scope |
+| Session 已有历史、fork、停止、steer、分享、Artifact 与 SSE | `internal/router/routes_chat.go:95`、`:224` | Task 沿用 Session 身份 |
+| 已有持久 Run、恢复、决策、取消和事件流 | `frontend/src/api/chat/runs.ts:30`、`internal/application/service/session.go:203` | 可复用执行骨架，状态仍需核验 |
+| Workbench 已有 snapshot、SSE、artifact、decision、command、target 与 device 路由 | `internal/router/routes_workbench.go:33` | 不等于五条纵向流程已经实现 |
+| 工具计划已有 RequiredGrants、RecoveryPolicy、幂等键和参数摘要 | `internal/agent/nativecontract/contracts.go:167` | Task Grant、Action Plan 与 unknown outcome 深化这一 seam |
+| Session 读权限和 Owner 写权限已经区分 | `internal/types/interfaces/session.go:15` | Viewer、Collaborator、Owner 必须由服务端强制 |
+| 检索已有 tenant-aware engine registry | `internal/types/interfaces/retriever.go:10`、`:76` | 自动知识发现仍经过 Tenant / KB ownership 检查 |
+| App Connector 已有 installation、connection 和 Action 契约 | `internal/router/routes_app_connectors.go:20` | 同步读取与外部写入分别授权 |
+| 共享 TS packages 与小程序已有移动 scope、snapshot / SSE 和副作用重放规则 | `packages/domain/src/mobile/index.ts:1`、`apps/miniprogram/src/services/runtime.ts:1`、`apps/miniprogram/src/platform/transport.ts:78` | 原生端复用领域逻辑，小程序作为迁移基线 |
+
+### 3.2 Happy
+
+可借鉴：
+
+- 会话页组合消息、权限请求、Agent 提问、文件和 Diff：`/Users/wuyongjun/trea/happy/packages/happy-app/sources/-session/SessionView.tsx:533`；
+- 前台恢复与重连后重拉权威数据：`/Users/wuyongjun/trea/happy/packages/happy-app/sources/sync/sync.ts:216`；
+- 持久更新与 ephemeral 状态分层，并以 sequence / version 补洞：`/Users/wuyongjun/trea/happy/packages/happy-server/sources/app/events/eventRouter.ts:49`；
+- 附件、审批横幅、设备恢复和面向行动的通知体验。
+
+不得迁入其公钥账户、Machine、AccessKey、个人设备执行或 Socket.IO RPC。“账户拥有机器能力”不构成企业云工作区隔离。
+
+### 3.3 Paseo
+
+可借鉴：
+
+- “派发、理解进展、持续引导、审阅结果”的工作主线：`/Users/wuyongjun/trea/paseo/docs/product.md:7`；
+- 实时 timeline 配合权威分页与序列补洞：`/Users/wuyongjun/trea/paseo/docs/architecture.md:379`；
+- Agent 生命周期、子 Agent track、Diff、Files、Terminal、Voice 与窄屏 sheet；
+- capability negotiation、慢消费者隔离、幂等创建和 unknown outcome：`/Users/wuyongjun/trea/paseo/docs/architecture.md:264`、`:331`；
+- Principal、Credential、Grant 分离和语义权限：`/Users/wuyongjun/trea/paseo/docs/permissions.md:1`。
+
+不得迁入其本地 daemon、Direct / Relay 网络链、Provider runtime、未加密 replica cache 或高权限插件模型。Paseo Workspace 也不能替代 Tenant 或 Task 专属云 Workspace。
+
+## 4. 领域模型与不变量
+
+完整定义以 `CONTEXT.md` 为准。
+
+```mermaid
+flowchart LR
+    D[Deployment] --> T[Tenant]
+    T --> U[Member]
+    U --> Task[Task = Session]
+    Task --> LA[Lead Agent Version]
+    Task --> G[Task Grant]
+    Task --> R[Runs]
+    Task --> TL[Timeline]
+    Task --> A[Artifacts]
+    R --> W[Task Workspace]
+    R --> AP[Action Plans]
+    LA --> SA[Delegated Agents]
+    AP --> X[External Actions]
+    A --> P[External Publication]
+```
+
+### 4.1 身份与所有权
+
+- Deployment 是独立后端实例；一次只有一个活动实例；
+- Active Tenant 是当前实例中唯一内容 scope；不跨 Tenant 混合列表或搜索；
+- `taskId = sessionId`，不新增第二个 Task 聚合；
+- 一个初始目标创建 Task；同目标追问继续，new / fork 才创建新 Task；
+- Task 只有一个 Owner 和一个固定版本的 Lead Agent；
+- Task 默认私有，只能分享给同 Tenant 的 Viewer 或 Collaborator；
+- Workspace 是 Task 独占云文件工作区，不是 Tenant、Project 或页面。
+
+### 4.2 状态分层
+
+| 维度 | 规范状态 | 说明 |
+| --- | --- | --- |
+| Task 生命周期 | `active / completed / canceled / archived` | 描述用户目标；同目标追问可让 completed 回到 active |
+| Run 状态 | `queued / running / waiting / succeeded / failed / unknown_result` | 描述一次执行；需与现有存储值映射或扩展 |
+| Attention | `none / owner_required / collaborator_required` | 描述谁需要处理，不由最后一条消息猜测 |
+
+Agent 自定义的“检索、分析、撰写、测试”等阶段只是时间线进度，不能替代规范状态。
+
+### 4.3 单写者与版本
+
+- 同一 Task 至多一个 Run 写 Workspace、Artifact 草稿或外部目标；
+- 只读研究子执行可并行，由唯一写入 Run 汇总；
+- Artifact 版本不可变；批注或修改指令产生新版本；
+- 审批绑定确定版本；目标、内容、连接或操作集合变化后失效；
+- Lead Agent 更新不会让 Task 自动漂移，显式迁移后重查 Grant；
+- 子 Agent 只能获得 Task Grant 的最小子集。
+
+## 5. 系统架构
 
 ```mermaid
 flowchart TB
-    Mobile[Expo / React Native 移动客户端] --> API[WeKnora 鉴权 API 与事件订阅]
-    Web[现有 Web 管理端] --> API
-    API --> Authority[空间 / 用户 / Session / Run / 审批权威]
-    Authority --> Runtime[tRPC 持久执行与预算控制]
-    Runtime --> Sandbox[任务隔离的云端工作区与开发工具]
-    Runtime --> Models[现有模型授权入口]
-    Authority --> Delivery[受审批约束的 GitHub 交付服务]
-    Delivery --> GitHub[任务分支与草稿 PR]
-    Sandbox --> Artifacts[不可变产物版本与存储]
-    Authority --> Events[快照 / 事件 / 通知]
-    Events --> Mobile
+    Mobile[apps/mobile] -->|REST commands / snapshots| API[WeKnora API]
+    Mobile -->|cursored SSE| Events[Task Event Projection]
+    API --> Authority[Identity / Tenant / Task / Grant / Budget]
+    Authority --> Events
+    Mobile <-->|WebSocket or WebRTC| Voice[Realtime Voice]
+    Authority --> Runtime[Durable Agent Runtime]
+    Runtime --> Knowledge[Knowledge / Retrieval]
+    Runtime --> Sandbox[Isolated Cloud Workspace]
+    Runtime --> Connectors[Connector Action Runtime]
+    Runtime --> Artifacts[Versioned Artifact Store]
+    Connectors --> Office[Feishu / Notion / Confluence]
+    Sandbox --> Delivery[GitHub / GitLab Delivery]
+    Push[APNs / FCM] -. sync hint .-> Mobile
+    Web[Existing Web Admin] --> Authority
 ```
 
-WeKnora 是唯一业务权威：身份、Tenant、任务、运行、审批、凭据归属与预算均由后端决定。移动缓存是读副本，推送是提示，沙箱是执行资源，三者均不能自行授予权限或宣布副作用完成。
+移动缓存是可丢弃的加密读副本；SSE 是低延迟持久投影；推送是同步提示；沙箱是执行资源；外部系统是各自操作结果的事实来源。任何一方都不能独自授予权限或宣布外部副作用成功。
 
-Paseo 贡献原生客户端交互、时间线、输入、文件／Diff 阅读和断线恢复经验；Happy 贡献账户多端体验、附件交互、设备登记和版本冲突经验。两者的后端、Socket.IO 会话协议、同步 reducer 与加密账户模型不整套迁入。
+### 5.1 深模块与 seam
 
-建议在当前仓库的 `apps/mobile/` 增量建设客户端，将经过依赖检查的 Paseo UI 与原生能力迁入；共享 `packages/contracts`、`api-client`、`domain`、`design-tokens`、`i18n`。不复制 Paseo monorepo，不新增 Fastify Personal Cloud。移植时保留原有许可证与来源标记，原生 UI 不依赖 Web DOM 组件。
-
-## 4. 领域与唯一身份
-
-| 概念 | 本设计语义 |
-| --- | --- |
-| Tenant | 资源、权限与费用归属；用户可切换空间，个人使用也有个人空间 |
-| Task | Session 的产品视图，`taskId = sessionId`，不另建独立 Task 身份 |
-| Run | 一次持久执行；一个 Task 有多次 Run，任一时刻至多一个可写运行 |
-| Workspace | Task 独占的持久云端文件工作区，多次 Run 复用；不同 Task 不共享可写目录 |
-| Developer | 专业 Agent 配置与开发工具组合；运行由 tRPC 统一管理 |
-| Artifact | Task／Run 产生的可引用版本化结果，例如 Diff、测试报告与文件包 |
-| Approval | 对确定操作与确定版本的授权，不能等同一次客户端按钮点击 |
-
-沿用当前 Session Owner 与空间权限；首版任务默认私有，已有共享机制不能赋予查看者 Owner 的 GitHub 凭据或执行权限。工作区存储与计算生命周期分离；休眠不删除文件，配额超限限制新增写入但保留查看、导出与清理。
-
-## 5. Developer 主流程
-
-1. 登录并选择空间，选择 Developer、获准使用的模型与云端执行环境；仅有一个环境时默认选择，不要求用户理解 Host／Daemon。
-2. 通过 Owner 的 GitHub 连接选择仓库和基线，服务端将基线分支解析成固定提交。创建 Session 与工作区，登记请求幂等键和运行预算。
-3. 隔离工作区取得代码；Agent 按任务授权修改文件、构建、测试。手机查看时间线、真实阶段和日志，不展示虚构完成百分比。
-4. 在确定工作区版本上生成 Diff、测试结果与候选提交。展示仓库、目标分支、提交 SHA、拟推送内容和草稿 PR 内容。
-5. 用户批准该交付方案。服务端重新校验 Owner、空间权限、连接授权和内容版本；随后推送任务分支并创建草稿 PR。
-6. 保存提交、分支、PR 链接与产物版本作为交付回执。后续修改形成新版本，更新分支或 PR 需要新的审批；合并留在 GitHub 完成。
-
-建议 GitHub 采用仓库范围的 App 授权，以便限制仓库和短时凭据；具体安装、用户归属、撤权与换取令牌需在接口验证阶段确认。不将管理密钥或写凭据注入通用 Shell；取代码所需只读授权也应短时、限仓库且不残留在仓库配置或日志。
-
-审批可一次批准一份包含“推送确定提交、创建确定草稿 PR”的明确操作清单，但必须逐项持久记录结果。推送成功而创建 PR 失败时显示部分完成，核对既有分支与 PR 后仅处理未完成项，不能重做整个交付。
-
-## 6. 权限、外部副作用与恢复
-
-开发工具的自动执行权限只覆盖已授权工作区内修改、构建和测试。Shell 不能绕过交付服务直接推送、发送外部消息或改动生产资源。建议以沙箱身份、无写凭据和网络出口约束共同执行这一边界；依赖下载与构建网络访问采用管理员允许的策略，不能靠提示词或命令字符串黑名单替代。
-
-审批记录建议绑定 Tenant、Owner、Session、Run、工作区版本、仓库、分支、提交、操作清单、内容摘要、有效期与版本。批准时原子比较预期版本；执行前再次检查权限与撤权状态。批准后不得继续修改同一待交付版本；后续工作基于新版本。
-
-每次外部操作在执行前持久登记操作身份和状态；超时或断线后查询远端事实。不能保证外部系统的 exactly-once：通过稳定分支／提交／PR 关联、去重与结果核对避免盲目重试。未知结果在 UI 显示“正在核对／需要处理”，确认之前阻止同一工作区的新写运行。
-
-停止请求先持久记录，再终止或核对正在执行的工具。服务端确认停止前保持停止中；停止不撤回已推送提交或已创建 PR。等待审批或预算暂停需要持久检查点，释放活跃执行资源；恢复先确认工作区身份、版本和运行权限，缺失时阻断而非在空目录继续。
-
-Run 沿用现有 `queued/running/waiting_user/reconciling/succeeded/failed/canceled` 契约，预算等待、沙箱不可用与未知结果由原因及能力字段表达；若具体实现需要新状态，先修改共享契约，不在 UI 独创第二套状态机。Agent 认为完成不等于交付成功；任务显示分别反映执行结果与交付回执。
-
-## 7. 预算与资源
-
-空间管理员配置单 Run 的运行时长、模型消耗与工具调用次数默认上限，创建时记录本次实际额度。每个工具与模型调用开始前检查剩余预算，关联原始用量并避免重复计量。首版具体数值经代表性任务试运行决定，不宣称已有确定成本或性能。
-
-预算耗尽后停止新操作、保留检查点与工作区，用户确认后在空间许可额度内继续；历史消耗不因继续或重试消失。建议额外定义 Task 累计消耗视图，避免用户通过多次 Run 忽略总成本。单次模型调用或已启动的外部作业可能产生在途用量，因此配额阈值不能未经验证就承诺严格零超额。
-
-等待审批不占用活跃计算是验收目标，不是对现有代码的能力声明；沙箱暂停、文件持久化、长时等待截止时间和恢复需专项验证。存储仍有成本，保留策略沿用空间配置，不因手机断线或运行失败自动删除。
-
-已确认的行为差异：`internal/application/service/agent_run_worker.go` 当前在持久 deadline 到期后将 Run 标记为 `failed/deadline_exceeded`，对应测试为 `agent_run_deadline_test.go`。这不等于本设计的“额度耗尽后保留可继续状态”；实施必须区分硬性失效截止时间、活跃运行预算与审批等待时间，显式设计继续的准入与历史用量继承，不能仅接现有超时处理就宣称满足预算目标。
-
-当前 `AgentRunService.WaitForDecision` 只持久记录等待，未暂停沙箱；`DurableTaskBudget.Ensure/ReleaseUnstarted` 也不等于完整任务额度管理。现有商业适配器有模型调用预占与结算，但工具调用次数、活跃时长、预算暂停／继续需要新增统一契约。等待不应释放已经派发或结算中的外部调用额度，需先核对结果。
-
-建议资源暂停流程由运行协调器负责：确认无仍在执行且结果未知的操作 → 持久化检查点与工作区版本 → 调用沙箱后端暂停或释放计算 → 记录暂停回执。工作区持久化由沙箱存储适配负责。失败时显示资源仍待回收，不宣称已无计算费用。审批有效期、最长等待期限与活跃时间预算分别配置；等待超期后审批失效并阻止执行，保留工作区，重新继续时重新准入和生成审批。具体时限由管理员设置，P0 必须验证状态、资源和费用事实一致。
-
-## 8. 数据同步与离线
-
-复用 WeKnora 执行快照、事件序列与预期 revision。Paseo directory sequence 和 Happy user seq 不成为第三套运行权威；首版不引入通用 cloudSeq 或离线命令队列。
-
-客户端缓存按后端 origin、user、Tenant、Session／Run 分区；事件先持久写入读模型再推进游标，去重同一事件并检测缺口。首次打开读取快照后续订事件；游标裁剪、缺口或不完整快照必须重新同步，并保留“数据不完整”提示，不能丢弃缺口却标记恢复成功。
-
-离线可看已缓存内容并保存草稿，明确最后同步时间；写命令与审批禁用。创建、停止、继续等联网操作带幂等身份，超时先查服务器结果，不将传输失败等同操作失败。切空间、退出登录时取消旧订阅并隔离或清除缓存，迟到响应不得污染当前作用域。
-
-原生凭据使用安全存储；缓存不存长期凭据或可直接复用的下载授权。离线内容在撤权后无法保证远程即时抹除：重连后重新授权并清理不可访问缓存，后续组织如需禁止离线内容需另设产品策略。推送只携带最少定位信息，不带代码、审批正文或密钥；点击后经登录和权限检查获取最新状态。
-
-## 9. 产物与移动交互
-
-首版产物限定文件、Diff、测试报告和代码文件包。以 Session／Run 关联不可变版本、内容摘要、MIME、大小和存储引用，沿用现有存储与鉴权下载能力；数据库保存安全引用，后端解析实际对象位置，不暴露任意服务器绝对路径。
-
-建议任务详情包含会话、变更、文件、终端输出、产物五个视图；审批作为明确的待处理卡片并可从首页进入。Diff 必须注明基线与交付版本；二进制、大文件或不支持的预览明确提供下载，不冒充文本预览。终端仅使用只读输出通道，隐藏输入框不能作为拒绝 PTY 写入的权限措施。
-
-导航建议保留 Home、Tasks、Agents、Workspace、Me 的产品组织：Home 聚合活跃任务与待审批；Tasks 展示 Session 级任务；Agents 首版只有可用 Developer；Workspace 为任务工作区与产物入口；Me 提供账户、空间、通知与缓存设置。Workspace 在视觉上明确属于某任务，避免与 Tenant 混淆。完整配置和管理跳转现有 Web。
-
-首发同时验收 iOS／Android；试点顺序由设备与发布环境决定，目前未指定。真实设备验证登录回跳、键盘、后台恢复、文件下载／系统分享、通知跳转和弱网；Web 构建通过不能替代原生验收。
-
-## 10. 模块落点与能力缺口
-
-| 模块 | 复用／新增职责 |
-| --- | --- |
-| `apps/mobile/`（拟建） | Paseo 原生体验适配，WeKnora 登录、空间作用域、任务详情、离线读缓存与原生下载 |
-| `packages/contracts/src/mobile/` | 扩展 Developer 交付、Diff 版本与审批契约，保留现有执行 DTO |
-| `packages/api-client/` | 复用认证与工作台接口，为增量交付能力增加窄接口；统一错误、幂等与订阅恢复 |
-| `packages/domain/src/mobile/` | 纯状态计算、缓存作用域、任务表单、能力呈现；无 React Native 或 DOM 依赖 |
-| `internal/application/service/` | 以现有 Session／Run 服务组合 Developer，新增仓库准备、交付版本与 GitHub 交付职责 |
-| `internal/agent/` 与 `internal/sandbox/` | 复用 tRPC 和沙箱；补工具范围、只读终端、审批暂停资源释放与恢复验证 |
-| `internal/handler/session/`、`internal/router/` | 扩展已有工作台/API，鉴权与授权在服务端执行；不新增平行云账户体系 |
-
-沙箱具体后端不在本轮凭空选择供应商。实施前从部署已支持的后端选一个，必须通过任务隔离、持久卷、网络策略、暂停恢复、终止确认和只读日志测试；未通过则该后端不能作为首版可用环境。多后端完整适配不列为 MVP 前提。
-
-尚未证明具备的关键能力：GitHub 授权完整链路、受限仓库读取、不可变 Diff／候选提交、写操作审批与核对、沙箱防止绕过外部写入、审批等待释放资源、原生持久缓存，以及双平台端到端可用性。共享契约与后端路由存在不能代替这些验收。
-
-共享移动交互当前并不包含仓库、分支、SHA、Diff 与 PR 正文的完整审批载荷；GitHub 交付审批必须新增后端契约。共享缓存包含内存参考实现与持久化端口，原生 SQLite 等持久适配仍需建设。小程序现有“仅拒绝审批／转 Web 下载”的行为不能充当首版闭环，原生端应按本设计实现确定版本审批和授权下载。
-
-## 11. 实施分期与验收
-
-以下是分期建议，不是已批准执行的实施计划。
-
-| 阶段 | 交付 | 必须证明 |
+| 模块 | 小接口承担的行为 | 明确不拥有 |
 | --- | --- | --- |
-| P0 能力验证 | 固定代码基线，选定一个合格沙箱，核对 tRPC 原生迁移与移动接口 | Session 隔离、运行恢复、工具授权、预算和审批暂停的真实行为；列清缺口 |
-| P1 Developer 后端 | 仓库准备、工作区版本、Diff／测试产物、交付审批与 GitHub 回执 | 私有仓库只读获取；准确批准某一提交；推送／PR 部分失败可核对且不重复 |
-| P2 移动闭环 | 登录、空间、创建、监督、审批、下载与离线恢复 | 关闭 App 不取消任务；重连恢复；越权被后端拒绝；只读终端不能发送命令 |
-| P3 发布验证 | 双平台真实设备、推送、弱网、撤权与预算 | 以下验收场景全部通过；试点顺序和具体预算数值在试运行中确定 |
+| Task Orchestration | 创建、开始/恢复 Run、干预、生命周期和 Attention 投影 | Tenant 身份、Connector 凭据、客户端缓存 |
+| Grant & Policy | 成员权限、空间策略、Task / Delegated Grant、审批重校验 | Agent 自定义授权规则 |
+| Timeline Projection | Snapshot、游标事件、补洞、摘要与证据关联 | 推送成功、客户端本地状态 |
+| Artifact & Publication | 不可变版本、预览/下载、批注、新版本、发布与回执 | 外部文档协作真相 |
+| Connector Action | prepare、approve、execute、reconcile、部分成功 | 把同步读取冒充写权限 |
+| Developer Delivery | 固定基线、Diff、测试、提交、任务分支、草稿 PR/MR | 通用 Shell 凭据、自动合并 |
+| Device & Offline | 注册/撤销、scope key、缓存策略、离线草稿 | 用户身份或 Tenant 授权 |
+| Deployment Capability | 协议版本、feature flags、最低版本、安全门槛 | 调用失败后才猜测能力 |
 
-核心验收场景：
+外部办公系统、代码平台、推送方式和存储后端存在多个真实 Adapter。不要为只有一个实现的假想变化点增加浅接口。
 
-1. 私有 GitHub 仓库固定基线 → 修改 → 测试 → Diff → 批准 → 草稿 PR；每个结果都能追溯到 Session、Run 与提交。
-2. 两个任务或两个空间同时运行，文件、缓存、凭据与事件不可交叉；客户端伪造身份不能越权。
-3. 同一任务重复启动、重复审批、重复网络提交不会创建第二个写运行或重复交付。
-4. 审批后候选内容变化、连接撤权或任务权限变化时拒绝执行旧授权。
-5. 推送成功而 PR 创建失败、请求超时、执行进程崩溃时正确保留部分结果并核对，不盲目重试。
-6. 手机离线只能读缓存与写草稿；云端继续工作；游标裁剪后能恢复，缺失事件不被静默当作成功。
-7. 工具不能使用通用 Shell 绕过交付审批；移动端无法利用终端底层接口发送输入。
-8. 达到预算、等待审批、停止中和未知结果有不同可理解状态；资源释放后文件仍在，恢复不能获得新权限。
-9. 退出／切空间后旧事件与下载不能显示在新作用域；推送不携带代码和审批敏感内容。
-10. iOS／Android 实机完成登录、后台恢复、审批和文件下载／分享。
+## 6. 产品信息架构
 
-## 12. 后续领域与审阅边界
+### 6.1 一级导航
 
-Video 后续通过持久作业适配模型提交／查询／回调与媒体产物，不塞入交互式 Shell 运行状态；Business 复用连接授权、审批与副作用核对。两者共用 Task／Run、产物归属、预算与事件投影，具体流程需各自设计。
+| 入口 | 首版内容 |
+| --- | --- |
+| 首页 | 需要我处理、正在运行、最近结果、快速新建；其他 Tenant 只显示无内容计数 |
+| 任务 | 当前 Tenant 搜索、筛选、归档、我创建的和共享给我的 Task |
+| 新建 | 通用目标输入、附件/链接、Lead Agent 推荐；高级配置模型、推理强度和预算 |
+| 资源 | 只读浏览 Agent、知识和连接；治理跳转 Web |
+| 我的 | Deployment / Tenant 切换、设备、通知、缓存、语音和个人设置 |
 
-本草案需要整体确认的是：WeKnora 仓库内增量建设原生客户端、上述任务流与导航、受限开发工具和版本化交付边界、同步及恢复原则、能力验证门槛。GitHub App 接入、沙箱供应商、预算数值和移动试点顺序属于待验证／发布参数，不在此文中声称已选定或已实现。整体设计确认后才细化实施计划；本轮未授权开始产品实现。
+### 6.2 Task 详情
+
+1. 顶部：目标、生命周期、Attention、Lead Agent 版本、Owner、预算；
+2. 行动区：审批、问题、预算或失败恢复；
+3. 结果区：最新结论、证据、Artifact、发布或代码交付状态；
+4. 时间线：成员输入、Agent 摘要、工具、Run、审批和回执；原始日志按需展开；
+5. 上下文面：Sources、Artifacts、Files、Diff、Terminal、Collaborators，按能力出现。
+
+Developer 可突出 Diff / Files / Terminal，但仍使用统一骨架。客户端不展示虚构百分比，只展示有事实依据的阶段、计数或外部进度。
+
+### 6.3 创建、干预与语音
+
+- 默认只输入目标并可附加文件/链接；系统推荐 Lead Agent、知识、模型和预算；
+- 有权限用户可在高级设置覆盖允许的模型、推理强度和预算；
+- 运行期间明确选择“调整当前”“当前完成后再做”“停止后再开始”，并显示实际绑定 Run；
+- 停止结果未知时先 reconcile，阻止冲突写 Run；
+- 语音支持转可编辑草稿和实时会话，但不改变 Task / Grant / Approval；
+- 确认后的文字进入时间线；原音频默认删除，策略启用留存时提示参与者；
+- 高风险审批必须回到可阅读界面。
+
+## 7. 五条纵向流程
+
+### 7.1 知识问答
+
+1. 创建 Task / Session 和首个 Run；
+2. Lead Agent 在成员可访问且策略允许发现的知识范围内检索；
+3. 结论区分原文事实、规则推导和模型推断；
+4. 关键结论提供知识版本、来源和获取时间；
+5. 快速完成自动收纳，同目标追问继续原 Task。
+
+### 7.2 多来源研究
+
+1. Lead Agent 将研究拆为最小权限只读子任务；
+2. 来源进入证据集合；
+3. 唯一写入 Run 汇总为版本化报告 Artifact；
+4. 批注或修改指令产生新版本；
+5. 最终版本可下载、Tenant 内分享或进入外部发布。
+
+### 7.3 办公产物与外部发布
+
+1. 生成 DOCX、XLSX、PPTX、PDF、Markdown、图片等内部 Artifact；
+2. 用户选择确定版本、连接和外部目标；
+3. Connector 读取目标当前版本，形成候选与 Action Plan；
+4. 用户审批确定内容；
+5. 后端执行并保存获批版本、外部目标、目标版本和回执；
+6. 发布后外部文档是协作权威；再次修改先读当前版本，不做双向同步。
+
+首批写入适配是飞书、Notion、Confluence。已有同步或读取连接器不能自动获得写入 Action。
+
+### 7.4 外部操作计划
+
+1. Agent prepare 确定操作，不把意图当授权；
+2. 审批卡展示连接、目标、内容摘要、顺序、版本、成本和风险；
+3. 用户可整体批准或排除单项，变化后旧批准失效；
+4. 执行前重查成员、连接、Grant、预算和内容版本；
+5. 每项持久记录 `prepared / executing / succeeded / failed / unknown_result`；
+6. 部分成功或超时后查询外部事实，只重试确认未完成的项目。
+
+### 7.5 Developer
+
+1. Owner 使用个人或空间连接选择 GitHub / GitLab 仓库和基线；
+2. 服务端把分支解析为固定提交，在 Task Workspace 取得代码；
+3. 唯一写入 Run 修改、构建和测试；手机只读查看文件、Diff、测试和终端；
+4. 生成不可变 Diff、测试报告、候选提交和 Delivery Action Plan；
+5. 审批绑定仓库、基线、目标分支、SHA、PR/MR 内容和远端身份；
+6. 只推任务分支并创建/更新草稿 PR/MR，不写保护分支、不自动合并；
+7. 推送成功而 PR/MR 失败时显示部分完成，只补做未完成步骤。
+
+写凭据不能注入通用 Shell。网络访问通过沙箱身份、出口策略和短时凭据控制，不能依赖提示词或命令黑名单。
+
+## 8. 权限、协作与审批
+
+| 角色 | 查看 | 评论 | 追加指令 / 请求 Run | 审批个人连接或交付 | 共享/取消/归档 |
+| --- | --- | --- | --- | --- | --- |
+| Viewer | 是 | 否 | 否 | 否 | 否 |
+| Collaborator | 是 | 是 | 是 | 否 | 否 |
+| Owner | 是 | 是 | 是 | 是 | 是 |
+
+空间连接仍按自身策略决定谁能请求和批准。使用共享知识、Agent 或连接不自动扩大 Task 可见范围。Collaborator 可消耗现有 Task Budget，但不能提高预算。
+
+授权分三层：空间策略定义禁止/自动/必审能力；Task Grant 限定本任务资源和累计预算；Action Approval 对确定副作用一次授权。Agent、UI 和工具描述都不能授予权限。执行前和恢复后重查撤权、成员、连接、预算和内容版本。
+
+Admin 默认只见元数据、成本、安全事件和操作回执。私有内容访问走有理由、有期限、完整留痕的合规流程，可要求双人批准；它不修改共享列表。完整 Task 只在同 Tenant 共享，对外通过发布文档、Artifact 或 PR/MR。
+
+Task Retention Policy 决定归档、法律保留和永久删除；内部删除不隐式删除外部文档或代码。
+
+## 9. 预算与资源
+
+- 每个 Task 必须有累计预算，覆盖 Lead Agent、委派、模型、沙箱、解析与 Connector；
+- 系统给建议值和空间默认值；显示预计、已用、预占和剩余；
+- BYOK 模型费用与平台沙箱/Connector Credits 分开解释；
+- 达到上限后持久等待，不删除 Workspace 或历史；
+- 只有 Owner 或获授权账单管理员可增加；
+- 等待审批应释放可释放计算，但先确认无在途或结果未知操作；
+- 资源释放、Workspace 持久化和停止计费分别需要事实回执。
+
+现有 deadline、模型预占和 `WaitForDecision` 不等于完整 Task Budget。实施前必须区分硬截止、活跃计算预算、累计 Credits、审批期限和外部在途费用。
+
+## 10. 同步、离线与通知
+
+### 10.1 权威恢复
+
+- REST 提交幂等命令并取得 Snapshot；
+- SSE 事件带稳定顺序、revision 和重连游标；
+- 客户端检测重复、缺口和裁剪；无法补齐时重拉 Snapshot；
+- 数据不完整时显示恢复中，不静默当作成功；
+- 传输超时先查命令结果，不把网络失败当业务失败；
+- 推送只提示某 Deployment / Tenant 有变化，客户端重新鉴权同步。
+
+缓存主键至少含 `deploymentId / userId / tenantId / taskId / runId`。切换 scope 时取消旧订阅，迟到响应不能写入新 scope。
+
+离线可查看策略允许的缓存、写草稿/批注和查看最后同步时间；禁止 Run、steer、stop、approve、加预算或外部 Action。联网后由用户确认草稿，不静默提交。
+
+本地数据库加密，scope key 由系统安全存储封装。空间可禁用内容缓存并设保留期；登出、撤销设备或权限失效后删除缓存或使 key 不可用。
+
+默认只通知需要处理、Run 失败/未知、Task 完成和重要预算事件。普通进度只更新 App。通知正文和盲网关载荷不含代码、审批正文或敏感知识。
+
+## 11. 设备、部署与安全
+
+- 现有登录 / OIDC 负责用户身份；每个 Deployment 单独登记设备、公钥、推送通道和撤销状态；
+- 用户和管理员可撤销设备；空间可要求生物识别、受管设备或禁用缓存；
+- 设备公钥用于证明和本地 key wrapping，不取代账号或 Tenant 权限；
+- 服务端可在授权范围处理明文；传输、数据库、对象存储、备份和缓存均加密；
+- Connector 与代码凭据进入 Secret 管理，以短时最小权限交给受控执行；
+- 客户管理密钥可作为部署能力，但不承诺执行时服务端不可见。
+
+首次启动可选择、输入或扫描 HTTPS Deployment。登录前协商 protocol / contract version、Task / Voice / Connector / Developer / Offline capability、最低客户端版本和安全能力。普通功能可降级；缺少设备撤销、Task Grant、持久审批等关键能力时只进入解释页或有限只读模式。
+
+标准客户端可使用可禁用的官方盲推送网关；它只接收不透明路由和无正文唤醒事件。完全隔离企业可用独立应用标识自构建 App、配置自己的 APNs / FCM，或关闭推送。两种客户端的 Token 和设备注册不能混用。
+
+## 12. 客户端与仓库落点
+
+| 位置 | 责任 |
+| --- | --- |
+| `apps/mobile/`（新增） | Expo / React Native shell、导航、Task UI、语音、下载分享、加密缓存、设备和 Deployment |
+| `packages/contracts/` | Task / Run / Attention、Grant、Artifact、Action Plan、Device、Capability 和事件 DTO |
+| `packages/api-client/` | scope-aware REST、SSE 恢复、幂等命令、错误与 capability client |
+| `packages/domain/` | 无 UI 投影、状态、表单、缓存 scope、权限呈现和迁移 |
+| design tokens / i18n / UI | WeKnora 视觉、主题、动态字体、国际化和原生安全子集 |
+| `internal/application/` | Task、Grant、Artifact、Publication、Connector Action、Device、Delivery seam |
+| `internal/agent/`、`internal/sandbox/` | 持久 Run、委派、隔离 Workspace、暂停恢复和只读日志 |
+| handler / router | 窄 HTTP / SSE；鉴权、授权和 scope 在服务端 |
+| 现有 Web | Agent、知识、连接、成员、策略、审计、Retention、预算和设备治理 |
+
+客户端延续 WeKnora 品牌。可选择性迁移 Paseo 的布局、Diff、Files、键盘和语音模块，借鉴 Happy 的附件、审批横幅和恢复；不得复制其账户、Daemon、Machine 或 wire model。迁移代码保留许可证与来源记录。
+
+## 13. 兼容与迁移
+
+所有权限兼容的旧 Session 投影为 Task：只从已有 Message、Run、Artifact 计算能证明的状态，显示“旧任务”能力标记，不伪造历史 Grant、Agent Version、Budget、Approval 或 Attention。普通查看和追问可继续；需要新安全契约的操作先创建新 Run、补齐 Grant 或显式升级。不批量改身份，也不创建第二个 taskId。
+
+Taro 小程序在原生 App 达到门槛前继续维护，并作为认证 scope、Snapshot / SSE、审批和 Artifact 契约基线。原生 App 通过登录、Deployment / Tenant 切换、五条流程、审批、产物、离线恢复、通知、双平台可访问性和安全测试后，小程序才进入维护模式；不长期要求完整对等。
+
+## 14. 验收标准
+
+### 14.1 统一产品
+
+1. 五类目标从同一入口创建 Task，并使用同一详情骨架；
+2. 快速问答可立即完成并收纳，追问继续原 Task；
+3. 首页正确区分 Needs Attention、Running、Recent Result，不以 Run 冒充 Task 生命周期；
+4. Agent 自定义阶段不改变规范状态和通知。
+
+### 14.2 权限与隔离
+
+5. Viewer 不能评论或运行；Collaborator 不能加预算、使用 Owner 个人连接或审批其副作用；
+6. 子 Agent 不能获得超出 Task Grant 的能力；
+7. 两个 Tenant / Deployment 的请求、事件、缓存、设备、下载和推送不交叉；
+8. 撤权、移除成员、撤销 Agent 版本或 Grant 变化后旧批准不可执行；
+9. Admin 普通权限不能读私有内容；合规访问有理由、期限和审计。
+
+### 14.3 运行与恢复
+
+10. 关闭 App、弱网、SSE 断开、游标裁剪和换设备后可从 Snapshot 恢复；
+11. 重复创建、steer、stop、approve 或网络重试不产生第二写 Run 或重复 Action；
+12. unknown result 阻止冲突写入，核对外部事实后恢复；
+13. 调整当前、排队下一 Run、停止重启在 UI、时间线和执行中一致；
+14. 预算耗尽、等待审批、停止中和未知结果具有不同状态与资源事实。
+
+### 14.4 证据、产物与外部系统
+
+15. 基于知识/外部数据的结论可追溯来源版本和时间，并区分事实、规则、模型推断；
+16. Artifact 不可覆盖；审批后新版本使旧批准失效；
+17. 飞书、Notion、Confluence 在部分成功、超时和版本冲突时不盲重试；
+18. 再次发布前读取外部当前版本，保存新候选、批准和回执；
+19. 删除内部 Task 不自动删除外部文档或代码。
+
+### 14.5 Developer
+
+20. 私有 GitHub / GitLab 从固定基线完成修改、测试、Diff、审批和草稿 PR/MR；
+21. 个人/空间连接不互相替代，并记录发起者、批准者和远端身份；
+22. 通用 Shell 无远端写凭据且不能绕过 Delivery；
+23. 推送提交成功而 PR/MR 失败时只补做未完成步骤；
+24. 移动端无法通过底层终端发送 PTY 输入。
+
+### 14.6 移动与部署
+
+25. iOS / Android 实机通过登录、OIDC 回跳、语音、后台恢复、通知、下载分享、深浅色、大字号和减少动效；
+26. 离线只能读获准缓存和写草稿，联网后须确认提交；
+27. 设备撤销、退出、Tenant / Deployment 切换后旧 key 与订阅不可用；
+28. 自托管 capability、盲推送、关闭推送和企业自构建有契约测试；
+29. 推送正文和官方网关载荷不含业务内容。
+
+## 15. 实施前必须验证
+
+1. 现有 Run、lease、checkpoint 和 SSE revision 能否无歧义映射三层状态；
+2. 审批能否绑定 Artifact / Action Plan / Commit 版本并在恢复时重校验；
+3. 沙箱能否满足 Tenant / Task 隔离、持久 Workspace、暂停恢复、出口控制、只读日志和终止确认；
+4. 飞书、Notion、Confluence 哪些能力只有读取/同步，哪些已有写 Action；
+5. GitHub / GitLab App、个人 OAuth、仓库 scope、短时令牌和远端去重；
+6. DOCX、XLSX、PPTX、PDF 与大文件的生成、预览、比较和移动下载限制；
+7. 原生加密数据库、key store、后台恢复、APNs / FCM 和语音的双平台行为；
+8. 盲推送网关最小元数据、撤销、滥用防护和 opt-out；
+9. 商业适配器与 Task Budget、委派累计消耗、BYOK 和资源回执的缺口；
+10. 旧 Session 投影覆盖率与小程序迁移门槛。
+
+验证结果是 Implementation Plan 输入。若与本规格或 ADR 冲突，必须回到设计阶段更新事实源，不能在实现中静默改变产品语义。
+
+## 16. 文档完成边界
+
+本规格确认产品范围、领域语言、用户行为、系统责任、模块 seam、安全边界、迁移方向和验收标准。它不选择沙箱供应商、不承诺预算数值或性能 SLO、不提供字段级接口和数据库迁移，也不批准开始实现。
+
+下一阶段先完成第 15 节能力验证，再依据本规格编写 Superpowers Implementation Plan。实施计划可以拆技术任务和验证顺序，但不得把五条纵向业务流程替换成互不交付价值的前端、后端或数据库水平 Ticket。

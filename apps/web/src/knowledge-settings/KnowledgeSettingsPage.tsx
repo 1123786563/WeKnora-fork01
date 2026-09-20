@@ -1561,14 +1561,19 @@ function AdvancedSettingsSection({ editorPayload, editorDraft, knowledgeBase, mo
               <EditorSettingRow
                 label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
                 control={(
-                  <textarea
-                    aria-label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
-                    maxLength={4000}
-                    rows={3}
-                    placeholder={t('knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder')}
-                    value={questionGeneration.customInstructions}
-                    onChange={(event) => set({ customInstructions: event.target.value })}
-                  />
+                  <div style={{ display: 'grid', gap: '0.25rem' }}>
+                    <textarea
+                      aria-label={t('knowledgeEditor.advanced.questionGeneration.instructionsLabel')}
+                      maxLength={4000}
+                      rows={3}
+                      placeholder={t('knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder')}
+                      value={questionGeneration.customInstructions}
+                      onChange={(event) => set({ customInstructions: event.target.value })}
+                    />
+                    <span data-question-instructions-count="" style={{ justifySelf: 'end', fontSize: '0.75rem', color: 'var(--wk-text-tertiary, #999)' }}>
+                      {questionGeneration.customInstructions.length}/4000
+                    </span>
+                  </div>
                 )}
               />
             </>

@@ -5,12 +5,14 @@
  *   - frontend/src/utils/tool-capabilities.ts (TOOL_CAPABILITY_REQUIREMENTS,
  *     deriveKbFilterFromTools, deriveKbFilterForAgent,
  *     kbSatisfiesAgentRequirements, toolsConsumeFiles)
- *   - frontend/src/components/Input-field.vue (kbToScopeCaps + the mention KB
- *     scope pass at 1288-1315: kb_selection_mode 'none' empties the list,
- *     'selected' narrows to the configured ids, 'all' keeps only
- *     agent-compatible KBs; files load only when the mode keeps KBs alive and
- *     some tool can consume file ids, then get client-filtered to the same
- *     scope).
+ *   - frontend/src/stores/chatResources.ts (isKbModelReady — the
+ *     initialization filter behind validKnowledgeBases)
+ *   - frontend/src/components/Input-field.vue (kbToScopeCaps, the shared-KB
+ *     merge at 1262-1284, and the mention KB scope pass at 1288-1315:
+ *     kb_selection_mode 'none' empties the list, 'selected' narrows to the
+ *     configured ids, 'all' keeps only agent-compatible KBs; files load only
+ *     when the mode keeps KBs alive and some tool can consume file ids, then
+ *     get client-filtered to the same scope).
  *
  * The React chat page loaded `knowledgeBases.list({creator:'all'})` verbatim,
  * so a quick-answer agent (vector|keyword requirement) showed every KB even
@@ -127,6 +129,55 @@ export function kbToScopeCaps(kb: Record<string, unknown>): Partial<KbScopeCaps>
     graph: strategy ? strategy.graph_enabled === true : false,
     faq: kb.type === 'faq',
   };
+}
+
+/** chatResources.ts isKbModelReady (23-29) — the "initialization" half of the
+ *  R482 D12 root cause. The Vue @ popup builds its KB list from
+ *  `chatResources.validKnowledgeBases`, which drops any KB whose summary LLM
+ *  is unconfigured, and any chunk-indexed KB (vector/keyword) without an
+ *  embedding model. Shares bypass this filter (they merge after it). */
+export function isKbModelReady(kb: Record<string, unknown>): boolean {
+  const summaryModelId = kb.summary_model_id;
+  if (typeof summaryModelId !== 'string' || summaryModelId === '') return false;
+  const strategy = kb.indexing_strategy as Record<string, unknown> | undefined;
+  const needsEmbedding = !strategy || strategy.vector_enabled === true || strategy.keyword_enabled === true;
+  if (needsEmbedding) {
+    const embeddingModelId = kb.embedding_model_id;
+    if (typeof embeddingModelId !== 'string' || embeddingModelId === '') return false;
+  }
+  return true;
+}
+
+/** Input-field.vue 1262-1284 — the shared-KB merge for the @ popup. Shared
+ *  rows keep the org label and the capability payload (the later agent pass
+ *  filters on them), append AFTER the readiness-filtered own rows, dedupe by
+ *  id with the own row winning, and skip null knowledge_base entries. Vue
+ *  does not permission-filter here (@ retrieval is read-only), so neither do
+ *  we. */
+export function mergeSharedKbsForMention(
+  ownValidKbs: readonly Record<string, unknown>[],
+  sharedRows: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const merged = [...ownValidKbs];
+  const seen = new Set(merged.map((kb) => String(kb.id)));
+  for (const share of sharedRows) {
+    const kb = share?.knowledge_base as Record<string, unknown> | null | undefined;
+    if (!kb || typeof kb !== 'object') continue;
+    const id = String(kb.id ?? '');
+    if (!id || seen.has(id)) continue;
+    merged.push({
+      id,
+      name: kb.name,
+      type: kb.type ?? 'document',
+      knowledge_count: kb.knowledge_count,
+      chunk_count: kb.chunk_count,
+      org_name: (share.org_name as string | undefined) ?? '',
+      capabilities: kb.capabilities,
+      indexing_strategy: kb.indexing_strategy,
+    });
+    seen.add(id);
+  }
+  return merged;
 }
 
 /** Resolved agent scope for one `@` popup session (Input-field.vue 1288-1315

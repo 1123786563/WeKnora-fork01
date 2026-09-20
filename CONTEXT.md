@@ -114,6 +114,89 @@ _避免_：要求用户手工编排的多 Agent 房间、完全不可解释的�
 **Agent 版本（Agent Version）**：由 Web 管理端测试并发布的不可变 Agent 配置版本，包含其行为、能力声明和默认策略；任务固定创建时选择的版本，显式迁移后才使用新版本并重新检查任务授权。
 _避免_：运行时自动漂移到最新配置、成员在移动任务中直接修改的 Agent 定义。
 
+## Agent Marketplace
+
+**Agent 定义（Agent Definition）**：在一个空间内由获授权成员维护的可编辑 Agent 设计，描述其身份、行为与能力需求；它本身不是 Task 固定使用的不可变版本，也不是 Marketplace 的分发单位。
+_避免_：Agent 版本、Agent Release、运行中的 Agent。
+
+**Agent Release**：从确定的 Agent 版本生成、经过脱敏并具有独立版本与内容摘要的不可变分发包；它可以包含可移植的行为与能力声明，但不携带知识库绑定、模型或连接凭据、Sandbox、Memory、预算及其他空间本地绑定。
+_避免_：共享运行中的 Agent、会随发布者编辑自动变化的模板、完整导出源空间配置。
+
+**Marketplace Listing**：让成员发现一个确定 Agent Release 的目录条目，记录展示信息、来源、发布者、可见范围和治理状态；Listing 可以改指向更新的 Release，但已安装或已被 Task 使用的版本不会随之变化。
+_避免_：Agent Release 本身、Installed Agent、运行时能力授权。
+
+**Agent Catalog**：向当前成员呈现可发现 Agent Listing 的统一目录，聚合 WeKnora 维护的 Built-in、经平台治理的 Public Marketplace 与仅当前空间可见的 Tenant Catalog，并明确标示每项来源。
+_避免_：只指公共商店、把三个来源实现成互不兼容的 Agent 模型、任意链接分享。
+
+**Agent 引入（Agent Adoption）**：一个空间接受某个 Marketplace Listing 并管理其来源与升级关系的记录，保存空间已接受的 Release，并可派生多个固定到具体 Release 的本地 Agent 变体；它属于空间而不是执行操作的成员，也不等同于应用安装。
+_避免_：成员个人 Agent 副本、直接运行 Marketplace Release、每个 Release 建立互不关联的安装、应用安装（Installation）。
+
+**本地能力映射（Local Capability Mapping）**：空间为已引入 Agent 的可移植能力需求选择本地模型、知识、Skill、连接、Sandbox 与审批策略的治理配置；映射不会回写或改变来源 Release。
+_避免_：Release 自带凭据、自动选择空间内任意资源、Task Grant。
+
+**Agent 变体（Agent Variant）**：从一个 Agent Adoption 派生、固定到具体 Agent Release 的本地 Agent Definition，拥有独立的能力映射、成员可见性、测试和 Agent Version 发布节奏；同一 Adoption 可以有多个变体。
+_避免_：成员个人副本、Agent Fork、共享同一运行权限的部门标签。
+
+**可用 Agent（Available Agent）**：已在当前空间完成本地能力映射、兼容性检查和测试，并发布了本地 Agent Version，因而可以被获授权成员用于创建 Task 的 Agent。
+_避免_：刚完成 Agent Adoption 的草稿、仅在 Agent Catalog 中可见的 Listing、未经空间批准的公共 Agent。
+
+**Agent Fork**：从一个 Agent Release 派生、保留完整来源与许可关系，但已修改其可移植核心并作为独立 Agent Definition 维护的 Agent；Fork 不再自动跟随来源 Listing 的升级建议，只有来源许可允许时才能作为新的 Release 重新提交审核。
+_避免_：只修改本地能力映射、对来源 Release 的原地编辑、隐藏来源或许可的复制品。
+
+**Agent 升级建议（Agent Upgrade Proposal）**：当 Listing 提供新 Release 时，为现有 Agent Adoption 展示行为、能力需求、安全与许可差异的候选升级；接受建议只创建新的本地草稿，完成重新映射、测试和发布前不影响当前可用版本或既有 Task。
+_避免_：自动升级、覆盖当前 Agent Version、要求删除旧 Adoption 后重装。
+
+**Agent Manifest**：随 Agent Release 固定的不可变声明，描述其身份与摘要、发布者与来源、许可、适用范围、能力需求、数据类别、潜在外部副作用、兼容性、变更、弃用与安全状态；它为审核和本地映射提供事实，但不授予运行权限。
+_避免_：仅有名称和简介的商品卡、由系统从提示词猜出的完整声明、Task Grant。
+
+**Release Submission**：Agent Author 把确定 Agent Version 及其 Manifest 提交给某个目录治理范围审核的候选发布；Submission 在审核通过前不是 Release，也不会进入成员可发现的 Listing。
+_避免_：作者直接公开、Agent Definition 草稿、已经批准的 Agent Release。
+
+**Agent Author**：维护 Agent Definition 并对 Release Submission 内容负责的成员或发布团队；作者身份不自动包含目录审核、公共发布或空间引入权限。
+_避免_：Marketplace Reviewer、Tenant Admin、Task Owner。
+
+**Marketplace Reviewer**：在指定治理范围内审核 Release Submission、发布或下架 Listing 的责任主体；Tenant Catalog 由空间授权的治理者负责，Public Marketplace 由平台治理者负责。
+_避免_：Agent Author、仅能使用 Agent 的成员、模型自动审核结果。
+
+**Verified Publisher**：通过平台身份与责任验证、可以向 Public Marketplace 提交 Release 的发布主体；验证表示发布者身份可信，不表示其每个 Agent 已获批准或没有风险。
+_避免_：普通空间成员、Marketplace Reviewer、Agent 安全认证。
+
+**Listing 下架（Unlisted）**：Marketplace Listing 不再参与搜索或新的 Agent Adoption 的目录状态；它不撤销对应 Release，也不影响已经完成的 Adoption 和本地 Agent Version。
+_避免_：Agent Release 弃用、安全撤回、删除已引入 Agent。
+
+**Release 弃用（Deprecated）**：Agent Release 仍可运行但不再推荐用于新引入，并指向替代 Release 或升级建议的生命周期状态。
+_避免_：Listing 下架、安全撤回、自动升级。
+
+**安全撤回（Security Revocation）**：治理主体因已知安全风险禁止一个 Agent Release 被新引入或启动新 Task/Run 的强制状态；处置保留已有 Task、产物、审计与来源记录，并明确原因、影响范围和替代版本。
+_避免_：普通下架、静默删除历史、把受影响 Task 自动切换到新版本。
+
+**Agent 许可（Agent License）**：随 Agent Release 声明其采用、使用、Fork 和再分发条件的许可关系；首版免费分发不等于没有许可，也不等于运行模型、Sandbox 或 Connector 免费。
+_避免_：Task Budget、Credits、Manifest 中随意填写的 Agent 售价。
+
+**Agent 变体退役（Agent Variant Retirement）**：空间停止用一个 Agent 变体创建新 Task 的生命周期状态，同时保留其 Agent Version、既有 Task、产物、审计和来源关系。
+_避免_：删除 Agent、删除既有 Task、安全撤回。
+
+**Agent 引入终止（Agent Adoption End）**：空间停止从一个 Listing 创建新变体或接收升级建议，并归档该 Adoption 的状态；已有变体须先退役，历史来源与许可关系继续保留。
+_避免_：删除 Marketplace Listing、把本地 Agent 变成无来源副本、删除历史。
+
+**Agent Evaluation**：对确定 Agent Release 在确定测试集、环境类别和时间下产生的结构化质量或安全证据；Evaluation 可以帮助审核和选择，但不授予权限，也不保证本地能力映射后的实际效果。
+_避免_：消费者星级、营销推荐、对所有空间效果的保证。
+
+**Marketplace Metrics**：平台从多个采用方聚合并去标识化的 Agent Adoption、升级和错误类别指标，用于目录治理与发布者反馈；它不包含 Tenant 或成员身份、Task 内容、本地映射、知识、连接或工具参数。
+_避免_：Release 自带遥测、Publisher 查看采用方内容、未经采用方确认的诊断数据。
+
+**Dependency Lock**：随 Agent Release 固定的不可变依赖解析结果，记录可再分发 Skill 与子 Agent 等依赖的类型、身份、兼容约束、实际版本和内容摘要；本地模型、知识、连接、Sandbox 与凭据不属于该依赖图。
+_避免_：仅记录可漂移的名称、运行时自动获取最新版本、把本地能力打包进 Release。
+
+**Tenant Binding Preset**：Tenant Catalog 为 Agent Release 提供的可选本地能力映射建议，只引用同一空间内的资源且不包含凭据；采用时必须重新校验权限，管理员可以接受、替换或忽略，Preset 不会进入 Public Marketplace。
+_避免_：Agent Release 的一部分、自动授权、按资源名称猜测绑定、包含连接凭据的配置包。
+
+**依赖安全阻断（Dependency Security Block）**：Agent Release 锁定的依赖被安全撤回后形成的传递状态，禁止该 Release 被新引入、用于发布新变体或启动新 Task/Run，直到新的 Agent Release 锁定安全依赖；它不删除原 Release、Task 或审计记录。
+_避免_：运行时自动替换依赖、仅显示警告后继续新执行、删除受影响历史。
+
+**Marketplace 保管（Marketplace Custody）**：Publisher 注销、失去验证或撤回 Listing 后，平台为已有 Agent Adoption 按许可与保留规则保存继续使用所必需的最小不可变 Release、Manifest、许可、来源和审核记录；保管不转移 Publisher 身份，也不开放新的 Adoption。
+_避免_：平台接管 Listing 所有权、继续公开失效 Publisher、删除采用方所依赖的全部包。
+
 **委派授权（Delegated Grant）**：Lead Agent 为一个明确子任务从 Task Grant 中划出的最小权限子集；专业 Agent 的配置只能声明可能需要的能力，不能借委派获得 Task 未授权的权限。
 _避免_：继承完整 Task Grant、继承专业 Agent 配置中的全部权限、子 Agent 自行扩大授权。
 
