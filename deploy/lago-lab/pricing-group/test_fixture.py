@@ -208,3 +208,11 @@ class NegativeControlAndConflictTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AggregationContractTests(unittest.TestCase):
+    def test_metrics_use_the_v1_53_0_sum_agg_enum(self):
+        run = fixture.build_run(_run_id(), task_count=2)
+        for metric in run.metrics:
+            self.assertEqual(metric.aggregation_type, "sum_agg")
+            self.assertIn(metric.field_name, ("units", "calls"))

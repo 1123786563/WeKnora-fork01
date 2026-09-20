@@ -52,6 +52,10 @@ METRIC_FIELDS = {
     TOOL_METRIC_KEY: ("calls", "package"),
 }
 
+# Lago v1.53.0 aggregation enum value for SUM metrics (live-verified 2026-09-20:
+# aggregation_type "sum" is rejected 422 value_is_invalid; "sum_agg" is accepted)
+AGGREGATION_TYPE_SUM = "sum_agg"
+
 CHARGE_ORDER = (MODEL_METRIC_KEY, TOOL_METRIC_KEY)
 
 # Reference task (index 0): 10 model events x 100 units = 1000 units
@@ -336,7 +340,7 @@ def build_run(run_id: str, task_count: int) -> RunSpec:
         BillableMetric(
             code=_metric_code(run_id, key),
             name=f"WeKnora T04 {key} ({run_id})",
-            aggregation_type="sum",
+            aggregation_type=AGGREGATION_TYPE_SUM,
             field_name=field,
             key=key,
         )
