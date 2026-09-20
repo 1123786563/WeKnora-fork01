@@ -28,12 +28,18 @@ type nativeCredentialResolverFake struct {
 	credential Credential
 	err        error
 	calls      int
+	scopes     []nativecontract.Scope
+	refs       []string
+	versions   []int64
 }
 
 func (r *nativeCredentialResolverFake) ResolveCredential(
-	_ context.Context, _ nativecontract.Scope, _ string, _ int64,
+	_ context.Context, scope nativecontract.Scope, ref string, version int64,
 ) (Credential, error) {
 	r.calls++
+	r.scopes = append(r.scopes, scope)
+	r.refs = append(r.refs, ref)
+	r.versions = append(r.versions, version)
 	return r.credential, r.err
 }
 
@@ -116,4 +122,31 @@ func TestNativeModelCancellationDoesNotResolveCredential(t *testing.T) {
 	_, err = resolved.Model.GenerateContent(ctx, &model.Request{Messages: []model.Message{model.NewUserMessage("hello")}})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, credentials.calls)
+}
+
+func TestNativeModelCredentialResolutionUsesTheAdmittedScopeAndCredentialBinding(t *testing.T) {
+	binding := nativeModelBinding()
+	scope := nativecontract.Scope{
+		TenantID: 9, ActorUserID: "actor-1", SessionOwnerID: "owner-1",
+		Principal: nativecontract.Principal{Type: "user", ID: "actor-1"},
+	}
+	credentials := &nativeCredentialResolverFake{credential: Credential{Value: "secret", Version: binding.CredentialVersion}}
+	resolved, err := NewModelResolver(
+		&nativeModelConfigSourceFake{config: nativeRemoteModelConfig(binding)}, credentials,
+	).Resolve(context.Background(), scope, binding)
+	require.NoError(t, err)
+
+	// This invalid combination fails in the SDK before it performs network I/O,
+	// but only after the resolver has proved the credential is authorized for
+	// this exact admitted identity and version.
+	topLogprobs := 1
+	_, err = resolved.Model.GenerateContent(context.Background(), &model.Request{
+		Messages:         []model.Message{model.NewUserMessage("validate locally")},
+		GenerationConfig: model.GenerationConfig{TopLogprobs: &topLogprobs},
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, credentials.calls)
+	require.Equal(t, []nativecontract.Scope{scope}, credentials.scopes)
+	require.Equal(t, []string{binding.CredentialRef}, credentials.refs)
+	require.Equal(t, []int64{binding.CredentialVersion}, credentials.versions)
 }
