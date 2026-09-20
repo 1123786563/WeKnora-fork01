@@ -97,7 +97,10 @@ type RouterParams struct {
 	SkillHandler                 *handler.SkillHandler
 	// SkillMarketHandler serves the M4 SkillHub market routes (search /
 	// rankings / install, skillset index / install).
-	SkillMarketHandler           *handler.SkillMarketHandler
+	SkillMarketHandler *handler.SkillMarketHandler
+	// TenantSkillMarketHandler serves the M4 tenant-internal market routes
+	// (publish/unpublish, member listing and published-skill install).
+	TenantSkillMarketHandler     *handler.TenantSkillMarketHandler
 	OrganizationHandler          *handler.OrganizationHandler
 	IMHandler                    *handler.IMHandler
 	EmbedChannelHandler          *handler.EmbedChannelHandler
@@ -374,6 +377,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterUserFavoriteRoutes(v1, params.UserFavoriteHandler, rbacGuards)
 		RegisterSkillRoutes(v1, params.SkillHandler, rbacGuards)
 		RegisterSkillMarketRoutes(v1, params.SkillMarketHandler, rbacGuards)
+		RegisterTenantSkillMarketRoutes(v1, params.TenantSkillMarketHandler, rbacGuards)
 		RegisterOrganizationRoutes(v1, params.OrganizationHandler, rbacGuards)
 		RegisterIMChannelRoutes(v1, params.IMHandler, rbacGuards)
 		RegisterEmbedChannelRoutes(v1, params.EmbedChannelHandler, rbacGuards)

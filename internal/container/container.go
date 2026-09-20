@@ -261,6 +261,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantSkillRepository))
 	must(container.Provide(repository.NewTenantSubagentRepository))
 	must(container.Provide(repository.NewExpertInstallRepository))
+	must(container.Provide(repository.NewPublishedSkillRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
@@ -707,6 +708,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 			return nil, err
 		}
 		return handler.NewSkillMarketHandler(marketSvc), nil
+	}))
+	// Tenant-internal skill market API (M4): publish rows flag catalog
+	// definitions as market-visible to every member of the SAME workspace;
+	// installs compose with the shared TenantSkillService catalog pipeline,
+	// reads go through the tenant skill repository and publisher names
+	// resolve through the user repository.
+	must(container.Provide(func(
+		tenantSkills *service.TenantSkillService,
+		skillsRepo repository.TenantSkillRepository,
+		published repository.PublishedSkillRepository,
+		users interfaces.UserRepository,
+	) *handler.TenantSkillMarketHandler {
+		marketSvc := service.NewTenantSkillMarketService(published, skillsRepo, tenantSkills, users)
+		return handler.NewTenantSkillMarketHandler(marketSvc)
 	}))
 	must(container.Provide(handler.NewOrganizationHandler))
 	must(container.Provide(handler.NewMemoryHandler))
