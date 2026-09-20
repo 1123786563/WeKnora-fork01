@@ -268,6 +268,27 @@ func TestRequestTimeout(t *testing.T) {
 	require.ErrorIs(t, err, ErrMarket)
 }
 
+func TestSearchFollowsRedirects(t *testing.T) {
+	// Real registries redirect downloads/listings to CDNs; urllib follows
+	// up to 10 hops, and so must we (SSRF-validated per hop).
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1,::1,localhost")
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"results":[{"slug":"redirected","displayName":"Via CDN"}]}`)
+	}))
+	t.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.RequestURI(), http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	client, err := New(redirector.URL, 5*time.Second)
+	require.NoError(t, err)
+	results, err := client.Search(context.Background(), "q", 10)
+	require.NoError(t, err, "client must follow registry-to-CDN redirects")
+	require.Len(t, results, 1)
+	require.Equal(t, "redirected", results[0].Slug)
+}
+
 func TestNewHostResolution(t *testing.T) {
 	_, err := New("", 0)
 	require.NoError(t, err)

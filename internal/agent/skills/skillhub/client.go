@@ -144,9 +144,17 @@ func New(host string, timeout time.Duration) (*HTTPClient, error) {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
+	// MaxRedirects matters: a zero value would make the SSRF redirect policy
+	// reject the FIRST redirect (len(via) >= 0 always holds), while real
+	// registries redirect listings/downloads to CDNs. 10 matches urllib's
+	// default redirect budget and the utils defaultHTTPClient precedent;
+	// every hop is still SSRF-validated by the same policy.
 	return &HTTPClient{
 		host: resolved,
-		http: utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{Timeout: timeout}),
+		http: utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
+			Timeout:      timeout,
+			MaxRedirects: 10,
+		}),
 	}, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"unicode/utf8"
 )
@@ -52,9 +53,10 @@ const zipEncryptedFlag uint16 = 0x1
 //     compression ratio at most 100 for entries above 1 MiB,
 //  5. per entry, on read: streamed size never exceeds the declared size
 //     nor the global cap, and the final size matches the declaration,
-//  6. every member is valid UTF-8 (WeKnora deviation from Octop, which
-//     replaces invalid sequences in non-manifest text files — see the
-//     package port notes),
+//  6. member text policy (port of Octop's utf8_text.py): binary-looking
+//     members pass through untouched; text members must be valid UTF-8
+//     after Octop's known-corruption repairs (the ≤ e2 6a 24 SkillHub
+//     corruption), otherwise the package is rejected with the member named,
 //  7. a single redundant top-level wrapper directory is stripped when the
 //     root SKILL.md only exists under it,
 //  8. a root SKILL.md is required.
@@ -80,11 +82,9 @@ func ParsePackage(payload []byte) (ZipFiles, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Deviation from Octop: instead of coercing invalid UTF-8 in text
-		// members (coerce_utf8_text_bytes), every member must already be
-		// valid UTF-8. Stricter, simpler, and the error names the member.
-		if !utf8.Valid(content) {
-			return nil, fmt.Errorf("%w: package entry %q is not valid UTF-8", ErrPackage, member.clean)
+		content, err = coercePackageMemberText(content, member.clean)
+		if err != nil {
+			return nil, err
 		}
 		files = append(files, struct {
 			Name    string
@@ -250,6 +250,100 @@ func readZipMember(member validatedMember) ([]byte, error) {
 		out = append(out, chunk...)
 	}
 	return out, nil
+}
+
+// textMemberSuffixes and textMemberNames port Octop's looks_like_text_path
+// (_TEXT_SUFFIXES plus the bare name set): members that look like text get
+// UTF-8 enforcement, everything else (images, fonts, binaries) passes
+// through untouched.
+var textMemberSuffixes = map[string]bool{
+	".md": true, ".txt": true, ".json": true, ".yaml": true, ".yml": true,
+	".toml": true, ".csv": true, ".py": true, ".sh": true, ".html": true,
+	".css": true, ".js": true, ".ts": true, ".tsx": true, ".jsx": true,
+	".xml": true, ".svg": true,
+}
+
+var textMemberNames = map[string]bool{
+	"SKILL.md": true, "LICENSE": true, "LICENSE.md": true,
+	"README": true, "README.md": true,
+}
+
+// memberBaseName returns the final path component.
+func memberBaseName(path string) string {
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		return path[idx+1:]
+	}
+	return path
+}
+
+// memberSuffix mirrors PurePosixPath(...).suffix (lower-cased): the
+// extension of the final component, where a leading dot does not begin an
+// extension (".hidden" has no suffix).
+func memberSuffix(path string) string {
+	name := memberBaseName(path)
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 {
+		return ""
+	}
+	return strings.ToLower(name[dot:])
+}
+
+// looksLikeTextMember ports looks_like_text_path.
+func looksLikeTextMember(path string) bool {
+	return textMemberSuffixes[memberSuffix(path)] || textMemberNames[memberBaseName(path)]
+}
+
+// knownUTF8Repairs ports _KNOWN_UTF8_REPAIRS. SkillHub has shipped SKILL.md
+// where ≤ (U+2264, utf-8 e2 89 a4) was corrupted to e2 6a 24 ("âj$"); that
+// single invalid sequence broke skill listing for every agent that
+// installed the package, which is why the repair is targeted, not generic.
+var knownUTF8Repairs = []struct{ bad, good []byte }{
+	{[]byte("\xe2j$"), []byte("≤")},
+}
+
+// repairKnownUTF8Corruption ports repair_known_utf8_corruption: it returns
+// repaired bytes only when a known corruption actually applied AND the
+// result is valid UTF-8; anything else reports "no repair".
+func repairKnownUTF8Corruption(data []byte) ([]byte, bool) {
+	repaired := data
+	changed := false
+	for _, repair := range knownUTF8Repairs {
+		if bytes.Contains(repaired, repair.bad) {
+			repaired = bytes.ReplaceAll(repaired, repair.bad, repair.good)
+			changed = true
+		}
+	}
+	if !changed || bytes.Equal(repaired, data) || !utf8.Valid(repaired) {
+		return nil, false
+	}
+	return repaired, true
+}
+
+// coercePackageMemberText applies the member text policy to one payload,
+// following the M4 fix-round ruling to port Octop's behavior faithfully
+// (utf8_text.py: coerce_utf8_text_bytes + require_utf8_skill_manifest):
+//
+//   - binary-looking members (non-text extension/name) pass through
+//     untouched, exactly like Octop's early looks_like_text_path exit;
+//   - text members that are already valid UTF-8 pass through;
+//   - text members matching a known SkillHub corruption are repaired
+//     (the manifest and every other text member alike, per the ruling);
+//   - a text member still invalid after repairs is a hard error naming
+//     the member. (Octop additionally replaces residual bad bytes in
+//     NON-manifest text via errors="replace"; the ruling keeps that case
+//     an error instead — the one deliberate tightening.)
+func coercePackageMemberText(data []byte, member string) ([]byte, error) {
+	if !looksLikeTextMember(member) {
+		return data, nil
+	}
+	if utf8.Valid(data) {
+		return data, nil
+	}
+	if repaired, ok := repairKnownUTF8Corruption(data); ok {
+		log.Printf("[skillhub] repaired invalid UTF-8 in package entry %s", member)
+		return repaired, nil
+	}
+	return nil, fmt.Errorf("%w: package entry %s is not valid UTF-8", ErrPackage, member)
 }
 
 // stripWrapperDirectory removes a single redundant top-level directory when

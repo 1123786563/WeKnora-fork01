@@ -365,6 +365,75 @@ func TestParsePackageInvalidUTF8Member(t *testing.T) {
 	require.Contains(t, err.Error(), "bad.txt")
 }
 
+// SkillHub once shipped a published SKILL.md where ≤ (U+2264, e2 89 a4) was
+// corrupted to e2 6a 24; Octop carries a targeted repair table for exactly
+// that corruption and this port must too.
+func TestParsePackageManifestKnownUTF8Repair(t *testing.T) {
+	broken := []byte("---\nname: demo\n---\nkeep it \xe2j$ 5 items\n")
+	payload := buildZip(t, zipEntry{name: "SKILL.md", data: broken})
+	files, err := ParsePackage(payload)
+	require.NoError(t, err, "known \u2264 corruption in the manifest must be repaired, not rejected")
+	require.Equal(t, "---\nname: demo\n---\nkeep it \u2264 5 items\n", string(files[0].Content))
+}
+
+func TestParsePackageTextMemberKnownUTF8Repair(t *testing.T) {
+	payload := buildZip(t,
+		zipEntry{name: "SKILL.md", data: []byte("m")},
+		zipEntry{name: "notes.txt", data: []byte("count \xe2j$ done")},
+	)
+	files, err := ParsePackage(payload)
+	require.NoError(t, err)
+	require.Equal(t, "count \u2264 done", string(files[1].Content))
+}
+
+func TestParsePackageBinaryMemberPassthrough(t *testing.T) {
+	// Invalid-UTF-8 bytes in a binary-looking member are payload, not text.
+	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe, 0x00, 0xc3}
+	payload := buildZip(t,
+		zipEntry{name: "SKILL.md", data: []byte("m")},
+		zipEntry{name: "assets/logo.png", data: png},
+		zipEntry{name: "fonts/icon.woff2", data: []byte{0xd0, 0x17, 0xff}},
+	)
+	files, err := ParsePackage(payload)
+	require.NoError(t, err, "binary members must pass through untouched")
+	require.Len(t, files, 3)
+	require.Equal(t, png, files[1].Content)
+	require.Equal(t, []byte{0xd0, 0x17, 0xff}, files[2].Content)
+}
+
+func TestParsePackageTextMemberUnrepairableUTF8StillErrors(t *testing.T) {
+	// No known repair matches 0xff 0xfe: text members stay strictly invalid.
+	payload := buildZip(t,
+		zipEntry{name: "SKILL.md", data: []byte("m")},
+		zipEntry{name: "readme.md", data: []byte{0xff, 0xfe, 'x'}},
+	)
+	_, err := ParsePackage(payload)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrPackage)
+	require.Contains(t, err.Error(), "readme.md")
+}
+
+func TestParsePackageManifestUnrepairableUTF8(t *testing.T) {
+	payload := buildZip(t, zipEntry{name: "SKILL.md", data: []byte("bad \xff\xfe manifest")})
+	_, err := ParsePackage(payload)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrPackage)
+	require.Contains(t, err.Error(), "SKILL.md")
+}
+
+func TestParsePackageExtensionlessTextNames(t *testing.T) {
+	// LICENSE/README are text by name (no suffix), like Octop's name set.
+	for _, name := range []string{"LICENSE", "README.md"} {
+		payload := buildZip(t,
+			zipEntry{name: "SKILL.md", data: []byte("m")},
+			zipEntry{name: name, data: []byte{0xff}},
+		)
+		_, err := ParsePackage(payload)
+		require.Error(t, err, "%s is a text member and must fail UTF-8 validation", name)
+		require.ErrorIs(t, err, ErrPackage)
+	}
+}
+
 func TestParsePackageEmptyZip(t *testing.T) {
 	// A zip with no members at all is a valid archive but not a skill.
 	_, err := ParsePackage(buildZip(t))
