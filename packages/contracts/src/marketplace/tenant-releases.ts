@@ -11,6 +11,7 @@ export interface ReleaseSubmission {
   bundle_digest: string;
   manifest: Record<string, unknown>;
   dependency_lock: Record<string, unknown>;
+  payload: Record<string, unknown>;
   status: string;
   created_at: string;
   [key: string]: unknown;
@@ -109,6 +110,7 @@ function parseSubmission(value: unknown, path: string): ReleaseSubmission {
     bundle_digest: digest(row, 'bundle_digest', path),
     manifest: record(row, 'manifest', path),
     dependency_lock: record(row, 'dependency_lock', path),
+    payload: record(row, 'payload', path),
     status: requiredString(row, 'status', path),
     created_at: requiredString(row, 'created_at', path),
   } as ReleaseSubmission;

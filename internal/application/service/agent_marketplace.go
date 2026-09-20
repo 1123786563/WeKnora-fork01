@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/experts"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -54,11 +55,11 @@ func (s *AgentMarketplaceService) SubmitRelease(ctx context.Context, tenantID ui
 	}
 	lock, err := s.resolver.Resolve(ctx, tenantID, version)
 	if err != nil {
-		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("resolve release dependencies: %w", err)
+		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("%w: %v", ErrAgentMarketplaceMissingDependency, err)
 	}
 	bundle, err := experts.BuildAgentReleaseBundle(version, input.Metadata, lock)
 	if err != nil {
-		return interfaces.ReleaseSubmissionView{}, err
+		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("%w: %v", ErrAgentMarketplaceInvalidInput, err)
 	}
 	if err := ensurePayloadReferencesLocked(bundle.Payload, bundle.Lock); err != nil {
 		return interfaces.ReleaseSubmissionView{}, err
@@ -128,7 +129,7 @@ func (s *AgentMarketplaceService) ReviewSubmission(ctx context.Context, tenantID
 		return interfaces.ReleaseReviewResult{}, err
 	}
 	if submission == nil {
-		return interfaces.ReleaseReviewResult{}, fmt.Errorf("submission not found")
+		return interfaces.ReleaseReviewResult{}, repository.ErrAgentMarketplaceNotFound
 	}
 	if submission.BundleDigest != expectedDigest {
 		return interfaces.ReleaseReviewResult{}, ErrAgentMarketplaceStaleDigest
@@ -144,7 +145,7 @@ func (s *AgentMarketplaceService) ReviewSubmission(ctx context.Context, tenantID
 			return interfaces.ReleaseReviewResult{}, err
 		}
 		if listing == nil {
-			return interfaces.ReleaseReviewResult{}, fmt.Errorf("submission listing not found")
+			return interfaces.ReleaseReviewResult{}, repository.ErrAgentMarketplaceNotFound
 		}
 		if listing.CurrentReleaseID != nil {
 			priorReleaseID = *listing.CurrentReleaseID

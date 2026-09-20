@@ -102,6 +102,26 @@ func TestAgentMarketplaceReviewRejectDoesNotPublish(t *testing.T) {
 	require.Empty(t, queue)
 }
 
+func TestAgentMarketplaceFirstApprovedSubmissionOwnsListingMetadata(t *testing.T) {
+	db := openRunTestDB(t)
+	seedMarketplaceVersion(t, db, "metadata-v1", "metadata-agent")
+	seedMarketplaceVersionNumber(t, db, "metadata-v2", "metadata-agent", 1, 2)
+	repo := NewAgentMarketplaceRepository(db)
+	first, err := repo.CreateSubmission(context.Background(), &types.AgentMarketplaceListingEntity{TenantID: 1, SourceAgentID: "metadata-agent", DisplayName: "Rejected", Summary: "wrong", State: "listed"}, &types.AgentReleaseSubmissionEntity{TenantID: 1, AgentVersionID: "metadata-v1", SourceAgentID: "metadata-agent", SemanticVersion: "1.0.0", BundleDigest: "metadata-a", ManifestJSON: `{"display_name":"Rejected","summary":"wrong"}`, DependencyLockJSON: `{}`, Bundle: []byte(`{}`)})
+	require.NoError(t, err)
+	_, _, err = repo.ReviewAndPublishTx(context.Background(), 1, "", first.ID, first.BundleDigest, types.AgentReleaseReviewDecision{ReviewerID: "r1", Decision: "rejected", Reason: "fix"})
+	require.NoError(t, err)
+	second, err := repo.CreateSubmission(context.Background(), nil, &types.AgentReleaseSubmissionEntity{TenantID: 1, AgentVersionID: "metadata-v2", SourceAgentID: "metadata-agent", SemanticVersion: "1.0.1", BundleDigest: "metadata-b", ManifestJSON: `{"display_name":"Approved","summary":"correct"}`, DependencyLockJSON: `{}`, Bundle: []byte(`{}`)})
+	require.NoError(t, err)
+	_, release, err := repo.ReviewAndPublishTx(context.Background(), 1, "", second.ID, second.BundleDigest, types.AgentReleaseReviewDecision{ReviewerID: "r2", Decision: "approved"})
+	require.NoError(t, err)
+	listing, err := repo.GetListing(context.Background(), 1, second.ListingID)
+	require.NoError(t, err)
+	require.Equal(t, "Approved", listing.DisplayName)
+	require.Equal(t, "correct", listing.Summary)
+	require.NotNil(t, release)
+}
+
 func seedMarketplaceVersion(t *testing.T, db *gorm.DB, id, agentID string) {
 	t.Helper()
 	require.NoError(t, db.Exec(`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES (?, 1, ?, 1, '{}', 'sha', 'author')`, id, agentID).Error)

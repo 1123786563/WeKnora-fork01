@@ -37,6 +37,7 @@ CREATE INDEX idx_agent_releases_listing ON agent_releases(tenant_id, listing_id,
 
 CREATE UNIQUE INDEX uq_agent_marketplace_listing_scope ON agent_marketplace_listings(tenant_id, source_agent_id);
 CREATE UNIQUE INDEX uq_agent_release_review_decision ON agent_release_reviews(submission_id, reviewer_id, reviewed_digest);
+CREATE UNIQUE INDEX uq_agent_release_review_submission ON agent_release_reviews(tenant_id, submission_id);
 CREATE UNIQUE INDEX uq_agent_releases_number ON agent_releases(listing_id, release_number);
 CREATE UNIQUE INDEX uq_agent_releases_semantic ON agent_releases(listing_id, semantic_version);
 CREATE UNIQUE INDEX uq_agent_releases_digest ON agent_releases(listing_id, bundle_digest);

@@ -14,7 +14,8 @@ const digest = 'd'.repeat(64);
 const submission = {
   id: 'submission-1', tenant_id: 7, listing_id: 'listing-1', agent_version_id: 'version-1', source_agent_id: 'agent-1', author_id: 'author-1',
   semantic_version: '1.0.0', bundle_digest: digest, manifest: { display_name: 'Helpful agent', summary: 'Support', license_id: 'MIT' },
-  dependency_lock: { dependencies: [{ type: 'skill', version: '2.0.0', digest: 'e'.repeat(64), license_id: 'Apache-2.0' }] },
+	dependency_lock: { dependencies: [{ type: 'skill', version: '2.0.0', digest: 'e'.repeat(64), license_id: 'Apache-2.0' }] },
+	payload: { system_prompt: 'Frozen review prompt', persona_style: 'Helpful', allowed_tools: ['search'], skills: ['skill-a'], subagents: ['agent-b'], starter_prompts: ['Start here'] },
   status: 'pending_review', created_at: '2026-09-21T00:00:00Z',
 };
 const release = { id: 'release-1', listing_id: 'listing-1', submission_id: 'submission-1', agent_version_id: 'version-1', source_agent_id: 'agent-1', release_number: 1, semantic_version: '1.0.0', bundle_digest: digest, manifest: submission.manifest, dependency_lock: submission.dependency_lock, published_by: 'reviewer-1', created_at: '2026-09-21T00:01:00Z' };
@@ -64,7 +65,9 @@ test('reject requires a reason and reviews the exact displayed digest', async ()
   try {
     assert.match(reviewer.host.textContent ?? '', new RegExp(digest));
     assert.match(reviewer.host.textContent ?? '', /MIT/);
-    assert.match(reviewer.host.textContent ?? '', /Apache-2\.0/);
+	assert.match(reviewer.host.textContent ?? '', /Apache-2\.0/);
+	    assert.match(reviewer.host.textContent ?? '', /Frozen review prompt/);
+	    assert.match(reviewer.host.textContent ?? '', /skill-a/);
     await reviewer.click('[data-review-decision="rejected"]');
     const reason = reviewer.host.querySelector('[data-review-reason]') as HTMLTextAreaElement;
     assert.ok(reason);

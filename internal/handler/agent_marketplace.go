@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	marketrepo "github.com/Tencent/WeKnora/internal/application/repository"
+	marketservice "github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -62,6 +64,7 @@ type marketplaceSubmissionResponse struct {
 	BundleDigest    string          `json:"bundle_digest"`
 	Manifest        json.RawMessage `json:"manifest"`
 	DependencyLock  json.RawMessage `json:"dependency_lock"`
+	Payload         json.RawMessage `json:"payload"`
 	Status          string          `json:"status"`
 	CreatedAt       time.Time       `json:"created_at"`
 }
@@ -104,7 +107,26 @@ type marketplaceListingResponse struct {
 }
 
 func marketplaceSubmissionDTO(row interfaces.ReleaseSubmissionView) marketplaceSubmissionResponse {
-	return marketplaceSubmissionResponse{ID: row.ID, TenantID: row.TenantID, ListingID: row.ListingID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, AuthorID: row.AuthorID, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), Status: row.Status, CreatedAt: row.CreatedAt}
+	var envelope struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	_ = json.Unmarshal(row.Bundle, &envelope)
+	return marketplaceSubmissionResponse{ID: row.ID, TenantID: row.TenantID, ListingID: row.ListingID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, AuthorID: row.AuthorID, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), Payload: envelope.Payload, Status: row.Status, CreatedAt: row.CreatedAt}
+}
+
+func marketplaceClientError(err error) error {
+	switch {
+	case stderrors.Is(err, marketrepo.ErrAgentMarketplaceNotFound):
+		return apperrors.NewNotFoundError("release submission not found")
+	case stderrors.Is(err, marketrepo.ErrAgentMarketplaceDigestMismatch), stderrors.Is(err, marketservice.ErrAgentMarketplaceStaleDigest), stderrors.Is(err, marketrepo.ErrAgentMarketplacePointerConflict), stderrors.Is(err, marketrepo.ErrAgentMarketplaceReviewConflict):
+		return apperrors.NewConflictError("release submission changed; reload and review again")
+	case stderrors.Is(err, marketservice.ErrAgentMarketplaceMissingDependency):
+		return apperrors.NewValidationError(err.Error())
+	case stderrors.Is(err, marketservice.ErrAgentMarketplaceInvalidInput), stderrors.Is(err, marketrepo.ErrAgentMarketplaceInvalidDecision), stderrors.Is(err, marketrepo.ErrAgentMarketplaceVersionAgentMismatch):
+		return apperrors.NewValidationError("invalid marketplace release request")
+	default:
+		return err
+	}
 }
 
 func marketplaceReleaseDTO(row *types.AgentReleaseEntity) *marketplaceReleaseResponse {
@@ -148,7 +170,7 @@ func (h *AgentMarketplaceHandler) SubmitRelease(c *gin.Context) {
 	actorID, _ := types.UserIDFromContext(c.Request.Context())
 	view, err := h.market.SubmitRelease(c.Request.Context(), sandboxConfigTenantID(c), actorID, body.AgentVersionID, interfaces.SubmitReleaseInput{Metadata: body.Metadata})
 	if err != nil {
-		_ = c.Error(err)
+		_ = c.Error(marketplaceClientError(err))
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": marketplaceSubmissionDTO(view)})
@@ -157,7 +179,7 @@ func (h *AgentMarketplaceHandler) SubmitRelease(c *gin.Context) {
 func (h *AgentMarketplaceHandler) ListReviewQueue(c *gin.Context) {
 	views, err := h.market.ListReviewQueue(c.Request.Context(), sandboxConfigTenantID(c))
 	if err != nil {
-		_ = c.Error(err)
+		_ = c.Error(marketplaceClientError(err))
 		return
 	}
 	data := make([]marketplaceSubmissionResponse, 0, len(views))

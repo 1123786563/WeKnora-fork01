@@ -288,6 +288,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewAgentVersionRepository))
 	must(container.Provide(repository.NewAgentMarketplaceRepository))
+	must(container.Provide(func(repo repository.AgentMarketplaceRepository) interfaces.AgentMarketplaceRepository { return repo }))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
 	must(container.Provide(repository.NewAgentShareRepository))

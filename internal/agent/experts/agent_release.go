@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -36,6 +37,7 @@ import (
 // and en keys, the persona renderer's zh* switch). Anything else fails the
 // submission instead of shipping an unverifiable declaration.
 var supportedReleaseLanguages = map[string]bool{"zh": true, "en": true}
+var releaseSemanticVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
 // agentReleaseEnvelope is the exact document set the bundle digest covers:
 // portable payload + Manifest + Dependency Lock (the Manifest's license_id
@@ -148,6 +150,12 @@ func releaseManifest(version types.AgentVersionSnapshot, input types.ReleaseMeta
 
 	if manifest.LicenseID == "" {
 		return types.AgentReleaseManifest{}, fmt.Errorf("experts: release bundle: the license id is required")
+	}
+	if !releaseSemanticVersion.MatchString(manifest.SemanticVersion) || len(manifest.SemanticVersion) > 64 {
+		return types.AgentReleaseManifest{}, fmt.Errorf("experts: release bundle: semantic version must be a valid SemVer value")
+	}
+	if manifest.DisplayName == "" || len(manifest.DisplayName) > 255 {
+		return types.AgentReleaseManifest{}, fmt.Errorf("experts: release bundle: display name is required and must be at most 255 characters")
 	}
 	if len(manifest.UseCases) == 0 {
 		return types.AgentReleaseManifest{}, fmt.Errorf("experts: release bundle: at least one use case is required")

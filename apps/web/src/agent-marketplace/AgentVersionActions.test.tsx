@@ -11,7 +11,7 @@ Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
 
 const version = { id: 'version-1', agent_id: 'agent-1', version_number: 1, source_sha256: 'a'.repeat(64), frozen_by: 'author-1', created_at: '2026-09-21T00:00:00Z' };
-const submission = { id: 'submission-1', tenant_id: 7, listing_id: 'listing-1', agent_version_id: 'version-1', source_agent_id: 'agent-1', author_id: 'author-1', semantic_version: '1.0.0', bundle_digest: 'b'.repeat(64), manifest: { display_name: 'Helpful agent', license_id: 'MIT' }, dependency_lock: { dependencies: [] }, status: 'pending_review', created_at: '2026-09-21T00:00:00Z' };
+const submission = { id: 'submission-1', tenant_id: 7, listing_id: 'listing-1', agent_version_id: 'version-1', source_agent_id: 'agent-1', author_id: 'author-1', semantic_version: '1.0.0', bundle_digest: 'b'.repeat(64), manifest: { display_name: 'Helpful agent', license_id: 'MIT' }, dependency_lock: { dependencies: [] }, payload: { system_prompt: 'fixed prompt', allowed_tools: [], skills: [], subagents: [], starter_prompts: [] }, status: 'pending_review', created_at: '2026-09-21T00:00:00Z' };
 
 test('freezes an Agent Version, selects it, and submits that fixed version through the shared API client', async () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/' });

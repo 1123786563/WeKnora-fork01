@@ -64,7 +64,7 @@ export function TenantReleaseReview({ api, role }: TenantReleaseReviewProps) {
     <section aria-label="Tenant Release review" data-tenant-release-review className="mb-7 grid gap-3">
       <div>
         <h3 className="m-0 text-[13px] font-semibold uppercase tracking-[0.04em] text-[rgba(23,26,29,0.45)]">Tenant Release review</h3>
-        <p className="m-0 mt-1 text-[13px] text-[rgba(23,26,29,0.6)]">Review the fixed Manifest, Dependency Lock, license, and digest before choosing a decision.</p>
+        <p className="m-0 mt-1 text-[13px] text-[rgba(23,26,29,0.6)]">Review the fixed portable payload, Manifest, Dependency Lock, license, and digest before choosing a decision.</p>
       </div>
       {loading ? <p role="status">Loading Tenant Release review queue…</p> : null}
       {error ? <p role="alert" className="m-0 text-[13px] text-[#d54941]">{error}</p> : null}
@@ -79,8 +79,9 @@ export function TenantReleaseReview({ api, role }: TenantReleaseReviewProps) {
                 <h4 className="m-0 text-[15px] font-semibold">{String(submission.manifest.display_name ?? submission.semantic_version)}</h4>
                 <p className="m-0 mt-1 text-[12px] text-[rgba(23,26,29,0.55)]">Submission {submission.id} · Agent Version {submission.agent_version_id}</p>
               </header>
-              <div className="grid gap-3 md:grid-cols-2">
-                <section><h5 className="m-0 text-[12px] font-semibold">Manifest</h5><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-[rgba(127,127,127,0.07)] p-2 text-[11px]">{json(submission.manifest)}</pre></section>
+	              <div className="grid gap-3 md:grid-cols-2">
+	                <section><h5 className="m-0 text-[12px] font-semibold">Portable payload</h5><pre data-review-payload className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-[rgba(127,127,127,0.07)] p-2 text-[11px]">{json(submission.payload)}</pre></section>
+	                <section><h5 className="m-0 text-[12px] font-semibold">Manifest</h5><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-[rgba(127,127,127,0.07)] p-2 text-[11px]">{json(submission.manifest)}</pre></section>
                 <section><h5 className="m-0 text-[12px] font-semibold">Dependency Lock</h5><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-[rgba(127,127,127,0.07)] p-2 text-[11px]">{json(submission.dependency_lock)}</pre></section>
               </div>
               <p className="m-0 text-[13px]">License: <strong>{String(submission.manifest.license_id ?? '—')}</strong></p>

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,6 +19,7 @@ var (
 	ErrAgentMarketplacePointerConflict      = errors.New("agent marketplace listing pointer changed")
 	ErrAgentMarketplaceNotFound             = errors.New("agent marketplace submission not found")
 	ErrAgentMarketplaceInvalidDecision      = errors.New("invalid agent marketplace review decision")
+	ErrAgentMarketplaceReviewConflict       = errors.New("agent marketplace submission already has a review")
 	ErrAgentMarketplaceVersionAgentMismatch = errors.New("agent marketplace version does not belong to source agent")
 )
 
@@ -131,13 +133,6 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 			if submission.Status != "submitted" && submission.Status != "in_review" {
 				return ErrAgentMarketplaceInvalidDecision
 			}
-			var priorReviews int64
-			if err := tx.Model(&types.AgentReleaseReviewEntity{}).Where("tenant_id = ? AND submission_id = ?", tenantID, submission.ID).Count(&priorReviews).Error; err != nil {
-				return err
-			}
-			if priorReviews > 0 {
-				return ErrAgentMarketplaceInvalidDecision
-			}
 			review = &types.AgentReleaseReviewEntity{ID: uuid.NewString(), TenantID: tenantID, SubmissionID: submission.ID, ReviewerID: decision.ReviewerID, ReviewedDigest: expectedDigest, Decision: decision.Decision, Reason: decision.Reason, CreatedAt: time.Now().UTC()}
 			if err := tx.Create(review).Error; err != nil {
 				return err
@@ -161,7 +156,15 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 			} else {
 				query = query.Where("current_release_id = ?", expectedPriorReleaseID)
 			}
-			updated := query.Updates(map[string]any{"current_release_id": release.ID, "updated_at": time.Now().UTC()})
+			updates := map[string]any{"current_release_id": release.ID, "updated_at": time.Now().UTC()}
+			if expectedPriorReleaseID == "" {
+				var manifest types.AgentReleaseManifest
+				if err := json.Unmarshal([]byte(submission.ManifestJSON), &manifest); err != nil {
+					return err
+				}
+				updates["display_name"], updates["summary"] = manifest.DisplayName, manifest.Summary
+			}
+			updated := query.Updates(updates)
 			if updated.Error != nil {
 				return updated.Error
 			}
@@ -176,6 +179,14 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 		if isUniqueViolation(err) {
 			if priorReview, priorRelease, found, lookupErr := r.findReviewResult(ctx, tenantID, submissionID, expectedDigest, decision); lookupErr != nil || found {
 				return priorReview, priorRelease, lookupErr
+			}
+			var existing types.AgentReleaseReviewEntity
+			lookupErr := r.db.WithContext(ctx).Where("tenant_id = ? AND submission_id = ?", tenantID, submissionID).First(&existing).Error
+			if lookupErr == nil {
+				return nil, nil, ErrAgentMarketplaceReviewConflict
+			}
+			if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return nil, nil, lookupErr
 			}
 		}
 		if !isReleaseNumberCollision(err) && !isTransientDatabaseContention(err) {
