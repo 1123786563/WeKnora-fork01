@@ -1,15 +1,15 @@
 /**
- * Agent type presets — a static port of the shipped backend catalogs the Vue
+ * Agent type presets — the vendored fallback of the backend catalogs the Vue
  * editor fetches at runtime:
  *   - config/agent_type_presets.yaml        (GET /api/v1/agents/type-presets)
  *   - config/prompt_templates/agent_system_prompt.yaml (tenant kv
  *     prompt-templates: the builtin template bodies preset ids reference)
  *
- * The React client has no typed endpoints for either route yet, so the shipped
- * builtin payloads are vendored here the same way TOOL_CATALOG mirrors the
- * Vue allTools list (agent-editor.ts). Tenant-customized prompt templates are
- * not reachable from this client; preset application falls back to the builtin
- * bodies (gap recorded in the R485 report).
+ * R491 — the React editor now fetches both at runtime
+ * (agent-editor-resources.ts; api-client agents.typePresets() +
+ * settings.promptTemplates.get()). These static tables remain the fallback for
+ * a failed/empty fetch — a divergence from the Vue editor, which renders empty
+ * dropdowns instead (decision recorded in the R491 report).
  *
  * Behaviour mirrors Vue AgentEditorModal.vue:
  *   - agentType computed 3112-3115, activeAgentTypePreset 3118-3123
@@ -480,21 +480,69 @@ export const AGENT_SYSTEM_PROMPT_TEMPLATE_LIST: AgentSystemPromptTemplateOption[
 ];
 
 /**
+ * Backend PromptTemplate row (frontend/src/api/system PromptTemplate) — the
+ * runtime template list shape the tenant KV prompt-templates endpoint serves.
+ * Unlike the vendored option list the name/description are single-language
+ * strings exactly as the backend stores them (Vue renders them verbatim).
+ */
+export interface AgentPromptTemplateOption {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  default?: boolean;
+  mode?: string;
+}
+
+/**
+ * R491 — map the vendored builtin list onto the backend PromptTemplate shape
+ * for the given locale, so a failed prompt-templates fetch renders the same
+ * list the runtime would (divergence-note fallback, see agent-editor-resources).
+ */
+export function builtinAgentSystemPromptTemplates(locale: Locale): AgentPromptTemplateOption[] {
+  const zh = locale.startsWith('zh');
+  return AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((template) => ({
+    id: template.id,
+    name: zh ? template.name.zh : template.name.en,
+    description: zh ? template.description.zh : template.description.en,
+    content: template.content,
+    ...(template.default ? { default: true } : {}),
+  }));
+}
+
+/** Locale-neutral fallback list for pure helpers that never render the name. */
+const FALLBACK_PROMPT_TEMPLATES: readonly AgentPromptTemplateOption[] = builtinAgentSystemPromptTemplates('zh-CN');
+
+/** Resolve a preset system-prompt body from either template source shape. */
+function promptTemplateBody(templates: readonly AgentPromptTemplateOption[] | Record<string, string> | undefined, promptId: string): string | undefined {
+  if (templates === undefined) return AGENT_SYSTEM_PROMPT_TEMPLATES[promptId];
+  if (Array.isArray(templates)) return templates.find((template) => template.id === promptId)?.content;
+  const body = (templates as Record<string, string>)[promptId];
+  return typeof body === 'string' ? body : undefined;
+}
+
+/**
  * Vue handleAgentSystemPromptResetDefault (AgentEditorModal.vue:4689-4712):
  * the "default" for a non-custom agent type is the template its preset binds
  * (Wiki 问答 → wiki_researcher); custom (or unknown/unbound) types fall back
  * to the global default entry (findDefaultTemplate: default:true, else first).
+ * R491 — presets/templates default to the vendored catalogs so callers without
+ * runtime data keep the R485 behaviour.
  */
-export function resolveAgentSystemPromptResetTemplate(agentTypeId: string | undefined): AgentSystemPromptTemplateOption | null {
+export function resolveAgentSystemPromptResetTemplate(
+  agentTypeId: string | undefined,
+  presets: readonly AgentTypePreset[] = AGENT_TYPE_PRESETS,
+  templates: readonly AgentPromptTemplateOption[] = FALLBACK_PROMPT_TEMPLATES,
+): AgentPromptTemplateOption | null {
   if (agentTypeId && agentTypeId !== 'custom') {
-    const preset = findAgentTypePreset(agentTypeId);
+    const preset = presets.find((candidate) => candidate.id === agentTypeId);
     const promptId = preset?.config?.system_prompt_id;
     if (promptId) {
-      const bound = AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.id === promptId);
+      const bound = templates.find((template) => template.id === promptId);
       if (bound) return bound;
     }
   }
-  return AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.default) ?? AGENT_SYSTEM_PROMPT_TEMPLATE_LIST[0] ?? null;
+  return templates.find((template) => template.default) ?? templates[0] ?? null;
 }
 
 /** config/agent_type_presets.yaml, order preserved. */
@@ -593,8 +641,9 @@ export function agentTypePresetDescription(preset: AgentTypePreset, locale: Loca
   return preset.i18n[locale]?.description ?? preset.i18n['default']?.description ?? '';
 }
 
-export function findAgentTypePreset(id: string): AgentTypePreset | null {
-  return AGENT_TYPE_PRESETS.find((preset) => preset.id === id) ?? null;
+/** R491 — the preset list defaults to the vendored catalog; runtime callers pass the fetched one. */
+export function findAgentTypePreset(id: string, presets: readonly AgentTypePreset[] = AGENT_TYPE_PRESETS): AgentTypePreset | null {
+  return presets.find((preset) => preset.id === id) ?? null;
 }
 
 /** Vue getPresetDefaultName 3146-3148: 我的{label}; custom → empty. */
@@ -610,15 +659,15 @@ export function presetDefaultDescription(preset: AgentTypePreset | null, locale:
 }
 
 /** Vue isNameSystemGenerated 3159-3162: blank or any preset default is safe to override. */
-export function isNameSystemGenerated(name: string, t: Translate, locale: Locale): boolean {
+export function isNameSystemGenerated(name: string, t: Translate, locale: Locale, presets: readonly AgentTypePreset[] = AGENT_TYPE_PRESETS): boolean {
   if (!name) return true;
-  return AGENT_TYPE_PRESETS.some((preset) => presetDefaultName(preset, t, locale) === name);
+  return presets.some((preset) => presetDefaultName(preset, t, locale) === name);
 }
 
 /** Vue isDescriptionSystemGenerated 3163-3167. */
-export function isDescriptionSystemGenerated(description: string, locale: Locale): boolean {
+export function isDescriptionSystemGenerated(description: string, locale: Locale, presets: readonly AgentTypePreset[] = AGENT_TYPE_PRESETS): boolean {
   if (!description) return true;
-  return AGENT_TYPE_PRESETS.some((preset) => presetDefaultDescription(preset, locale) === description);
+  return presets.some((preset) => presetDefaultDescription(preset, locale) === description);
 }
 
 /**
@@ -626,14 +675,22 @@ export function isDescriptionSystemGenerated(description: string, locale: Locale
  * supported_file_types is strong-synced (cleared when the preset omits it so
  * residue from a previous type never leaks). Returns the kb_selection_mode the
  * caller should mirror into its radio state.
+ *
+ * R491 — `promptTemplates` sources the system_prompt body for the preset's
+ * system_prompt_id: the runtime list (backend PromptTemplate rows) when the
+ * editor fetched it, the vendored builtin bodies otherwise.
  */
-export function applyAgentTypePreset(form: AgentEditorForm, preset: AgentTypePreset | null): void {
+export function applyAgentTypePreset(
+  form: AgentEditorForm,
+  preset: AgentTypePreset | null,
+  promptTemplates?: readonly AgentPromptTemplateOption[] | Record<string, string>,
+): void {
   if (!preset?.config) return;
   const c = preset.config;
   const target = form.config;
   if (c.system_prompt_id !== undefined) {
     target.system_prompt_id = c.system_prompt_id;
-    const body = AGENT_SYSTEM_PROMPT_TEMPLATES[c.system_prompt_id];
+    const body = promptTemplateBody(promptTemplates, c.system_prompt_id);
     if (typeof body === 'string') {
       target.system_prompt = body;
     } else {

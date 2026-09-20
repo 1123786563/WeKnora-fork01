@@ -850,6 +850,7 @@ test('resolveAgentSystemPromptResetTemplate honours runtime presets and template
 });
 
 test('seedCreateAgentForm applies the runtime default preset (backend rag-qa without retain_retrieval_history)', () => {
+  const t = makeEditorT('zh-CN');
   const runtimePresets: AgentTypePreset[] = [
     {
       id: 'rag-qa',

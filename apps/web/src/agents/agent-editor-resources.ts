@@ -24,21 +24,14 @@
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import {
-  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
   AGENT_TYPE_PRESETS,
+  builtinAgentSystemPromptTemplates,
+  type AgentPromptTemplateOption,
   type AgentTypePreset,
 } from './agent-type-presets.ts';
 import type { PromptPlaceholderDef } from './agent-editor.ts';
 
-/** Backend PromptTemplate row (api/system PromptTemplate; single-language strings). */
-export interface AgentPromptTemplateOption {
-  id: string;
-  name: string;
-  description: string;
-  content: string;
-  default?: boolean;
-  mode?: string;
-}
+export type { AgentPromptTemplateOption } from './agent-type-presets.ts';
 
 /** Placeholder catalog keyed by prompt field, mirroring the backend grouping. */
 export type AgentPlaceholderCatalog = Record<string, PromptPlaceholderDef[]>;
@@ -124,16 +117,9 @@ function toPlaceholders(value: unknown): AgentPlaceholderCatalog | null {
 
 /** Static-catalog fallback: the vendored preset table plus the builtin agent_system_prompt list. */
 export function fallbackAgentEditorResources(locale: Locale): AgentEditorResources {
-  const zh = locale.startsWith('zh');
   return {
     typePresets: AGENT_TYPE_PRESETS,
-    promptTemplates: AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((template) => ({
-      id: template.id,
-      name: zh ? template.name.zh : template.name.en,
-      description: zh ? template.description.zh : template.description.en,
-      content: template.content,
-      ...(template.default ? { default: true } : {}),
-    })),
+    promptTemplates: builtinAgentSystemPromptTemplates(locale),
     placeholders: null,
   };
 }
@@ -165,11 +151,10 @@ async function fetchRuntimeData(client: WeKnoraClient, signal?: AbortSignal): Pr
   // method (older stubs) so one absent endpoint cannot take the load down —
   // the same guard the parser-engines dep uses.
   const [presets, templates, placeholders] = await Promise.all([
-    Promise.resolve().then(() => client.configuration.agents.typePresets?.()).then(toTypePresets).catch(() => null),
-    Promise.resolve().then(() => client.settings.promptTemplates?.get?.()).then(toPromptTemplates).catch(() => null),
-    Promise.resolve().then(() => client.configuration.agents.placeholders?.()).then(toPlaceholders).catch(() => null),
+    Promise.resolve().then(() => client.configuration.agents.typePresets?.(signal)).then(toTypePresets).catch(() => null),
+    Promise.resolve().then(() => client.settings.promptTemplates?.get?.(signal)).then(toPromptTemplates).catch(() => null),
+    Promise.resolve().then(() => client.configuration.agents.placeholders?.(signal)).then(toPlaceholders).catch(() => null),
   ]);
-  void signal;
   return { typePresets: presets, promptTemplates: templates, placeholders };
 }
 
@@ -183,15 +168,15 @@ export async function loadAgentEditorResources(
   client: WeKnoraClient,
   options: { force?: boolean; signal?: AbortSignal } = {},
 ): Promise<AgentEditorRuntimeData> {
-  const fresh = cachedData !== null && Date.now() - cachedAt < CACHE_TTL_MS;
-  if (!options.force && fresh) return cachedData;
+  if (!options.force && cachedData !== null && Date.now() - cachedAt < CACHE_TTL_MS) return cachedData;
   if (inflight) return inflight;
-  inflight = fetchRuntimeData(client, options.signal)
+  const pending = fetchRuntimeData(client, options.signal)
     .then((data) => {
       cachedData = data;
       cachedAt = Date.now();
       return data;
     })
     .finally(() => { inflight = null; });
-  return inflight;
+  inflight = pending;
+  return pending;
 }

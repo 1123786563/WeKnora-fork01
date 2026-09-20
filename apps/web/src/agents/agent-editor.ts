@@ -7,10 +7,12 @@
 import { formatMessage, type Locale, type MessageValues } from '@weknora/i18n';
 import { agentEditorFallback } from './agent-editor-fallback.ts';
 import {
+  AGENT_TYPE_PRESETS,
   applyAgentTypePreset,
   findAgentTypePreset,
   presetDefaultDescription,
   presetDefaultName,
+  type AgentPromptTemplateOption,
   type AgentTypePreset,
 } from './agent-type-presets.ts';
 
@@ -32,7 +34,9 @@ export {
 // R486 D4 — 使用模板/恢复默认 selector surface (vendored agent_system_prompt.yaml)
 export {
   AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
+  builtinAgentSystemPromptTemplates,
   resolveAgentSystemPromptResetTemplate,
+  type AgentPromptTemplateOption,
   type AgentSystemPromptTemplateOption,
 } from './agent-type-presets.ts';
 
@@ -710,14 +714,24 @@ export function selectInitialModelId(models: readonly ModelDefaultCandidate[], m
  * Smart-reasoning is the default agent_mode, so the default type 'rag-qa'
  * seeds the system prompt, the 4 RAG tools, kb mode and the 我的<label> name.
  * Models are prefilled when empty (Vue applyDefaultModelsIfEmpty 2854-2862, D5).
+ *
+ * R491 — `presets` / `promptTemplates` default to the vendored catalogs; the
+ * editor passes the runtime-fetched ones (Vue awaits loadDependencies before
+ * the create prefill, so the backend rag-qa preset + template body win).
  */
-export function seedCreateAgentForm(t: Translate, locale: Locale = 'zh-CN', models: readonly ModelDefaultCandidate[] = []): AgentEditorForm {
+export function seedCreateAgentForm(
+  t: Translate,
+  locale: Locale = 'zh-CN',
+  models: readonly ModelDefaultCandidate[] = [],
+  presets: readonly AgentTypePreset[] = AGENT_TYPE_PRESETS,
+  promptTemplates?: readonly AgentPromptTemplateOption[] | Record<string, string>,
+): AgentEditorForm {
   const form = defaultAgentForm();
   if (form.config.agent_mode === 'smart-reasoning') {
     const defaultTypeId = form.config.agent_type;
-    const preset = findAgentTypePreset(defaultTypeId);
+    const preset = findAgentTypePreset(defaultTypeId, presets);
     if (defaultTypeId && defaultTypeId !== 'custom') {
-      applyAgentTypePreset(form, preset);
+      applyAgentTypePreset(form, preset, promptTemplates);
     }
     if (!form.name) form.name = presetDefaultName(preset, t, locale);
     if (!form.description) form.description = presetDefaultDescription(preset, locale);
@@ -759,8 +773,15 @@ const PLACEHOLDER_DEFINITIONS: Record<string, PromptPlaceholderDef> = {
   language: { name: 'language', label: '用户语言', description: '用户界面的语言偏好，如 Chinese (Simplified)、English、Korean 等，用于控制 LLM 回答语言' },
 };
 
-/** internal/types/placeholder.go PlaceholdersByField — order preserved per field. */
-export function promptPlaceholdersFor(field: 'agent_system_prompt' | 'system_prompt' | 'context_template'): PromptPlaceholderDef[] {
+/** internal/types/placeholder.go PlaceholdersByField — order preserved per field.
+ *
+ * R491 — `runtime` is the fetched GET /api/v1/agents/placeholders catalog
+ * (Vue editorResources.placeholders); when its section for `field` is present
+ * and non-empty the backend definitions win, otherwise the vendored set
+ * answers (failed/empty fetch fallback — Vue renders none instead). */
+export function promptPlaceholdersFor(field: 'agent_system_prompt' | 'system_prompt' | 'context_template', runtime?: Readonly<Record<string, PromptPlaceholderDef[]>> | null): PromptPlaceholderDef[] {
+  const fetched = runtime?.[field];
+  if (fetched && fetched.length > 0) return [...fetched];
   if (field === 'agent_system_prompt') {
     return [PLACEHOLDER_DEFINITIONS.knowledge_bases!, PLACEHOLDER_DEFINITIONS.web_search_status!, PLACEHOLDER_DEFINITIONS.current_time!, PLACEHOLDER_DEFINITIONS.language!];
   }

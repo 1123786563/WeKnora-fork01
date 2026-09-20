@@ -1362,12 +1362,12 @@ test('runtime catalogs render in the type dropdown, template panel and placehold
     assert.equal(select.value, 'rag-qa');
     assert.match(root.textContent!, /后端预设描述/);
     assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我的后端问答');
-    // create prefill applied the backend preset body + temperature
-    assert.equal(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value, 'backend prompt body');
 
-    // template panel lists the tenant-KV templates with backend strings
+    // template panel lists the tenant-KV templates with backend strings; the
+    // create prefill applied the backend preset body (prompts section field)
     await goto(root, 'prompts');
     const section = $('[data-editor-section="prompts"]', root)!;
+    assert.equal(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value, 'backend prompt body');
     await click(section, '[data-prompt-template-toggle]');
     const panel = $('[data-prompt-template-panel]', root)!;
     assert.deepEqual(
@@ -1394,14 +1394,14 @@ test('failing runtime catalog endpoints fall back to the vendored static catalog
     await act(async () => { await Promise.resolve(); });
 
     // static preset table: the five shipped presets, rag-qa selected with its
-    // vendored system prompt body
+    // vendored system prompt body (prompts section field)
     const select = $('[data-field="agent_type"]', root) as HTMLSelectElement;
     assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
-    assert.ok(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value.startsWith('You are WeKnora, an assistant'));
 
     // static builtin template list answers the template panel
     await goto(root, 'prompts');
     const section = $('[data-editor-section="prompts"]', root)!;
+    assert.ok(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value.startsWith('You are WeKnora, an assistant'));
     await click(section, '[data-prompt-template-toggle]');
     const panel = $('[data-prompt-template-panel]', root)!;
     assert.equal($$('[data-prompt-template]', panel).length, 7);

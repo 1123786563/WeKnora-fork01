@@ -7,19 +7,19 @@
  * conversation, question suggestions, personalization (MBTI persona),
  * knowledge (file-types dropdown multi-select), retrieval (tenant-configured
  * create defaults), web search, attachment upload (with the embedded chat
- * parser rules editor), tools, MCP services and skills. Out of scope
+ * parser rules editor), tools, MCP services and skills. R491 — the agent
+ * type presets, prompt template list and placeholder hints are fetched at
+ * runtime (agents/type-presets, tenants/kv/prompt-templates,
+ * agents/placeholders) exactly like the Vue editorResources store, with the
+ * vendored static catalogs as the failed-fetch fallback. Out of scope
  * (recorded gaps): intent prompts, the `{{` caret autocomplete popup,
- * share settings and tenant-customized prompt templates (api-client lacks
- * the prompt-templates / agents/placeholders endpoints; the shipped builtin
- * catalog is vendored instead).
+ * share settings and the normal-mode (quick-answer) template pickers.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
 import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
 import {
   AGENT_FILE_TYPE_OPTIONS,
-  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
-  AGENT_TYPE_PRESETS,
   agentTypePresetDescription,
   agentTypePresetLabel,
   applyAgentModeSwitch,
@@ -63,6 +63,7 @@ import {
   type ToolCapabilityScope,
   type Translate,
 } from './agent-editor.ts';
+import { loadAgentEditorResources, resolveAgentEditorResources, type AgentEditorRuntimeData } from './agent-editor-resources.ts';
 import { AgentParserRules, chatParserGroups, ensureCompleteParserRules } from './AgentParserRules.tsx';
 import type { ParserEngineInfo, ParserEngineRule } from '../knowledge-settings/parserSettings.tsx';
 import { PersonaSection } from './PersonaSection.tsx';
@@ -282,6 +283,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // with a 4000ms duration; React renders it in-modal as a status region)
   const [kbWarn, setKbWarn] = useState<string | null>(null);
   const kbWarnTimer = useRef<number | null>(null);
+  // R491 — runtime editor catalogs (Vue editorResources prefetchAgentEditorDeps:
+  // type-presets / prompt-templates / placeholders). null until the fetch
+  // settles; resolve() merges whatever arrived over the vendored static
+  // fallback so the editor renders before and after a failed fetch.
+  const [runtimeResources, setRuntimeResources] = useState<AgentEditorRuntimeData | null>(null);
+  const resources = useMemo(() => resolveAgentEditorResources(runtimeResources, locale), [runtimeResources, locale]);
   // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef)
   const systemPromptRef = useRef<HTMLTextAreaElement | null>(null);
   const contextTemplateRef = useRef<HTMLTextAreaElement | null>(null);
@@ -321,7 +328,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setKbWarn(null);
     void (async () => {
       const next: EditorDeps = { ...EMPTY_DEPS };
-      const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus, parserEngines, retrievalConfig] = await Promise.allSettled([
+      const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus, parserEngines, retrievalConfig, editorResources] = await Promise.allSettled([
         client.configuration.models.list(),
         client.knowledgeBases.list(),
         client.sandboxConfigurations.list(),
@@ -335,6 +342,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         // method so one absent endpoint cannot take the whole load down.
         Promise.resolve().then(() => client.knowledgeBases.settings.parserEngines()),
         Promise.resolve().then(() => client.settings.retrieval.get()),
+        // R491 — type-presets / prompt-templates / placeholders (Vue prefetch-
+        // AgentEditorDeps ensureAgentTypePresets / ensurePromptTemplates /
+        // ensurePlaceholders); module-cached 60s + inflight de-dup inside, and
+        // a failed fetch resolves to null fields (static fallback downstream).
+        loadAgentEditorResources(client),
       ]);
       if (!active) return;
       if (models.status === 'fulfilled') next.models = Array.isArray(models.value) ? models.value as ModelConfiguration[] : [];
@@ -379,6 +391,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         }
       }
       setDeps(next);
+      // R491 — publish the fetched catalogs before the create prefill so the
+      // seeded preset/template body matches what the dropdown renders (Vue
+      // awaits loadDependencies before initializing the form).
+      const runtimeData = editorResources.status === 'fulfilled' ? editorResources.value : null;
+      if (active) setRuntimeResources(runtimeData);
+      const resourcesNow = resolveAgentEditorResources(runtimeData, locale);
 
       if (mode === 'edit' && agent) {
         const hydrated = hydrateAgentForm(agent);
@@ -393,7 +411,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         // R485 D3: the default agent_type preset ('rag-qa') is applied on open
         // so name/description/system prompt/tools match the type dropdown.
         // R485 D5: chat/rerank models prefilled when empty.
-        const seeded = seedCreateAgentForm(t, locale, next.models);
+        // R491: the runtime-fetched preset catalog + template bodies win over
+        // the vendored fallback (backend config drives the prefill).
+        const seeded = seedCreateAgentForm(t, locale, next.models, resourcesNow.typePresets, resourcesNow.promptTemplates);
         // R486 D9 — create-mode retrieval knobs open at the tenant-configured
         // values (Vue 3477-3481 newFormData defaults + 3912-3917 tenant reads;
         // the `|| / !== undefined` semantics live in tenantRetrievalDefaultsFromConfig)
@@ -451,9 +471,10 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const isAgentMode = form.config.agent_mode === 'smart-reasoning';
   const hasKnowledgeBase = kbMode !== 'none';
   const quickAnswer = !isAgentMode;
-  // R485 D2 — Vue activeAgentTypePreset 3118-3123 (agent-mode gated)
+  // R485 D2 — Vue activeAgentTypePreset 3118-3123 (agent-mode gated); R491 —
+  // looked up in the runtime catalog with the static table as the fallback.
   const activeAgentTypePreset = isAgentMode && form.config.agent_type && form.config.agent_type !== 'custom'
-    ? findAgentTypePreset(form.config.agent_type)
+    ? findAgentTypePreset(form.config.agent_type, resources.typePresets)
     : null;
 
   const scope = useMemo<ToolCapabilityScope>(() => {
@@ -546,9 +567,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // (MessagePlugin.warning kbIncompatibleWarn, 4000ms — rendered in-modal).
   const onAgentTypeChange = useCallback((value: string) => {
     const current = formRef.current;
-    const canOverrideName = isNameSystemGenerated(current.name, t, locale);
-    const canOverrideDesc = isDescriptionSystemGenerated(current.description, locale);
-    const preset = findAgentTypePreset(value);
+    const canOverrideName = isNameSystemGenerated(current.name, t, locale, resources.typePresets);
+    const canOverrideDesc = isDescriptionSystemGenerated(current.description, locale, resources.typePresets);
+    const preset = findAgentTypePreset(value, resources.typePresets);
     const draft: AgentEditorForm = {
       ...current,
       config: {
@@ -558,7 +579,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       },
     };
     draft.config.agent_type = value;
-    if (value !== 'custom') applyAgentTypePreset(draft, preset);
+    if (value !== 'custom') applyAgentTypePreset(draft, preset, resources.promptTemplates);
     if (canOverrideName) draft.name = presetDefaultName(preset, t, locale);
     if (canOverrideDesc) draft.description = presetDefaultDescription(preset, locale);
     const presetKbMode = preset?.config?.kb_selection_mode;
@@ -581,7 +602,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     } else {
       setKbWarn(null);
     }
-  }, [t, locale, deps.kbOptions]);
+  }, [t, locale, deps.kbOptions, resources.typePresets, resources.promptTemplates]);
 
   // Deep-patch helper for the nested question_suggestions block (Vue v-model
   // binds straight into the nested objects; React needs a fresh copy).
@@ -719,9 +740,10 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               onChange={(value) => onAgentModeChange(value as 'quick-answer' | 'smart-reasoning')}
             />
           </Row>
-          {isAgentMode && AGENT_TYPE_PRESETS.length > 0 ? (
+          {isAgentMode && resources.typePresets.length > 0 ? (
             // R485 D2 — Vue 118-135: agent type dropdown (smart-reasoning only),
-            // preset description echoed under the label
+            // preset description echoed under the label. R491 — options come
+            // from the runtime type-presets fetch (static catalog on failure).
             <Row label={t('agentEditor.agentType.label')} desc={t('agentEditor.agentType.desc')}>
               <Select
                 data-field="agent_type"
@@ -730,7 +752,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 disabled={form.is_builtin}
                 onChange={(event) => onAgentTypeChange(event.target.value)}
               >
-                {AGENT_TYPE_PRESETS.map((preset) => (
+                {resources.typePresets.map((preset) => (
                   <option key={preset.id} value={preset.id}>{agentTypePresetLabel(preset, locale)}</option>
                 ))}
               </Select>
@@ -776,10 +798,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // R486 D4 — the placeholder tag strip Vue renders under each prompt desc
   // (AgentEditorModal.vue:221-231): 可用变量 label, one {{name}} chip per
   // definition (tooltip = description + click-to-insert) and the hint.
+  // R491 — the definitions come from GET /agents/placeholders with the
+  // vendored catalogue as the failed-fetch fallback (Vue: fetched only).
   const renderPlaceholderTags = (field: 'agent_system_prompt' | 'system_prompt' | 'context_template', target: 'system_prompt' | 'context_template', tagBlock: string) => (
     <div className="mt-1.5 flex flex-wrap items-center gap-1" data-placeholder-tags={tagBlock}>
       <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.available')}</span>
-      {promptPlaceholdersFor(field).map((def) => (
+      {promptPlaceholdersFor(field, resources.placeholders).map((def) => (
         <button
           key={def.name}
           type="button"
@@ -794,11 +818,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   );
 
   // R486 D4 — PromptTemplateSelector corner controls (frontend/src/components/
-  // PromptTemplateSelector.vue): 恢复默认 + 使用模板 popup over the vendored
-  // builtin agent_system_prompt templates. Vue renders these for both prompt
-  // modes; the normal-mode system/context template bodies are not vendored and
-  // the tenant prompt-templates endpoint is missing from the api-client, so
-  // the controls stay agent-mode only (gap recorded in the R486 report).
+  // PromptTemplateSelector.vue): 恢复默认 + 使用模板 popup. R491 — the list
+  // is fetched from GET /tenants/kv/prompt-templates (agent_system_prompt
+  // section; backend single-language name/description strings rendered
+  // verbatim like Vue), with the vendored builtin list as the failed-fetch
+  // fallback. The normal-mode system/context template bodies still have no
+  // React picker, so the controls stay agent-mode only (R486 gap).
   const renderTemplateControls = () => (
     <div className="relative flex items-center gap-1.5 self-end">
       <button
@@ -806,7 +831,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         data-prompt-reset-default
         className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-transparent px-1.5 py-[3px] text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] hover:text-[var(--td-brand-color,#0052d9)]"
         onClick={() => {
-          const template = resolveAgentSystemPromptResetTemplate(form.config.agent_type);
+          const template = resolveAgentSystemPromptResetTemplate(form.config.agent_type, resources.typePresets, resources.promptTemplates);
           if (!template) return;
           patch((draft) => {
             draft.config.system_prompt = template.content;
@@ -827,9 +852,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           <div className="absolute right-0 bottom-[calc(100%+4px)] z-30 w-[420px] rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-prompt-template-panel>
             <p className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3 py-2 text-[13px] font-medium">{t('promptTemplate.selectTemplate')}</p>
             <div className="max-h-[320px] overflow-y-auto p-1">
-              {AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.length === 0 ? (
+              {resources.promptTemplates.length === 0 ? (
                 <p className="m-0 px-3 py-6 text-center text-[13px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('promptTemplate.noTemplates')}</p>
-              ) : AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((template) => (
+              ) : resources.promptTemplates.map((template) => (
                 <button
                   key={template.id}
                   type="button"
@@ -844,12 +869,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                   }}
                 >
                   <span className="flex items-center gap-2 text-[13px] font-medium">
-                    {locale.startsWith('zh') ? template.name.zh : template.name.en}
+                    {template.name}
                     {template.default ? (
                       <span className="rounded bg-[var(--td-warning-color-light,#fdf1e3)] px-1.5 py-[1px] text-[11px] font-medium text-[var(--td-warning-color,#e37318)]" data-template-default>{t('promptTemplate.default')}</span>
                     ) : null}
                   </span>
-                  <span className="text-left text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{locale.startsWith('zh') ? template.description.zh : template.description.en}</span>
+                  <span className="text-left text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{template.description}</span>
                 </button>
               ))}
             </div>
