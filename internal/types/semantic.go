@@ -66,18 +66,18 @@ func SemanticEvidenceFromWire(wire *semanticpb.Evidence) (SemanticEvidence, erro
 }
 
 type SemanticAccessScope struct {
-	Scope                                               SemanticScopeKey
-	SubjectID, ScopeRef, ScopeHash, Audience, BudgetRef string
-	PermissionEpoch                                     uint64
-	Purpose                                             string
+	Scope                                                          SemanticScopeKey
+	SubjectID, ScopeRef, ScopeHash, ExpiresAt, Audience, BudgetRef string
+	PermissionEpoch                                                uint64
+	Purpose                                                        string
 }
 
 func SemanticAccessScopeFromWire(wire *semanticpb.AccessScope) (SemanticAccessScope, error) {
-	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
+	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.SubjectId == "" || wire.ScopeRef == "" || wire.ScopeHash == "" || wire.ExpiresAt == "" || wire.Audience == "" || wire.BudgetRef == "" || wire.Purpose == semanticpb.Purpose_PURPOSE_UNSPECIFIED {
 		return SemanticAccessScope{}, fmt.Errorf("semantic access scope is incomplete")
 	}
 	purpose := wire.Purpose.String()
-	return SemanticAccessScope{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
+	return SemanticAccessScope{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, SubjectID: wire.SubjectId, ScopeRef: wire.ScopeRef, ScopeHash: wire.ScopeHash, ExpiresAt: wire.ExpiresAt, PermissionEpoch: wire.PermissionEpoch, Audience: wire.Audience, BudgetRef: wire.BudgetRef, Purpose: purpose}, nil
 }
 
 func semanticRetrievalModeFromWire(mode semanticpb.RetrievalMode) (SemanticRetrievalMode, error) {

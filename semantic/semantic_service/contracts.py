@@ -73,12 +73,13 @@ class AccessScope:
     scope_ref: str
     scope_hash: str
     permission_epoch: int
+    expires_at: str
     audience: str
     purpose: str
     budget_ref: str
 
     def __post_init__(self) -> None:
-        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.audience or not self.purpose or self.permission_epoch < 0:
+        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose or self.permission_epoch < 0:
             raise ValueError("access scope identity fields are required")
 
 

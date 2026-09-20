@@ -53,7 +53,7 @@ def test_evidence_preserves_absent_span_and_access_scope_identity() -> None:
     from semantic_service.contracts import AccessScope, Evidence, ScopeKey
 
     evidence = Evidence(evidence_id="e", document_id="d", revision=1, chunk_id="c", content_hash="h", quote="文本", start_char=None, end_char=None)
-    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, audience="semantic", purpose="search", budget_ref="budget")
+    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, expires_at="2026-09-20T00:00:00Z", audience="semantic", purpose="search", budget_ref="budget")
 
     assert evidence.start_char is None and evidence.end_char is None
     assert scope.scope.tenant_id == 1 and scope.permission_epoch == 2
@@ -76,7 +76,7 @@ def test_operation_carries_scope_and_revision() -> None:
 def test_search_request_preserves_requested_mode_and_limits() -> None:
     from semantic_service.contracts import AccessScope, QueryLimits, ScopeKey, SearchRequest
 
-    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, audience="semantic", purpose="search", budget_ref="budget")
+    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, expires_at="2026-09-20T00:00:00Z", audience="semantic", purpose="search", budget_ref="budget")
     request = SearchRequest(query_id="q", query="问题", access_scope=scope, limits=QueryLimits(max_hops=2, max_nodes=10, max_edges=20, top_k=3, max_tokens=100, deadline_ms=1000), requested_mode="graph_rag")
 
     assert request.requested_mode == "graph_rag" and request.limits.max_hops == 2
@@ -85,7 +85,7 @@ def test_search_request_preserves_requested_mode_and_limits() -> None:
 def test_reason_request_embeds_search_and_limits_reasoning_mode() -> None:
     from semantic_service.contracts import AccessScope, QueryLimits, ReasonRequest, ScopeKey, SearchRequest
 
-    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, audience="semantic", purpose="reason", budget_ref="budget")
+    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, expires_at="2026-09-20T00:00:00Z", audience="semantic", purpose="reason", budget_ref="budget")
     search = SearchRequest(query_id="q", query="问题", access_scope=scope, limits=QueryLimits(2, 10, 20, 3, 100, 1000), requested_mode="reason")
     request = ReasonRequest(search=search, reasoning_mode="rules", rule_set_version="v1")
 
