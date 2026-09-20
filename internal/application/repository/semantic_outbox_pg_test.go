@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"net/url"
 	"os"
@@ -20,6 +21,46 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+func TestSemanticMutationPostgresConcurrentSameRevision(t *testing.T) {
+	db := newSemanticPostgresDB(t)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			<-start
+			_, err := NewSemanticControlRepository(db.Session(&gorm.Session{NewDB: true})).WithSemanticMutation(context.Background(), mutationFixture(0, false, []byte("race")), noBusinessWrite)
+			results <- err
+		}()
+	}
+	close(start)
+	a, b := <-results, <-results
+	require.NotEqual(t, a == nil, b == nil)
+	var revision string
+	require.NoError(t, db.Raw("SELECT revision FROM semantic_document_revisions WHERE tenant_id='1' AND kb_id='kb-1' AND document_id='doc-1'").Scan(&revision).Error)
+	require.Equal(t, "1", revision)
+}
+
+func TestSemanticMutationPostgresConcurrentDistinctTombstones(t *testing.T) {
+	db := newSemanticPostgresDB(t)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, doc := range []string{"a", "b"} {
+		go func(doc string) {
+			<-start
+			m := mutationFixture(0, true, nil)
+			m.DocumentID = doc
+			_, err := NewSemanticControlRepository(db.Session(&gorm.Session{NewDB: true})).WithSemanticMutation(context.Background(), m, noBusinessWrite)
+			results <- err
+		}(doc)
+	}
+	close(start)
+	require.NoError(t, <-results)
+	require.NoError(t, <-results)
+	var epoch string
+	require.NoError(t, db.Raw("SELECT epoch FROM semantic_access_epochs WHERE tenant_id='1' AND kb_id='kb-1'").Scan(&epoch).Error)
+	require.Equal(t, "2", epoch)
+}
 
 func TestSemanticMutationPostgresRollback(t *testing.T) {
 	db := newSemanticPostgresDB(t)
