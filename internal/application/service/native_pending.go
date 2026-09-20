@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"math"
+	"strconv"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 )
@@ -73,7 +75,17 @@ func (c *NativePendingConsumptionCoordinator) ResolveAndReserve(ctx context.Cont
 	if err != nil {
 		return empty, err
 	}
-	if resolved.Detail.Status != nativecontract.PendingResolved || resolved.Detail.ResolvedDecisionID != decision.DecisionID || !nativePendingDetailMatchesKey(resolved.Detail, key) {
+	requestRevision, revisionErr := strconv.ParseInt(decision.PendingRevision, 10, 64)
+	expectedRevision := strconv.FormatInt(requestRevision+1, 10)
+	receipt := resolved.Detail
+	detailRevisionMatches := detail.Ref.Revision == decision.PendingRevision
+	if detail.Status == nativecontract.PendingResolved {
+		detailRevisionMatches = detail.Ref.Revision == expectedRevision
+	}
+	if receipt.Status != nativecontract.PendingResolved || receipt.ResolvedDecisionID != decision.DecisionID || !nativePendingDetailMatchesKey(receipt, key) ||
+		receipt.CallID != detail.CallID || receipt.CallID != decision.CallID || receipt.PlanVersion != detail.PlanVersion || receipt.PlanVersion != decision.PlanVersion ||
+		receipt.ArgsHash != detail.ArgsHash || receipt.ArgsHash != decision.ArgsHash || receipt.ResolvedAction != decision.Action ||
+		revisionErr != nil || requestRevision < 1 || requestRevision == math.MaxInt64 || !detailRevisionMatches || receipt.Ref.Revision != expectedRevision {
 		return empty, nativePendingServiceFailure(nativecontract.ErrStore, "pending consumption receipt is invalid")
 	}
 	return NativeResolvedPendingIdentity{Key: key, DecisionID: resolved.Detail.ResolvedDecisionID, PendingRevision: resolved.Detail.Ref.Revision, CallID: resolved.Detail.CallID, PlanVersion: resolved.Detail.PlanVersion, ArgsHash: resolved.Detail.ArgsHash}, nil
