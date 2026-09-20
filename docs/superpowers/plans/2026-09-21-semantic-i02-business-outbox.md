@@ -16,6 +16,7 @@
 - Business mutation callback, semantic revision, outbox event, denial barrier, and required epoch change use the exact same transaction; no hidden second transaction.
 - Revision compare-and-set is scoped to `(tenant_id, kb_id, document_id)`; outbox delivery is at-least-once and consumers deduplicate by stable event ID.
 - Outbox due/lease eligibility and lease expiry are anchored to database time, never the worker host clock. SQLite's conditional claim update re-evaluates due retry and absent/expired lease state after concurrent retry rescheduling.
+- SQLite claim selection, conditional lease update, and full event re-read are one GORM transaction. After a successful claim, return the durable values for all event fields, including error code, retry time, owner, token, and lease expiry; never return stale pre-update metadata.
 - The new PostgreSQL migration is `000178_semantic_control`; the paired SQLite migration is `000099_semantic_control`, based on verified existing heads PG 177 and SQLite 98. Re-check both heads immediately before creating files; never edit an applied migration.
 - Persist `uint64` tenant/revision/epoch/outbox-attempt/fencing values without signed overflow: PostgreSQL uses bounded `NUMERIC(20,0)`; SQLite uses canonical base-10 TEXT with digit/range constraints and the repository converts with `strconv.FormatUint`/`ParseUint`.
 - Existing `KnowledgeRepository`/`ChunkRepository` write methods cannot be called inside the callback because they start their own transactions. I02 exposes a tx-taking boundary; I05 performs the real business call-site integration.
@@ -31,6 +32,7 @@
 - Delete tombstone: same commit writes deny and increments epoch; restore requires the current tombstone revision, clears denial, and increments epoch.
 - Outbox redelivery: retry presents the same stable event identity and payload hash; stale lease owner cannot acknowledge or overwrite a newer attempt.
 - Lease timing/retry state uses database time; a SQLite race between expired-lease claim and a failure scheduling a future retry cannot replace the retry schedule.
+- A stale SQLite claim candidate racing with a failure whose retry time is already due may claim the event, but must return the newly durable failure code and stable event/payload/config identity.
 - PostgreSQL race tests use two independent SQL pools/connections on one isolated schema, prove distinct backend connection IDs, and rendezvous inside each transaction before contested writes.
 - PG/SQLite equivalence: table constraints, indexes, up/down/up, payload bytes, and maximum uint64 strings remain exact across both dialects.
 
