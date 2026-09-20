@@ -21,6 +21,11 @@ type KnowledgeTagService interface {
 	DeleteTag(ctx context.Context, id string, force bool, contentOnly bool, excludeIDs []string) error
 	// FindOrCreateTagByName finds a tag by name or creates it if not exists.
 	FindOrCreateTagByName(ctx context.Context, kbID string, name string) (*types.KnowledgeTag, error)
+	// DeleteOrphanTagByName deletes the KB-scoped tag with the given name iff
+	// no live knowledge or chunk still references it (SP2-a Task 8 purge tail:
+	// the deleted source's auto-tag). A tag a user manually attached to other
+	// documents has references and survives.
+	DeleteOrphanTagByName(ctx context.Context, kbID string, name string) error
 	// ProcessIndexDelete handles async index deletion task
 	ProcessIndexDelete(ctx context.Context, t *asynq.Task) error
 }
@@ -62,4 +67,9 @@ type KnowledgeTagRepository interface {
 	) (map[string]types.TagReferenceCounts, error)
 	// DeleteUnusedTags deletes tags that are not referenced by any knowledge or chunk.
 	DeleteUnusedTags(ctx context.Context, tenantID uint64, kbID string) (int64, error)
+	// DeleteOrphanTagByName deletes same-named tags in one knowledge base
+	// that no live knowledge or chunk references anymore. Returns nil when no
+	// such tag exists (the common case after the purge loop already removed
+	// the relations).
+	DeleteOrphanTagByName(ctx context.Context, tenantID uint64, kbID string, name string) error
 }

@@ -83,7 +83,7 @@ var queueDefinitions = []QueueDefinition{
 	{Name: QueueMaintenance, Pool: WorkerPoolMaintenance, Weight: 1, TaskTypes: []string{
 		TypeFAQImport, TypeKBClone, TypeIndexDelete, TypeKBDelete,
 		TypeKnowledgeListDelete, TypeKnowledgeListReparse, TypeKnowledgeMove,
-		TypeQueryHistoryExport,
+		TypeQueryHistoryExport, TypeDataSourcePurge,
 	}},
 	{Name: QueueWiki, Pool: WorkerPoolWiki, Weight: 1, TaskTypes: []string{TypeWikiIngest, TypeWikiFinalize}},
 }
@@ -250,6 +250,7 @@ const (
 	TypeKnowledgeAutoTag         = "knowledge:auto_tag"         // 文档自动关联知识库已有标签
 	TypeManualProcess            = "manual:process"             // 手工知识更新任务（cleanup + 重新索引）
 	TypeDataSourceSync           = "datasource:sync"            // 数据源同步任务
+	TypeDataSourcePurge          = "datasource:purge"           // 删源级联清理任务（SP2-a Task 8）
 	TypeWikiIngest               = "wiki:ingest"                // Wiki 页面同步任务
 	TypeWikiFinalize             = "wiki:finalize"              // Wiki KB 级收尾任务（防抖：索引重建/死链清理/交叉链接）
 	TypeTemporaryDocumentProcess = "temporary_document:process" // 会话临时文档解析任务
@@ -258,6 +259,26 @@ const (
 	// TypeMemoryExtract 长期记忆抽取任务（会话轮次防抖后异步执行）
 	TypeMemoryExtract = "memory:extract"
 )
+
+// DataSourcePurgePayload carries one async purge of a deleted data source's
+// synced documents (SP2-a Task 8). Everything the worker needs travels in the
+// payload because asynq and the Lite executor both start from a bare context:
+// the scope triple (tenant, knowledge base, data source) pins the exact
+// documents metadata->>'datasource_id' selects, and TagName names the
+// per-source auto-tag (resolveAutoTagIDs created it from ds.Name) whose
+// orphaned row the tail cleanup removes. TagName is optional: a purge for a
+// source that never synced carries no tag.
+type DataSourcePurgePayload struct {
+	TracingContext
+	Initiator TaskInitiator `json:"initiator,omitempty"`
+	TenantID  uint64        `json:"tenant_id"`
+	// KnowledgeBaseID and DataSourceID scope the drain loop; documents of
+	// other sources in the same KB are never selected.
+	KnowledgeBaseID string `json:"knowledge_base_id"`
+	DataSourceID    string `json:"data_source_id"`
+	// TagName is the deleted source's auto-tag name (ds.Name at enqueue time).
+	TagName string `json:"tag_name,omitempty"`
+}
 
 // MemoryExtractPayload carries everything the background distillation task
 // needs. Scope (tenant + subject) travels in the payload rather than being

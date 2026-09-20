@@ -81,7 +81,7 @@ func TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete(t *testing.T) {
 		scheduler:   fixture.scheduler,
 	}
 
-	require.NoError(t, svc.DeleteDataSource(context.Background(), fixture.ds.ID))
+	require.NoError(t, svc.DeleteDataSource(context.Background(), fixture.ds.ID, false))
 
 	_, err := fixture.dsRepo.FindByID(context.Background(), fixture.ds.ID)
 	require.EqualError(t, err, "data source not found")
@@ -112,7 +112,7 @@ func TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails(t *testing.
 		scheduler:   fixture.scheduler,
 	}
 
-	err := svc.DeleteDataSource(context.Background(), fixture.ds.ID)
+	err := svc.DeleteDataSource(context.Background(), fixture.ds.ID, false)
 	require.ErrorContains(t, err, "forced soft delete failure")
 
 	found, err := fixture.dsRepo.FindByID(context.Background(), fixture.ds.ID)

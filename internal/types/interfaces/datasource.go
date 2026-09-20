@@ -22,8 +22,12 @@ type DataSourceService interface {
 	// UpdateDataSource updates an existing data source
 	UpdateDataSource(ctx context.Context, ds *types.DataSource) (*types.DataSource, error)
 
-	// DeleteDataSource deletes a data source (soft delete)
-	DeleteDataSource(ctx context.Context, id string) error
+	// DeleteDataSource deletes a data source (soft delete). With
+	// purgeDocuments=true it additionally enqueues the async
+	// datasource:purge task that drains every document the source synced
+	// into its knowledge base (SP2-a Task 8); without the flag the behavior
+	// is byte-identical with the pre-SP2-a delete (documents stay).
+	DeleteDataSource(ctx context.Context, id string, purgeDocuments bool) error
 
 	// UpdateDataSourceCredentials replaces the connector credential map.
 	// DataSource credentials are per-connector atomic — there is no
@@ -77,6 +81,10 @@ type DataSourceService interface {
 
 	// ProcessSync handles the actual sync operation (called by asynq task)
 	ProcessSync(ctx context.Context, task *asynq.Task) error
+
+	// ProcessDataSourcePurge handles the async purge of a deleted data
+	// source's synced documents (called by asynq task, SP2-a Task 8).
+	ProcessDataSourcePurge(ctx context.Context, task *asynq.Task) error
 }
 
 // DataSourceRepository defines database access patterns for data sources

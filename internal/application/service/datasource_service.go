@@ -464,8 +464,14 @@ func (s *DataSourceService) ClearDataSourceCredentials(ctx context.Context, id s
 	return nil
 }
 
-// DeleteDataSource deletes a data source (soft delete)
-func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) error {
+// DeleteDataSource deletes a data source (soft delete). With
+// purgeDocuments=true (SP2-a Task 8) it appends one step at the end of the
+// existing sequence: enqueue the async datasource:purge task that drains every
+// document the source synced. Without the flag the behavior is byte-identical
+// with the pre-SP2-a delete. The purge order is a hard constraint (spec §4.2):
+// queued/running syncs are already cancelled above, so the drain cannot race a
+// sync rebuilding what it deletes.
+func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string, purgeDocuments bool) error {
 	// Verify data source exists
 	existing, err := s.dsRepo.FindByID(ctx, id)
 	if err != nil {
@@ -491,10 +497,158 @@ func (s *DataSourceService) DeleteDataSource(ctx context.Context, id string) err
 		logger.Warnf(ctx, "failed to cancel pending sync logs for ds=%s: %v", id, err)
 	}
 
-	logger.Infof(ctx, "data source deleted: id=%s", id)
+	auditDetails := map[string]any{"name": existing.Name, "type": existing.Type}
+	if purgeDocuments {
+		// Best-effort like hardCancelSyncTasks above: the delete itself is
+		// already durable, so an enqueue outage must not fail the request —
+		// the audit carries the outcome instead.
+		if err := s.enqueueDocumentPurge(ctx, existing); err != nil {
+			logger.Errorf(ctx, "failed to enqueue purge task for ds=%s (documents retained): %v", id, err)
+			auditDetails["purge_documents"] = "enqueue_failed"
+		} else {
+			auditDetails["purge_documents"] = true
+		}
+	}
+
+	logger.Infof(ctx, "data source deleted: id=%s purge_documents=%t", id, purgeDocuments)
 	recordKBActivity(ctx, s.audit, existing.TenantID, existing.KnowledgeBaseID, types.AuditActionDataSourceDeleted,
 		"data_source", existing.ID, types.AuditOutcomeSuccess,
-		map[string]any{"name": existing.Name, "type": existing.Type})
+		auditDetails)
+	return nil
+}
+
+// enqueueDocumentPurge queues the async cascade that removes every document
+// the (already soft-deleted) data source synced into its knowledge base. The
+// payload snapshots ds.Name as the auto-tag name because the row — and with it
+// the name — may be gone by the time the worker runs.
+func (s *DataSourceService) enqueueDocumentPurge(ctx context.Context, ds *types.DataSource) error {
+	if s.taskEnqueuer == nil {
+		return errors.New("task enqueuer not configured")
+	}
+	payload := types.DataSourcePurgePayload{
+		TenantID:        ds.TenantID,
+		KnowledgeBaseID: ds.KnowledgeBaseID,
+		DataSourceID:    ds.ID,
+		TagName:         ds.Name,
+		Initiator:       types.TaskInitiatorFromContext(ctx),
+	}
+	langfuse.InjectTracing(ctx, &payload)
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal purge payload: %w", err)
+	}
+	task := asynq.NewTask(types.TypeDataSourcePurge, payloadBytes,
+		asynq.Queue(types.QueueMaintenance), asynq.MaxRetry(3), asynq.Timeout(2*time.Hour))
+	info, err := s.taskEnqueuer.Enqueue(task)
+	if err != nil {
+		return fmt.Errorf("enqueue purge task: %w", err)
+	}
+	logger.Infof(ctx, "purge task enqueued: ds=%s kb=%s taskID=%s", ds.ID, ds.KnowledgeBaseID, info.ID)
+	return nil
+}
+
+// dataSourcePurgeBatchSize is the drain batch of the delete-source cascade,
+// aligned with the batch-delete ceiling in internal/handler/knowledge.go.
+const dataSourcePurgeBatchSize = 200
+
+// dataSourceBindingCleaner is the optional surface the purge tail uses to
+// drop app_datasource_bindings rows. A local type assertion (the same pattern
+// as the Task 5 inspector cast) because the binding row is deliberately not
+// part of interfaces.DataSourceRepository; repositories without the method
+// keep their rows and the miss is only logged.
+type dataSourceBindingCleaner interface {
+	DeleteAppDataSourceBindingsByDataSource(ctx context.Context, tenantID uint64, dataSourceID string) error
+}
+
+// ProcessDataSourcePurge handles the asynq datasource:purge task (SP2-a
+// Task 8): unmarshal, install initiator/task metadata, run the drain.
+func (s *DataSourceService) ProcessDataSourcePurge(ctx context.Context, task *asynq.Task) error {
+	var payload types.DataSourcePurgePayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		logger.Errorf(ctx, "failed to unmarshal purge payload: %v", err)
+		return fmt.Errorf("invalid purge payload: %v: %w", err, asynq.SkipRetry)
+	}
+	ctx = payload.Initiator.Apply(ctx)
+	taskID, _ := asynq.GetTaskID(ctx)
+	ctx = withKBActivityTask(ctx, taskID, kbActivityTrigger(ctx))
+	return s.PurgeDataSourceDocuments(ctx, payload)
+}
+
+// PurgeDataSourceDocuments drains every document one (deleted) data source
+// synced into one knowledge base, then cleans up the source's tail: the
+// per-source auto-tag (only when nothing references it anymore) and the
+// app_datasource_bindings rows.
+//
+// Each round fetches up to dataSourcePurgeBatchSize live ids scoped to the
+// (tenant, kb, data source) triple — other sources' documents are never
+// selected — pushes them through the existing batched delete pipeline
+// (vectors, graph, wiki pages, chunks, physical files) with the same cleanup
+// scope ProcessKnowledgeListDelete uses, then removes the soft-deleted
+// tombstones. ctx.Err() is checked between batches so an asynq cancellation
+// interrupts the drain; every step is idempotent, the retry simply continues
+// where the previous attempt stopped.
+func (s *DataSourceService) PurgeDataSourceDocuments(ctx context.Context, payload types.DataSourcePurgePayload) error {
+	if payload.TenantID == 0 || payload.KnowledgeBaseID == "" || payload.DataSourceID == "" {
+		return fmt.Errorf("invalid purge scope: %w", asynq.SkipRetry)
+	}
+	if s.knowledgeService == nil {
+		return fmt.Errorf("knowledge service unavailable: %w", asynq.SkipRetry)
+	}
+	knowledgeRepo := s.knowledgeService.GetRepository()
+	ctx = types.WithExecutionTenant(ctx, payload.TenantID)
+
+	purged := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ids, err := knowledgeRepo.FindKnowledgeIDsByDataSourceID(
+			ctx, payload.TenantID, payload.KnowledgeBaseID, payload.DataSourceID, dataSourcePurgeBatchSize)
+		if err != nil {
+			return fmt.Errorf("find purge batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		bindings := make(map[string]string, len(ids))
+		for _, id := range ids {
+			bindings[id] = payload.KnowledgeBaseID
+		}
+		if err := s.knowledgeService.DeleteKnowledgeList(
+			withKnowledgeCleanup(ctx, payload.TenantID, bindings), ids,
+		); err != nil {
+			return fmt.Errorf("delete purge batch (%d documents): %w", len(ids), err)
+		}
+		if err := knowledgeRepo.HardDeleteKnowledgeList(ctx, payload.TenantID, ids); err != nil {
+			return fmt.Errorf("hard-delete purge batch (%d documents): %w", len(ids), err)
+		}
+		purged += len(ids)
+		logger.Infof(ctx, "purged %d documents of ds=%s (cumulative %d)", len(ids), payload.DataSourceID, purged)
+	}
+
+	// Tail cleanup (spec §4.2 step 5). Errors return so an asynq retry re-runs
+	// the (now empty) drain and retries just the tail.
+	if payload.TagName != "" && s.tagService != nil {
+		if err := s.tagService.DeleteOrphanTagByName(ctx, payload.KnowledgeBaseID, payload.TagName); err != nil {
+			return fmt.Errorf("delete orphan tag %q: %w", payload.TagName, err)
+		}
+	}
+	if cleaner, ok := s.dsRepo.(dataSourceBindingCleaner); ok {
+		if err := cleaner.DeleteAppDataSourceBindingsByDataSource(ctx, payload.TenantID, payload.DataSourceID); err != nil {
+			return fmt.Errorf("delete app binding rows: %w", err)
+		}
+	} else {
+		logger.Warnf(ctx, "data source repository cannot delete binding rows; app_datasource_bindings rows of ds=%s retained",
+			payload.DataSourceID)
+	}
+
+	if purged > 0 {
+		logger.Infof(ctx, "purge complete: purged_documents=%d ds=%s kb=%s",
+			purged, payload.DataSourceID, payload.KnowledgeBaseID)
+		recordKBActivity(ctx, s.audit, payload.TenantID, payload.KnowledgeBaseID, types.AuditActionDataSourceDeleted,
+			"data_source", payload.DataSourceID, types.AuditOutcomeSuccess,
+			map[string]any{"purge_completed": true, "purged_documents": purged})
+	}
 	return nil
 }
 

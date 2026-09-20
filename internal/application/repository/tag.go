@@ -235,3 +235,35 @@ func (r *knowledgeTagRepository) DeleteUnusedTags(ctx context.Context, tenantID 
 		Delete(&types.KnowledgeTag{})
 	return result.RowsAffected, result.Error
 }
+
+// DeleteOrphanTagByName deletes the same-named tags of one knowledge base that
+// no live knowledge or chunk references anymore (SP2-a Task 8 purge tail: the
+// deleted data source's auto-tag). Two statements by design — select the
+// orphan ids first, delete by id second — so the NOT IN predicates stay the
+// proven ones from DeleteUnusedTags and the delete itself is pinned to exact
+// tag ids instead of re-evaluating the reference predicates at delete time. A
+// tag a user manually attached to surviving documents has references and is
+// not selected; a missing tag is a plain no-op.
+func (r *knowledgeTagRepository) DeleteOrphanTagByName(
+	ctx context.Context, tenantID uint64, kbID string, name string,
+) error {
+	name = strings.TrimSpace(name)
+	if tenantID == 0 || kbID == "" || name == "" {
+		return nil
+	}
+	var tagIDs []string
+	if err := r.db.WithContext(ctx).
+		Model(&types.KnowledgeTag{}).
+		Where("tenant_id = ? AND knowledge_base_id = ? AND name = ?", tenantID, kbID, name).
+		Where("id NOT IN (SELECT DISTINCT ktr.tag_id FROM knowledge_tag_relations ktr JOIN knowledges k ON ktr.knowledge_id = k.id AND k.deleted_at IS NULL AND k.tenant_id = ? AND k.knowledge_base_id = ?)", tenantID, kbID).
+		Where("id NOT IN (SELECT DISTINCT tag_id FROM chunks WHERE tenant_id = ? AND knowledge_base_id = ? AND tag_id IS NOT NULL AND tag_id != '' AND deleted_at IS NULL)", tenantID, kbID).
+		Pluck("id", &tagIDs).Error; err != nil {
+		return err
+	}
+	if len(tagIDs) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id IN ?", tenantID, tagIDs).
+		Delete(&types.KnowledgeTag{}).Error
+}

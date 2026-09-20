@@ -124,7 +124,7 @@ func TestDeleteDataSourceHardCancelsQueuedSyncTasksBeforeSweep(t *testing.T) {
 		taskInspector: inspector,
 	}
 
-	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID))
+	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID, false))
 
 	require.Len(t, inspector.calls, 1, "inspector must be consulted exactly once")
 	call := inspector.calls[0]
@@ -154,7 +154,7 @@ func TestSetTaskInspectorInstallsHardCancel(t *testing.T) {
 		datasource.NewScheduler(f.dsRepo, f.syncLogRepo, nil), nil, nil, nil)
 	svc.(*DataSourceService).SetTaskInspector(inspector)
 
-	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID))
+	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID, false))
 	require.Len(t, inspector.calls, 1)
 	assert.Equal(t, []string{f.ds.ID}, inspector.calls[0].dataSourceIDs)
 }
@@ -169,7 +169,7 @@ func TestDeleteDataSourceWithoutInspectorDegradesToSweep(t *testing.T) {
 		scheduler:   datasource.NewScheduler(f.dsRepo, f.syncLogRepo, nil),
 	}
 
-	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID))
+	require.NoError(t, svc.DeleteDataSource(context.Background(), f.ds.ID, false))
 	assert.Equal(t, types.SyncLogStatusCanceled, f.reloadLog(t, f.syncLog.ID).Status)
 }
 

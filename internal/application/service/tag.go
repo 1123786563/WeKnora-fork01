@@ -504,3 +504,25 @@ func (s *knowledgeTagService) FindOrCreateTagByName(ctx context.Context, kbID st
 	// 创建新标签
 	return s.CreateTag(ctx, kbID, name, "", 0)
 }
+
+// DeleteOrphanTagByName removes the KB-scoped tag with the given name when no
+// live knowledge or chunk references it anymore (SP2-a Task 8 purge tail: the
+// deleted data source's auto-tag). The purge loop has already deleted the
+// source's documents and their relations, so a surviving relation means a user
+// manually attached this tag to other documents — the tag then stays. Errors
+// surface to the caller (the purge worker retries the tail); a blank name or
+// KB is a no-op.
+func (s *knowledgeTagService) DeleteOrphanTagByName(ctx context.Context, kbID string, name string) error {
+	name = strings.TrimSpace(name)
+	if kbID == "" || name == "" {
+		return nil
+	}
+	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, kbID)
+	if err != nil {
+		return err
+	}
+	if kb == nil || kb.ID != kbID {
+		return werrors.NewBadRequestError("知识库不存在")
+	}
+	return s.repo.DeleteOrphanTagByName(ctx, kb.TenantID, kbID, name)
+}

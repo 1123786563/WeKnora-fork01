@@ -222,6 +222,21 @@ func (r *DataSourceRepository) SaveAppDataSourceBinding(
 	return r.db.WithContext(ctx).Table("app_datasource_bindings").Create(row).Error
 }
 
+// DeleteAppDataSourceBindingsByDataSource removes every binding row of one
+// data source (SP2-a Task 8 purge tail). Scoped to (tenant, data source) like
+// Find/SaveAppDataSourceBinding; a missing row is a no-op so the purge worker
+// can re-run its tail cleanup idempotently.
+func (r *DataSourceRepository) DeleteAppDataSourceBindingsByDataSource(
+	ctx context.Context, tenantID uint64, dataSourceID string,
+) error {
+	if dataSourceID == "" {
+		return errors.New("data source id is empty")
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND datasource_id = ?", tenantID, dataSourceID).
+		Delete(&AppDataSourceBindingRow{}).Error
+}
+
 // SyncLogRepository provides data access for sync logs
 type SyncLogRepository struct {
 	db *gorm.DB

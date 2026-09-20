@@ -255,7 +255,10 @@ func (h *DataSourceHandler) DeleteDataSource(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteDataSource(ctx, id); err != nil {
+	// purge_documents stays false here for now: the query-parameter wiring
+	// (DELETE /datasource/:id?purge_documents=true) lands with the API task
+	// (SP2-a Task 9) together with the documents-count endpoint.
+	if err := h.service.DeleteDataSource(ctx, id, false); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete data source"})
 		return
 	}

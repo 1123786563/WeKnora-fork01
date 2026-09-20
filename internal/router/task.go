@@ -291,6 +291,9 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// Register knowledge list delete handler
 	mux.HandleFunc(types.TypeKnowledgeListDelete, params.KnowledgeService.ProcessKnowledgeListDelete)
 
+	// Register data source purge handler (SP2-a Task 8: delete-source cascade)
+	mux.HandleFunc(types.TypeDataSourcePurge, params.DataSourceService.ProcessDataSourcePurge)
+
 	// Register knowledge list reparse handler
 	mux.HandleFunc(types.TypeKnowledgeListReparse, params.KnowledgeService.ProcessKnowledgeListReparse)
 
