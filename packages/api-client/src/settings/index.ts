@@ -54,8 +54,14 @@ const secretFields = new Set([
   'password', 'secret', 'secret_key', 'secret_access_key', 'hmac_secret',
 ]);
 
+// Suffix rules below catch credential VALUE fields (tavily_api_key, …).
+// Type-metadata booleans happen to share the suffix and must survive —
+// dropping them hides the credential card (R486 verify DIFF-B).
+const metadataFlagFields = new Set(['requires_api_key', 'supports_optional_api_key', 'requires_app_secret']);
+
 function isSecretField(key: string): boolean {
   const normalized = key.toLowerCase();
+  if (metadataFlagFields.has(normalized)) return false;
   return secretFields.has(normalized)
     || normalized.endsWith('_api_key')
     || normalized.endsWith('_app_secret')

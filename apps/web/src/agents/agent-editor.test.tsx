@@ -1063,7 +1063,7 @@ test('quick-answer prompts carry the system + context placeholder sets (D4)', as
   assert.ok(contextArea.value.startsWith('{{contexts}}'), 'context placeholder inserted at the caret');
 });
 
-test('agent-mode system prompt exposes 恢复默认 + 使用模板 with the 4 builtin templates (D4)', async () => {
+test('agent-mode system prompt exposes 恢复默认 + 使用模板 with all 7 yaml templates (D4 + R486 verify DIFF-A)', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
   await goto(root, 'prompts');
@@ -1079,7 +1079,7 @@ test('agent-mode system prompt exposes 恢复默认 + 使用模板 with the 4 bu
   const items = $$('[data-prompt-template]', panel);
   assert.deepEqual(
     items.map((item) => item.getAttribute('data-prompt-template')),
-    ['progressive_rag_agent', 'wiki_researcher', 'hybrid_rag_wiki_agent', 'data_analyst'],
+    ['pure_agent', 'progressive_rag_agent', 'data_analyst', 'wiki_researcher', 'wiki_fixer', 'hybrid_rag_wiki_agent', 'skill_installer'],
   );
   assert.match(panel.textContent ?? '', /渐进式 RAG 智能体/, 'zh template name rendered');
   assert.ok($('[data-template-default]', panel), 'default tag on the global default entry');

@@ -666,10 +666,10 @@ test('resolveAgentSystemPromptResetTemplate prefers the preset-bound template th
   assert.equal(analyst?.id, 'data_analyst');
 });
 
-test('agent system prompt template list carries the 4 vendored builtin entries (D4)', () => {
+test('agent system prompt template list carries all 7 yaml entries in Vue order (D4 + R486 verify DIFF-A)', () => {
   assert.deepEqual(
     AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((tpl) => tpl.id),
-    ['progressive_rag_agent', 'wiki_researcher', 'hybrid_rag_wiki_agent', 'data_analyst'],
+    ['pure_agent', 'progressive_rag_agent', 'data_analyst', 'wiki_researcher', 'wiki_fixer', 'hybrid_rag_wiki_agent', 'skill_installer'],
   );
   assert.equal(AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.default)?.id, 'progressive_rag_agent');
   for (const tpl of AGENT_SYSTEM_PROMPT_TEMPLATE_LIST) {
