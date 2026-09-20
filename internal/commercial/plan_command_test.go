@@ -224,17 +224,29 @@ func TestValidateForPublishValidatedSixAxes(t *testing.T) {
 		{"negative included credits", ErrPublishIncludedCredits,
 			func(p *PlanVersion) { p.Monthly = -1 }, nil},
 		{"graduated charge model", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: "graduated", AmountFen: 7}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: "graduated", AmountFen: 7}}
+			}, nil},
 		{"percentage charge model", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: "percentage", AmountFen: 7}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: "percentage", AmountFen: 7}}
+			}, nil},
 		{"minimum_commitment charge model", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: "minimum_commitment", AmountFen: 7}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: "minimum_commitment", AmountFen: 7}}
+			}, nil},
 		{"charge without explicit fen amount", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelFixedUnit, AmountFen: 0}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelFixedUnit, AmountFen: 0}}
+			}, nil},
 		{"package charge without package units", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelPackage, AmountFen: 7, PackageUnits: 0}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelPackage, AmountFen: 7, PackageUnits: 0}}
+			}, nil},
 		{"negative free units", ErrPublishCostUpperBound,
-			func(p *PlanVersion) { p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelFixedUnit, AmountFen: 7, FreeUnits: -1}} }, nil},
+			func(p *PlanVersion) {
+				p.Charges = []PlanCharge{{Dimension: "model-units", Model: ChargeModelFixedUnit, AmountFen: 7, FreeUnits: -1}}
+			}, nil},
 	}
 	for _, tc := range rejects {
 		t.Run("reject "+tc.name, func(t *testing.T) {

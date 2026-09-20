@@ -28,12 +28,12 @@ var (
 // the external plan code — seam-internal by design; it NEVER crosses the
 // admin API (the admin surface addresses versions by (plan_key, version)).
 type PublicationRow struct {
-	CommandKey  string `gorm:"primaryKey;column:command_key"` // publish_plan_version:<key>:<version>
-	PlanKey     string `gorm:"column:plan_key;uniqueIndex:uq_plan_publication_version"`
-	Version     int64  `gorm:"column:version;uniqueIndex:uq_plan_publication_version"`
-	PlanCode    string `gorm:"column:plan_code;uniqueIndex"`
-	ReceiptJSON string `gorm:"column:receipt_json;not null"`
-	PublishedBy string `gorm:"column:published_by;not null default ''"`
+	CommandKey  string    `gorm:"primaryKey;column:command_key"` // publish_plan_version:<key>:<version>
+	PlanKey     string    `gorm:"column:plan_key;uniqueIndex:uq_plan_publication_version"`
+	Version     int64     `gorm:"column:version;uniqueIndex:uq_plan_publication_version"`
+	PlanCode    string    `gorm:"column:plan_code;uniqueIndex"`
+	ReceiptJSON string    `gorm:"column:receipt_json;not null"`
+	PublishedBy string    `gorm:"column:published_by;not null default ''"`
 	PublishedAt time.Time `gorm:"column:published_at;not null"`
 }
 
@@ -279,7 +279,7 @@ const versionViewSelect = `SELECT c.plan_key, c.version, c.state, c.definition_j
 func (s *PlanVersionStore) ListVersions(ctx context.Context) ([]VersionView, error) {
 	var views []VersionView
 	err := s.db.WithContext(ctx).
-		Raw(versionViewSelect+` ORDER BY c.plan_key, c.version`).Scan(&views).Error
+		Raw(versionViewSelect + ` ORDER BY c.plan_key, c.version`).Scan(&views).Error
 	return views, err
 }
 
