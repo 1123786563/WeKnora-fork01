@@ -109,6 +109,33 @@ class Operation:
             raise ValueError("operation fields are invalid")
 
 
+@dataclass(frozen=True)
+class QueryLimits:
+    max_hops: int
+    max_nodes: int
+    max_edges: int
+    top_k: int
+    max_tokens: int
+    deadline_ms: int
+
+    def __post_init__(self) -> None:
+        if any(value < 0 for value in (self.max_hops, self.max_nodes, self.max_edges, self.top_k, self.max_tokens, self.deadline_ms)):
+            raise ValueError("query limits must be non-negative")
+
+
+@dataclass(frozen=True)
+class SearchRequest:
+    query_id: str
+    query: str
+    access_scope: AccessScope
+    limits: QueryLimits
+    requested_mode: str
+
+    def __post_init__(self) -> None:
+        if not self.query_id or not self.query or self.requested_mode not in {"graph_rag", "reason"}:
+            raise ValueError("search request is invalid")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

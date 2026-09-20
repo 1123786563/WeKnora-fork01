@@ -71,3 +71,12 @@ def test_operation_carries_scope_and_revision() -> None:
     operation = Operation(operation_id="op", scope=ScopeKey(tenant_id=1, kb_id="kb"), document_id="doc", revision=1, state="running", stage="index")
 
     assert operation.scope.kb_id == "kb" and operation.revision == 1
+
+
+def test_search_request_preserves_requested_mode_and_limits() -> None:
+    from semantic_service.contracts import AccessScope, QueryLimits, ScopeKey, SearchRequest
+
+    scope = AccessScope(scope=ScopeKey(tenant_id=1, kb_id="kb"), subject_id="user", scope_ref="ref", scope_hash="hash", permission_epoch=2, audience="semantic", purpose="search", budget_ref="budget")
+    request = SearchRequest(query_id="q", query="问题", access_scope=scope, limits=QueryLimits(max_hops=2, max_nodes=10, max_edges=20, top_k=3, max_tokens=100, deadline_ms=1000), requested_mode="graph_rag")
+
+    assert request.requested_mode == "graph_rag" and request.limits.max_hops == 2
