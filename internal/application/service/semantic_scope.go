@@ -192,6 +192,10 @@ func (s *SemanticScopeService) ValidateDelivery(ctx context.Context, scope types
 	if err != nil {
 		return err
 	}
+	caller := types.CallerFromContext(ctx)
+	if caller.UserID != c.Subject || caller.TenantID != c.RequesterTenantID {
+		return ErrSemanticScopeInvalid
+	}
 	if c.metadata(scope.ScopeRef) != scope {
 		return ErrSemanticScopeInvalid
 	}

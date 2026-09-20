@@ -62,6 +62,21 @@ func TestSemanticScopeRejectsExpiryDuringDeliveryRead(t *testing.T) {
 	require.ErrorIs(t, f.Service.ValidateDelivery(f.Context, s), ErrSemanticScopeExpired)
 }
 
+func TestSemanticScopeDeliveryRequiresIssuingCaller(t *testing.T) {
+	f := newSemanticScopeFixture(t)
+	scope := f.Issue("member-a", 20, "shared-kb", types.SemanticAccessPurposeSearch, "budget")
+
+	t.Run("different user", func(t *testing.T) {
+		ctx := f.ContextFor("member-b", 20)
+		require.ErrorIs(t, f.Service.ValidateDelivery(ctx, scope), ErrSemanticScopeInvalid)
+	})
+
+	t.Run("different requester tenant", func(t *testing.T) {
+		ctx := f.ContextFor("member-a", 10)
+		require.ErrorIs(t, f.Service.ValidateDelivery(ctx, scope), ErrSemanticScopeInvalid)
+	})
+}
+
 func (r semanticOrganizationReadFailure) GetTenantMember(context.Context, string, uint64) (*types.OrganizationTenantMember, error) {
 	return nil, r.err
 }
