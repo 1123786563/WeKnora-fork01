@@ -342,6 +342,7 @@ type SemanticServiceConfig struct {
 	ServiceToken    string `yaml:"service_token" json:"service_token"`
 	Audience        string `yaml:"audience" json:"audience"`
 	ScopeSigningKey string `yaml:"-" json:"-"`
+	ModelSigningKey string `yaml:"-" json:"-"`
 }
 
 // HasValidScopeSigningKey validates secret material without ever returning it
@@ -356,6 +357,22 @@ func (c *SemanticServiceConfig) HasValidScopeSigningKey() bool {
 		}
 		return r
 	}, c.ScopeSigningKey)
+	return len(nonWhitespace) >= 32
+}
+
+// HasValidModelSigningKey validates the A03 capability secret without
+// returning it. It must be independent from both A01 scope signing and the
+// service bearer, so a compromise cannot mint the other capability class.
+func (c *SemanticServiceConfig) HasValidModelSigningKey() bool {
+	if c == nil || c.ModelSigningKey == c.ServiceToken || c.ModelSigningKey == c.ScopeSigningKey {
+		return false
+	}
+	nonWhitespace := strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, c.ModelSigningKey)
 	return len(nonWhitespace) >= 32
 }
 
@@ -937,6 +954,9 @@ func ValidateConfig(cfg *Config) error {
 		if !cfg.Semantic.HasValidScopeSigningKey() {
 			errs = append(errs, "semantic scope signing key must contain at least 32 non-whitespace bytes and differ from service_token")
 		}
+		if !cfg.Semantic.HasValidModelSigningKey() {
+			errs = append(errs, "semantic model signing key must contain at least 32 non-whitespace bytes and differ from scope signing key and service_token")
+		}
 	}
 
 	if cfg.Audit != nil && cfg.Audit.RetentionDays < 0 {
@@ -1355,6 +1375,9 @@ func applySemanticEnvOverrides(cfg *Config) {
 	}
 	if value, present := os.LookupEnv("SEMANTIC_SCOPE_SIGNING_KEY"); present {
 		cfg.Semantic.ScopeSigningKey = value
+	}
+	if value, present := os.LookupEnv("SEMANTIC_MODEL_SIGNING_KEY"); present {
+		cfg.Semantic.ModelSigningKey = value
 	}
 	if value := strings.TrimSpace(os.Getenv("SEMANTIC_ENABLED")); value != "" {
 		if enabled, err := strconv.ParseBool(value); err == nil {

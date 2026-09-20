@@ -168,6 +168,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantMemberRepository))
 	must(container.Provide(repository.NewSemanticControlRepository))
 	must(container.Provide(repository.NewSemanticModelPolicyRepository))
+	must(container.Provide(repository.NewSemanticModelInvocationStore))
 	must(container.Provide(func(r *repository.SemanticControlRepository) interfaces.SemanticScopeInvalidator { return r }))
 	must(container.Provide(service.NewSemanticScopeService))
 	must(container.Provide(func(cfg *config.Config, s *service.SemanticScopeService) *handler.SemanticInternalHandler {
