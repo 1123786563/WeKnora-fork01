@@ -11,7 +11,9 @@ import (
 	"sync"
 	"testing"
 
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
+	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -105,6 +107,27 @@ var commercialScopeDDL = []string{
 		amount_fen INTEGER NOT NULL,
 		currency TEXT NOT NULL,
 		state TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS commercial_quotes (
+		id TEXT PRIMARY KEY,
+		tenant_id INTEGER NOT NULL,
+		subscription_version INTEGER NOT NULL DEFAULT 0,
+		snapshot_json TEXT NOT NULL DEFAULT '',
+		expires_at DATETIME NOT NULL,
+		used_order_id TEXT UNIQUE)`,
+	`CREATE TABLE IF NOT EXISTS commercial_refunds (
+		id TEXT PRIMARY KEY,
+		tenant_id INTEGER NOT NULL,
+		order_id TEXT NOT NULL,
+		order_line_id TEXT NOT NULL DEFAULT '',
+		amount_fen INTEGER NOT NULL,
+		credits_micro INTEGER NOT NULL,
+		reviewer TEXT NOT NULL DEFAULT '',
+		provider_refund_id TEXT UNIQUE,
+		state TEXT NOT NULL,
+		version INTEGER NOT NULL DEFAULT 1,
+		channel_attempts INTEGER NOT NULL DEFAULT 0,
+		review_basis TEXT NOT NULL DEFAULT '',
+		review_note TEXT NOT NULL DEFAULT '')`,
 	`CREATE TABLE IF NOT EXISTS scope_test_resources (
 		id TEXT PRIMARY KEY,
 		tenant_id INTEGER NOT NULL)`,
@@ -353,7 +376,246 @@ func TestCommercialSummaryBaseTierFallback(t *testing.T) {
 	}
 }
 
-// TestCommercialAdminPostForbidden: an Admin without a billing grant is
+// scopeStubProvider fakes the channel boundary for the envelope test: a
+// configured Create error keeps the order durably PENDING with
+// CheckoutError set (the 202 product contract), proving the wire answer
+// still carries the operation ID and state.
+type scopeStubProvider struct{ createErr error }
+
+func (p *scopeStubProvider) Create(context.Context, payment.OrderRequest) (payment.AttemptResult, error) {
+	return payment.AttemptResult{}, p.createErr
+}
+func (p *scopeStubProvider) Query(context.Context, string) (payment.AttemptResult, error) {
+	return payment.AttemptResult{}, errors.New("query not wired")
+}
+func (p *scopeStubProvider) Close(context.Context, string) error          { return nil }
+func (p *scopeStubProvider) Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error) {
+	return commercial.PaymentFact{}, nil
+}
+func (p *scopeStubProvider) Refund(context.Context, payment.RefundRequest) (payment.RefundResult, error) {
+	return payment.RefundResult{}, nil
+}
+func (p *scopeStubProvider) QueryRefund(context.Context, string) (payment.RefundResult, error) {
+	return payment.RefundResult{}, nil
+}
+
+// serveJSONWith behaves like serveWith but sends a JSON request body (the
+// write endpoints bind their inputs from it).
+func serveJSONWith(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, method, path, body string) (*httptest.ResponseRecorder, string) {
+	return serveJSONWithProviders(t, db, auth, method, path, body, nil)
+}
+
+func serveJSONWithProviders(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, method, path, body string,
+	providers map[string]payment.Provider) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	h := handler.NewCommercialHandler(db)
+	if orders, err := commercialsvc.NewOrderService(db, providers); err == nil {
+		h.SetOrderService(orders)
+	}
+	engine := gin.New()
+	engine.Use(auth)
+	v1 := engine.Group("/api/v1")
+	RegisterCommercialRoutes(v1, h)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(w, req)
+	return w, w.Body.String()
+}
+
+// decodeEnvelope asserts the repo-wide {success:true,data:...} envelope and
+// returns data as generic JSON for field-by-field shape checks.
+func decodeEnvelope(t *testing.T, body string) map[string]any {
+	t.Helper()
+	var env struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("decode envelope: %v body=%s", err, body)
+	}
+	if !env.Success {
+		t.Fatalf("must answer success:true, got %s", body)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(env.Data, &data); err != nil {
+		t.Fatalf("data must be an object: %v body=%s", err, body)
+	}
+	return data
+}
+
+// wantString asserts a data field is a JSON STRING equal to want (the web
+// contract parses fen amounts as digit strings — a bare number is a wire
+// mismatch the parsers reject).
+func wantString(t *testing.T, data map[string]any, field, want string) {
+	t.Helper()
+	got, ok := data[field].(string)
+	if !ok || got != want {
+		t.Fatalf("data.%s must be the string %q, got %#v", field, want, data[field])
+	}
+}
+
+// TestCommercialWriteEndpointsServeEnvelope locks the shared envelope and
+// the wire shape the web parsers expect on every remaining commercial
+// endpoint that used to answer bare objects: plans/orders lists (data:[],
+// never null — SP11 lesson), quote (digit-string amount_fen + credit_delta),
+// order (digit-string amount_fen + the payment/fulfillment axes the
+// checkout page polls), refund creation (id/state strings, amount_fen as a
+// digit string, and a STRING amount_fen input the api-client sends) and the
+// scheduled plan change. A bare object/array broke the api-client unwrap
+// (INVALID_RESPONSE) on every consumer.
+func TestCommercialWriteEndpointsServeEnvelope(t *testing.T) {
+	_, _, db := newCommercialScopeEngine(t, nil)
+	owner := authAs(101, "owner-user", "owner")
+	publishedPlanJSON := func(key string, version int64, price, monthly int64) string {
+		def, err := json.Marshal(commercial.PlanVersion{Key: key, Version: version,
+			Price: commercial.CNYFen(price), Monthly: commercial.Credits(monthly)})
+		if err != nil {
+			t.Fatalf("marshal plan: %v", err)
+		}
+		return string(def)
+	}
+	proDef := publishedPlanJSON("pro", 3, 99_00, 9_900_000)
+	liteDef := publishedPlanJSON("lite", 1, 19_00, 1_900_000)
+	for _, q := range []string{
+		`INSERT INTO commercial_plan_catalog (plan_key, version, definition_json, external_id, state)
+			VALUES ('pro', 3, '` + string(proDef) + `', 'ext-pro-3', 'published')`,
+		`INSERT INTO commercial_plan_catalog (plan_key, version, definition_json, external_id, state)
+			VALUES ('lite', 1, '` + string(liteDef) + `', 'ext-lite-1', 'published')`,
+	} {
+		if err := db.Exec(q).Error; err != nil {
+			t.Fatalf("seed plan: %v", err)
+		}
+	}
+
+	// Quote: envelope + the digit-string fen contract (parseQuoteView).
+	w, body := serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/quotes", `{"plan_key":"pro"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("quote status = %d body=%s", w.Code, body)
+	}
+	quote := decodeEnvelope(t, body)
+	if !strings.HasPrefix(quote["id"].(string), "qt_") {
+		t.Fatalf("quote id must be a quote token, got %s", body)
+	}
+	wantString(t, quote, "amount_fen", "9900")
+	wantString(t, quote, "credit_delta", "9900000")
+	if quote["expires_at"] == "" {
+		t.Fatalf("quote must carry expires_at: %s", body)
+	}
+
+	// Order: the channel Create call fails AFTER the order is durably
+	// pending — 202, envelope, and the payment/fulfillment axes.
+	w, body = serveJSONWithProviders(t, db, owner, http.MethodPost, "/api/v1/commercial/orders",
+		`{"quote_id":"`+quote["id"].(string)+`","provider":"wechat"}`,
+		map[string]payment.Provider{"wechat": &scopeStubProvider{createErr: errors.New("channel down")}})
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("order status = %d body=%s", w.Code, body)
+	}
+	order := decodeEnvelope(t, body)
+	orderID := order["id"].(string)
+	wantString(t, order, "amount_fen", "9900")
+	wantString(t, order, "currency", "CNY")
+	wantString(t, order, "state", "pending")
+	wantString(t, order, "payment", "pending")
+	wantString(t, order, "fulfillment", "pending")
+
+	// GetOrder: same wire shape, and the lifecycle state projects onto both
+	// axes the checkout page polls.
+	for _, tc := range []struct{ state, payment, fulfillment string }{
+		{"paid", "paid", "processing"},
+		{"fulfilled", "paid", "fulfilled"},
+	} {
+		if err := db.Exec(`UPDATE commercial_orders SET state = ? WHERE id = ?`, tc.state, orderID).Error; err != nil {
+			t.Fatalf("seed order state: %v", err)
+		}
+		w, body = serveWith(t, db, owner, http.MethodGet, "/api/v1/commercial/orders/"+orderID)
+		if w.Code != http.StatusOK {
+			t.Fatalf("get order (%s) status = %d body=%s", tc.state, w.Code, body)
+		}
+		got := decodeEnvelope(t, body)
+		wantString(t, got, "payment", tc.payment)
+		wantString(t, got, "fulfillment", tc.fulfillment)
+	}
+
+	// Orders list: envelope with a data ARRAY (never null).
+	w, body = serveWith(t, db, owner, http.MethodGet, "/api/v1/commercial/orders")
+	if w.Code != http.StatusOK {
+		t.Fatalf("orders status = %d body=%s", w.Code, body)
+	}
+	var ordersEnv struct {
+		Success bool             `json:"success"`
+		Data    []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &ordersEnv); err != nil || !ordersEnv.Success {
+		t.Fatalf("orders must answer {success:true,data:[...]}, got %s (%v)", body, err)
+	}
+	if len(ordersEnv.Data) != 1 || ordersEnv.Data[0]["payment"] != "paid" {
+		t.Fatalf("orders data mismatch: %s", body)
+	}
+
+	// Plans list: envelope with a data array of published rows only.
+	w, body = serveWith(t, db, owner, http.MethodGet, "/api/v1/commercial/plans")
+	if w.Code != http.StatusOK {
+		t.Fatalf("plans status = %d body=%s", w.Code, body)
+	}
+	var plansEnv struct {
+		Success bool             `json:"success"`
+		Data    []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &plansEnv); err != nil || !plansEnv.Success {
+		t.Fatalf("plans must answer {success:true,data:[...]}, got %s (%v)", body, err)
+	}
+	if len(plansEnv.Data) != 2 || plansEnv.Data[0]["plan_key"] == "" {
+		t.Fatalf("plans data mismatch: %s", body)
+	}
+
+	// Refund request: the api-client RefundInput sends amount_fen as a STRING
+	// ('100'), and the answer carries id/state strings plus the fen amount.
+	w, body = serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/refunds",
+		`{"order_id":"`+orderID+`","amount_fen":"500"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("refund status = %d body=%s", w.Code, body)
+	}
+	refund := decodeEnvelope(t, body)
+	if !strings.HasPrefix(refund["id"].(string), "rfd_") {
+		t.Fatalf("refund id must be a refund token, got %s", body)
+	}
+	wantString(t, refund, "state", "requested")
+	wantString(t, refund, "amount_fen", "500")
+
+	// Review stays an honest 409 without P03 eligibility; the error body
+	// keeps the repo error convention (no envelope on errors).
+	if err := db.Exec(`INSERT INTO commercial_grants (tenant_id, user_id, capability) VALUES (0, 'platform-ops', 'refund_review')`).Error; err != nil {
+		t.Fatalf("seed reviewer: %v", err)
+	}
+	w, body = serveJSONWith(t, db, authAs(0, "platform-ops", "viewer"), http.MethodPost,
+		"/api/v1/admin/refunds/"+refund["id"].(string)+"/review", `{"action":"approve"}`)
+	if w.Code != http.StatusConflict || !strings.Contains(body, `"error"`) {
+		t.Fatalf("review without eligibility must stay an honest 409 error, got %d %s", w.Code, body)
+	}
+
+	// Scheduled plan change (downgrade): envelope over the change view.
+	if err := db.Exec(`INSERT INTO commercial_subscriptions
+		(id, tenant_id, plan_key, plan_version, plan_snapshot_json, anchor, paid_until, version)
+		VALUES ('sub-101', 101, 'pro', 3, '`+string(proDef)+`', '2026-01-01 00:00:00', '2027-01-01 00:00:00', 1)`).Error; err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	w, body = serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/quotes", `{"plan_key":"lite"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("lite quote status = %d body=%s", w.Code, body)
+	}
+	liteQuote := decodeEnvelope(t, body)
+	w, body = serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/plans/change",
+		`{"quote_id":"`+liteQuote["id"].(string)+`","expected_subscription_version":1}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("change status = %d body=%s", w.Code, body)
+	}
+	change := decodeEnvelope(t, body)
+	wantString(t, change, "change", "scheduled_switch")
+	wantString(t, change, "scheduled_plan_key", "lite")
+}
+
 // not authorised for commercial write operations (403); the owner passes
 // the gate, and so does an Admin holding an explicit billing grant.
 func TestCommercialAdminPostForbidden(t *testing.T) {

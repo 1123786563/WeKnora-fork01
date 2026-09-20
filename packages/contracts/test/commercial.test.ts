@@ -189,6 +189,61 @@ test('rejects malformed quote views', () => {
   for (const value of malformed) assert.throws(() => parseQuoteView(value), /invalid quote/);
 });
 
+// The backend wire projection (internal/handler/commercial.go quoteWire):
+// digit-string amount_fen + credit_delta alongside the numeric backend
+// fields. Unknown fields pass through the parser by convention — this
+// fixture is the exact object the handler answers inside the envelope.
+const backendQuoteWire = {
+  id: 'qt_1',
+  plan_key: 'pro',
+  plan_version: 3,
+  amount_fen: '9900',
+  credit_delta: '9900000',
+  credits_micro: 9900000,
+  expires_at: '2026-09-20T13:00:00Z',
+};
+
+test('parses the backend quote wire projection verbatim', () => {
+  const value = parseQuoteView(backendQuoteWire);
+  assert.equal(value.id, 'qt_1');
+  assert.equal(value.amount_fen, '9900');
+  assert.equal(value.credit_delta, '9900000');
+  assert.equal(value.expires_at, '2026-09-20T13:00:00Z');
+});
+
+// The backend order wire projection (internal/handler/commercial.go
+// orderWire): digit-string amount_fen plus the payment/fulfillment axes
+// derived from the single lifecycle state, alongside the backend fields.
+const backendOrderWire = {
+  id: 'ord_1',
+  quote_id: 'qt_1',
+  state: 'pending',
+  amount_fen: '9900',
+  currency: 'CNY',
+  payment: 'pending',
+  fulfillment: 'pending',
+  provider: 'wechat',
+  checkout_url: 'https://pay.example/qr',
+  checkout_error: '',
+  version: 1,
+};
+
+test('parses the backend order wire projection verbatim', () => {
+  const value = parseOrderView(backendOrderWire);
+  assert.equal(value.id, 'ord_1');
+  assert.equal(value.amount_fen, '9900');
+  assert.equal(value.payment, 'pending');
+  assert.equal(value.fulfillment, 'pending');
+  // The lifecycle projection: paid means settled-but-processing, fulfilled
+  // means the benefits are live.
+  const paid = parseOrderView({ ...backendOrderWire, state: 'paid', payment: 'paid', fulfillment: 'processing' });
+  assert.equal(paid.payment, 'paid');
+  assert.equal(paid.fulfillment, 'processing');
+  const fulfilled = parseOrderView({ ...backendOrderWire, state: 'fulfilled', payment: 'paid', fulfillment: 'fulfilled' });
+  assert.equal(fulfilled.fulfillment, 'fulfilled');
+});
+
+
 const refund = { id: 'r1', state: 'revocation_pending', amount_fen: '9900', locked_credits: '500' };
 
 test('parses refund views field by field across every C05 state', () => {
