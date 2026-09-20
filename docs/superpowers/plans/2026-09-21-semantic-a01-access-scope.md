@@ -19,6 +19,7 @@
 - `SEMANTIC_SCOPE_SIGNING_KEY` is a distinct secret of at least 32 bytes, supplied through environment and required when Semantica is enabled; it is never logged or committed.
 - Scope snapshots include only readable documents with an active I02 semantic revision. Tombstoned/denied documents are excluded. Missing semantic revision rows are not inferred from `Knowledge.UpdatedAt`; they remain out of scope until I05 writes revisions transactionally.
 - For a non-deleted document, `allow_retained_previous=true` to preserve the Spec's ordinary-update stale-generation behavior; deletion denials still block every prior revision. Sensitive-replacement hide metadata does not exist yet and must remain unsupported until I03/I04 add an explicit Go-owned barrier. `budget_ref` is an opaque caller-provided reference bound into the capability; A01 creates no model budget authority.
+- For shared KB access, an absent organization membership is a normal deny; storage/permission-service errors are not “no share” and must propagate as fail-closed errors.
 - Tenant membership and organization role changes affect multiple owner scopes. Enumerate all owned or shared-to-tenant KBs (for tenant changes) or all KBs shared to the organization (for organization changes); bump scopes in sorted order.
 - Invalidation happens before ACL state is written. A failed later ACL write may still invalidate scopes; this causes re-issue but no permission expansion. A scope minted during that interval is rejected after the write because `ValidateDelivery` recomputes the canonical live hash.
 - Scope change coverage: tenant member add/role change/removal and invitation acceptance; organization join/role/review/remove/delete; KB share create/permission update/remove; KB delete; cross-KB move/clone checkpoints. Session sharing and temporary session attachments are excluded because current semantic revisions/outbox cover KB-owned `Knowledge`, not session-scoped temporary content. If those attachments later enter the semantic graph, they require a separate session-scope model.
@@ -75,6 +76,7 @@ Expected: scope-key sets and epoch counts match, duplicate scopes increment once
 - Create: `internal/application/service/semantic_scope_test.go`
 - Modify: `internal/application/repository/semantic_outbox.go`
 - Modify: `internal/application/repository/semantic_scope_epoch.go`
+- Modify: `internal/application/service/kbshare.go`
 - Modify: `internal/config/config.go`
 - Modify: `internal/config/semantic_test.go`
 - Modify: `internal/runtime/startup.go`
@@ -83,7 +85,7 @@ Expected: scope-key sets and epoch counts match, duplicate scopes increment once
 **Interfaces:**
 - `SemanticScopeSnapshot` contains owner scope, subject ID, requester tenant ID, sorted allowed document IDs, per-document maximum source revisions, `AllowRetainedPrevious`, denied document revisions, permission epoch, scope hash, expiry, purpose, audience, and opaque budget reference.
 - `SemanticScopeService.Issue(ctx, subjectID, ownerScope, purpose, budgetRef) (types.SemanticAccessScope,error)`, `.Resolve(ctx, scopeRef) (SemanticScopeSnapshot,error)`, `.ValidateDelivery(ctx, scope) error`.
-- `newSemanticScopeFixture(t)` uses a real temporary SQLite database with formal migrations, inserts tenant/org/KB/share/member rows, semantic revisions/denials, and a fixed test-only signing key. Its helpers are `AddOwnedKB(ownerTenant,kbID)`, `AddMember(userID,tenantID,role)`, `AddSharedKB(ownerTenant,memberTenant,kbID)`, `AddActiveSemanticDocument(ownerTenant,kbID,documentID,revision)`, `AddDeniedDocument(ownerTenant,kbID,documentID,revision)`, `Issue(userID,requesterTenant,kbID,purpose,budgetRef)`, `BumpEpoch(scope)`, `ResolveScope(scopeRef)`, and `IssueWithExpiry(userID,requesterTenant,kbID,purpose,budgetRef,expiry)`.
+- `newSemanticScopeFixture(t)` uses a real temporary SQLite database with formal migrations, inserts tenant/org/KB/share/member rows, semantic revisions/denials, and a fixed test-only signing key. Its test-only helpers are `ContextFor(userID,requesterTenant)`, `AddOwnedKB(ownerTenant,kbID)`, `AddMember(userID,tenantID,role)`, `AddSharedKB(ownerTenant,memberTenant,kbID)`, `AddActiveSemanticDocument(ownerTenant,kbID,documentID,revision)`, `AddDeniedDocument(ownerTenant,kbID,documentID,revision)`, `FailOrganizationRead(err)`, `Issue(userID,requesterTenant,kbID,purpose,budgetRef)`, `BumpEpoch(scope)`, `ResolveScope(scopeRef)`, and `IssueWithExpiry(userID,requesterTenant,kbID,purpose,budgetRef,expiry)`.
 - I02 repository adds `ReadSemanticScopeState(ctx, ownerScope) (epoch uint64, activeRevisions map[string]uint64, denied map[string]uint64, err error)`. It reads `semantic_document_revisions` and `semantic_denials`; no Go business model stores duplicate semantic revisions.
 - Scope hash is SHA-256 of canonical JSON containing owner scope, subject, requester tenant, purpose, budget reference, epoch, sorted allowed IDs/revisions, sorted denials, and per-document `allow_retained_previous`; expiry and signature are bound separately in signed claims.
 - `SEMANTIC_SCOPE_SIGNING_KEY` is added to `SemanticServiceConfig`, overridden only from that environment variable, marked sensitive in startup diagnostics, and validated only when `semantic.enabled=true`; require at least 32 non-whitespace bytes.
@@ -118,6 +120,15 @@ func TestSemanticScopeSharedKBUsesOwnerTenantAndExcludesDeniedRows(t *testing.T)
     require.NoError(t, err)
     require.Equal(t, uint64(10), snapshot.Scope.TenantID)
     require.Equal(t, []string{"doc-visible"}, snapshot.AllowedDocumentIDs)
+    require.True(t, snapshot.AllowRetainedPrevious)
+}
+
+func TestSemanticScopeFailsClosedWhenOrganizationLookupFails(t *testing.T) {
+    f := newSemanticScopeFixture(t)
+    f.AddSharedKB(10, 20, "shared-kb")
+    f.FailOrganizationRead(errors.New("organization store unavailable"))
+    _, err := f.Service.Issue(f.ContextFor("member-a", 20), "member-a", types.SemanticScopeKey{TenantID: 10, KBID: "shared-kb"}, types.SemanticAccessPurposeSearch, "budget-ref-1")
+    require.ErrorIs(t, err, ErrSemanticScopeUnavailable)
 }
 ```
 
@@ -129,7 +140,7 @@ Expected: scope-service symbols/tests fail because the issuer, signer, and I02 s
 
 - [ ] **Step 3: Derive current access and build canonical snapshot**
 
-Load the KB without assuming the request tenant owns it; compare the signed owner scope to `KnowledgeBase.TenantID`. Require the authenticated `Caller.UserID` to equal `subjectID`, load the caller's current tenant membership/role, and use `KBShareService.CheckTenantKBPermission` for shared KBs. Only after access succeeds, list the source KB's `Knowledge` rows by the owner tenant and intersect IDs with I02 active semantic revisions; exclude current denials and set `AllowRetainedPrevious=false`. All repository/permission failures return errors and do not mint a scope.
+Load the KB without assuming the request tenant owns it; compare the signed owner scope to `KnowledgeBase.TenantID`. Require the authenticated `Caller.UserID` to equal `subjectID`, load the caller's current tenant membership/role, and use `KBShareService.CheckTenantKBPermission` for shared KBs. In `CheckTenantKBPermission`, ignore only the `ErrOrgMemberNotFound` sentinel for an organization that does not grant access; propagate all other organization lookup errors. Only after access succeeds, list the source KB's `Knowledge` rows by the owner tenant and intersect IDs with I02 active semantic revisions; exclude current denials and set `AllowRetainedPrevious=true` for non-denied live documents. All repository/permission failures return errors and do not mint a scope.
 
 - [ ] **Step 4: Implement HMAC capability, resolver, and delivery recheck**
 
