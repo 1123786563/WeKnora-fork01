@@ -131,6 +131,59 @@ test('documentsCount rejects malformed envelopes and propagates failures', async
   await assert.rejects(failing.documentsCount('ds-1'), /500/);
 });
 
+// SP2-b Task 7: POST /datasource/:id/reindex (internal/handler/datasource.go
+// ReindexItems) schedules a scoped reindex run. It answers 202
+// {"sync_log_id": "..."}; a repeated request_id while the first run is still
+// queued is rejected 409 — the request layer throws ApiError for every
+// non-2xx, so the duplicate surfaces as a rejection the caller maps to its
+// duplicate-request toast. 202 folds into the parsed body like every 2xx
+// (client.ts), so only the envelope needs validating here.
+test('reindexItems POSTs external_ids + request_id and unwraps the 202 sync_log_id', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createDataSourcesApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return { sync_log_id: 'log-77' };
+  });
+  assert.equal(await api.reindexItems('ds/a', ['doc/1', 'doc/2'], 'req-uuid'), 'log-77');
+  assert.deepEqual(requests, [{
+    method: 'POST', path: '/api/v1/datasource/ds%2Fa/reindex',
+    body: { external_ids: ['doc/1', 'doc/2'], request_id: 'req-uuid' },
+  }]);
+});
+
+test('reindexItems propagates the 409 duplicate and rejects broken envelopes', async () => {
+  const failing = createDataSourcesApi(async () => { throw new Error('409: a reindex request with this request_id is already enqueued'); });
+  await assert.rejects(failing.reindexItems('ds-1', ['doc/1'], 'req-uuid'), /409/);
+
+  const malformed = createDataSourcesApi(async () => ({ sync_log_id: 7 }));
+  await assert.rejects(malformed.reindexItems('ds-1', ['doc/1'], 'req-uuid'), /Invalid data source reindex/);
+  const missing = createDataSourcesApi(async () => ({ status: 'ok' }));
+  await assert.rejects(missing.reindexItems('ds-1', ['doc/1'], 'req-uuid'), /Invalid data source reindex/);
+});
+
+// The sync-log wire carries the capped per-item failure samples under
+// result.errors (SP2-b: SyncItemError with code/params/message/title and the
+// external_id the targeted retry posts back). The client parse must keep the
+// row intact instead of dropping the unknown result field.
+test('logs keep the result.errors failure samples with external ids', async () => {
+  const api = createDataSourcesApi(async () => ({
+    data: [{
+      id: 'log-1', status: 'success',
+      result: { failed: 2, errors: [
+        { title: 'Doc A', external_id: 'doc/a', code: 'feishu_rate_limited', message: 'Feishu API rate limited; will retry on the next sync' },
+        { code: 'targeted_unsupported', message: 'needs a normal sync' },
+      ] },
+    }],
+  }));
+  const logs = await api.logs('ds-1');
+  assert.equal(logs.length, 1);
+  const errors = logs[0]?.result?.errors ?? [];
+  assert.equal(errors.length, 2);
+  assert.equal(errors[0]?.external_id, 'doc/a');
+  assert.equal(errors[0]?.code, 'feishu_rate_limited');
+  assert.equal(errors[1]?.code, 'targeted_unsupported');
+});
+
 test('exposes connector types, credential writes, and sync logs as separate routes', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createDataSourcesApi(async (request) => {

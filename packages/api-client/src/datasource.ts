@@ -30,6 +30,19 @@ export interface DataSourceResource {
   [key: string]: unknown;
 }
 
+// One user-facing per-item failure sample from a sync run's result
+// (internal/types/datasource.go SyncItemError). Loose on purpose: old logs
+// store bare-string errors and the wire may predate any field, so every
+// member stays optional and unknown keys are tolerated.
+export interface DataSourceSyncItemError {
+  title?: string;
+  external_id?: string;
+  code?: string;
+  params?: Record<string, string>;
+  message?: string;
+  [key: string]: unknown;
+}
+
 export interface DataSourceSyncLog {
   id: string;
   status: string;
@@ -47,6 +60,15 @@ export interface DataSourceSyncLog {
   items_skipped?: number;
   items_failed?: number;
   error_message?: string;
+  // SP2-b: the run's SyncResult JSON. A run can finish status=success while
+  // individual items failed — the UI must render result.errors, not trust
+  // status. errors is the capped sample the backend keeps for display; the
+  // true failure count is items_failed.
+  result?: {
+    failed?: number;
+    errors?: DataSourceSyncItemError[];
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -162,6 +184,18 @@ export function createDataSourcesApi(request: (input: ClientRequest) => Promise<
       const value = await request({ method: 'POST', path: path(id, `/logs/${encodeURIComponent(logId)}/cancel`), body: {} });
       const envelope = row(value, 'data source sync cancel');
       if (envelope.status !== 'cancel_requested') throw new Error('Invalid data source sync cancel response');
+    },
+    // SP2-b Task 7: POST /datasource/:id/reindex schedules a scoped (targeted)
+    // reindex that refetches only the listed external ids and converges into
+    // its own SyncLog. Answers 202 {"sync_log_id": "..."}; a repeated
+    // request_id while the first run is still queued is rejected 409, which
+    // the request layer throws as an ApiError for the caller to surface its
+    // duplicate-request copy — nothing is retried here.
+    async reindexItems(id: string, externalIds: string[], requestId: string): Promise<string> {
+      const value = await request({ method: 'POST', path: path(id, '/reindex'), body: { external_ids: externalIds, request_id: requestId } });
+      const envelope = row(value, 'data source reindex');
+      if (typeof envelope.sync_log_id !== 'string' || envelope.sync_log_id === '') throw new Error('Invalid data source reindex response');
+      return envelope.sync_log_id;
     },
   };
 }

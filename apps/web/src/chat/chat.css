@@ -74,7 +74,7 @@
 
 /* Descendant row rule: also hits artifact chips and markdown list items
    inside a message row (they carry no border/padding utilities). */
-.wk-chat-messages li { border-bottom: 1px solid #edf0f5; padding: .8rem 0; }
+.wk-chat-messages li { border-bottom: 0; padding: 0; }
 .wk-chat-messages li p { margin: .3rem 0 0; overflow-wrap: anywhere; }
 
 /* Markdown content edges + generated rich text (marked renderer output). */

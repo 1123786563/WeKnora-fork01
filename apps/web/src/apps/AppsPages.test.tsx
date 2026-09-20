@@ -41,6 +41,44 @@ function renderActionPage(actionDto: unknown, props: Record<string, unknown> = {
   })();
 }
 
+async function renderCatalogPage(): Promise<{ container: HTMLElement; cleanup: () => Promise<void> }> {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps' });
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document });
+  const { createRoot } = await import('react-dom/client');
+  const container = dom.window.document.createElement('div');
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
+  const client = { request: async () => [] } as never;
+  await act(async () => {
+    root.render(React.createElement(AppsPage, { client, mode: 'catalog' }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return {
+    container,
+    cleanup: async () => {
+      await act(async () => { root.unmount(); });
+      Object.assign(globalThis, { window: previousWindow, document: previousDocument });
+      dom.window.close();
+    },
+  };
+}
+
+test('catalog tables use the Vue unboxed section layout and centered empty states', async () => {
+  const { container, cleanup } = await renderCatalogPage();
+  try {
+    assert.equal(container.querySelectorAll('section.rounded-card').length, 0, 'catalog and installed tables are not wrapped in cards');
+    const emptyCells = Array.from(container.querySelectorAll('td'));
+    assert.equal(emptyCells.length, 2);
+    for (const cell of emptyCells) {
+      assert.ok(cell.className.includes('text-center'), 'Vue table empty state is centered');
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
 test('renders the frozen delete risk verbatim like the Vue ActionView', async () => {
   const { container, cleanup } = await renderActionPage({ action: { risk: 'delete', state: 'awaiting_approval', content: '{}' } });
   try {

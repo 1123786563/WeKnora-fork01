@@ -35,6 +35,42 @@ const ANSWER_TOOL_BUTTON = "inline-flex h-[30px] w-[30px] shrink-0 cursor-pointe
 const TYPING_DOT = "h-[12px] w-[12px] rounded-full border-[1.5px] border-[#c5c5c5] border-t-[rgba(0,0,0,0.6)] bg-[#dcdcdc] opacity-85 animate-[wk-chat-typing-bounce_1.2s_infinite_ease-in-out] motion-reduce:animate-none motion-reduce:opacity-60";
 /** .wk-chat-message-row--user .wk-chat-message-bubble (Vue .user_msg pill) */
 const USER_BUBBLE = "ml-auto box-border w-max max-w-[min(76%,820px)] rounded-[8px] bg-[#f3f3f3] px-[12px] py-[8px] text-left text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]";
+
+/** Vue usermsg.mentioned_items — the @-mention chips pinned above the user
+ *  bubble (right-aligned; Vue chat-resource-chips.less .chat-mentioned-items
+ *  with justify flex-end + .chat-mentioned-tag chip geometry). */
+interface MentionedItemView { id: string; name: string; type: string; kb_type?: string }
+
+function mentionedItemsOf(message: ChatMessage): MentionedItemView[] {
+  const raw = message.mentioned_items;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is MentionedItemView =>
+    typeof item === 'object' && item !== null
+    && typeof (item as MentionedItemView).id === 'string'
+    && typeof (item as MentionedItemView).name === 'string');
+}
+
+function MentionedItemsTags(props: { message: ChatMessage }) {
+  const items = mentionedItemsOf(props.message);
+  if (items.length === 0) return null;
+  return (
+    <div className="wk-chat-mentioned-items m-0 mb-[2px] flex max-w-full flex-wrap justify-end gap-[6px]">
+      {items.map((item) => (
+        <span
+          key={item.id}
+          className={'wk-chat-mentioned-tag inline-flex min-h-[26px] max-w-[200px] box-border items-center gap-[5px] cursor-default rounded-[6px] border border-[#e4e7ec] bg-[#f0f2f5] px-[8px] py-[3px] text-[12px] font-medium leading-[18px] ' + (item.type === 'kb' ? 'is-kb' : '')}
+        >
+          <span className={'inline-flex shrink-0 items-center justify-center text-[14px] ' + (item.type === 'kb' ? 'text-[#00a870]' : 'text-[rgba(0,0,0,0.45)]')}>
+            {item.type === 'kb'
+              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M14 3v5h5M6 3h8l4 4v14H6z" /></svg>}
+          </span>
+          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 /** .wk-list li effective values (the styles.css rule wins the unlayered tie) */
 export const TOOL_LIST_ITEM = "flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]";
 
@@ -513,7 +549,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
   const previewMessage = preview ? messages.find((message) => message.id === preview.messageId) : undefined;
   const previewArtifacts = previewMessage ? messageArtifactItems(previewMessage) : [];
 
-  return <div ref={containerRef} className="wk-chat-message-scroll relative mx-auto min-h-0 w-full max-w-[960px] max-h-[62vh] max-[720px]:max-h-[55vh] flex-1 overflow-auto scroll-smooth p-[0.25rem] [scrollbar-width:auto]" onScroll={onScroll}>
+  return <div ref={containerRef} className="wk-chat-message-scroll relative mx-auto min-h-0 w-full max-w-[960px] flex-1 overflow-auto scroll-smooth pt-[8px] px-[4px] pb-[4px] [scrollbar-width:auto]" onScroll={onScroll}>
     {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom sticky bottom-[12px] z-[10] mx-auto mt-[-48px] mb-[12px] block h-[36px] w-[36px] cursor-pointer rounded-full border border-[#e7e7e7] bg-white text-[rgba(0,0,0,0.6)] shadow-[0_2px_8px_rgba(0,0,0,0.1)]" aria-label={t.chatScrollBottom} onClick={scrollToBottom}>↓</button> : null}
     {hasMore ? <button type="button" className="wk-chat-load-older mx-auto mb-[12px] block cursor-pointer rounded-[8px] border border-[#dcdcdc] bg-transparent px-[14px] py-[4px] text-[12px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-60" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? t.loadingHistory : t.loadOlder}</button> : null}
     <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label={t.messagesLabel}>
@@ -525,11 +561,15 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
       const historyThink = isAssistant ? splitHistoryThinking(message.content) : null;
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
-        {showSeparator ? <li className="wk-chat-timestamp block list-none select-none border-b border-[#edf0f5] px-0 py-[0.8rem] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
-        <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]'}>
+        {showSeparator ? <li className="wk-chat-timestamp block list-none select-none px-0 pt-[4px] pb-[8px] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
+        <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col'}>
         <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
           {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <>
+            <MentionedItemsTags message={message} />
+            <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>
+          </>}
           {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
@@ -542,13 +582,12 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
               </span>
             ) : null}
           </div> : null}
-          {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
           {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview || onArtifactDownload ? openArtifactList : undefined} /> : null}
         </div>
       </li>
       </Fragment>;
     })}
-    {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]">
+    {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user flex w-full flex-col">
       <div className="wk-chat-message-body flex min-w-0 max-w-full flex-col items-end">
         <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>
           <p className="mt-[0.3rem] mb-0 [overflow-wrap:anywhere]">{pending.content}</p>

@@ -40,7 +40,9 @@ function loadCreds() {
 }
 
 // ---- 页面清单（Vue 为基准；id 与 R492 台账一致）----
-const PAGES = [
+// 可用环境变量 PAGES=chat,kb-list 过滤（逗号分隔的 id），便于单页快验。
+const PAGE_FILTER = (process.env.PAGES || '').split(',').map(s => s.trim()).filter(Boolean);
+const ALL_PAGES = [
   { id: 'kb-list', path: '/platform/knowledge-bases' },
   { id: 'agents', path: '/platform/agents' },
   { id: 'orgs', path: '/platform/organizations' },
@@ -54,6 +56,7 @@ const PAGES = [
   { id: 'kb-demo', kind: 'kb', name: 'Parity KB Demo' },
   { id: 'chat', kind: 'chat', name: '工具调用 Parity Fixture' },
 ];
+const PAGES = PAGE_FILTER.length ? ALL_PAGES.filter(p => PAGE_FILTER.includes(p.id)) : ALL_PAGES;
 
 // 屏蔽新手引导（两端同名键；来源 frontend/src/config/contextualGuides.ts）
 const GUIDE_KEYS = [

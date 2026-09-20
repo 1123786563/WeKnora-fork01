@@ -147,8 +147,9 @@ function dataSourceKeys(locale: string): string[] {
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
   // 224 Vue-ported keys + 13 confluence/dingtalk connector/desc/field keys
-  // + 1 cancelSync (SP2-a Task 6) + 9 delete-panel keys (SP2-a Task 10).
-  assert.equal(keys.length, 247);
+  // + 1 cancelSync (SP2-a Task 6) + 9 delete-panel keys (SP2-a Task 10)
+  // + 21 syncError codes + 5 failed-items/retry keys (SP2-b Task 7).
+  assert.equal(keys.length, 273);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -162,6 +163,83 @@ test('every locale carries the data-source editor keys', () => {
       assert.ok(dataSourceKeys(locale).includes(key), `${locale} missing ${key}`);
       assert.notEqual(formatMessage(locale, key), key, `${locale} ${key} has no value`);
     }
+  }
+});
+
+// SP2-b Task 7: per-item sync failure codes the backend records in
+// result.errors (internal/types SyncItemError.Code). The log panel localises
+// via dataSource.syncError.<code> with the message/code fallback, so every
+// locale must carry the full set the connectors and the scoped-reindex path
+// emit: the 3 Vue-ported generic codes, feishu's 6 classifications + the
+// shared sync_failed fallback, confluence's 6, dingtalk's 2 and the 3
+// targeted-retry codes.
+const SYNC_ERROR_CODES = [
+  'deletion_lookup_failed',
+  'deletion_failed',
+  'ingest_failed',
+  'sync_failed',
+  'feishu_rate_limited',
+  'feishu_auth_or_permission',
+  'feishu_api_error',
+  'feishu_api_error_generic',
+  'feishu_server_unavailable',
+  'feishu_timeout',
+  'confluence_api_error',
+  'confluence_auth_or_permission',
+  'confluence_not_found',
+  'confluence_rate_limited',
+  'confluence_server_unavailable',
+  'confluence_sync_failed',
+  'dingtalk_document_failed',
+  'dingtalk_resource_failed',
+  'targeted_unsupported',
+  'not_found',
+  'fetch_failed',
+];
+
+test('every locale carries the full syncError code set for failed-item rendering', () => {
+  for (const locale of supportedLocales) {
+    for (const code of SYNC_ERROR_CODES) {
+      const key = `dataSource.syncError.${code}`;
+      assert.ok(dataSourceKeys(locale).includes(key), `${locale} missing ${key}`);
+      assert.notEqual(formatMessage(locale, key), key, `${locale} ${key} has no value`);
+    }
+  }
+});
+
+// The 3 generic codes are ported byte-exact from the Vue datasource.syncError
+// block (frontend/src/i18n/locales/*.ts); feishu_api_error interpolates the
+// wire's params.code like the backend message does.
+test('syncError copy is byte-exact against the Vue baseline and interpolates code params', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.syncError.deletion_lookup_failed'), '删除前查找文档失败，请查看服务器日志');
+  assert.equal(formatMessage('zh-CN', 'dataSource.syncError.deletion_failed'), '删除失败，请查看服务器日志');
+  assert.equal(formatMessage('zh-CN', 'dataSource.syncError.ingest_failed'), '导入失败，请查看服务器日志');
+  assert.equal(formatMessage('en-US', 'dataSource.syncError.deletion_lookup_failed'), 'Failed to look up the item before deletion; see server logs');
+  assert.equal(formatMessage('en-US', 'dataSource.syncError.ingest_failed'), 'Ingest failed; see server logs');
+  assert.equal(formatMessage('zh-CN', 'dataSource.syncError.feishu_api_error', { code: '1663' }), '飞书 API 错误（code=1663），将在下次同步时重试');
+  assert.equal(formatMessage('en-US', 'dataSource.syncError.feishu_rate_limited'), 'Feishu API rate limited; will retry on the next sync');
+  assert.equal(formatMessage('zh-CN', 'dataSource.syncError.targeted_unsupported'), '该连接器暂不支持单条重试，请执行普通同步');
+  assert.equal(formatMessage('en-US', 'dataSource.syncError.targeted_unsupported'), 'This connector does not support retrying a single item; run a normal sync');
+});
+
+// Failed-items panel copy: the Vue logDetail.failedItems/failedItemsMore
+// values port byte-exact; the retry controls are new (no Vue baseline), so
+// ja/ko/ru ship the English copy like cancelSync.
+test('failed-items panel and retry copy is byte-exact in every locale', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.logDetail.failedItems'), '失败文档');
+  assert.equal(formatMessage('zh-CN', 'dataSource.logDetail.failedItemsMore', { n: 3 }), '还有 3 个失败文档未显示');
+  assert.equal(formatMessage('en-US', 'dataSource.logDetail.failedItems'), 'Failed documents');
+  assert.equal(formatMessage('en-US', 'dataSource.logDetail.failedItemsMore', { n: 3 }), '{n} more failed documents not shown'.replace('{n}', '3'));
+  assert.equal(formatMessage('zh-CN', 'dataSource.retrySelected'), '重试选中项');
+  assert.equal(formatMessage('zh-CN', 'dataSource.reindexSubmitted'), '已提交重抓');
+  assert.equal(formatMessage('zh-CN', 'dataSource.duplicateRequest'), '重复请求：相同的重试已在队列中');
+  assert.equal(formatMessage('en-US', 'dataSource.retrySelected'), 'Retry selected');
+  assert.equal(formatMessage('en-US', 'dataSource.reindexSubmitted'), 'Retry submitted');
+  assert.equal(formatMessage('en-US', 'dataSource.duplicateRequest'), 'Duplicate request: the same retry is already queued');
+  for (const locale of ['ja-JP', 'ko-KR', 'ru-RU']) {
+    assert.equal(formatMessage(locale, 'dataSource.retrySelected'), 'Retry selected');
+    assert.equal(formatMessage(locale, 'dataSource.reindexSubmitted'), 'Retry submitted');
+    assert.equal(formatMessage(locale, 'dataSource.duplicateRequest'), 'Duplicate request: the same retry is already queued');
   }
 });
 

@@ -3830,10 +3830,12 @@ export function KnowledgeDocumentsPage({
                     />
                   ) : null}
                 </div>
-                <label className="doc-filter-field w-[140px] flex-none">
+                <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.fileTypeFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg></span>
+                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${fileType ? "opacity-0" : ""}`}>{t("knowledgeBase.fileTypeFilter")}</span>
                   <Select
-                    className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${fileType ? "" : "text-transparent"}`}
                     value={fileType}
                     onChange={(event) => setFileType(event.target.value)}
                   >
@@ -3845,10 +3847,12 @@ export function KnowledgeDocumentsPage({
                     ))}
                   </Select>
                 </label>
-                <label className="doc-filter-field w-[140px] flex-none">
+                <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.parseStatusFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9 12.5l2 2 4-4.5" /></svg></span>
+                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${parseStatus ? "opacity-0" : ""}`}>{t("knowledgeBase.parseStatusFilter")}</span>
                   <Select
-                    className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${parseStatus ? "" : "text-transparent"}`}
                     value={parseStatus}
                     onChange={(event) => setParseStatus(event.target.value)}
                   >
@@ -3860,10 +3864,12 @@ export function KnowledgeDocumentsPage({
                     ))}
                   </Select>
                 </label>
-                <label className="doc-filter-field w-[140px] flex-none">
+                <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.sourceFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.07.07l2-2a5 5 0 00-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 00-7.07-.07l-2 2A5 5 0 0012 20l1.15-1.15" /></svg></span>
+                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${source ? "opacity-0" : ""}`}>{t("knowledgeBase.sourceFilter")}</span>
                   <Select
-                    className="doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${source ? "" : "text-transparent"}`}
                     value={source}
                     onChange={(event) => setSource(event.target.value)}
                   >
@@ -3876,25 +3882,31 @@ export function KnowledgeDocumentsPage({
                   </Select>
                 </label>
                 <div className="doc-filter-field doc-filter-field--wide doc-date-range flex w-[280px] flex-none items-center gap-[6px]">
+                    <span className="relative flex min-w-0 flex-[1_1_0]">
+                    <span className={`pointer-events-none absolute left-[8px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${updatedFrom ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeFrom")}</span>
                   <Input
                     type="date"
-                    className="doc-date-input h-8 w-auto min-w-0 flex-[1_1_0] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                    className={`doc-date-input h-8 w-auto min-w-0 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${updatedFrom ? "" : "text-transparent"}`}
                     value={updatedFrom}
                     max={updatedTo || undefined}
                     aria-label={t("knowledgeBase.updatedTimeFrom")}
                     title={t("knowledgeBase.updatedTimeFrom")}
                     onChange={(event) => setUpdatedFrom(event.target.value)}
                   />
+                  </span>
                   <span className="doc-date-range-sep shrink-0 text-[var(--wk-muted,#98a2b8)]" aria-hidden>—</span>
+                    <span className="relative flex min-w-0 flex-[1_1_0]">
+                    <span className={`pointer-events-none absolute left-[8px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${updatedTo ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeTo")}</span>
                   <Input
                     type="date"
-                    className="doc-date-input h-8 w-auto min-w-0 flex-[1_1_0] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)]"
+                    className={`doc-date-input h-8 w-auto min-w-0 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${updatedTo ? "" : "text-transparent"}`}
                     value={updatedTo}
                     min={updatedFrom || undefined}
                     aria-label={t("knowledgeBase.updatedTimeTo")}
                     title={t("knowledgeBase.updatedTimeTo")}
                     onChange={(event) => setUpdatedTo(event.target.value)}
                   />
+                  </span>
                 </div>
               </div>
               <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
@@ -3912,9 +3924,9 @@ export function KnowledgeDocumentsPage({
                     {t(batchMode ? "knowledgeBase.clearSelection" : "menu.batchManage")}
                   </Button>
                 ) : null}
-                <div className="doc-view-toggle inline-flex items-center rounded-[6px] border border-[var(--wk-border,#e4e7ec)]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
-                  <button type="button" className={`h-8 border-0 px-2 [font:inherit] ${viewMode === "grid" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
-                  <button type="button" className={`h-8 border-0 border-l border-line-soft px-2 [font:inherit] ${viewMode === "list" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
+                <div className="doc-view-toggle inline-flex shrink-0 items-center rounded-[6px] bg-[rgba(0,0,0,0.04)] p-[2px]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[var(--wk-brand,#0052d9)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[var(--wk-muted,#888)]"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[var(--wk-brand,#0052d9)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[var(--wk-muted,#888)]"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
                 </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
