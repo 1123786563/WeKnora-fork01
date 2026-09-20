@@ -153,7 +153,8 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
                 self._send(404, {"status": 404, "error": "Not Found", "code": "subscription_not_found"})
             else:
                 self._send(200, {"entitlements": [
-                    {"feature_code": s.plan_feature_code, "value": "plan"},
+                    {"code": s.plan_feature_code, "name": s.plan_feature_code,
+                     "privileges": [], "overrides": {}},
                 ]})
             return
         if path.startswith("/api/v1/subscriptions/"):
@@ -206,10 +207,19 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
         body = self._body()
         if path == "/graphql":
             auth = self.headers.get("Authorization", "")
+            query = (body or {}).get("query", "")
+            if "loginUser" in query:
+                password = ((body or {}).get("variables", {})
+                            .get("input", {}).get("password", ""))
+                if password == s.operator_password:
+                    self._send(200, {"data": {"loginUser": {"token": s.jwt}}})
+                else:
+                    self._send(200, {"errors": [{"message": "Invalid email or password"}]})
+                return
             if auth != f"Bearer {s.jwt}":
                 self._send(200, {"errors": [{"message": "Not authorized"}]})
                 return
-            if "addStripePaymentProvider" in (body or {}).get("query", ""):
+            if "addStripePaymentProvider" in query:
                 s.provider_registered = True
                 self._send(200, {"data": {"addStripePaymentProvider": {
                     "id": "1", "code": "stripe-test", "name": "Stripe Test",
@@ -238,11 +248,16 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             if plan_code not in s.plans:
                 self._send(404, {"status": 404, "error": "Not Found", "code": "plan_not_found"})
                 return
-            for item in body.get("entitlements", []):
-                s.plan_entitlements.setdefault(plan_code, []).append(item["feature_code"])
-                s.plan_feature_code = item["feature_code"]
+            entitlements = body.get("entitlements") or {}
+            if isinstance(entitlements, list):  # legacy/wrong shape: runtime 500s
+                self._send(500, {"status": 500, "error": "Internal Server Error"})
+                return
+            for feature_code in entitlements:
+                s.plan_entitlements.setdefault(plan_code, []).append(feature_code)
+                s.plan_feature_code = feature_code
             self._send(200, {"entitlements": [
-                {"feature_code": code} for code in s.plan_entitlements[plan_code]
+                {"code": code, "name": code, "privileges": []}
+                for code in s.plan_entitlements[plan_code]
             ]})
             return
         if path == "/api/v1/customers":
@@ -460,6 +475,7 @@ class FakeLago(ThreadingHTTPServer):
     def __init__(self):
         super().__init__(("127.0.0.1", 0), FakeLagoHandler)
         self.jwt = JWT
+        self.operator_password = "operator-password-canary"
         self.seq_counters = {"sub": 0, "inv": 0, "pay": 0}
         self.features = {}
         self.plans = {}

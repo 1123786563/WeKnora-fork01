@@ -57,7 +57,15 @@ def plan_payload(
 
 
 def plan_entitlements_payload(feature_code):
-    return {"entitlements": [{"feature_code": feature_code}]}
+    """Attach a feature to a plan.
+
+    The v1.53.0 controller passes ``params[:entitlements]`` to
+    ``PlanEntitlementsUpdateService``, which iterates it as a Hash keyed by
+    feature code with per-privilege values (an array of ``feature_code``
+    items makes the service 500). A feature without privileges attaches
+    with an empty privileges object.
+    """
+    return {"entitlements": {feature_code: {}}}
 
 
 def customer_payload(external_id, name, provider_customer_id,

@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "response-loss on create recovers the SAME Lago subscription via GET by external_id (no second commercial object); retry_payment on customer A's pending gate re-attempts without creating a second pending/succeeded payment row; customer A payment count unchanged",
+  "observed": {
+    "blocked_reason": "requires settled customer B state and customer A pending gate"
+  },
+  "phase": "retries",
+  "recorded_at": "2026-09-20T18:02:18.324844+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}

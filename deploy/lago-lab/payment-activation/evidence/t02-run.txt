@@ -1,0 +1,26 @@
+[2026-09-20T18:02:17.987210+00:00] run start
+[2026-09-20T18:02:17.987563+00:00] run_id=e8ae6c00-65dd-40a1-82fd-e8b34b8043db output_dir=deploy/lago-lab/payment-activation/evidence
+[2026-09-20T18:02:18.005225+00:00] lago health HTTP 200
+[2026-09-20T18:02:18.244216+00:00] graphql loginUser: ok
+[2026-09-20T18:02:18.251568+00:00] phase setup: start
+[2026-09-20T18:02:18.322911+00:00] phase setup: pass (0.1s)
+[2026-09-20T18:02:18.322961+00:00] phase provider_setup: start
+[2026-09-20T18:02:18.323429+00:00] phase provider_setup: blocked-env (0.0s)
+[2026-09-20T18:02:18.323463+00:00] phase gate: start
+[2026-09-20T18:02:18.323890+00:00] phase gate: blocked-env (0.0s)
+[2026-09-20T18:02:18.323921+00:00] phase manual: start
+[2026-09-20T18:02:18.324252+00:00] phase manual: blocked-env (0.0s)
+[2026-09-20T18:02:18.324271+00:00] phase activate: start
+[2026-09-20T18:02:18.324535+00:00] phase activate: blocked-env (0.0s)
+[2026-09-20T18:02:18.324553+00:00] phase duplicates: start
+[2026-09-20T18:02:18.324799+00:00] phase duplicates: blocked-env (0.0s)
+[2026-09-20T18:02:18.324826+00:00] phase retries: start
+[2026-09-20T18:02:18.325089+00:00] phase retries: blocked-env (0.0s)
+[2026-09-20T18:02:18.325108+00:00] phase decline_control: start
+[2026-09-20T18:02:18.325549+00:00] phase decline_control: blocked-env (0.0s)
+[2026-09-20T18:02:18.325587+00:00] phase cleanup: start
+[2026-09-20T18:02:18.358894+00:00] phase cleanup: pass (0.0s)
+[2026-09-20T18:02:18.359302+00:00] overall verdict: blocked-env
+[2026-09-20T18:02:18.359348+00:00] run finished
+[2026-09-20T18:02:18.362334+00:00] secrets scan: 11 files, 0 scrubbed, hits_after_scrub=0
+[2026-09-20T18:02:18.362559+00:00] run finished

@@ -254,8 +254,9 @@ def phase_setup(ctx):
                 fixtures.plan_entitlements_payload(feature_code),
             )
             observed["entitlement_attach_status"] = es
+            # The v1.53.0 PlanEntitlementSerializer keys the feature by "code".
             attached = isinstance(eb, dict) and any(
-                item.get("feature_code") == feature_code
+                (item.get("code") or item.get("feature_code")) == feature_code
                 for item in eb.get("entitlements", [])
             )
             if not _ok(es) or not attached:
@@ -647,7 +648,8 @@ def phase_activate(ctx):
         observed["entitlements_status"] = es
         observed["entitlements"] = entitlements
         feature_present = any(
-            item.get("feature_code") == ctx.state.get("feature_code") for item in entitlements
+            (item.get("code") or item.get("feature_code")) == ctx.state.get("feature_code")
+            for item in entitlements
         )
 
         _, invoices = _invoices_for(ctx, customer["external_id"])

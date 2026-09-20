@@ -126,12 +126,15 @@ PY
 
 cmd_config() {
   check_secrets
-  compose config | python3 - "$ENV_FILE" <<'PY'
+  local resolved
+  resolved="$(compose config)"
+  LAB_CONFIG_TEXT="$resolved" python3 - "$ENV_FILE" <<'PY'
+import os
 import sys
 from pathlib import Path
 
 env_file = sys.argv[1]
-text = sys.stdin.read()
+text = os.environ.get("LAB_CONFIG_TEXT", "")
 for line in Path(env_file).read_text(encoding="utf-8").splitlines():
     line = line.strip()
     if not line or line.startswith("#") or "=" not in line:

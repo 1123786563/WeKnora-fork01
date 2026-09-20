@@ -460,10 +460,15 @@ class TestLabShInit(unittest.TestCase):
             values = parse_env_file(env_file)
             self.assertNotIn("LAGO_LICENSE", values)
 
-    def test_init_never_writes_the_real_lab_env(self):
-        # The guard: even if LAB_ENV_FILE were ignored, the committed lab.env
-        # must not silently appear during tests.
-        self.assertFalse((LAB_DIR / "lab.env").exists())
+    def test_init_never_touches_the_real_lab_env(self):
+        # Isolated init must never create or modify the operator's real
+        # lab.env (it may legitimately exist from a real `lab.sh init`).
+        real_env = LAB_DIR / "lab.env"
+        before = real_env.stat().st_mtime_ns if real_env.exists() else None
+        with tempfile.TemporaryDirectory() as tmp:
+            run_lab_sh(["init"], Path(tmp) / "lab.env")
+        after = real_env.stat().st_mtime_ns if real_env.exists() else None
+        self.assertEqual(before, after)
 
 
 class TestLabShUpValidation(unittest.TestCase):
